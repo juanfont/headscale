@@ -26,6 +26,7 @@ import (
 	xmaps "golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
+	"tailscale.com/util/mak"
 )
 
 const (
@@ -86,20 +87,18 @@ type Scenario struct {
 
 	users map[string]*User
 
-	pool    *dockertest.Pool
-	network *dockertest.Network
+	pool     *dockertest.Pool
+	networks map[string]*dockertest.Network
 
 	mu sync.Mutex
 }
 
+var TestHashPrefix = "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
+var TestDefaultNetwork = TestHashPrefix + "-default"
+
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
 func NewScenario(maxWait time.Duration) (*Scenario, error) {
-	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
-	if err != nil {
-		return nil, err
-	}
-
 	pool, err := dockertest.NewPool("")
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
@@ -107,12 +106,16 @@ func NewScenario(maxWait time.Duration) (*Scenario, error) {
 
 	pool.MaxWait = maxWait
 
-	networkName := fmt.Sprintf("hs-%s", hash)
-	if overrideNetworkName := os.Getenv("HEADSCALE_TEST_NETWORK_NAME"); overrideNetworkName != "" {
-		networkName = overrideNetworkName
-	}
+	return &Scenario{
+		controlServers: xsync.NewMapOf[string, ControlServer](),
+		users:          make(map[string]*User),
 
-	network, err := dockertestutil.GetFirstOrCreateNetwork(pool, networkName)
+		pool: pool,
+	}, nil
+}
+
+func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
+	network, err := dockertestutil.GetFirstOrCreateNetwork(s.pool, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create or get network: %w", err)
 	}
@@ -120,18 +123,22 @@ func NewScenario(maxWait time.Duration) (*Scenario, error) {
 	// We run the test suite in a docker container that calls a couple of endpoints for
 	// readiness checks, this ensures that we can run the tests with individual networks
 	// and have the client reach the different containers
-	err = dockertestutil.AddContainerToNetwork(pool, network, "headscale-test-suite")
+	// TODO(kradalby): Can the test-suite be renamed so we can have multiple?
+	err = dockertestutil.AddContainerToNetwork(s.pool, network, "headscale-test-suite")
 	if err != nil {
 		return nil, fmt.Errorf("failed to add test suite container to network: %w", err)
 	}
 
-	return &Scenario{
-		controlServers: xsync.NewMapOf[string, ControlServer](),
-		users:          make(map[string]*User),
+	mak.Set(&s.networks, name, network)
 
-		pool:    pool,
-		network: network,
-	}, nil
+	return network, nil
+}
+
+func (s *Scenario) Networks() []*dockertest.Network {
+	if len(s.networks) == 0 {
+		panic("Scenario.Networks called with empty network list")
+	}
+	return xmaps.Values(s.networks)
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
@@ -184,14 +191,11 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		}
 	}
 
-	if err := s.pool.RemoveNetwork(s.network); err != nil {
-		log.Printf("failed to remove network: %s", err)
+	for _, network := range s.networks {
+		if err := network.Close(); err != nil {
+			log.Printf("failed to tear down network: %s", err)
+		}
 	}
-
-	// TODO(kradalby): This seem redundant to the previous call
-	// if err := s.network.Close(); err != nil {
-	// 	return fmt.Errorf("failed to tear down network: %w", err)
-	// }
 }
 
 // Shutdown shuts down and cleans up all the containers (ControlServer, TailscaleClient)
@@ -235,7 +239,7 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 		opts = append(opts, hsic.WithPolicyV2())
 	}
 
-	headscale, err := hsic.New(s.pool, s.network, opts...)
+	headscale, err := hsic.New(s.pool, s.Networks(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create headscale container: %w", err)
 	}
@@ -312,7 +316,6 @@ func (s *Scenario) CreateTailscaleNode(
 	tsClient, err := tsic.New(
 		s.pool,
 		version,
-		s.network,
 		opts...,
 	)
 	if err != nil {
@@ -372,7 +375,6 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					s.network,
 					opts...,
 				)
 				s.mu.Unlock()
@@ -492,39 +494,86 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int) error {
 	return nil
 }
 
+// ScenarioSpec describes the users, nodes, and network topology to
+// set up for a given scenario.
+type ScenarioSpec struct {
+	// Users is a list of usernames that will be created.
+	// Each created user will get nodes equivalent to NodesPerUser
+	Users []string
+
+	// NodesPerUser is how many nodes should be attached to each user.
+	NodesPerUser int
+
+	// Networks, if set, is the deparate Docker networks that should be
+	// created and a list of the users that should be placed in those networks.
+	// If not set, a single network will be created and all users+nodes will be
+	// added there.
+	// Please note that Docker networks are not necessarily routable and
+	// connections between them might fall back to DERP.
+	Networks map[string][]string
+}
+
 // CreateHeadscaleEnv is a convenient method returning a complete Headcale
 // test environment with nodes of all versions, joined to the server with X
 // users.
 func (s *Scenario) CreateHeadscaleEnv(
-	users map[string]int,
+	spec ScenarioSpec,
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
+	var userToNetwork map[string]*dockertest.Network
+	if spec.Networks != nil || len(spec.Networks) != 0 {
+		for name, users := range spec.Networks {
+			networkName := TestHashPrefix + "-" + name
+			network, err := s.AddNetwork(networkName)
+			if err != nil {
+				return err
+			}
+
+			for _, user := range users {
+				if n2, ok := userToNetwork[user]; ok {
+					return fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name)
+				}
+				mak.Set(&userToNetwork, user, network)
+			}
+		}
+	} else {
+		_, err := s.AddNetwork(TestDefaultNetwork)
+		if err != nil {
+			return err
+		}
+	}
+
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
 	}
 
-	usernames := xmaps.Keys(users)
-	sort.Strings(usernames)
-	for _, username := range usernames {
-		clientCount := users[username]
-		err = s.CreateUser(username)
+	sort.Strings(spec.Users)
+	for _, user := range spec.Users {
+		err = s.CreateUser(user)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInUser(username, "all", clientCount, tsOpts...)
+		var opts []tsic.Option
+		if userToNetwork != nil {
+			opts = append(tsOpts, tsic.WithNetwork(userToNetwork[user]))
+		} else {
+			opts = append(tsOpts, tsic.WithNetwork(s.networks[TestDefaultNetwork]))
+		}
+
+		err = s.CreateTailscaleNodesInUser(user, "all", spec.NodesPerUser, opts...)
 		if err != nil {
 			return err
 		}
 
-		key, err := s.CreatePreAuthKey(username, true, false)
+		key, err := s.CreatePreAuthKey(user, true, false)
 		if err != nil {
 			return err
 		}
 
-		err = s.RunTailscaleUp(username, headscale.GetEndpoint(), key.GetKey())
+		err = s.RunTailscaleUp(user, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			return err
 		}
@@ -670,7 +719,7 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 
 // CreateDERPServer creates a new DERP server in a container.
 func (s *Scenario) CreateDERPServer(version string, opts ...dsic.Option) (*dsic.DERPServerInContainer, error) {
-	derp, err := dsic.New(s.pool, version, s.network, opts...)
+	derp, err := dsic.New(s.pool, version, s.Networks(), opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DERP server: %w", err)
 	}

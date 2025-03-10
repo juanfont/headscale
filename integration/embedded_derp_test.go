@@ -210,7 +210,6 @@ func (s *EmbeddedDERPServerScenario) CreateHeadscaleEnv(
 	if err != nil {
 		return err
 	}
-	log.Printf("headscale server ip address: %s", hsServer.GetIP())
 
 	hash, err := util.GenerateRandomStringDNSSafe(scenarioHashLength)
 	if err != nil {
@@ -316,7 +315,6 @@ func (s *EmbeddedDERPServerScenario) CreateTailscaleIsolatedNodesInUser(
 				tsClient, err := tsic.New(
 					s.pool,
 					version,
-					network,
 					opts...,
 				)
 				if err != nil {

@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -512,7 +513,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 0)
 
-	ts, err := scenario.CreateTailscaleNode("unstable")
+	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
 	assertNoErr(t, err)
 
 	u, err := ts.LoginWithURL(headscale.GetEndpoint())
@@ -743,7 +744,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 		PortBindings: map[docker.Port][]docker.PortBinding{
 			docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
 		},
-		Networks: []*dockertest.Network{s.Scenario.network},
+		Networks: s.Scenario.Networks(),
 		Env: []string{
 			fmt.Sprintf("MOCKOIDC_ADDR=%s", hostname),
 			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
@@ -774,7 +775,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 	}
 
 	log.Println("Waiting for headscale mock oidc to be ready for tests")
-	hostEndpoint := fmt.Sprintf("%s:%d", s.mockOIDC.GetIPInNetwork(s.network), port)
+	hostEndpoint := fmt.Sprintf("%s:%d", hostname, port)
 
 	if err := s.pool.Retry(func() error {
 		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
@@ -803,7 +804,7 @@ func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc
 	return &types.OIDCConfig{
 		Issuer: fmt.Sprintf(
 			"http://%s/oidc",
-			net.JoinHostPort(s.mockOIDC.GetIPInNetwork(s.network), strconv.Itoa(port)),
+			net.JoinHostPort(hostname, strconv.Itoa(port)),
 		),
 		ClientID:                   "superclient",
 		ClientSecret:               "supersecret",

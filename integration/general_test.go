@@ -32,11 +32,9 @@ func TestPingAllByIP(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// TODO(kradalby): it does not look like the user thing works, only second
-	// get created? maybe only when many?
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -75,9 +73,9 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -312,9 +310,9 @@ func TestPingAllByHostname(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user3": len(MustTestVersions),
-		"user4": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("pingallbyname"))
@@ -361,8 +359,9 @@ func TestTaildrop(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"taildrop": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
@@ -522,8 +521,6 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	user := "update-hostname-from-client"
-
 	hostnames := map[string]string{
 		"1": "user1-host",
 		"2": "User2-Host",
@@ -534,8 +531,9 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 3,
+	spec := ScenarioSpec{
+		NodesPerUser: 3,
+		Users:        []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("updatehostname"))
@@ -654,8 +652,9 @@ func TestExpireNode(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("expirenode"))
@@ -684,7 +683,7 @@ func TestExpireNode(t *testing.T) {
 		assertNoErr(t, err)
 
 		// Assert that we have the original count - self
-		assert.Len(t, status.Peers(), spec["user1"]-1)
+		assert.Len(t, status.Peers(), spec.NodesPerUser-1)
 	}
 
 	headscale, err := scenario.Headscale()
@@ -780,8 +779,9 @@ func TestNodeOnlineStatus(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("online"))
@@ -895,11 +895,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// TODO(kradalby): it does not look like the user thing works, only second
-	// get created? maybe only when many?
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
@@ -977,11 +975,9 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// TODO(kradalby): it does not look like the user thing works, only second
-	// get created? maybe only when many?
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
 	}
 
 	err = scenario.CreateHeadscaleEnv(spec,
