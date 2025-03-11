@@ -931,6 +931,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t, &testCase.policy, 1)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
 			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")

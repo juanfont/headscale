@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"maps"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -128,6 +130,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 			oidcMockUser("user1", true),
 			oidcMockUser("user2", false),
 		},
+		OIDCAccessTTL: shortAccessTTL,
 	}
 
 	scenario, err := NewScenario(spec)
@@ -295,13 +298,13 @@ func TestOIDC024UserCreation(t *testing.T) {
 				spec.Users = append(spec.Users, user)
 			}
 
-			scenario, err := NewScenario(spec)
-			assertNoErr(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
 			for _, user := range tt.oidcUsers {
 				spec.OIDCUsers = append(spec.OIDCUsers, oidcMockUser(user, tt.emailVerified))
 			}
+
+			scenario, err := NewScenario(spec)
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			oidcMap := map[string]string{
 				"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
@@ -309,10 +312,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 				"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 				"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 			}
-
-			for k, v := range tt.config {
-				oidcMap[k] = v
-			}
+			maps.Copy(oidcMap, tt.config)
 
 			err = scenario.CreateHeadscaleEnvWithLoginURL(
 				nil,

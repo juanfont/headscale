@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/tsic"
 )
 
 // This file is intended to "test the test framework", by proxy it will also test
@@ -110,7 +111,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count)
+		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count, tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
 		if err != nil {
 			t.Fatalf("failed to add tailscale nodes: %s", err)
 		}
