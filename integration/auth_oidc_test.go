@@ -1,51 +1,21 @@
 package integration
 
 import (
-	"context"
-	"crypto/tls"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"log"
-	"net"
-	"net/http"
-	"net/http/cookiejar"
 	"net/netip"
-	"net/url"
 	"sort"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
-	"github.com/ory/dockertest/v3"
-	"github.com/ory/dockertest/v3/docker"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 )
-
-const (
-	dockerContextPath      = "../."
-	hsicOIDCMockHashLength = 6
-	defaultAccessTTL       = 10 * time.Minute
-)
-
-var errStatusCodeNotOK = errors.New("status code not OK")
-
-type AuthOIDCScenario struct {
-	*Scenario
-
-	mockOIDC *dockertest.Resource
-}
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
@@ -57,37 +27,30 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+			oidcMockUser("user2", false),
+		},
 	}
 
-	baseScenario, err := NewScenario(spec)
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
-	scenario := AuthOIDCScenario{
-		Scenario: baseScenario,
-	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	mockusers := []mockoidc.MockUser{
-		oidcMockUser("user1", true),
-		oidcMockUser("user2", false),
-	}
-
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
-	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-	defer scenario.mockOIDC.Close()
-
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 	}
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
-		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -126,7 +89,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 			Name:       "user1",
 			Email:      "user1@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user1",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
 		},
 		{
 			Id:    3,
@@ -138,7 +101,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 			Name:       "user2",
 			Email:      "", // Unverified
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user2",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user2",
 		},
 	}
 
@@ -161,33 +124,25 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+			oidcMockUser("user2", false),
+		},
 	}
 
-	baseScenario, err := NewScenario(spec)
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
-
-	baseScenario.pool.MaxWait = 5 * time.Minute
-
-	scenario := AuthOIDCScenario{
-		Scenario: baseScenario,
-	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL, []mockoidc.MockUser{
-		oidcMockUser("user1", true),
-		oidcMockUser("user2", false),
-	})
-	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-	defer scenario.mockOIDC.Close()
-
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":                oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":             oidcConfig.ClientID,
-		"HEADSCALE_OIDC_CLIENT_SECRET":         oidcConfig.ClientSecret,
+		"HEADSCALE_OIDC_ISSUER":                scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":             scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_CLIENT_SECRET":         scenario.mockOIDC.ClientSecret(),
 		"HEADSCALE_OIDC_USE_EXPIRY_FROM_TOKEN": "1",
 	}
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
 		hsic.WithTestName("oidcexpirenodes"),
 		hsic.WithConfigEnv(oidcMap),
 	)
@@ -340,26 +295,17 @@ func TestOIDC024UserCreation(t *testing.T) {
 				spec.Users = append(spec.Users, user)
 			}
 
-			baseScenario, err := NewScenario(spec)
+			scenario, err := NewScenario(spec)
 			assertNoErr(t, err)
-
-			scenario := AuthOIDCScenario{
-				Scenario: baseScenario,
-			}
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			var mockusers []mockoidc.MockUser
 			for _, user := range tt.oidcUsers {
-				mockusers = append(mockusers, oidcMockUser(user, tt.emailVerified))
+				spec.OIDCUsers = append(spec.OIDCUsers, oidcMockUser(user, tt.emailVerified))
 			}
 
-			oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
-			assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-			defer scenario.mockOIDC.Close()
-
 			oidcMap := map[string]string{
-				"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-				"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+				"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+				"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
 				"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 				"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 			}
@@ -368,11 +314,12 @@ func TestOIDC024UserCreation(t *testing.T) {
 				oidcMap[k] = v
 			}
 
-			err = scenario.CreateHeadscaleEnv(
+			err = scenario.CreateHeadscaleEnvWithLoginURL(
+				nil,
 				hsic.WithTestName("oidcmigration"),
 				hsic.WithConfigEnv(oidcMap),
 				hsic.WithTLS(),
-				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 			)
 			assertNoErrHeadscaleEnv(t, err)
 
@@ -384,7 +331,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			headscale, err := scenario.Headscale()
 			assertNoErr(t, err)
 
-			want := tt.want(oidcConfig.Issuer)
+			want := tt.want(scenario.mockOIDC.Issuer())
 
 			listUsers, err := headscale.ListUsers()
 			assertNoErr(t, err)
@@ -408,37 +355,29 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1"},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
 	}
 
-	baseScenario, err := NewScenario(spec)
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
-
-	scenario := AuthOIDCScenario{
-		Scenario: baseScenario,
-	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	mockusers := []mockoidc.MockUser{
-		oidcMockUser("user1", true),
-	}
-
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
-	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-	defer scenario.mockOIDC.Close()
-
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_PKCE_ENABLED":       "1", // Enable PKCE
 	}
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
 		hsic.WithTestName("oidcauthpkce"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
-		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -465,39 +404,32 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	t.Parallel()
 
 	// Create no nodes and no users
-	baseScenario, err := NewScenario(ScenarioSpec{})
+	scenario, err := NewScenario(ScenarioSpec{
+		// First login creates the first OIDC user
+		// Second login logs in the same node, which creates a new node
+		// Third login logs in the same node back into the original user
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+			oidcMockUser("user2", true),
+			oidcMockUser("user1", true),
+		},
+	})
 	assertNoErr(t, err)
-
-	scenario := AuthOIDCScenario{
-		Scenario: baseScenario,
-	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// First login creates the first OIDC user
-	// Second login logs in the same node, which creates a new node
-	// Third login logs in the same node back into the original user
-	mockusers := []mockoidc.MockUser{
-		oidcMockUser("user1", true),
-		oidcMockUser("user2", true),
-		oidcMockUser("user1", true),
-	}
-
-	oidcConfig, err := scenario.runMockOIDC(defaultAccessTTL, mockusers)
-	assertNoErrf(t, "failed to run mock OIDC server: %s", err)
-	// defer scenario.mockOIDC.Close()
-
 	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             oidcConfig.Issuer,
-		"HEADSCALE_OIDC_CLIENT_ID":          oidcConfig.ClientID,
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 	}
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
 		hsic.WithTestName("oidcauthrelog"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
-		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(oidcConfig.ClientSecret)),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 		hsic.WithEmbeddedDERPServerOnly(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
@@ -527,7 +459,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			Name:       "user1",
 			Email:      "user1@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user1",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
 		},
 	}
 
@@ -572,14 +504,14 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			Name:       "user1",
 			Email:      "user1@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user1",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
 		},
 		{
 			Id:         2,
 			Name:       "user2",
 			Email:      "user2@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user2",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user2",
 		},
 	}
 
@@ -629,14 +561,14 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			Name:       "user1",
 			Email:      "user1@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user1",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
 		},
 		{
 			Id:         2,
 			Name:       "user2",
 			Email:      "user2@headscale.net",
 			Provider:   "oidc",
-			ProviderId: oidcConfig.Issuer + "/user2",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user2",
 		},
 	}
 
@@ -673,253 +605,6 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	// than the version logged in with a different user.
 	assert.Equal(t, listNodesAfterLoggingBackIn[0].MachineKey, listNodesAfterLoggingBackIn[1].MachineKey)
 	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].NodeKey, listNodesAfterLoggingBackIn[1].NodeKey)
-}
-
-func (s *AuthOIDCScenario) CreateHeadscaleEnv(
-	opts ...hsic.Option,
-) error {
-	headscale, err := s.Headscale(opts...)
-	if err != nil {
-		return err
-	}
-
-	err = headscale.WaitForRunning()
-	if err != nil {
-		return err
-	}
-
-	for _, userName := range s.spec.Users {
-		if s.spec.NodesPerUser != 1 {
-			// OIDC scenario only supports one client per user.
-			// This is because the MockOIDC server can only serve login
-			// requests based on a queue it has been given on startup.
-			// We currently only populates it with one login request per user.
-			return fmt.Errorf("client count must be 1 for OIDC scenario.")
-		}
-		log.Printf("creating user %s with %d clients", userName, s.spec.NodesPerUser)
-		err = s.CreateUser(userName)
-		if err != nil {
-			return err
-		}
-
-		err = s.CreateTailscaleNodesInUser(userName, "all", s.spec.NodesPerUser)
-		if err != nil {
-			return err
-		}
-
-		err = s.runTailscaleUp(userName, headscale.GetEndpoint())
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *AuthOIDCScenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUser) (*types.OIDCConfig, error) {
-	port, err := dockertestutil.RandomFreeHostPort()
-	if err != nil {
-		log.Fatalf("could not find an open port: %s", err)
-	}
-	portNotation := fmt.Sprintf("%d/tcp", port)
-
-	hash, _ := util.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
-
-	hostname := fmt.Sprintf("hs-oidcmock-%s", hash)
-
-	usersJSON, err := json.Marshal(users)
-	if err != nil {
-		return nil, err
-	}
-
-	mockOidcOptions := &dockertest.RunOptions{
-		Name:         hostname,
-		Cmd:          []string{"headscale", "mockoidc"},
-		ExposedPorts: []string{portNotation},
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
-		},
-		Networks: s.Scenario.Networks(),
-		Env: []string{
-			fmt.Sprintf("MOCKOIDC_ADDR=%s", hostname),
-			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
-			"MOCKOIDC_CLIENT_ID=superclient",
-			"MOCKOIDC_CLIENT_SECRET=supersecret",
-			fmt.Sprintf("MOCKOIDC_ACCESS_TTL=%s", accessTTL.String()),
-			fmt.Sprintf("MOCKOIDC_USERS=%s", string(usersJSON)),
-		},
-	}
-
-	headscaleBuildOptions := &dockertest.BuildOptions{
-		Dockerfile: hsic.IntegrationTestDockerFileName,
-		ContextDir: dockerContextPath,
-	}
-
-	err = s.pool.RemoveContainerByName(hostname)
-	if err != nil {
-		return nil, err
-	}
-
-	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
-		headscaleBuildOptions,
-		mockOidcOptions,
-		dockertestutil.DockerRestartPolicy); err == nil {
-		s.mockOIDC = pmockoidc
-	} else {
-		return nil, err
-	}
-
-	log.Println("Waiting for headscale mock oidc to be ready for tests")
-	hostEndpoint := fmt.Sprintf("%s:%d", hostname, port)
-
-	if err := s.pool.Retry(func() error {
-		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
-		httpClient := &http.Client{}
-		ctx := context.Background()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, oidcConfigURL, nil)
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			log.Printf("headscale mock OIDC tests is not ready: %s\n", err)
-
-			return err
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return errStatusCodeNotOK
-		}
-
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
-
-	return &types.OIDCConfig{
-		Issuer: fmt.Sprintf(
-			"http://%s/oidc",
-			net.JoinHostPort(hostname, strconv.Itoa(port)),
-		),
-		ClientID:                   "superclient",
-		ClientSecret:               "supersecret",
-		OnlyStartIfOIDCIsAvailable: true,
-	}, nil
-}
-
-type LoggingRoundTripper struct{}
-
-func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	noTls := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
-	}
-	resp, err := noTls.RoundTrip(req)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Printf("---")
-	log.Printf("method: %s | url: %s", resp.Request.Method, resp.Request.URL.String())
-	log.Printf("status: %d | cookies: %+v", resp.StatusCode, resp.Cookies())
-
-	return resp, nil
-}
-
-func (s *AuthOIDCScenario) runTailscaleUp(
-	userStr, loginServer string,
-) error {
-	log.Printf("running tailscale up for user %s", userStr)
-	if user, ok := s.users[userStr]; ok {
-		for _, client := range user.Clients {
-			tsc := client
-			user.joinWaitGroup.Go(func() error {
-				loginURL, err := tsc.LoginWithURL(loginServer)
-				if err != nil {
-					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
-				}
-
-				_, err = doLoginURL(tsc.Hostname(), loginURL)
-				if err != nil {
-					return err
-				}
-
-				return nil
-			})
-
-			log.Printf("client %s is ready", client.Hostname())
-		}
-
-		if err := user.joinWaitGroup.Wait(); err != nil {
-			return err
-		}
-
-		for _, client := range user.Clients {
-			err := client.WaitForRunning()
-			if err != nil {
-				return fmt.Errorf(
-					"%s tailscale node has not reached running: %w",
-					client.Hostname(),
-					err,
-				)
-			}
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
-}
-
-// doLoginURL visits the given login URL and returns the body as a
-// string.
-func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
-	log.Printf("%s login url: %s\n", hostname, loginURL.String())
-
-	var err error
-	hc := &http.Client{
-		Transport: LoggingRoundTripper{},
-	}
-	hc.Jar, err = cookiejar.New(nil)
-	if err != nil {
-		return "", fmt.Errorf("%s failed to create cookiejar	: %w", hostname, err)
-	}
-
-	log.Printf("%s logging in with url", hostname)
-	ctx := context.Background()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
-	resp, err := hc.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("%s failed to send http request: %w", hostname, err)
-	}
-
-	log.Printf("cookies: %+v", hc.Jar.Cookies(loginURL))
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("body: %s", body)
-
-		return "", fmt.Errorf("%s response code of login request was %w", hostname, err)
-	}
-
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("%s failed to read response body: %s", hostname, err)
-
-		return "", fmt.Errorf("%s failed to read response body: %w", hostname, err)
-	}
-
-	return string(body), nil
-}
-
-func (s *AuthOIDCScenario) Shutdown() {
-	err := s.pool.Purge(s.mockOIDC)
-	if err != nil {
-		log.Printf("failed to remove mock oidc container")
-	}
-
-	s.Scenario.Shutdown()
 }
 
 func assertTailscaleNodesLogout(t *testing.T, clients []TailscaleClient) {
