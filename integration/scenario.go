@@ -16,6 +16,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -666,9 +667,15 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
 				}
 
-				_, err = doLoginURL(tsc.Hostname(), loginURL)
+				body, err := doLoginURL(tsc.Hostname(), loginURL)
 				if err != nil {
 					return err
+				}
+
+				// If the URL is not a OIDC URL, then we need to
+				// run the register command to fully log in the client.
+				if !strings.Contains(loginURL.String(), "/oidc/") {
+					s.runHeadscaleRegister(userStr, body)
 				}
 
 				return nil
@@ -739,6 +746,38 @@ func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
 	}
 
 	return string(body), nil
+}
+
+var errParseAuthPage = errors.New("failed to parse auth page")
+
+func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
+	// see api.go HTML template
+	codeSep := strings.Split(string(body), "</code>")
+	if len(codeSep) != 2 {
+		return errParseAuthPage
+	}
+
+	keySep := strings.Split(codeSep[0], "key ")
+	if len(keySep) != 2 {
+		return errParseAuthPage
+	}
+	key := keySep[1]
+	log.Printf("registering node %s", key)
+
+	if headscale, err := s.Headscale(); err == nil {
+		_, err = headscale.Execute(
+			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
+		)
+		if err != nil {
+			log.Printf("failed to register node: %s", err)
+
+			return err
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
 }
 
 type LoggingRoundTripper struct{}
