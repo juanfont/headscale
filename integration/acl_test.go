@@ -54,15 +54,16 @@ func aclScenario(
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoError(t, err)
 
 	spec := ScenarioSpec{
 		NodesPerUser: clientsPerUser,
 		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec,
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it
@@ -256,12 +257,11 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
+			caseSpec := testCase.users
+			scenario, err := NewScenario(caseSpec)
 			require.NoError(t, err)
 
-			spec := testCase.users
-
-			err = scenario.CreateHeadscaleEnv(spec,
+			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
 			)
@@ -1009,16 +1009,16 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoError(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec,
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it

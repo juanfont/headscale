@@ -51,21 +51,21 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	// Logins to MockOIDC is served by a queue with a strict order,
+	// if we use more than one node per user, the order of the logins
+	// will not be deterministic and the test will fail.
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	baseScenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	// Logins to MockOIDC is served by a queue with a strict order,
-	// if we use more than one node per user, the order of the logins
-	// will not be deterministic and the test will fail.
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
-	}
 
 	mockusers := []mockoidc.MockUser{
 		oidcMockUser("user1", true),
@@ -84,7 +84,6 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
@@ -159,7 +158,12 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 
 	shortAccessTTL := 5 * time.Minute
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	baseScenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
 	baseScenario.pool.MaxWait = 5 * time.Minute
@@ -168,11 +172,6 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		Scenario: baseScenario,
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
-	}
 
 	oidcConfig, err := scenario.runMockOIDC(shortAccessTTL, []mockoidc.MockUser{
 		oidcMockUser("user1", true),
@@ -189,7 +188,6 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		hsic.WithTestName("oidcexpirenodes"),
 		hsic.WithConfigEnv(oidcMap),
 	)
@@ -335,18 +333,20 @@ func TestOIDC024UserCreation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			baseScenario, err := NewScenario(dockertestMaxWait())
+			spec := ScenarioSpec{
+				NodesPerUser: 1,
+			}
+			for _, user := range tt.cliUsers {
+				spec.Users = append(spec.Users, user)
+			}
+
+			baseScenario, err := NewScenario(spec)
 			assertNoErr(t, err)
 
 			scenario := AuthOIDCScenario{
 				Scenario: baseScenario,
 			}
 			defer scenario.ShutdownAssertNoPanics(t)
-
-			spec := map[string]int{}
-			for _, user := range tt.cliUsers {
-				spec[user] = 1
-			}
 
 			var mockusers []mockoidc.MockUser
 			for _, user := range tt.oidcUsers {
@@ -369,7 +369,6 @@ func TestOIDC024UserCreation(t *testing.T) {
 			}
 
 			err = scenario.CreateHeadscaleEnv(
-				spec,
 				hsic.WithTestName("oidcmigration"),
 				hsic.WithConfigEnv(oidcMap),
 				hsic.WithTLS(),
@@ -405,18 +404,19 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	// Single user with one node for testing PKCE flow
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
+
+	baseScenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	// Single user with one node for testing PKCE flow
-	spec := map[string]int{
-		"user1": 1,
-	}
 
 	mockusers := []mockoidc.MockUser{
 		oidcMockUser("user1", true),
@@ -435,7 +435,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		hsic.WithTestName("oidcauthpkce"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
@@ -465,16 +464,14 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	// Create no nodes and no users
+	baseScenario, err := NewScenario(ScenarioSpec{})
 	assertNoErr(t, err)
 
 	scenario := AuthOIDCScenario{
 		Scenario: baseScenario,
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	// Create no nodes and no users
-	spec := map[string]int{}
 
 	// First login creates the first OIDC user
 	// Second login logs in the same node, which creates a new node
@@ -497,7 +494,6 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	}
 
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		hsic.WithTestName("oidcauthrelog"),
 		hsic.WithConfigEnv(oidcMap),
 		hsic.WithTLS(),
@@ -680,7 +676,6 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 }
 
 func (s *AuthOIDCScenario) CreateHeadscaleEnv(
-	users map[string]int,
 	opts ...hsic.Option,
 ) error {
 	headscale, err := s.Headscale(opts...)
@@ -693,21 +688,21 @@ func (s *AuthOIDCScenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for userName, clientCount := range users {
-		if clientCount != 1 {
+	for _, userName := range s.spec.Users {
+		if s.spec.NodesPerUser != 1 {
 			// OIDC scenario only supports one client per user.
 			// This is because the MockOIDC server can only serve login
 			// requests based on a queue it has been given on startup.
 			// We currently only populates it with one login request per user.
 			return fmt.Errorf("client count must be 1 for OIDC scenario.")
 		}
-		log.Printf("creating user %s with %d clients", userName, clientCount)
+		log.Printf("creating user %s with %d clients", userName, s.spec.NodesPerUser)
 		err = s.CreateUser(userName)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
+		err = s.CreateTailscaleNodesInUser(userName, "all", s.spec.NodesPerUser)
 		if err != nil {
 			return err
 		}

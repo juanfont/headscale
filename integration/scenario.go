@@ -91,6 +91,30 @@ type Scenario struct {
 	networks map[string]*dockertest.Network
 
 	mu sync.Mutex
+
+	spec          ScenarioSpec
+	userToNetwork map[string]*dockertest.Network
+}
+
+// ScenarioSpec describes the users, nodes, and network topology to
+// set up for a given scenario.
+type ScenarioSpec struct {
+	// Users is a list of usernames that will be created.
+	// Each created user will get nodes equivalent to NodesPerUser
+	Users []string
+
+	// NodesPerUser is how many nodes should be attached to each user.
+	NodesPerUser int
+
+	// Networks, if set, is the deparate Docker networks that should be
+	// created and a list of the users that should be placed in those networks.
+	// If not set, a single network will be created and all users+nodes will be
+	// added there.
+	// Please note that Docker networks are not necessarily routable and
+	// connections between them might fall back to DERP.
+	Networks map[string][]string
+
+	MaxWait time.Duration
 }
 
 var TestHashPrefix = "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
@@ -98,20 +122,52 @@ var TestDefaultNetwork = TestHashPrefix + "-default"
 
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
-func NewScenario(maxWait time.Duration) (*Scenario, error) {
+func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	pool, err := dockertest.NewPool("")
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
 
-	pool.MaxWait = maxWait
+	if spec.MaxWait == 0 {
+		pool.MaxWait = dockertestMaxWait()
+	} else {
+		pool.MaxWait = spec.MaxWait
+	}
 
-	return &Scenario{
+	s := &Scenario{
 		controlServers: xsync.NewMapOf[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool: pool,
-	}, nil
+		spec: spec,
+	}
+
+	var userToNetwork map[string]*dockertest.Network
+	if spec.Networks != nil || len(spec.Networks) != 0 {
+		for name, users := range s.spec.Networks {
+			networkName := TestHashPrefix + "-" + name
+			network, err := s.AddNetwork(networkName)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, user := range users {
+				if n2, ok := userToNetwork[user]; ok {
+					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name)
+				}
+				mak.Set(&userToNetwork, user, network)
+			}
+		}
+	} else {
+		_, err := s.AddNetwork(TestDefaultNetwork)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	s.userToNetwork = userToNetwork
+
+	return s, nil
 }
 
 func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
@@ -494,76 +550,33 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int) error {
 	return nil
 }
 
-// ScenarioSpec describes the users, nodes, and network topology to
-// set up for a given scenario.
-type ScenarioSpec struct {
-	// Users is a list of usernames that will be created.
-	// Each created user will get nodes equivalent to NodesPerUser
-	Users []string
-
-	// NodesPerUser is how many nodes should be attached to each user.
-	NodesPerUser int
-
-	// Networks, if set, is the deparate Docker networks that should be
-	// created and a list of the users that should be placed in those networks.
-	// If not set, a single network will be created and all users+nodes will be
-	// added there.
-	// Please note that Docker networks are not necessarily routable and
-	// connections between them might fall back to DERP.
-	Networks map[string][]string
-}
-
-// CreateHeadscaleEnv is a convenient method returning a complete Headcale
-// test environment with nodes of all versions, joined to the server with X
-// users.
+// CreateHeadscaleEnv starts the headscale environment and the clients
+// according to the ScenarioSpec passed to the Scenario.
 func (s *Scenario) CreateHeadscaleEnv(
-	spec ScenarioSpec,
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
-	var userToNetwork map[string]*dockertest.Network
-	if spec.Networks != nil || len(spec.Networks) != 0 {
-		for name, users := range spec.Networks {
-			networkName := TestHashPrefix + "-" + name
-			network, err := s.AddNetwork(networkName)
-			if err != nil {
-				return err
-			}
-
-			for _, user := range users {
-				if n2, ok := userToNetwork[user]; ok {
-					return fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name)
-				}
-				mak.Set(&userToNetwork, user, network)
-			}
-		}
-	} else {
-		_, err := s.AddNetwork(TestDefaultNetwork)
-		if err != nil {
-			return err
-		}
-	}
 
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
 	}
 
-	sort.Strings(spec.Users)
-	for _, user := range spec.Users {
+	sort.Strings(s.spec.Users)
+	for _, user := range s.spec.Users {
 		err = s.CreateUser(user)
 		if err != nil {
 			return err
 		}
 
 		var opts []tsic.Option
-		if userToNetwork != nil {
-			opts = append(tsOpts, tsic.WithNetwork(userToNetwork[user]))
+		if s.userToNetwork != nil {
+			opts = append(tsOpts, tsic.WithNetwork(s.userToNetwork[user]))
 		} else {
 			opts = append(tsOpts, tsic.WithNetwork(s.networks[TestDefaultNetwork]))
 		}
 
-		err = s.CreateTailscaleNodesInUser(user, "all", spec.NodesPerUser, opts...)
+		err = s.CreateTailscaleNodesInUser(user, "all", s.spec.NodesPerUser, opts...)
 		if err != nil {
 			return err
 		}

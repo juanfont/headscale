@@ -17,16 +17,16 @@ func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
 		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("magicdns"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("magicdns"))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -87,14 +87,14 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
 	}
+
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	const erPath = "/tmp/extra_records.json"
 
@@ -107,7 +107,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	}
 	b, _ := json.Marshal(extraRecords)
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithDockerEntrypoint([]string{
 			"/bin/sh",
 			"-c",
@@ -364,16 +364,16 @@ func TestValidateResolvConf(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
-			assertNoErr(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
 			spec := ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("resolvconf"), hsic.WithConfigEnv(tt.conf))
+			scenario, err := NewScenario(spec)
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("resolvconf"), hsic.WithConfigEnv(tt.conf))
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()

@@ -29,16 +29,16 @@ func TestEnablingRoutes(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 3,
 		Users:        []string{"user1"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clienableroute"))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -202,16 +202,16 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 4,
 		Users:        []string{"user1"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("clienableroute"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -526,18 +526,16 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 
 	expectedRoutes := "172.0.0.0/24"
 
-	user := "user2"
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
 		&policyv1.ACLPolicy{
 			ACLs: []policyv1.ACL{
 				{
@@ -547,7 +545,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 				},
 			},
 			TagOwners: map[string][]string{
-				"tag:approve": {user},
+				"tag:approve": {"user1"},
 			},
 			AutoApprovers: policyv1.AutoApprovers{
 				Routes: map[string][]string{
@@ -626,16 +624,16 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 
 	user := "user1"
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithTags([]string{"tag:approve"})},
 		hsic.WithTestName("clienableroute"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -698,16 +696,16 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	user := "user4"
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
 		Users:        []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
 		&policyv1.ACLPolicy{
 			Groups: policyv1.Groups{
 				"group:admins": {user},
@@ -921,16 +919,16 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 	user := "user2"
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErrf(t, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
 		Users:        []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{
+	scenario, err := NewScenario(spec)
+	assertNoErrf(t, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithExtraLoginArgs([]string{"--advertise-exit-node"}),
 	}, hsic.WithTestName("clienableroute"))
 	assertNoErrHeadscaleEnv(t, err)
