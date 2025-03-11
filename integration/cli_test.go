@@ -48,15 +48,15 @@ func TestUserCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -246,15 +246,15 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	user := "preauthkeyspace"
 	count := 3
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipak"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clipak"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -387,16 +387,15 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	t.Parallel()
 
 	user := "pre-auth-key-without-exp-user"
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipaknaexp"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clipaknaexp"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -450,16 +449,15 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	t.Parallel()
 
 	user := "pre-auth-key-reus-ephm-user"
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{user},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clipakresueeph"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clipakresueeph"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -529,16 +527,15 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	user1 := "user1"
 	user2 := "user2"
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{user1, user2},
 	}
 
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		[]tsic.Option{},
 		hsic.WithTestName("clipak"),
 		hsic.WithEmbeddedDERPServerOnly(),
@@ -618,15 +615,15 @@ func TestApiKeyCommand(t *testing.T) {
 
 	count := 5
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -785,15 +782,15 @@ func TestNodeTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"user1"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -974,16 +971,16 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
-			assertNoErr(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
 			spec := ScenarioSpec{
 				NodesPerUser: 1,
 				Users:        []string{"user1"},
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec,
+			scenario, err := NewScenario(spec)
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{tsic.WithTags([]string{"tag:test"})},
 				hsic.WithTestName("cliadvtags"),
 				hsic.WithACLPolicy(tt.policy),
@@ -1027,15 +1024,15 @@ func TestNodeCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"node-user", "other-user"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1266,15 +1263,15 @@ func TestNodeExpireCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"node-expire-user"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1392,15 +1389,15 @@ func TestNodeRenameCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"node-rename-command"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1557,15 +1554,15 @@ func TestNodeMoveCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"old-user", "new-user"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clins"))
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1717,16 +1714,15 @@ func TestPolicyCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		Users: []string{"user1"},
 	}
 
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		[]tsic.Option{},
 		hsic.WithTestName("clins"),
 		hsic.WithConfigEnv(map[string]string{
@@ -1804,17 +1800,16 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1"},
 	}
 
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		[]tsic.Option{},
 		hsic.WithTestName("clins"),
 		hsic.WithConfigEnv(map[string]string{

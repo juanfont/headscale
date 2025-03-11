@@ -19,14 +19,14 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
-			assertNoErr(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
 			spec := ScenarioSpec{
 				NodesPerUser: len(MustTestVersions),
 				Users:        []string{"user1", "user2"},
 			}
+
+			scenario, err := NewScenario(spec)
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
@@ -35,7 +35,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}...)
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()
@@ -152,16 +152,16 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
 		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
 		hsic.WithTLS(),
 	)
@@ -235,14 +235,14 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
-			assertNoErr(t, err)
-			defer scenario.ShutdownAssertNoPanics(t)
-
 			spec := ScenarioSpec{
 				NodesPerUser: len(MustTestVersions),
 				Users:        []string{"user1", "user2"},
 			}
+
+			scenario, err := NewScenario(spec)
+			assertNoErr(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
@@ -251,7 +251,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				}...)
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()

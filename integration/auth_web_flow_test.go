@@ -23,9 +23,13 @@ type AuthWebFlowScenario struct {
 
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+	}
+
+	baseScenario, err := NewScenario(spec)
 	if err != nil {
 		t.Fatalf("failed to create scenario: %s", err)
 	}
@@ -35,13 +39,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
-
 	err = scenario.CreateHeadscaleEnv(
-		spec,
 		hsic.WithTestName("webauthping"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -71,7 +69,12 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+	}
+
+	baseScenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
 	scenario := AuthWebFlowScenario{
@@ -79,12 +82,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec,
+	err = scenario.CreateHeadscaleEnv(
 		hsic.WithTestName("weblogout"),
 		hsic.WithTLS(),
 	)
@@ -137,7 +135,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 
 	t.Logf("all clients logged out")
 
-	for userName := range spec {
+	for _, userName := range spec.Users {
 		err = scenario.runTailscaleUp(userName, headscale.GetEndpoint())
 		if err != nil {
 			t.Fatalf("failed to run tailscale up (%q): %s", headscale.GetEndpoint(), err)
@@ -196,7 +194,6 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 }
 
 func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
-	users map[string]int,
 	opts ...hsic.Option,
 ) error {
 	headscale, err := s.Headscale(opts...)
@@ -209,14 +206,14 @@ func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
 		return err
 	}
 
-	for userName, clientCount := range users {
-		log.Printf("creating user %s with %d clients", userName, clientCount)
+	for _, userName := range s.spec.Users {
+		log.Printf("creating user %s with %d clients", userName, s.spec.NodesPerUser)
 		err = s.CreateUser(userName)
 		if err != nil {
 			return err
 		}
 
-		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
+		err = s.CreateTailscaleNodesInUser(userName, "all", s.spec.NodesPerUser)
 		if err != nil {
 			return err
 		}
