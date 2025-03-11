@@ -138,7 +138,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 			t.Fatalf("failed to create user %s: %s", userName, err)
 		}
 
-		err = scenario.CreateTailscaleNodesInUser(userName, "all", spec.NodesPerUser, []tsic.Option{}...)
+		err = scenario.CreateTailscaleNodesInUser(userName, "all", spec.NodesPerUser, tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
 		if err != nil {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}
@@ -216,7 +216,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 			t.Fatalf("failed to create user %s: %s", userName, err)
 		}
 
-		err = scenario.CreateTailscaleNodesInUser(userName, "all", spec.NodesPerUser, []tsic.Option{}...)
+		err = scenario.CreateTailscaleNodesInUser(userName, "all", spec.NodesPerUser, tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
 		if err != nil {
 			t.Fatalf("failed to create tailscale nodes in user %s: %s", userName, err)
 		}

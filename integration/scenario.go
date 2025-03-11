@@ -130,7 +130,13 @@ type ScenarioSpec struct {
 
 	// OIDCUsers, if populated, will start a Mock OIDC server and populate
 	// the user login stack with the given users.
-	OIDCUsers []mockoidc.MockUser
+	// If the NodesPerUser is set, it should align with this list to ensure
+	// the correct users are logged in.
+	// This is because the MockOIDC server can only serve login
+	// requests based on a queue it has been given on startup.
+	// We currently only populates it with one login request per user.
+	OIDCUsers     []mockoidc.MockUser
+	OIDCAccessTTL time.Duration
 
 	MaxWait time.Duration
 }
@@ -186,7 +192,11 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	s.userToNetwork = userToNetwork
 
 	if spec.OIDCUsers != nil && len(spec.OIDCUsers) != 0 {
-		err = s.runMockOIDC(defaultAccessTTL, spec.OIDCUsers)
+		ttl := defaultAccessTTL
+		if spec.OIDCAccessTTL != 0 {
+			ttl = spec.OIDCAccessTTL
+		}
+		err = s.runMockOIDC(ttl, spec.OIDCUsers)
 		if err != nil {
 			return nil, err
 		}
@@ -436,7 +446,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 ) error {
 	if user, ok := s.users[userStr]; ok {
 		var versions []string
-		for i := 0; i < count; i++ {
+		for i := range count {
 			version := requestedVersion
 			if requestedVersion == "all" {
 				version = MustTestVersions[i%len(MustTestVersions)]
@@ -468,8 +478,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				s.mu.Unlock()
 				if err != nil {
 					return fmt.Errorf(
-						"failed to create tailscale (%s) node: %w",
-						tsClient.Hostname(),
+						"failed to create tailscale node: %w",
 						err,
 					)
 				}
@@ -606,14 +615,6 @@ func (s *Scenario) createHeadscaleEnv(
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
-	}
-
-	if s.spec.OIDCUsers != nil && s.spec.NodesPerUser != 1 {
-		// OIDC scenario only supports one client per user.
-		// This is because the MockOIDC server can only serve login
-		// requests based on a queue it has been given on startup.
-		// We currently only populates it with one login request per user.
-		return fmt.Errorf("client count must be 1 for OIDC scenario.")
 	}
 
 	sort.Strings(s.spec.Users)

@@ -528,7 +528,8 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	user2 := "user2"
 
 	spec := ScenarioSpec{
-		Users: []string{user1, user2},
+		NodesPerUser: 1,
+		Users:        []string{user1},
 	}
 
 	scenario, err := NewScenario(spec)
@@ -544,6 +545,9 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	headscale, err := scenario.Headscale()
+	assertNoErr(t, err)
+
+	err = headscale.CreateUser(user2)
 	assertNoErr(t, err)
 
 	var user2Key v1.PreAuthKey
@@ -568,10 +572,15 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
+	listNodes, err := headscale.ListNodes()
+	require.Nil(t, err)
+	require.Len(t, listNodes, 1)
+	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
+
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
 
-	assert.Len(t, allClients, 1)
+	require.Len(t, allClients, 1)
 
 	client := allClients[0]
 
@@ -601,12 +610,11 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		t.Fatalf("expected node to be logged in as userid:2, got: %s", status.Self.UserID.String())
 	}
 
-	listNodes, err := headscale.ListNodes()
-	assert.Nil(t, err)
-	assert.Len(t, listNodes, 2)
-
-	assert.Equal(t, "user1", listNodes[0].GetUser().GetName())
-	assert.Equal(t, "user2", listNodes[1].GetUser().GetName())
+	listNodes, err = headscale.ListNodes()
+	require.Nil(t, err)
+	require.Len(t, listNodes, 2)
+	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
+	assert.Equal(t, user2, listNodes[1].GetUser().GetName())
 }
 
 func TestApiKeyCommand(t *testing.T) {

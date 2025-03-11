@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -224,6 +225,10 @@ func New(
 
 	for _, opt := range opts {
 		opt(tsic)
+	}
+
+	if tsic.network == nil {
+		return nil, fmt.Errorf("no network set, called from: \n%s", string(debug.Stack()))
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
