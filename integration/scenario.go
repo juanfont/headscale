@@ -100,9 +100,10 @@ type Scenario struct {
 
 	users map[string]*User
 
-	pool     *dockertest.Pool
-	networks map[string]*dockertest.Network
-	mockOIDC scenarioOIDC
+	pool          *dockertest.Pool
+	networks      map[string]*dockertest.Network
+	mockOIDC      scenarioOIDC
+	extraServices map[string][]*dockertest.Resource
 
 	mu sync.Mutex
 
@@ -120,13 +121,18 @@ type ScenarioSpec struct {
 	// NodesPerUser is how many nodes should be attached to each user.
 	NodesPerUser int
 
-	// Networks, if set, is the deparate Docker networks that should be
+	// Networks, if set, is the seperate Docker networks that should be
 	// created and a list of the users that should be placed in those networks.
 	// If not set, a single network will be created and all users+nodes will be
 	// added there.
 	// Please note that Docker networks are not necessarily routable and
 	// connections between them might fall back to DERP.
 	Networks map[string][]string
+
+	// ExtraService, if set, is additional a map of network to additional
+	// container services that should be set up. These container services
+	// typically dont run Tailscale, e.g. web service to test subnet router.
+	ExtraService map[string][]extraServiceFunc
 
 	// OIDCUsers, if populated, will start a Mock OIDC server and populate
 	// the user login stack with the given users.
@@ -186,6 +192,16 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		_, err := s.AddNetwork(TestDefaultNetwork)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	for network, extras := range spec.ExtraService {
+		for _, extra := range extras {
+			svc, err := extra(s, network)
+			if err != nil {
+				return nil, err
+			}
+			s.extraServices[TestHashPrefix+"-"+network] = append(s.extraServices[TestHashPrefix+"-"+network], svc)
 		}
 	}
 
@@ -279,6 +295,13 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		err := derp.Shutdown()
 		if err != nil {
 			log.Printf("failed to tear down derp server: %s", err)
+		}
+	}
+
+	for _, svc := range s.extraServices {
+		err := svc.Close()
+		if err != nil {
+			log.Printf("failed to tear down service %q: %s", svc.Container.Name, err)
 		}
 	}
 
@@ -1087,4 +1110,79 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	log.Printf("headscale mock oidc is ready for tests at %s", hostEndpoint)
 
 	return nil
+}
+
+type extraServiceFunc func(*Scenario, string) (*dockertest.Resource, error)
+
+func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
+	// port, err := dockertestutil.RandomFreeHostPort()
+	// if err != nil {
+	// 	log.Fatalf("could not find an open port: %s", err)
+	// }
+	// portNotation := fmt.Sprintf("%d/tcp", port)
+
+	hash := util.MustGenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
+
+	hostname := fmt.Sprintf("hs-webservice-%s", hash)
+
+	network, ok := s.networks[TestHashPrefix+"-"+networkName]
+	if !ok {
+		return nil, fmt.Errorf("network does not exist: %s", networkName)
+	}
+
+	webOpts := &dockertest.RunOptions{
+		Name: hostname,
+		Cmd:  []string{"/bin/sh", "-c", "python3 -m http.server --bind :: 80"},
+		// ExposedPorts: []string{portNotation},
+		// PortBindings: map[docker.Port][]docker.PortBinding{
+		// 	docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
+		// },
+		Networks: []*dockertest.Network{network},
+		Env:      []string{},
+	}
+
+	webBOpts := &dockertest.BuildOptions{
+		Dockerfile: hsic.IntegrationTestDockerFileName,
+		ContextDir: dockerContextPath,
+	}
+
+	web, err := s.pool.BuildAndRunWithBuildOptions(
+		webBOpts,
+		webOpts,
+		dockertestutil.DockerRestartPolicy)
+	if err != nil {
+		return nil, err
+	}
+
+	// headscale needs to set up the provider with a specific
+	// IP addr to ensure we get the correct config from the well-known
+	// endpoint.
+	// ipAddr := web.GetIPInNetwork(network)
+
+	// log.Println("Waiting for headscale mock oidc to be ready for tests")
+	// hostEndpoint := net.JoinHostPort(ipAddr, strconv.Itoa(port))
+
+	// if err := s.pool.Retry(func() error {
+	// 	oidcConfigURL := fmt.Sprintf("http://%s/etc/hostname", hostEndpoint)
+	// 	httpClient := &http.Client{}
+	// 	ctx := context.Background()
+	// 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, oidcConfigURL, nil)
+	// 	resp, err := httpClient.Do(req)
+	// 	if err != nil {
+	// 		log.Printf("headscale mock OIDC tests is not ready: %s\n", err)
+
+	// 		return err
+	// 	}
+	// 	defer resp.Body.Close()
+
+	// 	if resp.StatusCode != http.StatusOK {
+	// 		return errStatusCodeNotOK
+	// 	}
+
+	// 	return nil
+	// }); err != nil {
+	// 	return err
+	// }
+
+	return web, nil
 }

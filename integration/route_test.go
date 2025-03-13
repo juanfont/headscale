@@ -205,6 +205,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 4,
 		Users:        []string{"user1"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
 	}
 
 	scenario, err := NewScenario(spec)
@@ -1019,6 +1025,79 @@ func assertPeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected 
 
 	if diff := cmp.Diff(expected, got, util.PrefixComparer); diff != "" {
 		t.Errorf("peer %s (%s) subnet routes, unexpected result (-want +got):\n%s", status.HostName, status.ID, diff)
+	}
+}
+
+func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
+	t.Helper()
+	assert.Len(t, node.GetAvailableRoutes(), announced)
+	assert.Len(t, node.GetApprovedRoutes(), approved)
+	assert.Len(t, node.GetSubnetRoutes(), subnet)
+}
+
+func TestHASubnetRouterFailover2(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 4,
+		Users:        []string{"user1"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+}
+
+// requirePeerSubnetRoutes asserts that the peer has the expected subnet routes.
+func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected []netip.Prefix) {
+	t.Helper()
+	if status.AllowedIPs.Len() <= 2 && len(expected) != 0 {
+		t.Fatalf("peer %s (%s) has no subnet routes, expected %v", status.HostName, status.ID, expected)
+		return
+	}
+
+	if len(expected) == 0 {
+		expected = []netip.Prefix{}
+	}
+
+	got := slicesx.Filter(nil, status.AllowedIPs.AsSlice(), func(p netip.Prefix) bool {
+		if tsaddr.IsExitRoute(p) {
+			return true
+		}
+		for _, ip := range status.TailscaleIPs {
+			if p.Contains(ip) {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	if diff := cmp.Diff(expected, got, util.PrefixComparer, cmpopts.EquateEmpty()); diff != "" {
+		t.Fatalf("peer %s (%s) subnet routes, unexpected result (-want +got):\n%s", status.HostName, status.ID, diff)
 	}
 }
 
