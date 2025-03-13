@@ -27,6 +27,9 @@ type TailscaleClient interface {
 	Up() error
 	Down() error
 	IPs() ([]netip.Addr, error)
+	MustIPs() []netip.Addr
+	MustIPv4() netip.Addr
+	MustIPv6() netip.Addr
 	FQDN() (string, error)
 	Status(...bool) (*ipnstate.Status, error)
 	MustStatus() *ipnstate.Status
