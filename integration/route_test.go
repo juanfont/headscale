@@ -205,6 +205,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 4,
 		Users:        []string{"user1"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
 	}
 
 	scenario, err := NewScenario(spec)
@@ -1027,4 +1033,40 @@ func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subn
 	assert.Len(t, node.GetAvailableRoutes(), announced)
 	assert.Len(t, node.GetApprovedRoutes(), approved)
 	assert.Len(t, node.GetSubnetRoutes(), subnet)
+}
+
+func TestHASubnetRouterFailover2(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 4,
+		Users:        []string{"user1"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
 }
