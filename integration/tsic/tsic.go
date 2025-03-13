@@ -82,6 +82,7 @@ type TailscaleInContainer struct {
 	workdir           string
 	netfilter         string
 	extraLoginArgs    []string
+	withAcceptRoutes  bool
 
 	// build options, solely for HEAD
 	buildConfig TailscaleInContainerBuildConfig
@@ -194,6 +195,13 @@ func WithBuildTag(tag string) Option {
 func WithExtraLoginArgs(args []string) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.extraLoginArgs = args
+	}
+}
+
+// WithAcceptRoutes tells the node to accept incomming routes.
+func WithAcceptRoutes() Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withAcceptRoutes = true
 	}
 }
 
@@ -429,7 +437,7 @@ func (t *TailscaleInContainer) Login(
 		"--login-server=" + loginServer,
 		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
-		"--accept-routes=false",
+		fmt.Sprintf("--accept-routes=%t", t.withAcceptRoutes),
 	}
 
 	if t.extraLoginArgs != nil {
@@ -582,6 +590,33 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	}
 
 	return ips, nil
+}
+
+func (t *TailscaleInContainer) MustIPs() []netip.Addr {
+	ips, err := t.IPs()
+	if err != nil {
+		panic(err)
+	}
+
+	return ips
+}
+
+func (t *TailscaleInContainer) MustIPv4() netip.Addr {
+	for _, ip := range t.MustIPs() {
+		if ip.Is4() {
+			return ip
+		}
+	}
+	panic("no ipv4 found")
+}
+
+func (t *TailscaleInContainer) MustIPv6() netip.Addr {
+	for _, ip := range t.MustIPs() {
+		if ip.Is6() {
+			return ip
+		}
+	}
+	panic("no ipv6 found")
 }
 
 // Status returns the ipnstate.Status of the Tailscale instance.

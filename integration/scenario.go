@@ -150,6 +150,10 @@ type ScenarioSpec struct {
 var TestHashPrefix = "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
 var TestDefaultNetwork = TestHashPrefix + "-default"
 
+func prefixedNetworkName(name string) string {
+	return TestHashPrefix + "-" + name
+}
+
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
 func NewScenario(spec ScenarioSpec) (*Scenario, error) {
@@ -201,7 +205,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 			if err != nil {
 				return nil, err
 			}
-			s.extraServices[TestHashPrefix+"-"+network] = append(s.extraServices[TestHashPrefix+"-"+network], svc)
+			mak.Set(&s.extraServices, prefixedNetworkName(network), append(s.extraServices[prefixedNetworkName(network)], svc))
 		}
 	}
 
@@ -246,6 +250,42 @@ func (s *Scenario) Networks() []*dockertest.Network {
 		panic("Scenario.Networks called with empty network list")
 	}
 	return xmaps.Values(s.networks)
+}
+
+func (s *Scenario) Network(name string) (*dockertest.Network, error) {
+	net, ok := s.networks[prefixedNetworkName(name)]
+	if !ok {
+		return nil, fmt.Errorf("no network named: %s", name)
+	}
+
+	return net, nil
+}
+
+func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
+	net, ok := s.networks[prefixedNetworkName(name)]
+	if !ok {
+		return nil, fmt.Errorf("no network named: %s", name)
+	}
+
+	for _, ipam := range net.Network.IPAM.Config {
+		pref, err := netip.ParsePrefix(ipam.Subnet)
+		if err != nil {
+			return nil, err
+		}
+
+		return &pref, nil
+	}
+
+	return nil, fmt.Errorf("no prefix found in network: %s", name)
+}
+
+func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
+	res, ok := s.extraServices[prefixedNetworkName(name)]
+	if !ok {
+		return nil, fmt.Errorf("no network named: %s", name)
+	}
+
+	return res, nil
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
@@ -298,10 +338,12 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		}
 	}
 
-	for _, svc := range s.extraServices {
-		err := svc.Close()
-		if err != nil {
-			log.Printf("failed to tear down service %q: %s", svc.Container.Name, err)
+	for _, svcs := range s.extraServices {
+		for _, svc := range svcs {
+			err := svc.Close()
+			if err != nil {
+				log.Printf("failed to tear down service %q: %s", svc.Container.Name, err)
+			}
 		}
 	}
 
@@ -1125,14 +1167,14 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 
 	hostname := fmt.Sprintf("hs-webservice-%s", hash)
 
-	network, ok := s.networks[TestHashPrefix+"-"+networkName]
+	network, ok := s.networks[prefixedNetworkName(networkName)]
 	if !ok {
 		return nil, fmt.Errorf("network does not exist: %s", networkName)
 	}
 
 	webOpts := &dockertest.RunOptions{
 		Name: hostname,
-		Cmd:  []string{"/bin/sh", "-c", "python3 -m http.server --bind :: 80"},
+		Cmd:  []string{"/bin/sh", "-c", "cd / ; python3 -m http.server --bind :: 80"},
 		// ExposedPorts: []string{portNotation},
 		// PortBindings: map[docker.Port][]docker.PortBinding{
 		// 	docker.Port(portNotation): {{HostPort: strconv.Itoa(port)}},
