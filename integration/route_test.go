@@ -1163,5 +1163,17 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	assert.Len(t, result, 13)
 
 	tr, err := user2c.Traceroute(webip)
+	require.NoError(t, err)
 	assert.Contains(t, tr, user1c.MustIPv4().String())
+	assertTracerouteViaIP(t, tr, user1c.MustIPv4())
+}
+
+func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
+	t.Helper()
+
+	require.NotNil(t, tr)
+	require.True(t, tr.Success)
+	require.NoError(t, tr.Err)
+	require.NotEmpty(t, tr.Route)
+	require.Equal(t, tr.Route[0].IP, ip)
 }
