@@ -1141,6 +1141,139 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	for _, peerKey := range status.Peers() {
 		peerStatus := status.Peer[peerKey]
 
+// TestSubnetRouterMultiNetworkExitNode
+func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+			"usernet2": {"user2"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+	assert.NotNil(t, headscale)
+
+	var user1c, user2c TailscaleClient
+
+	for _, c := range allClients {
+		s := c.MustStatus()
+		if s.User[s.Self.UserID].LoginName == "user1@test.no" {
+			user1c = c
+		}
+		if s.User[s.Self.UserID].LoginName == "user2@test.no" {
+			user2c = c
+		}
+	}
+	require.NotNil(t, user1c)
+	require.NotNil(t, user2c)
+
+	// Advertise the exit nodes for the dockersubnet of user1
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-exit-node",
+	}
+	_, _, err = user1c.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assertNodeRouteCount(t, nodes[0], 2, 0, 0)
+
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	status, err := user1c.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		assert.Nil(t, peerStatus.PrimaryRoutes)
+		requirePeerSubnetRoutes(t, peerStatus, nil)
+	}
+
+	// Enable route
+	_, err = headscale.ApproveRoutes(
+		nodes[0].Id,
+		[]netip.Prefix{tsaddr.AllIPv4()},
+	)
+	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assertNodeRouteCount(t, nodes[0], 2, 2, 2)
+
+	// Verify that the routes have been sent to the client.
+	status, err = user2c.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+	}
+
+	// Tell user2c to use user1c as an exit node.
+	command = []string{
+		"tailscale",
+		"set",
+		"--exit-node",
+		user1c.Hostname(),
+	}
+	_, _, err = user2c.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+
+	// We cant mess to much with ip forwarding in containers so
+	// we settle for a simple ping here.
+	// Direct is false since we use internal DERP which means we
+	// cant discover a direct path between docker networks.
+	err = user2c.Ping(webip.String(),
+		tsic.WithPingUntilDirect(false),
+		tsic.WithPingCount(1),
+	)
+	require.NoError(t, err)
+}
+
 		assert.Nil(t, peerStatus.PrimaryRoutes)
 		assertPeerSubnetRoutes(t, peerStatus, []netip.Prefix{*pref})
 	}
@@ -1163,7 +1296,18 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	assert.Len(t, result, 13)
 
 	tr, err := user2c.Traceroute(webip)
-	assert.Contains(t, tr, user1c.MustIPv4().String())
+	require.NoError(t, err)
+	assertTracerouteViaIP(t, tr, user1c.MustIPv4())
+}
+
+func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
+	t.Helper()
+
+	require.NotNil(t, tr)
+	require.True(t, tr.Success)
+	require.NoError(t, tr.Err)
+	require.NotEmpty(t, tr.Route)
+	require.Equal(t, tr.Route[0].IP, ip)
 }
 
 // requirePeerSubnetRoutes asserts that the peer has the expected subnet routes.

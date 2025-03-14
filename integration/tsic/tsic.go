@@ -1130,14 +1130,19 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	return result, nil
 }
 
-func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (string, error) {
+func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {
 	command := []string{
 		"traceroute",
 		ip.String(),
 	}
 
-	var result string
-	result, _, err := t.Execute(command)
+	var result util.Traceroute
+	stdout, stderr, err := t.Execute(command)
+	if err != nil {
+		return result, err
+	}
+
+	result, err = util.ParseTraceroute(stdout + stderr)
 	if err != nil {
 		return result, err
 	}
