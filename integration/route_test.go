@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"net/netip"
 	"sort"
 	"testing"
@@ -29,17 +30,16 @@ func TestEnablingRoutes(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	user := "user6"
+	spec := ScenarioSpec{
+		NodesPerUser: 3,
+		Users:        []string{"user1"},
+	}
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 3,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clienableroute"))
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -203,17 +203,22 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	user := "user9"
+	spec := ScenarioSpec{
+		NodesPerUser: 4,
+		Users:        []string{"user1"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+	}
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 4,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("clienableroute"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -528,17 +533,16 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 
 	expectedRoutes := "172.0.0.0/24"
 
-	user := "user2"
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithTags([]string{"tag:approve"})}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
 		&policyv1.ACLPolicy{
 			ACLs: []policyv1.ACL{
 				{
@@ -548,7 +552,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 				},
 			},
 			TagOwners: map[string][]string{
-				"tag:approve": {user},
+				"tag:approve": {"user1"},
 			},
 			AutoApprovers: policyv1.AutoApprovers{
 				Routes: map[string][]string{
@@ -627,15 +631,16 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 
 	user := "user1"
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{user},
+	}
+
+	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithTags([]string{"tag:approve"})},
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithTags([]string{"tag:approve"})},
 		hsic.WithTestName("clienableroute"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -698,15 +703,16 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	user := "user4"
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{user},
+	}
+
+	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 2,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
 		&policyv1.ACLPolicy{
 			Groups: policyv1.Groups{
 				"group:admins": {user},
@@ -920,15 +926,16 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 	user := "user2"
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{user},
+	}
+
+	scenario, err := NewScenario(spec)
 	assertNoErrf(t, "failed to create scenario: %s", err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		user: 2,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithExtraLoginArgs([]string{"--advertise-exit-node"}),
 	}, hsic.WithTestName("clienableroute"))
 	assertNoErrHeadscaleEnv(t, err)
@@ -1027,4 +1034,146 @@ func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subn
 	assert.Len(t, node.GetAvailableRoutes(), announced)
 	assert.Len(t, node.GetApprovedRoutes(), approved)
 	assert.Len(t, node.GetSubnetRoutes(), subnet)
+}
+
+// TestSubnetRouterMultiNetwork is an evolution of the subnet router test.
+// This test will set up multiple docker networks and use two isolated tailscale
+// clients and a service available in one of the networks to validate that a
+// subnet router is working as expected.
+func TestSubnetRouterMultiNetwork(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+		Networks: map[string][]string{
+			"usernet1": {"user1"},
+			"usernet2": {"user2"},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithAcceptRoutes()},
+		hsic.WithTestName("clienableroute"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+	assert.NotNil(t, headscale)
+
+	pref, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	var user1c, user2c TailscaleClient
+
+	for _, c := range allClients {
+		s := c.MustStatus()
+		if s.User[s.Self.UserID].LoginName == "user1@test.no" {
+			user1c = c
+		}
+		if s.User[s.Self.UserID].LoginName == "user2@test.no" {
+			user2c = c
+		}
+	}
+	require.NotNil(t, user1c)
+	require.NotNil(t, user2c)
+
+	// Advertise the route for the dockersubnet of user1
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + pref.String(),
+	}
+	_, _, err = user1c.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
+
+	// Verify that no routes has been sent to the client,
+	// they are not yet enabled.
+	status, err := user1c.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		assert.Nil(t, peerStatus.PrimaryRoutes)
+		assertPeerSubnetRoutes(t, peerStatus, nil)
+	}
+
+	// Enable route
+	_, err = headscale.ApproveRoutes(
+		nodes[0].Id,
+		[]netip.Prefix{*pref},
+	)
+	require.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
+
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, nodes, 2)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+
+	// Verify that the routes have been sent to the client.
+	status, err = user2c.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		assert.Nil(t, peerStatus.PrimaryRoutes)
+		assertPeerSubnetRoutes(t, peerStatus, []netip.Prefix{*pref})
+	}
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+
+	url := fmt.Sprintf("http://%s/etc/hostname", webip)
+	t.Logf("url from %s to %s", user2c.Hostname(), url)
+
+	result, err := user2c.Curl(url)
+	require.NoError(t, err)
+	assert.Len(t, result, 13)
+
+	tr, err := user2c.Traceroute(webip)
+	require.NoError(t, err)
+	assert.Contains(t, tr, user1c.MustIPv4().String())
+	assertTracerouteViaIP(t, tr, user1c.MustIPv4())
+}
+
+func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
+	t.Helper()
+
+	require.NotNil(t, tr)
+	require.True(t, tr.Success)
+	require.NoError(t, tr.Err)
+	require.NotEmpty(t, tr.Route)
+	require.Equal(t, tr.Route[0].IP, ip)
 }

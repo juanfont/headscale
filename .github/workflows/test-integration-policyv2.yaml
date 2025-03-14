@@ -70,8 +70,8 @@ jobs:
           - TestAutoApprovedSubRoute2068
           - TestSubnetRouteACL
           - TestEnablingExitRoutes
+          - TestSubnetRouterMultiNetwork
           - TestHeadscale
-          - TestCreateTailscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
           - TestSSHMultipleUsersAllToAll

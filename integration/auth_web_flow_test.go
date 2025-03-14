@@ -1,13 +1,10 @@
 package integration
 
 import (
-	"errors"
-	"fmt"
-	"log"
 	"net/netip"
-	"net/url"
-	"strings"
 	"testing"
+
+	"slices"
 
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
@@ -15,33 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var errParseAuthPage = errors.New("failed to parse auth page")
-
-type AuthWebFlowScenario struct {
-	*Scenario
-}
-
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
 	if err != nil {
 		t.Fatalf("failed to create scenario: %s", err)
 	}
-
-	scenario := AuthWebFlowScenario{
-		Scenario: baseScenario,
-	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
-
 	err = scenario.CreateHeadscaleEnv(
-		spec,
+		nil,
 		hsic.WithTestName("webauthping"),
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithTLS(),
@@ -71,20 +57,17 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	baseScenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-
-	scenario := AuthWebFlowScenario{
-		Scenario: baseScenario,
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
 	}
+
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec,
+	err = scenario.CreateHeadscaleEnv(
+		nil,
 		hsic.WithTestName("weblogout"),
 		hsic.WithTLS(),
 	)
@@ -137,8 +120,8 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 
 	t.Logf("all clients logged out")
 
-	for userName := range spec {
-		err = scenario.runTailscaleUp(userName, headscale.GetEndpoint())
+	for _, userName := range spec.Users {
+		err = scenario.RunTailscaleUpWithURL(userName, headscale.GetEndpoint())
 		if err != nil {
 			t.Fatalf("failed to run tailscale up (%q): %s", headscale.GetEndpoint(), err)
 		}
@@ -172,14 +155,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		}
 
 		for _, ip := range ips {
-			found := false
-			for _, oldIP := range clientIPs[client] {
-				if ip == oldIP {
-					found = true
-
-					break
-				}
-			}
+			found := slices.Contains(clientIPs[client], ip)
 
 			if !found {
 				t.Fatalf(
@@ -193,123 +169,4 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	t.Logf("all clients IPs are the same")
-}
-
-func (s *AuthWebFlowScenario) CreateHeadscaleEnv(
-	users map[string]int,
-	opts ...hsic.Option,
-) error {
-	headscale, err := s.Headscale(opts...)
-	if err != nil {
-		return err
-	}
-
-	err = headscale.WaitForRunning()
-	if err != nil {
-		return err
-	}
-
-	for userName, clientCount := range users {
-		log.Printf("creating user %s with %d clients", userName, clientCount)
-		err = s.CreateUser(userName)
-		if err != nil {
-			return err
-		}
-
-		err = s.CreateTailscaleNodesInUser(userName, "all", clientCount)
-		if err != nil {
-			return err
-		}
-
-		err = s.runTailscaleUp(userName, headscale.GetEndpoint())
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (s *AuthWebFlowScenario) runTailscaleUp(
-	userStr, loginServer string,
-) error {
-	log.Printf("running tailscale up for user %q", userStr)
-	if user, ok := s.users[userStr]; ok {
-		for _, client := range user.Clients {
-			c := client
-			user.joinWaitGroup.Go(func() error {
-				log.Printf("logging %q into %q", c.Hostname(), loginServer)
-				loginURL, err := c.LoginWithURL(loginServer)
-				if err != nil {
-					log.Printf("failed to run tailscale up (%s): %s", c.Hostname(), err)
-
-					return err
-				}
-
-				err = s.runHeadscaleRegister(userStr, loginURL)
-				if err != nil {
-					log.Printf("failed to register client (%s): %s", c.Hostname(), err)
-
-					return err
-				}
-
-				return nil
-			})
-
-			err := client.WaitForRunning()
-			if err != nil {
-				log.Printf("error waiting for client %s to be ready: %s", client.Hostname(), err)
-			}
-		}
-
-		if err := user.joinWaitGroup.Wait(); err != nil {
-			return err
-		}
-
-		for _, client := range user.Clients {
-			err := client.WaitForRunning()
-			if err != nil {
-				return fmt.Errorf("%s failed to up tailscale node: %w", client.Hostname(), err)
-			}
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
-}
-
-func (s *AuthWebFlowScenario) runHeadscaleRegister(userStr string, loginURL *url.URL) error {
-	body, err := doLoginURL("web-auth-not-set", loginURL)
-	if err != nil {
-		return err
-	}
-
-	// see api.go HTML template
-	codeSep := strings.Split(string(body), "</code>")
-	if len(codeSep) != 2 {
-		return errParseAuthPage
-	}
-
-	keySep := strings.Split(codeSep[0], "key ")
-	if len(keySep) != 2 {
-		return errParseAuthPage
-	}
-	key := keySep[1]
-	log.Printf("registering node %s", key)
-
-	if headscale, err := s.Headscale(); err == nil {
-		_, err = headscale.Execute(
-			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
-		)
-		if err != nil {
-			log.Printf("failed to register node: %s", err)
-
-			return err
-		}
-
-		return nil
-	}
-
-	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
 }

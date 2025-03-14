@@ -50,15 +50,15 @@ var retry = func(times int, sleepInterval time.Duration,
 
 func sshScenario(t *testing.T, policy *policyv1.ACLPolicy, clientsPerUser int) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario(dockertestMaxWait())
+
+	spec := ScenarioSpec{
+		NodesPerUser: clientsPerUser,
+		Users:        []string{"user1", "user2"},
+	}
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 
-	spec := map[string]int{
-		"user1": clientsPerUser,
-		"user2": clientsPerUser,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec,
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			tsic.WithSSH(),
 
