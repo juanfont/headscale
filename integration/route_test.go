@@ -1036,6 +1036,10 @@ func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subn
 	assert.Len(t, node.GetSubnetRoutes(), subnet)
 }
 
+// TestSubnetRouterMultiNetwork is an evolution of the subnet router test.
+// This test will set up multiple docker networks and use two isolated tailscale
+// clients and a service available in one of the networks to validate that a
+// subnet router is working as expected.
 func TestSubnetRouterMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -1130,8 +1134,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	assert.Len(t, nodes, 2)
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
 
-	// Verify that no routes has been sent to the client,
-	// they are not yet enabled.
+	// Verify that the routes have been sent to the client.
 	status, err = user2c.Status()
 	require.NoError(t, err)
 
@@ -1159,8 +1162,8 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, result, 13)
 
-	stdout, stderr, err := user2c.Execute([]string{"traceroute", webip.String()})
-	assert.Contains(t, stdout+stderr, user1c.MustIPv4().String())
+	tr, err := user2c.Traceroute(webip)
+	assert.Contains(t, tr, user1c.MustIPv4().String())
 }
 
 // requirePeerSubnetRoutes asserts that the peer has the expected subnet routes.

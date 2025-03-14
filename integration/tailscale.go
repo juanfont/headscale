@@ -41,6 +41,7 @@ type TailscaleClient interface {
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
+	Traceroute(netip.Addr) (string, error)
 	ID() string
 	ReadFile(path string) ([]byte, error)
 
