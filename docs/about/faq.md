@@ -52,29 +52,29 @@ it in a commercial/professional setting and often get questions about scaling.
 
 Please note that when Headscale is developed, performance is not part of the
 consideration as the main audience is considered to be users with a moddest
-amount of devices. We focus on correctness and chaising feature parity over
-time.
+amount of devices. We focus on correctness and feature parity with Tailscale
+SaaS over time.
 
 To understand if you might be able to use Headscale for your usecase, I will
-explain two scenarios in an effort to explain what is the central bottleneck
+describe two scenarios in an effort to explain what is the central bottleneck
 of Headscale:
 
 1. An environment with 1000 servers
 
-- they rarely change "move" (change their endpoints)
-- new nodes are added rarely
+    - they rarely  "move" (change their endpoints)
+    - new nodes are added rarely
 
 2. An environment with 80 laptops/phones (end user devices)
 
-- nodes move often, e.g. switching from home to office
+    - nodes move often, e.g. switching from home to office
 
 Headscale calculates a map of all nodes that need to talk to each other,
 creating this "world map" requires a lot of CPU time. When an event that
 requires changes to this map happens, the whole "world" is recalculated, and a
 new "world map" is created for every node in the network.
 
-This means that under certain conditions, headscale can likely handle 100s
-(maybe more) of devices, if there is _little to no change_ happening in the
+This means that under certain conditions, Headscale can likely handle 100s
+of devices (maybe more), if there is _little to no change_ happening in the
 network. For example, in Scenario 1, the process of computing the world map is
 extremly demanding due to the size of the network, but when the map has been
 created and the nodes are not changing, the Headscale instance will likely
@@ -109,7 +109,7 @@ The headscale project itself does not provide a tool to migrate from PostgreSQL 
 related tools documentation](../ref/integration/tools.md) for migration tooling provided by the community.
 
 The choice of database has little to no impact on the performance of the server,
-see the previous question for understanding how Headscale spends its resources.
+see [Scaling / How many clients does Headscale support?](#scaling-how-many-clients-does-headscale-support) for understanding how Headscale spends its resources.
 
 ## Why is my reverse proxy not working with headscale?
 
