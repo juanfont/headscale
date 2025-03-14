@@ -1130,6 +1130,21 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	return result, nil
 }
 
+func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (string, error) {
+	command := []string{
+		"traceroute",
+		ip.String(),
+	}
+
+	var result string
+	result, _, err := t.Execute(command)
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
+}
+
 // WriteFile save file inside the Tailscale container.
 func (t *TailscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)
