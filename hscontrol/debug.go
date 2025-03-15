@@ -25,7 +25,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(config)
 	}))
@@ -35,7 +35,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(pol)
 	}))
@@ -47,7 +47,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(filterJSON)
 	}))
@@ -74,7 +74,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(sshJSON)
 	}))
@@ -86,7 +86,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(dmJSON)
 	}))
@@ -96,7 +96,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(registrationsJSON)
 	}))
