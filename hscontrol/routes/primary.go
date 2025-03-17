@@ -74,18 +74,12 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// If the current primary is not available, select a new one.
 	for prefix, nodes := range allPrimaries {
 		if node, ok := pr.primaries[prefix]; ok {
-			if len(nodes) < 2 {
-				delete(pr.primaries, prefix)
-				changed = true
-				continue
-			}
-
 			// If the current primary is still available, continue.
 			if slices.Contains(nodes, node) {
 				continue
 			}
 		}
-		if len(nodes) >= 2 {
+		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
 		}
@@ -121,12 +115,17 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefix ...netip.Prefix) bo
 		return false
 	}
 
-	if _, ok := pr.routes[node]; !ok {
-		pr.routes[node] = make(set.Set[netip.Prefix], len(prefix))
+	rs := make(set.Set[netip.Prefix], len(prefixes))
+	for _, prefix := range prefixes {
+		if !tsaddr.IsExitRoute(prefix) {
+			rs.Add(prefix)
+		}
 	}
 
-	for _, p := range prefix {
-		pr.routes[node].Add(p)
+	if rs.Len() != 0 {
+		pr.routes[node] = rs
+	} else {
+		delete(pr.routes, node)
 	}
 
 	return pr.updatePrimaryLocked()

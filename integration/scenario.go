@@ -134,6 +134,9 @@ type ScenarioSpec struct {
 	// typically dont run Tailscale, e.g. web service to test subnet router.
 	ExtraService map[string][]extraServiceFunc
 
+	// Versions is specific list of versions to use for the test.
+	Versions []string
+
 	// OIDCUsers, if populated, will start a Mock OIDC server and populate
 	// the user login stack with the given users.
 	// If the NodesPerUser is set, it should align with this list to ensure
@@ -514,7 +517,11 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 		for i := range count {
 			version := requestedVersion
 			if requestedVersion == "all" {
-				version = MustTestVersions[i%len(MustTestVersions)]
+				if s.spec.Versions != nil {
+					version = s.spec.Versions[i%len(s.spec.Versions)]
+				} else {
+					version = MustTestVersions[i%len(MustTestVersions)]
+				}
 			}
 			versions = append(versions, version)
 

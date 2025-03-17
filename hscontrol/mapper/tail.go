@@ -2,10 +2,7 @@ package mapper
 
 import (
 	"fmt"
-	"net/netip"
 	"time"
-
-	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
@@ -50,13 +47,6 @@ func tailNode(
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
-
-	// we append the node own IP, as it is required by the clients
-	allowedIPs := slices.Clone(node.Prefixes())
-
-	for _, route := range node.SubnetRoutes() {
-		allowedIPs = append(allowedIPs, netip.Prefix(route))
-	}
 
 	var derp int
 
@@ -105,7 +95,7 @@ func tailNode(
 		DiscoKey:         node.DiscoKey,
 		Addresses:        addrs,
 		PrimaryRoutes:    primary.PrimaryRoutes(node.ID),
-		AllowedIPs:       allowedIPs,
+		AllowedIPs:       allowed,
 		Endpoints:        node.Endpoints,
 		HomeDERP:         derp,
 		LegacyDERPString: legacyDERP,

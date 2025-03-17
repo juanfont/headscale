@@ -213,7 +213,7 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
-	addrs := []netip.Prefix{}
+	var addrs []netip.Prefix
 	for _, nodeAddress := range node.IPs() {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
