@@ -5,6 +5,8 @@ import (
 	"net/netip"
 	"time"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -49,9 +51,8 @@ func tailNode(
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
 
-	allowedIPs := append(
-		[]netip.Prefix{},
-		addrs...) // we append the node own IP, as it is required by the clients
+	// we append the node own IP, as it is required by the clients
+	allowedIPs := slices.Clone(node.Prefixes())
 
 	for _, route := range node.SubnetRoutes() {
 		allowedIPs = append(allowedIPs, netip.Prefix(route))
