@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	xmaps "golang.org/x/exp/maps"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 )
 
@@ -152,6 +153,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
+	tsaddr.SortPrefixes(routes)
 	return routes
 }
 

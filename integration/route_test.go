@@ -222,7 +222,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	// defer scenario.ShutdownAssertNoPanics(t)
+	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{tsic.WithAcceptRoutes()},

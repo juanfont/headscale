@@ -169,6 +169,9 @@ func Test_fullMapResponse(t *testing.T) {
 			tsaddr.AllIPv4(),
 			netip.MustParsePrefix("192.168.0.0/24"),
 		},
+		PrimaryRoutes: []netip.Prefix{
+			netip.MustParsePrefix("192.168.0.0/24"),
+		},
 		HomeDERP:         0,
 		LegacyDERPString: "127.3.3.40:0",
 		Hostinfo: hiview(tailcfg.Hostinfo{
