@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"slices"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -1533,6 +1535,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	err = user2c.Ping(webip.String(),
 		tsic.WithPingUntilDirect(false),
 		tsic.WithPingCount(1),
+		tsic.WithPingTimeout(7*time.Second),
 	)
 	require.NoError(t, err)
 }
@@ -1563,13 +1566,7 @@ func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected
 		if tsaddr.IsExitRoute(p) {
 			return true
 		}
-		for _, ip := range status.TailscaleIPs {
-			if p.Contains(ip) {
-				return false
-			}
-		}
-
-		return true
+		return !slices.ContainsFunc(status.TailscaleIPs, p.Contains)
 	})
 
 	if diff := cmp.Diff(expected, got, util.PrefixComparer, cmpopts.EquateEmpty()); diff != "" {

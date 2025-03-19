@@ -1014,6 +1014,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 		),
 	)
 	if err != nil {
+		log.Printf("command: %v", command)
 		log.Printf(
 			"failed to run ping command from %s to %s, err: %s",
 			t.Hostname(),
