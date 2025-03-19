@@ -71,6 +71,7 @@ jobs:
           - TestSubnetRouteACL
           - TestEnablingExitRoutes
           - TestSubnetRouterMultiNetwork
+          - TestSubnetRouterMultiNetworkExitNode
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
