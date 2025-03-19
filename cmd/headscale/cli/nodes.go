@@ -729,7 +729,7 @@ func nodeRoutesToPtables(
 		"Hostname",
 		"Approved",
 		"Available",
-		"Serving",
+		"Serving (Primary)",
 	}
 	tableData := pterm.TableData{tableHeader}
 
