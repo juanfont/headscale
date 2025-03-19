@@ -366,7 +366,6 @@ func TestPrimaryRoutes(t *testing.T) {
 			},
 			expectedPrimaries: map[netip.Prefix]types.NodeID{
 				mp("192.168.1.0/24"): 1,
-				mp("0.0.0.0/0"):      1,
 			},
 			expectedIsPrimary: map[types.NodeID]bool{
 				1: true,
@@ -387,6 +386,26 @@ func TestPrimaryRoutes(t *testing.T) {
 				return pr.SetRoutes(1)
 			},
 			expectedRoutes: nil,
+			expectedChange: false,
+		},
+		{
+			name: "exit-nodes",
+			operations: func(pr *PrimaryRoutes) bool {
+				pr.SetRoutes(1, mp("10.0.0.0/16"), mp("0.0.0.0/0"), mp("::/0"))
+				pr.SetRoutes(3, mp("0.0.0.0/0"), mp("::/0"))
+				return pr.SetRoutes(2, mp("0.0.0.0/0"), mp("::/0"))
+			},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("10.0.0.0/16"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("10.0.0.0/16"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
 			expectedChange: false,
 		},
 		{

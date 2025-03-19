@@ -8,6 +8,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -79,6 +80,10 @@ func tailNode(
 		}
 	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
+
+	allowed := append(node.Prefixes(), primary.PrimaryRoutes(node.ID)...)
+	allowed = append(allowed, node.ExitRoutes()...)
+	tsaddr.SortPrefixes(allowed)
 
 	tNode := tailcfg.Node{
 		ID:       tailcfg.NodeID(node.ID), // this is the actual ID

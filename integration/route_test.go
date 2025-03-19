@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -19,6 +20,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
+	"tailscale.com/util/slicesx"
 	"tailscale.com/wgengine/filter"
 )
 
@@ -125,7 +127,7 @@ func TestEnablingRoutes(t *testing.T) {
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
 
-			assert.Nil(t, peerStatus.PrimaryRoutes)
+			assert.NotNil(t, peerStatus.PrimaryRoutes)
 
 			assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 3)
 
@@ -189,7 +191,6 @@ func TestEnablingRoutes(t *testing.T) {
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
 
-			assert.Nil(t, peerStatus.PrimaryRoutes)
 			if peerStatus.ID == "1" {
 				requirePeerSubnetRoutes(t, peerStatus, nil)
 			} else if peerStatus.ID == "2" {
@@ -1378,6 +1379,32 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 		peerStatus := status.Peer[peerKey]
 
 		assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *pref)
+		requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*pref})
+	}
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+
+	url := fmt.Sprintf("http://%s/etc/hostname", webip)
+	t.Logf("url from %s to %s", user2c.Hostname(), url)
+
+	result, err := user2c.Curl(url)
+	require.NoError(t, err)
+	assert.Len(t, result, 13)
+
+	tr, err := user2c.Traceroute(webip)
+	require.NoError(t, err)
+	assertTracerouteViaIP(t, tr, user1c.MustIPv4())
+}
+
+// TestSubnetRouterMultiNetworkExitNode
 func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -1508,32 +1535,6 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 		tsic.WithPingCount(1),
 	)
 	require.NoError(t, err)
-}
-
-		assert.Nil(t, peerStatus.PrimaryRoutes)
-		requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*pref})
-	}
-
-	usernet1, err := scenario.Network("usernet1")
-	require.NoError(t, err)
-
-	services, err := scenario.Services("usernet1")
-	require.NoError(t, err)
-	require.Len(t, services, 1)
-
-	web := services[0]
-	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
-
-	url := fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("url from %s to %s", user2c.Hostname(), url)
-
-	result, err := user2c.Curl(url)
-	require.NoError(t, err)
-	assert.Len(t, result, 13)
-
-	tr, err := user2c.Traceroute(webip)
-	require.NoError(t, err)
-	assertTracerouteViaIP(t, tr, user1c.MustIPv4())
 }
 
 func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
