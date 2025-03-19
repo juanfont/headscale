@@ -361,6 +361,46 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet]`,
 		},
+		{
+			name: "undefined-hostname-errors",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "user1"
+      ],
+      "dst": [
+        "user1:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Host "user1" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "defined-hostname-does-not-err",
+			input: `
+{
+  "hosts": {
+		"user1": "100.100.100.100",
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "user1"
+      ],
+      "dst": [
+        "user1:*"
+      ]
+    }
+  ]
+}
+`,
+		},
 	}
 
 	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {

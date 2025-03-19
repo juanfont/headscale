@@ -532,7 +532,7 @@ Please check the format and try again.`, vs)
 type AliasEnc struct{ Alias }
 
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Alias](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAlias,
 	)
@@ -639,7 +639,7 @@ Please check the format and try again.`, s)
 type AutoApproverEnc struct{ AutoApprover }
 
 func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[AutoApprover](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAutoApprover,
 	)
@@ -659,7 +659,7 @@ type Owner interface {
 type OwnerEnc struct{ Owner }
 
 func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Owner](
+	ptr, err := unmarshalPointer(
 		b,
 		parseOwner,
 	)
