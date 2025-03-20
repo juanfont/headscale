@@ -132,23 +132,7 @@ func TestEnablingRoutes(t *testing.T) {
 			assert.NotNil(t, peerStatus.PrimaryRoutes)
 
 			assert.Len(t, peerStatus.AllowedIPs.AsSlice(), 3)
-
-			if peerStatus.AllowedIPs.Len() > 2 {
-				peerRoute := peerStatus.AllowedIPs.At(2)
-
-				// id starts at 1, we created routes with 0 index
-				assert.Equalf(
-					t,
-					expectedRoutes[string(peerStatus.ID)],
-					peerRoute.String(),
-					"expected route %s to be present on peer %s (%s) in %s (%s) status",
-					expectedRoutes[string(peerStatus.ID)],
-					peerStatus.HostName,
-					peerStatus.ID,
-					client.Hostname(),
-					client.ID(),
-				)
-			}
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{netip.MustParsePrefix(expectedRoutes[string(peerStatus.ID)])})
 		}
 	}
 
