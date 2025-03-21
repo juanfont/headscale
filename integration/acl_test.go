@@ -1085,9 +1085,6 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		},
 		Hosts: policyv1.Hosts{},
 	}
-	if usePolicyV2ForTest {
-		hsic.RewritePolicyToV2(&p)
-	}
 
 	pBytes, _ := json.Marshal(p)
 

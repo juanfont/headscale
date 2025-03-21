@@ -97,19 +97,6 @@ func TestTheInternet(t *testing.T) {
 	}
 }
 
-// addAtForFilterV1 returns a copy of the given userslice
-// and adds "@" character to the Name field.
-// This is a "compatibility" move to allow the old tests
-// to run against the "new" format which requires "@".
-func addAtForFilterV1(users types.Users) types.Users {
-	ret := make(types.Users, len(users))
-	for idx := range users {
-		ret[idx] = users[idx]
-		ret[idx].Name = ret[idx].Name + "@"
-	}
-	return ret
-}
-
 func TestReduceFilterRules(t *testing.T) {
 	users := types.Users{
 		types.User{Model: gorm.Model{ID: 1}, Name: "mickael"},
@@ -780,11 +767,7 @@ func TestReduceFilterRules(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
-				if version == 1 {
-					pm, err = pmf(addAtForFilterV1(users), append(tt.peers, tt.node))
-				} else {
-					pm, err = pmf(users, append(tt.peers, tt.node))
-				}
+				pm, err = pmf(users, append(tt.peers, tt.node))
 				require.NoError(t, err)
 				got := pm.Filter()
 				got = ReduceFilterRules(tt.node, got)

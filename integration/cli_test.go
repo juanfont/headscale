@@ -1754,9 +1754,6 @@ func TestPolicyCommand(t *testing.T) {
 			"tag:exists": {"user1"},
 		},
 	}
-	if usePolicyV2ForTest {
-		hsic.RewritePolicyToV2(&p)
-	}
 
 	pBytes, _ := json.Marshal(p)
 
@@ -1842,9 +1839,6 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 		TagOwners: map[string][]string{
 			"tag:exists": {"user1"},
 		},
-	}
-	if usePolicyV2ForTest {
-		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)
