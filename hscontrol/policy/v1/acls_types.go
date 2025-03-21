@@ -43,7 +43,7 @@ type ACLTest struct {
 	Deny   []string `json:"deny,omitempty"`
 }
 
-// AutoApprovers specify which users (users?), groups or tags have their advertised routes
+// AutoApprovers specify which users, groups or tags have their advertised routes
 // or exit node status automatically enabled.
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"`
