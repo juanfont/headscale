@@ -234,7 +234,14 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	idToken, err := a.extractIDToken(req.Context(), code, state)
+	oauth2Token, err := a.getOauth2Token(req.Context(), code, state)
+
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	idToken, err := a.extractIDToken(req.Context(), oauth2Token)
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -271,6 +278,16 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
 		httpError(writer, err)
 		return
+	}
+
+	// If EmailVerified is missing, we can try to get it from UserInfo
+	if !claims.EmailVerified {
+		var userinfo *oidc.UserInfo
+		userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
+		if err != nil {
+			util.LogErr(err, "could not get userinfo; email cannot be verified")
+		}
+		claims.EmailVerified = types.FlexibleBoolean(userinfo.EmailVerified)
 	}
 
 	user, err := a.createOrUpdateUserFromClaim(&claims)
@@ -333,13 +350,12 @@ func extractCodeAndStateParamFromRequest(
 	return code, state, nil
 }
 
-// extractIDToken takes the code parameter from the callback
-// and extracts the ID token from the oauth2 token.
-func (a *AuthProviderOIDC) extractIDToken(
+// getOauth2Token exchanges the code from the callback for an oauth2 token.
+func (a *AuthProviderOIDC) getOauth2Token(
 	ctx context.Context,
 	code string,
 	state string,
-) (*oidc.IDToken, error) {
+) (*oauth2.Token, error) {
 	var exchangeOpts []oauth2.AuthCodeOption
 
 	if a.cfg.PKCE.Enabled {
@@ -356,7 +372,14 @@ func (a *AuthProviderOIDC) extractIDToken(
 	if err != nil {
 		return nil, NewHTTPError(http.StatusForbidden, "invalid code", fmt.Errorf("could not exchange code for token: %w", err))
 	}
+	return oauth2Token, err
+}
 
+// extractIDToken extracts the ID token from the oauth2 token.
+func (a *AuthProviderOIDC) extractIDToken(
+	ctx context.Context,
+	oauth2Token *oauth2.Token,
+) (*oidc.IDToken, error) {
 	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
 	if !ok {
 		return nil, NewHTTPError(http.StatusBadRequest, "no id_token", errNoOIDCIDToken)
