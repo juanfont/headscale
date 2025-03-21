@@ -247,13 +247,7 @@ func (node *Node) IPsAsString() []string {
 }
 
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
-	for _, nodeAddr := range node.IPs() {
-		if set.Contains(nodeAddr) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(node.IPs(), set.Contains)
 }
 
 // AppendToIPSet adds the individual ips in NodeAddresses to a
@@ -329,14 +323,17 @@ func (node *Node) Proto() *v1.Node {
 		DiscoKey: node.DiscoKey.String(),
 
 		// TODO(kradalby): replace list with v4, v6 field?
-		IpAddresses:     node.IPsAsString(),
-		Name:            node.Hostname,
-		GivenName:       node.GivenName,
-		User:            node.User.Proto(),
-		ForcedTags:      node.ForcedTags,
+		IpAddresses: node.IPsAsString(),
+		Name:        node.Hostname,
+		GivenName:   node.GivenName,
+		User:        node.User.Proto(),
+		ForcedTags:  node.ForcedTags,
+
+		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has
+		// to be populated manually with PrimaryRoute, to ensure it includes the
+		// routes that are actively served from the node.
 		ApprovedRoutes:  util.PrefixesToString(node.ApprovedRoutes),
 		AvailableRoutes: util.PrefixesToString(node.AnnouncedRoutes()),
-		SubnetRoutes:    util.PrefixesToString(node.SubnetRoutes()),
 
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 
