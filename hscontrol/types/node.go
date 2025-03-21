@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -213,13 +214,26 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
-	addrs := []netip.Prefix{}
+	var addrs []netip.Prefix
 	for _, nodeAddress := range node.IPs() {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
 
 	return addrs
+}
+
+// ExitRoutes returns a list of both exit routes if the
+// node has any exit routes enabled.
+// If none are enabled, it will return nil.
+func (node *Node) ExitRoutes() []netip.Prefix {
+	for _, route := range node.SubnetRoutes() {
+		if tsaddr.IsExitRoute(route) {
+			return tsaddr.ExitRoutes()
+		}
+	}
+
+	return nil
 }
 
 func (node *Node) IPsAsString() []string {

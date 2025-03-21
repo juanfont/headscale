@@ -35,7 +35,7 @@ type DERPServerInContainer struct {
 
 	pool      *dockertest.Pool
 	container *dockertest.Resource
-	network   *dockertest.Network
+	networks  []*dockertest.Network
 
 	stunPort            int
 	derpPort            int
@@ -63,22 +63,22 @@ func WithCACert(cert []byte) Option {
 // isolating the DERPer, will be created. If a network is
 // passed, the DERPer instance will join the given network.
 func WithOrCreateNetwork(network *dockertest.Network) Option {
-	return func(tsic *DERPServerInContainer) {
+	return func(dsic *DERPServerInContainer) {
 		if network != nil {
-			tsic.network = network
+			dsic.networks = append(dsic.networks, network)
 
 			return
 		}
 
 		network, err := dockertestutil.GetFirstOrCreateNetwork(
-			tsic.pool,
-			tsic.hostname+"-network",
+			dsic.pool,
+			dsic.hostname+"-network",
 		)
 		if err != nil {
 			log.Fatalf("failed to create network: %s", err)
 		}
 
-		tsic.network = network
+		dsic.networks = append(dsic.networks, network)
 	}
 }
 
@@ -107,7 +107,7 @@ func WithExtraHosts(hosts []string) Option {
 func New(
 	pool *dockertest.Pool,
 	version string,
-	network *dockertest.Network,
+	networks []*dockertest.Network,
 	opts ...Option,
 ) (*DERPServerInContainer, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(dsicHashLength)
@@ -124,7 +124,7 @@ func New(
 		version:  version,
 		hostname: hostname,
 		pool:     pool,
-		network:  network,
+		networks: networks,
 		tlsCert:  tlsCert,
 		tlsKey:   tlsKey,
 		stunPort: 3478, //nolint
@@ -148,7 +148,7 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:       hostname,
-		Networks:   []*dockertest.Network{dsic.network},
+		Networks:   dsic.networks,
 		ExtraHosts: dsic.withExtraHosts,
 		// we currently need to give us some time to inject the certificate further down.
 		Entrypoint: []string{"/bin/sh", "-c", "/bin/sleep 3 ; update-ca-certificates ; derper " + cmdArgs.String()},

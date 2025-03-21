@@ -54,15 +54,16 @@ func aclScenario(
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoError(t, err)
 
-	spec := map[string]int{
-		"user1": clientsPerUser,
-		"user2": clientsPerUser,
+	spec := ScenarioSpec{
+		NodesPerUser: clientsPerUser,
+		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec,
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it
@@ -96,22 +97,24 @@ func aclScenario(
 func TestACLHostsInNetMapTable(t *testing.T) {
 	IntegrationSkip(t)
 
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+	}
+
 	// NOTE: All want cases currently checks the
 	// total count of expected peers, this would
 	// typically be the client count of the users
 	// they can access minus one (them self).
 	tests := map[string]struct {
-		users  map[string]int
+		users  ScenarioSpec
 		policy policyv1.ACLPolicy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
 		// the amount of peers of the total amount of clients
 		"base-acls": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -129,10 +132,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// each other, each node has only the number of pairs from
 		// their own user.
 		"two-isolated-users": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -155,10 +155,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// are restricted to a single port, nodes are still present
 		// in the netmap.
 		"two-restricted-present-in-netmap": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -192,10 +189,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// of peers. This will still result in all the peers as we
 		// need them present on the other side for the "return path".
 		"two-ns-one-isolated": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -220,10 +214,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			},
 		},
 		"very-large-destination-prefix-1372": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -248,10 +239,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			},
 		},
 		"ipv6-acls-1470": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
+			users: spec,
 			policy: policyv1.ACLPolicy{
 				ACLs: []policyv1.ACL{
 					{
@@ -269,12 +257,11 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
+			caseSpec := testCase.users
+			scenario, err := NewScenario(caseSpec)
 			require.NoError(t, err)
 
-			spec := testCase.users
-
-			err = scenario.CreateHeadscaleEnv(spec,
+			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
 			)
@@ -944,6 +931,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t, &testCase.policy, 1)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
 			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
@@ -1022,16 +1010,16 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec,
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it

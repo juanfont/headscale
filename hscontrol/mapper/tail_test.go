@@ -67,8 +67,6 @@ func TestTailNode(t *testing.T) {
 			want: &tailcfg.Node{
 				Name:              "empty",
 				StableID:          "0",
-				Addresses:         []netip.Prefix{},
-				AllowedIPs:        []netip.Prefix{},
 				HomeDERP:          0,
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
@@ -139,8 +137,12 @@ func TestTailNode(t *testing.T) {
 				),
 				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				AllowedIPs: []netip.Prefix{
-					netip.MustParsePrefix("100.64.0.1/32"),
 					tsaddr.AllIPv4(),
+					netip.MustParsePrefix("192.168.0.0/24"),
+					netip.MustParsePrefix("100.64.0.1/32"),
+					tsaddr.AllIPv6(),
+				},
+				PrimaryRoutes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.0.0/24"),
 				},
 				HomeDERP:         0,
@@ -155,10 +157,6 @@ func TestTailNode(t *testing.T) {
 				Created: created,
 
 				Tags: []string{},
-
-				PrimaryRoutes: []netip.Prefix{
-					netip.MustParsePrefix("192.168.0.0/24"),
-				},
 
 				LastSeen:          &lastSeen,
 				MachineAuthorized: true,

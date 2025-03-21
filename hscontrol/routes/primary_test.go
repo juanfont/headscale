@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"tailscale.com/util/set"
 )
 
 // mp is a helper function that wraps netip.MustParsePrefix.
@@ -17,20 +19,34 @@ func mp(prefix string) netip.Prefix {
 
 func TestPrimaryRoutes(t *testing.T) {
 	tests := []struct {
-		name           string
-		operations     func(pr *PrimaryRoutes) bool
-		nodeID         types.NodeID
-		expectedRoutes []netip.Prefix
-		expectedChange bool
+		name              string
+		operations        func(pr *PrimaryRoutes) bool
+		expectedRoutes    map[types.NodeID]set.Set[netip.Prefix]
+		expectedPrimaries map[netip.Prefix]types.NodeID
+		expectedIsPrimary map[types.NodeID]bool
+		expectedChange    bool
+
+		// primaries is a map of prefixes to the node that is the primary for that prefix.
+		primaries map[netip.Prefix]types.NodeID
+		isPrimary map[types.NodeID]bool
 	}{
 		{
 			name: "single-node-registers-single-route",
 			operations: func(pr *PrimaryRoutes) bool {
 				return pr.SetRoutes(1, mp("192.168.1.0/24"))
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedChange: true,
 		},
 		{
 			name: "multiple-nodes-register-different-routes",
@@ -38,19 +54,45 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("192.168.1.0/24"))
 				return pr.SetRoutes(2, mp("192.168.2.0/24"))
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.2.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+				mp("192.168.2.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+				2: true,
+			},
+			expectedChange: true,
 		},
 		{
 			name: "multiple-nodes-register-overlapping-routes",
 			operations: func(pr *PrimaryRoutes) bool {
-				pr.SetRoutes(1, mp("192.168.1.0/24"))        // false
-				return pr.SetRoutes(2, mp("192.168.1.0/24")) // true
+				pr.SetRoutes(1, mp("192.168.1.0/24"))        // true
+				return pr.SetRoutes(2, mp("192.168.1.0/24")) // false
 			},
-			nodeID:         1,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
-			expectedChange: true,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedChange: false,
 		},
 		{
 			name: "node-deregisters-a-route",
@@ -58,9 +100,10 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("192.168.1.0/24"))
 				return pr.SetRoutes(1) // Deregister by setting no routes
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedRoutes:    nil,
+			expectedPrimaries: nil,
+			expectedIsPrimary: nil,
+			expectedChange:    true,
 		},
 		{
 			name: "node-deregisters-one-of-multiple-routes",
@@ -68,9 +111,18 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("192.168.1.0/24"), mp("192.168.2.0/24"))
 				return pr.SetRoutes(1, mp("192.168.2.0/24")) // Deregister one route by setting the remaining route
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.2.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.2.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedChange: true,
 		},
 		{
 			name: "node-registers-and-deregisters-routes-in-sequence",
@@ -80,18 +132,23 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1) // Deregister by setting no routes
 				return pr.SetRoutes(1, mp("192.168.3.0/24"))
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
-		},
-		{
-			name: "no-change-in-primary-routes",
-			operations: func(pr *PrimaryRoutes) bool {
-				return pr.SetRoutes(1, mp("192.168.1.0/24"))
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.3.0/24"): {},
+				},
+				2: {
+					mp("192.168.2.0/24"): {},
+				},
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.2.0/24"): 2,
+				mp("192.168.3.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+				2: true,
+			},
+			expectedChange: true,
 		},
 		{
 			name: "multiple-nodes-register-same-route",
@@ -100,21 +157,24 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(2, mp("192.168.1.0/24"))        // true
 				return pr.SetRoutes(3, mp("192.168.1.0/24")) // false
 			},
-			nodeID:         1,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
-			expectedChange: false,
-		},
-		{
-			name: "register-multiple-routes-shift-primary-check-old-primary",
-			operations: func(pr *PrimaryRoutes) bool {
-				pr.SetRoutes(1, mp("192.168.1.0/24")) // false
-				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 1 primary
-				pr.SetRoutes(3, mp("192.168.1.0/24")) // false, 1 primary
-				return pr.SetRoutes(1)                // true, 2 primary
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: true,
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedChange: false,
 		},
 		{
 			name: "register-multiple-routes-shift-primary-check-primary",
@@ -124,20 +184,20 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(3, mp("192.168.1.0/24")) // false, 1 primary
 				return pr.SetRoutes(1)                // true, 2 primary
 			},
-			nodeID:         2,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
-			expectedChange: true,
-		},
-		{
-			name: "register-multiple-routes-shift-primary-check-non-primary",
-			operations: func(pr *PrimaryRoutes) bool {
-				pr.SetRoutes(1, mp("192.168.1.0/24")) // false
-				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 1 primary
-				pr.SetRoutes(3, mp("192.168.1.0/24")) // false, 1 primary
-				return pr.SetRoutes(1)                // true, 2 primary
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
 			},
-			nodeID:         3,
-			expectedRoutes: nil,
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
 			expectedChange: true,
 		},
 		{
@@ -150,8 +210,17 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return pr.SetRoutes(2) // true, no primary
 			},
-			nodeID:         2,
-			expectedRoutes: nil,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 3,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				3: true,
+			},
 			expectedChange: true,
 		},
 		{
@@ -165,9 +234,7 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return pr.SetRoutes(3) // false, no primary
 			},
-			nodeID:         2,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedChange: true,
 		},
 		{
 			name: "primary-route-map-is-cleared-up",
@@ -179,8 +246,17 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return pr.SetRoutes(2) // true, no primary
 			},
-			nodeID:         2,
-			expectedRoutes: nil,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 3,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				3: true,
+			},
 			expectedChange: true,
 		},
 		{
@@ -193,8 +269,23 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return pr.SetRoutes(1, mp("192.168.1.0/24")) // false, 2 primary
 			},
-			nodeID:         2,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
 			expectedChange: false,
 		},
 		{
@@ -207,8 +298,23 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return pr.SetRoutes(1, mp("192.168.1.0/24")) // false, 2 primary
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				2: true,
+			},
 			expectedChange: false,
 		},
 		{
@@ -218,15 +324,30 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 1 primary
 				pr.SetRoutes(3, mp("192.168.1.0/24")) // false, 1 primary
 				pr.SetRoutes(1)                       // true, 2 primary
-				pr.SetRoutes(2)                       // true, no primary
-				pr.SetRoutes(1, mp("192.168.1.0/24")) // true, 1 primary
-				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 1 primary
-				pr.SetRoutes(1)                       // true, 2 primary
+				pr.SetRoutes(2)                       // true, 3 primary
+				pr.SetRoutes(1, mp("192.168.1.0/24")) // true, 3 primary
+				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 3 primary
+				pr.SetRoutes(1)                       // true, 3 primary
 
-				return pr.SetRoutes(1, mp("192.168.1.0/24")) // false, 2 primary
+				return pr.SetRoutes(1, mp("192.168.1.0/24")) // false, 3 primary
 			},
-			nodeID:         2,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+				3: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 3,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				3: true,
+			},
 			expectedChange: false,
 		},
 		{
@@ -235,16 +356,27 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("0.0.0.0/0"), mp("192.168.1.0/24"))
 				return pr.SetRoutes(2, mp("192.168.1.0/24"))
 			},
-			nodeID:         1,
-			expectedRoutes: []netip.Prefix{mp("192.168.1.0/24")},
-			expectedChange: true,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.1.0/24"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
+			expectedChange: false,
 		},
 		{
 			name: "deregister-non-existent-route",
 			operations: func(pr *PrimaryRoutes) bool {
 				return pr.SetRoutes(1) // Deregister by setting no routes
 			},
-			nodeID:         1,
 			expectedRoutes: nil,
 			expectedChange: false,
 		},
@@ -253,17 +385,27 @@ func TestPrimaryRoutes(t *testing.T) {
 			operations: func(pr *PrimaryRoutes) bool {
 				return pr.SetRoutes(1)
 			},
-			nodeID:         1,
 			expectedRoutes: nil,
 			expectedChange: false,
 		},
 		{
-			name: "deregister-empty-prefix-list",
+			name: "exit-nodes",
 			operations: func(pr *PrimaryRoutes) bool {
-				return pr.SetRoutes(1)
+				pr.SetRoutes(1, mp("10.0.0.0/16"), mp("0.0.0.0/0"), mp("::/0"))
+				pr.SetRoutes(3, mp("0.0.0.0/0"), mp("::/0"))
+				return pr.SetRoutes(2, mp("0.0.0.0/0"), mp("::/0"))
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("10.0.0.0/16"): {},
+				},
+			},
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("10.0.0.0/16"): 1,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+			},
 			expectedChange: false,
 		},
 		{
@@ -284,19 +426,23 @@ func TestPrimaryRoutes(t *testing.T) {
 
 				return change1 || change2
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
-		},
-		{
-			name: "no-routes-registered",
-			operations: func(pr *PrimaryRoutes) bool {
-				// No operations
-				return false
+			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
+				1: {
+					mp("192.168.1.0/24"): {},
+				},
+				2: {
+					mp("192.168.2.0/24"): {},
+				},
 			},
-			nodeID:         1,
-			expectedRoutes: nil,
-			expectedChange: false,
+			expectedPrimaries: map[netip.Prefix]types.NodeID{
+				mp("192.168.1.0/24"): 1,
+				mp("192.168.2.0/24"): 2,
+			},
+			expectedIsPrimary: map[types.NodeID]bool{
+				1: true,
+				2: true,
+			},
+			expectedChange: true,
 		},
 	}
 
@@ -307,9 +453,15 @@ func TestPrimaryRoutes(t *testing.T) {
 			if change != tt.expectedChange {
 				t.Errorf("change = %v, want %v", change, tt.expectedChange)
 			}
-			routes := pr.PrimaryRoutes(tt.nodeID)
-			if diff := cmp.Diff(tt.expectedRoutes, routes, util.Comparers...); diff != "" {
-				t.Errorf("PrimaryRoutes() mismatch (-want +got):\n%s", diff)
+			comps := append(util.Comparers, cmpopts.EquateEmpty())
+			if diff := cmp.Diff(tt.expectedRoutes, pr.routes, comps...); diff != "" {
+				t.Errorf("routes mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.expectedPrimaries, pr.primaries, comps...); diff != "" {
+				t.Errorf("primaries mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.expectedIsPrimary, pr.isPrimary, comps...); diff != "" {
+				t.Errorf("isPrimary mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

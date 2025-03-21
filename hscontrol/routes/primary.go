@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	xmaps "golang.org/x/exp/maps"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 )
 
@@ -74,18 +75,12 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// If the current primary is not available, select a new one.
 	for prefix, nodes := range allPrimaries {
 		if node, ok := pr.primaries[prefix]; ok {
-			if len(nodes) < 2 {
-				delete(pr.primaries, prefix)
-				changed = true
-				continue
-			}
-
 			// If the current primary is still available, continue.
 			if slices.Contains(nodes, node) {
 				continue
 			}
 		}
-		if len(nodes) >= 2 {
+		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
 		}
@@ -107,12 +102,16 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	return changed
 }
 
-func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefix ...netip.Prefix) bool {
+// SetRoutes sets the routes for a given Node ID and recalculates the primary routes
+// of the headscale.
+// It returns true if there was a change in primary routes.
+// All exit routes are ignored as they are not used in primary route context.
+func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) bool {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
 	// If no routes are being set, remove the node from the routes map.
-	if len(prefix) == 0 {
+	if len(prefixes) == 0 {
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
 			return pr.updatePrimaryLocked()
@@ -121,12 +120,17 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefix ...netip.Prefix) bo
 		return false
 	}
 
-	if _, ok := pr.routes[node]; !ok {
-		pr.routes[node] = make(set.Set[netip.Prefix], len(prefix))
+	rs := make(set.Set[netip.Prefix], len(prefixes))
+	for _, prefix := range prefixes {
+		if !tsaddr.IsExitRoute(prefix) {
+			rs.Add(prefix)
+		}
 	}
 
-	for _, p := range prefix {
-		pr.routes[node].Add(p)
+	if rs.Len() != 0 {
+		pr.routes[node] = rs
+	} else {
+		delete(pr.routes, node)
 	}
 
 	return pr.updatePrimaryLocked()
@@ -153,6 +157,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
+	tsaddr.SortPrefixes(routes)
 	return routes
 }
 

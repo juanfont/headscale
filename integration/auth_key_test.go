@@ -19,14 +19,14 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
+			spec := ScenarioSpec{
+				NodesPerUser: len(MustTestVersions),
+				Users:        []string{"user1", "user2"},
+			}
+
+			scenario, err := NewScenario(spec)
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
-
-			spec := map[string]int{
-				"user1": len(MustTestVersions),
-				"user2": len(MustTestVersions),
-			}
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
@@ -35,7 +35,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}...)
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()
@@ -84,7 +84,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
-			for userName := range spec {
+			for _, userName := range spec.Users {
 				key, err := scenario.CreatePreAuthKey(userName, true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
@@ -152,16 +152,16 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-		"user2": len(MustTestVersions),
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{},
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
 		hsic.WithTLS(),
 	)
@@ -203,7 +203,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	// Log in all clients as user1, iterating over the spec only returns the
 	// clients, not the usernames.
-	for userName := range spec {
+	for _, userName := range spec.Users {
 		err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
 		if err != nil {
 			t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
@@ -235,14 +235,14 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
+			spec := ScenarioSpec{
+				NodesPerUser: len(MustTestVersions),
+				Users:        []string{"user1", "user2"},
+			}
+
+			scenario, err := NewScenario(spec)
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
-
-			spec := map[string]int{
-				"user1": len(MustTestVersions),
-				"user2": len(MustTestVersions),
-			}
 
 			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
 			if https {
@@ -251,7 +251,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				}...)
 			}
 
-			err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{}, opts...)
+			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
 			assertNoErrHeadscaleEnv(t, err)
 
 			allClients, err := scenario.ListTailscaleClients()
@@ -300,7 +300,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
-			for userName := range spec {
+			for _, userName := range spec.Users {
 				key, err := scenario.CreatePreAuthKey(userName, true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)

@@ -2,13 +2,13 @@ package mapper
 
 import (
 	"fmt"
-	"net/netip"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -49,14 +49,6 @@ func tailNode(
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
 
-	allowedIPs := append(
-		[]netip.Prefix{},
-		addrs...) // we append the node own IP, as it is required by the clients
-
-	for _, route := range node.SubnetRoutes() {
-		allowedIPs = append(allowedIPs, netip.Prefix(route))
-	}
-
 	var derp int
 
 	// TODO(kradalby): legacyDERP was removed in tailscale/tailscale@2fc4455e6dd9ab7f879d4e2f7cffc2be81f14077
@@ -89,6 +81,10 @@ func tailNode(
 	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
+	allowed := append(node.Prefixes(), primary.PrimaryRoutes(node.ID)...)
+	allowed = append(allowed, node.ExitRoutes()...)
+	tsaddr.SortPrefixes(allowed)
+
 	tNode := tailcfg.Node{
 		ID:       tailcfg.NodeID(node.ID), // this is the actual ID
 		StableID: node.ID.StableID(),
@@ -104,7 +100,7 @@ func tailNode(
 		DiscoKey:         node.DiscoKey,
 		Addresses:        addrs,
 		PrimaryRoutes:    primary.PrimaryRoutes(node.ID),
-		AllowedIPs:       allowedIPs,
+		AllowedIPs:       allowed,
 		Endpoints:        node.Endpoints,
 		HomeDERP:         derp,
 		LegacyDERPString: legacyDERP,
