@@ -969,6 +969,10 @@ var (
 func findUserFromToken(users []types.User, token string) (types.User, error) {
 	var potentialUsers []types.User
 
+	// This adds the v2 support to looking up users with the new required
+	// policyv2 format where usernames have @ at the end if they are not emails.
+	token = strings.TrimSuffix(token, "@")
+
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == token {
 			// Prioritize ProviderIdentifier match and exit early
