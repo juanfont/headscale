@@ -14,7 +14,9 @@ provides on overview of headscale's feature and compatibility with the Tailscale
     - [x] [search domains](https://tailscale.com/kb/1054/dns#search-domains)
     - [x] [Extra DNS records (headscale only)](../ref/dns.md#setting-extra-dns-records)
 - [x] [Taildrop (File Sharing)](https://tailscale.com/kb/1106/taildrop)
-- [x] Routing advertising (including exit nodes)
+- [x] Routes
+    - [x] [Subnet routers](https://tailscale.com/kb/1019/subnets)
+    - [x] [Exit nodes](https://tailscale.com/kb/1103/exit-nodes)
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
 - [x] Embedded [DERP server](https://tailscale.com/kb/1232/derp-servers)

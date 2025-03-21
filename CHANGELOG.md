@@ -16,7 +16,7 @@ this, the CLI and API has been simplified to reflect the changes;
 
 ```console
 $ headscale nodes list-routes
-ID | Hostname           | Approved | Available       | Serving
+ID | Hostname           | Approved | Available       | Serving (Primary)
 1  | ts-head-ruqsg8     |          | 0.0.0.0/0, ::/0 |
 2  | ts-unstable-fq7ob4 |          | 0.0.0.0/0, ::/0 |
 
@@ -24,7 +24,7 @@ $ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0,::/0
 Node updated
 
 $ headscale nodes list-routes
-ID | Hostname           | Approved        | Available       | Serving
+ID | Hostname           | Approved        | Available       | Serving (Primary)
 1  | ts-head-ruqsg8     | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0
 2  | ts-unstable-fq7ob4 |                 | 0.0.0.0/0, ::/0 |
 ```
@@ -106,6 +106,8 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2503](https://github.com/juanfont/headscale/pull/2503)
 - Restore support for "Override local DNS"
   [#2438](https://github.com/juanfont/headscale/pull/2438)
+- Add documentation for routes
+  [#2496](https://github.com/juanfont/headscale/pull/2496)
 
 ## 0.25.1 (2025-02-25)
 

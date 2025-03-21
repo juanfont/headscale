@@ -79,7 +79,8 @@ plugins:
         android-client.md: usage/connect/android.md
         apple-client.md: usage/connect/apple.md
         dns-records.md: ref/dns.md
-        exit-node.md: ref/exit-node.md
+        exit-node.md: ref/routes.md
+        ref/exit-node.md: ref/routes.md
         faq.md: about/faq.md
         iOS-client.md: usage/connect/apple.md#ios
         oidc.md: ref/oidc.md
@@ -179,7 +180,7 @@ nav:
   - Reference:
       - Configuration: ref/configuration.md
       - OIDC authentication: ref/oidc.md
-      - Exit node: ref/exit-node.md
+      - Routes: ref/routes.md
       - TLS: ref/tls.md
       - ACLs: ref/acls.md
       - DNS: ref/dns.md
