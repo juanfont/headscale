@@ -196,7 +196,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// and from what I can see, the generateMagicDNSRootDomains
 	// function is called only once over the lifetime of a server process.
 	prefixConstantParts := []string{}
-	for i := 0; i < maskBits/nibbleLen; i++ {
+	for i := range maskBits / nibbleLen {
 		prefixConstantParts = append(
 			[]string{string(nibbleStr[i])},
 			prefixConstantParts...)
@@ -215,7 +215,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	} else {
 		domCount := 1 << (maskBits % nibbleLen)
 		fqdns = make([]dnsname.FQDN, 0, domCount)
-		for i := 0; i < domCount; i++ {
+		for i := range domCount {
 			varNibble := fmt.Sprintf("%x", i)
 			dom, err := makeDomain(varNibble)
 			if err != nil {

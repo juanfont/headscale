@@ -26,7 +26,7 @@ var retry = func(times int, sleepInterval time.Duration,
 	var stderr string
 	var err error
 
-	for attempts := 0; attempts < times; attempts++ {
+	for range times {
 		tempResult, tempStderr, err := doWork()
 
 		result += tempResult
@@ -94,7 +94,7 @@ func TestSSHOneUserToAll(t *testing.T) {
 	scenario := sshScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-test": {"user1"},
+				"group:integration-test": {"user1@"},
 			},
 			ACLs: []policyv1.ACL{
 				{
@@ -159,7 +159,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	scenario := sshScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-test": {"user1", "user2"},
+				"group:integration-test": {"user1@", "user2@"},
 			},
 			ACLs: []policyv1.ACL{
 				{
@@ -212,7 +212,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	scenario := sshScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-test": {"user1"},
+				"group:integration-test": {"user1@"},
 			},
 			ACLs: []policyv1.ACL{
 				{
@@ -254,7 +254,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	scenario := sshScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-test": {"user1"},
+				"group:integration-test": {"user1@"},
 			},
 			ACLs: []policyv1.ACL{
 				{
@@ -303,8 +303,8 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 	scenario := sshScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:ssh1": {"user1"},
-				"group:ssh2": {"user2"},
+				"group:ssh1": {"user1@"},
+				"group:ssh2": {"user2@"},
 			},
 			ACLs: []policyv1.ACL{
 				{

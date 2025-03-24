@@ -567,7 +567,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	})
 	go e.Start()
 
-	for i := 0; i < want; i++ {
+	for i := range want {
 		go e.Schedule(types.NodeID(i), 1*time.Second)
 	}
 

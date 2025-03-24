@@ -137,13 +137,13 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:*"},
 					},
 				},
 			}, want: map[string]int{
@@ -160,23 +160,23 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:22"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:22"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user2:22"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user2@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user1:22"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user1@:22"},
 					},
 				},
 			}, want: map[string]int{
@@ -194,18 +194,18 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user2@:*"},
 					},
 				},
 			}, want: map[string]int{
@@ -219,18 +219,18 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: append([]string{"user1:*"}, veryLargeDestination...),
+						Sources:      []string{"user1@"},
+						Destinations: append([]string{"user1@:*"}, veryLargeDestination...),
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+						Sources:      []string{"user2@"},
+						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+						Sources:      []string{"user1@"},
+						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
 					},
 				},
 			}, want: map[string]int{
@@ -299,8 +299,8 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
-					Destinations: []string{"user2:80"},
+					Sources:      []string{"user1@"},
+					Destinations: []string{"user2@:80"},
 				},
 			},
 		},
@@ -351,7 +351,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 	scenario := aclScenario(t,
 		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-acl-test": {"user1", "user2"},
+				"group:integration-acl-test": {"user1@", "user2@"},
 			},
 			ACLs: []policyv1.ACL{
 				{
@@ -400,8 +400,8 @@ func TestACLAllowUserDst(t *testing.T) {
 			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
-					Destinations: []string{"user2:*"},
+					Sources:      []string{"user1@"},
+					Destinations: []string{"user2@:*"},
 				},
 			},
 		},
@@ -456,7 +456,7 @@ func TestACLAllowStarDst(t *testing.T) {
 			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
+					Sources:      []string{"user1@"},
 					Destinations: []string{"*:*"},
 				},
 			},
@@ -912,8 +912,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 		"group": {
 			policy: policyv1.ACLPolicy{
 				Groups: map[string][]string{
-					"group:one": {"user1"},
-					"group:two": {"user2"},
+					"group:one": {"user1@"},
+					"group:two": {"user2@"},
 				},
 				ACLs: []policyv1.ACL{
 					{
@@ -1079,8 +1079,8 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		ACLs: []policyv1.ACL{
 			{
 				Action:       "accept",
-				Sources:      []string{"user1"},
-				Destinations: []string{"user2:*"},
+				Sources:      []string{"user1@"},
+				Destinations: []string{"user2@:*"},
 			},
 		},
 		Hosts: policyv1.Hosts{},

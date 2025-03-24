@@ -345,7 +345,7 @@ func TestTaildrop(t *testing.T) {
 
 	retry := func(times int, sleepInterval time.Duration, doWork func() error) error {
 		var err error
-		for attempts := 0; attempts < times; attempts++ {
+		for range times {
 			err = doWork()
 			if err == nil {
 				return nil
