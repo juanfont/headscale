@@ -270,6 +270,10 @@ dns:
   # `hostname.base_domain` (e.g., _myhost.example.com_).
   base_domain: example.com
 
+  # Whether to use the local DNS settings of a node (default) or override the
+  # local DNS settings and force the use of Headscale's DNS configuration.
+  override_local_dns: false
+
   # List of DNS servers to expose to clients.
   nameservers:
     global:
