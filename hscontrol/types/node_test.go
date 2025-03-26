@@ -142,7 +142,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 		{
 			name: "all-set",
@@ -153,7 +153,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 		{
 			name: "no-given-name",
@@ -171,7 +171,7 @@ func TestNodeFQDN(t *testing.T) {
 				GivenName: strings.Repeat("a", 256),
 			},
 			domain:  "example.com",
-			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
+			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com.): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
 		},
 		{
 			name: "no-dnsconfig",
@@ -182,7 +182,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 	}
 
