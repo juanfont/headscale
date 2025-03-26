@@ -169,6 +169,32 @@ func TestTailNode(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "check-dot-suffix-on-node-name",
+			node: &types.Node{
+				GivenName: "minimal",
+				Hostinfo:  &tailcfg.Hostinfo{},
+			},
+			dnsConfig:  &tailcfg.DNSConfig{},
+			baseDomain: "example.com",
+			want: &tailcfg.Node{
+				// a node name should have a dot appended
+				Name:              "minimal.example.com.",
+				StableID:          "0",
+				HomeDERP:          0,
+				LegacyDERPString:  "127.3.3.40:0",
+				Hostinfo:          hiview(tailcfg.Hostinfo{}),
+				Tags:              []string{},
+				MachineAuthorized: true,
+
+				CapMap: tailcfg.NodeCapMap{
+					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+					tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+				},
+			},
+			wantErr: false,
+		},
 		// TODO: Add tests to check other aspects of the node conversion:
 		// - With tags and policy
 		// - dnsconfig and basedomain
