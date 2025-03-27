@@ -83,6 +83,10 @@ The new policy can be used by setting the environment variable
   - It is now possible to inspect running goroutines and take profiles
   - View of config, policy, filter, ssh policy per node, connected nodes and
     DERPmap
+- OIDC: Fetch UserInfo to get EmailVerified if necessary
+  [#2493](https://github.com/juanfont/headscale/pull/2493)
+  - If a OIDC provider doesn't include the `email_verified` claim in its ID
+    tokens, Headscale will attempt to get it from the UserInfo endpoint.
 
 ## 0.25.1 (2025-02-25)
 
