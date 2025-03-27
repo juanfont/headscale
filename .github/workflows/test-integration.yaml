@@ -66,8 +66,6 @@ jobs:
           - Test2118DeletingOnlineNodePanics
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
-          - TestEnableDisableAutoApprovedRoute
-          - TestAutoApprovedSubRoute2068
           - TestSubnetRouteACL
           - TestEnablingExitRoutes
           - TestSubnetRouterMultiNetwork
