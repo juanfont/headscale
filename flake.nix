@@ -81,6 +81,9 @@
         # golangci-lint = prev.golangci-lint.override {
         #   buildGoModule = buildGo;
         # };
+        # golangci-lint-langserver = prev.golangci-lint.override {
+        #   buildGoModule = buildGo;
+        # };
 
         goreleaser = prev.goreleaser.override {
           buildGoModule = buildGo;
@@ -114,6 +117,7 @@
         buildDeps
         ++ [
           golangci-lint
+          golangci-lint-langserver
           golines
           nodePackages.prettier
           goreleaser
