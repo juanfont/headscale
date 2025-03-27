@@ -411,6 +411,18 @@ func New(
 		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
 	}
 
+	if hsic.aclPolicy != nil {
+		data, err := json.Marshal(hsic.aclPolicy)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal ACL Policy to JSON: %w", err)
+		}
+
+		err = hsic.WriteFile(aclPolicyPath, data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to write ACL policy to container: %w", err)
+		}
+	}
+
 	if hsic.hasTLS() {
 		err = hsic.WriteFile(tlsCertPath, hsic.tlsCert)
 		if err != nil {
