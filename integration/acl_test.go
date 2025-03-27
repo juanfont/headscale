@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -1033,9 +1033,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
-		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
-		}),
+		hsic.WithPolicyMode(types.PolicyModeDB),
 	)
 	require.NoError(t, err)
 
@@ -1086,24 +1084,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		Hosts: policyv1.Hosts{},
 	}
 
-	pBytes, _ := json.Marshal(p)
-
-	policyFilePath := "/etc/headscale/policy.json"
-
-	err = headscale.WriteFile(policyFilePath, pBytes)
-	require.NoError(t, err)
-
-	// No policy is present at this time.
-	// Add a new policy from a file.
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"policy",
-			"set",
-			"-f",
-			policyFilePath,
-		},
-	)
+	err = headscale.SetPolicy(&p)
 	require.NoError(t, err)
 
 	// Get the current policy and check
