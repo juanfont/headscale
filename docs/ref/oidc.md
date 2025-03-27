@@ -177,3 +177,37 @@ However if you don't have a domain, or need to add users outside of your domain,
     ```
 
 You can also use `allowed_domains` and `allowed_users` to restrict the users who can authenticate.
+
+## Authelia
+Authelia since v4.39.0, has removed most claims from the `ID Token`, they are still available when application queries [UserInfo Endpoint](https://openid.net/specs/openid-connect-core-1_0.html#UserInfo). 
+
+Following config restores sending 'default' claims in the `ID Token`
+
+For more information please read: [Authelia restore functionality prior to claims parameter](https://www.authelia.com/integration/openid-connect/openid-connect-1.0-claims/#restore-functionality-prior-to-claims-parameter)
+
+
+```yaml
+identity_providers:
+  oidc:
+    claims_policies:
+      default:
+        id_token: ['groups', 'email', 'email_verified', 'alt_emails', 'preferred_username', 'name']
+    clients:
+      - client_id: 'headscale'
+        client_name: 'headscale'
+        client_secret: ''
+        public: false
+        claims_policy: 'default'
+        authorization_policy: 'two_factor'
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        redirect_uris:
+          - 'https://headscale.example.com/oidc/callback'
+        scopes:
+          - 'openid'
+          - 'profile'
+          - 'groups'
+          - 'email'
+        userinfo_signed_response_alg: 'none'
+        token_endpoint_auth_method: 'client_secret_basic'
+```
