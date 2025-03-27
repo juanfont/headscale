@@ -13,6 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -786,25 +787,27 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithTags([]string{"tag:approve"}),
 		tsic.WithAcceptRoutes(),
-	}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policyv1.ACLPolicy{
-			ACLs: []policyv1.ACL{
-				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+	}, hsic.WithTestName("clienableroute"),
+		hsic.WithACLPolicy(
+			&policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {"user1"},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						expectedRoutes: {"tag:approve"},
+					},
 				},
 			},
-			TagOwners: map[string][]string{
-				"tag:approve": {"user1"},
-			},
-			AutoApprovers: policyv1.AutoApprovers{
-				Routes: map[string][]string{
-					expectedRoutes: {"tag:approve"},
-				},
-			},
-		},
-	))
+		),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1468,10 +1471,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	}
 
 	// Enable route
-	_, err = headscale.ApproveRoutes(
-		nodes[0].Id,
-		[]netip.Prefix{tsaddr.AllIPv4()},
-	)
+	_, err = headscale.ApproveRoutes(nodes[0].Id, []netip.Prefix{tsaddr.AllIPv4()})
 	require.NoError(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -1527,8 +1527,8 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 // by setting up two networks where network1 has three subnet
 // routers:
 // - routerUsernet1: advertising the docker network
-// - TODO(kradalby): routerSubRoute: advertising a subroute, a /24 inside a auto approved /16
-// - TODO(kradalby): routeExitNode: advertising an exit node
+// - routerSubRoute: advertising a subroute, a /24 inside a auto approved /16
+// - routeExitNode: advertising an exit node
 //
 // Each router is tested step by step through the following scenarios
 //   - Policy is set to auto approve the nodes route
@@ -1559,8 +1559,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	}
 
 	rootRoute := netip.MustParsePrefix("10.42.0.0/16")
-	// subRoute := netip.MustParsePrefix("10.42.7.0/24")
-	// notApprovedRoute := netip.MustParsePrefix("192.168.0.0/24")
+	subRoute := netip.MustParsePrefix("10.42.7.0/24")
+	notApprovedRoute := netip.MustParsePrefix("192.168.0.0/24")
 
 	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
@@ -1639,8 +1639,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	// nodes, which are subnet routes, will be created first, and the last user
 	// will be created with the second.
 	routerUsernet1 := allClients[0]
-	// routerSubRoute := allClients[1]
-	// routeExitNode := allClients[2]
+	routerSubRoute := allClients[1]
+	routerExitNode := allClients[2]
 
 	client := allClients[3]
 
@@ -1789,6 +1789,111 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	tr, err = client.Traceroute(webip)
 	require.NoError(t, err)
 	assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
+
+	// Advertise and validate a subnet of an auto approved route, /24 inside the
+	// auto approved /16.
+	command = []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + subRoute.String(),
+	}
+	_, _, err = routerSubRoute.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	time.Sleep(5 * time.Second)
+
+	// These route should auto approve, so the node is expected to have a route
+	// for all counts.
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
+
+	// Verify that the routes have been sent to the client.
+	status, err = client.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		if peerStatus.ID == "1" {
+			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+		} else if peerStatus.ID == "2" {
+			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), subRoute)
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{subRoute})
+		} else {
+			requirePeerSubnetRoutes(t, peerStatus, nil)
+		}
+	}
+
+	// Advertise a not approved route will not end up anywhere
+	command = []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + notApprovedRoute.String(),
+	}
+	_, _, err = routerSubRoute.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	time.Sleep(5 * time.Second)
+
+	// These route should auto approve, so the node is expected to have a route
+	// for all counts.
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
+	assertNodeRouteCount(t, nodes[2], 0, 0, 0)
+
+	// Verify that the routes have been sent to the client.
+	status, err = client.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		if peerStatus.ID == "1" {
+			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+		} else {
+			requirePeerSubnetRoutes(t, peerStatus, nil)
+		}
+	}
+
+	// Exit routes are also automatically approved
+	command = []string{
+		"tailscale",
+		"set",
+		"--advertise-exit-node",
+	}
+	_, _, err = routerExitNode.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	time.Sleep(5 * time.Second)
+
+	nodes, err = headscale.ListNodes()
+	require.NoError(t, err)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
+	assertNodeRouteCount(t, nodes[2], 2, 2, 2)
+
+	// Verify that the routes have been sent to the client.
+	status, err = client.Status()
+	require.NoError(t, err)
+
+	for _, peerKey := range status.Peers() {
+		peerStatus := status.Peer[peerKey]
+
+		if peerStatus.ID == "1" {
+			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+		} else if peerStatus.ID == "3" {
+			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+		} else {
+			requirePeerSubnetRoutes(t, peerStatus, nil)
+		}
+	}
 }
 
 func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
