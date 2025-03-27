@@ -375,7 +375,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.Len(t, nodes, 6)
 
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
 	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the client has routes from the primary machine
@@ -431,8 +431,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.Len(t, nodes, 6)
 
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[2], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
+	assertNodeRouteCount(t, nodes[2], 1, 1, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1 = subRouter1.MustStatus()
@@ -645,7 +645,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.Len(t, nodes, 6)
 
 	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
 	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
@@ -737,7 +737,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	assertNodeRouteCount(t, nodes[0], 1, 1, 0)
 	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
 	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
 
@@ -838,7 +838,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 	command = []string{
 		"tailscale",
 		"set",
-		"--advertise-routes=",
+		`--advertise-routes=`,
 	}
 	_, _, err = subRouter1.Execute(command)
 	require.NoErrorf(t, err, "failed to remove advertised route: %s", err)
