@@ -458,29 +458,31 @@ func (m *mapSession) handleEndpointUpdate() {
 		// TODO(kradalby): I am not sure if we need this?
 		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
 
-		// Approve routes if they are auto-approved by the policy.
-		// If any of them are approved, report them to the primary route tracker
-		// and send updates accordingly.
-		if policy.AutoApproveRoutes(m.h.polMan, m.node) {
-			if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-				ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
-				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-			} else {
-				ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
-				m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
+		// Approve any route that has been defined in policy as
+		// auto approved. Any change here is not important as any
+		// actual state change will be detected when the route manager
+		// is updated.
+		policy.AutoApproveRoutes(m.h.polMan, m.node)
 
-				// TODO(kradalby): I am not sure if we need this?
-				// Send an update to the node itself with to ensure it
-				// has an updated packetfilter allowing the new route
-				// if it is defined in the ACL.
-				ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-				m.h.nodeNotifier.NotifyByNodeID(
-					ctx,
-					types.UpdateSelf(m.node.ID),
-					m.node.ID)
-			}
+		// Update the routes of the given node in the route manager to
+		// see if an update needs to be sent.
+		if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+			ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
+			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		} else {
+			ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
+			m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
+
+			// TODO(kradalby): I am not sure if we need this?
+			// Send an update to the node itself with to ensure it
+			// has an updated packetfilter allowing the new route
+			// if it is defined in the ACL.
+			ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
+			m.h.nodeNotifier.NotifyByNodeID(
+				ctx,
+				types.UpdateSelf(m.node.ID),
+				m.node.ID)
 		}
-
 	}
 
 	// Check if there has been a change to Hostname and update them
@@ -506,8 +508,6 @@ func (m *mapSession) handleEndpointUpdate() {
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
-
-	return
 }
 
 func (m *mapSession) handleReadOnlyRequest() {
@@ -532,8 +532,6 @@ func (m *mapSession) handleReadOnlyRequest() {
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseReadOnly.WithLabelValues("ok").Inc()
-
-	return
 }
 
 func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
