@@ -72,6 +72,7 @@ jobs:
           - TestEnablingExitRoutes
           - TestSubnetRouterMultiNetwork
           - TestSubnetRouterMultiNetworkExitNode
+          - TestAutoApproveMultiNetwork
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
