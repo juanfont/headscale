@@ -76,14 +76,14 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
     === "Query with dig"
 
-        ```shell
+        ```console
         dig +short grafana.myvpn.example.com
         100.64.0.3
         ```
 
     === "Query with drill"
 
-        ```shell
+        ```console
         drill -Q grafana.myvpn.example.com
         100.64.0.3
         ```

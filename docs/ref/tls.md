@@ -52,7 +52,7 @@ If you want to validate that certificate renewal completed successfully, this ca
 1. Open the URL for your headscale server in your browser of choice, and manually inspecting the expiry date of the certificate you receive.
 2. Or, check remotely from CLI using `openssl`:
 
-```bash
+```console
 $ openssl s_client -servername [hostname] -connect [hostname]:443 | openssl x509 -noout -dates
 (...)
 notBefore=Feb  8 09:48:26 2024 GMT
