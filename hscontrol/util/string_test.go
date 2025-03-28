@@ -8,7 +8,7 @@ import (
 )
 
 func TestGenerateRandomStringDNSSafe(t *testing.T) {
-	for i := 0; i < 100000; i++ {
+	for range 100000 {
 		str, err := GenerateRandomStringDNSSafe(8)
 		require.NoError(t, err)
 		assert.Len(t, str, 8)

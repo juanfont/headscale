@@ -2964,6 +2964,16 @@ func TestFindUserByToken(t *testing.T) {
 			want:    types.User{},
 			wantErr: true,
 		},
+		{
+			name: "test-v2-format-working",
+			users: []types.User{
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user1", Email: "another1@example.com"},
+				{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user2", Email: "another2@example.com"},
+			},
+			token:   "user2",
+			want:    types.User{ProviderIdentifier: sql.NullString{Valid: false, String: ""}, Name: "user2", Email: "another2@example.com"},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
