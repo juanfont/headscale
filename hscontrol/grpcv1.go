@@ -739,6 +739,11 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	// Only send update if the packet filter has changed.
 	if changed {
+		err = api.h.autoApproveNodes()
+		if err != nil {
+			return nil, err
+		}
+
 		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}

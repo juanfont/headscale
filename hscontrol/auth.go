@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
@@ -212,6 +213,9 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		nodeToRegister.Expiry = &regReq.Expiry
 	}
 
+	// Ensure any auto approved routes are handled before saving.
+	policy.AutoApproveRoutes(h.polMan, &nodeToRegister)
+
 	ipv4, ipv6, err := h.ipAlloc.Next()
 	if err != nil {
 		return nil, fmt.Errorf("allocating IPs: %w", err)
@@ -266,7 +270,7 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, fmt.Errorf("generating registration ID: %w", err)
 	}
 
-	newNode := types.RegisterNode{
+	nodeToRegister := types.RegisterNode{
 		Node: types.Node{
 			Hostname:   regReq.Hostinfo.Hostname,
 			MachineKey: machineKey,
@@ -278,12 +282,15 @@ func (h *Headscale) handleRegisterInteractive(
 	}
 
 	if !regReq.Expiry.IsZero() {
-		newNode.Node.Expiry = &regReq.Expiry
+		nodeToRegister.Node.Expiry = &regReq.Expiry
 	}
+
+	// Ensure any auto approved routes are handled before saving.
+	policy.AutoApproveRoutes(h.polMan, &nodeToRegister.Node)
 
 	h.registrationCache.Set(
 		registrationId,
-		newNode,
+		nodeToRegister,
 	)
 
 	return &tailcfg.RegisterResponse{
