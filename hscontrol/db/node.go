@@ -84,6 +84,9 @@ func (hsdb *HSDatabase) ListNodesSubset(nodeIDs types.NodeIDs) (types.Nodes, err
 }
 
 func ListNodesSubset(tx *gorm.DB, nodeIDs types.NodeIDs) (types.Nodes, error) {
+	if len(nodeIDs) < 1 {
+		return types.Nodes{}, nil
+	}
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
