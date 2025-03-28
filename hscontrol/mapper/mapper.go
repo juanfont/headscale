@@ -3,7 +3,9 @@ package mapper
 import (
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"io/fs"
 	"net/url"
 	"os"
@@ -257,11 +259,6 @@ func (m *Mapper) PeerChangedResponse(
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
-
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
@@ -273,13 +270,21 @@ func (m *Mapper) PeerChangedResponse(
 	}
 
 	changedNodes := make(types.Nodes, 0, len(changedIDs))
-	for _, peer := range peers {
-		if slices.Contains(changedIDs, peer.ID) {
-			changedNodes = append(changedNodes, peer)
+	for _, changedID := range changedIDs {
+		if changedID != node.ID {
+			changedNode, err := m.GetNode(changedID)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				} else {
+					return nil, err
+				}
+			}
+			changedNodes = append(changedNodes, changedNode)
 		}
 	}
 
-	err = appendPeerChanges(
+	err := appendPeerChanges(
 		&resp,
 		false, // partial change
 		m.polMan,
@@ -494,6 +499,17 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	return peers, nil
+}
+
+func (m *Mapper) GetNode(nodeID types.NodeID) (*types.Node, error) {
+	node, err := m.db.GetNodeByID(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	online := m.notif.IsLikelyConnected(node.ID)
+	node.IsOnline = &online
+
+	return node, nil
 }
 
 func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
