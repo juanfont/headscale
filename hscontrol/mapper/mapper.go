@@ -257,26 +257,21 @@ func (m *Mapper) PeerChangedResponse(
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
-
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
 		if nodeChanged {
-			changedIDs = append(changedIDs, nodeID)
+			if nodeID != node.ID {
+				changedIDs = append(changedIDs, nodeID)
+			}
 		} else {
 			removedIDs = append(removedIDs, nodeID.NodeID())
 		}
 	}
 
-	changedNodes := make(types.Nodes, 0, len(changedIDs))
-	for _, peer := range peers {
-		if slices.Contains(changedIDs, peer.ID) {
-			changedNodes = append(changedNodes, peer)
-		}
+	changedNodes, err := m.ListNodesSubset(changedIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	err = appendPeerChanges(
@@ -494,6 +489,20 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	return peers, nil
+}
+
+func (m *Mapper) ListNodesSubset(nodeIDs []types.NodeID) (types.Nodes, error) {
+	nodes, err := m.db.ListNodesSubset(nodeIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		online := m.notif.IsLikelyConnected(node.ID)
+		node.IsOnline = &online
+	}
+
+	return nodes, nil
 }
 
 func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {

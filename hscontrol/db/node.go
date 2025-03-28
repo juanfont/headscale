@@ -77,6 +77,28 @@ func ListNodes(tx *gorm.DB) (types.Nodes, error) {
 	return nodes, nil
 }
 
+func (hsdb *HSDatabase) ListNodesSubset(nodeIDs types.NodeIDs) (types.Nodes, error) {
+	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
+		return ListNodesSubset(rx, nodeIDs)
+	})
+}
+
+func ListNodesSubset(tx *gorm.DB, nodeIDs types.NodeIDs) (types.Nodes, error) {
+	if len(nodeIDs) < 1 {
+		return types.Nodes{}, nil
+	}
+	nodes := types.Nodes{}
+	if err := tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Where(nodeIDs).Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+
+	return nodes, nil
+}
+
 func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}
