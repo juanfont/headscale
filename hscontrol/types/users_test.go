@@ -202,6 +202,37 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				},
 			},
 		},
+		{
+			// From https://github.com/juanfont/headscale/issues/2333
+			name: "casby-oidc-claim-20250513",
+			jsonstr: `
+			{
+  "sub": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "iss": "https://oidc.example.com/",
+  "aud": "xxxxxxxxxxxx",
+  "preferred_username": "user001",
+  "name": "User001",
+  "email": "user001@example.com",
+  "email_verified": true,
+  "picture": "https://cdn.casbin.org/img/casbin.svg",
+  "groups": [
+    "org1/department1",
+    "org1/department2"
+  ]
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				Name:        "user001",
+				DisplayName: "User001",
+				Email:       "user001@example.com",
+				ProviderIdentifier: sql.NullString{
+					String: "https://oidc.example.com//xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+					Valid:  true,
+				},
+				ProfilePicURL: "https://cdn.casbin.org/img/casbin.svg",
+			},
+		},
 	}
 
 	for _, tt := range tests {
