@@ -27,6 +27,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
@@ -349,7 +350,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		}
 	}
 	tsaddr.SortPrefixes(routes)
-	slices.Compact(routes)
+	routes = slices.Compact(routes)
 
 	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := db.SetApprovedRoutes(tx, types.NodeID(request.GetNodeId()), routes)
@@ -371,7 +372,10 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 	}
 
-	return &v1.SetApprovedRoutesResponse{Node: node.Proto()}, nil
+	proto := node.Proto()
+	proto.SubnetRoutes = util.PrefixesToString(api.h.primaryRoutes.PrimaryRoutes(node.ID))
+
+	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
 
 func validateTag(tag string) error {
@@ -497,7 +501,7 @@ func (api headscaleV1APIServer) ListNodes(
 			return nil, err
 		}
 
-		response := nodesToProto(api.h.polMan, isLikelyConnected, nodes)
+		response := nodesToProto(api.h.polMan, isLikelyConnected, api.h.primaryRoutes, nodes)
 		return &v1.ListNodesResponse{Nodes: response}, nil
 	}
 
@@ -510,11 +514,11 @@ func (api headscaleV1APIServer) ListNodes(
 		return nodes[i].ID < nodes[j].ID
 	})
 
-	response := nodesToProto(api.h.polMan, isLikelyConnected, nodes)
+	response := nodesToProto(api.h.polMan, isLikelyConnected, api.h.primaryRoutes, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
 }
 
-func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[types.NodeID, bool], nodes types.Nodes) []*v1.Node {
+func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[types.NodeID, bool], pr *routes.PrimaryRoutes, nodes types.Nodes) []*v1.Node {
 	response := make([]*v1.Node, len(nodes))
 	for index, node := range nodes {
 		resp := node.Proto()
@@ -532,6 +536,7 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 			}
 		}
 		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
+		resp.SubnetRoutes = util.PrefixesToString(append(pr.PrimaryRoutes(node.ID), node.ExitRoutes()...))
 		response[index] = resp
 	}
 
