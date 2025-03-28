@@ -115,21 +115,15 @@ The initial setup of a subnet router usually requires manual approval of their a
 before they can be used by a node in a tailnet. Headscale supports the `autoApprovers` section of an ACL to automate the
 approval of routes served with a subnet router.
 
-The ACL snippet below defines a group `group:routers` with one user `user` as member. This group owns the tag
-`tag:router` which is used for `routes` in the `autoApprovers` section. The IPv4 route `192.168.0.0/24` is automatically
-approved when announced by a new subnet router which is owned by the group `group:routers` and that also advertises the
-tag `tag:router`.
+The ACL snippet below defines the tag `tag:router` owned by the user `alice`. This tag is used for `routes` in the
+`autoApprovers` section. The IPv4 route `192.168.0.0/24` is automatically approved when announced by a new subnet router
+owned by the user `alice` and that also advertises the tag `tag:router`.
 
-```json title="Members of group:routers can automatically approve routes from subnet routers tagged with tag:router"
+```json title="Subnet routers owned by alice and tagged with tag:router are automatically approved"
 {
-  "groups": {
-    "group:routers": [
-      "user@"
-    ]
-  },
   "tagOwners": {
     "tag:router": [
-      "group:routers"
+      "alice@"
     ]
   },
   "autoApprovers": {
@@ -241,20 +235,15 @@ The initial setup of an exit node usually requires manual approval on the contro
 in a tailnet. Headscale supports the `autoApprovers` section of an ACL to automate the approval of a new exit node as
 soon as it joins the tailnet.
 
-The ACL snippet below defines a group `group:exits` with one user `user` as member. This group owns the tag `tag:exit`
-which is used for `exitNode` in the `autoApprovers` section. A new exit node which is owned by the group `group:exits`
-and that also advertises the tag `tag:exit` is automatically approved:
+The ACL snippet below defines the tag `tag:exit` owned by the user `alice`. This tag is used for `exitNode` in the
+`autoApprovers` section. A new exit node which is owned by the user `alice` and that also advertises the tag `tag:exit`
+is automatically approved:
 
-```json title="Members of group:exits can automatically approve exit nodes tagged with tag:exit"
+```json title="Exit nodes owned by alice and tagged with tag:exit are automatically approved"
 {
-  "groups": {
-    "group:exits": [
-      "user@"
-    ]
-  },
   "tagOwners": {
     "tag:exit": [
-      "group:exits"
+      "alice@"
     ]
   },
   "autoApprovers": {
