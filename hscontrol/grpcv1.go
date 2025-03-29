@@ -411,6 +411,59 @@ func (api headscaleV1APIServer) DeleteNode(
 	return &v1.DeleteNodeResponse{}, nil
 }
 
+func (api headscaleV1APIServer) ExtendNodeExpiration(
+	ctx context.Context,
+	request *v1.ExtendNodeExpirationRequest,
+) (*v1.ExtendNodeExpirationResponse, error) {
+	// Extract the new_expiration field as a Go time.Time value
+	newExpiry := request.GetNewExpiration().AsTime()
+
+	// Validate the provided expiration timestamp
+	if newExpiry.Before(time.Now()) {
+		return nil, status.Error(codes.InvalidArgument, "new expiration time must be in the future")
+	}
+
+	// Transactionally update the node's expiration timestamp in the database
+	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		// Set the new expiration timestamp for the node
+		err := db.NodeSetExpiry(
+			tx,
+			types.NodeID(request.GetNodeId()),
+			newExpiry,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Fetch the updated node
+		return db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
+	})
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Notify self about the update
+	ctx = types.NotifyCtx(ctx, "cli-extendnodeexpiration-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByNodeID(
+		ctx,
+		types.UpdateSelf(node.ID),
+		node.ID,
+	)
+
+	// Notify other peers about the updated expiration
+	ctx = types.NotifyCtx(ctx, "cli-extendnodeexpiration-peers", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, newExpiry), node.ID)
+
+	// Log the updated expiration
+	log.Trace().
+		Str("node", node.Hostname).
+		Time("new_expiry", newExpiry).
+		Msg("node expiration updated successfully")
+
+	// Return the updated node in the response
+	return &v1.ExtendNodeExpirationResponse{Node: node.Proto()}, nil
+}
+
 func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
