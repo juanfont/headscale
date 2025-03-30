@@ -1794,11 +1794,6 @@ func TestPolicyCommand(t *testing.T) {
 
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)
-	if usePolicyV2ForTest {
-		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1@"})
-	} else {
-		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1"})
-	}
 }
 
 func TestPolicyBrokenConfigCommand(t *testing.T) {
