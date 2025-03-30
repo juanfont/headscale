@@ -263,7 +263,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 	keys := make([]*v1.PreAuthKey, count)
 	assertNoErr(t, err)
 
-	for index := 0; index < count; index++ {
+	for index := range count {
 		var preAuthKey v1.PreAuthKey
 		err := executeAndUnmarshal(
 			headscale,
@@ -639,7 +639,7 @@ func TestApiKeyCommand(t *testing.T) {
 
 	keys := make([]string, count)
 
-	for idx := 0; idx < count; idx++ {
+	for idx := range count {
 		apiResult, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -716,7 +716,7 @@ func TestApiKeyCommand(t *testing.T) {
 	expiredPrefixes := make(map[string]bool)
 
 	// Expire three keys
-	for idx := 0; idx < 3; idx++ {
+	for idx := range 3 {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -951,7 +951,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 					},
 				},
 				TagOwners: map[string][]string{
-					"tag:test": {"user1"},
+					"tag:test": {"user1@"},
 				},
 			},
 			wantTag: true,
@@ -960,7 +960,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 			name: "with-policy-groups",
 			policy: &policyv1.ACLPolicy{
 				Groups: policyv1.Groups{
-					"group:admins": []string{"user1"},
+					"group:admins": []string{"user1@"},
 				},
 				ACLs: []policyv1.ACL{
 					{
@@ -1357,7 +1357,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	assert.True(t, listAll[3].GetExpiry().AsTime().IsZero())
 	assert.True(t, listAll[4].GetExpiry().AsTime().IsZero())
 
-	for idx := 0; idx < 3; idx++ {
+	for idx := range 3 {
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1484,7 +1484,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	assert.Contains(t, listAll[3].GetGivenName(), "node-4")
 	assert.Contains(t, listAll[4].GetGivenName(), "node-5")
 
-	for idx := 0; idx < 3; idx++ {
+	for idx := range 3 {
 		res, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -1751,11 +1751,8 @@ func TestPolicyCommand(t *testing.T) {
 			},
 		},
 		TagOwners: map[string][]string{
-			"tag:exists": {"user1"},
+			"tag:exists": {"user1@"},
 		},
-	}
-	if usePolicyV2ForTest {
-		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)
@@ -1797,11 +1794,6 @@ func TestPolicyCommand(t *testing.T) {
 
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)
-	if usePolicyV2ForTest {
-		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1@"})
-	} else {
-		assert.Equal(t, output.TagOwners["tag:exists"], []string{"user1"})
-	}
 }
 
 func TestPolicyBrokenConfigCommand(t *testing.T) {
@@ -1840,11 +1832,8 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			},
 		},
 		TagOwners: map[string][]string{
-			"tag:exists": {"user1"},
+			"tag:exists": {"user1@"},
 		},
-	}
-	if usePolicyV2ForTest {
-		hsic.RewritePolicyToV2(&p)
 	}
 
 	pBytes, _ := json.Marshal(p)

@@ -796,7 +796,7 @@ func TestEnableDisableAutoApprovedRoute(t *testing.T) {
 				},
 			},
 			TagOwners: map[string][]string{
-				"tag:approve": {"user1"},
+				"tag:approve": {"user1@"},
 			},
 			AutoApprovers: policyv1.AutoApprovers{
 				Routes: map[string][]string{
@@ -901,7 +901,7 @@ func TestAutoApprovedSubRoute2068(t *testing.T) {
 					},
 				},
 				TagOwners: map[string][]string{
-					"tag:approve": {user},
+					"tag:approve": {user + "@"},
 				},
 				AutoApprovers: policyv1.AutoApprovers{
 					Routes: map[string][]string{
@@ -964,7 +964,7 @@ func TestSubnetRouteACL(t *testing.T) {
 	}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
 		&policyv1.ACLPolicy{
 			Groups: policyv1.Groups{
-				"group:admins": {user},
+				"group:admins": {user + "@"},
 			},
 			ACLs: []policyv1.ACL{
 				{

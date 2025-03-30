@@ -440,16 +440,11 @@ func TestAutoApproveRoutes(t *testing.T) {
 				adb, err := newSQLiteTestDB()
 				require.NoError(t, err)
 
-				suffix := ""
-				if version == 1 {
-					suffix = "@"
-				}
-
-				user, err := adb.CreateUser(types.User{Name: "test" + suffix})
+				user, err := adb.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
-				_, err = adb.CreateUser(types.User{Name: "test2" + suffix})
+				_, err = adb.CreateUser(types.User{Name: "test2"})
 				require.NoError(t, err)
-				taggedUser, err := adb.CreateUser(types.User{Name: "tagged" + suffix})
+				taggedUser, err := adb.CreateUser(types.User{Name: "tagged"})
 				require.NoError(t, err)
 
 				node := types.Node{
@@ -572,7 +567,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	})
 	go e.Start()
 
-	for i := 0; i < want; i++ {
+	for i := range want {
 		go e.Schedule(types.NodeID(i), 1*time.Second)
 	}
 
