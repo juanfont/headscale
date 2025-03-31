@@ -448,7 +448,7 @@ func New(
 
 	// Load the database from policy file on repeat until it succeeds,
 	// this is done as the container sleeps before starting headscale.
-	if hsic.policyMode == types.PolicyModeDB {
+	if hsic.aclPolicy != nil && hsic.policyMode == types.PolicyModeDB {
 		err := pool.Retry(hsic.reloadDatabasePolicy)
 		if err != nil {
 			return nil, fmt.Errorf("loading database policy on startup: %w", err)

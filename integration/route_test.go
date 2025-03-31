@@ -1401,7 +1401,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			},
 		},
 		TagOwners: map[string][]string{
-			"tag:approve": {"user1"},
+			"tag:approve": {"user1@"},
 		},
 		AutoApprovers: policyv1.AutoApprovers{
 			Routes: map[string][]string{
@@ -1598,6 +1598,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		peerStatus := status.Peer[peerKey]
 
 		if peerStatus.ID == "1" {
+			require.NotNil(t, peerStatus.PrimaryRoutes)
 			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
 			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
 		} else {
