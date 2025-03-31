@@ -53,14 +53,15 @@ func NewPolicyManager(polB []byte, users []types.User, nodes types.Nodes) (*Poli
 }
 
 type PolicyManager struct {
-	mu  sync.Mutex
-	pol *ACLPolicy
+	mu      sync.Mutex
+	pol     *ACLPolicy
+	polHash deephash.Sum
 
 	users []types.User
 	nodes types.Nodes
 
-	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
+	filterHash deephash.Sum
 }
 
 // updateLocked updates the filter rules based on the current policy and nodes.
@@ -71,13 +72,16 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		return false, fmt.Errorf("compiling filter rules: %w", err)
 	}
 
+	polHash := deephash.Hash(pm.pol)
 	filterHash := deephash.Hash(&filter)
-	if filterHash == pm.filterHash {
+
+	if polHash == pm.polHash && filterHash == pm.filterHash {
 		return false, nil
 	}
 
 	pm.filter = filter
 	pm.filterHash = filterHash
+	pm.polHash = polHash
 
 	return true, nil
 }

@@ -866,6 +866,11 @@ func (h *Headscale) Serve() error {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
+					err = h.autoApproveNodes()
+					if err != nil {
+						log.Error().Err(err).Msg("failed to approve routes after new policy")
+					}
+
 					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
 					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 				}
@@ -1165,4 +1170,37 @@ func (h *Headscale) loadPolicyManager() error {
 	})
 
 	return errOut
+}
+
+// autoApproveNodes mass approves routes on all nodes. It is _only_ intended for
+// use when the policy is replaced. It is not sending or reporting any changes
+// or updates as we send full updates after replacing the policy.
+// TODO(kradalby): This is kind of messy, maybe this is another +1
+// for an event bus. See example comments here.
+func (h *Headscale) autoApproveNodes() error {
+	err := h.db.Write(func(tx *gorm.DB) error {
+		nodes, err := db.ListNodes(tx)
+		if err != nil {
+			return err
+		}
+
+		for _, node := range nodes {
+			changed := policy.AutoApproveRoutes(h.polMan, node)
+			if changed {
+				err = tx.Save(node).Error
+				if err != nil {
+					return err
+				}
+
+				h.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("auto approving routes for nodes: %w", err)
+	}
+
+	return nil
 }

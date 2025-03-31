@@ -71,6 +71,7 @@ type HeadscaleInContainer struct {
 	filesInContainer []fileInContainer
 	postgres         bool
 	policyV2         bool
+	policyMode       types.PolicyMode
 }
 
 // Option represent optional settings that can be given to a
@@ -195,6 +196,14 @@ func WithPolicyV2() Option {
 	}
 }
 
+// WithPolicy sets the policy mode for headscale
+func WithPolicyMode(mode types.PolicyMode) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.policyMode = mode
+		hsic.env["HEADSCALE_POLICY_MODE"] = string(mode)
+	}
+}
+
 // WithIPAllocationStrategy sets the tests IP Allocation strategy.
 func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
 	return func(hsic *HeadscaleInContainer) {
@@ -286,6 +295,7 @@ func New(
 
 		env:              DefaultConfigEnv(),
 		filesInContainer: []fileInContainer{},
+		policyMode:       types.PolicyModeFile,
 	}
 
 	for _, opt := range opts {
@@ -412,14 +422,9 @@ func New(
 	}
 
 	if hsic.aclPolicy != nil {
-		data, err := json.Marshal(hsic.aclPolicy)
+		err = hsic.writePolicy(hsic.aclPolicy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ACL Policy to JSON: %w", err)
-		}
-
-		err = hsic.WriteFile(aclPolicyPath, data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to write ACL policy to container: %w", err)
+			return nil, fmt.Errorf("writing policy: %w", err)
 		}
 	}
 
@@ -438,6 +443,15 @@ func New(
 	for _, f := range hsic.filesInContainer {
 		if err := hsic.WriteFile(f.path, f.contents); err != nil {
 			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
+		}
+	}
+
+	// Load the database from policy file on repeat until it succeeds,
+	// this is done as the container sleeps before starting headscale.
+	if hsic.aclPolicy != nil && hsic.policyMode == types.PolicyModeDB {
+		err := pool.Retry(hsic.reloadDatabasePolicy)
+		if err != nil {
+			return nil, fmt.Errorf("loading database policy on startup: %w", err)
 		}
 	}
 
@@ -820,6 +834,116 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 	}
 
 	return users, nil
+}
+
+func (h *HeadscaleInContainer) SetPolicy(pol *policyv1.ACLPolicy) error {
+	err := h.writePolicy(pol)
+	if err != nil {
+		return fmt.Errorf("writing policy file: %w", err)
+	}
+
+	switch h.policyMode {
+	case types.PolicyModeDB:
+		err := h.reloadDatabasePolicy()
+		if err != nil {
+			return fmt.Errorf("reloading database policy: %w", err)
+		}
+	case types.PolicyModeFile:
+		err := h.Reload()
+		if err != nil {
+			return fmt.Errorf("reloading policy file: %w", err)
+		}
+	default:
+		panic("policy mode is not valid: " + h.policyMode)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
+	_, err := h.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			aclPolicyPath,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("setting policy with db command: %w", err)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) writePolicy(pol *policyv1.ACLPolicy) error {
+	pBytes, err := json.Marshal(pol)
+	if err != nil {
+		return fmt.Errorf("marshalling pol: %w", err)
+	}
+
+	err = h.WriteFile(aclPolicyPath, pBytes)
+	if err != nil {
+		return fmt.Errorf("writing policy to headscale container: %w", err)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) PID() (int, error) {
+	cmd := []string{"bash", "-c", `ps aux | grep headscale | grep -v grep | awk '{print $2}'`}
+	output, err := h.Execute(cmd)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	lines := strings.TrimSpace(output)
+	if lines == "" {
+		return 0, os.ErrNotExist // No output means no process found
+	}
+
+	pids := make([]int, 0, len(lines))
+	for _, line := range strings.Split(lines, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pidInt, err := strconv.Atoi(line)
+		if err != nil {
+			return 0, fmt.Errorf("parsing PID: %w", err)
+		}
+		// We dont care about the root pid for the container
+		if pidInt == 1 {
+			continue
+		}
+		pids = append(pids, pidInt)
+	}
+
+	switch len(pids) {
+	case 0:
+		return 0, os.ErrNotExist
+	case 1:
+		return pids[0], nil
+	default:
+		return 0, fmt.Errorf("multiple headscale processes running")
+	}
+}
+
+// Reload sends a SIGHUP to the headscale process to reload internals,
+// for example Policy from file.
+func (h *HeadscaleInContainer) Reload() error {
+	pid, err := h.PID()
+	if err != nil {
+		return fmt.Errorf("getting headscale PID: %w", err)
+	}
+
+	_, err = h.Execute([]string{"kill", "-HUP", strconv.Itoa(pid)})
+	if err != nil {
+		return fmt.Errorf("reloading headscale with HUP: %w", err)
+	}
+
+	return nil
 }
 
 // ApproveRoutes approves routes for a node.
