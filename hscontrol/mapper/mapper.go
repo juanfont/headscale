@@ -269,7 +269,7 @@ func (m *Mapper) PeerChangedResponse(
 		}
 	}
 
-	changedNodes, err := m.ListNodesSubset(changedIDs)
+	changedNodes, err := m.ListNodes(changedIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -491,8 +491,8 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	return peers, nil
 }
 
-func (m *Mapper) ListNodesSubset(nodeIDs []types.NodeID) (types.Nodes, error) {
-	nodes, err := m.db.ListNodesSubset(nodeIDs)
+func (m *Mapper) ListNodes(nodeIDs ...types.NodeIDs) (types.Nodes, error) {
+	nodes, err := m.db.ListNodes(nodeIDs...)
 	if err != nil {
 		return nil, err
 	}

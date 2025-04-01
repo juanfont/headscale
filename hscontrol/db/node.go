@@ -58,41 +58,26 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 	return nodes, nil
 }
 
-func (hsdb *HSDatabase) ListNodes() (types.Nodes, error) {
+func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeIDs) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListNodes(rx)
+		return ListNodes(rx, nodeIDs...)
 	})
 }
 
-func ListNodes(tx *gorm.DB) (types.Nodes, error) {
-	nodes := types.Nodes{}
-	if err := tx.
-		Preload("AuthKey").
-		Preload("AuthKey.User").
-		Preload("User").
-		Find(&nodes).Error; err != nil {
-		return nil, err
-	}
-
-	return nodes, nil
-}
-
-func (hsdb *HSDatabase) ListNodesSubset(nodeIDs types.NodeIDs) (types.Nodes, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListNodesSubset(rx, nodeIDs)
-	})
-}
-
-func ListNodesSubset(tx *gorm.DB, nodeIDs types.NodeIDs) (types.Nodes, error) {
-	if len(nodeIDs) < 1 {
+func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeIDs) (types.Nodes, error) {
+	if len(nodeIDs) > 0 && len(nodeIDs[0]) == 0 {
 		return types.Nodes{}, nil
 	}
+	var nodeFilter types.NodeIDs = nil
+	if len(nodeIDs) > 0 {
+		nodeFilter = nodeIDs[0]
+	}
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Where(nodeIDs).Find(&nodes).Error; err != nil {
+		Where(nodeFilter).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 

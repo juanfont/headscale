@@ -753,7 +753,7 @@ func TestRenameNode(t *testing.T) {
 	assert.ErrorContains(t, err, "name is not unique")
 }
 
-func TestListNodesSubset(t *testing.T) {
+func TestListNodes(t *testing.T) {
 	// Setup test database
 	db, err := newSQLiteTestDB()
 	if err != nil {
@@ -807,24 +807,31 @@ func TestListNodesSubset(t *testing.T) {
 
 	assert.Len(t, nodes, 2)
 
+	// No parameter means no filter, should return all nodes
+	nodes, err = db.ListNodes()
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 2)
+	assert.Equal(t, "test1", nodes[0].Hostname)
+	assert.Equal(t, "test2", nodes[1].Hostname)
+
 	// Empty node list should return empty list
-	nodes, err = db.ListNodesSubset(types.NodeIDs{})
+	nodes, err = db.ListNodes(types.NodeIDs{})
 	require.NoError(t, err)
 	assert.Equal(t, len(nodes), 0)
 
 	// No match in IDs should return empty list and no error
-	nodes, err = db.ListNodesSubset(types.NodeIDs{3, 4, 5})
+	nodes, err = db.ListNodes(types.NodeIDs{3, 4, 5})
 	require.NoError(t, err)
 	assert.Equal(t, len(nodes), 0)
 
 	// Partial match in IDs
-	nodes, err = db.ListNodesSubset(types.NodeIDs{2, 3})
+	nodes, err = db.ListNodes(types.NodeIDs{2, 3})
 	require.NoError(t, err)
 	assert.Equal(t, len(nodes), 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Several matched IDs
-	nodes, err = db.ListNodesSubset(types.NodeIDs{1, 2, 3})
+	nodes, err = db.ListNodes(types.NodeIDs{1, 2, 3})
 	require.NoError(t, err)
 	assert.Equal(t, len(nodes), 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
