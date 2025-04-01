@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 
 	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
@@ -16,6 +17,8 @@ var (
 
 type PolicyManager interface {
 	Filter() []tailcfg.FilterRule
+	// Matchers returns the matchers for the current filter rules.
+	Matchers() []matcher.Match
 	SSHPolicy(*types.Node) (*tailcfg.SSHPolicy, error)
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
