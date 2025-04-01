@@ -13,6 +13,14 @@ type Match struct {
 	dests *netipx.IPSet
 }
 
+func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
+	matches := make([]Match, 0, len(rules))
+	for _, rule := range rules {
+		matches = append(matches, MatchFromFilterRule(rule))
+	}
+	return matches
+}
+
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
 	dests := []string{}
 	for _, dest := range rule.DstPorts {

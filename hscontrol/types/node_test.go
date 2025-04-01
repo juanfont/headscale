@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"strings"
 	"testing"
@@ -116,7 +117,8 @@ func Test_NodeCanAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.node1.CanAccess(tt.rules, &tt.node2)
+			matchers := matcher.MatchesFromFilterRules(tt.rules)
+			got := tt.node1.CanAccess(matchers, &tt.node2)
 
 			if got != tt.want {
 				t.Errorf("canAccess() failed: want (%t), got (%t)", tt.want, got)

@@ -270,17 +270,9 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	}
 }
 
-func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
+func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 	src := node.IPs()
 	allowedIPs := node2.IPs()
-
-	// TODO(kradalby): Regenerate this every time the filter change, instead of
-	// every time we use it.
-	// Part of #2416
-	matchers := make([]matcher.Match, len(filter))
-	for i, rule := range filter {
-		matchers[i] = matcher.MatchFromFilterRule(rule)
-	}
 
 	for _, matcher := range matchers {
 		if !matcher.SrcsContainsIPs(src...) {

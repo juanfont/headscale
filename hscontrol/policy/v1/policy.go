@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"io"
 	"net/netip"
 	"os"
@@ -92,6 +93,11 @@ func (pm *PolicyManager) Filter() []tailcfg.FilterRule {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	return pm.filter
+}
+
+func (pm *PolicyManager) Matchers() []matcher.Match {
+	filter := pm.Filter()
+	return matcher.MatchesFromFilterRules(filter)
 }
 
 func (pm *PolicyManager) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
