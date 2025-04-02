@@ -16,9 +16,8 @@ var (
 )
 
 type PolicyManager interface {
-	Filter() []tailcfg.FilterRule
-	// Matchers returns the matchers for the current filter rules.
-	Matchers() []matcher.Match
+	// Filter returns the current filter rules for the entire tailnet and the associated matchers.
+	Filter() ([]tailcfg.FilterRule, []matcher.Match)
 	SSHPolicy(*types.Node) (*tailcfg.SSHPolicy, error)
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)

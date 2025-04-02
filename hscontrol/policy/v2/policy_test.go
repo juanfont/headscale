@@ -47,7 +47,7 @@ func TestPolicyManager(t *testing.T) {
 			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes)
 			require.NoError(t, err)
 
-			filter := pm.Filter()
+			filter, _ := pm.Filter()
 			if diff := cmp.Diff(filter, tt.wantFilter); diff != "" {
 				t.Errorf("Filter() mismatch (-want +got):\n%s", diff)
 			}
