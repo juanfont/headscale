@@ -3,6 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ type PolicyManager struct {
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
+	matchers   []matcher.Match
 
 	tagOwnerMapHash deephash.Sum
 	tagOwnerMap     map[Tag]*netipx.IPSet
@@ -69,6 +71,9 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	filterChanged := filterHash == pm.filterHash
 	pm.filter = filter
 	pm.filterHash = filterHash
+	if filterChanged {
+		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+	}
 
 	// Order matters, tags might be used in autoapprovers, so we need to ensure
 	// that the map for tag owners is resolved before resolving autoapprovers.
@@ -142,11 +147,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	return pm.updateLocked()
 }
 
-// Filter returns the current filter rules for the entire tailnet.
-func (pm *PolicyManager) Filter() []tailcfg.FilterRule {
+// Filter returns the current filter rules for the entire tailnet and the associated matchers.
+func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	return pm.filter
+	return pm.filter, pm.matchers
 }
 
 // SetUsers updates the users in the policy manager and updates the filter rules.
