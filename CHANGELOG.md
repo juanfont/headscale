@@ -87,6 +87,7 @@ The new policy can be used by setting the environment variable
   [#2493](https://github.com/juanfont/headscale/pull/2493)
   - If a OIDC provider doesn't include the `email_verified` claim in its ID
     tokens, Headscale will attempt to get it from the UserInfo endpoint.
+- Improve performance by only querying relevant nodes from the database for node updates [#2509](https://github.com/juanfont/headscale/pull/2509)
 
 ## 0.25.1 (2025-02-25)
 
