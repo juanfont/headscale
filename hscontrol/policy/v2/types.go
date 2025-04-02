@@ -382,16 +382,21 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 type AutoGroup string
 
 const (
+	AutoGroupMember   AutoGroup = "autogroup:member"
 	AutoGroupInternet AutoGroup = "autogroup:internet"
+	AutoGroupTagged   AutoGroup = "autogroup:tagged"
 	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
 
 	// These are not yet implemented.
-	AutoGroupSelf   AutoGroup = "autogroup:self"
-	AutoGroupMember AutoGroup = "autogroup:member"
-	AutoGroupTagged AutoGroup = "autogroup:tagged"
+	AutoGroupSelf AutoGroup = "autogroup:self"
 )
 
-var autogroups = []AutoGroup{AutoGroupInternet}
+var autogroups = []AutoGroup{
+	AutoGroupInternet,
+	AutoGroupMember,
+	AutoGroupTagged,
+	AutoGroupNonRoot,
+}
 
 func (ag AutoGroup) Validate() error {
 	if slices.Contains(autogroups, ag) {
@@ -409,13 +414,44 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+	var build netipx.IPSetBuilder
+
 	switch ag {
 	case AutoGroupInternet:
 		return util.TheInternet(), nil
-	}
 
-	return nil, nil
+	case AutoGroupMember:
+		// autogroup:member represents all untagged devices in the tailnet.
+		for _, node := range nodes {
+			if len(node.ForcedTags) != 0 {
+				continue
+			}
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				continue
+			}
+			node.AppendToIPSet(&build)
+		}
+
+		return build.IPSet()
+
+	case AutoGroupTagged:
+		// autogroup:tagged represents all devices with a tag in the tailnet.
+		for _, node := range nodes {
+			if len(node.ForcedTags) != 0 {
+				node.AppendToIPSet(&build)
+				continue
+			}
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				node.AppendToIPSet(&build)
+			}
+		}
+
+		return build.IPSet()
+
+	default:
+		return nil, fmt.Errorf("unknown autogroup %q", ag)
+	}
 }
 
 func (ag *AutoGroup) Is(c AutoGroup) bool {
@@ -922,12 +958,12 @@ type Policy struct {
 }
 
 var (
-	autogroupForSrc       = []AutoGroup{}
-	autogroupForDst       = []AutoGroup{AutoGroupInternet}
-	autogroupForSSHSrc    = []AutoGroup{}
-	autogroupForSSHDst    = []AutoGroup{}
+	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
-	autogroupNotSupported = []AutoGroup{AutoGroupSelf, AutoGroupMember, AutoGroupTagged}
+	autogroupNotSupported = []AutoGroup{AutoGroupSelf}
 )
 
 func validateAutogroupSupported(ag *AutoGroup) error {
@@ -1244,3 +1280,19 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 const (
 	expectedTokenItems = 2
 )
+
+var allIPSet *netipx.IPSet
+
+func allIPs() *netipx.IPSet {
+	if allIPSet != nil {
+		return allIPSet
+	}
+
+	var build netipx.IPSetBuilder
+	build.AddPrefix(netip.MustParsePrefix("::/0"))
+	build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+
+	allTheIps, _ := build.IPSet()
+
+	return allTheIps
+}
