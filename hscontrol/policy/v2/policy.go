@@ -149,17 +149,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	return pm.updateLocked()
 }
 
-// Filter returns the current filter rules for the entire tailnet.
-func (pm *PolicyManager) Filter() []tailcfg.FilterRule {
+// Filter returns the current filter rules for the entire tailnet and the associated matchers.
+func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	return pm.filter
-}
-
-func (pm *PolicyManager) Matchers() []matcher.Match {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	return pm.matchers
+	return pm.filter, pm.matchers
 }
 
 // SetUsers updates the users in the policy manager and updates the filter rules.

@@ -150,7 +150,8 @@ func TestPolicySetChange(t *testing.T) {
 				assert.Equal(t, tt.wantNodesChange, change)
 			}
 
-			if diff := cmp.Diff(tt.wantFilter, pm.Filter()); diff != "" {
+			filter, _ := pm.Filter()
+			if diff := cmp.Diff(tt.wantFilter, filter); diff != "" {
 				t.Errorf("TestPolicySetChange() unexpected result (-want +got):\n%s", diff)
 			}
 		})

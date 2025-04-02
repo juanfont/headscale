@@ -40,7 +40,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(pol)
 	}))
 	debug.Handle("filter", "Current filter", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		filter := h.polMan.Filter()
+		filter, _ := h.polMan.Filter()
 
 		filterJSON, err := json.MarshalIndent(filter, "", "  ")
 		if err != nil {

@@ -536,7 +536,7 @@ func appendPeerChanges(
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	filter := polMan.Filter()
+	filter, matchers := polMan.Filter()
 
 	sshPolicy, err := polMan.SSHPolicy(node)
 	if err != nil {
@@ -546,7 +546,6 @@ func appendPeerChanges(
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
 	if len(filter) > 0 {
-		matchers := polMan.Matchers()
 		changed = policy.FilterNodesByACL(node, changed, matchers)
 	}
 

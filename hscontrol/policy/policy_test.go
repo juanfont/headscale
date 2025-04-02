@@ -770,7 +770,7 @@ func TestReduceFilterRules(t *testing.T) {
 				var err error
 				pm, err = pmf(users, append(tt.peers, tt.node))
 				require.NoError(t, err)
-				got := pm.Filter()
+				got, _ := pm.Filter()
 				got = ReduceFilterRules(tt.node, got)
 
 				if diff := cmp.Diff(tt.want, got); diff != "" {
