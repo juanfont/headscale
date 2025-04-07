@@ -41,7 +41,7 @@ func TestPolicyManager(t *testing.T) {
 			pol:          "{}",
 			nodes:        types.Nodes{},
 			wantFilter:   nil,
-			wantMatchers: nil,
+			wantMatchers: []matcher.Match{},
 		},
 	}
 
