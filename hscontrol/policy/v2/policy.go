@@ -70,7 +70,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	filterHash := deephash.Hash(&filter)
-	filterChanged := filterHash == pm.filterHash
+	filterChanged := filterHash != pm.filterHash
 	pm.filter = filter
 	pm.filterHash = filterHash
 	if filterChanged {
