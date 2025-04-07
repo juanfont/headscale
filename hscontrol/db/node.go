@@ -58,26 +58,23 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 	return nodes, nil
 }
 
-func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeIDs) (types.Nodes, error) {
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		return ListNodes(rx, nodeIDs...)
 	})
 }
 
-func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeIDs) (types.Nodes, error) {
-	if len(nodeIDs) > 0 && len(nodeIDs[0]) == 0 {
-		return types.Nodes{}, nil
-	}
-	var nodeFilter types.NodeIDs = nil
-	if len(nodeIDs) > 0 {
-		nodeFilter = nodeIDs[0]
-	}
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Where(nodeFilter).Find(&nodes).Error; err != nil {
+		Where(nodeIDs).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 

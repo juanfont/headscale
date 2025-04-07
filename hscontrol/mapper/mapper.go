@@ -255,6 +255,7 @@ func (m *Mapper) PeerChangedResponse(
 	patches []*tailcfg.PeerChange,
 	messages ...string,
 ) ([]byte, error) {
+	var err error
 	resp := m.baseMapResponse()
 
 	var removedIDs []tailcfg.NodeID
@@ -268,10 +269,12 @@ func (m *Mapper) PeerChangedResponse(
 			removedIDs = append(removedIDs, nodeID.NodeID())
 		}
 	}
-
-	changedNodes, err := m.ListNodes(changedIDs)
-	if err != nil {
-		return nil, err
+	changedNodes := types.Nodes{}
+	if len(changedIDs) > 0 {
+		changedNodes, err = m.ListNodes(changedIDs...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = appendPeerChanges(
@@ -491,7 +494,9 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	return peers, nil
 }
 
-func (m *Mapper) ListNodes(nodeIDs ...types.NodeIDs) (types.Nodes, error) {
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes, err := m.db.ListNodes(nodeIDs...)
 	if err != nil {
 		return nil, err
