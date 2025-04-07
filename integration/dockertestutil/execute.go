@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ory/dockertest/v3"
@@ -29,14 +30,36 @@ func ExecuteCommandTimeout(timeout time.Duration) ExecuteCommandOption {
 	})
 }
 
+// buffer is a goroutine safe bytes.buffer
+type buffer struct {
+	store bytes.Buffer
+	mutex sync.Mutex
+}
+
+// Write appends the contents of p to the buffer, growing the buffer as needed. It returns
+// the number of bytes written.
+func (b *buffer) Write(p []byte) (n int, err error) {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.store.Write(p)
+}
+
+// String returns the contents of the unread portion of the buffer
+// as a string.
+func (b *buffer) String() string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.store.String()
+}
+
 func ExecuteCommand(
 	resource *dockertest.Resource,
 	cmd []string,
 	env []string,
 	options ...ExecuteCommandOption,
 ) (string, string, error) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
+	var stdout = buffer{}
+	var stderr = buffer{}
 
 	execConfig := ExecuteCommandConfig{
 		timeout: dockerExecuteTimeout,
