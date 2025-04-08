@@ -480,8 +480,11 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
-	peers, err := m.db.ListPeers(nodeID)
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
+	peers, err := m.db.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
 	}

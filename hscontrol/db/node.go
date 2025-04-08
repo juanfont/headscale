@@ -35,21 +35,26 @@ var (
 	)
 )
 
-func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListPeers(rx, nodeID)
+		return ListPeers(rx, nodeID, peerIDs...)
 	})
 }
 
-// ListPeers returns all peers of node, regardless of any Policy or if the node is expired.
-func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Where("id <> ?",
-			nodeID).Find(&nodes).Error; err != nil {
+		Where("id <> ?", nodeID).
+		Where(peerIDs).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
