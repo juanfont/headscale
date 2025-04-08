@@ -35,21 +35,26 @@ var (
 	)
 )
 
-func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListPeers(rx, nodeID)
+		return ListPeers(rx, nodeID, peerIDs...)
 	})
 }
 
-// ListPeers returns all peers of node, regardless of any Policy or if the node is expired.
-func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Where("id <> ?",
-			nodeID).Find(&nodes).Error; err != nil {
+		Where("id <> ?", nodeID).
+		Where(peerIDs).Find(&nodes).Error; err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -58,19 +63,23 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID) (types.Nodes, error) {
 	return nodes, nil
 }
 
-func (hsdb *HSDatabase) ListNodes() (types.Nodes, error) {
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListNodes(rx)
+		return ListNodes(rx, nodeIDs...)
 	})
 }
 
-func ListNodes(tx *gorm.DB) (types.Nodes, error) {
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Find(&nodes).Error; err != nil {
+		Where(nodeIDs).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 

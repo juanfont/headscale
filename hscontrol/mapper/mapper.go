@@ -255,27 +255,25 @@ func (m *Mapper) PeerChangedResponse(
 	patches []*tailcfg.PeerChange,
 	messages ...string,
 ) ([]byte, error) {
+	var err error
 	resp := m.baseMapResponse()
-
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
 
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
 		if nodeChanged {
-			changedIDs = append(changedIDs, nodeID)
+			if nodeID != node.ID {
+				changedIDs = append(changedIDs, nodeID)
+			}
 		} else {
 			removedIDs = append(removedIDs, nodeID.NodeID())
 		}
 	}
-
-	changedNodes := make(types.Nodes, 0, len(changedIDs))
-	for _, peer := range peers {
-		if slices.Contains(changedIDs, peer.ID) {
-			changedNodes = append(changedNodes, peer)
+	changedNodes := types.Nodes{}
+	if len(changedIDs) > 0 {
+		changedNodes, err = m.ListNodes(changedIDs...)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -482,8 +480,11 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
-	peers, err := m.db.ListPeers(nodeID)
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
+	peers, err := m.db.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -494,6 +495,22 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	}
 
 	return peers, nil
+}
+
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
+	nodes, err := m.db.ListNodes(nodeIDs...)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, node := range nodes {
+		online := m.notif.IsLikelyConnected(node.ID)
+		node.IsOnline = &online
+	}
+
+	return nodes, nil
 }
 
 func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
