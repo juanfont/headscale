@@ -170,10 +170,11 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
 
 	// This is not great, but this sadly is a time dependent test, so the
-	// safe thing to do is wait out the whole TTL time before checking if
-	// the clients have logged out. The Wait function can't do it itself
-	// as it has an upper bound of 1 min.
-	time.Sleep(shortAccessTTL)
+	// safe thing to do is wait out the whole TTL time (and a bit more out
+	// of safety reasons) before checking if the clients have logged out.
+	// The Wait function can't do it itself as it has an upper bound of 1
+	// min.
+	time.Sleep(shortAccessTTL + 10*time.Second)
 
 	assertTailscaleNodesLogout(t, allClients)
 }
