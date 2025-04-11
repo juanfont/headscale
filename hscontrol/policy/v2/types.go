@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
@@ -237,8 +239,8 @@ func (t Tag) CanBeAutoApprover() bool {
 type Host string
 
 func (h Host) Validate() error {
-	if isHost(string(h)) {
-		fmt.Errorf("Hostname %q is invalid", h)
+	if !isHost(string(h)) {
+		return fmt.Errorf("Hostname %q is invalid", h)
 	}
 	return nil
 }
@@ -379,10 +381,8 @@ const (
 var autogroups = []string{AutoGroupInternet}
 
 func (ag AutoGroup) Validate() error {
-	for _, valid := range autogroups {
-		if valid == string(ag) {
-			return nil
-		}
+	if slices.Contains(autogroups, string(ag)) {
+		return nil
 	}
 
 	return fmt.Errorf("AutoGroup is invalid, got: %q, must be one of %v", ag, autogroups)
@@ -525,7 +525,7 @@ Please check the format and try again.`, vs)
 type AliasEnc struct{ Alias }
 
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Alias](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAlias,
 	)
@@ -631,7 +631,7 @@ Please check the format and try again.`, s)
 type AutoApproverEnc struct{ AutoApprover }
 
 func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[AutoApprover](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAutoApprover,
 	)
@@ -651,7 +651,7 @@ type Owner interface {
 type OwnerEnc struct{ Owner }
 
 func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Owner](
+	ptr, err := unmarshalPointer(
 		b,
 		parseOwner,
 	)
