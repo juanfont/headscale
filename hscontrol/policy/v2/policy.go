@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -174,10 +176,8 @@ func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
 	defer pm.mu.Unlock()
 
 	if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
-		for _, nodeAddr := range node.IPs() {
-			if ips.Contains(nodeAddr) {
-				return true
-			}
+		if slices.ContainsFunc(node.IPs(), ips.Contains) {
+			return true
 		}
 	}
 
@@ -196,10 +196,8 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 	// where there is an exact entry, e.g. 10.0.0.0/8, then
 	// check and return quickly
 	if _, ok := pm.autoApproveMap[route]; ok {
-		for _, nodeAddr := range node.IPs() {
-			if pm.autoApproveMap[route].Contains(nodeAddr) {
-				return true
-			}
+		if slices.ContainsFunc(node.IPs(), pm.autoApproveMap[route].Contains) {
+			return true
 		}
 	}
 
@@ -220,10 +218,8 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 		// Check if prefix is larger (so containing) and then overlaps
 		// the route to see if the node can approve a subset of an autoapprover
 		if prefix.Bits() <= route.Bits() && prefix.Overlaps(route) {
-			for _, nodeAddr := range node.IPs() {
-				if approveAddrs.Contains(nodeAddr) {
-					return true
-				}
+			if slices.ContainsFunc(node.IPs(), approveAddrs.Contains) {
+				return true
 			}
 		}
 	}
