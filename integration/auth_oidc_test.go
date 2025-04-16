@@ -19,6 +19,20 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func oidcHSICOpts(s *Scenario) []hsic.Option {
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             s.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          s.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+	return []hsic.Option{
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(s.mockOIDC.ClientSecret())),
+		hsic.WithTLS(),
+	}
+}
+
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
@@ -40,19 +54,9 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	oidcMap := map[string]string{
-		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
-		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
-		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
-		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-	}
-
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
-		hsic.WithTestName("oidcauthping"),
-		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
-		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		append(oidcHSICOpts(scenario), hsic.WithTestName("oidcauthping"))...,
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
