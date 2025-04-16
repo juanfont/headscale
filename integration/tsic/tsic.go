@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -383,7 +384,7 @@ func (t *TailscaleInContainer) Version() string {
 
 // ID returns the Docker container ID of the TailscaleInContainer
 // instance.
-func (t *TailscaleInContainer) ID() string {
+func (t *TailscaleInContainer) ContainerID() string {
 	return t.container.Container.ID
 }
 
@@ -647,7 +648,7 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	return &status, err
 }
 
-// Status returns the ipnstate.Status of the Tailscale instance.
+// MustStatus returns the ipnstate.Status of the Tailscale instance.
 func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
 	status, err := t.Status()
 	if err != nil {
@@ -655,6 +656,21 @@ func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
 	}
 
 	return status
+}
+
+// MustID returns the ID of the Tailscale instance.
+func (t *TailscaleInContainer) MustID() types.NodeID {
+	status, err := t.Status()
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse ID: %s", err))
+	}
+
+	return types.NodeID(id)
 }
 
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
