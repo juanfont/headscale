@@ -174,7 +174,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 			}
 
 			// approvedIPs should contain all of node's IPs if it matches the rule, so check for first
-			if ips.Contains(*node.IPv4) {
+			if ips != nil && ips.Contains(*node.IPv4) {
 				return true
 			}
 		}
