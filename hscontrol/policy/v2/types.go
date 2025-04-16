@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/tailscale/hujson"
@@ -238,9 +240,9 @@ type Host string
 
 func (h Host) Validate() error {
 	if isHost(string(h)) {
-		fmt.Errorf("Hostname %q is invalid", h)
+		return nil
 	}
-	return nil
+	return fmt.Errorf("Hostname %q is invalid", h)
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -288,11 +290,10 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 type Prefix netip.Prefix
 
 func (p Prefix) Validate() error {
-	if !netip.Prefix(p).IsValid() {
-		return fmt.Errorf("Prefix %q is invalid", p)
+	if netip.Prefix(p).IsValid() {
+		return nil
 	}
-
-	return nil
+	return fmt.Errorf("Prefix %q is invalid", p)
 }
 
 func (p Prefix) String() string {
@@ -379,10 +380,8 @@ const (
 var autogroups = []string{AutoGroupInternet}
 
 func (ag AutoGroup) Validate() error {
-	for _, valid := range autogroups {
-		if valid == string(ag) {
-			return nil
-		}
+	if slices.Contains(autogroups, string(ag)) {
+		return nil
 	}
 
 	return fmt.Errorf("AutoGroup is invalid, got: %q, must be one of %v", ag, autogroups)
