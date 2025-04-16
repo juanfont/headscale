@@ -109,9 +109,9 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 		n.tracef(nodeID, "channel present, closing and replacing")
 		// Use the safeCloseChannel helper in a goroutine to avoid deadlocks
 		// if/when someone is waiting to send on this channel
-		go func(nid types.NodeID, ch chan<- types.StateUpdate) {
-			n.safeCloseChannel(nid, ch)
-		}(nodeID, curr)
+		go func(ch chan<- types.StateUpdate) {
+			n.safeCloseChannel(nodeID, ch)
+		}(curr)
 	}
 
 	n.nodes[nodeID] = c
