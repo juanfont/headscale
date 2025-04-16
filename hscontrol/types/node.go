@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -194,19 +195,26 @@ func (node *Node) IsTagged() bool {
 // Currently, this function only handles tags set
 // via CLI ("forced tags" and preauthkeys)
 func (node *Node) HasTag(tag string) bool {
-	if slices.Contains(node.ForcedTags, tag) {
-		return true
-	}
+	return slices.Contains(node.Tags(), tag)
+}
 
-	if node.AuthKey != nil && slices.Contains(node.AuthKey.Tags, tag) {
-		return true
+func (node *Node) Tags() []string {
+	var tags []string
+
+	if node.AuthKey != nil {
+		tags = append(tags, node.AuthKey.Tags...)
 	}
 
 	// TODO(kradalby): Figure out how tagging should work
 	// and hostinfo.requestedtags.
 	// Do this in other work.
+	// #2417
 
-	return false
+	tags = append(tags, node.ForcedTags...)
+	sort.Strings(tags)
+	tags = slices.Compact(tags)
+
+	return tags
 }
 
 func (node *Node) RequestTags() []string {
