@@ -1,74 +1,79 @@
 ---
-run:
-  timeout: 10m
-  build-tags:
-    - ts2019
-
-issues:
-  skip-dirs:
-    - gen
+version: "2"
 linters:
-  enable-all: true
+  default: all
   disable:
-    - revive
-    - lll
-    - gofmt
+    - cyclop
+    - depguard
+    - dupl
+    - exhaustruct
+    - funlen
     - gochecknoglobals
     - gochecknoinits
     - gocognit
-    - funlen
-    - tagliatelle
     - godox
-    - ireturn
-    - execinquery
-    - exhaustruct
-    - nolintlint
-    - musttag # causes issues with imported libs
-    - depguard
-    - exportloopref
-    - tenv
-
-    # We should strive to enable these:
-    - wrapcheck
-    - dupl
-    - makezero
-    - maintidx
-
-    # Limits the methods of an interface to 10. We have more in integration tests
     - interfacebloat
-
-    # We might want to enable this, but it might be a lot of work
-    - cyclop
+    - ireturn
+    - lll
+    - maintidx
+    - makezero
+    - musttag
     - nestif
-    - wsl # might be incompatible with gofumpt
-    - testpackage
+    - nolintlint
     - paralleltest
+    - revive
+    - tagliatelle
+    - testpackage
+    - wrapcheck
+    - wsl
+  settings:
+    gocritic:
+      disabled-checks:
+        - appendAssign
+        - ifElseChain
+    nlreturn:
+      block-size: 4
+    varnamelen:
+      ignore-names:
+        - err
+        - db
+        - id
+        - ip
+        - ok
+        - c
+        - tt
+        - tx
+        - rx
+        - sb
+        - wg
+        - pr
+        - p
+        - p2
+      ignore-type-assert-ok: true
+      ignore-map-index-ok: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - gen
 
-linters-settings:
-  varnamelen:
-    ignore-type-assert-ok: true
-    ignore-map-index-ok: true
-    ignore-names:
-      - err
-      - db
-      - id
-      - ip
-      - ok
-      - c
-      - tt
-      - tx
-      - rx
-      - sb
-      - wg
-      - pr
-      - p
-      - p2
-
-  gocritic:
-    disabled-checks:
-      - appendAssign
-      # TODO(kradalby): Remove this
-      - ifElseChain
-
-  nlreturn:
-    block-size: 4
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - gen
