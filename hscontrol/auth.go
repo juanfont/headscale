@@ -285,9 +285,6 @@ func (h *Headscale) handleRegisterInteractive(
 		nodeToRegister.Node.Expiry = &regReq.Expiry
 	}
 
-	// Ensure any auto approved routes are handled before saving.
-	policy.AutoApproveRoutes(h.polMan, &nodeToRegister.Node)
-
 	h.registrationCache.Set(
 		registrationId,
 		nodeToRegister,
