@@ -165,6 +165,11 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
 
+	// Opportunity to clean up unreferenced networks.
+	// This might be a no op, but it is worth a try as we sometime
+	// dont clean up nicely after ourselves.
+	dockertestutil.CleanUnreferencedNetworks(pool)
+
 	if spec.MaxWait == 0 {
 		pool.MaxWait = dockertestMaxWait()
 	} else {
@@ -292,6 +297,8 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
+	defer dockertestutil.CleanUnreferencedNetworks(s.pool)
+
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		stdoutPath, stderrPath, err := control.Shutdown()
 		if err != nil {
