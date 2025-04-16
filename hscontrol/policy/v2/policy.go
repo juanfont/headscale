@@ -275,5 +275,8 @@ func (pm *PolicyManager) DebugString() string {
 		}
 	}
 
+	sb.WriteString("\n\n")
+	sb.WriteString(pm.nodes.DebugString())
+
 	return sb.String()
 }
