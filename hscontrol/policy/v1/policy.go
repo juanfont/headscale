@@ -7,6 +7,8 @@ import (
 	"os"
 	"sync"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
@@ -145,13 +147,7 @@ func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
 	tags, invalid := pm.pol.TagsOfNode(pm.users, node)
 	log.Debug().Strs("authorised_tags", tags).Strs("unauthorised_tags", invalid).Uint64("node.id", node.ID.Uint64()).Msg("tags provided by policy")
 
-	for _, t := range tags {
-		if t == tag {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(tags, tag)
 }
 
 func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
