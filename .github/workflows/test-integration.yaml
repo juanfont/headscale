@@ -127,7 +127,17 @@ jobs:
         env:
           USE_POSTGRES: ${{ matrix.database == 'postgres' && '1' || '0' }}
         with:
-          attempt_limit: 5
+          # Our integration tests are started like a thundering herd, often
+          # hitting limits of the various external repositories we depend on
+          # like docker hub. This will retry jobs every 5 min, 10 times,
+          # hopefully letting us avoid manual intervention and restarting jobs.
+          # One could of course argue that we should invest in trying to avoid
+          # this, but currently it seems like a larger investment to be cleverer
+          # about this.
+          # Some of the jobs might still require manual restart as they are really
+          # slow and this will cause them to eventually be killed by Github actions.
+          attempt_delay: 300000   # 5 min
+          attempt_limit: 10
           command: |
             nix develop --command -- docker run \
               --tty --rm \
