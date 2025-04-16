@@ -287,9 +287,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -319,9 +319,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the client has routes from the primary machine and can access
 	// the webservice.
@@ -375,9 +375,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1 = subRouter1.MustStatus()
@@ -431,9 +431,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 1, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1 = subRouter1.MustStatus()
@@ -645,9 +645,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -690,9 +690,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -738,9 +738,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -870,8 +870,8 @@ func TestSubnetRouteACL(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 0, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -899,8 +899,8 @@ func TestSubnetRouteACL(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 0, 0, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1, _ := subRouter1.Status()
@@ -1034,8 +1034,8 @@ func TestEnablingExitRoutes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 2, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 2, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1067,8 +1067,8 @@ func TestEnablingExitRoutes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 2, 2, 2)
-	assertNodeRouteCount(t, nodes[1], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[0], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[1], 2, 2, 2)
 
 	time.Sleep(5 * time.Second)
 
@@ -1158,7 +1158,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1184,7 +1184,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	nodes, err = headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
 
 	// Verify that the routes have been sent to the client.
 	status, err = user2c.Status()
@@ -1282,7 +1282,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1305,7 +1305,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	nodes, err = headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[0], 2, 2, 2)
 
 	// Verify that the routes have been sent to the client.
 	status, err = user2c.Status()
@@ -1757,9 +1757,12 @@ func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected
 	}
 }
 
-func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
+func requireNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
 	t.Helper()
-	assert.Len(t, node.GetAvailableRoutes(), announced)
-	assert.Len(t, node.GetApprovedRoutes(), approved)
-	assert.Len(t, node.GetSubnetRoutes(), subnet)
+	require.Lenf(t, node.GetAvailableRoutes(), announced, "expected announced routes(%v) to have %d route, had %d", node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
+	require.Lenf(t, node.GetApprovedRoutes(), approved, "expected approved routes(%v) to have %d route, had %d", node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
+	require.Lenf(t, node.GetSubnetRoutes(), subnet, "expected subnet routes(%v) to have %d route, had %d", node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
 }
+	require.Lenf(t, node.GetAvailableRoutes(), announced, "expected %q announced routes(%v) to have %d route, had %d", node.GetName(), node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
+	require.Lenf(t, node.GetApprovedRoutes(), approved, "expected %q approved routes(%v) to have %d route, had %d", node.GetName(), node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
+	require.Lenf(t, node.GetSubnetRoutes(), subnet, "expected %q subnet routes(%v) to have %d route, had %d", node.GetName(), node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
