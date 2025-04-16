@@ -136,7 +136,7 @@ jobs:
           # about this.
           # Some of the jobs might still require manual restart as they are really
           # slow and this will cause them to eventually be killed by Github actions.
-          attempt_delay: 300000   # 5 min
+          attempt_delay: 300000 # 5 min
           attempt_limit: 10
           command: |
             nix develop --command -- docker run \
