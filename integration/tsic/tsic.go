@@ -426,18 +426,19 @@ func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	)
 }
 
-// Up runs the login routine on the given Tailscale instance.
-// This login mechanism uses the authorised key for authentication.
-func (t *TailscaleInContainer) Login(
+func (t *TailscaleInContainer) buildLoginCommand(
 	loginServer, authKey string,
-) error {
+) []string {
 	command := []string{
 		"tailscale",
 		"up",
 		"--login-server=" + loginServer,
-		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
 		fmt.Sprintf("--accept-routes=%t", t.withAcceptRoutes),
+	}
+
+	if authKey != "" {
+		command = append(command, "--authkey="+authKey)
 	}
 
 	if t.extraLoginArgs != nil {
@@ -458,6 +459,16 @@ func (t *TailscaleInContainer) Login(
 		)
 	}
 
+	return command
+}
+
+// Login runs the login routine on the given Tailscale instance.
+// This login mechanism uses the authorised key for authentication.
+func (t *TailscaleInContainer) Login(
+	loginServer, authKey string,
+) error {
+	command := t.buildLoginCommand(loginServer, authKey)
+
 	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
 		return fmt.Errorf(
 			"%s failed to join tailscale client (%s): %w",
@@ -475,17 +486,7 @@ func (t *TailscaleInContainer) Login(
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
 ) (loginURL *url.URL, err error) {
-	command := []string{
-		"tailscale",
-		"up",
-		"--login-server=" + loginServer,
-		"--hostname=" + t.hostname,
-		"--accept-routes=false",
-	}
-
-	if t.extraLoginArgs != nil {
-		command = append(command, t.extraLoginArgs...)
-	}
+	command := t.buildLoginCommand(loginServer, "")
 
 	stdout, stderr, err := t.Execute(command)
 	if errors.Is(err, errTailscaleNotLoggedIn) {
