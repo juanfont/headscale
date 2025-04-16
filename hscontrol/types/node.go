@@ -557,3 +557,25 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 
 	return ret
 }
+
+func (nodes Nodes) DebugString() string {
+	var sb strings.Builder
+	sb.WriteString("Nodes:\n")
+	for _, node := range nodes {
+		sb.WriteString(node.DebugString())
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func (node Node) DebugString() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
+	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
+	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
+	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
+	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
+	sb.WriteString("\n")
+	return sb.String()
+}
