@@ -16,9 +16,14 @@ type PreAuthKey struct {
 	UserID    uint
 	User      User `gorm:"constraint:OnDelete:SET NULL;"`
 	Reusable  bool
-	Ephemeral bool     `gorm:"default:false"`
-	Used      bool     `gorm:"default:false"`
-	Tags      []string `gorm:"serializer:json"`
+	Ephemeral bool `gorm:"default:false"`
+	Used      bool `gorm:"default:false"`
+
+	// Tags are always applied to the node and is one of
+	// the sources of tags a node might have. They are copied
+	// from the PreAuthKey when the node logs in the first time,
+	// and ignored after.
+	Tags []string `gorm:"serializer:json"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time

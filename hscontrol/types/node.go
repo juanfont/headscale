@@ -80,7 +80,11 @@ type Node struct {
 
 	RegisterMethod string
 
-	ForcedTags []string `gorm:"serializer:json"`
+	// ForcedTags are tags set by CLI/API. It is not considered
+	// the source of truth, but is one of the sources from
+	// which a tag might originate.
+	// ForcedTags are _always_ applied to the node.
+	ForcedTags []string `gorm:"column:forced_tags;serializer:json"`
 
 	// When a node has been created with a PreAuthKey, we need to
 	// prevent the preauthkey from being deleted before the node.
