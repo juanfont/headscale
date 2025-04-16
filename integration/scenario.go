@@ -493,8 +493,7 @@ func (s *Scenario) CreateTailscaleNode(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to create tailscale (%s) node: %w",
-			tsClient.Hostname(),
+			"failed to create tailscale node: %w",
 			err,
 		)
 	}
