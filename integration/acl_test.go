@@ -1054,7 +1054,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	// Initially all nodes can reach each other
 	for _, client := range all {
 		for _, peer := range all {
-			if client.ID() == peer.ID() {
+			if client.ContainerID() == peer.ContainerID() {
 				continue
 			}
 
