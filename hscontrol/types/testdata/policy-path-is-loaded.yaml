@@ -15,4 +15,6 @@ policy:
   type: file
   path: "/etc/policy.hujson"
 
-dns.magic_dns: false
+dns:
+  magic_dns: false
+  override_local_dns: false
