@@ -669,12 +669,18 @@ func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Du
 
 	timer := time.NewTimer(expiry)
 	e.toBeDeleted[nodeID] = timer
-
 	// Start a goroutine to handle the timer completion
 	go func() {
 		select {
 		case <-timer.C:
-			e.deleteCh <- nodeID
+			// Try to send to deleteCh, but also watch for cancelCh
+			select {
+			case e.deleteCh <- nodeID:
+				// Successfully sent to deleteCh
+			case <-e.cancelCh:
+				// GC is shutting down, don't send to deleteCh
+				return
+			}
 		case <-e.cancelCh:
 			// If the GC is closed, exit the goroutine
 			return

@@ -323,14 +323,14 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 	// Wait for all goroutines to complete
 	wg.Wait()
 
-	// Wait a bit longer to allow any any leaked goroutines to do their work
+	// Wait a bit longer to allow any leaked goroutines to do their work
 	time.Sleep(100 * time.Millisecond)
 
 	// Check for leaks
 	finalGoroutines := runtime.NumGoroutine()
 	t.Logf("Final number of goroutines: %d", finalGoroutines)
 
-	// Allow for a reasonable small variable routine count do to testing
+	// Allow for a reasonable small variable routine count due to testing
 	assert.LessOrEqual(t, finalGoroutines, initialGoroutines+5,
 		"There should be no significant goroutine leaks during concurrent Schedule and Close operations")
 }
