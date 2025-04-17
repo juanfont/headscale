@@ -673,7 +673,10 @@ func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Du
 	go func() {
 		select {
 		case <-timer.C:
-			// Try to send to deleteCh, but also watch for cancelCh
+			// This is to handle the situation here the GC is shutting down and
+			// we are trying to schedule a new node for deletion at the same time
+			// i.e. We don't want to send to deleteCh if the GC is shutting down
+			// So, we try to send to deleteCh, but also watch for cancelCh
 			select {
 			case e.deleteCh <- nodeID:
 				// Successfully sent to deleteCh
