@@ -634,22 +634,50 @@ func NewEphemeralGarbageCollector(deleteFunc func(types.NodeID)) *EphemeralGarba
 
 // Close stops the garbage collector.
 func (e *EphemeralGarbageCollector) Close() {
-	e.cancelCh <- struct{}{}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// Stop all timers
+	for _, timer := range e.toBeDeleted {
+		timer.Stop()
+	}
+
+	// Close the cancel channel to signal all goroutines to exit
+	close(e.cancelCh)
 }
 
 // Schedule schedules a node for deletion after the expiry duration.
+// If the garbage collector is already closed, this is a no-op.
 func (e *EphemeralGarbageCollector) Schedule(nodeID types.NodeID, expiry time.Duration) {
 	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// Don't schedule new timers if the garbage collector is already closed
+	select {
+	case <-e.cancelCh:
+		// The cancel channel is closed, meaning the GC is shutting down
+		// or already shut down, so we shouldn't schedule anything new
+		return
+	default:
+		// Continue with scheduling
+	}
+
+	// If a timer already exists for this node, stop it first
+	if oldTimer, exists := e.toBeDeleted[nodeID]; exists {
+		oldTimer.Stop()
+	}
+
 	timer := time.NewTimer(expiry)
 	e.toBeDeleted[nodeID] = timer
-	e.mu.Unlock()
 
+	// Start a goroutine to handle the timer completion
 	go func() {
 		select {
-		case _, ok := <-timer.C:
-			if ok {
-				e.deleteCh <- nodeID
-			}
+		case <-timer.C:
+			e.deleteCh <- nodeID
+		case <-e.cancelCh:
+			// If the GC is closed, exit the goroutine
+			return
 		}
 	}()
 }
