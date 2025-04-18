@@ -194,7 +194,8 @@ func (hsdb *HSDatabase) SetTags(
 	})
 }
 
-// SetTags takes a Node struct pointer and update the forced tags.
+// SetTags takes a NodeID and update the forced tags.
+// It will overwrite any tags with the new list.
 func SetTags(
 	tx *gorm.DB,
 	nodeID types.NodeID,
@@ -209,14 +210,9 @@ func SetTags(
 		return nil
 	}
 
-	var newTags []string
-	for _, tag := range tags {
-		if !slices.Contains(newTags, tag) {
-			newTags = append(newTags, tag)
-		}
-	}
-
-	b, err := json.Marshal(newTags)
+	slices.Sort(tags)
+	tags = slices.Compact(tags)
+	b, err := json.Marshal(tags)
 	if err != nil {
 		return err
 	}
