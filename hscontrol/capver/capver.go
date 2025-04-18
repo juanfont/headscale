@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 
+	"slices"
+
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
@@ -31,9 +33,7 @@ func tailscaleVersSorted() []string {
 
 func capVersSorted() []tailcfg.CapabilityVersion {
 	capVers := xmaps.Keys(capVerToTailscaleVer)
-	sort.Slice(capVers, func(i, j int) bool {
-		return capVers[i] < capVers[j]
-	})
+	slices.Sort(capVers)
 	return capVers
 }
 
