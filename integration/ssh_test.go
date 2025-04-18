@@ -410,7 +410,7 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 	result, _, err := doSSH(t, client, peer)
 	assertNoErr(t, err)
 
-	assertContains(t, peer.ID(), strings.ReplaceAll(result, "\n", ""))
+	assertContains(t, peer.ContainerID(), strings.ReplaceAll(result, "\n", ""))
 }
 
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {

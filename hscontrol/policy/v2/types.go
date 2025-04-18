@@ -162,6 +162,10 @@ func (g Group) CanBeAutoApprover() bool {
 	return true
 }
 
+func (g Group) String() string {
+	return string(g)
+}
+
 func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
@@ -233,6 +237,10 @@ func (t Tag) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.I
 
 func (t Tag) CanBeAutoApprover() bool {
 	return true
+}
+
+func (t Tag) String() string {
+	return string(t)
 }
 
 // Host is a string that represents a hostname.
@@ -590,6 +598,7 @@ func unmarshalPointer[T any](
 type AutoApprover interface {
 	CanBeAutoApprover() bool
 	UnmarshalJSON([]byte) error
+	String() string
 }
 
 type AutoApprovers []AutoApprover

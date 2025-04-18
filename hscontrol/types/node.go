@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -194,19 +195,26 @@ func (node *Node) IsTagged() bool {
 // Currently, this function only handles tags set
 // via CLI ("forced tags" and preauthkeys)
 func (node *Node) HasTag(tag string) bool {
-	if slices.Contains(node.ForcedTags, tag) {
-		return true
-	}
+	return slices.Contains(node.Tags(), tag)
+}
 
-	if node.AuthKey != nil && slices.Contains(node.AuthKey.Tags, tag) {
-		return true
+func (node *Node) Tags() []string {
+	var tags []string
+
+	if node.AuthKey != nil {
+		tags = append(tags, node.AuthKey.Tags...)
 	}
 
 	// TODO(kradalby): Figure out how tagging should work
 	// and hostinfo.requestedtags.
 	// Do this in other work.
+	// #2417
 
-	return false
+	tags = append(tags, node.ForcedTags...)
+	sort.Strings(tags)
+	tags = slices.Compact(tags)
+
+	return tags
 }
 
 func (node *Node) RequestTags() []string {
@@ -548,4 +556,26 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 	}
 
 	return ret
+}
+
+func (nodes Nodes) DebugString() string {
+	var sb strings.Builder
+	sb.WriteString("Nodes:\n")
+	for _, node := range nodes {
+		sb.WriteString(node.DebugString())
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func (node Node) DebugString() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
+	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
+	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
+	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
+	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
+	sb.WriteString("\n")
+	return sb.String()
 }
