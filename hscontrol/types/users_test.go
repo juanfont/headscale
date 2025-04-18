@@ -227,7 +227,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				DisplayName: "User001",
 				Email:       "user001@example.com",
 				ProviderIdentifier: sql.NullString{
-					String: "https://oidc.example.com//xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+					String: "https://oidc.example.com/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
 					Valid:  true,
 				},
 				ProfilePicURL: "https://cdn.casbin.org/img/casbin.svg",
