@@ -63,9 +63,26 @@ func (n *Notifier) Close() {
 	n.closed = true
 	n.b.close()
 
-	for _, c := range n.nodes {
-		close(c)
+	// Close channels safely using the helper method
+	for nodeID, c := range n.nodes {
+		n.safeCloseChannel(nodeID, c)
 	}
+
+	// Clear node map after closing channels
+	n.nodes = make(map[types.NodeID]chan<- types.StateUpdate)
+}
+
+// safeCloseChannel closes a channel and panic recovers if already closed
+func (n *Notifier) safeCloseChannel(nodeID types.NodeID, c chan<- types.StateUpdate) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Uint64("node.id", nodeID.Uint64()).
+				Any("recover", r).
+				Msg("recovered from panic when closing channel in Close()")
+		}
+	}()
+	close(c)
 }
 
 func (n *Notifier) tracef(nID types.NodeID, msg string, args ...any) {
@@ -90,7 +107,11 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	// connection. Close the old channel and replace it.
 	if curr, ok := n.nodes[nodeID]; ok {
 		n.tracef(nodeID, "channel present, closing and replacing")
-		close(curr)
+		// Use the safeCloseChannel helper in a goroutine to avoid deadlocks
+		// if/when someone is waiting to send on this channel
+		go func(ch chan<- types.StateUpdate) {
+			n.safeCloseChannel(nodeID, ch)
+		}(curr)
 	}
 
 	n.nodes[nodeID] = c
@@ -161,6 +182,7 @@ func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
 	return false
 }
 
+// LikelyConnectedMap returns a thread safe map of connected nodes
 func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.connected
 }
