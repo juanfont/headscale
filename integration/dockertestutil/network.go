@@ -2,8 +2,9 @@ package dockertestutil
 
 import (
 	"errors"
-	"net"
 	"fmt"
+	"log"
+	"net"
 
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
@@ -83,4 +84,24 @@ func RandomFreeHostPort() (int, error) {
 	defer listener.Close()
 	//nolint:forcetypeassert
 	return listener.Addr().(*net.TCPAddr).Port, nil
+}
+
+// CleanUnreferencedNetworks removes networks that are not referenced by any containers.
+func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
+	filter := "name=hs-"
+	networks, err := pool.NetworksByName(filter)
+	if err != nil {
+		return fmt.Errorf("getting networks by filter %q: %w", filter, err)
+	}
+
+	for _, network := range networks {
+		if network.Network.Containers == nil || len(network.Network.Containers) == 0 {
+			err := pool.RemoveNetwork(&network)
+			if err != nil {
+				log.Printf("removing network %s: %s", network.Network.Name, err)
+			}
+		}
+	}
+
+	return nil
 }
