@@ -30,3 +30,4 @@ provides on overview of headscale's feature and compatibility with the Tailscale
     - [ ] OIDC groups cannot be used in ACLs
 - [ ] [Funnel](https://tailscale.com/kb/1223/funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
 - [ ] [Serve](https://tailscale.com/kb/1312/serve) ([#1234](https://github.com/juanfont/headscale/issues/1921))
+- [ ] [Network flow logs](https://tailscale.com/kb/1219/network-flow-logs) ([#1687](https://github.com/juanfont/headscale/issues/1687))
