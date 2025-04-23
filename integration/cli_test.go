@@ -1580,6 +1580,9 @@ func TestNodeMoveCommand(t *testing.T) {
 	// Randomly generated node key
 	regID := types.MustRegistrationID()
 
+	userMap, err := headscale.MapUsers()
+	assertNoErr(t, err)
+
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -1628,9 +1631,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"nodes",
 			"move",
 			"--identifier",
-			nodeID,
+			strconv.FormatUint(node.GetId(), 10),
 			"--user",
-			"new-user",
+			strconv.FormatUint(userMap["new-user"].GetId(), 10),
 			"--output",
 			"json",
 		},
@@ -1668,7 +1671,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"--identifier",
 			nodeID,
 			"--user",
-			"non-existing-user",
+			"999",
 			"--output",
 			"json",
 		},
@@ -1689,7 +1692,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"--identifier",
 			nodeID,
 			"--user",
-			"old-user",
+			strconv.FormatUint(userMap["old-user"].GetId(), 10),
 			"--output",
 			"json",
 		},
@@ -1708,7 +1711,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"--identifier",
 			nodeID,
 			"--user",
-			"old-user",
+			strconv.FormatUint(userMap["old-user"].GetId(), 10),
 			"--output",
 			"json",
 		},
