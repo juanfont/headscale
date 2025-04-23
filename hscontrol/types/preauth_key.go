@@ -31,7 +31,7 @@ type PreAuthKey struct {
 
 func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		User:      key.User.Username(),
+		User:      key.User.Proto(),
 		Id:        strconv.FormatUint(key.ID, util.Base10),
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,

@@ -1202,7 +1202,7 @@
       "type": "object",
       "properties": {
         "user": {
-          "type": "string"
+          "$ref": "#/definitions/v1User"
         },
         "id": {
           "type": "string"
