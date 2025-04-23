@@ -73,6 +73,11 @@ towards this code.
 The new policy can be used by setting the environment variable
 `HEADSCALE_EXPERIMENTAL_POLICY_V2` to `1`.
 
+#### Other breaking
+
+- Disallow `server_url` and `base_domain` to be equal
+  [#2544](https://github.com/juanfont/headscale/pull/2544)
+
 ### Changes
 
 - Use Go 1.24 [#2427](https://github.com/juanfont/headscale/pull/2427)
