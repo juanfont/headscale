@@ -78,7 +78,7 @@ func init() {
 		log.Fatal(err.Error())
 	}
 
-	moveNodeCmd.Flags().StringP("user", "u", "", "New user")
+	moveNodeCmd.Flags().Uint64P("user", "u", 0, "New user")
 
 	moveNodeCmd.Flags().StringP("namespace", "n", "", "User")
 	moveNodeNamespaceFlag := moveNodeCmd.Flags().Lookup("namespace")
@@ -470,7 +470,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		user, err := cmd.Flags().GetString("user")
+		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
 			ErrorOutput(
 				err,
