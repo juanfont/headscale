@@ -800,7 +800,8 @@
       "type": "object",
       "properties": {
         "user": {
-          "type": "string"
+          "type": "string",
+          "format": "uint64"
         }
       }
     },

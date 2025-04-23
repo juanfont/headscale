@@ -1001,7 +1001,7 @@ func (x *ListNodesResponse) GetNodes() []*Node {
 type MoveNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
-	User          string                 `protobuf:"bytes,2,opt,name=user,proto3" json:"user,omitempty"`
+	User          uint64                 `protobuf:"varint,2,opt,name=user,proto3" json:"user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1043,11 +1043,11 @@ func (x *MoveNodeRequest) GetNodeId() uint64 {
 	return 0
 }
 
-func (x *MoveNodeRequest) GetUser() string {
+func (x *MoveNodeRequest) GetUser() uint64 {
 	if x != nil {
 		return x.User
 	}
-	return ""
+	return 0
 }
 
 type MoveNodeResponse struct {
@@ -1365,7 +1365,7 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x05nodes\x18\x01 \x03(\v2\x12.headscale.v1.NodeR\x05nodes\">\n" +
 	"\x0fMoveNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x12\n" +
-	"\x04user\x18\x02 \x01(\tR\x04user\":\n" +
+	"\x04user\x18\x02 \x01(\x04R\x04user\":\n" +
 	"\x10MoveNodeResponse\x12&\n" +
 	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"j\n" +
 	"\x16DebugCreateNodeRequest\x12\x12\n" +
