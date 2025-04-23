@@ -423,6 +423,7 @@ func TestSafeServerURL(t *testing.T) {
 		{
 			serverURL:  "https://headscale.com",
 			baseDomain: "headscale.com",
+			wantErr:    errServerURLSame.Error(),
 		},
 		{
 			serverURL:  "https://headscale.com",

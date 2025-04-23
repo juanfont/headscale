@@ -33,6 +33,7 @@ const (
 var (
 	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
 	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errServerURLSame         = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
 	errInvalidPKCEMethod     = errors.New("pkce.method must be either 'plain' or 'S256'")
 )
 
@@ -997,6 +998,10 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	server, err := url.Parse(serverURL)
 	if err != nil {
 		return err
+	}
+
+	if server.Hostname() == baseDomain {
+		return errServerURLSame
 	}
 
 	serverDomainParts := strings.Split(server.Host, ".")
