@@ -157,7 +157,7 @@ func (u *User) Proto() *v1.User {
 type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
-	var val interface{}
+	var val any
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal data: %w", err)
@@ -201,6 +201,17 @@ func (c *OIDCClaims) Identifier() string {
 		}
 	}
 	return c.Iss + "/" + c.Sub
+}
+
+type OIDCUserInfo struct {
+	Sub               string          `json:"sub"`
+	Name              string          `json:"name"`
+	GivenName         string          `json:"given_name"`
+	FamilyName        string          `json:"family_name"`
+	PreferredUsername string          `json:"preferred_username"`
+	Email             string          `json:"email"`
+	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
+	Picture           string          `json:"picture"`
 }
 
 // FromClaim overrides a User from OIDC claims.
