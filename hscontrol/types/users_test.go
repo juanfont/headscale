@@ -197,7 +197,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				DisplayName: "XXXXXX XXXX",
 				Name:        "user@domain.com",
 				ProviderIdentifier: sql.NullString{
-					String: "https://login.microsoftonline.com//v2.0/I-70OQnj3TogrNSfkZQqB3f7dGwyBWSm1dolHNKrMzQ",
+					String: "https://login.microsoftonline.com/v2.0/I-70OQnj3TogrNSfkZQqB3f7dGwyBWSm1dolHNKrMzQ",
 					Valid:  true,
 				},
 			},
