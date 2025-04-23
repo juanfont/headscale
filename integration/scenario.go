@@ -169,6 +169,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
 	dockertestutil.CleanUnreferencedNetworks(pool)
+	dockertestutil.CleanImagesInCI(pool)
 
 	if spec.MaxWait == 0 {
 		pool.MaxWait = dockertestMaxWait()
@@ -302,6 +303,7 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	defer dockertestutil.CleanUnreferencedNetworks(s.pool)
+	defer dockertestutil.CleanImagesInCI(s.pool)
 
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		stdoutPath, stderrPath, err := control.Shutdown()

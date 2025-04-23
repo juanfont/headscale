@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -172,4 +173,16 @@ func ParseTraceroute(output string) (Traceroute, error) {
 	}
 
 	return result, nil
+}
+
+func IsCI() bool {
+	if _, ok := os.LookupEnv("CI"); ok {
+		return true
+	}
+
+	if _, ok := os.LookupEnv("GITHUB_RUN_ID"); ok {
+		return true
+	}
+
+	return false
 }
