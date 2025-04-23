@@ -76,6 +76,13 @@ working in v1 and not tested might be broken in v2 (and vice versa).
 - Disallow `server_url` and `base_domain` to be equal
   [#2544](https://github.com/juanfont/headscale/pull/2544)
 
+#### Other breaking changes
+
+- Return full user in API for pre auth keys instead of string
+  [#2542](https://github.com/juanfont/headscale/pull/2542)
+- Pre auth key API/CLI now uses ID over username
+  [#2542](https://github.com/juanfont/headscale/pull/2542)
+
 ### Changes
 
 - Use Go 1.24 [#2427](https://github.com/juanfont/headscale/pull/2427)
