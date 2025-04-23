@@ -652,7 +652,7 @@ AND auth_key_id NOT IN (
 
 					for nodeID, routes := range nodeRoutes {
 						tsaddr.SortPrefixes(routes)
-						slices.Compact(routes)
+						routes = slices.Compact(routes)
 
 						data, err := json.Marshal(routes)
 

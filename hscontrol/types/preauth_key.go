@@ -1,11 +1,9 @@
 package types
 
 import (
-	"strconv"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -32,7 +30,7 @@ type PreAuthKey struct {
 func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
 		User:      key.User.Proto(),
-		Id:        strconv.FormatUint(key.ID, util.Base10),
+		Id:        key.ID,
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,

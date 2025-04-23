@@ -25,7 +25,7 @@ const (
 type PreAuthKey struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	Id            uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
 	Key           string                 `protobuf:"bytes,3,opt,name=key,proto3" json:"key,omitempty"`
 	Reusable      bool                   `protobuf:"varint,4,opt,name=reusable,proto3" json:"reusable,omitempty"`
 	Ephemeral     bool                   `protobuf:"varint,5,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`
@@ -74,11 +74,11 @@ func (x *PreAuthKey) GetUser() *User {
 	return nil
 }
 
-func (x *PreAuthKey) GetId() string {
+func (x *PreAuthKey) GetId() uint64 {
 	if x != nil {
 		return x.Id
 	}
-	return ""
+	return 0
 }
 
 func (x *PreAuthKey) GetKey() string {
@@ -132,7 +132,7 @@ func (x *PreAuthKey) GetAclTags() []string {
 
 type CreatePreAuthKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
 	Reusable      bool                   `protobuf:"varint,2,opt,name=reusable,proto3" json:"reusable,omitempty"`
 	Ephemeral     bool                   `protobuf:"varint,3,opt,name=ephemeral,proto3" json:"ephemeral,omitempty"`
 	Expiration    *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expiration,proto3" json:"expiration,omitempty"`
@@ -171,11 +171,11 @@ func (*CreatePreAuthKeyRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *CreatePreAuthKeyRequest) GetUser() string {
+func (x *CreatePreAuthKeyRequest) GetUser() uint64 {
 	if x != nil {
 		return x.User
 	}
-	return ""
+	return 0
 }
 
 func (x *CreatePreAuthKeyRequest) GetReusable() bool {
@@ -252,7 +252,7 @@ func (x *CreatePreAuthKeyResponse) GetPreAuthKey() *PreAuthKey {
 
 type ExpirePreAuthKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -288,11 +288,11 @@ func (*ExpirePreAuthKeyRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ExpirePreAuthKeyRequest) GetUser() string {
+func (x *ExpirePreAuthKeyRequest) GetUser() uint64 {
 	if x != nil {
 		return x.User
 	}
-	return ""
+	return 0
 }
 
 func (x *ExpirePreAuthKeyRequest) GetKey() string {
@@ -340,7 +340,7 @@ func (*ExpirePreAuthKeyResponse) Descriptor() ([]byte, []int) {
 
 type ListPreAuthKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -375,11 +375,11 @@ func (*ListPreAuthKeysRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *ListPreAuthKeysRequest) GetUser() string {
+func (x *ListPreAuthKeysRequest) GetUser() uint64 {
 	if x != nil {
 		return x.User
 	}
-	return ""
+	return 0
 }
 
 type ListPreAuthKeysResponse struct {
@@ -434,7 +434,7 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"\n" +
 	"PreAuthKey\x12&\n" +
 	"\x04user\x18\x01 \x01(\v2\x12.headscale.v1.UserR\x04user\x12\x0e\n" +
-	"\x02id\x18\x02 \x01(\tR\x02id\x12\x10\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\tR\x03key\x12\x1a\n" +
 	"\breusable\x18\x04 \x01(\bR\breusable\x12\x1c\n" +
 	"\tephemeral\x18\x05 \x01(\bR\tephemeral\x12\x12\n" +
@@ -446,7 +446,7 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x19\n" +
 	"\bacl_tags\x18\t \x03(\tR\aaclTags\"\xbe\x01\n" +
 	"\x17CreatePreAuthKeyRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\x12\x1a\n" +
+	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x1a\n" +
 	"\breusable\x18\x02 \x01(\bR\breusable\x12\x1c\n" +
 	"\tephemeral\x18\x03 \x01(\bR\tephemeral\x12:\n" +
 	"\n" +
@@ -457,11 +457,11 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"\fpre_auth_key\x18\x01 \x01(\v2\x18.headscale.v1.PreAuthKeyR\n" +
 	"preAuthKey\"?\n" +
 	"\x17ExpirePreAuthKeyRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\x12\x10\n" +
+	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\x1a\n" +
 	"\x18ExpirePreAuthKeyResponse\",\n" +
 	"\x16ListPreAuthKeysRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\"W\n" +
+	"\x04user\x18\x01 \x01(\x04R\x04user\"W\n" +
 	"\x17ListPreAuthKeysResponse\x12<\n" +
 	"\rpre_auth_keys\x18\x01 \x03(\v2\x18.headscale.v1.PreAuthKeyR\vpreAuthKeysB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 

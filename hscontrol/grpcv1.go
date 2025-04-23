@@ -161,7 +161,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	user, err := api.h.db.GetUserByName(request.GetUser())
+	user, err := api.h.db.GetUserByID(types.UserID(request.GetUser()))
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +190,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 			return err
 		}
 
-		if preAuthKey.User.Name != request.GetUser() {
+		if uint64(preAuthKey.User.ID) != request.GetUser() {
 			return fmt.Errorf("preauth key does not belong to user")
 		}
 
@@ -207,7 +207,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	user, err := api.h.db.GetUserByName(request.GetUser())
+	user, err := api.h.db.GetUserByID(types.UserID(request.GetUser()))
 	if err != nil {
 		return nil, err
 	}

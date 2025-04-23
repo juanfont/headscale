@@ -111,7 +111,7 @@ func generateUserProfiles(
 	}
 
 	slices.Sort(ids)
-	slices.Compact(ids)
+	ids = slices.Compact(ids)
 	var profiles []tailcfg.UserProfile
 	for _, id := range ids {
 		if userMap[id] != nil {

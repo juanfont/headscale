@@ -20,7 +20,7 @@ const (
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
-	preauthkeysCmd.PersistentFlags().StringP("user", "u", "", "User")
+	preauthkeysCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
 
 	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "User")
 	pakNamespaceFlag := preauthkeysCmd.PersistentFlags().Lookup("namespace")
@@ -57,7 +57,7 @@ var listPreAuthKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetString("user")
+		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
@@ -112,7 +112,7 @@ var listPreAuthKeys = &cobra.Command{
 			aclTags = strings.TrimLeft(aclTags, ",")
 
 			tableData = append(tableData, []string{
-				key.GetId(),
+				strconv.FormatUint(key.GetId(), 64),
 				key.GetKey(),
 				strconv.FormatBool(key.GetReusable()),
 				strconv.FormatBool(key.GetEphemeral()),
@@ -141,7 +141,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetString("user")
+		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
@@ -206,7 +206,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetString("user")
+		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
