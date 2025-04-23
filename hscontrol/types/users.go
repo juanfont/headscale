@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -194,6 +195,11 @@ type OIDCClaims struct {
 }
 
 func (c *OIDCClaims) Identifier() string {
+	if strings.HasPrefix(c.Iss, "http") {
+		if i, err := url.JoinPath(c.Iss, c.Sub); err == nil {
+			return i
+		}
+	}
 	return c.Iss + "/" + c.Sub
 }
 
