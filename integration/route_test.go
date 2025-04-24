@@ -1680,7 +1680,10 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 						scenario.runHeadscaleRegister("user1", body)
 					} else {
-						pak, err := scenario.CreatePreAuthKey("user1", false, false)
+						userMap, err := headscale.MapUsers()
+						assertNoErr(t, err)
+
+						pak, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
 						assertNoErr(t, err)
 
 						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.Key)

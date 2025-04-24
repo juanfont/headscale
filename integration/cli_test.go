@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -547,7 +548,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	err = headscale.CreateUser(user2)
+	u2, err := headscale.CreateUser(user2)
 	assertNoErr(t, err)
 
 	var user2Key v1.PreAuthKey
@@ -558,7 +559,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 			"headscale",
 			"preauthkeys",
 			"--user",
-			"2",
+			strconv.FormatUint(u2.GetId(), 10),
 			"create",
 			"--reusable",
 			"--expiration",

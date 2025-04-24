@@ -436,7 +436,7 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 // CreatePreAuthKey creates a "pre authentorised key" to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreatePreAuthKey(
-	user string,
+	user uint64,
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
@@ -454,21 +454,21 @@ func (s *Scenario) CreatePreAuthKey(
 
 // CreateUser creates a User to be created in the
 // Headscale instance on behalf of the Scenario.
-func (s *Scenario) CreateUser(user string) error {
+func (s *Scenario) CreateUser(user string) (*v1.User, error) {
 	if headscale, err := s.Headscale(); err == nil {
-		err := headscale.CreateUser(user)
+		u, err := headscale.CreateUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to create user: %w", err)
+			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
 		s.users[user] = &User{
 			Clients: make(map[string]TailscaleClient),
 		}
 
-		return nil
+		return u, nil
 	}
 
-	return fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
+	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
 /// Client related stuff
@@ -703,7 +703,7 @@ func (s *Scenario) createHeadscaleEnv(
 
 	sort.Strings(s.spec.Users)
 	for _, user := range s.spec.Users {
-		err = s.CreateUser(user)
+		u, err := s.CreateUser(user)
 		if err != nil {
 			return err
 		}
@@ -726,7 +726,7 @@ func (s *Scenario) createHeadscaleEnv(
 				return err
 			}
 		} else {
-			key, err := s.CreatePreAuthKey(user, true, false)
+			key, err := s.CreatePreAuthKey(u.GetId(), true, false)
 			if err != nil {
 				return err
 			}
