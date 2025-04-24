@@ -71,5 +71,4 @@ func main() {
 	}
 
 	updateYAML(quotedTests, "./test-integration.yaml")
-	updateYAML(quotedTests, "./test-integration-policyv2.yaml")
 }
