@@ -4,6 +4,8 @@
 
 ### BREAKING
 
+#### Routes
+
 Route internals have been rewritten, removing the dedicated route table in the
 database. This was done to simplify the codebase, which had grown unnecessarily
 complex after the routes were split into separate tables. The overhead of having
@@ -35,14 +37,15 @@ will be approved.
 - Routes are now managed via the Node API
   [#2422](https://github.com/juanfont/headscale/pull/2422)
 
-### Experimental Policy v2
+#### Policy v2
 
-This release introduces a new experimental version of Headscales policy
-implementation. In this context, experimental means that the feature is not yet
-fully tested and may contain bugs or unexpected behavior and that we are still
-experimenting with how the final interface/behavior will be.
+This release introduces a new policy implementation. The new policy is a
+complete rewrite, and it introduces some significant quality and consistency
+improvements. In principle, there are not really any new features, but some long
+standing bugs should have been resolved, or be easier to fix in the future. The
+new policy code passes all of our tests.
 
-#### Breaking changes
+**Changes**
 
 - The policy is validated and "resolved" when loading, providing errors for
   invalid rules and conditions.
@@ -59,19 +62,14 @@ experimenting with how the final interface/behavior will be.
     `@` should be appended at the end. For example, if your user is `john`, it
     must be written as `john@` in the policy.
 
-#### Current state
+**Current state**
 
 The new policy is passing all tests, both integration and unit tests. This does
 not mean it is perfect, but it is a good start. Corner cases that is currently
 working in v1 and not tested might be broken in v2 (and vice versa).
 
-**We do need help testing this code**, and we think that most of the user facing
-API will not really change. We are not sure yet when this code will replace v1,
-but we are confident that it will, and all new changes and fixes will be made
-towards this code.
+**We do need help testing this code**
 
-The new policy can be used by setting the environment variable
-`HEADSCALE_EXPERIMENTAL_POLICY_V2` to `1`.
 
 #### Other breaking
 
