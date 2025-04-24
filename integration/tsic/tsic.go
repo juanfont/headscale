@@ -195,7 +195,7 @@ func WithBuildTag(tag string) Option {
 // as part of the Login function.
 func WithExtraLoginArgs(args []string) Option {
 	return func(tsic *TailscaleInContainer) {
-		tsic.extraLoginArgs = args
+		tsic.extraLoginArgs = append(tsic.extraLoginArgs, args...)
 	}
 }
 
