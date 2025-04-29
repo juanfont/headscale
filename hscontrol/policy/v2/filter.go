@@ -38,7 +38,7 @@ func (pol *Policy) compileFilterRules(
 			log.Trace().Err(err).Msgf("resolving source ips")
 		}
 
-		if len(srcIPs.Prefixes()) == 0 {
+		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
 			continue
 		}
 
@@ -54,6 +54,10 @@ func (pol *Policy) compileFilterRules(
 			ips, err := dest.Alias.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Err(err).Msgf("resolving destination ips")
+			}
+
+			if ips == nil {
+				continue
 			}
 
 			for _, pref := range ips.Prefixes() {
@@ -161,6 +165,10 @@ func (pol *Policy) compileSSHPolicy(
 
 func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
 	var out []string
+
+	if ips == nil {
+		return out
+	}
 
 	for _, pref := range ips.Prefixes() {
 		out = append(out, pref.String())
