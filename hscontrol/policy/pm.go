@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	polv2 = envknob.Bool("HEADSCALE_EXPERIMENTAL_POLICY_V2")
+	polv1 = envknob.Bool("HEADSCALE_POLICY_V1")
 )
 
 type PolicyManager interface {
@@ -35,13 +35,13 @@ type PolicyManager interface {
 func NewPolicyManager(pol []byte, users []types.User, nodes types.Nodes) (PolicyManager, error) {
 	var polMan PolicyManager
 	var err error
-	if polv2 {
-		polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
+	if polv1 {
+		polMan, err = policyv1.NewPolicyManager(pol, users, nodes)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		polMan, err = policyv1.NewPolicyManager(pol, users, nodes)
+		polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
 		if err != nil {
 			return nil, err
 		}

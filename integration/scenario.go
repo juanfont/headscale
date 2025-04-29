@@ -47,7 +47,7 @@ const (
 )
 
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
-var usePolicyV2ForTest = envknob.Bool("HEADSCALE_EXPERIMENTAL_POLICY_V2")
+var usePolicyV1ForTest = envknob.Bool("HEADSCALE_POLICY_V1")
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
@@ -408,8 +408,8 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 		opts = append(opts, hsic.WithPostgres())
 	}
 
-	if usePolicyV2ForTest {
-		opts = append(opts, hsic.WithPolicyV2())
+	if usePolicyV1ForTest {
+		opts = append(opts, hsic.WithPolicyV1())
 	}
 
 	headscale, err := hsic.New(s.pool, s.Networks(), opts...)

@@ -136,7 +136,7 @@ jobs:
           # about this.
           # Some of the jobs might still require manual restart as they are really
           # slow and this will cause them to eventually be killed by Github actions.
-          attempt_delay: 300000   # 5 min
+          attempt_delay: 300000 # 5 min
           attempt_limit: 10
           command: |
             nix develop --command -- docker run \
@@ -147,7 +147,6 @@ jobs:
               --volume /var/run/docker.sock:/var/run/docker.sock \
               --volume $PWD/control_logs:/tmp/control \
               --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
-              --env HEADSCALE_EXPERIMENTAL_POLICY_V2=0 \
               golang:1 \
                 go run gotest.tools/gotestsum@latest -- ./... \
                   -failfast \
@@ -157,12 +156,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-logs
+          name: ${{ matrix.test }}-${{matrix.database}}-logs
           path: "control_logs/*.log"
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-${{matrix.policy}}-pprof
+          name: ${{ matrix.test }}-${{matrix.database}}-pprof
           path: "control_logs/*.pprof.tar"
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}

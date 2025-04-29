@@ -346,7 +346,7 @@ func Test_fullMapResponse(t *testing.T) {
 						{
 							"action": "accept",
 							"src": ["100.64.0.2"],
-							"dst": ["user1:*"],
+							"dst": ["user1@:*"],
 						},
 					],
 				}
@@ -382,7 +382,7 @@ func Test_fullMapResponse(t *testing.T) {
 						},
 					},
 				},
-				SSHPolicy: &tailcfg.SSHPolicy{},
+				SSHPolicy: nil,
 				UserProfiles: []tailcfg.UserProfile{
 					{ID: tailcfg.UserID(user1.ID), LoginName: "user1", DisplayName: "user1"},
 					{ID: tailcfg.UserID(user2.ID), LoginName: "user2", DisplayName: "user2"},
