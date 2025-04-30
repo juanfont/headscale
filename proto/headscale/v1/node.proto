@@ -99,7 +99,7 @@ message ListNodesResponse { repeated Node nodes = 1; }
 
 message MoveNodeRequest {
   uint64 node_id = 1;
-  string user = 2;
+  uint64 user = 2;
 }
 
 message MoveNodeResponse { Node node = 1; }

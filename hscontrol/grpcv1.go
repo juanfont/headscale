@@ -547,21 +547,30 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	// TODO(kradalby): This should be done in one tx.
-	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
+	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		node, err := db.GetNodeByID(tx, types.NodeID(request.GetNodeId()))
+		if err != nil {
+			return nil, err
+		}
+
+		err = db.AssignNodeToUser(tx, node, types.UserID(request.GetUser()))
+		if err != nil {
+			return nil, err
+		}
+
+		return node, nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := api.h.db.GetUserByName(request.GetUser())
-	if err != nil {
-		return nil, err
-	}
-
-	err = api.h.db.AssignNodeToUser(node, types.UserID(user.ID))
-	if err != nil {
-		return nil, err
-	}
+	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByNodeID(
+		ctx,
+		types.UpdateSelf(node.ID),
+		node.ID)
+	ctx = types.NotifyCtx(ctx, "cli-movenode", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 
 	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
