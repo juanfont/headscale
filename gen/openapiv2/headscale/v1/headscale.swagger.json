@@ -580,7 +580,8 @@
             "name": "user",
             "in": "query",
             "required": false,
-            "type": "string"
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -909,7 +910,8 @@
       "type": "object",
       "properties": {
         "user": {
-          "type": "string"
+          "type": "string",
+          "format": "uint64"
         },
         "reusable": {
           "type": "boolean"
@@ -1022,7 +1024,8 @@
       "type": "object",
       "properties": {
         "user": {
-          "type": "string"
+          "type": "string",
+          "format": "uint64"
         },
         "key": {
           "type": "string"
@@ -1202,10 +1205,11 @@
       "type": "object",
       "properties": {
         "user": {
-          "type": "string"
+          "$ref": "#/definitions/v1User"
         },
         "id": {
-          "type": "string"
+          "type": "string",
+          "format": "uint64"
         },
         "key": {
           "type": "string"

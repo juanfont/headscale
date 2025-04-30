@@ -3,8 +3,11 @@ package integration
 import (
 	"fmt"
 	"net/netip"
+	"strconv"
 	"testing"
 	"time"
+
+	"slices"
 
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -84,8 +87,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
+			userMap, err := headscale.MapUsers()
+			assertNoErr(t, err)
+
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userName, true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -121,16 +127,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}
 
 				for _, ip := range ips {
-					found := false
-					for _, oldIP := range clientIPs[client] {
-						if ip == oldIP {
-							found = true
-
-							break
-						}
-					}
-
-					if !found {
+					if !slices.Contains(clientIPs[client], ip) {
 						t.Fatalf(
 							"IPs changed for client %s. Used to be %v now %v",
 							client.Hostname(),
@@ -195,8 +192,11 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	t.Logf("all clients logged out")
 
+	userMap, err := headscale.MapUsers()
+	assertNoErr(t, err)
+
 	// Create a new authkey for user1, to be used for all clients
-	key, err := scenario.CreatePreAuthKey("user1", true, false)
+	key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
 	if err != nil {
 		t.Fatalf("failed to create pre-auth key for user1: %s", err)
 	}
@@ -300,8 +300,11 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				time.Sleep(5 * time.Minute)
 			}
 
+			userMap, err := headscale.MapUsers()
+			assertNoErr(t, err)
+
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userName, true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -312,7 +315,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 						"headscale",
 						"preauthkeys",
 						"--user",
-						userName,
+						strconv.FormatUint(userMap[userName].GetId(), 10),
 						"expire",
 						key.Key,
 					})

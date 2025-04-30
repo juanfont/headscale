@@ -28,6 +28,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/mak"
 )
 
 const (
@@ -703,32 +704,38 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 // CreateUser adds a new user to the Headscale instance.
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
-) error {
-	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user)}
+) (*v1.User, error) {
+	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user), "--output", "json"}
 
-	_, _, err := dockertestutil.ExecuteCommand(
+	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
 		[]string{},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var u v1.User
+	err = json.Unmarshal([]byte(result), &u)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+	}
+
+	return &u, nil
 }
 
 // CreateAuthKey creates a new "authorisation key" for a User that can be used
 // to authorise a TailscaleClient with the Headscale instance.
 func (t *HeadscaleInContainer) CreateAuthKey(
-	user string,
+	user uint64,
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
 		"--user",
-		user,
+		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"create",
 		"--expiration",
@@ -832,6 +839,22 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 	}
 
 	return users, nil
+}
+
+// MapUsers returns a map of users from Headscale. It is keyed by the
+// user name.
+func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
+	users, err := t.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	var userMap map[string]*v1.User
+	for _, user := range users {
+		mak.Set(&userMap, user.Name, user)
+	}
+
+	return userMap, nil
 }
 
 func (h *HeadscaleInContainer) SetPolicy(pol *policyv1.ACLPolicy) error {

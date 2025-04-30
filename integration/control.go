@@ -18,10 +18,11 @@ type ControlServer interface {
 	GetHealthEndpoint() string
 	GetEndpoint() string
 	WaitForRunning() error
-	CreateUser(user string) error
-	CreateAuthKey(user string, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
+	CreateUser(user string) (*v1.User, error)
+	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListNodes(users ...string) ([]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
+	MapUsers() (map[string]*v1.User, error)
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	GetCert() []byte
 	GetHostname() string
