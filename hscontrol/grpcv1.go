@@ -268,7 +268,24 @@ func (api headscaleV1APIServer) RegisterNode(
 	if err != nil {
 		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
-	if !updateSent {
+
+	// This is a bit of a back and forth, but we have a bit of a chicken and egg
+	// dependency here.
+	// Because the way the policy manager works, we need to have the node
+	// in the database, then add it to the policy manager and then we can
+	// approve the route. This means we get this dance where the node is
+	// first added to the database, then we add it to the policy manager via
+	// nodesChangedHook and then we can auto approve the routes.
+	// As that only approves the struct object, we need to save it again and
+	// ensure we send an update.
+	// This works, but might be another good candidate for doing some sort of
+	// eventbus.
+	routesChanged := policy.AutoApproveRoutes(api.h.polMan, node)
+	if err := api.h.db.DB.Save(node).Error; err != nil {
+		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
+	}
+
+	if !updateSent || routesChanged {
 		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
 	}
