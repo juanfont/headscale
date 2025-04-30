@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -344,22 +343,10 @@ func isSelfClient(client TailscaleClient, addr string) bool {
 	return false
 }
 
-func isCI() bool {
-	if _, ok := os.LookupEnv("CI"); ok {
-		return true
-	}
-
-	if _, ok := os.LookupEnv("GITHUB_RUN_ID"); ok {
-		return true
-	}
-
-	return false
-}
-
 func dockertestMaxWait() time.Duration {
 	wait := 120 * time.Second //nolint
 
-	if isCI() {
+	if util.IsCI() {
 		wait = 300 * time.Second //nolint
 	}
 

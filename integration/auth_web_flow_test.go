@@ -26,7 +26,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	}
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("webauthping"),
 		hsic.WithEmbeddedDERPServerOnly(),
@@ -66,7 +66,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv(
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("weblogout"),
 		hsic.WithTLS(),

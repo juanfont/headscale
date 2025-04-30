@@ -287,9 +287,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -319,9 +319,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the client has routes from the primary machine and can access
 	// the webservice.
@@ -375,9 +375,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1 = subRouter1.MustStatus()
@@ -431,9 +431,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 1, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1 = subRouter1.MustStatus()
@@ -645,9 +645,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -690,9 +690,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -738,9 +738,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 0)
+	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -870,8 +870,8 @@ func TestSubnetRouteACL(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 0, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -899,8 +899,8 @@ func TestSubnetRouteACL(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 0, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[1], 0, 0, 0)
 
 	// Verify that the client has routes from the primary machine
 	srs1, _ := subRouter1.Status()
@@ -1034,8 +1034,8 @@ func TestEnablingExitRoutes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 2, 0, 0)
-	assertNodeRouteCount(t, nodes[1], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[1], 2, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1067,8 +1067,8 @@ func TestEnablingExitRoutes(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assertNodeRouteCount(t, nodes[0], 2, 2, 2)
-	assertNodeRouteCount(t, nodes[1], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[0], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[1], 2, 2, 2)
 
 	time.Sleep(5 * time.Second)
 
@@ -1158,7 +1158,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1184,7 +1184,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	nodes, err = headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
 
 	// Verify that the routes have been sent to the client.
 	status, err = user2c.Status()
@@ -1282,7 +1282,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 2, 0, 0)
+	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1305,7 +1305,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	nodes, err = headscale.ListNodes()
 	require.NoError(t, err)
 	assert.Len(t, nodes, 2)
-	assertNodeRouteCount(t, nodes[0], 2, 2, 2)
+	requireNodeRouteCount(t, nodes[0], 2, 2, 2)
 
 	// Verify that the routes have been sent to the client.
 	status, err = user2c.Status()
@@ -1349,6 +1349,15 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
+	for _, node := range nodes {
+		if node.GetName() == hostname {
+			return node
+		}
+	}
+	panic("node not found")
+}
+
 // TestAutoApproveMultiNetwork tests auto approving of routes
 // by setting up two networks where network1 has three subnet
 // routers:
@@ -1367,358 +1376,601 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 //   - Verify that routes can now be seen by peers.
 func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
-
-	spec := ScenarioSpec{
-		NodesPerUser: 3,
-		Users:        []string{"user1", "user2"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
-		},
-		ExtraService: map[string][]extraServiceFunc{
-			"usernet1": {Webservice},
-		},
-		// We build the head image with curl and traceroute, so only use
-		// that for this test.
-		Versions: []string{"head"},
-	}
-
-	rootRoute := netip.MustParsePrefix("10.42.0.0/16")
+	bigRoute := netip.MustParsePrefix("10.42.0.0/16")
 	subRoute := netip.MustParsePrefix("10.42.7.0/24")
 	notApprovedRoute := netip.MustParsePrefix("192.168.0.0/24")
 
-	scenario, err := NewScenario(spec)
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	pol := &policyv1.ACLPolicy{
-		ACLs: []policyv1.ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"*:*"},
+	tests := []struct {
+		name     string
+		pol      *policyv1.ACLPolicy
+		approver string
+		spec     ScenarioSpec
+		withURL  bool
+	}{
+		{
+			name: "authkey-tag",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {"user1@"},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"tag:approve"},
+					},
+					ExitNode: []string{"tag:approve"},
+				},
+			},
+			approver: "tag:approve",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
 			},
 		},
-		TagOwners: map[string][]string{
-			"tag:approve": {"user1@"},
-		},
-		AutoApprovers: policyv1.AutoApprovers{
-			Routes: map[string][]string{
-				rootRoute.String(): {"tag:approve"},
+		{
+			name: "authkey-user",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"user1@"},
+					},
+					ExitNode: []string{"user1@"},
+				},
 			},
-			ExitNode: []string{"tag:approve"},
+			approver: "user1@",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
+			},
+		},
+		{
+			name: "authkey-group",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				Groups: policyv1.Groups{
+					"group:approve": []string{"user1@"},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"group:approve"},
+					},
+					ExitNode: []string{"group:approve"},
+				},
+			},
+			approver: "group:approve",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
+			},
+		},
+		{
+			name: "webauth-user",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"user1@"},
+					},
+					ExitNode: []string{"user1@"},
+				},
+			},
+			approver: "user1@",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
+			},
+			withURL: true,
+		},
+		{
+			name: "webauth-tag",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				TagOwners: map[string][]string{
+					"tag:approve": {"user1@"},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"tag:approve"},
+					},
+					ExitNode: []string{"tag:approve"},
+				},
+			},
+			approver: "tag:approve",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
+			},
+			withURL: true,
+		},
+		{
+			name: "webauth-group",
+			pol: &policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
+					{
+						Action:       "accept",
+						Sources:      []string{"*"},
+						Destinations: []string{"*:*"},
+					},
+				},
+				Groups: policyv1.Groups{
+					"group:approve": []string{"user1@"},
+				},
+				AutoApprovers: policyv1.AutoApprovers{
+					Routes: map[string][]string{
+						bigRoute.String(): {"group:approve"},
+					},
+					ExitNode: []string{"group:approve"},
+				},
+			},
+			approver: "group:approve",
+			spec: ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user1", "user2"},
+				Networks: map[string][]string{
+					"usernet1": {"user1"},
+					"usernet2": {"user2"},
+				},
+				ExtraService: map[string][]extraServiceFunc{
+					"usernet1": {Webservice},
+				},
+				// We build the head image with curl and traceroute, so only use
+				// that for this test.
+				Versions: []string{"head"},
+			},
+			withURL: true,
 		},
 	}
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{
-		tsic.WithAcceptRoutes(),
-		tsic.WithTags([]string{"tag:approve"}),
-	},
-		hsic.WithTestName("clienableroute"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithACLPolicy(pol),
-		hsic.WithPolicyMode(types.PolicyModeDB),
-	)
-	assertNoErrHeadscaleEnv(t, err)
+	for _, tt := range tests {
+		for _, dbMode := range []types.PolicyMode{types.PolicyModeDB, types.PolicyModeFile} {
+			for _, advertiseDuringUp := range []bool{false, true} {
+				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, dbMode)
+				t.Run(name, func(t *testing.T) {
+					scenario, err := NewScenario(tt.spec)
+					require.NoErrorf(t, err, "failed to create scenario: %s", err)
+					defer scenario.ShutdownAssertNoPanics(t)
 
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+					opts := []hsic.Option{
+						hsic.WithTestName("autoapprovemulti"),
+						hsic.WithEmbeddedDERPServerOnly(),
+						hsic.WithTLS(),
+						hsic.WithACLPolicy(tt.pol),
+						hsic.WithPolicyMode(dbMode),
+					}
 
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+					tsOpts := []tsic.Option{
+						tsic.WithAcceptRoutes(),
+					}
 
-	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
-	assert.NotNil(t, headscale)
+					if tt.approver == "tag:approve" {
+						tsOpts = append(tsOpts,
+							tsic.WithTags([]string{"tag:approve"}),
+						)
+					}
 
-	route, err := scenario.SubnetOfNetwork("usernet1")
-	require.NoError(t, err)
+					route, err := scenario.SubnetOfNetwork("usernet1")
+					require.NoError(t, err)
 
-	// Set the route of usernet1 to be autoapproved
-	pol.AutoApprovers.Routes[route.String()] = []string{"tag:approve"}
-	err = headscale.SetPolicy(pol)
-	require.NoError(t, err)
+					err = scenario.createHeadscaleEnv(tt.withURL, tsOpts,
+						opts...,
+					)
+					assertNoErrHeadscaleEnv(t, err)
 
-	services, err := scenario.Services("usernet1")
-	require.NoError(t, err)
-	require.Len(t, services, 1)
+					allClients, err := scenario.ListTailscaleClients()
+					assertNoErrListClients(t, err)
 
-	usernet1, err := scenario.Network("usernet1")
-	require.NoError(t, err)
+					err = scenario.WaitForTailscaleSync()
+					assertNoErrSync(t, err)
 
-	web := services[0]
-	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
-	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("webservice: %s, %s", webip.String(), weburl)
+					services, err := scenario.Services("usernet1")
+					require.NoError(t, err)
+					require.Len(t, services, 1)
 
-	// Sort nodes by ID
-	sort.SliceStable(allClients, func(i, j int) bool {
-		statusI := allClients[i].MustStatus()
-		statusJ := allClients[j].MustStatus()
+					usernet1, err := scenario.Network("usernet1")
+					require.NoError(t, err)
 
-		return statusI.Self.ID < statusJ.Self.ID
-	})
+					headscale, err := scenario.Headscale()
+					assertNoErrGetHeadscale(t, err)
+					assert.NotNil(t, headscale)
 
-	// This is ok because the scenario makes users in order, so the three first
-	// nodes, which are subnet routes, will be created first, and the last user
-	// will be created with the second.
-	routerUsernet1 := allClients[0]
-	routerSubRoute := allClients[1]
-	routerExitNode := allClients[2]
+					if advertiseDuringUp {
+						tsOpts = append(tsOpts,
+							tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + route.String()}),
+						)
+					}
 
-	client := allClients[3]
+					tsOpts = append(tsOpts, tsic.WithNetwork(usernet1))
 
-	// Advertise the route for the dockersubnet of user1
-	command := []string{
-		"tailscale",
-		"set",
-		"--advertise-routes=" + route.String(),
-	}
-	_, _, err = routerUsernet1.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+					// This whole dance is to add a node _after_ all the other nodes
+					// with an additional tsOpt which advertises the route as part
+					// of the `tailscale up` command. If we do this as part of the
+					// scenario creation, it will be added to all nodes and turn
+					// into a HA node, which isnt something we are testing here.
+					routerUsernet1, err := scenario.CreateTailscaleNode("head", tsOpts...)
+					require.NoError(t, err)
+					defer routerUsernet1.Shutdown()
 
-	time.Sleep(5 * time.Second)
+					if tt.withURL {
+						u, err := routerUsernet1.LoginWithURL(headscale.GetEndpoint())
+						assertNoErr(t, err)
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+						body, err := doLoginURL(routerUsernet1.Hostname(), u)
+						assertNoErr(t, err)
 
-	// Verify that the routes have been sent to the client.
-	status, err := client.Status()
-	require.NoError(t, err)
+						scenario.runHeadscaleRegister("user1", body)
+					} else {
+						pak, err := scenario.CreatePreAuthKey("user1", false, false)
+						assertNoErr(t, err)
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.Key)
+						assertNoErr(t, err)
+					}
+					// extra creation end.
 
-		if peerStatus.ID == "1" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
-		}
-	}
+					// Set the route of usernet1 to be autoapproved
+					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
+					err = headscale.SetPolicy(tt.pol)
+					require.NoError(t, err)
 
-	url := fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("url from %s to %s", client.Hostname(), url)
+					routerUsernet1ID := routerUsernet1.MustID()
 
-	result, err := client.Curl(url)
-	require.NoError(t, err)
-	assert.Len(t, result, 13)
+					web := services[0]
+					webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+					weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+					t.Logf("webservice: %s, %s", webip.String(), weburl)
 
-	tr, err := client.Traceroute(webip)
-	require.NoError(t, err)
-	assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
+					// Sort nodes by ID
+					sort.SliceStable(allClients, func(i, j int) bool {
+						statusI := allClients[i].MustStatus()
+						statusJ := allClients[j].MustStatus()
 
-	// Remove the auto approval from the policy, any routes already enabled should be allowed.
-	delete(pol.AutoApprovers.Routes, route.String())
-	err = headscale.SetPolicy(pol)
-	require.NoError(t, err)
+						return statusI.Self.ID < statusJ.Self.ID
+					})
 
-	time.Sleep(5 * time.Second)
+					// This is ok because the scenario makes users in order, so the three first
+					// nodes, which are subnet routes, will be created first, and the last user
+					// will be created with the second.
+					routerSubRoute := allClients[1]
+					routerExitNode := allClients[2]
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+					client := allClients[3]
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+					if !advertiseDuringUp {
+						// Advertise the route for the dockersubnet of user1
+						command := []string{
+							"tailscale",
+							"set",
+							"--advertise-routes=" + route.String(),
+						}
+						_, _, err = routerUsernet1.Execute(command)
+						require.NoErrorf(t, err, "failed to advertise route: %s", err)
+					}
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+					time.Sleep(5 * time.Second)
 
-		if peerStatus.ID == "1" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
-		}
-	}
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err := headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 
-	url = fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("url from %s to %s", client.Hostname(), url)
+					// Verify that the routes have been sent to the client.
+					status, err := client.Status()
+					require.NoError(t, err)
 
-	result, err = client.Curl(url)
-	require.NoError(t, err)
-	assert.Len(t, result, 13)
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
 
-	tr, err = client.Traceroute(webip)
-	require.NoError(t, err)
-	assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
 
-	// Disable the route, making it unavailable since it is no longer auto-approved
-	_, err = headscale.ApproveRoutes(
-		nodes[0].GetId(),
-		[]netip.Prefix{},
-	)
-	require.NoError(t, err)
+					url := fmt.Sprintf("http://%s/etc/hostname", webip)
+					t.Logf("url from %s to %s", client.Hostname(), url)
 
-	time.Sleep(5 * time.Second)
+					result, err := client.Curl(url)
+					require.NoError(t, err)
+					assert.Len(t, result, 13)
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 0, 0)
+					tr, err := client.Traceroute(webip)
+					require.NoError(t, err)
+					assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+					// Remove the auto approval from the policy, any routes already enabled should be allowed.
+					delete(tt.pol.AutoApprovers.Routes, route.String())
+					err = headscale.SetPolicy(tt.pol)
+					require.NoError(t, err)
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
-		requirePeerSubnetRoutes(t, peerStatus, nil)
-	}
+					time.Sleep(5 * time.Second)
 
-	// Add the route back to the auto approver in the policy, the route should
-	// now become available again.
-	pol.AutoApprovers.Routes[route.String()] = []string{"tag:approve"}
-	err = headscale.SetPolicy(pol)
-	require.NoError(t, err)
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 
-	time.Sleep(5 * time.Second)
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+					url = fmt.Sprintf("http://%s/etc/hostname", webip)
+					t.Logf("url from %s to %s", client.Hostname(), url)
 
-		if peerStatus.ID == "1" {
-			require.NotNil(t, peerStatus.PrimaryRoutes)
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
-		}
-	}
+					result, err = client.Curl(url)
+					require.NoError(t, err)
+					assert.Len(t, result, 13)
 
-	url = fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("url from %s to %s", client.Hostname(), url)
+					tr, err = client.Traceroute(webip)
+					require.NoError(t, err)
+					assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
 
-	result, err = client.Curl(url)
-	require.NoError(t, err)
-	assert.Len(t, result, 13)
+					// Disable the route, making it unavailable since it is no longer auto-approved
+					_, err = headscale.ApproveRoutes(
+						MustFindNode(routerUsernet1.Hostname(), nodes).GetId(),
+						[]netip.Prefix{},
+					)
+					require.NoError(t, err)
 
-	tr, err = client.Traceroute(webip)
-	require.NoError(t, err)
-	assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
+					time.Sleep(5 * time.Second)
 
-	// Advertise and validate a subnet of an auto approved route, /24 inside the
-	// auto approved /16.
-	command = []string{
-		"tailscale",
-		"set",
-		"--advertise-routes=" + subRoute.String(),
-	}
-	_, _, err = routerSubRoute.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 0, 0)
 
-	time.Sleep(5 * time.Second)
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 1)
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
+						requirePeerSubnetRoutes(t, peerStatus, nil)
+					}
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+					// Add the route back to the auto approver in the policy, the route should
+					// now become available again.
+					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
+					err = headscale.SetPolicy(tt.pol)
+					require.NoError(t, err)
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+					time.Sleep(5 * time.Second)
 
-		if peerStatus.ID == "1" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else if peerStatus.ID == "2" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), subRoute)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{subRoute})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
-		}
-	}
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 
-	// Advertise a not approved route will not end up anywhere
-	command = []string{
-		"tailscale",
-		"set",
-		"--advertise-routes=" + notApprovedRoute.String(),
-	}
-	_, _, err = routerSubRoute.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
 
-	time.Sleep(5 * time.Second)
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
 
-	// These route should auto approve, so the node is expected to have a route
-	// for all counts.
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 0, 0, 0)
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							require.NotNil(t, peerStatus.PrimaryRoutes)
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+					url = fmt.Sprintf("http://%s/etc/hostname", webip)
+					t.Logf("url from %s to %s", client.Hostname(), url)
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+					result, err = client.Curl(url)
+					require.NoError(t, err)
+					assert.Len(t, result, 13)
 
-		if peerStatus.ID == "1" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
-		}
-	}
+					tr, err = client.Traceroute(webip)
+					require.NoError(t, err)
+					assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
 
-	// Exit routes are also automatically approved
-	command = []string{
-		"tailscale",
-		"set",
-		"--advertise-exit-node",
-	}
-	_, _, err = routerExitNode.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+					// Advertise and validate a subnet of an auto approved route, /24 inside the
+					// auto approved /16.
+					command := []string{
+						"tailscale",
+						"set",
+						"--advertise-routes=" + subRoute.String(),
+					}
+					_, _, err = routerSubRoute.Execute(command)
+					require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
-	time.Sleep(5 * time.Second)
+					time.Sleep(5 * time.Second)
 
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	assertNodeRouteCount(t, nodes[0], 1, 1, 1)
-	assertNodeRouteCount(t, nodes[1], 1, 1, 0)
-	assertNodeRouteCount(t, nodes[2], 2, 2, 2)
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
+					requireNodeRouteCount(t, nodes[1], 1, 1, 1)
 
-	// Verify that the routes have been sent to the client.
-	status, err = client.Status()
-	require.NoError(t, err)
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
 
-	for _, peerKey := range status.Peers() {
-		peerStatus := status.Peer[peerKey]
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
 
-		if peerStatus.ID == "1" {
-			assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
-		} else if peerStatus.ID == "3" {
-			requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
-		} else {
-			requirePeerSubnetRoutes(t, peerStatus, nil)
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else if peerStatus.ID == "2" {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), subRoute)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{subRoute})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
+
+					// Advertise a not approved route will not end up anywhere
+					command = []string{
+						"tailscale",
+						"set",
+						"--advertise-routes=" + notApprovedRoute.String(),
+					}
+					_, _, err = routerSubRoute.Execute(command)
+					require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+					time.Sleep(5 * time.Second)
+
+					// These route should auto approve, so the node is expected to have a route
+					// for all counts.
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
+					requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+					requireNodeRouteCount(t, nodes[2], 0, 0, 0)
+
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
+
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
+
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
+
+					// Exit routes are also automatically approved
+					command = []string{
+						"tailscale",
+						"set",
+						"--advertise-exit-node",
+					}
+					_, _, err = routerExitNode.Execute(command)
+					require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+					time.Sleep(5 * time.Second)
+
+					nodes, err = headscale.ListNodes()
+					require.NoError(t, err)
+					requireNodeRouteCount(t, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
+					requireNodeRouteCount(t, nodes[1], 1, 1, 0)
+					requireNodeRouteCount(t, nodes[2], 2, 2, 2)
+
+					// Verify that the routes have been sent to the client.
+					status, err = client.Status()
+					require.NoError(t, err)
+
+					for _, peerKey := range status.Peers() {
+						peerStatus := status.Peer[peerKey]
+
+						if peerStatus.ID == routerUsernet1ID.StableID() {
+							assert.Contains(t, peerStatus.PrimaryRoutes.AsSlice(), *route)
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{*route})
+						} else if peerStatus.ID == "3" {
+							requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+						} else {
+							requirePeerSubnetRoutes(t, peerStatus, nil)
+						}
+					}
+				})
+			}
 		}
 	}
 }
@@ -1757,9 +2009,9 @@ func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected
 	}
 }
 
-func assertNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
+func requireNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
 	t.Helper()
-	assert.Len(t, node.GetAvailableRoutes(), announced)
-	assert.Len(t, node.GetApprovedRoutes(), approved)
-	assert.Len(t, node.GetSubnetRoutes(), subnet)
+	require.Lenf(t, node.GetAvailableRoutes(), announced, "expected %q announced routes(%v) to have %d route, had %d", node.GetName(), node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
+	require.Lenf(t, node.GetApprovedRoutes(), approved, "expected %q approved routes(%v) to have %d route, had %d", node.GetName(), node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
+	require.Lenf(t, node.GetSubnetRoutes(), subnet, "expected %q subnet routes(%v) to have %d route, had %d", node.GetName(), node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
 }

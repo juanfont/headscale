@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"net/url"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -43,7 +44,8 @@ type TailscaleClient interface {
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
 	Traceroute(netip.Addr) (util.Traceroute, error)
-	ID() string
+	ContainerID() string
+	MustID() types.NodeID
 	ReadFile(path string) ([]byte, error)
 
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client

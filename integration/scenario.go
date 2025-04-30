@@ -109,6 +109,9 @@ type Scenario struct {
 
 	spec          ScenarioSpec
 	userToNetwork map[string]*dockertest.Network
+
+	testHashPrefix     string
+	testDefaultNetwork string
 }
 
 // ScenarioSpec describes the users, nodes, and network topology to
@@ -150,11 +153,8 @@ type ScenarioSpec struct {
 	MaxWait time.Duration
 }
 
-var TestHashPrefix = "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
-var TestDefaultNetwork = TestHashPrefix + "-default"
-
-func prefixedNetworkName(name string) string {
-	return TestHashPrefix + "-" + name
+func (s *Scenario) prefixedNetworkName(name string) string {
+	return s.testHashPrefix + "-" + name
 }
 
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
@@ -169,6 +169,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
 	dockertestutil.CleanUnreferencedNetworks(pool)
+	dockertestutil.CleanImagesInCI(pool)
 
 	if spec.MaxWait == 0 {
 		pool.MaxWait = dockertestMaxWait()
@@ -176,18 +177,22 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		pool.MaxWait = spec.MaxWait
 	}
 
+	testHashPrefix := "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
 	s := &Scenario{
 		controlServers: xsync.NewMapOf[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool: pool,
 		spec: spec,
+
+		testHashPrefix:     testHashPrefix,
+		testDefaultNetwork: testHashPrefix + "-default",
 	}
 
 	var userToNetwork map[string]*dockertest.Network
 	if spec.Networks != nil || len(spec.Networks) != 0 {
 		for name, users := range s.spec.Networks {
-			networkName := TestHashPrefix + "-" + name
+			networkName := testHashPrefix + "-" + name
 			network, err := s.AddNetwork(networkName)
 			if err != nil {
 				return nil, err
@@ -201,7 +206,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 			}
 		}
 	} else {
-		_, err := s.AddNetwork(TestDefaultNetwork)
+		_, err := s.AddNetwork(s.testDefaultNetwork)
 		if err != nil {
 			return nil, err
 		}
@@ -213,7 +218,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 			if err != nil {
 				return nil, err
 			}
-			mak.Set(&s.extraServices, prefixedNetworkName(network), append(s.extraServices[prefixedNetworkName(network)], svc))
+			mak.Set(&s.extraServices, s.prefixedNetworkName(network), append(s.extraServices[s.prefixedNetworkName(network)], svc))
 		}
 	}
 
@@ -261,7 +266,7 @@ func (s *Scenario) Networks() []*dockertest.Network {
 }
 
 func (s *Scenario) Network(name string) (*dockertest.Network, error) {
-	net, ok := s.networks[prefixedNetworkName(name)]
+	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
 		return nil, fmt.Errorf("no network named: %s", name)
 	}
@@ -270,7 +275,7 @@ func (s *Scenario) Network(name string) (*dockertest.Network, error) {
 }
 
 func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
-	net, ok := s.networks[prefixedNetworkName(name)]
+	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
 		return nil, fmt.Errorf("no network named: %s", name)
 	}
@@ -288,7 +293,7 @@ func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 }
 
 func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
-	res, ok := s.extraServices[prefixedNetworkName(name)]
+	res, ok := s.extraServices[s.prefixedNetworkName(name)]
 	if !ok {
 		return nil, fmt.Errorf("no network named: %s", name)
 	}
@@ -298,6 +303,7 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	defer dockertestutil.CleanUnreferencedNetworks(s.pool)
+	defer dockertestutil.CleanImagesInCI(s.pool)
 
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		stdoutPath, stderrPath, err := control.Shutdown()
@@ -493,8 +499,7 @@ func (s *Scenario) CreateTailscaleNode(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to create tailscale (%s) node: %w",
-			tsClient.Hostname(),
+			"failed to create tailscale node: %w",
 			err,
 		)
 	}
@@ -707,7 +712,7 @@ func (s *Scenario) createHeadscaleEnv(
 		if s.userToNetwork != nil {
 			opts = append(tsOpts, tsic.WithNetwork(s.userToNetwork[user]))
 		} else {
-			opts = append(tsOpts, tsic.WithNetwork(s.networks[TestDefaultNetwork]))
+			opts = append(tsOpts, tsic.WithNetwork(s.networks[s.testDefaultNetwork]))
 		}
 
 		err = s.CreateTailscaleNodesInUser(user, "all", s.spec.NodesPerUser, opts...)
@@ -1181,7 +1186,7 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 
 	hostname := fmt.Sprintf("hs-webservice-%s", hash)
 
-	network, ok := s.networks[prefixedNetworkName(networkName)]
+	network, ok := s.networks[s.prefixedNetworkName(networkName)]
 	if !ok {
 		return nil, fmt.Errorf("network does not exist: %s", networkName)
 	}

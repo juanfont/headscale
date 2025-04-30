@@ -442,7 +442,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assertNoErr(t, err)
 	assert.Len(t, listUsers, 0)
 
-	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[TestDefaultNetwork]))
+	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
 	assertNoErr(t, err)
 
 	u, err := ts.LoginWithURL(headscale.GetEndpoint())

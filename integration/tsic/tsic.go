@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -194,7 +195,7 @@ func WithBuildTag(tag string) Option {
 // as part of the Login function.
 func WithExtraLoginArgs(args []string) Option {
 	return func(tsic *TailscaleInContainer) {
-		tsic.extraLoginArgs = args
+		tsic.extraLoginArgs = append(tsic.extraLoginArgs, args...)
 	}
 }
 
@@ -383,7 +384,7 @@ func (t *TailscaleInContainer) Version() string {
 
 // ID returns the Docker container ID of the TailscaleInContainer
 // instance.
-func (t *TailscaleInContainer) ID() string {
+func (t *TailscaleInContainer) ContainerID() string {
 	return t.container.Container.ID
 }
 
@@ -426,18 +427,19 @@ func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	)
 }
 
-// Up runs the login routine on the given Tailscale instance.
-// This login mechanism uses the authorised key for authentication.
-func (t *TailscaleInContainer) Login(
+func (t *TailscaleInContainer) buildLoginCommand(
 	loginServer, authKey string,
-) error {
+) []string {
 	command := []string{
 		"tailscale",
 		"up",
 		"--login-server=" + loginServer,
-		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
 		fmt.Sprintf("--accept-routes=%t", t.withAcceptRoutes),
+	}
+
+	if authKey != "" {
+		command = append(command, "--authkey="+authKey)
 	}
 
 	if t.extraLoginArgs != nil {
@@ -458,6 +460,16 @@ func (t *TailscaleInContainer) Login(
 		)
 	}
 
+	return command
+}
+
+// Login runs the login routine on the given Tailscale instance.
+// This login mechanism uses the authorised key for authentication.
+func (t *TailscaleInContainer) Login(
+	loginServer, authKey string,
+) error {
+	command := t.buildLoginCommand(loginServer, authKey)
+
 	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
 		return fmt.Errorf(
 			"%s failed to join tailscale client (%s): %w",
@@ -475,17 +487,7 @@ func (t *TailscaleInContainer) Login(
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
 ) (loginURL *url.URL, err error) {
-	command := []string{
-		"tailscale",
-		"up",
-		"--login-server=" + loginServer,
-		"--hostname=" + t.hostname,
-		"--accept-routes=false",
-	}
-
-	if t.extraLoginArgs != nil {
-		command = append(command, t.extraLoginArgs...)
-	}
+	command := t.buildLoginCommand(loginServer, "")
 
 	stdout, stderr, err := t.Execute(command)
 	if errors.Is(err, errTailscaleNotLoggedIn) {
@@ -646,7 +648,7 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	return &status, err
 }
 
-// Status returns the ipnstate.Status of the Tailscale instance.
+// MustStatus returns the ipnstate.Status of the Tailscale instance.
 func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
 	status, err := t.Status()
 	if err != nil {
@@ -654,6 +656,21 @@ func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
 	}
 
 	return status
+}
+
+// MustID returns the ID of the Tailscale instance.
+func (t *TailscaleInContainer) MustID() types.NodeID {
+	status, err := t.Status()
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse ID: %s", err))
+	}
+
+	return types.NodeID(id)
 }
 
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 )
@@ -101,6 +102,26 @@ func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 				log.Printf("removing network %s: %s", network.Network.Name, err)
 			}
 		}
+	}
+
+	return nil
+}
+
+// CleanImagesInCI removes images if running in CI.
+func CleanImagesInCI(pool *dockertest.Pool) error {
+	if !util.IsCI() {
+		log.Println("Skipping image cleanup outside of CI")
+		return nil
+	}
+
+	images, err := pool.Client.ListImages(docker.ListImagesOptions{})
+	if err != nil {
+		return fmt.Errorf("getting images: %w", err)
+	}
+
+	for _, image := range images {
+		log.Printf("removing image: %s, %v", image.ID, image.RepoTags)
+		_ = pool.Client.RemoveImage(image.ID)
 	}
 
 	return nil
