@@ -49,7 +49,6 @@ jobs:
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestResolveMagicDNSExtraRecordsPath
-          - TestValidateResolvConf
           - TestDERPServerScenario
           - TestDERPServerWebsocketScenario
           - TestPingAllByIP
