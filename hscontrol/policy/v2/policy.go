@@ -3,10 +3,11 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"strings"
 	"sync"
+
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
 	"slices"
 
@@ -64,6 +65,12 @@ func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyM
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
+	// Clear the SSH policy map to ensure it's recalculated with the new policy.
+	// TODO(kradalby): This could potentially be optimized by only clearing the
+	// policies for nodes that have changed. Particularly if the only difference is
+	// that nodes has been added or removed.
+	defer clear(pm.sshPolicyMap)
+
 	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("compiling filter rules: %w", err)
@@ -104,12 +111,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	if !filterChanged && !tagOwnerChanged && !autoApproveChanged {
 		return false, nil
 	}
-
-	// Clear the SSH policy map to ensure it's recalculated with the new policy.
-	// TODO(kradalby): This could potentially be optimized by only clearing the
-	// policies for nodes that have changed. Particularly if the only difference is
-	// that nodes has been added or removed.
-	clear(pm.sshPolicyMap)
 
 	return true, nil
 }
