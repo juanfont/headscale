@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	_ "embed"
 	"errors"
@@ -280,14 +281,28 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// If EmailVerified is missing, we can try to get it from UserInfo
-	if !claims.EmailVerified {
-		var userinfo *oidc.UserInfo
-		userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
-		if err != nil {
-			util.LogErr(err, "could not get userinfo; email cannot be verified")
+	var userinfo *oidc.UserInfo
+	userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
+	if err != nil {
+		util.LogErr(err, "could not get userinfo; only checking claim")
+	}
+
+	// If the userinfo is available, we can check if the subject matches the
+	// claims, then use some of the userinfo fields to update the user.
+	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+	if userinfo != nil && userinfo.Subject == claims.Sub {
+		claims.Email = cmp.Or(claims.Email, userinfo.Email)
+		claims.EmailVerified = cmp.Or(claims.EmailVerified, types.FlexibleBoolean(userinfo.EmailVerified))
+
+		// The userinfo has some extra fields that we can use to update the user but they are only
+		// available in the underlying claims struct.
+		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
+		var userinfo2 types.OIDCUserInfo
+		if err := userinfo.Claims(&userinfo2); err == nil {
+			claims.Username = cmp.Or(claims.Username, userinfo2.PreferredUsername)
+			claims.Name = cmp.Or(claims.Name, userinfo2.Name)
+			claims.ProfilePictureURL = cmp.Or(claims.ProfilePictureURL, userinfo2.Picture)
 		}
-		claims.EmailVerified = types.FlexibleBoolean(userinfo.EmailVerified)
 	}
 
 	user, err := a.createOrUpdateUserFromClaim(&claims)

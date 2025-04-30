@@ -97,6 +97,8 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2493](https://github.com/juanfont/headscale/pull/2493)
   - If a OIDC provider doesn't include the `email_verified` claim in its ID
     tokens, Headscale will attempt to get it from the UserInfo endpoint.
+- OIDC: Try to populate name, email and username from UserInfo
+  [#2545](https://github.com/juanfont/headscale/pull/2545)
 - Improve performance by only querying relevant nodes from the database for node
   updates [#2509](https://github.com/juanfont/headscale/pull/2509)
 - node FQDNs in the netmap will now contain a dot (".") at the end. This aligns
