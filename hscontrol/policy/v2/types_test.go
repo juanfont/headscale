@@ -361,6 +361,65 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet]`,
 		},
+		{
+			name: "undefined-hostname-errors-2490",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "user1"
+      ],
+      "dst": [
+        "user1:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Host "user1" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "defined-hostname-does-not-err-2490",
+			input: `
+{
+  "hosts": {
+		"user1": "100.100.100.100",
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "user1"
+      ],
+      "dst": [
+        "user1:*"
+      ]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				Hosts: Hosts{
+					"user1": Prefix(mp("100.100.100.100/32")),
+				},
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							hp("user1"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: hp("user1"),
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {
@@ -370,7 +429,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			policy, err := policyFromBytes([]byte(tt.input))
+			policy, err := unmarshalPolicy([]byte(tt.input))
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("got %v; want no error", err)

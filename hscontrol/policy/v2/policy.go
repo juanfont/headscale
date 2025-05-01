@@ -42,7 +42,7 @@ type PolicyManager struct {
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
 func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
-	policy, err := policyFromBytes(b)
+	policy, err := unmarshalPolicy(b)
 	if err != nil {
 		return nil, fmt.Errorf("parsing policy: %w", err)
 	}
@@ -137,7 +137,7 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 		return false, nil
 	}
 
-	pol, err := policyFromBytes(polB)
+	pol, err := unmarshalPolicy(polB)
 	if err != nil {
 		return false, fmt.Errorf("parsing policy: %w", err)
 	}

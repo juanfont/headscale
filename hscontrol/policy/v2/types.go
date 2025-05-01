@@ -532,7 +532,7 @@ Please check the format and try again.`, vs)
 type AliasEnc struct{ Alias }
 
 func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Alias](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAlias,
 	)
@@ -639,7 +639,7 @@ Please check the format and try again.`, s)
 type AutoApproverEnc struct{ AutoApprover }
 
 func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[AutoApprover](
+	ptr, err := unmarshalPointer(
 		b,
 		parseAutoApprover,
 	)
@@ -659,7 +659,7 @@ type Owner interface {
 type OwnerEnc struct{ Owner }
 
 func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
-	ptr, err := unmarshalPointer[Owner](
+	ptr, err := unmarshalPointer(
 		b,
 		parseOwner,
 	)
@@ -767,6 +767,11 @@ func (h *Hosts) UnmarshalJSON(b []byte) error {
 		(*h)[host] = pref
 	}
 	return nil
+}
+
+func (h Hosts) exist(name Host) bool {
+	_, ok := h[name]
+	return ok
 }
 
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
@@ -902,6 +907,39 @@ type Policy struct {
 	SSHs          []SSH              `json:"ssh"`
 }
 
+// validate reports if there are any errors in a policy after
+// the unmarshaling process.
+// It runs through all rules and checks if there are any inconsistencies
+// in the policy that needs to be addressed before it can be used.
+func (p *Policy) validate() error {
+	if p == nil {
+		panic("passed nil policy")
+	}
+
+	// All errors are collected and presented to the user,
+	// when adding more validation, please add to the list of errors.
+	var errs []error
+
+	for _, acl := range p.ACLs {
+		for _, src := range acl.Sources {
+			switch src.(type) {
+			case *Host:
+				h := src.(*Host)
+				if !p.Hosts.exist(*h) {
+					errs = append(errs, fmt.Errorf(`Host %q is not defined in the Policy, please define or remove the reference to it`, *h))
+				}
+			}
+		}
+	}
+
+	if len(errs) > 0 {
+		return multierr.New(errs...)
+	}
+
+	p.validated = true
+	return nil
+}
+
 // SSH controls who can ssh into which machines.
 type SSH struct {
 	Action       string        `json:"action"` // TODO(kradalby): add strict type
@@ -986,7 +1024,10 @@ func (u SSHUser) String() string {
 	return string(u)
 }
 
-func policyFromBytes(b []byte) (*Policy, error) {
+// unmarshalPolicy takes a byte slice and unmarshals it into a Policy struct.
+// In addition to unmarshalling, it will also validate the policy.
+// This is the only entrypoint of reading a policy from a file or other source.
+func unmarshalPolicy(b []byte) (*Policy, error) {
 	if b == nil || len(b) == 0 {
 		return nil, nil
 	}
@@ -1000,9 +1041,12 @@ func policyFromBytes(b []byte) (*Policy, error) {
 	ast.Standardize()
 	acl := ast.Pack()
 
-	err = json.Unmarshal(acl, &policy)
-	if err != nil {
+	if err = json.Unmarshal(acl, &policy); err != nil {
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
+	}
+
+	if err := policy.validate(); err != nil {
+		return nil, err
 	}
 
 	return &policy, nil
