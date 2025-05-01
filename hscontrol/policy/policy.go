@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"slices"
 
@@ -15,7 +16,7 @@ import (
 func FilterNodesByACL(
 	node *types.Node,
 	nodes types.Nodes,
-	filter []tailcfg.FilterRule,
+	matchers []matcher.Match,
 ) types.Nodes {
 	var result types.Nodes
 
@@ -24,7 +25,7 @@ func FilterNodesByACL(
 			continue
 		}
 
-		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
+		if node.CanAccess(matchers, nodes[index]) || peer.CanAccess(matchers, node) {
 			result = append(result, peer)
 		}
 	}

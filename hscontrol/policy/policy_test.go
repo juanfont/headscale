@@ -2,6 +2,7 @@ package policy
 
 import (
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"testing"
 
@@ -769,7 +770,7 @@ func TestReduceFilterRules(t *testing.T) {
 				var err error
 				pm, err = pmf(users, append(tt.peers, tt.node))
 				require.NoError(t, err)
-				got := pm.Filter()
+				got, _ := pm.Filter()
 				got = ReduceFilterRules(tt.node, got)
 
 				if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -1425,10 +1426,11 @@ func TestFilterNodesByACL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
 			got := FilterNodesByACL(
 				tt.args.node,
 				tt.args.nodes,
-				tt.args.rules,
+				matchers,
 			)
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)

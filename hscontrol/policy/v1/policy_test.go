@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -27,6 +28,7 @@ func TestPolicySetChange(t *testing.T) {
 		wantNodesChange  bool
 		wantPolicyChange bool
 		wantFilter       []tailcfg.FilterRule
+		wantMatchers     []matcher.Match
 	}{
 		{
 			name: "set-nodes",
@@ -42,6 +44,9 @@ func TestPolicySetChange(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny}},
 				},
 			},
+			wantMatchers: []matcher.Match{
+				matcher.MatchFromStrings([]string{}, []string{"100.64.0.1/32"}),
+			},
 		},
 		{
 			name:            "set-users",
@@ -51,6 +56,9 @@ func TestPolicySetChange(t *testing.T) {
 				{
 					DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny}},
 				},
+			},
+			wantMatchers: []matcher.Match{
+				matcher.MatchFromStrings([]string{}, []string{"100.64.0.1/32"}),
 			},
 		},
 		{
@@ -69,6 +77,9 @@ func TestPolicySetChange(t *testing.T) {
 					SrcIPs:   []string{"100.64.0.2/32"},
 					DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny}},
 				},
+			},
+			wantMatchers: []matcher.Match{
+				matcher.MatchFromStrings([]string{"100.64.0.2/32"}, []string{"100.64.0.1/32"}),
 			},
 		},
 		{
@@ -94,6 +105,9 @@ func TestPolicySetChange(t *testing.T) {
 					SrcIPs:   []string{"100.64.0.61/32"},
 					DstPorts: []tailcfg.NetPortRange{{IP: "100.64.0.62/32", Ports: tailcfg.PortRangeAny}},
 				},
+			},
+			wantMatchers: []matcher.Match{
+				matcher.MatchFromStrings([]string{"100.64.0.61/32"}, []string{"100.64.0.62/32"}),
 			},
 		},
 	}
@@ -150,8 +164,16 @@ func TestPolicySetChange(t *testing.T) {
 				assert.Equal(t, tt.wantNodesChange, change)
 			}
 
-			if diff := cmp.Diff(tt.wantFilter, pm.Filter()); diff != "" {
-				t.Errorf("TestPolicySetChange() unexpected result (-want +got):\n%s", diff)
+			filter, matchers := pm.Filter()
+			if diff := cmp.Diff(tt.wantFilter, filter); diff != "" {
+				t.Errorf("TestPolicySetChange() unexpected filter (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(
+				tt.wantMatchers,
+				matchers,
+				cmp.AllowUnexported(matcher.Match{}),
+			); diff != "" {
+				t.Errorf("TestPolicySetChange() unexpected matchers (-want +got):\n%s", diff)
 			}
 		})
 	}

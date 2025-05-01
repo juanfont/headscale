@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -29,16 +30,18 @@ func TestPolicyManager(t *testing.T) {
 	}
 
 	tests := []struct {
-		name       string
-		pol        string
-		nodes      types.Nodes
-		wantFilter []tailcfg.FilterRule
+		name         string
+		pol          string
+		nodes        types.Nodes
+		wantFilter   []tailcfg.FilterRule
+		wantMatchers []matcher.Match
 	}{
 		{
-			name:       "empty-policy",
-			pol:        "{}",
-			nodes:      types.Nodes{},
-			wantFilter: nil,
+			name:         "empty-policy",
+			pol:          "{}",
+			nodes:        types.Nodes{},
+			wantFilter:   nil,
+			wantMatchers: []matcher.Match{},
 		},
 	}
 
@@ -47,9 +50,16 @@ func TestPolicyManager(t *testing.T) {
 			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes)
 			require.NoError(t, err)
 
-			filter := pm.Filter()
-			if diff := cmp.Diff(filter, tt.wantFilter); diff != "" {
-				t.Errorf("Filter() mismatch (-want +got):\n%s", diff)
+			filter, matchers := pm.Filter()
+			if diff := cmp.Diff(tt.wantFilter, filter); diff != "" {
+				t.Errorf("Filter() filter mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(
+				tt.wantMatchers,
+				matchers,
+				cmp.AllowUnexported(matcher.Match{}),
+			); diff != "" {
+				t.Errorf("Filter() matchers mismatch (-want +got):\n%s", diff)
 			}
 
 			// TODO(kradalby): Test SSH Policy

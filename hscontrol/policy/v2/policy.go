@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+
 	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -24,6 +26,7 @@ type PolicyManager struct {
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
+	matchers   []matcher.Match
 
 	tagOwnerMapHash deephash.Sum
 	tagOwnerMap     map[Tag]*netipx.IPSet
@@ -62,15 +65,24 @@ func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyM
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
+	// Clear the SSH policy map to ensure it's recalculated with the new policy.
+	// TODO(kradalby): This could potentially be optimized by only clearing the
+	// policies for nodes that have changed. Particularly if the only difference is
+	// that nodes has been added or removed.
+	defer clear(pm.sshPolicyMap)
+
 	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("compiling filter rules: %w", err)
 	}
 
 	filterHash := deephash.Hash(&filter)
-	filterChanged := filterHash == pm.filterHash
+	filterChanged := filterHash != pm.filterHash
 	pm.filter = filter
 	pm.filterHash = filterHash
+	if filterChanged {
+		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+	}
 
 	// Order matters, tags might be used in autoapprovers, so we need to ensure
 	// that the map for tag owners is resolved before resolving autoapprovers.
@@ -99,12 +111,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	if !filterChanged && !tagOwnerChanged && !autoApproveChanged {
 		return false, nil
 	}
-
-	// Clear the SSH policy map to ensure it's recalculated with the new policy.
-	// TODO(kradalby): This could potentially be optimized by only clearing the
-	// policies for nodes that have changed. Particularly if the only difference is
-	// that nodes has been added or removed.
-	clear(pm.sshPolicyMap)
 
 	return true, nil
 }
@@ -144,11 +150,11 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	return pm.updateLocked()
 }
 
-// Filter returns the current filter rules for the entire tailnet.
-func (pm *PolicyManager) Filter() []tailcfg.FilterRule {
+// Filter returns the current filter rules for the entire tailnet and the associated matchers.
+func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	return pm.filter
+	return pm.filter, pm.matchers
 }
 
 // SetUsers updates the users in the policy manager and updates the filter rules.
