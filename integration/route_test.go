@@ -1654,6 +1654,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assertNoErrGetHeadscale(t, err)
 					assert.NotNil(t, headscale)
 
+					// Set the route of usernet1 to be autoapproved
+					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
+					err = headscale.SetPolicy(tt.pol)
+					require.NoError(t, err)
+
 					if advertiseDuringUp {
 						tsOpts = append(tsOpts,
 							tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + route.String()}),
@@ -1690,11 +1695,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						assertNoErr(t, err)
 					}
 					// extra creation end.
-
-					// Set the route of usernet1 to be autoapproved
-					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
-					err = headscale.SetPolicy(tt.pol)
-					require.NoError(t, err)
 
 					routerUsernet1ID := routerUsernet1.MustID()
 
