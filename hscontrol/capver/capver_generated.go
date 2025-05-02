@@ -35,6 +35,7 @@ var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
 	"v1.80.2": 113,
 	"v1.80.3": 113,
 	"v1.82.0": 115,
+	"v1.82.5": 115,
 }
 
 
