@@ -68,21 +68,9 @@ func (m *Match) DestsContainsIP(ips ...netip.Addr) bool {
 }
 
 func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
-	for _, prefix := range prefixes {
-		if m.srcs.ContainsPrefix(prefix) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(prefixes, m.srcs.OverlapsPrefix)
 }
 
 func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
-	for _, prefix := range prefixes {
-		if m.dests.ContainsPrefix(prefix) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
 }
