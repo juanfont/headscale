@@ -17,7 +17,7 @@ README](https://github.com/juanfont/headscale#contributing) for more information
 
 ```shell
 # Install prerequisites
-pkg_add go
+pkg_add go git
 
 git clone https://github.com/juanfont/headscale.git
 
