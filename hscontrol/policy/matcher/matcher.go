@@ -3,6 +3,8 @@ package matcher
 import (
 	"net/netip"
 
+	"slices"
+
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
@@ -58,23 +60,11 @@ func MatchFromStrings(sources, destinations []string) Match {
 }
 
 func (m *Match) SrcsContainsIPs(ips ...netip.Addr) bool {
-	for _, ip := range ips {
-		if m.srcs.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(ips, m.srcs.Contains)
 }
 
 func (m *Match) DestsContainsIP(ips ...netip.Addr) bool {
-	for _, ip := range ips {
-		if m.dests.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(ips, m.dests.Contains)
 }
 
 func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
