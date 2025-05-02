@@ -90,7 +90,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 
 // IsZero is perhaps a bit naive here.
 func (pol ACLPolicy) IsZero() bool {
-	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 {
+	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 && len(pol.SSHs) == 0 {
 		return true
 	}
 
