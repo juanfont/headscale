@@ -420,6 +420,97 @@ func TestUnmarshalPolicy(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "autogroup:internet-in-dst-allowed",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "10.0.0.1"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							pp("10.0.0.1/32"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: ptr.To(AutoGroup("autogroup:internet")),
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "autogroup:internet-in-src-not-allowed",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "autogroup:internet"
+      ],
+      "dst": [
+        "10.0.0.1:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `"autogroup:internet" used in source, it can only be used in ACL destinations`,
+		},
+		{
+			name: "autogroup:internet-in-ssh-src-not-allowed",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "autogroup:internet"
+      ],
+      "dst": [
+        "tag:test"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `"autogroup:internet" used in SSH source, it can only be used in ACL destinations`,
+		},
+		{
+			name: "autogroup:internet-in-ssh-dst-not-allowed",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:test"
+      ],
+      "dst": [
+        "autogroup:internet"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`,
+		},
 	}
 
 	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {
