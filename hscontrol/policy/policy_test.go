@@ -2,9 +2,10 @@ package policy
 
 import (
 	"fmt"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"testing"
+
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -1370,7 +1371,6 @@ func TestFilterNodesByACL(t *testing.T) {
 				},
 			},
 		},
-
 		{
 			name: "subnet-router-with-only-route",
 			args: args{
@@ -1419,6 +1419,108 @@ func TestFilterNodesByACL(t *testing.T) {
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
 					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
+				},
+			},
+		},
+		{
+			name: "subnet-router-with-only-route-smaller-mask-2181",
+			args: args{
+				nodes: []*types.Node{
+					{
+						ID:       1,
+						IPv4:     ap("100.64.0.1"),
+						Hostname: "router",
+						User:     types.User{Name: "router"},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+					},
+					{
+						ID:       2,
+						IPv4:     ap("100.64.0.2"),
+						Hostname: "node",
+						User:     types.User{Name: "node"},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{
+							"100.64.0.2/32",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.0.2/32", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				node: &types.Node{
+					ID:       1,
+					IPv4:     ap("100.64.0.1"),
+					Hostname: "router",
+					User:     types.User{Name: "router"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+				},
+			},
+			want: []*types.Node{
+				{
+					ID:       2,
+					IPv4:     ap("100.64.0.2"),
+					Hostname: "node",
+					User:     types.User{Name: "node"},
+				},
+			},
+		},
+		{
+			name: "node-to-subnet-router-with-only-route-smaller-mask-2181",
+			args: args{
+				nodes: []*types.Node{
+					{
+						ID:       1,
+						IPv4:     ap("100.64.0.1"),
+						Hostname: "router",
+						User:     types.User{Name: "router"},
+						Hostinfo: &tailcfg.Hostinfo{
+							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+						},
+						ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+					},
+					{
+						ID:       2,
+						IPv4:     ap("100.64.0.2"),
+						Hostname: "node",
+						User:     types.User{Name: "node"},
+					},
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{
+							"100.64.0.2/32",
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.99.0.2/32", Ports: tailcfg.PortRangeAny},
+						},
+					},
+				},
+				node: &types.Node{
+					ID:       2,
+					IPv4:     ap("100.64.0.2"),
+					Hostname: "node",
+					User:     types.User{Name: "node"},
+				},
+			},
+			want: []*types.Node{
+				{
+					ID:       1,
+					IPv4:     ap("100.64.0.1"),
+					Hostname: "router",
+					User:     types.User{Name: "router"},
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
+					},
+					ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 				},
 			},
 		},
