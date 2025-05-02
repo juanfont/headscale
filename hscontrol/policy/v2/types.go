@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"net/netip"
 	"strings"
-	"time"
 
 	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/prometheus/common/model"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -976,11 +976,11 @@ func (p *Policy) validate() error {
 
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       string        `json:"action"` // TODO(kradalby): add strict type
-	Sources      SSHSrcAliases `json:"src"`
-	Destinations SSHDstAliases `json:"dst"`
-	Users        []SSHUser     `json:"users"`
-	CheckPeriod  time.Duration `json:"checkPeriod,omitempty"`
+	Action       string         `json:"action"`
+	Sources      SSHSrcAliases  `json:"src"`
+	Destinations SSHDstAliases  `json:"dst"`
+	Users        []SSHUser      `json:"users"`
+	CheckPeriod  model.Duration `json:"checkPeriod,omitempty"`
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
