@@ -71,13 +71,11 @@ working in v1 and not tested might be broken in v2 (and vice versa).
 **We do need help testing this code**
 
 
-#### Other breaking
-
-- Disallow `server_url` and `base_domain` to be equal
-  [#2544](https://github.com/juanfont/headscale/pull/2544)
 
 #### Other breaking changes
 
+- Disallow `server_url` and `base_domain` to be equal
+  [#2544](https://github.com/juanfont/headscale/pull/2544)
 - Return full user in API for pre auth keys instead of string
   [#2542](https://github.com/juanfont/headscale/pull/2542)
 - Pre auth key API/CLI now uses ID over username
@@ -86,6 +84,8 @@ working in v1 and not tested might be broken in v2 (and vice versa).
 ### Changes
 
 - Use Go 1.24 [#2427](https://github.com/juanfont/headscale/pull/2427)
+- Add `headscale policy check` command to check policy
+  [#2553](https://github.com/juanfont/headscale/pull/2553)
 - `oidc.map_legacy_users` and `oidc.strip_email_domain` has been removed
   [#2411](https://github.com/juanfont/headscale/pull/2411)
 - Add more information to `/debug` endpoint
