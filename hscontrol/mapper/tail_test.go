@@ -1,7 +1,7 @@
 package mapper
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"net/netip"
 	"testing"
 	"time"

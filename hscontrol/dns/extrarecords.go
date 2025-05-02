@@ -2,7 +2,7 @@ package dns
 
 import (
 	"crypto/sha256"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"os"
 	"sync"

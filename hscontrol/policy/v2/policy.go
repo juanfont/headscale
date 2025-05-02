@@ -1,7 +1,7 @@
 package v2
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"net/netip"
 	"strings"

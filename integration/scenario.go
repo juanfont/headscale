@@ -3,7 +3,7 @@ package integration
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"errors"
 	"fmt"
 	"io"

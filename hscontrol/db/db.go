@@ -3,7 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"errors"
 	"fmt"
 	"net/netip"

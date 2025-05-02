@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"net"
 	"strconv"

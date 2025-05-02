@@ -2,7 +2,7 @@ package mapper
 
 import (
 	"encoding/binary"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"io/fs"
 	"net/url"

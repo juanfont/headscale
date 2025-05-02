@@ -3,7 +3,7 @@ package types
 import (
 	"cmp"
 	"database/sql"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"net/mail"
 	"net/url"

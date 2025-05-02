@@ -2,7 +2,7 @@ package integration
 
 import (
 	"context"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"fmt"
 	"net/netip"
 	"strconv"

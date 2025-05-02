@@ -4,7 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/json"
+	"github.com/goccy/go-json"
 	"errors"
 	"fmt"
 	"io"
