@@ -130,7 +130,7 @@ func (pol *Policy) compileSSHPolicy(
 		case "accept":
 			action = sshAction(true, 0)
 		case "check":
-			action = sshAction(true, rule.CheckPeriod)
+			action = sshAction(true, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
 		}
