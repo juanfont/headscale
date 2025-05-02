@@ -382,13 +382,13 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 type AutoGroup string
 
 const (
-	AutoGroupInternet = "autogroup:internet"
+	AutoGroupInternet AutoGroup = "autogroup:internet"
 )
 
-var autogroups = []string{AutoGroupInternet}
+var autogroups = []AutoGroup{AutoGroupInternet}
 
 func (ag AutoGroup) Validate() error {
-	if slices.Contains(autogroups, string(ag)) {
+	if slices.Contains(autogroups, ag) {
 		return nil
 	}
 
@@ -410,6 +410,14 @@ func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IP
 	}
 
 	return nil, nil
+}
+
+func (ag *AutoGroup) Is(c AutoGroup) bool {
+	if ag == nil {
+		return false
+	}
+
+	return *ag == c
 }
 
 type Alias interface {
@@ -927,6 +935,32 @@ func (p *Policy) validate() error {
 				h := src.(*Host)
 				if !p.Hosts.exist(*h) {
 					errs = append(errs, fmt.Errorf(`Host %q is not defined in the Policy, please define or remove the reference to it`, *h))
+				}
+			case *AutoGroup:
+				ag := src.(*AutoGroup)
+				if ag.Is(AutoGroupInternet) {
+					errs = append(errs, fmt.Errorf(`"autogroup:internet" used in source, it can only be used in ACL destinations`))
+				}
+			}
+		}
+	}
+
+	for _, ssh := range p.SSHs {
+		for _, src := range ssh.Sources {
+			switch src.(type) {
+			case *AutoGroup:
+				ag := src.(*AutoGroup)
+				if ag.Is(AutoGroupInternet) {
+					errs = append(errs, fmt.Errorf(`"autogroup:internet" used in SSH source, it can only be used in ACL destinations`))
+				}
+			}
+		}
+		for _, dst := range ssh.Destinations {
+			switch dst.(type) {
+			case *AutoGroup:
+				ag := dst.(*AutoGroup)
+				if ag.Is(AutoGroupInternet) {
+					errs = append(errs, fmt.Errorf(`"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`))
 				}
 			}
 		}
