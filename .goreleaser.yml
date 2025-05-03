@@ -36,7 +36,8 @@ builds:
 archives:
   - id: golang-cross
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v1") }}{{ .Amd64 }}{{ end }}'
-    format: binary
+    formats:
+      - binary
 
 source:
   enabled: true
@@ -55,7 +56,7 @@ nfpms:
   # List file contents: dpkg -c dist/headscale...deb
   # Package metadata: dpkg --info dist/headscale....deb
   #
-  - builds:
+  - ids:
       - headscale
     package_name: headscale
     priority: optional
