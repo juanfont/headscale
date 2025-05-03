@@ -51,8 +51,6 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
     A similar configuration for `docker-compose`:
 
     ```yaml title="docker-compose.yaml"
-    version: "3.7"
-
     services:
       headscale:
         image: docker.io/headscale/headscale:<VERSION>
