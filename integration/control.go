@@ -21,6 +21,8 @@ type ControlServer interface {
 	CreateUser(user string) (*v1.User, error)
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListNodes(users ...string) ([]*v1.Node, error)
+	NodesByUser() (map[string][]*v1.Node, error)
+	NodesByName() (map[string]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
 	MapUsers() (map[string]*v1.User, error)
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
