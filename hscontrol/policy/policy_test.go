@@ -1958,7 +1958,7 @@ func TestReduceRoutes(t *testing.T) {
 		want []netip.Prefix
 	}{
 		{
-			name: "node can access all routes",
+			name: "node-can-access-all-routes",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -1986,7 +1986,7 @@ func TestReduceRoutes(t *testing.T) {
 			},
 		},
 		{
-			name: "node can access specific route",
+			name: "node-can-access-specific-route",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -2012,7 +2012,7 @@ func TestReduceRoutes(t *testing.T) {
 			},
 		},
 		{
-			name: "node can access multiple specific routes",
+			name: "node-can-access-multiple-specific-routes",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -2040,7 +2040,7 @@ func TestReduceRoutes(t *testing.T) {
 			},
 		},
 		{
-			name: "node can access overlapping routes",
+			name: "node-can-access-overlapping-routes",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -2067,7 +2067,7 @@ func TestReduceRoutes(t *testing.T) {
 			},
 		},
 		{
-			name: "node with no matching rules",
+			name: "node-with-no-matching-rules",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -2091,7 +2091,7 @@ func TestReduceRoutes(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "node with both IPv4 and IPv6",
+			name: "node-with-both-ipv4-and-ipv6",
 			args: args{
 				node: &types.Node{
 					ID:   1,
@@ -2122,6 +2122,279 @@ func TestReduceRoutes(t *testing.T) {
 			want: []netip.Prefix{
 				netip.MustParsePrefix("10.0.0.0/24"),
 				netip.MustParsePrefix("2001:db8::/64"),
+			},
+		},
+		{
+			name: "router-with-multiple-routes-and-node-with-specific-access",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"), // Node IP
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"*"}, // Any source
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.1"}, // Router node
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.2"}, // Node IP
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24"}, // Only one subnet allowed
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+			},
+		},
+		{
+			name: "node-with-access-to-one-subnet-and-partial-overlap",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"),
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.10.0/16"), // Overlaps with the first one
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.2"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24"}, // Only specific subnet
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+				netip.MustParsePrefix("10.10.10.0/16"), // With current implementation, this is included because it overlaps with the allowed subnet
+			},
+		},
+		{
+			name: "node-with-access-to-wildcard-subnet",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"),
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.2"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.0.0/16"}, // Broader subnet that includes all three
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+				netip.MustParsePrefix("10.10.11.0/24"),
+				netip.MustParsePrefix("10.10.12.0/24"),
+			},
+		},
+		{
+			name: "multiple-nodes-with-different-subnet-permissions",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"),
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1"}, // Different node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.11.0/24"}, 
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.2"}, // Our node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24"},
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.3"}, // Different node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.12.0/24"},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+			},
+		},
+		{
+			name: "exactly-matching-users-acl-example",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"), // node with IP 100.64.0.2
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// This represents the rule: action: accept, src: ["*"], dst: ["router:0"]
+						SrcIPs: []string{"*"}, // Any source
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.1"}, // Router IP
+						},
+					},
+					{
+						// This represents the rule: action: accept, src: ["node"], dst: ["10.10.10.0/24:*"]
+						SrcIPs: []string{"100.64.0.2"}, // Node IP
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24", Ports: tailcfg.PortRangeAny}, // All ports on this subnet
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+			},
+		},
+		{
+			name: "acl-all-source-nodes-can-access-router-only-node-can-access-10.10.10.0-24",
+			args: args{
+				// When testing from router node's perspective  
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"), // router with IP 100.64.0.1
+					User: types.User{Name: "router"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"*"}, 
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.64.0.1"}, // Router can be accessed by all
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.2"}, // Only node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24"}, // Can access this subnet
+						},
+					},
+					// Add a rule for router to access its own routes
+					{
+						SrcIPs: []string{"100.64.0.1"}, // Router node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"}, // Can access everything
+						},
+					},
+				},
+			},
+			// Router needs explicit rules to access routes
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+				netip.MustParsePrefix("10.10.11.0/24"),
+				netip.MustParsePrefix("10.10.12.0/24"),
+			},
+		},
+		{
+			name: "acl-specific-port-ranges-for-subnets",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"), // node
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.2"}, // node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24", Ports: tailcfg.PortRange{First: 22, Last: 22}}, // Only SSH
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.2"}, // node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.11.0/24", Ports: tailcfg.PortRange{First: 80, Last: 80}}, // Only HTTP
+						},
+					},
+				},
+			},
+			// Should get both subnets with specific port ranges
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+				netip.MustParsePrefix("10.10.11.0/24"),
+			},
+		},
+		{
+			name: "acl-order-of-rules-and-rule-specificity",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.64.0.2"), // node
+					User: types.User{Name: "node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.10.10.0/24"),
+					netip.MustParsePrefix("10.10.11.0/24"),
+					netip.MustParsePrefix("10.10.12.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					// First rule allows all traffic
+					{
+						SrcIPs: []string{"*"}, // Any source
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*", Ports: tailcfg.PortRangeAny}, // Any destination and any port
+						},
+					},
+					// Second rule is more specific but should be overridden by the first rule
+					{
+						SrcIPs: []string{"100.64.0.2"}, // node
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.10.10.0/24"},
+						},
+					},
+				},
+			},
+			// Due to the first rule allowing all traffic, node should have access to all routes
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.10.10.0/24"),
+				netip.MustParsePrefix("10.10.11.0/24"),
+				netip.MustParsePrefix("10.10.12.0/24"),
 			},
 		},
 	}
