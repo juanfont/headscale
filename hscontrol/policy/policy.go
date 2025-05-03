@@ -1,9 +1,10 @@
 package policy
 
 import (
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"slices"
+
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -12,8 +13,8 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// FilterNodesByACL returns the list of peers authorized to be accessed from a given node.
-func FilterNodesByACL(
+// ReduceNodes returns the list of peers authorized to be accessed from a given node.
+func ReduceNodes(
 	node *types.Node,
 	nodes types.Nodes,
 	matchers []matcher.Match,
@@ -27,6 +28,23 @@ func FilterNodesByACL(
 
 		if node.CanAccess(matchers, nodes[index]) || peer.CanAccess(matchers, node) {
 			result = append(result, peer)
+		}
+	}
+
+	return result
+}
+
+// ReduceRoutes returns a reduced list of routes for a given node that it can access.
+func ReduceRoutes(
+	node *types.Node,
+	routes []netip.Prefix,
+	matchers []matcher.Match,
+) []netip.Prefix {
+	var result []netip.Prefix
+
+	for _, route := range routes {
+		if node.CanAccessRoute(matchers, route) {
+			result = append(result, route)
 		}
 	}
 

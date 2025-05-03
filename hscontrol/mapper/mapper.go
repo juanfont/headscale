@@ -546,7 +546,7 @@ func appendPeerChanges(
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
 	if len(filter) > 0 {
-		changed = policy.FilterNodesByACL(node, changed, matchers)
+		changed = policy.ReduceNodes(node, changed, matchers)
 	}
 
 	profiles := generateUserProfiles(node, changed)

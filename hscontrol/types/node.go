@@ -291,6 +291,22 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 	return false
 }
 
+func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+	src := node.IPs()
+
+	for _, matcher := range matchers {
+		if !matcher.SrcsContainsIPs(src...) {
+			continue
+		}
+
+		if matcher.DestsOverlapsPrefixes(route) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 	var found Nodes
 

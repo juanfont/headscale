@@ -348,6 +348,11 @@ func Test_fullMapResponse(t *testing.T) {
 							"src": ["100.64.0.2"],
 							"dst": ["user1@:*"],
 						},
+						{
+							"action": "accept",
+							"src": ["100.64.0.1"],
+							"dst": ["192.168.0.0/24:*"],
+						},
 					],
 				}
 				`),
@@ -379,6 +384,10 @@ func Test_fullMapResponse(t *testing.T) {
 							DstPorts: []tailcfg.NetPortRange{
 								{IP: "100.64.0.1/32", Ports: tailcfg.PortRangeAny},
 							},
+						},
+						{
+							SrcIPs:   []string{"100.64.0.1/32"},
+							DstPorts: []tailcfg.NetPortRange{{IP: "192.168.0.0/24", Ports: tailcfg.PortRangeAny}},
 						},
 					},
 				},

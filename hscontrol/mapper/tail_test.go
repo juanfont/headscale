@@ -269,10 +269,13 @@ func TestNodeExpiry(t *testing.T) {
 				GivenName: "test",
 				Expiry:    tt.exp,
 			}
+			polMan, err := policy.NewPolicyManager(nil, nil, nil)
+			require.NoError(t, err)
+
 			tn, err := tailNode(
 				node,
 				0,
-				nil, // TODO(kradalby): removed in merge but error?
+				polMan,
 				nil,
 				&types.Config{},
 			)

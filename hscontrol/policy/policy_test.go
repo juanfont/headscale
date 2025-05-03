@@ -784,7 +784,7 @@ func TestReduceFilterRules(t *testing.T) {
 	}
 }
 
-func TestFilterNodesByACL(t *testing.T) {
+func TestReduceNodes(t *testing.T) {
 	type args struct {
 		nodes types.Nodes
 		rules []tailcfg.FilterRule
@@ -1530,7 +1530,7 @@ func TestFilterNodesByACL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
-			got := FilterNodesByACL(
+			got := ReduceNodes(
 				tt.args.node,
 				tt.args.nodes,
 				matchers,
@@ -1944,5 +1944,199 @@ func TestSSHPolicyRules(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+func TestReduceRoutes(t *testing.T) {
+	type args struct {
+		node   *types.Node
+		routes []netip.Prefix
+		rules  []tailcfg.FilterRule
+	}
+	tests := []struct {
+		name string
+		args args
+		want []netip.Prefix
+	}{
+		{
+			name: "node can access all routes",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("192.168.1.0/24"),
+					netip.MustParsePrefix("172.16.0.0/16"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/24"),
+				netip.MustParsePrefix("192.168.1.0/24"),
+				netip.MustParsePrefix("172.16.0.0/16"),
+			},
+		},
+		{
+			name: "node can access specific route",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("192.168.1.0/24"),
+					netip.MustParsePrefix("172.16.0.0/16"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.0.0.0/24"},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/24"),
+			},
+		},
+		{
+			name: "node can access multiple specific routes",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("192.168.1.0/24"),
+					netip.MustParsePrefix("172.16.0.0/16"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.0.0.0/24"},
+							{IP: "192.168.1.0/24"},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/24"),
+				netip.MustParsePrefix("192.168.1.0/24"),
+			},
+		},
+		{
+			name: "node can access overlapping routes",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("10.0.0.0/16"), // Overlaps with the first one
+					netip.MustParsePrefix("192.168.1.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.1"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.0.0.0/16"},
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/24"),
+				netip.MustParsePrefix("10.0.0.0/16"),
+			},
+		},
+		{
+			name: "node with no matching rules",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("192.168.1.0/24"),
+					netip.MustParsePrefix("172.16.0.0/16"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"100.64.0.2"}, // Different source IP
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*"},
+						},
+					},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "node with both IPv4 and IPv6",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.64.0.1"),
+					IPv6: ap("fd7a:115c:a1e0::1"),
+					User: types.User{Name: "user1"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("10.0.0.0/24"),
+					netip.MustParsePrefix("2001:db8::/64"),
+					netip.MustParsePrefix("192.168.1.0/24"),
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						SrcIPs: []string{"fd7a:115c:a1e0::1"}, // IPv6 source
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "2001:db8::/64"}, // IPv6 destination
+						},
+					},
+					{
+						SrcIPs: []string{"100.64.0.1"}, // IPv4 source
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "10.0.0.0/24"}, // IPv4 destination
+						},
+					},
+				},
+			},
+			want: []netip.Prefix{
+				netip.MustParsePrefix("10.0.0.0/24"),
+				netip.MustParsePrefix("2001:db8::/64"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
+			got := ReduceRoutes(
+				tt.args.node,
+				tt.args.routes,
+				matchers,
+			)
+			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
+				t.Errorf("ReduceRoutes() unexpected result (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

@@ -81,7 +81,9 @@ func tailNode(
 	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
-	allowed := append(node.Prefixes(), primary.PrimaryRoutes(node.ID)...)
+	_, matchers := polMan.Filter()
+	routes := policy.ReduceRoutes(node, primary.PrimaryRoutes(node.ID), matchers)
+	allowed := append(node.Prefixes(), routes...)
 	allowed = append(allowed, node.ExitRoutes()...)
 	tsaddr.SortPrefixes(allowed)
 
