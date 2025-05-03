@@ -140,13 +140,13 @@ Additionally, the debug container includes a minimalist Busybox shell.
 
 To launch a shell in the container, use:
 
-```
+```shell
 docker run -it headscale/headscale:x.x.x-debug sh
 ```
 
 You can also execute commands directly, such as `ls /ko-app` in this example:
 
-```
+```shell
 docker run headscale/headscale:x.x.x-debug ls /ko-app
 ```
 
