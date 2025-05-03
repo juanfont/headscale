@@ -31,9 +31,9 @@ should not work with alternatives like [Podman](https://podman.io). The containe
     docker run \
       --name headscale \
       --detach \
-      --volume $(pwd)/config:/etc/headscale \
-      --volume $(pwd)/lib:/var/lib/headscale \
-      --volume $(pwd)/run:/var/run/headscale \
+      --volume "$(pwd)/config:/etc/headscale" \
+      --volume "$(pwd)/lib:/var/lib/headscale" \
+      --volume "$(pwd)/run:/var/run/headscale" \
       --publish 127.0.0.1:8080:8080 \
       --publish 127.0.0.1:9090:9090 \
       headscale/headscale:<VERSION> \
