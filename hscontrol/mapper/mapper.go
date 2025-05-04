@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -308,9 +309,15 @@ func (m *Mapper) PeerChangedResponse(
 		resp.PeersChangedPatch = patches
 	}
 
+	_, matchers := m.polMan.Filter()
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.primary, m.cfg)
+	tailnode, err := tailNode(
+		node, mapRequest.Version, m.polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+		},
+		m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +354,7 @@ func (m *Mapper) marshalMapResponse(
 	}
 
 	if debugDumpMapResponsePath != "" {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"Messages":    messages,
 			"MapRequest":  mapRequest,
 			"MapResponse": resp,
@@ -457,7 +464,13 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, m.polMan, m.primary, m.cfg)
+	_, matchers := m.polMan.Filter()
+	tailnode, err := tailNode(
+		node, capVer, m.polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+		},
+		m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -513,15 +526,10 @@ func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return nodes, nil
 }
 
-func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
-	ret := make(types.Nodes, 0)
-
-	for _, node := range nodes {
-		ret = append(ret, node)
-	}
-
-	return ret
-}
+// routeFilterFunc is a function that takes a node ID and returns a list of
+// netip.Prefixes that are allowed for that node. It is used to filter routes
+// from the primary route manager to the node.
+type routeFilterFunc func(id types.NodeID) []netip.Prefix
 
 // appendPeerChanges mutates a tailcfg.MapResponse with all the
 // necessary changes when peers have changed.
@@ -553,7 +561,12 @@ func appendPeerChanges(
 
 	dnsConfig := generateDNSConfig(cfg, node)
 
-	tailPeers, err := tailNodes(changed, capVer, polMan, primary, cfg)
+	tailPeers, err := tailNodes(
+		changed, capVer, polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, primary.PrimaryRoutes(id), matchers)
+		},
+		cfg)
 	if err != nil {
 		return err
 	}

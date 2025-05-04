@@ -219,7 +219,9 @@ func TestTailNode(t *testing.T) {
 				tt.node,
 				0,
 				polMan,
-				primary,
+				func(id types.NodeID) []netip.Prefix {
+					return primary.PrimaryRoutes(id)
+				},
 				cfg,
 			)
 
@@ -266,6 +268,7 @@ func TestNodeExpiry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			node := &types.Node{
+				ID:        0,
 				GivenName: "test",
 				Expiry:    tt.exp,
 			}
@@ -276,7 +279,9 @@ func TestNodeExpiry(t *testing.T) {
 				node,
 				0,
 				polMan,
-				nil,
+				func(id types.NodeID) []netip.Prefix {
+					return []netip.Prefix{}
+				},
 				&types.Config{},
 			)
 			if err != nil {
