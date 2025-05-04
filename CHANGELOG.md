@@ -62,6 +62,20 @@ new policy code passes all of our tests.
     `@` should be appended at the end. For example, if your user is `john`, it
     must be written as `john@` in the policy.
 
+**SSH**
+
+The SSH policy has been reworked to be more consistent with the rest of the
+policy. In addition, several inconsistencies between our implementation and
+Tailscale's upstream has been closed and this might be a breaking change for
+some users. Please refer to the
+[upstream documentation](https://tailscale.com/kb/1337/acl-syntax#tailscale-ssh)
+for more information on which types are allowed in `src`, `dst` and `users`.
+
+There is one large inconsistency left, we allow `*` as a destination as we
+currently do not support `autogroup:self`, `autogroup:member` and
+`autogroup:tagged`. The support for `*` will be removed when we have support for
+the autogroups.
+
 **Current state**
 
 The new policy is passing all tests, both integration and unit tests. This does
@@ -69,8 +83,6 @@ not mean it is perfect, but it is a good start. Corner cases that is currently
 working in v1 and not tested might be broken in v2 (and vice versa).
 
 **We do need help testing this code**
-
-
 
 #### Other breaking changes
 

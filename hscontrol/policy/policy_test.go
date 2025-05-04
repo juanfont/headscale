@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
@@ -1538,5 +1539,410 @@ func TestFilterNodesByACL(t *testing.T) {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestSSHPolicyRules(t *testing.T) {
+	users := []types.User{
+		{Name: "user1", Model: gorm.Model{ID: 1}},
+		{Name: "user2", Model: gorm.Model{ID: 2}},
+		{Name: "user3", Model: gorm.Model{ID: 3}},
+	}
+
+	// Create standard node setups used across tests
+	nodeUser1 := types.Node{
+		Hostname: "user1-device",
+		IPv4:     ap("100.64.0.1"),
+		UserID:   1,
+		User:     users[0],
+	}
+	nodeUser2 := types.Node{
+		Hostname: "user2-device",
+		IPv4:     ap("100.64.0.2"),
+		UserID:   2,
+		User:     users[1],
+	}
+	taggedServer := types.Node{
+		Hostname:   "tagged-server",
+		IPv4:       ap("100.64.0.3"),
+		UserID:     3,
+		User:       users[2],
+		ForcedTags: []string{"tag:server"},
+	}
+	taggedClient := types.Node{
+		Hostname:   "tagged-client",
+		IPv4:       ap("100.64.0.4"),
+		UserID:     2,
+		User:       users[1],
+		ForcedTags: []string{"tag:client"},
+	}
+
+	tests := []struct {
+		name         string
+		targetNode   types.Node
+		peers        types.Nodes
+		policy       string
+		wantSSH      *tailcfg.SSHPolicy
+		expectErr    bool
+		errorMessage string
+
+		// There are some tests that will not pass on V1 since we do not
+		// have the same kind of error handling as V2, so we skip them.
+		skipV1 bool
+	}{
+		{
+			name:       "group-to-user",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&nodeUser2},
+			policy: `{
+				"groups": {
+					"group:admins": ["user2@"]
+				},
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["group:admins"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.2"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+
+			// It looks like the group implementation in v1 is broken, so
+			// we skip this test for v1 and not let it hold up v2 replacing it.
+			skipV1: true,
+		},
+		{
+			name:       "group-to-tag",
+			targetNode: taggedServer,
+			peers:      types.Nodes{&nodeUser1, &nodeUser2},
+			policy: `{
+				"groups": {
+					"group:users": ["user1@", "user2@"]
+				},
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["group:users"],
+						"dst": ["tag:server"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.1"},
+						{NodeIP: "100.64.0.2"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+
+			// It looks like the group implementation in v1 is broken, so
+			// we skip this test for v1 and not let it hold up v2 replacing it.
+			skipV1: true,
+		},
+		{
+			name:       "tag-to-user",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&taggedClient},
+			policy: `{
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["tag:client"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.4"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "tag-to-tag",
+			targetNode: taggedServer,
+			peers:      types.Nodes{&taggedClient},
+			policy: `{
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["tag:client"],
+						"dst": ["tag:server"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.4"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "group-to-wildcard",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&nodeUser2, &taggedClient},
+			policy: `{
+				"groups": {
+					"group:admins": ["user2@"]
+				},
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["group:admins"],
+						"dst": ["*"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.2"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+
+			// It looks like the group implementation in v1 is broken, so
+			// we skip this test for v1 and not let it hold up v2 replacing it.
+			skipV1: true,
+		},
+		{
+			name:       "invalid-source-user-not-allowed",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&nodeUser2},
+			policy: `{
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["user2@"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			expectErr:    true,
+			errorMessage: "not supported",
+			skipV1:       true,
+		},
+		{
+			name:       "check-period-specified",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&taggedClient},
+			policy: `{
+				"ssh": [
+					{
+						"action": "check",
+						"checkPeriod": "24h",
+						"src": ["tag:client"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.4"},
+					},
+					SSHUsers: map[string]string{
+						"autogroup:nonroot": "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						SessionDuration:          24 * time.Hour,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "no-matching-rules",
+			targetNode: nodeUser2,
+			peers:      types.Nodes{&nodeUser1},
+			policy: `{
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["tag:client"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: nil},
+		},
+		{
+			name:       "invalid-action",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&nodeUser2},
+			policy: `{
+				"ssh": [
+					{
+						"action": "invalid",
+						"src": ["group:admins"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			expectErr:    true,
+			errorMessage: `SSH action "invalid" is not valid, must be accept or check`,
+			skipV1:       true,
+		},
+		{
+			name:       "invalid-check-period",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&nodeUser2},
+			policy: `{
+				"ssh": [
+					{
+						"action": "check",
+						"checkPeriod": "invalid",
+						"src": ["group:admins"],
+						"dst": ["user1@"],
+						"users": ["autogroup:nonroot"]
+					}
+				]
+			}`,
+			expectErr:    true,
+			errorMessage: "not a valid duration string",
+			skipV1:       true,
+		},
+		{
+			name:       "multiple-ssh-users-with-autogroup",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&taggedClient},
+			policy: `{
+        "ssh": [
+            {
+                "action": "accept",
+                "src": ["tag:client"],
+                "dst": ["user1@"],
+                "users": ["alice", "bob"]
+            }
+        ]
+    }`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.4"},
+					},
+					SSHUsers: map[string]string{
+						"alice": "=",
+						"bob":   "=",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                   true,
+						AllowAgentForwarding:     true,
+						AllowLocalPortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "unsupported-autogroup",
+			targetNode: nodeUser1,
+			peers:      types.Nodes{&taggedClient},
+			policy: `{
+        "ssh": [
+            {
+                "action": "accept",
+                "src": ["tag:client"],
+                "dst": ["user1@"],
+                "users": ["autogroup:invalid"]
+            }
+        ]
+    }`,
+			expectErr:    true,
+			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
+			skipV1:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
+			version := idx + 1
+			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
+				if version == 1 && tt.skipV1 {
+					t.Skip()
+				}
+
+				var pm PolicyManager
+				var err error
+				pm, err = pmf(users, append(tt.peers, &tt.targetNode))
+
+				if tt.expectErr {
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tt.errorMessage)
+					return
+				}
+
+				require.NoError(t, err)
+
+				got, err := pm.SSHPolicy(&tt.targetNode)
+				require.NoError(t, err)
+
+				if diff := cmp.Diff(tt.wantSSH, got); diff != "" {
+					t.Errorf("SSHPolicy() unexpected result (-want +got):\n%s", diff)
+				}
+			})
+		}
 	}
 }
