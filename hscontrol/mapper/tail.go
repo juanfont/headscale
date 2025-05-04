@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
@@ -16,7 +15,7 @@ func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
-	primary *routes.PrimaryRoutes,
+	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
@@ -26,7 +25,7 @@ func tailNodes(
 			node,
 			capVer,
 			polMan,
-			primary,
+			primaryRouteFunc,
 			cfg,
 		)
 		if err != nil {
@@ -44,7 +43,7 @@ func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
-	primary *routes.PrimaryRoutes,
+	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
@@ -81,7 +80,8 @@ func tailNode(
 	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
 
-	allowed := append(node.Prefixes(), primary.PrimaryRoutes(node.ID)...)
+	routes := primaryRouteFunc(node.ID)
+	allowed := append(node.Prefixes(), routes...)
 	allowed = append(allowed, node.ExitRoutes()...)
 	tsaddr.SortPrefixes(allowed)
 
@@ -99,7 +99,7 @@ func tailNode(
 		Machine:          node.MachineKey,
 		DiscoKey:         node.DiscoKey,
 		Addresses:        addrs,
-		PrimaryRoutes:    primary.PrimaryRoutes(node.ID),
+		PrimaryRoutes:    routes,
 		AllowedIPs:       allowed,
 		Endpoints:        node.Endpoints,
 		HomeDERP:         derp,

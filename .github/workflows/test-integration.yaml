@@ -70,6 +70,7 @@ jobs:
           - TestSubnetRouterMultiNetwork
           - TestSubnetRouterMultiNetworkExitNode
           - TestAutoApproveMultiNetwork
+          - TestSubnetRouteACLFiltering
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll

@@ -219,7 +219,9 @@ func TestTailNode(t *testing.T) {
 				tt.node,
 				0,
 				polMan,
-				primary,
+				func(id types.NodeID) []netip.Prefix {
+					return primary.PrimaryRoutes(id)
+				},
 				cfg,
 			)
 
@@ -266,14 +268,20 @@ func TestNodeExpiry(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			node := &types.Node{
+				ID:        0,
 				GivenName: "test",
 				Expiry:    tt.exp,
 			}
+			polMan, err := policy.NewPolicyManager(nil, nil, nil)
+			require.NoError(t, err)
+
 			tn, err := tailNode(
 				node,
 				0,
-				nil, // TODO(kradalby): removed in merge but error?
-				nil,
+				polMan,
+				func(id types.NodeID) []netip.Prefix {
+					return []netip.Prefix{}
+				},
 				&types.Config{},
 			)
 			if err != nil {

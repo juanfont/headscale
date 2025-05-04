@@ -1,8 +1,9 @@
 package policy
 
 import (
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
+
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
 	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -33,7 +34,7 @@ type PolicyManager interface {
 }
 
 // NewPolicyManager returns a new policy manager, the version is determined by
-// the environment flag "HEADSCALE_EXPERIMENTAL_POLICY_V2".
+// the environment flag "HEADSCALE_POLICY_V1".
 func NewPolicyManager(pol []byte, users []types.User, nodes types.Nodes) (PolicyManager, error) {
 	var polMan PolicyManager
 	var err error

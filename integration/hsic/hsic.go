@@ -819,6 +819,38 @@ func (t *HeadscaleInContainer) ListNodes(
 	return ret, nil
 }
 
+func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
+	nodes, err := t.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	var userMap map[string][]*v1.Node
+	for _, node := range nodes {
+		if _, ok := userMap[node.User.Name]; !ok {
+			mak.Set(&userMap, node.User.Name, []*v1.Node{node})
+		} else {
+			userMap[node.User.Name] = append(userMap[node.User.Name], node)
+		}
+	}
+
+	return userMap, nil
+}
+
+func (t *HeadscaleInContainer) NodesByName() (map[string]*v1.Node, error) {
+	nodes, err := t.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	var nameMap map[string]*v1.Node
+	for _, node := range nodes {
+		mak.Set(&nameMap, node.GetName(), node)
+	}
+
+	return nameMap, nil
+}
+
 // ListUsers returns a list of users from Headscale.
 func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 	command := []string{"headscale", "users", "list", "--output", "json"}
@@ -973,7 +1005,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 		"headscale", "nodes", "approve-routes",
 		"--output", "json",
 		"--identifier", strconv.FormatUint(id, 10),
-		fmt.Sprintf("--routes=%q", strings.Join(util.PrefixesToString(routes), ",")),
+		fmt.Sprintf("--routes=%s", strings.Join(util.PrefixesToString(routes), ",")),
 	}
 
 	result, _, err := dockertestutil.ExecuteCommand(

@@ -152,6 +152,10 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
 func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
+	if pm == nil {
+		return nil, nil
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	return pm.filter, pm.matchers
@@ -159,6 +163,10 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 
 // SetUsers updates the users in the policy manager and updates the filter rules.
 func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
+	if pm == nil {
+		return false, nil
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.users = users
@@ -167,6 +175,10 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 
 // SetNodes updates the nodes in the policy manager and updates the filter rules.
 func (pm *PolicyManager) SetNodes(nodes types.Nodes) (bool, error) {
+	if pm == nil {
+		return false, nil
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.nodes = nodes
@@ -238,6 +250,10 @@ func (pm *PolicyManager) Version() int {
 }
 
 func (pm *PolicyManager) DebugString() string {
+	if pm == nil {
+		return "PolicyManager is not setup"
+	}
+
 	var sb strings.Builder
 
 	fmt.Fprintf(&sb, "PolicyManager (v%d):\n\n", pm.Version())
@@ -279,6 +295,14 @@ func (pm *PolicyManager) DebugString() string {
 			sb.Write(filter)
 			sb.WriteString("\n\n")
 		}
+	}
+
+	sb.WriteString("\n\n")
+	sb.WriteString("Matchers:\n")
+	sb.WriteString("an internal structure used to filter nodes and routes\n")
+	for _, match := range pm.matchers {
+		sb.WriteString(match.DebugString())
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n\n")

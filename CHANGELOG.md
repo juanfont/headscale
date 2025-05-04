@@ -36,6 +36,8 @@ will be approved.
   [#2422](https://github.com/juanfont/headscale/pull/2422)
 - Routes are now managed via the Node API
   [#2422](https://github.com/juanfont/headscale/pull/2422)
+- Only routes accessible to the node will be sent to the node
+  [#2561](https://github.com/juanfont/headscale/pull/2561)
 
 #### Policy v2
 

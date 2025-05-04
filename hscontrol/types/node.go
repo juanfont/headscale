@@ -239,10 +239,8 @@ func (node *Node) Prefixes() []netip.Prefix {
 // node has any exit routes enabled.
 // If none are enabled, it will return nil.
 func (node *Node) ExitRoutes() []netip.Prefix {
-	for _, route := range node.SubnetRoutes() {
-		if tsaddr.IsExitRoute(route) {
-			return tsaddr.ExitRoutes()
-		}
+	if slices.ContainsFunc(node.SubnetRoutes(), tsaddr.IsExitRoute) {
+		return tsaddr.ExitRoutes()
 	}
 
 	return nil
@@ -284,6 +282,22 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 		}
 
 		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+	src := node.IPs()
+
+	for _, matcher := range matchers {
+		if !matcher.SrcsContainsIPs(src...) {
+			continue
+		}
+
+		if matcher.DestsOverlapsPrefixes(route) {
 			return true
 		}
 	}
@@ -567,6 +581,7 @@ func (node Node) DebugString() string {
 	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
 	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
+	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
 	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
 	sb.WriteString("\n")
 	return sb.String()

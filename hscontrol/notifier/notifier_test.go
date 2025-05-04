@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"slices"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -252,9 +254,7 @@ func TestBatcher(t *testing.T) {
 
 			// Make the inner order stable for comparison.
 			for _, u := range got {
-				sort.Slice(u.ChangeNodes, func(i, j int) bool {
-					return u.ChangeNodes[i] < u.ChangeNodes[j]
-				})
+				slices.Sort(u.ChangeNodes)
 				sort.Slice(u.ChangePatches, func(i, j int) bool {
 					return u.ChangePatches[i].NodeID < u.ChangePatches[j].NodeID
 				})
@@ -301,11 +301,11 @@ func TestIsLikelyConnectedRaceCondition(t *testing.T) {
 
 	// Start goroutines to cause a race
 	wg.Add(concurrentAccessors)
-	for i := 0; i < concurrentAccessors; i++ {
+	for i := range concurrentAccessors {
 		go func(routineID int) {
 			defer wg.Done()
 
-			for j := 0; j < iterations; j++ {
+			for range iterations {
 				// Simulate race by having some goroutines check IsLikelyConnected
 				// while others add/remove the node
 				if routineID%3 == 0 {
