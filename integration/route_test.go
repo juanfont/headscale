@@ -24,6 +24,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
+	"tailscale.com/util/must"
 	"tailscale.com/util/slicesx"
 	"tailscale.com/wgengine/filter"
 )
@@ -1604,9 +1605,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		for _, dbMode := range []types.PolicyMode{types.PolicyModeDB, types.PolicyModeFile} {
+		for _, polMode := range []types.PolicyMode{types.PolicyModeDB, types.PolicyModeFile} {
 			for _, advertiseDuringUp := range []bool{false, true} {
-				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, dbMode)
+				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, polMode)
 				t.Run(name, func(t *testing.T) {
 					scenario, err := NewScenario(tt.spec)
 					require.NoErrorf(t, err, "failed to create scenario: %s", err)
@@ -1617,7 +1618,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						hsic.WithEmbeddedDERPServerOnly(),
 						hsic.WithTLS(),
 						hsic.WithACLPolicy(tt.pol),
-						hsic.WithPolicyMode(dbMode),
+						hsic.WithPolicyMode(polMode),
 					}
 
 					tsOpts := []tsic.Option{
@@ -2033,6 +2034,15 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{routerUser, nodeUser},
+		Networks: map[string][]string{
+			"usernet1": {routerUser, nodeUser},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+		},
+		// We build the head image with curl and traceroute, so only use
+		// that for this test.
+		Versions: []string{"head"},
 	}
 
 	scenario, err := NewScenario(spec)
@@ -2052,7 +2062,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 					"*"
 				],
 				"dst": [
-					"router:0"
+					"router:8000"
 				]
 			},
 			{
@@ -2060,12 +2070,25 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 				"src": [
 					"node"
 				],
-				"dst": [
-					"10.10.10.0/24:*"
-				]
+				"dst": []
 			}
 		]
 	}`)
+
+	route, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	services, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, services, 1)
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	web := services[0]
+	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
+	t.Logf("webservice: %s, %s", webip.String(), weburl)
 
 	// Create ACL policy
 	aclPolicy := &policyv1.ACLPolicy{}
@@ -2074,7 +2097,10 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithAcceptRoutes(),
-	}, hsic.WithTestName("routeaclfilter"), hsic.WithACLPolicy(aclPolicy))
+	}, hsic.WithTestName("routeaclfilter"),
+		hsic.WithACLPolicy(aclPolicy),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
 	assertNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -2095,9 +2121,19 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	routerClient := allClients[0]
 	nodeClient := allClients[1]
 
+	aclPolicy.Hosts = policyv1.Hosts{
+		routerUser: must.Get(routerClient.MustIPv4().Prefix(32)),
+		nodeUser:   must.Get(nodeClient.MustIPv4().Prefix(32)),
+	}
+	aclPolicy.ACLs[1].Destinations = []string{
+		route.String() + ":*",
+	}
+
+	require.NoError(t, headscale.SetPolicy(aclPolicy))
+
 	// Set up the subnet routes for the router
 	routes := []string{
-		"10.10.10.0/24", // This should be accessible by the client
+		route.String(),  // This should be accessible by the client
 		"10.10.11.0/24", // These should NOT be accessible
 		"10.10.12.0/24",
 	}
@@ -2162,7 +2198,15 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	// Check that the node can see the subnet routes from the router
 	routerPeerStatus := nodeStatus.Peer[routerStatus.Self.PublicKey]
 
-	// The node should only have 1 subnet route (10.10.10.0/24)
-	expectedRoutes := []netip.Prefix{netip.MustParsePrefix("10.10.10.0/24")}
-	requirePeerSubnetRoutes(t, routerPeerStatus, expectedRoutes)
+	// The node should only have 1 subnet route
+	requirePeerSubnetRoutes(t, routerPeerStatus, []netip.Prefix{*route})
+
+	result, err := nodeClient.Curl(weburl)
+	require.NoError(t, err)
+	assert.Len(t, result, 13)
+
+	tr, err := nodeClient.Traceroute(webip)
+	require.NoError(t, err)
+	assertTracerouteViaIP(t, tr, routerClient.MustIPv4())
+
 }
