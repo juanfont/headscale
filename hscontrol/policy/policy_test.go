@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"testing"
@@ -16,11 +17,17 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/must"
 )
 
 var ap = func(ipStr string) *netip.Addr {
 	ip := netip.MustParseAddr(ipStr)
 	return &ip
+}
+
+var p = func(prefStr string) netip.Prefix {
+	ip := netip.MustParsePrefix(prefStr)
+	return ip
 }
 
 // hsExitNodeDestForTest is the list of destination IP ranges that are allowed when
@@ -762,6 +769,54 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "2365-only-route-policy",
+			pol: `
+{
+  "hosts": {
+    "router": "100.64.0.1/32",
+    "node": "100.64.0.2/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "router:8000"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": [
+        "node"
+      ],
+      "dst": [
+        "172.26.0.0/16:*"
+      ]
+    }
+  ],
+}
+`,
+			node: &types.Node{
+				IPv4: ap("100.64.0.2"),
+				IPv6: ap("fd7a:115c:a1e0::2"),
+				User: users[3],
+			},
+			peers: types.Nodes{
+				&types.Node{
+					IPv4: ap("100.64.0.1"),
+					IPv6: ap("fd7a:115c:a1e0::1"),
+					User: users[1],
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
+					},
+					ApprovedRoutes: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
+				},
+			},
+			want: []tailcfg.FilterRule{},
+		},
 	}
 
 	for _, tt := range tests {
@@ -773,6 +828,7 @@ func TestReduceFilterRules(t *testing.T) {
 				pm, err = pmf(users, append(tt.peers, tt.node))
 				require.NoError(t, err)
 				got, _ := pm.Filter()
+				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = ReduceFilterRules(tt.node, got)
 
 				if diff := cmp.Diff(tt.want, got); diff != "" {
@@ -2228,7 +2284,7 @@ func TestReduceRoutes(t *testing.T) {
 					{
 						SrcIPs: []string{"100.64.0.1"}, // Different node
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "10.10.11.0/24"}, 
+							{IP: "10.10.11.0/24"},
 						},
 					},
 					{
@@ -2286,7 +2342,7 @@ func TestReduceRoutes(t *testing.T) {
 		{
 			name: "acl-all-source-nodes-can-access-router-only-node-can-access-10.10.10.0-24",
 			args: args{
-				// When testing from router node's perspective  
+				// When testing from router node's perspective
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"), // router with IP 100.64.0.1
@@ -2299,7 +2355,7 @@ func TestReduceRoutes(t *testing.T) {
 				},
 				rules: []tailcfg.FilterRule{
 					{
-						SrcIPs: []string{"*"}, 
+						SrcIPs: []string{"*"},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.1"}, // Router can be accessed by all
 						},
