@@ -64,10 +64,10 @@ Here are the ACL's to implement the same permissions as above:
   // groups are collections of users having a common scope. A user can be in multiple groups
   // groups cannot be composed of groups
   "groups": {
-    "group:boss": ["boss"],
-    "group:dev": ["dev1", "dev2"],
-    "group:admin": ["admin1"],
-    "group:intern": ["intern1"]
+    "group:boss": ["boss@"],
+    "group:dev": ["dev1@", "dev2@"],
+    "group:admin": ["admin1@"],
+    "group:intern": ["intern1@"]
   },
   // tagOwners in tailscale is an association between a TAG and the people allowed to set this TAG on a server.
   // This is documented [here](https://tailscale.com/kb/1068/acl-tags#defining-a-tag)
@@ -181,11 +181,11 @@ Here are the ACL's to implement the same permissions as above:
 
     // We still have to allow internal users communications since nothing guarantees that each user have
     // their own users.
-    { "action": "accept", "src": ["boss"], "dst": ["boss:*"] },
-    { "action": "accept", "src": ["dev1"], "dst": ["dev1:*"] },
-    { "action": "accept", "src": ["dev2"], "dst": ["dev2:*"] },
-    { "action": "accept", "src": ["admin1"], "dst": ["admin1:*"] },
-    { "action": "accept", "src": ["intern1"], "dst": ["intern1:*"] }
+    { "action": "accept", "src": ["boss@"], "dst": ["boss@:*"] },
+    { "action": "accept", "src": ["dev1@"], "dst": ["dev1@:*"] },
+    { "action": "accept", "src": ["dev2@"], "dst": ["dev2@:*"] },
+    { "action": "accept", "src": ["admin1@"], "dst": ["admin1@:*"] },
+    { "action": "accept", "src": ["intern1@"], "dst": ["intern1@:*"] }
   ]
 }
 ```

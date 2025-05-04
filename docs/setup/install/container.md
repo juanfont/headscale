@@ -7,11 +7,14 @@
 
     **It might be outdated and it might miss necessary steps**.
 
-This documentation has the goal of showing a user how-to set up and run headscale in a container.
-[Docker](https://www.docker.com) is used as the reference container implementation, but there is no reason that it
-should not work with alternatives like [Podman](https://podman.io). The container image can be found on
-[Docker Hub](https://hub.docker.com/r/headscale/headscale) and
-[GitHub Container Registry](https://github.com/juanfont/headscale/pkgs/container/headscale).
+This documentation has the goal of showing a user how-to set up and run headscale in a container. A container runtime
+such as [Docker](https://www.docker.com) or [Podman](https://podman.io) is required. The container image can be found on
+[Docker Hub](https://hub.docker.com/r/headscale/headscale) and [GitHub Container
+Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The container image URLs are:
+
+- [Docker Hub](https://hub.docker.com/r/headscale/headscale): `docker.io/headscale/headscale:<VERSION>`
+- [GitHub Container Registry](https://github.com/juanfont/headscale/pkgs/container/headscale):
+  `ghcr.io/juanfont/headscale:<VERSION>`
 
 ## Configure and run headscale
 
@@ -36,7 +39,7 @@ should not work with alternatives like [Podman](https://podman.io). The containe
       --volume "$(pwd)/run:/var/run/headscale" \
       --publish 127.0.0.1:8080:8080 \
       --publish 127.0.0.1:9090:9090 \
-      headscale/headscale:<VERSION> \
+      docker.io/headscale/headscale:<VERSION> \
       serve
     ```
 
@@ -48,11 +51,9 @@ should not work with alternatives like [Podman](https://podman.io). The containe
     A similar configuration for `docker-compose`:
 
     ```yaml title="docker-compose.yaml"
-    version: "3.7"
-
     services:
       headscale:
-        image: headscale/headscale:<VERSION>
+        image: docker.io/headscale/headscale:<VERSION>
         restart: unless-stopped
         container_name: headscale
         ports:
@@ -126,11 +127,11 @@ tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 
 ## Debugging headscale running in Docker
 
-The `headscale/headscale` Docker container is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `headscale/headscale:x.x.x-debug`.
+The Headscale container image is based on a "distroless" image that does not contain a shell or any other debug tools. If you need to debug headscale running in the Docker container, you can use the `-debug` variant, for example `docker.io/headscale/headscale:x.x.x-debug`.
 
 ### Running the debug Docker container
 
-To run the debug Docker container, use the exact same commands as above, but replace `headscale/headscale:x.x.x` with `headscale/headscale:x.x.x-debug` (`x.x.x` is the version of headscale). The two containers are compatible with each other, so you can alternate between them.
+To run the debug Docker container, use the exact same commands as above, but replace `docker.io/headscale/headscale:x.x.x` with `docker.io/headscale/headscale:x.x.x-debug` (`x.x.x` is the version of headscale). The two containers are compatible with each other, so you can alternate between them.
 
 ### Executing commands in the debug container
 
@@ -141,13 +142,13 @@ Additionally, the debug container includes a minimalist Busybox shell.
 To launch a shell in the container, use:
 
 ```shell
-docker run -it headscale/headscale:x.x.x-debug sh
+docker run -it docker.io/headscale/headscale:x.x.x-debug sh
 ```
 
 You can also execute commands directly, such as `ls /ko-app` in this example:
 
 ```shell
-docker run headscale/headscale:x.x.x-debug ls /ko-app
+docker run docker.io/headscale/headscale:x.x.x-debug ls /ko-app
 ```
 
 Using `docker exec -it` allows you to run commands in an existing container.
