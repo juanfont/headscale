@@ -2,6 +2,7 @@ package matcher
 
 import (
 	"net/netip"
+	"strings"
 
 	"slices"
 
@@ -13,6 +14,21 @@ import (
 type Match struct {
 	srcs  *netipx.IPSet
 	dests *netipx.IPSet
+}
+
+func (m Match) DebugString() string {
+	var sb strings.Builder
+
+	sb.WriteString("Match:\n")
+	sb.WriteString("  Sources:\n")
+	for _, prefix := range m.srcs.Prefixes() {
+		sb.WriteString("    " + prefix.String() + "\n")
+	}
+	sb.WriteString("  Destinations:\n")
+	for _, prefix := range m.dests.Prefixes() {
+		sb.WriteString("    " + prefix.String() + "\n")
+	}
+	return sb.String()
 }
 
 func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {

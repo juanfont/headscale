@@ -298,6 +298,14 @@ func (pm *PolicyManager) DebugString() string {
 	}
 
 	sb.WriteString("\n\n")
+	sb.WriteString("Matchers:\n")
+	sb.WriteString("an internal structure used to filter nodes and routes\n")
+	for _, match := range pm.matchers {
+		sb.WriteString(match.DebugString())
+		sb.WriteString("\n")
+	}
+
+	sb.WriteString("\n\n")
 	sb.WriteString(pm.nodes.DebugString())
 
 	return sb.String()

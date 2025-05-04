@@ -583,6 +583,7 @@ func (node Node) DebugString() string {
 	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
 	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
+	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
 	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
 	sb.WriteString("\n")
 	return sb.String()
