@@ -1029,13 +1029,10 @@ func notFoundHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	body, _ := io.ReadAll(req.Body)
-
 	log.Trace().
 		Interface("header", req.Header).
 		Interface("proto", req.Proto).
 		Interface("url", req.URL).
-		Bytes("body", body).
 		Msg("Request did not match")
 	writer.WriteHeader(http.StatusNotFound)
 }
