@@ -239,10 +239,8 @@ func (node *Node) Prefixes() []netip.Prefix {
 // node has any exit routes enabled.
 // If none are enabled, it will return nil.
 func (node *Node) ExitRoutes() []netip.Prefix {
-	for _, route := range node.SubnetRoutes() {
-		if tsaddr.IsExitRoute(route) {
-			return tsaddr.ExitRoutes()
-		}
+	if slices.ContainsFunc(node.SubnetRoutes(), tsaddr.IsExitRoute) {
+		return tsaddr.ExitRoutes()
 	}
 
 	return nil
