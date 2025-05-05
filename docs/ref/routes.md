@@ -76,27 +76,19 @@ The routes announced by subnet routers are available to the nodes in a tailnet. 
 nodes can accept and use such routes. Configure an ACL to explicitly manage who can use routes.
 
 The ACL snippet below defines three hosts, a subnet router `router`, a regular node `node` and `service.example.net` as
-internal service that can be reached via a route on the subnet router `router`. The first ACL rule allows anyone to see
-the subnet router `router` without allowing access to any service of the subnet router itself. The second ACL rule
-allows the node `node` to access `service.example.net` on port 80 and 443 which is reachable via the subnet router.
+internal service that can be reached via a route on the subnet router `router`. It allows the node `node` to access
+`service.example.net` on port 80 and 443 which is reachable via the subnet router. Access to the subnet router itself is
+denied.
 
 ```json title="Access the routes of a subnet router without the subnet router itself"
 {
   "hosts": {
+    // the router is not referenced but announces 192.168.0.0/24"
     "router": "100.64.0.1/32",
     "node": "100.64.0.2/32",
     "service.example.net": "192.168.0.1/32"
   },
   "acls": [
-    {
-      "action": "accept",
-      "src": [
-        "*"
-      ],
-      "dst": [
-        "router:0"
-      ]
-    },
     {
       "action": "accept",
       "src": [
