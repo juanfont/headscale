@@ -149,13 +149,11 @@ Here are the ACL's to implement the same permissions as above:
     },
     // developers have access to the internal network through the router.
     // the internal network is composed of HTTPS endpoints and Postgresql
-    // database servers. There's an additional rule to allow traffic to be
-    // forwarded to the internal subnet, 10.20.0.0/16. See this issue
-    // https://github.com/juanfont/headscale/issues/502
+    // database servers.
     {
       "action": "accept",
       "src": ["group:dev"],
-      "dst": ["10.20.0.0/16:443,5432", "router.internal:0"]
+      "dst": ["10.20.0.0/16:443,5432"]
     },
 
     // servers should be able to talk to database in tcp/5432. Database should not be able to initiate connections to
