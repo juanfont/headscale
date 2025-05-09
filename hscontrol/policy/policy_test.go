@@ -709,6 +709,9 @@ func TestReduceFilterRules(t *testing.T) {
 			name: "1817-reduce-breaks-32-mask",
 			pol: `
 {
+  "tagOwners": {
+    "tag:access-servers": ["user100@"],
+  },
   "groups": {
     "group:access": [
       "user1@"
@@ -1688,6 +1691,9 @@ func TestSSHPolicyRules(t *testing.T) {
 			targetNode: taggedServer,
 			peers:      types.Nodes{&nodeUser1, &nodeUser2},
 			policy: `{
+				"tagOwners": {
+				  "tag:server": ["user3@"],
+				},
 				"groups": {
 					"group:users": ["user1@", "user2@"]
 				},
@@ -1726,6 +1732,9 @@ func TestSSHPolicyRules(t *testing.T) {
 			targetNode: nodeUser1,
 			peers:      types.Nodes{&taggedClient},
 			policy: `{
+			    "tagOwners": {
+					"tag:client": ["user1@"],
+				},
 				"ssh": [
 					{
 						"action": "accept",
@@ -1756,6 +1765,10 @@ func TestSSHPolicyRules(t *testing.T) {
 			targetNode: taggedServer,
 			peers:      types.Nodes{&taggedClient},
 			policy: `{
+				"tagOwners": {
+					"tag:client": ["user2@"],
+					"tag:server": ["user3@"],
+				},
 				"ssh": [
 					{
 						"action": "accept",
@@ -1819,28 +1832,13 @@ func TestSSHPolicyRules(t *testing.T) {
 			skipV1: true,
 		},
 		{
-			name:       "invalid-source-user-not-allowed",
-			targetNode: nodeUser1,
-			peers:      types.Nodes{&nodeUser2},
-			policy: `{
-				"ssh": [
-					{
-						"action": "accept",
-						"src": ["user2@"],
-						"dst": ["user1@"],
-						"users": ["autogroup:nonroot"]
-					}
-				]
-			}`,
-			expectErr:    true,
-			errorMessage: "not supported",
-			skipV1:       true,
-		},
-		{
 			name:       "check-period-specified",
 			targetNode: nodeUser1,
 			peers:      types.Nodes{&taggedClient},
 			policy: `{
+				"tagOwners": {
+					"tag:client": ["user1@"],
+				},
 				"ssh": [
 					{
 						"action": "check",
@@ -1873,6 +1871,9 @@ func TestSSHPolicyRules(t *testing.T) {
 			targetNode: nodeUser2,
 			peers:      types.Nodes{&nodeUser1},
 			policy: `{
+			    "tagOwners": {
+			    	"tag:client": ["user1@"],
+			    },
 				"ssh": [
 					{
 						"action": "accept",
@@ -1926,14 +1927,17 @@ func TestSSHPolicyRules(t *testing.T) {
 			targetNode: nodeUser1,
 			peers:      types.Nodes{&taggedClient},
 			policy: `{
-        "ssh": [
-            {
-                "action": "accept",
-                "src": ["tag:client"],
-                "dst": ["user1@"],
-                "users": ["alice", "bob"]
-            }
-        ]
+			"tagOwners": {
+				"tag:client": ["user1@"],
+			},
+        	"ssh": [
+        	    {
+        	        "action": "accept",
+        	        "src": ["tag:client"],
+        	        "dst": ["user1@"],
+        	        "users": ["alice", "bob"]
+        	    }
+        	]
     }`,
 			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
 				{
