@@ -123,6 +123,7 @@ working in v1 and not tested might be broken in v2 (and vice versa).
 - Add documentation for routes
   [#2496](https://github.com/juanfont/headscale/pull/2496)
 - Add support for `autogroup:member`, `autogroup:tagged`
+  [#2572](https://github.com/juanfont/headscale/pull/2572)
 
 ## 0.25.1 (2025-02-25)
 

@@ -382,10 +382,10 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 type AutoGroup string
 
 const (
-	AutoGroupMember   AutoGroup = "autogroup:member"
 	AutoGroupInternet AutoGroup = "autogroup:internet"
-	AutoGroupTagged   AutoGroup = "autogroup:tagged"
+	AutoGroupMember   AutoGroup = "autogroup:member"
 	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
+	AutoGroupTagged   AutoGroup = "autogroup:tagged"
 
 	// These are not yet implemented.
 	AutoGroupSelf AutoGroup = "autogroup:self"
@@ -394,8 +394,8 @@ const (
 var autogroups = []AutoGroup{
 	AutoGroupInternet,
 	AutoGroupMember,
-	AutoGroupTagged,
 	AutoGroupNonRoot,
+	AutoGroupTagged,
 }
 
 func (ag AutoGroup) Validate() error {
@@ -423,13 +423,32 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 
 	case AutoGroupMember:
 		// autogroup:member represents all untagged devices in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
 		for _, node := range nodes {
+			// Skip if node has forced tags
 			if len(node.ForcedTags) != 0 {
 				continue
 			}
+
+			// Skip if node has any allowed requested tags
+			hasAllowedTag := false
 			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				for _, tag := range node.Hostinfo.RequestTags {
+					if tagips, ok := tagMap[Tag(tag)]; ok && node.InIPSet(tagips) {
+						hasAllowedTag = true
+						break
+					}
+				}
+			}
+			if hasAllowedTag {
 				continue
 			}
+
+			// Node is a member if it has no forced tags and no allowed requested tags
 			node.AppendToIPSet(&build)
 		}
 
@@ -437,13 +456,26 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 
 	case AutoGroupTagged:
 		// autogroup:tagged represents all devices with a tag in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
 		for _, node := range nodes {
+			// Include if node has forced tags
 			if len(node.ForcedTags) != 0 {
 				node.AppendToIPSet(&build)
 				continue
 			}
+
+			// Include if node has any allowed requested tags
 			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
-				node.AppendToIPSet(&build)
+				for _, tag := range node.Hostinfo.RequestTags {
+					if _, ok := tagMap[Tag(tag)]; ok {
+						node.AppendToIPSet(&build)
+						break
+					}
+				}
 			}
 		}
 
@@ -958,6 +990,7 @@ type Policy struct {
 }
 
 var (
+	// TODO(kradalby): Add these checks for tagOwners and autoApprovers
 	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
@@ -1280,19 +1313,3 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 const (
 	expectedTokenItems = 2
 )
-
-var allIPSet *netipx.IPSet
-
-func allIPs() *netipx.IPSet {
-	if allIPSet != nil {
-		return allIPSet
-	}
-
-	var build netipx.IPSetBuilder
-	build.AddPrefix(netip.MustParsePrefix("::/0"))
-	build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
-
-	allTheIps, _ := build.IPSet()
-
-	return allTheIps
-}
