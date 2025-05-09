@@ -27,10 +27,13 @@ jobs:
               - 'integration_test/'
               - 'config-example.yaml'
 
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: nixbuild/nix-quick-install-action@master
         if: steps.changed-files.outputs.files == 'true'
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: nix-community/cache-nix-action@main
         if: steps.changed-files.outputs.files == 'true'
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run tests
         if: steps.changed-files.outputs.files == 'true'

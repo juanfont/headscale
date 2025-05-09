@@ -114,10 +114,13 @@ jobs:
       - name: Setup SSH server for Actor
         if: ${{ env.HAS_TAILSCALE_SECRET }}
         uses: alexellis/setup-sshd-actor@master
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: nixbuild/nix-quick-install-action@master
         if: steps.changed-files.outputs.files == 'true'
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: nix-community/cache-nix-action@main
         if: steps.changed-files.outputs.files == 'true'
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
       - uses: satackey/action-docker-layer-caching@main
         if: steps.changed-files.outputs.files == 'true'
         continue-on-error: true
