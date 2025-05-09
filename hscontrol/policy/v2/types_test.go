@@ -1024,10 +1024,11 @@ func TestResolveAutoApprovers(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		policy  *Policy
-		want    map[netip.Prefix]*netipx.IPSet
-		wantErr bool
+		name            string
+		policy          *Policy
+		want            map[netip.Prefix]*netipx.IPSet
+		wantAllIPRoutes *netipx.IPSet
+		wantErr         bool
 	}{
 		{
 			name: "single-route",
@@ -1041,7 +1042,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 			want: map[netip.Prefix]*netipx.IPSet{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
 			},
-			wantErr: false,
+			wantAllIPRoutes: nil,
+			wantErr:         false,
 		},
 		{
 			name: "multiple-routes",
@@ -1057,7 +1059,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32"),
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.2/32"),
 			},
-			wantErr: false,
+			wantAllIPRoutes: nil,
+			wantErr:         false,
 		},
 		{
 			name: "exit-node",
@@ -1066,11 +1069,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
 				},
 			},
-			want: map[netip.Prefix]*netipx.IPSet{
-				tsaddr.AllIPv4(): mustIPSet("100.64.0.1/32"),
-				tsaddr.AllIPv6(): mustIPSet("100.64.0.1/32"),
-			},
-			wantErr: false,
+			want:            map[netip.Prefix]*netipx.IPSet{},
+			wantAllIPRoutes: mustIPSet("100.64.0.1/32"),
+			wantErr:         false,
 		},
 		{
 			name: "group-route",
@@ -1087,7 +1088,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 			want: map[netip.Prefix]*netipx.IPSet{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 			},
-			wantErr: false,
+			wantAllIPRoutes: nil,
+			wantErr:         false,
 		},
 		{
 			name: "tag-route-and-exit",
@@ -1113,10 +1115,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.4/32"),
-				tsaddr.AllIPv4():  mustIPSet("100.64.0.5/32"),
-				tsaddr.AllIPv6():  mustIPSet("100.64.0.5/32"),
 			},
-			wantErr: false,
+			wantAllIPRoutes: mustIPSet("100.64.0.5/32"),
+			wantErr:         false,
 		},
 		{
 			name: "mixed-routes-and-exit-nodes",
@@ -1135,10 +1136,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 			want: map[netip.Prefix]*netipx.IPSet{
 				mp("10.0.0.0/24"): mustIPSet("100.64.0.1/32", "100.64.0.2/32"),
 				mp("10.0.1.0/24"): mustIPSet("100.64.0.3/32"),
-				tsaddr.AllIPv4():  mustIPSet("100.64.0.1/32"),
-				tsaddr.AllIPv6():  mustIPSet("100.64.0.1/32"),
 			},
-			wantErr: false,
+			wantAllIPRoutes: mustIPSet("100.64.0.1/32"),
+			wantErr:         false,
 		},
 	}
 
@@ -1146,13 +1146,22 @@ func TestResolveAutoApprovers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveAutoApprovers(tt.policy, users, nodes)
+			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
 				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
+			}
+			if tt.wantAllIPRoutes != nil {
+				if gotAllIPRoutes == nil {
+					t.Error("resolveAutoApprovers() expected non-nil allIPRoutes, got nil")
+				} else if diff := cmp.Diff(tt.wantAllIPRoutes, gotAllIPRoutes, cmps...); diff != "" {
+					t.Errorf("resolveAutoApprovers() allIPRoutes mismatch (-want +got):\n%s", diff)
+				}
+			} else if gotAllIPRoutes != nil {
+				t.Error("resolveAutoApprovers() expected nil allIPRoutes, got non-nil")
 			}
 		})
 	}
