@@ -1152,7 +1152,7 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 	*a = make([]Alias, len(aliases))
 	for i, alias := range aliases {
 		switch alias.Alias.(type) {
-		case *Group, *Tag, *AutoGroup:
+		case *Username, *Group, *Tag, *AutoGroup:
 			(*a)[i] = alias.Alias
 		default:
 			return fmt.Errorf("type %T not supported", alias.Alias)
