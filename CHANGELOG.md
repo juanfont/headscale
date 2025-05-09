@@ -64,6 +64,29 @@ new policy code passes all of our tests.
     `@` should be appended at the end. For example, if your user is `john`, it
     must be written as `john@` in the policy.
 
+<details>
+
+<summary>Migration notes when the policy is stored in the database.</summary>
+
+This section **only** applies if the policy is stored in the database.
+
+Headscale won't start with an invalid policy and this also means that the policy
+can't be updated with the CLI. One may migrate a policy stored in the database
+following these steps:
+
+* Dump the policy to a file while still running Headscale 0.25:
+  `headscale policy get > policy.json`
+* Create a dummy policy (here: allow all):
+  `echo '{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}' > dummy.json`
+* Load the dummy policy into Headscale 0.25:
+  `headscale policy set --file dummy.json`
+* Edit `policy.json` and migrate to policy V2
+* Update to Headscale 0.26
+* Load the modified policy V2:
+  `headscale policy set --file policy.json`
+
+</details>
+
 **SSH**
 
 The SSH policy has been reworked to be more consistent with the rest of the
