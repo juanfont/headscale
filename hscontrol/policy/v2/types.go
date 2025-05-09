@@ -862,10 +862,11 @@ type AutoApproverPolicy struct {
 // resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.
 // The resulting map can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a PolicyManager.
-func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, error) {
+func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
 	if p == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
+	var err error
 
 	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
 
@@ -877,7 +878,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
+				return nil, nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
 			ips, _ := aa.Resolve(p, users, nodes)
@@ -891,7 +892,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
+				return nil, nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
 			ips, _ := aa.Resolve(p, users, nodes)
@@ -903,22 +904,20 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[
 	for prefix, builder := range routes {
 		ipSet, err := builder.IPSet()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ret[prefix] = ipSet
 	}
 
+	var exitNodeSet *netipx.IPSet
 	if len(p.AutoApprovers.ExitNode) > 0 {
-		exitNodeSet, err := exitNodeSetBuilder.IPSet()
+		exitNodeSet, err = exitNodeSetBuilder.IPSet()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		ret[tsaddr.AllIPv4()] = exitNodeSet
-		ret[tsaddr.AllIPv6()] = exitNodeSet
 	}
 
-	return ret, nil
+	return ret, exitNodeSet, nil
 }
 
 type ACL struct {

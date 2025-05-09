@@ -31,6 +31,8 @@ type PolicyManager struct {
 	tagOwnerMapHash deephash.Sum
 	tagOwnerMap     map[Tag]*netipx.IPSet
 
+	exitSetHash        deephash.Sum
+	exitSet            *netipx.IPSet
 	autoApproveMapHash deephash.Sum
 	autoApproveMap     map[netip.Prefix]*netipx.IPSet
 
@@ -97,7 +99,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.tagOwnerMap = tagMap
 	pm.tagOwnerMapHash = tagOwnerMapHash
 
-	autoMap, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+	autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("resolving auto approvers map: %w", err)
 	}
@@ -107,8 +109,13 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.autoApproveMap = autoMap
 	pm.autoApproveMapHash = autoApproveMapHash
 
+	exitSetHash := deephash.Hash(&autoMap)
+	exitSetChanged := exitSetHash != pm.exitSetHash
+	pm.exitSet = exitSet
+	pm.exitSetHash = exitSetHash
+
 	// If neither of the calculated values changed, no need to update nodes
-	if !filterChanged && !tagOwnerChanged && !autoApproveChanged {
+	if !filterChanged && !tagOwnerChanged && !autoApproveChanged && !exitSetChanged {
 		return false, nil
 	}
 
@@ -207,6 +214,23 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 		return false
 	}
 
+	// If the route to-be-approved is an exit route, then we need to check
+	// if the node is in allowed to approve it. This is treated differently
+	// than the auto-approvers, as the auto-approvers are not allowed to
+	// approve the whole /0 range.
+	// However, an auto approver might be /0, meaning that they can approve
+	// all routes available, just not exit nodes.
+	if tsaddr.IsExitRoute(route) {
+		if pm.exitSet == nil {
+			return false
+		}
+		if slices.ContainsFunc(node.IPs(), pm.exitSet.Contains) {
+			return true
+		}
+
+		return false
+	}
+
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -224,14 +248,6 @@ func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefi
 	// cannot just lookup in the prefix map and have to check
 	// if there is a "parent" prefix available.
 	for prefix, approveAddrs := range pm.autoApproveMap {
-		// We do not want the exit node entry to approve all
-		// sorts of routes. The logic here is that it would be
-		// unexpected behaviour to have specific routes approved
-		// just because the node is allowed to designate itself as
-		// an exit.
-		if tsaddr.IsExitRoute(prefix) {
-			continue
-		}
 
 		// Check if prefix is larger (so containing) and then overlaps
 		// the route to see if the node can approve a subset of an autoapprover
