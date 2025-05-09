@@ -720,6 +720,20 @@ type Usernames []Username
 // Groups are a map of Group to a list of Username.
 type Groups map[Group]Usernames
 
+func (g Groups) Contains(group *Group) error {
+	if group == nil {
+		return nil
+	}
+
+	for defined := range map[Group]Usernames(g) {
+		if defined == *group {
+			return nil
+		}
+	}
+
+	return fmt.Errorf(`Group %q is not defined in the Policy, please define or remove the reference to it`, group)
+}
+
 // UnmarshalJSON overrides the default JSON unmarshalling for Groups to ensure
 // that each group name is validated using the isGroup function. This ensures
 // that all group names conform to the expected format, which is always prefixed
@@ -790,6 +804,20 @@ func (h Hosts) exist(name Host) bool {
 
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
 type TagOwners map[Tag]Owners
+
+func (to TagOwners) Contains(tagOwner *Tag) error {
+	if tagOwner == nil {
+		return nil
+	}
+
+	for defined := range map[Tag]Owners(to) {
+		if defined == *tagOwner {
+			return nil
+		}
+	}
+
+	return fmt.Errorf(`Tag %q is not defined in the Policy, please define or remove the reference to it`, tagOwner)
+}
 
 // resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
 // The resulting map can be used to quickly look up the IPSet for a given Tag.
@@ -1047,6 +1075,16 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 					continue
 				}
+			case *Group:
+				g := src.(*Group)
+				if err := p.Groups.Contains(g); err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := src.(*Tag)
+				if err := p.TagOwners.Contains(tagOwner); err != nil {
+					errs = append(errs, err)
+				}
 			}
 		}
 
@@ -1068,6 +1106,16 @@ func (p *Policy) validate() error {
 				if err := validateAutogroupForDst(ag); err != nil {
 					errs = append(errs, err)
 					continue
+				}
+			case *Group:
+				g := dst.Alias.(*Group)
+				if err := p.Groups.Contains(g); err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := dst.Alias.(*Tag)
+				if err := p.TagOwners.Contains(tagOwner); err != nil {
+					errs = append(errs, err)
 				}
 			}
 		}
@@ -1102,6 +1150,16 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 					continue
 				}
+			case *Group:
+				g := src.(*Group)
+				if err := p.Groups.Contains(g); err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := src.(*Tag)
+				if err := p.TagOwners.Contains(tagOwner); err != nil {
+					errs = append(errs, err)
+				}
 			}
 		}
 		for _, dst := range ssh.Destinations {
@@ -1117,6 +1175,55 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 					continue
 				}
+			case *Tag:
+				tagOwner := dst.(*Tag)
+				if err := p.TagOwners.Contains(tagOwner); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+
+	for _, tagOwners := range p.TagOwners {
+		for _, tagOwner := range tagOwners {
+			switch tagOwner.(type) {
+			case *Group:
+				g := tagOwner.(*Group)
+				if err := p.Groups.Contains(g); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+
+	for _, approvers := range p.AutoApprovers.Routes {
+		for _, approver := range approvers {
+			switch approver.(type) {
+			case *Group:
+				g := approver.(*Group)
+				if err := p.Groups.Contains(g); err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := approver.(*Tag)
+				if err := p.TagOwners.Contains(tagOwner); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+
+	for _, approver := range p.AutoApprovers.ExitNode {
+		switch approver.(type) {
+		case *Group:
+			g := approver.(*Group)
+			if err := p.Groups.Contains(g); err != nil {
+				errs = append(errs, err)
+			}
+		case *Tag:
+			tagOwner := approver.(*Tag)
+			if err := p.TagOwners.Contains(tagOwner); err != nil {
+				errs = append(errs, err)
 			}
 		}
 	}

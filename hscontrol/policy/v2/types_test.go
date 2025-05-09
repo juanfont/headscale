@@ -511,6 +511,201 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`,
 		},
+		{
+			name: "group-must-be-defined-acl-src",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "group:notdefined"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "group-must-be-defined-acl-dst",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "group:notdefined:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "group-must-be-defined-acl-ssh-src",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:notdefined"
+      ],
+      "dst": [
+        "user@"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "group-must-be-defined-acl-tagOwner",
+			input: `
+{
+  "tagOwners": {
+    "tag:test": ["group:notdefined"],
+  },
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "group-must-be-defined-acl-autoapprover-route",
+			input: `
+{
+  "autoApprovers": {
+    "routes": {
+      "10.0.0.0/16": ["group:notdefined"]
+    }
+  },
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "group-must-be-defined-acl-autoapprover-exitnode",
+			input: `
+{
+  "autoApprovers": {
+    "exitNode": ["group:notdefined"]
+   },
+}
+`,
+			wantErr: `Group "group:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-src",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:notdefined"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-dst",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "tag:notdefined:*"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-ssh-src",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:notdefined"
+      ],
+      "dst": [
+        "user@"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-ssh-dst",
+			input: `
+{
+  "groups": {
+  	"group:defined": ["user@"],
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:defined"
+      ],
+      "dst": [
+        "tag:notdefined",
+      ],
+    }
+  ]
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-autoapprover-route",
+			input: `
+{
+  "autoApprovers": {
+    "routes": {
+      "10.0.0.0/16": ["tag:notdefined"]
+    }
+  },
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
+		{
+			name: "tag-must-be-defined-acl-autoapprover-exitnode",
+			input: `
+{
+  "autoApprovers": {
+    "exitNode": ["tag:notdefined"]
+   },
+}
+`,
+			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+		},
 	}
 
 	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {
