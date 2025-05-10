@@ -1139,3 +1139,115 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		}
 	}
 }
+
+func TestACLAutogroupMember(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"autogroup:member"},
+					Destinations: []string{"autogroup:member:*"},
+				},
+			},
+		},
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that untagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func TestACLAutogroupTagged(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
+				{
+					Action:       "accept",
+					Sources:      []string{"autogroup:tagged"},
+					Destinations: []string{"autogroup:tagged:*"},
+				},
+			},
+		},
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that tagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
+		}
+	}
+}
