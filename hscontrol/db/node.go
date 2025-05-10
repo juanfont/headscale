@@ -251,6 +251,20 @@ func SetApprovedRoutes(
 	return nil
 }
 
+// SetLastSeen sets a node's last seen field indicating that we
+// have recently communicating with this node.
+func (hsdb *HSDatabase) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return SetLastSeen(tx, nodeID, lastSeen)
+	})
+}
+
+// SetLastSeen sets a node's last seen field indicating that we
+// have recently communicating with this node.
+func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
+	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("last_seen", lastSeen).Error
+}
+
 // RenameNode takes a Node struct and a new GivenName for the nodes
 // and renames it. If the name is not unique, it will return an error.
 func RenameNode(tx *gorm.DB,

@@ -98,11 +98,7 @@ type Node struct {
 
 	// LastSeen is when the node was last in contact with
 	// headscale. It is best effort and not persisted.
-	LastSeen *time.Time `gorm:"-"`
-
-	// DEPRECATED: Use the ApprovedRoutes field instead.
-	// TODO(kradalby): remove when ApprovedRoutes is used all over the code.
-	// Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
+	LastSeen *time.Time `gorm:"column:last_seen"`
 
 	// ApprovedRoutes is a list of routes that the node is allowed to announce
 	// as a subnet router. They are not necessarily the routes that the node

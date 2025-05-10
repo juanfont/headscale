@@ -145,7 +145,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		registrationCache,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("new database: %w", err)
 	}
 
 	app.ipAlloc, err = db.NewIPAllocator(app.db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
@@ -160,7 +160,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	})
 
 	if err = app.loadPolicyManager(); err != nil {
-		return nil, fmt.Errorf("failed to load ACL policy: %w", err)
+		return nil, fmt.Errorf("loading ACL policy: %w", err)
 	}
 
 	var authProvider AuthProvider
