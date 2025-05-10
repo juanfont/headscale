@@ -27,14 +27,14 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	cfg, err := types.LoadServerConfig()
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to load configuration while creating headscale instance: %w",
+			"loading configuration: %w",
 			err,
 		)
 	}
 
 	app, err := hscontrol.NewHeadscale(cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating new headscale: %w", err)
 	}
 
 	return app, nil

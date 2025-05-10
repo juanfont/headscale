@@ -672,7 +672,24 @@ AND auth_key_id NOT IN (
 			{
 				ID: "202502171819",
 				Migrate: func(tx *gorm.DB) error {
-					_ = tx.Migrator().DropColumn(&types.Node{}, "last_seen")
+					// This migration originally removed the last_seen column
+					// from the node table, but it was added back in
+					// 202505091439.
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Add back last_seen column to node table.
+			{
+				ID: "202505091439",
+				Migrate: func(tx *gorm.DB) error {
+					// Add back last_seen column to node table if it does not exist.
+					// This is a workaround for the fact that the last_seen column
+					// was removed in the 202502171819 migration, but only for some
+					// beta testers.
+					if !tx.Migrator().HasColumn(&types.Node{}, "last_seen") {
+						_ = tx.Migrator().AddColumn(&types.Node{}, "last_seen")
+					}
 
 					return nil
 				},

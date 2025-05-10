@@ -9,6 +9,7 @@ import (
 
 	"slices"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
@@ -44,6 +45,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			allClients, err := scenario.ListTailscaleClients()
 			assertNoErrListClients(t, err)
 
+			allIps, err := scenario.ListTailscaleClientsIPs()
+			assertNoErrListClientIPs(t, err)
+
 			err = scenario.WaitForTailscaleSync()
 			assertNoErrSync(t, err)
 
@@ -66,6 +70,10 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			nodeCountBeforeLogout := len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
+			for _, node := range listNodes {
+				assertLastSeenSet(t, node)
+			}
+
 			for _, client := range allClients {
 				err := client.Logout()
 				if err != nil {
@@ -77,6 +85,13 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErrLogout(t, err)
 
 			t.Logf("all clients logged out")
+
+			listNodes, err = headscale.ListNodes()
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+
+			for _, node := range listNodes {
+				assertLastSeenSet(t, node)
+			}
 
 			// if the server is not running with HTTPS, we have to wait a bit before
 			// reconnection as the newest Tailscale client has a measure that will only
@@ -105,8 +120,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			listNodes, err = headscale.ListNodes()
 			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 
-			allIps, err := scenario.ListTailscaleClientsIPs()
-			assertNoErrListClientIPs(t, err)
+			for _, node := range listNodes {
+				assertLastSeenSet(t, node)
+			}
 
 			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 				return x.String()
@@ -137,8 +153,20 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 					}
 				}
 			}
+
+			listNodes, err = headscale.ListNodes()
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+			for _, node := range listNodes {
+				assertLastSeenSet(t, node)
+			}
 		})
 	}
+
+}
+
+func assertLastSeenSet(t *testing.T, node *v1.Node) {
+	assert.NotNil(t, node)
+	assert.NotNil(t, node.LastSeen)
 }
 
 // This test will first log in two sets of nodes to two sets of users, then

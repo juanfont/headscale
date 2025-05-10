@@ -409,6 +409,10 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		change.LastSeen = &now
 	}
 
+	if node.LastSeen != nil {
+		h.db.SetLastSeen(node.ID, *node.LastSeen)
+	}
+
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
 	h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerPatch(change), node.ID)
 }
