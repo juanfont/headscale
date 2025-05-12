@@ -112,7 +112,7 @@ var listPreAuthKeys = &cobra.Command{
 			aclTags = strings.TrimLeft(aclTags, ",")
 
 			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), 64),
+				strconv.FormatUint(key.GetId(), 10),
 				key.GetKey(),
 				strconv.FormatBool(key.GetReusable()),
 				strconv.FormatBool(key.GetEphemeral()),
