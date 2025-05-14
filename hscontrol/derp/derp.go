@@ -91,8 +91,8 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 		derpMaps = append(derpMaps, cfg.DERPMap)
 	}
 
-	for _, path := range cfg.Paths {
-		derpMap, err := loadDERPMapFromPath(path)
+	for _, addr := range cfg.URLs {
+		derpMap, err := loadDERPMapFromURL(addr)
 		if err != nil {
 			return nil, err
 		}
@@ -100,8 +100,8 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 		derpMaps = append(derpMaps, derpMap)
 	}
 
-	for _, addr := range cfg.URLs {
-		derpMap, err := loadDERPMapFromURL(addr)
+	for _, path := range cfg.Paths {
+		derpMap, err := loadDERPMapFromPath(path)
 		if err != nil {
 			return nil, err
 		}
