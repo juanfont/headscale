@@ -85,6 +85,9 @@ derp:
     region_code: "headscale"
     region_name: "Headscale Embedded DERP"
 
+    # Verify clients to this DERP server using the Headscale node list
+    verify_clients: true
+
     # Listens over UDP at the configured address for STUN connections - to help with NAT traversal.
     # When the embedded DERP server is enabled stun_listen_addr MUST be defined.
     #
