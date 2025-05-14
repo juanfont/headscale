@@ -695,6 +695,29 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Fix the provider identifier for users that have a double slash in the
+			// provider identifier.
+			{
+				ID: "202505141324",
+				Migrate: func(tx *gorm.DB) error {
+					users, err := ListUsers(tx)
+					if err != nil {
+						return fmt.Errorf("listing users: %w", err)
+					}
+
+					for _, user := range users {
+						user.ProviderIdentifier.String = types.CleanIdentifier(user.ProviderIdentifier.String)
+
+						err := tx.Save(user).Error
+						if err != nil {
+							return fmt.Errorf("saving user: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
