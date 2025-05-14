@@ -20,9 +20,9 @@ vendor/
 
 dist/
 /headscale
-config.json
 config.yaml
 config*.yaml
+!config-example.yaml
 derp.yaml
 *.hujson
 *.key
