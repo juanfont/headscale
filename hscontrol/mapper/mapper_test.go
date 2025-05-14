@@ -17,6 +17,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -184,6 +185,7 @@ func Test_fullMapResponse(t *testing.T) {
 		}),
 		Created:           created,
 		Tags:              []string{},
+		Online:            ptr.To(false),
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
 
@@ -239,6 +241,7 @@ func Test_fullMapResponse(t *testing.T) {
 		Hostinfo:          hiview(tailcfg.Hostinfo{}),
 		Created:           created,
 		Tags:              []string{},
+		Online:            ptr.To(false),
 		LastSeen:          &lastSeen,
 		MachineAuthorized: true,
 

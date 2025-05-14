@@ -504,7 +504,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 
 	for _, peer := range peers {
 		online := m.notif.IsLikelyConnected(peer.ID)
-		peer.IsOnline = &online
+		peer.IsOnline = online
 	}
 
 	return peers, nil
@@ -520,7 +520,7 @@ func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 
 	for _, node := range nodes {
 		online := m.notif.IsLikelyConnected(node.ID)
-		node.IsOnline = &online
+		node.IsOnline = online
 	}
 
 	return nodes, nil

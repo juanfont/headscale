@@ -110,7 +110,7 @@ type Node struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 
-	IsOnline *bool `gorm:"-"`
+	IsOnline bool `gorm:"-"`
 }
 
 type Nodes []*Node
@@ -512,7 +512,7 @@ func (node *Node) ApplyPeerChange(change *tailcfg.PeerChange) {
 	}
 
 	if change.Online != nil {
-		node.IsOnline = change.Online
+		node.IsOnline = *change.Online
 	}
 
 	if change.Endpoints != nil {
