@@ -1,6 +1,6 @@
 package main
 
-//go:generate go run ./main.go
+//go:generate go run ./gh-action-integration-generator.go
 
 import (
 	"bytes"
@@ -38,23 +38,28 @@ func findTests() []string {
 	return tests
 }
 
-func updateYAML(tests []string) {
+func updateYAML(tests []string, testPath string) {
 	testsForYq := fmt.Sprintf("[%s]", strings.Join(tests, ", "))
 
 	yqCommand := fmt.Sprintf(
-		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' ../../.github/workflows/test-integration.yaml -i",
+		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' %s -i",
 		testsForYq,
+		testPath,
 	)
 	cmd := exec.Command("bash", "-c", yqCommand)
 
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
+		log.Printf("stdout: %s", stdout.String())
+		log.Printf("stderr: %s", stderr.String())
 		log.Fatalf("failed to run yq command: %s", err)
 	}
 
-	fmt.Println("YAML file updated successfully")
+	fmt.Printf("YAML file (%s) updated successfully\n", testPath)
 }
 
 func main() {
@@ -65,5 +70,5 @@ func main() {
 		quotedTests[i] = fmt.Sprintf("\"%s\"", test)
 	}
 
-	updateYAML(quotedTests)
+	updateYAML(quotedTests, "./test-integration.yaml")
 }

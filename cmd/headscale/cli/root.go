@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
@@ -22,6 +23,11 @@ var cfgFile string = ""
 func init() {
 	if len(os.Args) > 1 &&
 		(os.Args[1] == "version" || os.Args[1] == "mockoidc" || os.Args[1] == "completion") {
+		return
+	}
+
+	if slices.Contains(os.Args, "policy") && slices.Contains(os.Args, "check") {
+		zerolog.SetGlobalLevel(zerolog.Disabled)
 		return
 	}
 
@@ -58,26 +64,26 @@ func initConfig() {
 		zerolog.SetGlobalLevel(zerolog.Disabled)
 	}
 
-	// logFormat := viper.GetString("log.format")
-	// if logFormat == types.JSONLogFormat {
-	// 	log.Logger = log.Output(os.Stdout)
-	// }
+	logFormat := viper.GetString("log.format")
+	if logFormat == types.JSONLogFormat {
+		log.Logger = log.Output(os.Stdout)
+	}
 
 	disableUpdateCheck := viper.GetBool("disable_check_updates")
 	if !disableUpdateCheck && !machineOutput {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
-			Version != "dev" {
+			types.Version != "dev" {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
 				Repository: "headscale",
 			}
-			res, err := latest.Check(githubTag, Version)
+			res, err := latest.Check(githubTag, types.Version)
 			if err == nil && res.Outdated {
 				//nolint
 				log.Warn().Msgf(
 					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 					res.Current,
-					Version,
+					types.Version,
 				)
 			}
 		}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/tsic"
 )
 
 // This file is intended to "test the test framework", by proxy it will also test
@@ -33,7 +34,7 @@ func TestHeadscale(t *testing.T) {
 
 	user := "test-space"
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	scenario, err := NewScenario(ScenarioSpec{})
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -50,7 +51,7 @@ func TestHeadscale(t *testing.T) {
 	})
 
 	t.Run("create-user", func(t *testing.T) {
-		err := scenario.CreateUser(user)
+		_, err := scenario.CreateUser(user)
 		if err != nil {
 			t.Fatalf("failed to create user: %s", err)
 		}
@@ -61,42 +62,10 @@ func TestHeadscale(t *testing.T) {
 	})
 
 	t.Run("create-auth-key", func(t *testing.T) {
-		_, err := scenario.CreatePreAuthKey(user, true, false)
+		_, err := scenario.CreatePreAuthKey(1, true, false)
 		if err != nil {
 			t.Fatalf("failed to create preauthkey: %s", err)
 		}
-	})
-}
-
-// If subtests are parallel, then they will start before setup is run.
-// This might mean we approach setup slightly wrong, but for now, ignore
-// the linter
-// nolint:tparallel
-func TestCreateTailscale(t *testing.T) {
-	IntegrationSkip(t)
-	t.Parallel()
-
-	user := "only-create-containers"
-
-	scenario, err := NewScenario(dockertestMaxWait())
-	assertNoErr(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	scenario.users[user] = &User{
-		Clients: make(map[string]TailscaleClient),
-	}
-
-	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "all", 3)
-		if err != nil {
-			t.Fatalf("failed to add tailscale nodes: %s", err)
-		}
-
-		if clients := len(scenario.users[user].Clients); clients != 3 {
-			t.Fatalf("wrong number of tailscale clients: %d != %d", clients, 3)
-		}
-
-		// TODO(kradalby): Test "all" version logic
 	})
 }
 
@@ -114,7 +83,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 
 	count := 1
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	scenario, err := NewScenario(ScenarioSpec{})
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -131,7 +100,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-user", func(t *testing.T) {
-		err := scenario.CreateUser(user)
+		_, err := scenario.CreateUser(user)
 		if err != nil {
 			t.Fatalf("failed to create user: %s", err)
 		}
@@ -142,7 +111,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("create-tailscale", func(t *testing.T) {
-		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count)
+		err := scenario.CreateTailscaleNodesInUser(user, "unstable", count, tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
 		if err != nil {
 			t.Fatalf("failed to add tailscale nodes: %s", err)
 		}
@@ -153,7 +122,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	})
 
 	t.Run("join-headscale", func(t *testing.T) {
-		key, err := scenario.CreatePreAuthKey(user, true, false)
+		key, err := scenario.CreatePreAuthKey(1, true, false)
 		if err != nil {
 			t.Fatalf("failed to create preauthkey: %s", err)
 		}

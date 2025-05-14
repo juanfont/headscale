@@ -2,10 +2,15 @@ package notifier
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
 	"net/netip"
 	"sort"
+	"sync"
 	"testing"
 	"time"
+
+	"slices"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -223,7 +228,7 @@ func TestBatcher(t *testing.T) {
 					// so do not run the worker.
 					BatchChangeDelay: time.Hour,
 
-					// Since we do not load the config, we wont get the
+					// Since we do not load the config, we won't get the
 					// default, so set it manually so we dont time out
 					// and have flakes.
 					NotifierSendTimeout: time.Second,
@@ -249,9 +254,7 @@ func TestBatcher(t *testing.T) {
 
 			// Make the inner order stable for comparison.
 			for _, u := range got {
-				sort.Slice(u.ChangeNodes, func(i, j int) bool {
-					return u.ChangeNodes[i] < u.ChangeNodes[j]
-				})
+				slices.Sort(u.ChangeNodes)
 				sort.Slice(u.ChangePatches, func(i, j int) bool {
 					return u.ChangePatches[i].NodeID < u.ChangePatches[j].NodeID
 				})
@@ -261,5 +264,80 @@ func TestBatcher(t *testing.T) {
 				t.Errorf("batcher() unexpected result (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+// TestIsLikelyConnectedRaceCondition tests for a race condition in IsLikelyConnected
+// Multiple goroutines calling AddNode and RemoveNode cause panics when trying to
+// close a channel that was already closed, which can happen when a node changes
+// network transport quickly (eg mobile->wifi) and reconnects whilst also disconnecting
+func TestIsLikelyConnectedRaceCondition(t *testing.T) {
+	// mock config for the notifier
+	cfg := &types.Config{
+		Tuning: types.Tuning{
+			NotifierSendTimeout:            1 * time.Second,
+			BatchChangeDelay:               1 * time.Second,
+			NodeMapSessionBufferedChanSize: 30,
+		},
+	}
+
+	notifier := NewNotifier(cfg)
+	defer notifier.Close()
+
+	nodeID := types.NodeID(1)
+	updateChan := make(chan types.StateUpdate, 10)
+
+	var wg sync.WaitGroup
+
+	// Number of goroutines to spawn for concurrent access
+	concurrentAccessors := 100
+	iterations := 100
+
+	// Add node to notifier
+	notifier.AddNode(nodeID, updateChan)
+
+	// Track errors
+	errChan := make(chan string, concurrentAccessors*iterations)
+
+	// Start goroutines to cause a race
+	wg.Add(concurrentAccessors)
+	for i := range concurrentAccessors {
+		go func(routineID int) {
+			defer wg.Done()
+
+			for range iterations {
+				// Simulate race by having some goroutines check IsLikelyConnected
+				// while others add/remove the node
+				if routineID%3 == 0 {
+					// This goroutine checks connection status
+					isConnected := notifier.IsLikelyConnected(nodeID)
+					if isConnected != true && isConnected != false {
+						errChan <- fmt.Sprintf("Invalid connection status: %v", isConnected)
+					}
+				} else if routineID%3 == 1 {
+					// This goroutine removes the node
+					notifier.RemoveNode(nodeID, updateChan)
+				} else {
+					// This goroutine adds the node back
+					notifier.AddNode(nodeID, updateChan)
+				}
+
+				// Small random delay to increase chance of races
+				time.Sleep(time.Duration(rand.Intn(100)) * time.Microsecond)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Collate errors
+	var errors []string
+	for err := range errChan {
+		errors = append(errors, err)
+	}
+
+	if len(errors) > 0 {
+		t.Errorf("Detected %d race condition errors: %v", len(errors), errors)
 	}
 }

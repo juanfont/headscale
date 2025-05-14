@@ -7,10 +7,8 @@ import "google/api/annotations.proto";
 import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/node.proto";
-import "headscale/v1/routes.proto";
 import "headscale/v1/apikey.proto";
 import "headscale/v1/policy.proto";
-// import "headscale/v1/device.proto";
 
 service HeadscaleService {
   // --- User start ---
@@ -87,6 +85,14 @@ service HeadscaleService {
     };
   }
 
+  rpc SetApprovedRoutes(SetApprovedRoutesRequest)
+      returns (SetApprovedRoutesResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/node/{node_id}/approve_routes"
+      body : "*"
+    };
+  }
+
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse) {
     option (google.api.http) = {
       post : "/api/v1/node/register"
@@ -132,39 +138,6 @@ service HeadscaleService {
   }
 
   // --- Node end ---
-
-  // --- Route start ---
-  rpc GetRoutes(GetRoutesRequest) returns (GetRoutesResponse) {
-    option (google.api.http) = {
-      get : "/api/v1/routes"
-    };
-  }
-
-  rpc EnableRoute(EnableRouteRequest) returns (EnableRouteResponse) {
-    option (google.api.http) = {
-      post : "/api/v1/routes/{route_id}/enable"
-    };
-  }
-
-  rpc DisableRoute(DisableRouteRequest) returns (DisableRouteResponse) {
-    option (google.api.http) = {
-      post : "/api/v1/routes/{route_id}/disable"
-    };
-  }
-
-  rpc GetNodeRoutes(GetNodeRoutesRequest) returns (GetNodeRoutesResponse) {
-    option (google.api.http) = {
-      get : "/api/v1/node/{node_id}/routes"
-    };
-  }
-
-  rpc DeleteRoute(DeleteRouteRequest) returns (DeleteRouteResponse) {
-    option (google.api.http) = {
-      delete : "/api/v1/routes/{route_id}"
-    };
-  }
-
-  // --- Route end ---
 
   // --- ApiKeys start ---
   rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {

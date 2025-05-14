@@ -10,7 +10,7 @@ headscale.
 | OpenBSD | Yes                                                                                                   |
 | FreeBSD | Yes                                                                                                   |
 | Windows | Yes (see [docs](../usage/connect/windows.md) and `/windows` on your headscale for more information)   |
-| Android | Yes (see [docs](../usage/connect/android.md))                                                         |
+| Android | Yes (see [docs](../usage/connect/android.md) for more information)                                    |
 | macOS   | Yes (see [docs](../usage/connect/apple.md#macos) and `/apple` on your headscale for more information) |
 | iOS     | Yes (see [docs](../usage/connect/apple.md#ios) and `/apple` on your headscale for more information)   |
 | tvOS    | Yes (see [docs](../usage/connect/apple.md#tvos) and `/apple` on your headscale for more information)  |

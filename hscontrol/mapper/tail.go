@@ -2,12 +2,12 @@ package mapper
 
 import (
 	"fmt"
-	"net/netip"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -15,6 +15,7 @@ func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
+	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, len(nodes))
@@ -24,6 +25,7 @@ func tailNodes(
 			node,
 			capVer,
 			polMan,
+			primaryRouteFunc,
 			cfg,
 		)
 		if err != nil {
@@ -41,32 +43,21 @@ func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	polMan policy.PolicyManager,
+	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
 
-	allowedIPs := append(
-		[]netip.Prefix{},
-		addrs...) // we append the node own IP, as it is required by the clients
+	var derp int
 
-	primaryPrefixes := []netip.Prefix{}
-
-	for _, route := range node.Routes {
-		if route.Enabled {
-			if route.IsPrimary {
-				allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
-				primaryPrefixes = append(primaryPrefixes, netip.Prefix(route.Prefix))
-			} else if route.IsExitRoute() {
-				allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix))
-			}
-		}
-	}
-
-	var derp string
+	// TODO(kradalby): legacyDERP was removed in tailscale/tailscale@2fc4455e6dd9ab7f879d4e2f7cffc2be81f14077
+	// and should be removed after 111 is the minimum capver.
+	var legacyDERP string
 	if node.Hostinfo != nil && node.Hostinfo.NetInfo != nil {
-		derp = fmt.Sprintf("127.3.3.40:%d", node.Hostinfo.NetInfo.PreferredDERP)
+		legacyDERP = fmt.Sprintf("127.3.3.40:%d", node.Hostinfo.NetInfo.PreferredDERP)
+		derp = node.Hostinfo.NetInfo.PreferredDERP
 	} else {
-		derp = "127.3.3.40:0" // Zero means disconnected or unknown.
+		legacyDERP = "127.3.3.40:0" // Zero means disconnected or unknown.
 	}
 
 	var keyExpiry time.Time
@@ -81,8 +72,18 @@ func tailNode(
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
 
-	tags := polMan.Tags(node)
+	var tags []string
+	for _, tag := range node.RequestTags() {
+		if polMan.NodeCanHaveTag(node, tag) {
+			tags = append(tags, tag)
+		}
+	}
 	tags = lo.Uniq(append(tags, node.ForcedTags...))
+
+	routes := primaryRouteFunc(node.ID)
+	allowed := append(node.Prefixes(), routes...)
+	allowed = append(allowed, node.ExitRoutes()...)
+	tsaddr.SortPrefixes(allowed)
 
 	tNode := tailcfg.Node{
 		ID:       tailcfg.NodeID(node.ID), // this is the actual ID
@@ -95,20 +96,20 @@ func tailNode(
 		Key:       node.NodeKey,
 		KeyExpiry: keyExpiry.UTC(),
 
-		Machine:    node.MachineKey,
-		DiscoKey:   node.DiscoKey,
-		Addresses:  addrs,
-		AllowedIPs: allowedIPs,
-		Endpoints:  node.Endpoints,
-		DERP:       derp,
-		Hostinfo:   node.Hostinfo.View(),
-		Created:    node.CreatedAt.UTC(),
+		Machine:          node.MachineKey,
+		DiscoKey:         node.DiscoKey,
+		Addresses:        addrs,
+		PrimaryRoutes:    routes,
+		AllowedIPs:       allowed,
+		Endpoints:        node.Endpoints,
+		HomeDERP:         derp,
+		LegacyDERPString: legacyDERP,
+		Hostinfo:         node.Hostinfo.View(),
+		Created:          node.CreatedAt.UTC(),
 
 		Online: node.IsOnline,
 
 		Tags: tags,
-
-		PrimaryRoutes: primaryPrefixes,
 
 		MachineAuthorized: !node.IsExpired(),
 		Expired:           node.IsExpired(),

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -25,8 +28,11 @@ var (
 )
 
 type NodeID uint64
+type NodeIDs []NodeID
 
-// type NodeConnectedMap *xsync.MapOf[NodeID, bool]
+func (n NodeIDs) Len() int           { return len(n) }
+func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
+func (n NodeIDs) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
 
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
@@ -75,16 +81,30 @@ type Node struct {
 
 	RegisterMethod string
 
-	ForcedTags []string `gorm:"serializer:json"`
+	// ForcedTags are tags set by CLI/API. It is not considered
+	// the source of truth, but is one of the sources from
+	// which a tag might originate.
+	// ForcedTags are _always_ applied to the node.
+	ForcedTags []string `gorm:"column:forced_tags;serializer:json"`
 
-	// TODO(kradalby): This seems like irrelevant information?
-	AuthKeyID *uint64     `sql:"DEFAULT:NULL"`
-	AuthKey   *PreAuthKey `gorm:"constraint:OnDelete:SET NULL;"`
+	// When a node has been created with a PreAuthKey, we need to
+	// prevent the preauthkey from being deleted before the node.
+	// The preauthkey can define "tags" of the node so we need it
+	// around.
+	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
+	AuthKey   *PreAuthKey
 
-	LastSeen *time.Time
-	Expiry   *time.Time
+	Expiry *time.Time
 
-	Routes []Route `gorm:"constraint:OnDelete:CASCADE;"`
+	// LastSeen is when the node was last in contact with
+	// headscale. It is best effort and not persisted.
+	LastSeen *time.Time `gorm:"column:last_seen"`
+
+	// ApprovedRoutes is a list of routes that the node is allowed to announce
+	// as a subnet router. They are not necessarily the routes that the node
+	// announces at the moment.
+	// See [Node.Hostinfo]
+	ApprovedRoutes []netip.Prefix `gorm:"column:approved_routes;serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -93,9 +113,7 @@ type Node struct {
 	IsOnline *bool `gorm:"-"`
 }
 
-type (
-	Nodes []*Node
-)
+type Nodes []*Node
 
 // GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) GivenNameHasBeenChanged() bool {
@@ -105,7 +123,7 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 // IsExpired returns whether the node registration has expired.
 func (node Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
-	// it wants an expiry time, it is therefor considered
+	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
 	if node.Expiry == nil || node.Expiry.IsZero() {
 		return false
@@ -134,8 +152,77 @@ func (node *Node) IPs() []netip.Addr {
 	return ret
 }
 
+// HasIP reports if a node has a given IP address.
+func (node *Node) HasIP(i netip.Addr) bool {
+	for _, ip := range node.IPs() {
+		if ip.Compare(i) == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// IsTagged reports if a device is tagged
+// and therefore should not be treated as a
+// user owned device.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) IsTagged() bool {
+	if len(node.ForcedTags) > 0 {
+		return true
+	}
+
+	if node.AuthKey != nil && len(node.AuthKey.Tags) > 0 {
+		return true
+	}
+
+	if node.Hostinfo == nil {
+		return false
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+
+	return false
+}
+
+// HasTag reports if a node has a given tag.
+// Currently, this function only handles tags set
+// via CLI ("forced tags" and preauthkeys)
+func (node *Node) HasTag(tag string) bool {
+	return slices.Contains(node.Tags(), tag)
+}
+
+func (node *Node) Tags() []string {
+	var tags []string
+
+	if node.AuthKey != nil {
+		tags = append(tags, node.AuthKey.Tags...)
+	}
+
+	// TODO(kradalby): Figure out how tagging should work
+	// and hostinfo.requestedtags.
+	// Do this in other work.
+	// #2417
+
+	tags = append(tags, node.ForcedTags...)
+	sort.Strings(tags)
+	tags = slices.Compact(tags)
+
+	return tags
+}
+
+func (node *Node) RequestTags() []string {
+	if node.Hostinfo == nil {
+		return []string{}
+	}
+
+	return node.Hostinfo.RequestTags
+}
+
 func (node *Node) Prefixes() []netip.Prefix {
-	addrs := []netip.Prefix{}
+	var addrs []netip.Prefix
 	for _, nodeAddress := range node.IPs() {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
@@ -144,28 +231,29 @@ func (node *Node) Prefixes() []netip.Prefix {
 	return addrs
 }
 
+// ExitRoutes returns a list of both exit routes if the
+// node has any exit routes enabled.
+// If none are enabled, it will return nil.
+func (node *Node) ExitRoutes() []netip.Prefix {
+	if slices.ContainsFunc(node.SubnetRoutes(), tsaddr.IsExitRoute) {
+		return tsaddr.ExitRoutes()
+	}
+
+	return nil
+}
+
 func (node *Node) IPsAsString() []string {
 	var ret []string
 
-	if node.IPv4 != nil {
-		ret = append(ret, node.IPv4.String())
-	}
-
-	if node.IPv6 != nil {
-		ret = append(ret, node.IPv6.String())
+	for _, ip := range node.IPs() {
+		ret = append(ret, ip.String())
 	}
 
 	return ret
 }
 
 func (node *Node) InIPSet(set *netipx.IPSet) bool {
-	for _, nodeAddr := range node.IPs() {
-		if set.Contains(nodeAddr) {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(node.IPs(), set.Contains)
 }
 
 // AppendToIPSet adds the individual ips in NodeAddresses to a
@@ -176,29 +264,36 @@ func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	}
 }
 
-func (node *Node) CanAccess(filter []tailcfg.FilterRule, node2 *Node) bool {
+func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 	src := node.IPs()
 	allowedIPs := node2.IPs()
 
-	// TODO(kradalby): Regenerate this everytime the filter change, instead of
-	// every time we use it.
-	matchers := make([]matcher.Match, len(filter))
-	for i, rule := range filter {
-		matchers[i] = matcher.MatchFromFilterRule(rule)
-	}
-
-	for _, route := range node2.Routes {
-		if route.Enabled {
-			allowedIPs = append(allowedIPs, netip.Prefix(route.Prefix).Addr())
-		}
-	}
-
 	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src) {
+		if !matcher.SrcsContainsIPs(src...) {
 			continue
 		}
 
-		if matcher.DestsContainsIP(allowedIPs) {
+		if matcher.DestsContainsIP(allowedIPs...) {
+			return true
+		}
+
+		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
+	src := node.IPs()
+
+	for _, matcher := range matchers {
+		if !matcher.SrcsContainsIPs(src...) {
+			continue
+		}
+
+		if matcher.DestsOverlapsPrefixes(route) {
 			return true
 		}
 	}
@@ -248,6 +343,12 @@ func (node *Node) Proto() *v1.Node {
 		User:        node.User.Proto(),
 		ForcedTags:  node.ForcedTags,
 
+		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has
+		// to be populated manually with PrimaryRoute, to ensure it includes the
+		// routes that are actively served from the node.
+		ApprovedRoutes:  util.PrefixesToString(node.ApprovedRoutes),
+		AvailableRoutes: util.PrefixesToString(node.AnnouncedRoutes()),
+
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
@@ -277,7 +378,7 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 
 	if baseDomain != "" {
 		hostname = fmt.Sprintf(
-			"%s.%s",
+			"%s.%s.",
 			node.GivenName,
 			baseDomain,
 		)
@@ -294,9 +395,32 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	return hostname, nil
 }
 
-// func (node *Node) String() string {
-// 	return node.Hostname
-// }
+// AnnouncedRoutes returns the list of routes that the node announces.
+// It should be used instead of checking Hostinfo.RoutableIPs directly.
+func (node *Node) AnnouncedRoutes() []netip.Prefix {
+	if node.Hostinfo == nil {
+		return nil
+	}
+
+	return node.Hostinfo.RoutableIPs
+}
+
+// SubnetRoutes returns the list of routes that the node announces and are approved.
+func (node *Node) SubnetRoutes() []netip.Prefix {
+	var routes []netip.Prefix
+
+	for _, route := range node.AnnouncedRoutes() {
+		if slices.Contains(node.ApprovedRoutes, route) {
+			routes = append(routes, route)
+		}
+	}
+
+	return routes
+}
+
+func (node *Node) String() string {
+	return node.Hostname
+}
 
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
 // to produce a PeerChange struct that can be used to updated the node and
@@ -434,4 +558,27 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 	}
 
 	return ret
+}
+
+func (nodes Nodes) DebugString() string {
+	var sb strings.Builder
+	sb.WriteString("Nodes:\n")
+	for _, node := range nodes {
+		sb.WriteString(node.DebugString())
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func (node Node) DebugString() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
+	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
+	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
+	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
+	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
+	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
+	sb.WriteString("\n")
+	return sb.String()
 }

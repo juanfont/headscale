@@ -15,7 +15,12 @@ message User {
   string profile_pic_url = 8;
 }
 
-message CreateUserRequest { string name = 1; }
+message CreateUserRequest {
+  string name = 1;
+  string display_name = 2;
+  string email = 3;
+  string picture_url = 4;
+}
 
 message CreateUserResponse { User user = 1; }
 

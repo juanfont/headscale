@@ -5,6 +5,8 @@ import (
 	"net/netip"
 	"net/url"
 
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"tailscale.com/ipn/ipnstate"
@@ -28,8 +30,12 @@ type TailscaleClient interface {
 	Up() error
 	Down() error
 	IPs() ([]netip.Addr, error)
+	MustIPs() []netip.Addr
+	MustIPv4() netip.Addr
+	MustIPv6() netip.Addr
 	FQDN() (string, error)
 	Status(...bool) (*ipnstate.Status, error)
+	MustStatus() *ipnstate.Status
 	Netmap() (*netmap.NetworkMap, error)
 	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	GetNodePrivateKey() (*key.NodePrivate, error)
@@ -39,7 +45,9 @@ type TailscaleClient interface {
 	WaitForPeers(expected int) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
-	ID() string
+	Traceroute(netip.Addr) (util.Traceroute, error)
+	ContainerID() string
+	MustID() types.NodeID
 	ReadFile(path string) ([]byte, error)
 
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client

@@ -64,10 +64,10 @@ Here are the ACL's to implement the same permissions as above:
   // groups are collections of users having a common scope. A user can be in multiple groups
   // groups cannot be composed of groups
   "groups": {
-    "group:boss": ["boss"],
-    "group:dev": ["dev1", "dev2"],
-    "group:admin": ["admin1"],
-    "group:intern": ["intern1"]
+    "group:boss": ["boss@"],
+    "group:dev": ["dev1@", "dev2@"],
+    "group:admin": ["admin1@"],
+    "group:intern": ["intern1@"]
   },
   // tagOwners in tailscale is an association between a TAG and the people allowed to set this TAG on a server.
   // This is documented [here](https://tailscale.com/kb/1068/acl-tags#defining-a-tag)
@@ -149,13 +149,11 @@ Here are the ACL's to implement the same permissions as above:
     },
     // developers have access to the internal network through the router.
     // the internal network is composed of HTTPS endpoints and Postgresql
-    // database servers. There's an additional rule to allow traffic to be
-    // forwarded to the internal subnet, 10.20.0.0/16. See this issue
-    // https://github.com/juanfont/headscale/issues/502
+    // database servers.
     {
       "action": "accept",
       "src": ["group:dev"],
-      "dst": ["10.20.0.0/16:443,5432", "router.internal:0"]
+      "dst": ["10.20.0.0/16:443,5432"]
     },
 
     // servers should be able to talk to database in tcp/5432. Database should not be able to initiate connections to
@@ -181,11 +179,11 @@ Here are the ACL's to implement the same permissions as above:
 
     // We still have to allow internal users communications since nothing guarantees that each user have
     // their own users.
-    { "action": "accept", "src": ["boss"], "dst": ["boss:*"] },
-    { "action": "accept", "src": ["dev1"], "dst": ["dev1:*"] },
-    { "action": "accept", "src": ["dev2"], "dst": ["dev2:*"] },
-    { "action": "accept", "src": ["admin1"], "dst": ["admin1:*"] },
-    { "action": "accept", "src": ["intern1"], "dst": ["intern1:*"] }
+    { "action": "accept", "src": ["boss@"], "dst": ["boss@:*"] },
+    { "action": "accept", "src": ["dev1@"], "dst": ["dev1@:*"] },
+    { "action": "accept", "src": ["dev2@"], "dst": ["dev2@:*"] },
+    { "action": "accept", "src": ["admin1@"], "dst": ["admin1@:*"] },
+    { "action": "accept", "src": ["intern1@"], "dst": ["intern1@:*"] }
   ]
 }
 ```

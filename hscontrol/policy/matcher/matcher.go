@@ -2,6 +2,9 @@ package matcher
 
 import (
 	"net/netip"
+	"strings"
+
+	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
@@ -9,8 +12,31 @@ import (
 )
 
 type Match struct {
-	Srcs  *netipx.IPSet
-	Dests *netipx.IPSet
+	srcs  *netipx.IPSet
+	dests *netipx.IPSet
+}
+
+func (m Match) DebugString() string {
+	var sb strings.Builder
+
+	sb.WriteString("Match:\n")
+	sb.WriteString("  Sources:\n")
+	for _, prefix := range m.srcs.Prefixes() {
+		sb.WriteString("    " + prefix.String() + "\n")
+	}
+	sb.WriteString("  Destinations:\n")
+	for _, prefix := range m.dests.Prefixes() {
+		sb.WriteString("    " + prefix.String() + "\n")
+	}
+	return sb.String()
+}
+
+func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
+	matches := make([]Match, 0, len(rules))
+	for _, rule := range rules {
+		matches = append(matches, MatchFromFilterRule(rule))
+	}
+	return matches
 }
 
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
@@ -42,29 +68,25 @@ func MatchFromStrings(sources, destinations []string) Match {
 	destsSet, _ := dests.IPSet()
 
 	match := Match{
-		Srcs:  srcsSet,
-		Dests: destsSet,
+		srcs:  srcsSet,
+		dests: destsSet,
 	}
 
 	return match
 }
 
-func (m *Match) SrcsContainsIPs(ips []netip.Addr) bool {
-	for _, ip := range ips {
-		if m.Srcs.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+func (m *Match) SrcsContainsIPs(ips ...netip.Addr) bool {
+	return slices.ContainsFunc(ips, m.srcs.Contains)
 }
 
-func (m *Match) DestsContainsIP(ips []netip.Addr) bool {
-	for _, ip := range ips {
-		if m.Dests.Contains(ip) {
-			return true
-		}
-	}
+func (m *Match) DestsContainsIP(ips ...netip.Addr) bool {
+	return slices.ContainsFunc(ips, m.dests.Contains)
+}
 
-	return false
+func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
+	return slices.ContainsFunc(prefixes, m.srcs.OverlapsPrefix)
+}
+
+func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
+	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
 }

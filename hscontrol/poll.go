@@ -7,16 +7,14 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
-	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/mapper"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -68,9 +66,7 @@ func (h *Headscale) newMapSession(
 		// to receive a message to make sure we dont block the entire
 		// notifier.
 		updateChan = make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
-		updateChan <- types.StateUpdate{
-			Type: types.StateFullUpdate,
-		}
+		updateChan <- types.UpdateFull()
 	}
 
 	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
@@ -156,7 +152,7 @@ func (m *mapSession) serve() {
 	// current configuration.
 	//
 	// If OmitPeers is true, Stream is false, and ReadOnly is false,
-	// then te server will let clients update their endpoints without
+	// then the server will let clients update their endpoints without
 	// breaking existing long-polling (Stream == true) connections.
 	// In this case, the server can omit the entire response; the client
 	// only checks the HTTP response status code.
@@ -207,7 +203,15 @@ func (m *mapSession) serveLongPoll() {
 		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
 			// Failover the node's routes if any.
 			m.h.updateNodeOnlineStatus(false, m.node)
-			m.pollFailoverRoutes("node closing connection", m.node)
+
+			// When a node disconnects, and it causes the primary route map to change,
+			// send a full update to all nodes.
+			// TODO(kradalby): This can likely be made more effective, but likely most
+			// nodes has access to the same routes, so it might not be a big deal.
+			if m.h.primaryRoutes.SetRoutes(m.node.ID) {
+				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
+				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+			}
 		}
 
 		m.afterServeLongPoll()
@@ -218,7 +222,10 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	m.pollFailoverRoutes("node connected", m.node)
+	if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
+		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	}
 
 	// Upgrade the writer to a ResponseController
 	rc := http.NewResponseController(m.w)
@@ -385,22 +392,6 @@ func (m *mapSession) serveLongPoll() {
 	}
 }
 
-func (m *mapSession) pollFailoverRoutes(where string, node *types.Node) {
-	update, err := db.Write(m.h.db.DB, func(tx *gorm.DB) (*types.StateUpdate, error) {
-		return db.FailoverNodeRoutesIfNeccessary(tx, m.h.nodeNotifier.LikelyConnectedMap(), node)
-	})
-	if err != nil {
-		m.errf(err, fmt.Sprintf("failed to ensure failover routes, %s", where))
-
-		return
-	}
-
-	if update != nil && !update.Empty() {
-		ctx := types.NotifyCtx(context.Background(), fmt.Sprintf("poll-%s-routes-ensurefailover", strings.ReplaceAll(where, " ", "-")), node.Hostname)
-		m.h.nodeNotifier.NotifyWithIgnore(ctx, *update, node.ID)
-	}
-}
-
 // updateNodeOnlineStatus records the last seen status of a node and notifies peers
 // about change in their online/offline status.
 // It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
@@ -416,24 +407,14 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 		// lastSeen is only relevant if the node is disconnected.
 		node.LastSeen = &now
 		change.LastSeen = &now
+	}
 
-		err := h.db.Write(func(tx *gorm.DB) error {
-			return db.SetLastSeen(tx, node.ID, *node.LastSeen)
-		})
-		if err != nil {
-			log.Error().Err(err).Msg("Cannot update node LastSeen")
-
-			return
-		}
+	if node.LastSeen != nil {
+		h.db.SetLastSeen(node.ID, *node.LastSeen)
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
-	h.nodeNotifier.NotifyWithIgnore(ctx, types.StateUpdate{
-		Type: types.StatePeerChangedPatch,
-		ChangePatches: []*tailcfg.PeerChange{
-			change,
-		},
-	}, node.ID)
+	h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerPatch(change), node.ID)
 }
 
 func (m *mapSession) handleEndpointUpdate() {
@@ -453,7 +434,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	// If there is no NetInfo, keep the previous one.
 	// From 1.66 the client only sends it if changed:
 	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
-	// TODO(kradalby): evaulate if we need better comparing of hostinfo
+	// TODO(kradalby): evaluate if we need better comparing of hostinfo
 	// before we take the changes.
 	if m.req.Hostinfo.NetInfo == nil && m.node.Hostinfo != nil {
 		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
@@ -478,39 +459,34 @@ func (m *mapSession) handleEndpointUpdate() {
 	// If the hostinfo has changed, but not the routes, just update
 	// hostinfo and let the function continue.
 	if routesChanged {
-		var err error
-		_, err = m.h.db.SaveNodeRoutes(m.node)
-		if err != nil {
-			m.errf(err, "Error processing node routes")
-			http.Error(m.w, "", http.StatusInternalServerError)
-			mapResponseEndpointUpdates.WithLabelValues("error").Inc()
-
-			return
-		}
-
-		// TODO(kradalby): Only update the node that has actually changed
+		// TODO(kradalby): I am not sure if we need this?
 		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
 
-		if m.h.polMan != nil {
-			// update routes with peer information
-			err := m.h.db.EnableAutoApprovedRoutes(m.h.polMan, m.node)
-			if err != nil {
-				m.errf(err, "Error running auto approved routes")
-				mapResponseEndpointUpdates.WithLabelValues("error").Inc()
-			}
-		}
+		// Approve any route that has been defined in policy as
+		// auto approved. Any change here is not important as any
+		// actual state change will be detected when the route manager
+		// is updated.
+		policy.AutoApproveRoutes(m.h.polMan, m.node)
 
-		// Send an update to the node itself with to ensure it
-		// has an updated packetfilter allowing the new route
-		// if it is defined in the ACL.
-		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-		m.h.nodeNotifier.NotifyByNodeID(
-			ctx,
-			types.StateUpdate{
-				Type:        types.StateSelfUpdate,
-				ChangeNodes: []types.NodeID{m.node.ID},
-			},
-			m.node.ID)
+		// Update the routes of the given node in the route manager to
+		// see if an update needs to be sent.
+		if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+			ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
+			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		} else {
+			ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
+			m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
+
+			// TODO(kradalby): I am not sure if we need this?
+			// Send an update to the node itself with to ensure it
+			// has an updated packetfilter allowing the new route
+			// if it is defined in the ACL.
+			ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
+			m.h.nodeNotifier.NotifyByNodeID(
+				ctx,
+				types.UpdateSelf(m.node.ID),
+				m.node.ID)
+		}
 	}
 
 	// Check if there has been a change to Hostname and update them
@@ -530,18 +506,12 @@ func (m *mapSession) handleEndpointUpdate() {
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)
 	m.h.nodeNotifier.NotifyWithIgnore(
 		ctx,
-		types.StateUpdate{
-			Type:        types.StatePeerChanged,
-			ChangeNodes: []types.NodeID{m.node.ID},
-			Message:     "called from handlePoll -> update",
-		},
+		types.UpdatePeerChanged(m.node.ID),
 		m.node.ID,
 	)
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
-
-	return
 }
 
 func (m *mapSession) handleReadOnlyRequest() {
@@ -566,8 +536,6 @@ func (m *mapSession) handleReadOnlyRequest() {
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseReadOnly.WithLabelValues("ok").Inc()
-
-	return
 }
 
 func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
@@ -691,7 +659,7 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	}
 
 	// Services is mostly useful for discovery and not critical,
-	// except for peerapi, which is how nodes talk to eachother.
+	// except for peerapi, which is how nodes talk to each other.
 	// If peerapi was not part of the initial mapresponse, we
 	// need to make sure its sent out later as it is needed for
 	// Taildrop.

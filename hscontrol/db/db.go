@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/netip"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
 	"zgo.at/zcache/v2"
 )
@@ -41,7 +43,7 @@ type KV struct {
 type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.DatabaseConfig
-	regCache *zcache.Cache[string, types.Node]
+	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
 
 	baseDomain string
 }
@@ -51,7 +53,7 @@ type HSDatabase struct {
 func NewHeadscaleDatabase(
 	cfg types.DatabaseConfig,
 	baseDomain string,
-	regCache *zcache.Cache[string, types.Node],
+	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg)
 	if err != nil {
@@ -103,7 +105,7 @@ func NewHeadscaleDatabase(
 
 					dbConn.Model(&types.Node{}).Where("auth_key_id = ?", 0).Update("auth_key_id", nil)
 					// If the Node table has a column for registered,
-					// find all occourences of "false" and drop them. Then
+					// find all occurrences of "false" and drop them. Then
 					// remove the column.
 					if tx.Migrator().HasColumn(&types.Node{}, "registered") {
 						log.Info().
@@ -478,9 +480,41 @@ func NewHeadscaleDatabase(
 				// populate the user with more interesting information.
 				ID: "202407191627",
 				Migrate: func(tx *gorm.DB) error {
+					// Fix an issue where the automigration in GORM expected a constraint to
+					// exists that didnt, and add the one it wanted.
+					// Fixes https://github.com/juanfont/headscale/issues/2351
+					if cfg.Type == types.DatabasePostgres {
+						err := tx.Exec(`
+BEGIN;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'uni_users_name'
+    ) THEN
+        ALTER TABLE users ADD CONSTRAINT uni_users_name UNIQUE (name);
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'users_name_key'
+    ) THEN
+        ALTER TABLE users DROP CONSTRAINT users_name_key;
+    END IF;
+END $$;
+COMMIT;
+`).Error
+						if err != nil {
+							return fmt.Errorf("failed to rename constraint: %w", err)
+						}
+					}
+
 					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.User: %w", err)
 					}
 
 					return nil
@@ -495,7 +529,7 @@ func NewHeadscaleDatabase(
 				Migrate: func(tx *gorm.DB) error {
 					err := tx.AutoMigrate(&types.User{})
 					if err != nil {
-						return err
+						return fmt.Errorf("automigrating types.User: %w", err)
 					}
 
 					// Set up indexes and unique constraints outside of GORM, it does not support
@@ -514,6 +548,169 @@ func NewHeadscaleDatabase(
 						err = tx.Exec(idx).Error
 						if err != nil {
 							return fmt.Errorf("creating username index: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Add a constraint to routes ensuring they cannot exist without a node.
+				ID: "202501221827",
+				Migrate: func(tx *gorm.DB) error {
+					// Remove any invalid routes associated with a node that does not exist.
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
+						if err != nil {
+							return err
+						}
+					}
+
+					// Remove any invalid routes without a node_id.
+					if tx.Migrator().HasTable(&types.Route{}) {
+						err := tx.Exec("delete from routes where node_id is null").Error
+						if err != nil {
+							return err
+						}
+					}
+
+					err := tx.AutoMigrate(&types.Route{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.Route: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Add back constraint so you cannot delete preauth keys that
+			// is still used by a node.
+			{
+				ID: "202501311657",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.AutoMigrate(&types.PreAuthKey{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.PreAuthKey: %w", err)
+					}
+					err = tx.AutoMigrate(&types.Node{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.Node: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Ensure there are no nodes refering to a deleted preauthkey.
+			{
+				ID: "202502070949",
+				Migrate: func(tx *gorm.DB) error {
+					if tx.Migrator().HasTable(&types.PreAuthKey{}) {
+						err := tx.Exec(`
+UPDATE nodes
+SET auth_key_id = NULL
+WHERE auth_key_id IS NOT NULL
+AND auth_key_id NOT IN (
+    SELECT id FROM pre_auth_keys
+);
+							`).Error
+						if err != nil {
+							return fmt.Errorf("setting auth_key to null on nodes with non-existing keys: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Migrate all routes from the Route table to the new field ApprovedRoutes
+			// in the Node table. Then drop the Route table.
+			{
+				ID: "202502131714",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.Node{}, "approved_routes") {
+						err := tx.Migrator().AddColumn(&types.Node{}, "approved_routes")
+						if err != nil {
+							return fmt.Errorf("adding column types.Node: %w", err)
+						}
+					}
+
+					nodeRoutes := map[uint64][]netip.Prefix{}
+
+					var routes []types.Route
+					err = tx.Find(&routes).Error
+					if err != nil {
+						return fmt.Errorf("fetching routes: %w", err)
+					}
+
+					for _, route := range routes {
+						if route.Enabled {
+							nodeRoutes[route.NodeID] = append(nodeRoutes[route.NodeID], route.Prefix)
+						}
+					}
+
+					for nodeID, routes := range nodeRoutes {
+						tsaddr.SortPrefixes(routes)
+						routes = slices.Compact(routes)
+
+						data, err := json.Marshal(routes)
+
+						err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", data).Error
+						if err != nil {
+							return fmt.Errorf("saving approved routes to new column: %w", err)
+						}
+					}
+
+					// Drop the old table.
+					_ = tx.Migrator().DropTable(&types.Route{})
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202502171819",
+				Migrate: func(tx *gorm.DB) error {
+					// This migration originally removed the last_seen column
+					// from the node table, but it was added back in
+					// 202505091439.
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Add back last_seen column to node table.
+			{
+				ID: "202505091439",
+				Migrate: func(tx *gorm.DB) error {
+					// Add back last_seen column to node table if it does not exist.
+					// This is a workaround for the fact that the last_seen column
+					// was removed in the 202502171819 migration, but only for some
+					// beta testers.
+					if !tx.Migrator().HasColumn(&types.Node{}, "last_seen") {
+						_ = tx.Migrator().AddColumn(&types.Node{}, "last_seen")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Fix the provider identifier for users that have a double slash in the
+			// provider identifier.
+			{
+				ID: "202505141324",
+				Migrate: func(tx *gorm.DB) error {
+					users, err := ListUsers(tx)
+					if err != nil {
+						return fmt.Errorf("listing users: %w", err)
+					}
+
+					for _, user := range users {
+						user.ProviderIdentifier.String = types.CleanIdentifier(user.ProviderIdentifier.String)
+
+						err := tx.Save(user).Error
+						if err != nil {
+							return fmt.Errorf("saving user: %w", err)
 						}
 					}
 
@@ -588,7 +785,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		// The pure Go SQLite library does not handle locking in
-		// the same way as the C based one and we cant use the gorm
+		// the same way as the C based one and we can't use the gorm
 		// connection pool as of 2022/02/23.
 		sqlDB, _ := db.DB()
 		sqlDB.SetMaxIdleConns(1)
@@ -651,7 +848,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
-	// Turn off foreign keys for the duration of the migration if using sqllite to
+	// Turn off foreign keys for the duration of the migration if using sqlite to
 	// prevent data loss due to the way the GORM migrator handles certain schema
 	// changes.
 	if cfg.Type == types.DatabaseSqlite {

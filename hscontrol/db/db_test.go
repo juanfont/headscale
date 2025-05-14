@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -23,7 +24,10 @@ import (
 	"zgo.at/zcache/v2"
 )
 
-func TestMigrations(t *testing.T) {
+// TestMigrationsSQLite is the main function for testing migrations,
+// we focus on SQLite correctness as it is the main database used in headscale.
+// All migrations that are worth testing should be added here.
+func TestMigrationsSQLite(t *testing.T) {
 	ipp := func(p string) netip.Prefix {
 		return netip.MustParsePrefix(p)
 	}
@@ -44,25 +48,43 @@ func TestMigrations(t *testing.T) {
 		{
 			dbPath: "testdata/0-22-3-to-0-23-0-routes-are-dropped-2063.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
-				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
-					return GetRoutes(rx)
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					n1, err := GetNodeByID(rx, 1)
+					n26, err := GetNodeByID(rx, 26)
+					n31, err := GetNodeByID(rx, 31)
+					n32, err := GetNodeByID(rx, 32)
+					if err != nil {
+						return nil, err
+					}
+
+					return types.Nodes{n1, n26, n31, n32}, nil
 				})
 				require.NoError(t, err)
 
-				assert.Len(t, routes, 10)
-				want := types.Routes{
-					r(1, "0.0.0.0/0", true, true, false),
-					r(1, "::/0", true, true, false),
-					r(1, "10.9.110.0/24", true, true, true),
-					r(26, "172.100.100.0/24", true, true, true),
-					r(26, "172.100.100.0/24", true, false, false),
-					r(31, "0.0.0.0/0", true, true, false),
-					r(31, "0.0.0.0/0", true, false, false),
-					r(31, "::/0", true, true, false),
-					r(31, "::/0", true, false, false),
-					r(32, "192.168.0.24/32", true, true, true),
+				// want := types.Routes{
+				// 	r(1, "0.0.0.0/0", true, false),
+				// 	r(1, "::/0", true, false),
+				// 	r(1, "10.9.110.0/24", true, true),
+				// 	r(26, "172.100.100.0/24", true, true),
+				// 	r(26, "172.100.100.0/24", true, false, false),
+				// 	r(31, "0.0.0.0/0", true, false),
+				// 	r(31, "0.0.0.0/0", true, false, false),
+				// 	r(31, "::/0", true, false),
+				// 	r(31, "::/0", true, false, false),
+				// 	r(32, "192.168.0.24/32", true, true),
+				// }
+				want := [][]netip.Prefix{
+					{ipp("0.0.0.0/0"), ipp("10.9.110.0/24"), ipp("::/0")},
+					{ipp("172.100.100.0/24")},
+					{ipp("0.0.0.0/0"), ipp("::/0")},
+					{ipp("192.168.0.24/32")},
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
+				var got [][]netip.Prefix
+				for _, node := range nodes {
+					got = append(got, node.ApprovedRoutes)
+				}
+
+				if diff := cmp.Diff(want, got, util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -70,13 +92,13 @@ func TestMigrations(t *testing.T) {
 		{
 			dbPath: "testdata/0-22-3-to-0-23-0-routes-fail-foreign-key-2076.sqlite",
 			wantFunc: func(t *testing.T, h *HSDatabase) {
-				routes, err := Read(h.DB, func(rx *gorm.DB) (types.Routes, error) {
-					return GetRoutes(rx)
+				node, err := Read(h.DB, func(rx *gorm.DB) (*types.Node, error) {
+					return GetNodeByID(rx, 13)
 				})
 				require.NoError(t, err)
 
-				assert.Len(t, routes, 4)
-				want := types.Routes{
+				assert.Len(t, node.ApprovedRoutes, 3)
+				_ = types.Routes{
 					// These routes exists, but have no nodes associated with them
 					// when the migration starts.
 					// r(1, "0.0.0.0/0", true, true, false),
@@ -107,7 +129,8 @@ func TestMigrations(t *testing.T) {
 					r(13, "::/0", true, true, false),
 					r(13, "10.18.80.2/32", true, true, true),
 				}
-				if diff := cmp.Diff(want, routes, cmpopts.IgnoreFields(types.Route{}, "Model", "Node"), util.PrefixComparer); diff != "" {
+				want := []netip.Prefix{ipp("0.0.0.0/0"), ipp("10.18.80.2/32"), ipp("::/0")}
+				if diff := cmp.Diff(want, node.ApprovedRoutes, util.PrefixComparer); diff != "" {
 					t.Errorf("TestMigrations() mismatch (-want +got):\n%s", diff)
 				}
 			},
@@ -197,11 +220,31 @@ func TestMigrations(t *testing.T) {
 				}
 			},
 		},
+		{
+			dbPath: "testdata/failing-node-preauth-constraint.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+
+				for _, node := range nodes {
+					assert.Falsef(t, node.MachineKey.IsZero(), "expected non zero machinekey")
+					assert.Contains(t, node.MachineKey.String(), "mkey:")
+					assert.Falsef(t, node.NodeKey.IsZero(), "expected non zero nodekey")
+					assert.Contains(t, node.NodeKey.String(), "nodekey:")
+					assert.Falsef(t, node.DiscoKey.IsZero(), "expected non zero discokey")
+					assert.Contains(t, node.DiscoKey.String(), "discokey:")
+					assert.Nil(t, node.AuthKey)
+					assert.Nil(t, node.AuthKeyID)
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.dbPath, func(t *testing.T) {
-			dbPath, err := testCopyOfDatabase(tt.dbPath)
+			dbPath, err := testCopyOfDatabase(t, tt.dbPath)
 			if err != nil {
 				t.Fatalf("copying db for test: %s", err)
 			}
@@ -223,7 +266,7 @@ func TestMigrations(t *testing.T) {
 	}
 }
 
-func testCopyOfDatabase(src string) (string, error) {
+func testCopyOfDatabase(t *testing.T, src string) (string, error) {
 	sourceFileStat, err := os.Stat(src)
 	if err != nil {
 		return "", err
@@ -239,11 +282,7 @@ func testCopyOfDatabase(src string) (string, error) {
 	}
 	defer source.Close()
 
-	tmpDir, err := os.MkdirTemp("", "hsdb-test-*")
-	if err != nil {
-		return "", err
-	}
-
+	tmpDir := t.TempDir()
 	fn := filepath.Base(src)
 	dst := filepath.Join(tmpDir, fn)
 
@@ -256,8 +295,8 @@ func testCopyOfDatabase(src string) (string, error) {
 	return dst, err
 }
 
-func emptyCache() *zcache.Cache[string, types.Node] {
-	return zcache.New[string, types.Node](time.Minute, time.Hour)
+func emptyCache() *zcache.Cache[types.RegistrationID, types.RegisterNode] {
+	return zcache.New[types.RegistrationID, types.RegisterNode](time.Minute, time.Hour)
 }
 
 // requireConstraintFailed checks if the error is a constraint failure with
@@ -278,9 +317,9 @@ func TestConstraints(t *testing.T) {
 		{
 			name: "no-duplicate-username-if-no-oidc",
 			run: func(t *testing.T, db *gorm.DB) {
-				_, err := CreateUser(db, "user1")
+				_, err := CreateUser(db, types.User{Name: "user1"})
 				require.NoError(t, err)
-				_, err = CreateUser(db, "user1")
+				_, err = CreateUser(db, types.User{Name: "user1"})
 				requireConstraintFailed(t, err)
 			},
 		},
@@ -331,7 +370,7 @@ func TestConstraints(t *testing.T) {
 		{
 			name: "allow-duplicate-username-cli-then-oidc",
 			run: func(t *testing.T, db *gorm.DB) {
-				_, err := CreateUser(db, "user1") // Create CLI username
+				_, err := CreateUser(db, types.User{Name: "user1"}) // Create CLI username
 				require.NoError(t, err)
 
 				user := types.User{
@@ -354,7 +393,7 @@ func TestConstraints(t *testing.T) {
 				err := db.Save(&user).Error
 				require.NoError(t, err)
 
-				_, err = CreateUser(db, "user1") // Create CLI username
+				_, err = CreateUser(db, types.User{Name: "user1"}) // Create CLI username
 				require.NoError(t, err)
 			},
 		},
@@ -374,4 +413,83 @@ func TestConstraints(t *testing.T) {
 			tt.run(t, db.DB.Debug())
 		})
 	}
+}
+
+func TestMigrationsPostgres(t *testing.T) {
+	tests := []struct {
+		name     string
+		dbPath   string
+		wantFunc func(*testing.T, *HSDatabase)
+	}{
+		{
+			name:   "user-idx-breaking",
+			dbPath: "testdata/pre-24-postgresdb.pssql.dump",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+
+				for _, user := range users {
+					assert.NotEmpty(t, user.Name)
+					assert.Empty(t, user.ProfilePicURL)
+					assert.Empty(t, user.Email)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newPostgresDBForTest(t)
+
+			pgRestorePath, err := exec.LookPath("pg_restore")
+			if err != nil {
+				t.Fatal("pg_restore not found in PATH. Please install it and ensure it is accessible.")
+			}
+
+			// Construct the pg_restore command
+			cmd := exec.Command(pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
+
+			// Set the output streams
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			// Execute the command
+			err = cmd.Run()
+			if err != nil {
+				t.Fatalf("failed to restore postgres database: %s", err)
+			}
+
+			db = newHeadscaleDBFromPostgresURL(t, u)
+
+			if tt.wantFunc != nil {
+				tt.wantFunc(t, db)
+			}
+		})
+	}
+}
+
+func dbForTest(t *testing.T) *HSDatabase {
+	t.Helper()
+
+	dbPath := t.TempDir() + "/headscale_test.db"
+
+	db, err := NewHeadscaleDatabase(
+		types.DatabaseConfig{
+			Type: "sqlite3",
+			Sqlite: types.SqliteConfig{
+				Path: dbPath,
+			},
+		},
+		"",
+		emptyCache(),
+	)
+	if err != nil {
+		t.Fatalf("setting up database: %s", err)
+	}
+
+	t.Logf("database set up at: %s", dbPath)
+
+	return db
 }

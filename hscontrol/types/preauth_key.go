@@ -1,11 +1,9 @@
 package types
 
 import (
-	"strconv"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -14,11 +12,16 @@ type PreAuthKey struct {
 	ID        uint64 `gorm:"primary_key"`
 	Key       string
 	UserID    uint
-	User      User `gorm:"constraint:OnDelete:CASCADE;"`
+	User      User `gorm:"constraint:OnDelete:SET NULL;"`
 	Reusable  bool
-	Ephemeral bool     `gorm:"default:false"`
-	Used      bool     `gorm:"default:false"`
-	Tags      []string `gorm:"serializer:json"`
+	Ephemeral bool `gorm:"default:false"`
+	Used      bool `gorm:"default:false"`
+
+	// Tags are always applied to the node and is one of
+	// the sources of tags a node might have. They are copied
+	// from the PreAuthKey when the node logs in the first time,
+	// and ignored after.
+	Tags []string `gorm:"serializer:json"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
@@ -26,8 +29,8 @@ type PreAuthKey struct {
 
 func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		User:      key.User.Username(),
-		Id:        strconv.FormatUint(key.ID, util.Base10),
+		User:      key.User.Proto(),
+		Id:        key.ID,
 		Key:       key.Key,
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,

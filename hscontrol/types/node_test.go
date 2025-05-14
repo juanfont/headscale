@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"net/netip"
 	"strings"
 	"testing"
@@ -116,7 +117,8 @@ func Test_NodeCanAccess(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.node1.CanAccess(tt.rules, &tt.node2)
+			matchers := matcher.MatchesFromFilterRules(tt.rules)
+			got := tt.node1.CanAccess(matchers, &tt.node2)
 
 			if got != tt.want {
 				t.Errorf("canAccess() failed: want (%t), got (%t)", tt.want, got)
@@ -142,7 +144,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 		{
 			name: "all-set",
@@ -153,7 +155,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 		{
 			name: "no-given-name",
@@ -171,7 +173,7 @@ func TestNodeFQDN(t *testing.T) {
 				GivenName: strings.Repeat("a", 256),
 			},
 			domain:  "example.com",
-			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
+			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com.): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
 		},
 		{
 			name: "no-dnsconfig",
@@ -182,7 +184,7 @@ func TestNodeFQDN(t *testing.T) {
 				},
 			},
 			domain: "example.com",
-			want:   "test.example.com",
+			want:   "test.example.com.",
 		},
 	}
 

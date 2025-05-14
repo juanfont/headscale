@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"go4.org/netipx"
 	"tailscale.com/util/dnsname"
@@ -20,11 +21,55 @@ const (
 	LabelHostnameLength = 63
 )
 
+var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidUserName = errors.New("invalid user name")
 
+// ValidateUsername checks if a username is valid.
+// It must be at least 2 characters long, start with a letter, and contain
+// only letters, numbers, hyphens, dots, and underscores.
+// It cannot contain more than one '@'.
+// It cannot contain invalid characters.
+func ValidateUsername(username string) error {
+	// Ensure the username meets the minimum length requirement
+	if len(username) < 2 {
+		return errors.New("username must be at least 2 characters long")
+	}
+
+	// Ensure the username does not start with a number
+	if unicode.IsDigit(rune(username[0])) {
+		return errors.New("username cannot start with a number")
+	}
+
+	atCount := 0
+	for _, char := range username {
+		switch {
+		case unicode.IsLetter(char),
+			unicode.IsDigit(char),
+			char == '-',
+			char == '.',
+			char == '_':
+			// Valid characters
+		case char == '@':
+			atCount++
+			if atCount > 1 {
+				return errors.New("username cannot contain more than one '@'")
+			}
+		default:
+			return fmt.Errorf("username contains invalid character: '%c'", char)
+		}
+	}
+
+	return nil
+}
+
 func CheckForFQDNRules(name string) error {
+	// Ensure the username meets the minimum length requirement
+	if len(name) < 2 {
+		return errors.New("name must be at least 2 characters long")
+	}
+
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
 			"DNS segment must not be over 63 chars. %v doesn't comply with this rule: %w",
@@ -39,9 +84,9 @@ func CheckForFQDNRules(name string) error {
 			ErrInvalidUserName,
 		)
 	}
-	if invalidCharsInUserRegex.MatchString(name) {
+	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
-			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with theses rules: %w",
+			"DNS segment should only be composed of lowercase ASCII letters numbers, hyphen and dots. %v doesn't comply with these rules: %w",
 			name,
 			ErrInvalidUserName,
 		)
@@ -52,7 +97,7 @@ func CheckForFQDNRules(name string) error {
 
 func ConvertWithFQDNRules(name string) string {
 	name = strings.ToLower(name)
-	name = invalidCharsInUserRegex.ReplaceAllString(name, "")
+	name = invalidDNSRegex.ReplaceAllString(name, "")
 
 	return name
 }
@@ -151,7 +196,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// and from what I can see, the generateMagicDNSRootDomains
 	// function is called only once over the lifetime of a server process.
 	prefixConstantParts := []string{}
-	for i := 0; i < maskBits/nibbleLen; i++ {
+	for i := range maskBits / nibbleLen {
 		prefixConstantParts = append(
 			[]string{string(nibbleStr[i])},
 			prefixConstantParts...)
@@ -170,7 +215,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	} else {
 		domCount := 1 << (maskBits % nibbleLen)
 		fqdns = make([]dnsname.FQDN, 0, domCount)
-		for i := 0; i < domCount; i++ {
+		for i := range domCount {
 			varNibble := fmt.Sprintf("%x", i)
 			dom, err := makeDomain(varNibble)
 			if err != nil {
@@ -181,33 +226,4 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	}
 
 	return fqdns
-}
-
-// TODO(kradalby): Reintroduce when strip_email_domain is removed
-// after #2170 is cleaned up
-// DEPRECATED: DO NOT USE
-// NormalizeToFQDNRules will replace forbidden chars in user
-// it can also return an error if the user doesn't respect RFC 952 and 1123.
-func NormalizeToFQDNRules(name string, stripEmailDomain bool) (string, error) {
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, "'", "")
-	atIdx := strings.Index(name, "@")
-	if stripEmailDomain && atIdx > 0 {
-		name = name[:atIdx]
-	} else {
-		name = strings.ReplaceAll(name, "@", ".")
-	}
-	name = invalidCharsInUserRegex.ReplaceAllString(name, "-")
-
-	for _, elt := range strings.Split(name, ".") {
-		if len(elt) > LabelHostnameLength {
-			return "", fmt.Errorf(
-				"label %v is more than 63 chars: %w",
-				elt,
-				ErrInvalidUserName,
-			)
-		}
-	}
-
-	return name, nil
 }

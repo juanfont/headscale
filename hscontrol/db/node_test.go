@@ -15,7 +15,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
@@ -27,7 +26,7 @@ import (
 )
 
 func (s *Suite) TestGetNode(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -56,7 +55,7 @@ func (s *Suite) TestGetNode(c *check.C) {
 }
 
 func (s *Suite) TestGetNodeByID(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -81,42 +80,11 @@ func (s *Suite) TestGetNodeByID(c *check.C) {
 	c.Assert(trx.Error, check.IsNil)
 
 	_, err = db.GetNodeByID(0)
-	c.Assert(err, check.IsNil)
-}
-
-func (s *Suite) TestGetNodeByAnyNodeKey(c *check.C) {
-	user, err := db.CreateUser("test")
-	c.Assert(err, check.IsNil)
-
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
-
-	nodeKey := key.NewNode()
-	oldNodeKey := key.NewNode()
-
-	machineKey := key.NewMachine()
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-	}
-	trx := db.DB.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
-
-	_, err = db.GetNodeByAnyKey(machineKey.Public(), nodeKey.Public(), oldNodeKey.Public())
 	c.Assert(err, check.IsNil)
 }
 
 func (s *Suite) TestHardDeleteNode(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	nodeKey := key.NewNode()
@@ -133,7 +101,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
 
-	_, err = db.DeleteNode(&node, xsync.NewMapOf[types.NodeID, bool]())
+	err = db.DeleteNode(&node)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode3")
@@ -141,7 +109,7 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 }
 
 func (s *Suite) TestListPeers(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -179,107 +147,8 @@ func (s *Suite) TestListPeers(c *check.C) {
 	c.Assert(peersOfNode0[8].Hostname, check.Equals, "testnode10")
 }
 
-func (s *Suite) TestGetACLFilteredPeers(c *check.C) {
-	type base struct {
-		user *types.User
-		key  *types.PreAuthKey
-	}
-
-	stor := make([]base, 0)
-
-	for _, name := range []string{"test", "admin"} {
-		user, err := db.CreateUser(name)
-		c.Assert(err, check.IsNil)
-		pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-		c.Assert(err, check.IsNil)
-		stor = append(stor, base{user, pak})
-	}
-
-	_, err := db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
-
-	for index := 0; index <= 10; index++ {
-		nodeKey := key.NewNode()
-		machineKey := key.NewMachine()
-
-		v4 := netip.MustParseAddr(fmt.Sprintf("100.64.0.%d", index+1))
-		node := types.Node{
-			ID:             types.NodeID(index),
-			MachineKey:     machineKey.Public(),
-			NodeKey:        nodeKey.Public(),
-			IPv4:           &v4,
-			Hostname:       "testnode" + strconv.Itoa(index),
-			UserID:         stor[index%2].user.ID,
-			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      ptr.To(stor[index%2].key.ID),
-		}
-		trx := db.DB.Save(&node)
-		c.Assert(trx.Error, check.IsNil)
-	}
-
-	aclPolicy := &policy.ACLPolicy{
-		Groups: map[string][]string{
-			"group:test": {"admin"},
-		},
-		Hosts:     map[string]netip.Prefix{},
-		TagOwners: map[string][]string{},
-		ACLs: []policy.ACL{
-			{
-				Action:       "accept",
-				Sources:      []string{"admin"},
-				Destinations: []string{"*:*"},
-			},
-			{
-				Action:       "accept",
-				Sources:      []string{"test"},
-				Destinations: []string{"test:*"},
-			},
-		},
-		Tests: []policy.ACLTest{},
-	}
-
-	adminNode, err := db.GetNodeByID(1)
-	c.Logf("Node(%v), user: %v", adminNode.Hostname, adminNode.User)
-	c.Assert(adminNode.IPv4, check.NotNil)
-	c.Assert(adminNode.IPv6, check.IsNil)
-	c.Assert(err, check.IsNil)
-
-	testNode, err := db.GetNodeByID(2)
-	c.Logf("Node(%v), user: %v", testNode.Hostname, testNode.User)
-	c.Assert(err, check.IsNil)
-
-	adminPeers, err := db.ListPeers(adminNode.ID)
-	c.Assert(err, check.IsNil)
-	c.Assert(len(adminPeers), check.Equals, 9)
-
-	testPeers, err := db.ListPeers(testNode.ID)
-	c.Assert(err, check.IsNil)
-	c.Assert(len(testPeers), check.Equals, 9)
-
-	adminRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, adminNode, adminPeers, []types.User{*stor[0].user, *stor[1].user})
-	c.Assert(err, check.IsNil)
-
-	testRules, _, err := policy.GenerateFilterAndSSHRulesForTests(aclPolicy, testNode, testPeers, []types.User{*stor[0].user, *stor[1].user})
-	c.Assert(err, check.IsNil)
-
-	peersOfAdminNode := policy.FilterNodesByACL(adminNode, adminPeers, adminRules)
-	peersOfTestNode := policy.FilterNodesByACL(testNode, testPeers, testRules)
-	c.Log(peersOfAdminNode)
-	c.Log(peersOfTestNode)
-
-	c.Assert(len(peersOfTestNode), check.Equals, 9)
-	c.Assert(peersOfTestNode[0].Hostname, check.Equals, "testnode1")
-	c.Assert(peersOfTestNode[1].Hostname, check.Equals, "testnode3")
-	c.Assert(peersOfTestNode[3].Hostname, check.Equals, "testnode5")
-
-	c.Assert(len(peersOfAdminNode), check.Equals, 9)
-	c.Assert(peersOfAdminNode[0].Hostname, check.Equals, "testnode2")
-	c.Assert(peersOfAdminNode[2].Hostname, check.Equals, "testnode4")
-	c.Assert(peersOfAdminNode[5].Hostname, check.Equals, "testnode7")
-}
-
 func (s *Suite) TestExpireNode(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -320,7 +189,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 }
 
 func (s *Suite) TestSetTags(c *check.C) {
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -495,22 +364,23 @@ func TestAutoApproveRoutes(t *testing.T) {
 		acl    string
 		routes []netip.Prefix
 		want   []netip.Prefix
+		want2  []netip.Prefix
 	}{
 		{
-			name: "2068-approve-issue-sub",
+			name: "2068-approve-issue-sub-kube",
 			acl: `
 {
 	"groups": {
-		"group:k8s": ["test"]
+		"group:k8s": ["test@"]
 	},
 
-	"acls": [
-		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
-	],
+// 	"acls": [
+// 		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
+// 	],
 
 	"autoApprovers": {
 		"routes": {
-			"10.42.0.0/16": ["test"],
+			"10.42.0.0/16": ["test@"],
 		}
 	}
 }`,
@@ -518,26 +388,27 @@ func TestAutoApproveRoutes(t *testing.T) {
 			want:   []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
 		},
 		{
-			name: "2068-approve-issue-sub",
+			name: "2068-approve-issue-sub-exit-tag",
 			acl: `
 {
 	"tagOwners": {
-		"tag:exit": ["test"],
+		"tag:exit": ["test@"],
 	},
 
 	"groups": {
-		"group:test": ["test"]
+		"group:test": ["test@"]
 	},
 
-	"acls": [
-		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
-	],
+// 	"acls": [
+// 		{"action": "accept", "users": ["*"], "ports": ["*:*"]},
+// 	],
 
 	"autoApprovers": {
 		"exitNode": ["tag:exit"],
 		"routes": {
 			"10.10.0.0/16": ["group:test"],
-			"10.11.0.0/16": ["test"],
+			"10.11.0.0/16": ["test@"],
+			"8.11.0.0/24": ["test2@"], // No nodes
 		}
 	}
 }`,
@@ -546,83 +417,105 @@ func TestAutoApproveRoutes(t *testing.T) {
 				tsaddr.AllIPv6(),
 				netip.MustParsePrefix("10.10.0.0/16"),
 				netip.MustParsePrefix("10.11.0.0/24"),
+
+				// Not approved
+				netip.MustParsePrefix("8.11.0.0/24"),
 			},
 			want: []netip.Prefix{
-				tsaddr.AllIPv4(),
 				netip.MustParsePrefix("10.10.0.0/16"),
 				netip.MustParsePrefix("10.11.0.0/24"),
+			},
+			want2: []netip.Prefix{
+				tsaddr.AllIPv4(),
 				tsaddr.AllIPv6(),
 			},
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			adb, err := newSQLiteTestDB()
-			require.NoError(t, err)
-			pol, err := policy.LoadACLPolicyFromBytes([]byte(tt.acl))
+		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
+		for i, pmf := range pmfs {
+			version := i + 1
+			t.Run(fmt.Sprintf("%s-policyv%d", tt.name, version), func(t *testing.T) {
+				adb, err := newSQLiteTestDB()
+				require.NoError(t, err)
 
-			require.NoError(t, err)
-			require.NotNil(t, pol)
+				user, err := adb.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
+				_, err = adb.CreateUser(types.User{Name: "test2"})
+				require.NoError(t, err)
+				taggedUser, err := adb.CreateUser(types.User{Name: "tagged"})
+				require.NoError(t, err)
 
-			user, err := adb.CreateUser("test")
-			require.NoError(t, err)
+				node := types.Node{
+					ID:             1,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "testnode",
+					UserID:         user.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: tt.routes,
+					},
+					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
+				}
 
-			pak, err := adb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-			require.NoError(t, err)
+				err = adb.DB.Save(&node).Error
+				require.NoError(t, err)
 
-			nodeKey := key.NewNode()
-			machineKey := key.NewMachine()
+				nodeTagged := types.Node{
+					ID:             2,
+					MachineKey:     key.NewMachine().Public(),
+					NodeKey:        key.NewNode().Public(),
+					Hostname:       "taggednode",
+					UserID:         taggedUser.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Hostinfo: &tailcfg.Hostinfo{
+						RoutableIPs: tt.routes,
+					},
+					ForcedTags: []string{"tag:exit"},
+					IPv4:       ptr.To(netip.MustParseAddr("100.64.0.2")),
+				}
 
-			v4 := netip.MustParseAddr("100.64.0.1")
-			node := types.Node{
-				ID:             0,
-				MachineKey:     machineKey.Public(),
-				NodeKey:        nodeKey.Public(),
-				Hostname:       "test",
-				UserID:         user.ID,
-				RegisterMethod: util.RegisterMethodAuthKey,
-				AuthKeyID:      ptr.To(pak.ID),
-				Hostinfo: &tailcfg.Hostinfo{
-					RequestTags: []string{"tag:exit"},
-					RoutableIPs: tt.routes,
-				},
-				IPv4: &v4,
-			}
+				err = adb.DB.Save(&nodeTagged).Error
+				require.NoError(t, err)
 
-			trx := adb.DB.Save(&node)
-			require.NoError(t, trx.Error)
+				users, err := adb.ListUsers()
+				assert.NoError(t, err)
 
-			sendUpdate, err := adb.SaveNodeRoutes(&node)
-			require.NoError(t, err)
-			assert.False(t, sendUpdate)
+				nodes, err := adb.ListNodes()
+				assert.NoError(t, err)
 
-			node0ByID, err := adb.GetNodeByID(0)
-			require.NoError(t, err)
+				pm, err := pmf(users, nodes)
+				require.NoError(t, err)
+				require.NotNil(t, pm)
 
-			users, err := adb.ListUsers()
-			assert.NoError(t, err)
+				changed1 := policy.AutoApproveRoutes(pm, &node)
+				assert.True(t, changed1)
 
-			nodes, err := adb.ListNodes()
-			assert.NoError(t, err)
+				err = adb.DB.Save(&node).Error
+				require.NoError(t, err)
 
-			pm, err := policy.NewPolicyManager([]byte(tt.acl), users, nodes)
-			assert.NoError(t, err)
+				_ = policy.AutoApproveRoutes(pm, &nodeTagged)
 
-			// TODO(kradalby): Check state update
-			err = adb.EnableAutoApprovedRoutes(pm, node0ByID)
-			require.NoError(t, err)
+				err = adb.DB.Save(&nodeTagged).Error
+				require.NoError(t, err)
 
-			enabledRoutes, err := adb.GetEnabledRoutes(node0ByID)
-			require.NoError(t, err)
-			assert.Len(t, enabledRoutes, len(tt.want))
+				node1ByID, err := adb.GetNodeByID(1)
+				require.NoError(t, err)
 
-			tsaddr.SortPrefixes(enabledRoutes)
+				if diff := cmp.Diff(tt.want, node1ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
+				}
 
-			if diff := cmp.Diff(tt.want, enabledRoutes, util.Comparers...); diff != "" {
-				t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
-			}
-		})
+				node2ByID, err := adb.GetNodeByID(2)
+				require.NoError(t, err)
+
+				if diff := cmp.Diff(tt.want2, node2ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
+				}
+			})
+		}
 	}
 }
 
@@ -674,7 +567,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	})
 	go e.Start()
 
-	for i := 0; i < want; i++ {
+	for i := range want {
 		go e.Schedule(types.NodeID(i), 1*time.Second)
 	}
 
@@ -706,7 +599,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		t.Fatalf("creating db: %s", err)
 	}
 
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
@@ -762,10 +655,10 @@ func TestRenameNode(t *testing.T) {
 		t.Fatalf("creating db: %s", err)
 	}
 
-	user, err := db.CreateUser("test")
+	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
-	user2, err := db.CreateUser("test2")
+	user2, err := db.CreateUser(types.User{Name: "user2"})
 	require.NoError(t, err)
 
 	node := types.Node{
@@ -775,6 +668,7 @@ func TestRenameNode(t *testing.T) {
 		Hostname:       "test",
 		UserID:         user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
 	}
 
 	node2 := types.Node{
@@ -784,6 +678,7 @@ func TestRenameNode(t *testing.T) {
 		Hostname:       "test",
 		UserID:         user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
 	}
 
 	err = db.DB.Save(&node).Error
@@ -851,4 +746,175 @@ func TestRenameNode(t *testing.T) {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
 	assert.ErrorContains(t, err, "name is not unique")
+}
+
+func TestListPeers(t *testing.T) {
+	// Setup test database
+	db, err := newSQLiteTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	user2, err := db.CreateUser(types.User{Name: "user2"})
+	require.NoError(t, err)
+
+	node1 := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test1",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
+	}
+
+	node2 := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test2",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
+	}
+
+	err = db.DB.Save(&node1).Error
+	require.NoError(t, err)
+
+	err = db.DB.Save(&node2).Error
+	require.NoError(t, err)
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNode(tx, node1, nil, nil)
+		if err != nil {
+			return err
+		}
+		_, err = RegisterNode(tx, node2, nil, nil)
+		return err
+	})
+	require.NoError(t, err)
+
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+
+	assert.Len(t, nodes, 2)
+
+	// No parameter means no filter, should return all peers
+	nodes, err = db.ListPeers(1)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 1)
+	assert.Equal(t, "test2", nodes[0].Hostname)
+
+	// Empty node list should return all peers
+	nodes, err = db.ListPeers(1, types.NodeIDs{}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 1)
+	assert.Equal(t, "test2", nodes[0].Hostname)
+
+	// No match in IDs should return empty list and no error
+	nodes, err = db.ListPeers(1, types.NodeIDs{3, 4, 5}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 0)
+
+	// Partial match in IDs
+	nodes, err = db.ListPeers(1, types.NodeIDs{2, 3}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 1)
+	assert.Equal(t, "test2", nodes[0].Hostname)
+
+	// Several matched IDs, but node ID is still filtered out
+	nodes, err = db.ListPeers(1, types.NodeIDs{1, 2, 3}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 1)
+	assert.Equal(t, "test2", nodes[0].Hostname)
+}
+
+func TestListNodes(t *testing.T) {
+	// Setup test database
+	db, err := newSQLiteTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	user2, err := db.CreateUser(types.User{Name: "user2"})
+	require.NoError(t, err)
+
+	node1 := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test1",
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
+	}
+
+	node2 := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "test2",
+		UserID:         user2.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		Hostinfo:       &tailcfg.Hostinfo{},
+	}
+
+	err = db.DB.Save(&node1).Error
+	require.NoError(t, err)
+
+	err = db.DB.Save(&node2).Error
+	require.NoError(t, err)
+
+	err = db.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNode(tx, node1, nil, nil)
+		if err != nil {
+			return err
+		}
+		_, err = RegisterNode(tx, node2, nil, nil)
+		return err
+	})
+	require.NoError(t, err)
+
+	nodes, err := db.ListNodes()
+	require.NoError(t, err)
+
+	assert.Len(t, nodes, 2)
+
+	// No parameter means no filter, should return all nodes
+	nodes, err = db.ListNodes()
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 2)
+	assert.Equal(t, "test1", nodes[0].Hostname)
+	assert.Equal(t, "test2", nodes[1].Hostname)
+
+	// Empty node list should return all nodes
+	nodes, err = db.ListNodes(types.NodeIDs{}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 2)
+	assert.Equal(t, "test1", nodes[0].Hostname)
+	assert.Equal(t, "test2", nodes[1].Hostname)
+
+	// No match in IDs should return empty list and no error
+	nodes, err = db.ListNodes(types.NodeIDs{3, 4, 5}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 0)
+
+	// Partial match in IDs
+	nodes, err = db.ListNodes(types.NodeIDs{2, 3}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 1)
+	assert.Equal(t, "test2", nodes[0].Hostname)
+
+	// Several matched IDs
+	nodes, err = db.ListNodes(types.NodeIDs{1, 2, 3}...)
+	require.NoError(t, err)
+	assert.Equal(t, len(nodes), 2)
+	assert.Equal(t, "test1", nodes[0].Hostname)
+	assert.Equal(t, "test2", nodes[1].Hostname)
 }

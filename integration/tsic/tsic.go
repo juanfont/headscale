@@ -13,10 +13,12 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/integrationutil"
@@ -83,6 +85,8 @@ type TailscaleInContainer struct {
 	withExtraHosts    []string
 	workdir           string
 	netfilter         string
+	extraLoginArgs    []string
+	withAcceptRoutes  bool
 
 	// build options, solely for HEAD
 	buildConfig TailscaleInContainerBuildConfig
@@ -103,26 +107,10 @@ func WithCACert(cert []byte) Option {
 	}
 }
 
-// WithOrCreateNetwork sets the Docker container network to use with
-// the Tailscale instance, if the parameter is nil, a new network,
-// isolating the TailscaleClient, will be created. If a network is
-// passed, the Tailscale instance will join the given network.
-func WithOrCreateNetwork(network *dockertest.Network) Option {
+// WithNetwork sets the Docker container network to use with
+// the Tailscale instance.
+func WithNetwork(network *dockertest.Network) Option {
 	return func(tsic *TailscaleInContainer) {
-		if network != nil {
-			tsic.network = network
-
-			return
-		}
-
-		network, err := dockertestutil.GetFirstOrCreateNetwork(
-			tsic.pool,
-			fmt.Sprintf("%s-network", tsic.hostname),
-		)
-		if err != nil {
-			log.Fatalf("failed to create network: %s", err)
-		}
-
 		tsic.network = network
 	}
 }
@@ -206,11 +194,25 @@ func WithBuildTag(tag string) Option {
 	}
 }
 
+// WithExtraLoginArgs adds additional arguments to the `tailscale up` command
+// as part of the Login function.
+func WithExtraLoginArgs(args []string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.extraLoginArgs = append(tsic.extraLoginArgs, args...)
+	}
+}
+
+// WithAcceptRoutes tells the node to accept incomming routes.
+func WithAcceptRoutes() Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withAcceptRoutes = true
+	}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
 	version string,
-	network *dockertest.Network,
 	opts ...Option,
 ) (*TailscaleInContainer, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(tsicHashLength)
@@ -224,8 +226,7 @@ func New(
 		version:  version,
 		hostname: hostname,
 
-		pool:    pool,
-		network: network,
+		pool: pool,
 
 		withEntrypoint: []string{
 			"/bin/sh",
@@ -236,6 +237,10 @@ func New(
 
 	for _, opt := range opts {
 		opt(tsic)
+	}
+
+	if tsic.network == nil {
+		return nil, fmt.Errorf("no network set, called from: \n%s", string(debug.Stack()))
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
@@ -266,8 +271,8 @@ func New(
 		tailscaleOptions.WorkingDir = tsic.workdir
 	}
 
-	// dockertest isnt very good at handling containers that has already
-	// been created, this is an attempt to make sure this container isnt
+	// dockertest isn't very good at handling containers that has already
+	// been created, this is an attempt to make sure this container isn't
 	// present.
 	err = pool.RemoveContainerByName(hostname)
 	if err != nil {
@@ -382,7 +387,7 @@ func (t *TailscaleInContainer) Version() string {
 
 // ID returns the Docker container ID of the TailscaleInContainer
 // instance.
-func (t *TailscaleInContainer) ID() string {
+func (t *TailscaleInContainer) ContainerID() string {
 	return t.container.Container.ID
 }
 
@@ -425,18 +430,23 @@ func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	)
 }
 
-// Up runs the login routine on the given Tailscale instance.
-// This login mechanism uses the authorised key for authentication.
-func (t *TailscaleInContainer) Login(
+func (t *TailscaleInContainer) buildLoginCommand(
 	loginServer, authKey string,
-) error {
+) []string {
 	command := []string{
 		"tailscale",
 		"up",
 		"--login-server=" + loginServer,
-		"--authkey=" + authKey,
 		"--hostname=" + t.hostname,
-		"--accept-routes=false",
+		fmt.Sprintf("--accept-routes=%t", t.withAcceptRoutes),
+	}
+
+	if authKey != "" {
+		command = append(command, "--authkey="+authKey)
+	}
+
+	if t.extraLoginArgs != nil {
+		command = append(command, t.extraLoginArgs...)
 	}
 
 	if t.withSSH {
@@ -452,6 +462,16 @@ func (t *TailscaleInContainer) Login(
 			fmt.Sprintf(`--advertise-tags=%s`, strings.Join(t.withTags, ",")),
 		)
 	}
+
+	return command
+}
+
+// Login runs the login routine on the given Tailscale instance.
+// This login mechanism uses the authorised key for authentication.
+func (t *TailscaleInContainer) Login(
+	loginServer, authKey string,
+) error {
+	command := t.buildLoginCommand(loginServer, authKey)
 
 	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
 		return fmt.Errorf(
@@ -469,29 +489,22 @@ func (t *TailscaleInContainer) Login(
 // This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
-) (*url.URL, error) {
-	command := []string{
-		"tailscale",
-		"up",
-		"--login-server=" + loginServer,
-		"--hostname=" + t.hostname,
-		"--accept-routes=false",
-	}
+) (loginURL *url.URL, err error) {
+	command := t.buildLoginCommand(loginServer, "")
 
-	_, stderr, err := t.Execute(command)
+	stdout, stderr, err := t.Execute(command)
 	if errors.Is(err, errTailscaleNotLoggedIn) {
 		return nil, errTailscaleCannotUpWithoutAuthkey
 	}
 
-	urlStr := strings.ReplaceAll(stderr, "\nTo authenticate, visit:\n\n\t", "")
-	urlStr = strings.TrimSpace(urlStr)
+	defer func() {
+		if err != nil {
+			log.Printf("join command: %q", strings.Join(command, " "))
+		}
+	}()
 
-	// parse URL
-	loginURL, err := url.Parse(urlStr)
+	loginURL, err = util.ParseLoginURLFromCLILogin(stdout + stderr)
 	if err != nil {
-		log.Printf("Could not parse login URL: %s", err)
-		log.Printf("Original join command result: %s", stderr)
-
 		return nil, err
 	}
 
@@ -500,12 +513,17 @@ func (t *TailscaleInContainer) LoginWithURL(
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
-	_, _, err := t.Execute([]string{"tailscale", "logout"})
+	stdout, stderr, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
 		return err
 	}
 
-	return nil
+	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
+	if !strings.Contains(stdout+stderr, "Logged out.") {
+		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
+	}
+
+	return t.waitForBackendState("NeedsLogin")
 }
 
 // Helper that runs `tailscale up` with no arguments.
@@ -579,6 +597,33 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 	return ips, nil
 }
 
+func (t *TailscaleInContainer) MustIPs() []netip.Addr {
+	ips, err := t.IPs()
+	if err != nil {
+		panic(err)
+	}
+
+	return ips
+}
+
+func (t *TailscaleInContainer) MustIPv4() netip.Addr {
+	for _, ip := range t.MustIPs() {
+		if ip.Is4() {
+			return ip
+		}
+	}
+	panic("no ipv4 found")
+}
+
+func (t *TailscaleInContainer) MustIPv6() netip.Addr {
+	for _, ip := range t.MustIPs() {
+		if ip.Is6() {
+			return ip
+		}
+	}
+	panic("no ipv6 found")
+}
+
 // Status returns the ipnstate.Status of the Tailscale instance.
 func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	command := []string{
@@ -604,6 +649,31 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	}
 
 	return &status, err
+}
+
+// MustStatus returns the ipnstate.Status of the Tailscale instance.
+func (t *TailscaleInContainer) MustStatus() *ipnstate.Status {
+	status, err := t.Status()
+	if err != nil {
+		panic(err)
+	}
+
+	return status
+}
+
+// MustID returns the ID of the Tailscale instance.
+func (t *TailscaleInContainer) MustID() types.NodeID {
+	status, err := t.Status()
+	if err != nil {
+		panic(err)
+	}
+
+	id, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse ID: %s", err))
+	}
+
+	return types.NodeID(id)
 }
 
 // Netmap returns the current Netmap (netmap.NetworkMap) of the Tailscale instance.
@@ -829,28 +899,16 @@ func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
 // started and needs to be logged into.
 func (t *TailscaleInContainer) WaitForNeedsLogin() error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
-
-		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
-		// https://github.com/tailscale/tailscale/pull/3865
-		//
-		// Before that, we can check the BackendState to see if the
-		// tailscaled daemon is connected to the control system.
-		if status.BackendState == "NeedsLogin" {
-			return nil
-		}
-
-		return errTailscaledNotReadyForLogin
-	})
+	return t.waitForBackendState("NeedsLogin")
 }
 
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
 // and ready to be used.
 func (t *TailscaleInContainer) WaitForRunning() error {
+	return t.waitForBackendState("Running")
+}
+
+func (t *TailscaleInContainer) waitForBackendState(state string) error {
 	return t.pool.Retry(func() error {
 		status, err := t.Status()
 		if err != nil {
@@ -862,7 +920,7 @@ func (t *TailscaleInContainer) WaitForRunning() error {
 		//
 		// Before that, we can check the BackendState to see if the
 		// tailscaled daemon is connected to the control system.
-		if status.BackendState == "Running" {
+		if status.BackendState == state {
 			return nil
 		}
 
@@ -976,6 +1034,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 		),
 	)
 	if err != nil {
+		log.Printf("command: %v", command)
 		log.Printf(
 			"failed to run ping command from %s to %s, err: %s",
 			t.Hostname(),
@@ -1086,6 +1145,26 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 			err,
 		)
 
+		return result, err
+	}
+
+	return result, nil
+}
+
+func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {
+	command := []string{
+		"traceroute",
+		ip.String(),
+	}
+
+	var result util.Traceroute
+	stdout, stderr, err := t.Execute(command)
+	if err != nil {
+		return result, err
+	}
+
+	result, err = util.ParseTraceroute(stdout + stderr)
+	if err != nil {
 		return result, err
 	}
 

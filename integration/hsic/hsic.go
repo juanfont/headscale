@@ -1,24 +1,25 @@
 package hsic
 
 import (
+	"cmp"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
+	"net/netip"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -27,6 +28,7 @@ import (
 	"github.com/ory/dockertest/v3/docker"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
+	"tailscale.com/util/mak"
 )
 
 const (
@@ -54,7 +56,7 @@ type HeadscaleInContainer struct {
 
 	pool      *dockertest.Pool
 	container *dockertest.Resource
-	network   *dockertest.Network
+	networks  []*dockertest.Network
 
 	pgContainer *dockertest.Resource
 
@@ -63,12 +65,13 @@ type HeadscaleInContainer struct {
 	extraPorts       []string
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
-	aclPolicy        *policy.ACLPolicy
+	aclPolicy        *policyv1.ACLPolicy
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
 	filesInContainer []fileInContainer
 	postgres         bool
+	policyMode       types.PolicyMode
 }
 
 // Option represent optional settings that can be given to a
@@ -77,7 +80,7 @@ type Option = func(c *HeadscaleInContainer)
 
 // WithACLPolicy adds a hscontrol.ACLPolicy policy to the
 // HeadscaleInContainer instance.
-func WithACLPolicy(acl *policy.ACLPolicy) Option {
+func WithACLPolicy(acl *policyv1.ACLPolicy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		if acl == nil {
 			return
@@ -166,17 +169,6 @@ func WithHostname(hostname string) Option {
 	}
 }
 
-// WithHostnameAsServerURL sets the Headscale ServerURL based on
-// the Hostname.
-func WithHostnameAsServerURL() Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_SERVER_URL"] = fmt.Sprintf("http://%s",
-			net.JoinHostPort(hsic.GetHostname(),
-				fmt.Sprintf("%d", hsic.port)),
-		)
-	}
-}
-
 // WithFileInContainer adds a file to the container at the given path.
 func WithFileInContainer(path string, contents []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
@@ -193,6 +185,21 @@ func WithFileInContainer(path string, contents []byte) Option {
 func WithPostgres() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.postgres = true
+	}
+}
+
+// WithPolicyV1 tells the integration test to use the old v1 filter.
+func WithPolicyV1() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_POLICY_V1"] = "1"
+	}
+}
+
+// WithPolicy sets the policy mode for headscale
+func WithPolicyMode(mode types.PolicyMode) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.policyMode = mode
+		hsic.env["HEADSCALE_POLICY_MODE"] = string(mode)
 	}
 }
 
@@ -268,7 +275,7 @@ func WithTimezone(timezone string) Option {
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
-	network *dockertest.Network,
+	networks []*dockertest.Network,
 	opts ...Option,
 ) (*HeadscaleInContainer, error) {
 	hash, err := util.GenerateRandomStringDNSSafe(hsicHashLength)
@@ -282,11 +289,12 @@ func New(
 		hostname: hostname,
 		port:     headscaleDefaultPort,
 
-		pool:    pool,
-		network: network,
+		pool:     pool,
+		networks: networks,
 
 		env:              DefaultConfigEnv(),
 		filesInContainer: []fileInContainer{},
+		policyMode:       types.PolicyModeFile,
 	}
 
 	for _, opt := range opts {
@@ -296,16 +304,6 @@ func New(
 	log.Println("NAME: ", hsic.hostname)
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
-
-	serverURL, err := url.Parse(hsic.env["HEADSCALE_SERVER_URL"])
-	if err != nil {
-		return nil, err
-	}
-
-	if len(hsic.tlsCert) != 0 && len(hsic.tlsKey) != 0 {
-		serverURL.Scheme = "https"
-		hsic.env["HEADSCALE_SERVER_URL"] = serverURL.String()
-	}
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: IntegrationTestDockerFileName,
@@ -325,7 +323,7 @@ func New(
 				Name:       fmt.Sprintf("postgres-%s", hash),
 				Repository: "postgres",
 				Tag:        "latest",
-				Networks:   []*dockertest.Network{network},
+				Networks:   networks,
 				Env: []string{
 					"POSTGRES_USER=headscale",
 					"POSTGRES_PASSWORD=headscale",
@@ -352,6 +350,12 @@ func New(
 		hsic.env["HEADSCALE_TLS_CERT_PATH"] = tlsCertPath
 		hsic.env["HEADSCALE_TLS_KEY_PATH"] = tlsKeyPath
 	}
+
+	// Server URL and Listen Addr should not be overridable outside of
+	// the configuration passed to docker.
+	hsic.env["HEADSCALE_SERVER_URL"] = hsic.GetEndpoint()
+	hsic.env["HEADSCALE_LISTEN_ADDR"] = fmt.Sprintf("0.0.0.0:%d", hsic.port)
+
 	for key, value := range hsic.env {
 		env = append(env, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -361,7 +365,7 @@ func New(
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
 		ExposedPorts: append([]string{portProto, "9090/tcp"}, hsic.extraPorts...),
-		Networks:     []*dockertest.Network{network},
+		Networks:     networks,
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
@@ -381,8 +385,8 @@ func New(
 		}
 	}
 
-	// dockertest isnt very good at handling containers that has already
-	// been created, this is an attempt to make sure this container isnt
+	// dockertest isn't very good at handling containers that has already
+	// been created, this is an attempt to make sure this container isn't
 	// present.
 	err = pool.RemoveContainerByName(hsic.hostname)
 	if err != nil {
@@ -417,14 +421,9 @@ func New(
 	}
 
 	if hsic.aclPolicy != nil {
-		data, err := json.Marshal(hsic.aclPolicy)
+		err = hsic.writePolicy(hsic.aclPolicy)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal ACL Policy to JSON: %w", err)
-		}
-
-		err = hsic.WriteFile(aclPolicyPath, data)
-		if err != nil {
-			return nil, fmt.Errorf("failed to write ACL policy to container: %w", err)
+			return nil, fmt.Errorf("writing policy: %w", err)
 		}
 	}
 
@@ -443,6 +442,15 @@ func New(
 	for _, f := range hsic.filesInContainer {
 		if err := hsic.WriteFile(f.path, f.contents); err != nil {
 			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
+		}
+	}
+
+	// Load the database from policy file on repeat until it succeeds,
+	// this is done as the container sleeps before starting headscale.
+	if hsic.aclPolicy != nil && hsic.policyMode == types.PolicyModeDB {
+		err := pool.Retry(hsic.reloadDatabasePolicy)
+		if err != nil {
+			return nil, fmt.Errorf("loading database policy on startup: %w", err)
 		}
 	}
 
@@ -630,11 +638,6 @@ func (t *HeadscaleInContainer) Execute(
 	return stdout, nil
 }
 
-// GetIP returns the docker container IP as a string.
-func (t *HeadscaleInContainer) GetIP() string {
-	return t.container.GetIPInNetwork(t.network)
-}
-
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return fmt.Sprintf("%d", t.port)
@@ -649,7 +652,7 @@ func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 // GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetEndpoint() string {
 	hostEndpoint := fmt.Sprintf("%s:%d",
-		t.GetIP(),
+		t.GetHostname(),
 		t.port)
 
 	if t.hasTLS() {
@@ -701,32 +704,38 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 // CreateUser adds a new user to the Headscale instance.
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
-) error {
-	command := []string{"headscale", "users", "create", user}
+) (*v1.User, error) {
+	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user), "--output", "json"}
 
-	_, _, err := dockertestutil.ExecuteCommand(
+	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
 		command,
 		[]string{},
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	var u v1.User
+	err = json.Unmarshal([]byte(result), &u)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+	}
+
+	return &u, nil
 }
 
 // CreateAuthKey creates a new "authorisation key" for a User that can be used
 // to authorise a TailscaleClient with the Headscale instance.
 func (t *HeadscaleInContainer) CreateAuthKey(
-	user string,
+	user uint64,
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
 		"--user",
-		user,
+		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"create",
 		"--expiration",
@@ -761,12 +770,90 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
-// ListNodesInUser list the TailscaleClients (Node, Headscale internal representation)
-// associated with a user.
-func (t *HeadscaleInContainer) ListNodesInUser(
-	user string,
+// ListNodes lists the currently registered Nodes in headscale.
+// Optionally a list of usernames can be passed to get users for
+// specific users.
+func (t *HeadscaleInContainer) ListNodes(
+	users ...string,
 ) ([]*v1.Node, error) {
-	command := []string{"headscale", "--user", user, "nodes", "list", "--output", "json"}
+	var ret []*v1.Node
+	execUnmarshal := func(command []string) error {
+		result, _, err := dockertestutil.ExecuteCommand(
+			t.container,
+			command,
+			[]string{},
+		)
+		if err != nil {
+			return fmt.Errorf("failed to execute list node command: %w", err)
+		}
+
+		var nodes []*v1.Node
+		err = json.Unmarshal([]byte(result), &nodes)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal nodes: %w", err)
+		}
+
+		ret = append(ret, nodes...)
+		return nil
+	}
+
+	if len(users) == 0 {
+		err := execUnmarshal([]string{"headscale", "nodes", "list", "--output", "json"})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		for _, user := range users {
+			command := []string{"headscale", "--user", user, "nodes", "list", "--output", "json"}
+
+			err := execUnmarshal(command)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	sort.Slice(ret, func(i, j int) bool {
+		return cmp.Compare(ret[i].GetId(), ret[j].GetId()) == -1
+	})
+	return ret, nil
+}
+
+func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
+	nodes, err := t.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	var userMap map[string][]*v1.Node
+	for _, node := range nodes {
+		if _, ok := userMap[node.User.Name]; !ok {
+			mak.Set(&userMap, node.User.Name, []*v1.Node{node})
+		} else {
+			userMap[node.User.Name] = append(userMap[node.User.Name], node)
+		}
+	}
+
+	return userMap, nil
+}
+
+func (t *HeadscaleInContainer) NodesByName() (map[string]*v1.Node, error) {
+	nodes, err := t.ListNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	var nameMap map[string]*v1.Node
+	for _, node := range nodes {
+		mak.Set(&nameMap, node.GetName(), node)
+	}
+
+	return nameMap, nil
+}
+
+// ListUsers returns a list of users from Headscale.
+func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
+	command := []string{"headscale", "users", "list", "--output", "json"}
 
 	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
@@ -777,13 +864,166 @@ func (t *HeadscaleInContainer) ListNodesInUser(
 		return nil, fmt.Errorf("failed to execute list node command: %w", err)
 	}
 
-	var nodes []*v1.Node
-	err = json.Unmarshal([]byte(result), &nodes)
+	var users []*v1.User
+	err = json.Unmarshal([]byte(result), &users)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
 	}
 
-	return nodes, nil
+	return users, nil
+}
+
+// MapUsers returns a map of users from Headscale. It is keyed by the
+// user name.
+func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
+	users, err := t.ListUsers()
+	if err != nil {
+		return nil, err
+	}
+
+	var userMap map[string]*v1.User
+	for _, user := range users {
+		mak.Set(&userMap, user.Name, user)
+	}
+
+	return userMap, nil
+}
+
+func (h *HeadscaleInContainer) SetPolicy(pol *policyv1.ACLPolicy) error {
+	err := h.writePolicy(pol)
+	if err != nil {
+		return fmt.Errorf("writing policy file: %w", err)
+	}
+
+	switch h.policyMode {
+	case types.PolicyModeDB:
+		err := h.reloadDatabasePolicy()
+		if err != nil {
+			return fmt.Errorf("reloading database policy: %w", err)
+		}
+	case types.PolicyModeFile:
+		err := h.Reload()
+		if err != nil {
+			return fmt.Errorf("reloading policy file: %w", err)
+		}
+	default:
+		panic("policy mode is not valid: " + h.policyMode)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
+	_, err := h.Execute(
+		[]string{
+			"headscale",
+			"policy",
+			"set",
+			"-f",
+			aclPolicyPath,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("setting policy with db command: %w", err)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) writePolicy(pol *policyv1.ACLPolicy) error {
+	pBytes, err := json.Marshal(pol)
+	if err != nil {
+		return fmt.Errorf("marshalling pol: %w", err)
+	}
+
+	err = h.WriteFile(aclPolicyPath, pBytes)
+	if err != nil {
+		return fmt.Errorf("writing policy to headscale container: %w", err)
+	}
+
+	return nil
+}
+
+func (h *HeadscaleInContainer) PID() (int, error) {
+	cmd := []string{"bash", "-c", `ps aux | grep headscale | grep -v grep | awk '{print $2}'`}
+	output, err := h.Execute(cmd)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute command: %w", err)
+	}
+
+	lines := strings.TrimSpace(output)
+	if lines == "" {
+		return 0, os.ErrNotExist // No output means no process found
+	}
+
+	pids := make([]int, 0, len(lines))
+	for _, line := range strings.Split(lines, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		pidInt, err := strconv.Atoi(line)
+		if err != nil {
+			return 0, fmt.Errorf("parsing PID: %w", err)
+		}
+		// We dont care about the root pid for the container
+		if pidInt == 1 {
+			continue
+		}
+		pids = append(pids, pidInt)
+	}
+
+	switch len(pids) {
+	case 0:
+		return 0, os.ErrNotExist
+	case 1:
+		return pids[0], nil
+	default:
+		return 0, fmt.Errorf("multiple headscale processes running")
+	}
+}
+
+// Reload sends a SIGHUP to the headscale process to reload internals,
+// for example Policy from file.
+func (h *HeadscaleInContainer) Reload() error {
+	pid, err := h.PID()
+	if err != nil {
+		return fmt.Errorf("getting headscale PID: %w", err)
+	}
+
+	_, err = h.Execute([]string{"kill", "-HUP", strconv.Itoa(pid)})
+	if err != nil {
+		return fmt.Errorf("reloading headscale with HUP: %w", err)
+	}
+
+	return nil
+}
+
+// ApproveRoutes approves routes for a node.
+func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*v1.Node, error) {
+	command := []string{
+		"headscale", "nodes", "approve-routes",
+		"--output", "json",
+		"--identifier", strconv.FormatUint(id, 10),
+		fmt.Sprintf("--routes=%s", strings.Join(util.PrefixesToString(routes), ",")),
+	}
+
+	result, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute list node command: %w", err)
+	}
+
+	var node *v1.Node
+	err = json.Unmarshal([]byte(result), &node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+	}
+
+	return node, nil
 }
 
 // WriteFile save file inside the Headscale container.

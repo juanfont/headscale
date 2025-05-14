@@ -1,4 +1,4 @@
-package policy
+package v1
 
 import (
 	"encoding/json"
@@ -43,7 +43,7 @@ type ACLTest struct {
 	Deny   []string `json:"deny,omitempty"`
 }
 
-// AutoApprovers specify which users (users?), groups or tags have their advertised routes
+// AutoApprovers specify which users, groups or tags have their advertised routes
 // or exit node status automatically enabled.
 type AutoApprovers struct {
 	Routes   map[string][]string `json:"routes"`
@@ -90,7 +90,7 @@ func (hosts *Hosts) UnmarshalJSON(data []byte) error {
 
 // IsZero is perhaps a bit naive here.
 func (pol ACLPolicy) IsZero() bool {
-	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 {
+	if len(pol.Groups) == 0 && len(pol.Hosts) == 0 && len(pol.ACLs) == 0 && len(pol.SSHs) == 0 {
 		return true
 	}
 

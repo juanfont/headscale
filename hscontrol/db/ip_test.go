@@ -91,7 +91,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 		{
 			name: "simple-with-db",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-with-db")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -119,7 +119,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 		{
 			name: "before-after-free-middle-in-db",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "before-after-free-middle-in-db")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -309,7 +309,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		{
 			name: "simple-backfill-ipv6",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-backfill-ipv6")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -334,7 +334,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		{
 			name: "simple-backfill-ipv4",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-backfill-ipv4")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -359,7 +359,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		{
 			name: "simple-backfill-remove-ipv6",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-backfill-remove-ipv6")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -383,7 +383,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		{
 			name: "simple-backfill-remove-ipv4",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-backfill-remove-ipv4")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -407,7 +407,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 		{
 			name: "multi-backfill-ipv6",
 			dbFunc: func() *HSDatabase {
-				db := dbForTest(t, "simple-backfill-ipv6")
+				db := dbForTest(t)
 				user := types.User{Name: ""}
 				db.DB.Save(&user)
 
@@ -449,7 +449,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 		"UserID",
 		"Endpoints",
 		"Hostinfo",
-		"Routes",
 		"CreatedAt",
 		"UpdatedAt",
 	))
@@ -488,6 +487,10 @@ func TestBackfillIPAddresses(t *testing.T) {
 }
 
 func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+	defer db.Close()
+
 	alloc, err := NewIPAllocator(
 		db,
 		ptr.To(tsaddr.CGNATRange()),

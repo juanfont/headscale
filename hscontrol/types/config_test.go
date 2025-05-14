@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,8 +35,9 @@ func TestReadConfig(t *testing.T) {
 				return dns, nil
 			},
 			want: DNSConfig{
-				MagicDNS:   true,
-				BaseDomain: "example.com",
+				MagicDNS:         true,
+				BaseDomain:       "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{
 						"1.1.1.1",
@@ -70,7 +72,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				Resolvers: []*dnstype.Resolver{
+				FallbackResolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
 					{Addr: "2606:4700:4700::1111"},
@@ -99,8 +101,9 @@ func TestReadConfig(t *testing.T) {
 				return dns, nil
 			},
 			want: DNSConfig{
-				MagicDNS:   false,
-				BaseDomain: "example.com",
+				MagicDNS:         false,
+				BaseDomain:       "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{
 						"1.1.1.1",
@@ -135,7 +138,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				Resolvers: []*dnstype.Resolver{
+				FallbackResolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
 					{Addr: "2606:4700:4700::1111"},
@@ -180,6 +183,40 @@ func TestReadConfig(t *testing.T) {
 				"base_domain": "clients.derp.no",
 			},
 			wantErr: "",
+		},
+		{
+			name:       "dns-override-true-errors",
+			configPath: "testdata/dns-override-true-error.yaml",
+			setup: func(t *testing.T) (any, error) {
+				return LoadServerConfig()
+			},
+			wantErr: "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true",
+		},
+		{
+			name:       "dns-override-true",
+			configPath: "testdata/dns-override-true.yaml",
+			setup: func(t *testing.T) (any, error) {
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: true,
+				Domains: []string{"derp2.no"},
+				Routes:  map[string][]*dnstype.Resolver{},
+				Resolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1"},
+					{Addr: "1.0.0.1"},
+				},
+			},
 		},
 		{
 			name:       "policy-path-is-loaded",
@@ -254,6 +291,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			configEnv: map[string]string{
 				"HEADSCALE_DNS_MAGIC_DNS":          "true",
 				"HEADSCALE_DNS_BASE_DOMAIN":        "example.com",
+				"HEADSCALE_DNS_OVERRIDE_LOCAL_DNS": "false",
 				"HEADSCALE_DNS_NAMESERVERS_GLOBAL": `1.1.1.1 8.8.8.8`,
 				"HEADSCALE_DNS_SEARCH_DOMAINS":     "test.com bar.com",
 
@@ -272,8 +310,9 @@ func TestReadConfigFromEnv(t *testing.T) {
 				return dns, nil
 			},
 			want: DNSConfig{
-				MagicDNS:   true,
-				BaseDomain: "example.com",
+				MagicDNS:         true,
+				BaseDomain:       "example.com",
+				OverrideLocalDNS: false,
 				Nameservers: Nameservers{
 					Global: []string{"1.1.1.1", "8.8.8.8"},
 					Split:  map[string][]string{
@@ -301,7 +340,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 			conf, err := tt.setup(t)
 			require.NoError(t, err)
 
-			if diff := cmp.Diff(tt.want, conf); diff != "" {
+			if diff := cmp.Diff(tt.want, conf, cmpopts.EquateEmpty()); diff != "" {
 				t.Errorf("ReadConfig() mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -384,6 +423,7 @@ func TestSafeServerURL(t *testing.T) {
 		{
 			serverURL:  "https://headscale.com",
 			baseDomain: "headscale.com",
+			wantErr:    errServerURLSame.Error(),
 		},
 		{
 			serverURL:  "https://headscale.com",

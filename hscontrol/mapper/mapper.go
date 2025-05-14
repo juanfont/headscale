@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -18,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
@@ -56,6 +58,7 @@ type Mapper struct {
 	derpMap *tailcfg.DERPMap
 	notif   *notifier.Notifier
 	polMan  policy.PolicyManager
+	primary *routes.PrimaryRoutes
 
 	uid     string
 	created time.Time
@@ -73,6 +76,7 @@ func NewMapper(
 	derpMap *tailcfg.DERPMap,
 	notif *notifier.Notifier,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
@@ -82,6 +86,7 @@ func NewMapper(
 		derpMap: derpMap,
 		notif:   notif,
 		polMan:  polMan,
+		primary: primary,
 
 		uid:     uid,
 		created: time.Now(),
@@ -97,16 +102,22 @@ func generateUserProfiles(
 	node *types.Node,
 	peers types.Nodes,
 ) []tailcfg.UserProfile {
-	userMap := make(map[uint]types.User)
-	userMap[node.User.ID] = node.User
+	userMap := make(map[uint]*types.User)
+	ids := make([]uint, 0, len(userMap))
+	userMap[node.User.ID] = &node.User
+	ids = append(ids, node.User.ID)
 	for _, peer := range peers {
-		userMap[peer.User.ID] = peer.User // not worth checking if already is there
+		userMap[peer.User.ID] = &peer.User
+		ids = append(ids, peer.User.ID)
 	}
 
+	slices.Sort(ids)
+	ids = slices.Compact(ids)
 	var profiles []tailcfg.UserProfile
-	for _, user := range userMap {
-		profiles = append(profiles,
-			user.TailscaleUserProfile())
+	for _, id := range ids {
+		if userMap[id] != nil {
+			profiles = append(profiles, userMap[id].TailscaleUserProfile())
+		}
 	}
 
 	return profiles
@@ -167,6 +178,7 @@ func (m *Mapper) fullMapResponse(
 		resp,
 		true, // full change
 		m.polMan,
+		m.primary,
 		node,
 		capVer,
 		peers,
@@ -244,27 +256,25 @@ func (m *Mapper) PeerChangedResponse(
 	patches []*tailcfg.PeerChange,
 	messages ...string,
 ) ([]byte, error) {
+	var err error
 	resp := m.baseMapResponse()
-
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
 
 	var removedIDs []tailcfg.NodeID
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
 		if nodeChanged {
-			changedIDs = append(changedIDs, nodeID)
+			if nodeID != node.ID {
+				changedIDs = append(changedIDs, nodeID)
+			}
 		} else {
 			removedIDs = append(removedIDs, nodeID.NodeID())
 		}
 	}
-
-	changedNodes := make(types.Nodes, 0, len(changedIDs))
-	for _, peer := range peers {
-		if slices.Contains(changedIDs, peer.ID) {
-			changedNodes = append(changedNodes, peer)
+	changedNodes := types.Nodes{}
+	if len(changedIDs) > 0 {
+		changedNodes, err = m.ListNodes(changedIDs...)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -272,6 +282,7 @@ func (m *Mapper) PeerChangedResponse(
 		&resp,
 		false, // partial change
 		m.polMan,
+		m.primary,
 		node,
 		mapRequest.Version,
 		changedNodes,
@@ -298,9 +309,15 @@ func (m *Mapper) PeerChangedResponse(
 		resp.PeersChangedPatch = patches
 	}
 
+	_, matchers := m.polMan.Filter()
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(node, mapRequest.Version, m.polMan, m.cfg)
+	tailnode, err := tailNode(
+		node, mapRequest.Version, m.polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+		},
+		m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +354,7 @@ func (m *Mapper) marshalMapResponse(
 	}
 
 	if debugDumpMapResponsePath != "" {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"Messages":    messages,
 			"MapRequest":  mapRequest,
 			"MapResponse": resp,
@@ -447,7 +464,13 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	tailnode, err := tailNode(node, capVer, m.polMan, m.cfg)
+	_, matchers := m.polMan.Filter()
+	tailnode, err := tailNode(
+		node, capVer, m.polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+		},
+		m.cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +478,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 
 	resp.DERPMap = m.derpMap
 
-	resp.Domain = m.cfg.BaseDomain
+	resp.Domain = m.cfg.Domain()
 
 	// Do not instruct clients to collect services we do not
 	// support or do anything with them
@@ -470,8 +493,11 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
-	peers, err := m.db.ListPeers(nodeID)
+// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// If no peer IDs are given, all peers are returned.
+// If at least one peer ID is given, only these peer nodes will be returned.
+func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
+	peers, err := m.db.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -484,15 +510,26 @@ func (m *Mapper) ListPeers(nodeID types.NodeID) (types.Nodes, error) {
 	return peers, nil
 }
 
-func nodeMapToList(nodes map[uint64]*types.Node) types.Nodes {
-	ret := make(types.Nodes, 0)
-
-	for _, node := range nodes {
-		ret = append(ret, node)
+// ListNodes queries the database for either all nodes if no parameters are given
+// or for the given nodes if at least one node ID is given as parameter
+func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
+	nodes, err := m.db.ListNodes(nodeIDs...)
+	if err != nil {
+		return nil, err
 	}
 
-	return ret
+	for _, node := range nodes {
+		online := m.notif.IsLikelyConnected(node.ID)
+		node.IsOnline = &online
+	}
+
+	return nodes, nil
 }
+
+// routeFilterFunc is a function that takes a node ID and returns a list of
+// netip.Prefixes that are allowed for that node. It is used to filter routes
+// from the primary route manager to the node.
+type routeFilterFunc func(id types.NodeID) []netip.Prefix
 
 // appendPeerChanges mutates a tailcfg.MapResponse with all the
 // necessary changes when peers have changed.
@@ -501,12 +538,13 @@ func appendPeerChanges(
 
 	fullChange bool,
 	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	filter := polMan.Filter()
+	filter, matchers := polMan.Filter()
 
 	sshPolicy, err := polMan.SSHPolicy(node)
 	if err != nil {
@@ -516,14 +554,19 @@ func appendPeerChanges(
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
 	if len(filter) > 0 {
-		changed = policy.FilterNodesByACL(node, changed, filter)
+		changed = policy.ReduceNodes(node, changed, matchers)
 	}
 
 	profiles := generateUserProfiles(node, changed)
 
 	dnsConfig := generateDNSConfig(cfg, node)
 
-	tailPeers, err := tailNodes(changed, capVer, polMan, cfg)
+	tailPeers, err := tailNodes(
+		changed, capVer, polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return policy.ReduceRoutes(node, primary.PrimaryRoutes(id), matchers)
+		},
+		cfg)
 	if err != nil {
 		return err
 	}
@@ -542,26 +585,12 @@ func appendPeerChanges(
 	resp.UserProfiles = profiles
 	resp.SSHPolicy = sshPolicy
 
-	// 81: 2023-11-17: MapResponse.PacketFilters (incremental packet filter updates)
-	if capVer >= 81 {
-		// Currently, we do not send incremental package filters, however using the
-		// new PacketFilters field and "base" allows us to send a full update when we
-		// have to send an empty list, avoiding the hack in the else block.
-		resp.PacketFilters = map[string][]tailcfg.FilterRule{
-			"base": policy.ReduceFilterRules(node, filter),
-		}
-	} else {
-		// This is a hack to avoid sending an empty list of packet filters.
-		// Since tailcfg.PacketFilter has omitempty, any empty PacketFilter will
-		// be omitted, causing the client to consider it unchanged, keeping the
-		// previous packet filter. Worst case, this can cause a node that previously
-		// has access to a node to _not_ loose access if an empty (allow none) is sent.
-		reduced := policy.ReduceFilterRules(node, filter)
-		if len(reduced) > 0 {
-			resp.PacketFilter = reduced
-		} else {
-			resp.PacketFilter = filter
-		}
+	// CapVer 81: 2023-11-17: MapResponse.PacketFilters (incremental packet filter updates)
+	// Currently, we do not send incremental package filters, however using the
+	// new PacketFilters field and "base" allows us to send a full update when we
+	// have to send an empty list, avoiding the hack in the else block.
+	resp.PacketFilters = map[string][]tailcfg.FilterRule{
+		"base": policy.ReduceFilterRules(node, filter),
 	}
 
 	return nil

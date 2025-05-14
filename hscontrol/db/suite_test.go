@@ -78,13 +78,11 @@ func newSQLiteTestDB() (*HSDatabase, error) {
 func newPostgresTestDB(t *testing.T) *HSDatabase {
 	t.Helper()
 
-	var err error
-	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
-	if err != nil {
-		t.Fatal(err)
-	}
+	return newHeadscaleDBFromPostgresURL(t, newPostgresDBForTest(t))
+}
 
-	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
+func newPostgresDBForTest(t *testing.T) *url.URL {
+	t.Helper()
 
 	ctx := context.Background()
 	srv, err := postgrestest.Start(ctx)
@@ -100,10 +98,16 @@ func newPostgresTestDB(t *testing.T) *HSDatabase {
 	t.Logf("created local postgres: %s", u)
 	pu, _ := url.Parse(u)
 
+	return pu
+}
+
+func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
+	t.Helper()
+
 	pass, _ := pu.User.Password()
 	port, _ := strconv.Atoi(pu.Port())
 
-	db, err = NewHeadscaleDatabase(
+	db, err := NewHeadscaleDatabase(
 		types.DatabaseConfig{
 			Type: types.DatabasePostgres,
 			Postgres: types.PostgresConfig{

@@ -1,14 +1,14 @@
 package integration
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
+	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -50,19 +50,20 @@ var veryLargeDestination = []string{
 
 func aclScenario(
 	t *testing.T,
-	policy *policy.ACLPolicy,
+	policy *policyv1.ACLPolicy,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
-	scenario, err := NewScenario(dockertestMaxWait())
-	require.NoError(t, err)
 
-	spec := map[string]int{
-		"user1": clientsPerUser,
-		"user2": clientsPerUser,
+	spec := ScenarioSpec{
+		NodesPerUser: clientsPerUser,
+		Users:        []string{"user1", "user2"},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec,
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it
@@ -77,6 +78,8 @@ func aclScenario(
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -94,24 +97,26 @@ func aclScenario(
 func TestACLHostsInNetMapTable(t *testing.T) {
 	IntegrationSkip(t)
 
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+	}
+
 	// NOTE: All want cases currently checks the
 	// total count of expected peers, this would
 	// typically be the client count of the users
 	// they can access minus one (them self).
 	tests := map[string]struct {
-		users  map[string]int
-		policy policy.ACLPolicy
+		users  ScenarioSpec
+		policy policyv1.ACLPolicy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
 		// the amount of peers of the total amount of clients
 		"base-acls": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -119,70 +124,64 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns2 + ns1
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns2 + ns1
 			},
 		},
 		// Test that when we have two users, which cannot see
-		// eachother, each node has only the number of pairs from
+		// each other, each node has only the number of pairs from
 		// their own user.
 		"two-isolated-users": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:*"},
 					},
 				},
 			}, want: map[string]int{
-				"user1": 1,
-				"user2": 1,
+				"user1@test.no": 1,
+				"user2@test.no": 1,
 			},
 		},
 		// Test that when we have two users, with ACLs and they
 		// are restricted to a single port, nodes are still present
 		// in the netmap.
 		"two-restricted-present-in-netmap": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:22"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:22"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user2:22"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user2@:22"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user1:22"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user1@:22"},
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3,
-				"user2": 3,
+				"user1@test.no": 3,
+				"user2@test.no": 3,
 			},
 		},
 		// Test that when we have two users, that are isolated,
@@ -190,68 +189,59 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// of peers. This will still result in all the peers as we
 		// need them present on the other side for the "return path".
 		"two-ns-one-isolated": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user1:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user1@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user2@"},
+						Destinations: []string{"user2@:*"},
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: []string{"user2:*"},
+						Sources:      []string{"user1@"},
+						Destinations: []string{"user2@:*"},
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns1 + ns2 (return path)
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns1 + ns2 (return path)
 			},
 		},
 		"very-large-destination-prefix-1372": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: append([]string{"user1:*"}, veryLargeDestination...),
+						Sources:      []string{"user1@"},
+						Destinations: append([]string{"user1@:*"}, veryLargeDestination...),
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user2"},
-						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+						Sources:      []string{"user2@"},
+						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
 					},
 					{
 						Action:       "accept",
-						Sources:      []string{"user1"},
-						Destinations: append([]string{"user2:*"}, veryLargeDestination...),
+						Sources:      []string{"user1@"},
+						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns1 + ns2 (return path)
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns1 + ns2 (return path)
 			},
 		},
 		"ipv6-acls-1470": {
-			users: map[string]int{
-				"user1": 2,
-				"user2": 2,
-			},
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			users: spec,
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"*"},
@@ -259,20 +249,19 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					},
 				},
 			}, want: map[string]int{
-				"user1": 3, // ns1 + ns2
-				"user2": 3, // ns2 + ns1
+				"user1@test.no": 3, // ns1 + ns2
+				"user2@test.no": 3, // ns2 + ns1
 			},
 		},
 	}
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario, err := NewScenario(dockertestMaxWait())
+			caseSpec := testCase.users
+			scenario, err := NewScenario(caseSpec)
 			require.NoError(t, err)
 
-			spec := testCase.users
-
-			err = scenario.CreateHeadscaleEnv(spec,
+			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
 			)
@@ -282,7 +271,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			allClients, err := scenario.ListTailscaleClients()
 			require.NoError(t, err)
 
-			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1"])
+			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1@test.no"])
 			require.NoError(t, err)
 
 			for _, client := range allClients {
@@ -306,12 +295,12 @@ func TestACLAllowUser80Dst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
-					Destinations: []string{"user2:80"},
+					Sources:      []string{"user1@"},
+					Destinations: []string{"user2@:80"},
 				},
 			},
 		},
@@ -360,11 +349,11 @@ func TestACLDenyAllPort80(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
+		&policyv1.ACLPolicy{
 			Groups: map[string][]string{
-				"group:integration-acl-test": {"user1", "user2"},
+				"group:integration-acl-test": {"user1@", "user2@"},
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
 					Sources:      []string{"group:integration-acl-test"},
@@ -407,12 +396,12 @@ func TestACLAllowUserDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
-					Destinations: []string{"user2:*"},
+					Sources:      []string{"user1@"},
+					Destinations: []string{"user2@:*"},
 				},
 			},
 		},
@@ -463,11 +452,11 @@ func TestACLAllowStarDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			ACLs: []policy.ACL{
+		&policyv1.ACLPolicy{
+			ACLs: []policyv1.ACL{
 				{
 					Action:       "accept",
-					Sources:      []string{"user1"},
+					Sources:      []string{"user1@"},
 					Destinations: []string{"*:*"},
 				},
 			},
@@ -520,11 +509,11 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policy.ACLPolicy{
-			Hosts: policy.Hosts{
+		&policyv1.ACLPolicy{
+			Hosts: policyv1.Hosts{
 				"all": netip.MustParsePrefix("100.64.0.0/24"),
 			},
-			ACLs: []policy.ACL{
+			ACLs: []policyv1.ACL{
 				// Everyone can curl test3
 				{
 					Action:       "accept",
@@ -617,16 +606,16 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policy.ACLPolicy
+		policy policyv1.ACLPolicy
 	}{
 		"ipv4": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 					"test3": netip.MustParsePrefix("100.64.0.3/32"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -643,13 +632,13 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 					"test3": netip.MustParsePrefix("fd7a:115c:a1e0::3/128"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					// Everyone can curl test3
 					{
 						Action:       "accept",
@@ -866,11 +855,11 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policy.ACLPolicy
+		policy policyv1.ACLPolicy
 	}{
 		"ipv4": {
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"100.64.0.1"},
@@ -880,8 +869,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"ipv6": {
-			policy: policy.ACLPolicy{
-				ACLs: []policy.ACL{
+			policy: policyv1.ACLPolicy{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"fd7a:115c:a1e0::1"},
@@ -891,12 +880,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv4cidr": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("100.64.0.1/32"),
 					"test2": netip.MustParsePrefix("100.64.0.2/32"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -906,12 +895,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv6cidr": {
-			policy: policy.ACLPolicy{
-				Hosts: policy.Hosts{
+			policy: policyv1.ACLPolicy{
+				Hosts: policyv1.Hosts{
 					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"test1"},
@@ -921,12 +910,12 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"group": {
-			policy: policy.ACLPolicy{
+			policy: policyv1.ACLPolicy{
 				Groups: map[string][]string{
-					"group:one": {"user1"},
-					"group:two": {"user2"},
+					"group:one": {"user1@"},
+					"group:two": {"user2@"},
 				},
-				ACLs: []policy.ACL{
+				ACLs: []policyv1.ACL{
 					{
 						Action:       "accept",
 						Sources:      []string{"group:one"},
@@ -942,6 +931,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t, &testCase.policy, 1)
+			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
 			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
@@ -1020,16 +1010,16 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	spec := map[string]int{
-		"user1": 1,
-		"user2": 1,
-	}
-
-	err = scenario.CreateHeadscaleEnv(spec,
+	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			// Alpine containers dont have ip6tables set up, which causes
 			// tailscaled to stop configuring the wgengine, causing it
@@ -1043,9 +1033,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
-		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
-		}),
+		hsic.WithPolicyMode(types.PolicyModeDB),
 	)
 	require.NoError(t, err)
 
@@ -1066,7 +1054,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	// Initially all nodes can reach each other
 	for _, client := range all {
 		for _, peer := range all {
-			if client.ID() == peer.ID() {
+			if client.ContainerID() == peer.ContainerID() {
 				continue
 			}
 
@@ -1085,40 +1073,23 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	p := policy.ACLPolicy{
-		ACLs: []policy.ACL{
+	p := policyv1.ACLPolicy{
+		ACLs: []policyv1.ACL{
 			{
 				Action:       "accept",
-				Sources:      []string{"user1"},
-				Destinations: []string{"user2:*"},
+				Sources:      []string{"user1@"},
+				Destinations: []string{"user2@:*"},
 			},
 		},
-		Hosts: policy.Hosts{},
+		Hosts: policyv1.Hosts{},
 	}
 
-	pBytes, _ := json.Marshal(p)
-
-	policyFilePath := "/etc/headscale/policy.json"
-
-	err = headscale.WriteFile(policyFilePath, pBytes)
-	require.NoError(t, err)
-
-	// No policy is present at this time.
-	// Add a new policy from a file.
-	_, err = headscale.Execute(
-		[]string{
-			"headscale",
-			"policy",
-			"set",
-			"-f",
-			policyFilePath,
-		},
-	)
+	err = headscale.SetPolicy(&p)
 	require.NoError(t, err)
 
 	// Get the current policy and check
 	// if it is the same as the one we set.
-	var output *policy.ACLPolicy
+	var output *policyv1.ACLPolicy
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{

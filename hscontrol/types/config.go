@@ -26,11 +26,15 @@ import (
 const (
 	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
 	maxDuration           time.Duration = 1<<63 - 1
+	PKCEMethodPlain       string        = "plain"
+	PKCEMethodS256        string        = "S256"
 )
 
 var (
 	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
 	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errServerURLSame         = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
+	errInvalidPKCEMethod     = errors.New("pkce.method must be either 'plain' or 'S256'")
 )
 
 type IPAllocationStrategy string
@@ -99,6 +103,7 @@ type Config struct {
 type DNSConfig struct {
 	MagicDNS         bool   `mapstructure:"magic_dns"`
 	BaseDomain       string `mapstructure:"base_domain"`
+	OverrideLocalDNS bool   `mapstructure:"override_local_dns"`
 	Nameservers      Nameservers
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
@@ -162,6 +167,11 @@ type LetsEncryptConfig struct {
 	ChallengeType string
 }
 
+type PKCEConfig struct {
+	Enabled bool
+	Method  string
+}
+
 type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool
 	Issuer                     string
@@ -172,10 +182,9 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
-	StripEmaildomain           bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
-	MapLegacyUsers             bool
+	PKCE                       PKCEConfig
 }
 
 type DERPConfig struct {
@@ -227,6 +236,24 @@ type Tuning struct {
 	NodeMapSessionBufferedChanSize int
 }
 
+func validatePKCEMethod(method string) error {
+	if method != PKCEMethodPlain && method != PKCEMethodS256 {
+		return errInvalidPKCEMethod
+	}
+	return nil
+}
+
+// Domain returns the hostname/domain part of the ServerURL.
+// If the ServerURL is not a valid URL, it returns the BaseDomain.
+func (c *Config) Domain() string {
+	u, err := url.Parse(c.ServerURL)
+	if err != nil {
+		return c.BaseDomain
+	}
+
+	return u.Hostname()
+}
+
 // LoadConfig prepares and loads the Headscale configuration into Viper.
 // This means it sets the default values, reads the configuration file and
 // environment variables, and handles deprecated configuration options.
@@ -263,6 +290,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("dns.magic_dns", true)
 	viper.SetDefault("dns.base_domain", "")
+	viper.SetDefault("dns.override_local_dns", true)
 	viper.SetDefault("dns.nameservers.global", []string{})
 	viper.SetDefault("dns.nameservers.split", map[string]string{})
 	viper.SetDefault("dns.search_domains", []string{})
@@ -289,11 +317,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
-	viper.SetDefault("oidc.strip_email_domain", true)
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
-	viper.SetDefault("oidc.map_legacy_users", true)
+	viper.SetDefault("oidc.pkce.enabled", false)
+	viper.SetDefault("oidc.pkce.method", "S256")
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -327,9 +355,9 @@ func validateServerConfig() error {
 	depr.fatalIfNewKeyIsNotUsed("policy.path", "acl_policy_path")
 
 	// Move dns_config -> dns
-	depr.warn("dns_config.override_local_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.magic_dns", "dns_config.magic_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.base_domain", "dns_config.base_domain")
+	depr.fatalIfNewKeyIsNotUsed("dns.override_local_dns", "dns_config.override_local_dns")
 	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.global", "dns_config.nameservers")
 	depr.fatalIfNewKeyIsNotUsed("dns.nameservers.split", "dns_config.restricted_nameservers")
 	depr.fatalIfNewKeyIsNotUsed("dns.search_domains", "dns_config.domains")
@@ -337,24 +365,17 @@ func validateServerConfig() error {
 	depr.fatal("dns.use_username_in_magic_dns")
 	depr.fatal("dns_config.use_username_in_magic_dns")
 
-	// TODO(kradalby): Reintroduce when strip_email_domain is removed
-	// after #2170 is cleaned up
-	// depr.fatal("oidc.strip_email_domain")
+	// Removed since version v0.26.0
+	depr.fatal("oidc.strip_email_domain")
+	depr.fatal("oidc.map_legacy_users")
 
-	depr.Log()
-
-	for _, removed := range []string{
-		// TODO(kradalby): Reintroduce when strip_email_domain is removed
-		// after #2170 is cleaned up
-		// "oidc.strip_email_domain",
-		"dns.use_username_in_magic_dns",
-		"dns_config.use_username_in_magic_dns",
-	} {
-		if viper.IsSet(removed) {
-			log.Fatal().
-				Msgf("Fatal config error: %s has been removed. Please remove it from your config file", removed)
+	if viper.GetBool("oidc.enabled") {
+		if err := validatePKCEMethod(viper.GetString("oidc.pkce.method")); err != nil {
+			return err
 		}
 	}
+
+	depr.Log()
 
 	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
 		log.Fatal().Msg("Fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
@@ -398,6 +419,12 @@ func validateServerConfig() error {
 			viper.GetString("ephemeral_node_inactivity_timeout"),
 			minInactivityTimeout,
 		)
+	}
+
+	if viper.GetBool("dns.override_local_dns") {
+		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
+			errorText += "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true\n"
+		}
 	}
 
 	if errorText != "" {
@@ -596,11 +623,12 @@ func dns() (DNSConfig, error) {
 	// UnmarshalKey is compatible with Environment Variables.
 	// err := viper.UnmarshalKey("dns", &dns)
 	// if err != nil {
-	// 	return DNSConfig{}, fmt.Errorf("unmarshaling dns config: %w", err)
+	// 	return DNSConfig{}, fmt.Errorf("unmarshalling dns config: %w", err)
 	// }
 
 	dns.MagicDNS = viper.GetBool("dns.magic_dns")
 	dns.BaseDomain = viper.GetString("dns.base_domain")
+	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
@@ -611,7 +639,7 @@ func dns() (DNSConfig, error) {
 
 		err := viper.UnmarshalKey("dns.extra_records", &extraRecords)
 		if err != nil {
-			return DNSConfig{}, fmt.Errorf("unmarshaling dns extra records: %w", err)
+			return DNSConfig{}, fmt.Errorf("unmarshalling dns extra records: %w", err)
 		}
 		dns.ExtraRecords = extraRecords
 	}
@@ -706,7 +734,11 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.Proxied = dns.MagicDNS
 	cfg.ExtraRecords = dns.ExtraRecords
-	cfg.Resolvers = dns.globalResolvers()
+	if dns.OverrideLocalDNS {
+		cfg.Resolvers = dns.globalResolvers()
+	} else {
+		cfg.FallbackResolvers = dns.globalResolvers()
+	}
 
 	routes := dns.splitResolvers()
 	cfg.Routes = routes
@@ -927,10 +959,10 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
-			// TODO(kradalby): Remove when strip_email_domain is removed
-			// after #2170 is cleaned up
-			StripEmaildomain: viper.GetBool("oidc.strip_email_domain"),
-			MapLegacyUsers:   viper.GetBool("oidc.map_legacy_users"),
+			PKCE: PKCEConfig{
+				Enabled: viper.GetBool("oidc.pkce.enabled"),
+				Method:  viper.GetString("oidc.pkce.method"),
+			},
 		},
 
 		LogTail:             logTailConfig,
@@ -969,6 +1001,10 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	server, err := url.Parse(serverURL)
 	if err != nil {
 		return err
+	}
+
+	if server.Hostname() == baseDomain {
+		return errServerURLSame
 	}
 
 	serverDomainParts := strings.Split(server.Host, ".")

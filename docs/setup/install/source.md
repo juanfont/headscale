@@ -16,8 +16,8 @@ README](https://github.com/juanfont/headscale#contributing) for more information
 ### Install from source
 
 ```shell
-# Install prerequistes
-pkg_add go
+# Install prerequisites
+pkg_add go git
 
 git clone https://github.com/juanfont/headscale.git
 
@@ -30,7 +30,7 @@ latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
 
 git checkout $latestTag
 
-go build -ldflags="-s -w -X github.com/juanfont/headscale/cmd/headscale/cli.Version=$latestTag" github.com/juanfont/headscale
+go build -ldflags="-s -w -X github.com/juanfont/headscale/hscontrol/types.Version=$latestTag" -X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=HASH" github.com/juanfont/headscale
 
 # make it executable
 chmod a+x headscale
@@ -42,7 +42,7 @@ cp headscale /usr/local/sbin
 ### Install from source via cross compile
 
 ```shell
-# Install prerequistes
+# Install prerequisites
 # 1. go v1.20+: headscale newer than 0.21 needs go 1.20+ to compile
 # 2. gmake: Makefile in the headscale repo is written in GNU make syntax
 

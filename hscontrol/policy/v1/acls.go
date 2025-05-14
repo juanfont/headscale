@@ -1,4 +1,4 @@
-package policy
+package v1
 
 import (
 	"encoding/json"
@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -35,38 +34,6 @@ const (
 	portRangeEnd       = 65535
 	expectedTokenItems = 2
 )
-
-var theInternetSet *netipx.IPSet
-
-// theInternet returns the IPSet for the Internet.
-// https://www.youtube.com/watch?v=iDbyYGrswtg
-func theInternet() *netipx.IPSet {
-	if theInternetSet != nil {
-		return theInternetSet
-	}
-
-	var internetBuilder netipx.IPSetBuilder
-	internetBuilder.AddPrefix(netip.MustParsePrefix("2000::/3"))
-	internetBuilder.AddPrefix(tsaddr.AllIPv4())
-
-	// Delete Private network addresses
-	// https://datatracker.ietf.org/doc/html/rfc1918
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fc00::/7"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("10.0.0.0/8"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("172.16.0.0/12"))
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("192.168.0.0/16"))
-
-	// Delete Tailscale networks
-	internetBuilder.RemovePrefix(tsaddr.TailscaleULARange())
-	internetBuilder.RemovePrefix(tsaddr.CGNATRange())
-
-	// Delete "cant find DHCP networks"
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("fe80::/10")) // link-loca
-	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
-
-	theInternetSet, _ := internetBuilder.IPSet()
-	return theInternetSet
-}
 
 // For some reason golang.org/x/net/internal/iana is an internal package.
 const (
@@ -239,54 +206,6 @@ func (pol *ACLPolicy) CompileFilterRules(
 	return rules, nil
 }
 
-// ReduceFilterRules takes a node and a set of rules and removes all rules and destinations
-// that are not relevant to that particular node.
-func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
-	ret := []tailcfg.FilterRule{}
-
-	for _, rule := range rules {
-		// record if the rule is actually relevant for the given node.
-		var dests []tailcfg.NetPortRange
-	DEST_LOOP:
-		for _, dest := range rule.DstPorts {
-			expanded, err := util.ParseIPSet(dest.IP, nil)
-			// Fail closed, if we cant parse it, then we should not allow
-			// access.
-			if err != nil {
-				continue DEST_LOOP
-			}
-
-			if node.InIPSet(expanded) {
-				dests = append(dests, dest)
-				continue DEST_LOOP
-			}
-
-			// If the node exposes routes, ensure they are note removed
-			// when the filters are reduced.
-			if node.Hostinfo != nil {
-				if len(node.Hostinfo.RoutableIPs) > 0 {
-					for _, routableIP := range node.Hostinfo.RoutableIPs {
-						if expanded.OverlapsPrefix(routableIP) {
-							dests = append(dests, dest)
-							continue DEST_LOOP
-						}
-					}
-				}
-			}
-		}
-
-		if len(dests) > 0 {
-			ret = append(ret, tailcfg.FilterRule{
-				SrcIPs:   rule.SrcIPs,
-				DstPorts: dests,
-				IPProto:  rule.IPProto,
-			})
-		}
-	}
-
-	return ret
-}
-
 func (pol *ACLPolicy) CompileSSHPolicy(
 	node *types.Node,
 	users []types.User,
@@ -361,37 +280,67 @@ func (pol *ACLPolicy) CompileSSHPolicy(
 			)
 		}
 
-		principals := make([]*tailcfg.SSHPrincipal, 0, len(sshACL.Sources))
-		for innerIndex, rawSrc := range sshACL.Sources {
-			if isWildcard(rawSrc) {
-				principals = append(principals, &tailcfg.SSHPrincipal{
+		var principals []*tailcfg.SSHPrincipal
+		for innerIndex, srcToken := range sshACL.Sources {
+			if isWildcard(srcToken) {
+				principals = []*tailcfg.SSHPrincipal{{
 					Any: true,
-				})
-			} else if isGroup(rawSrc) {
-				users, err := pol.expandUsersFromGroup(rawSrc)
+				}}
+				break
+			}
+
+			// If the token is a group, expand the users and validate
+			// them. Then use the .Username() to get the login name
+			// that corresponds with the User info in the netmap.
+			if isGroup(srcToken) {
+				usersFromGroup, err := pol.expandUsersFromGroup(srcToken)
 				if err != nil {
 					return nil, fmt.Errorf("parsing SSH policy, expanding user from group, index: %d->%d: %w", index, innerIndex, err)
 				}
 
-				for _, user := range users {
+				for _, userStr := range usersFromGroup {
+					user, err := findUserFromToken(users, userStr)
+					if err != nil {
+						log.Trace().Err(err).Msg("user not found")
+						continue
+					}
+
 					principals = append(principals, &tailcfg.SSHPrincipal{
-						UserLogin: user,
+						UserLogin: user.Username(),
 					})
 				}
-			} else {
-				expandedSrcs, err := pol.ExpandAlias(
-					peers,
-					users,
-					rawSrc,
-				)
-				if err != nil {
-					return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
-				}
-				for _, expandedSrc := range expandedSrcs.Prefixes() {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						NodeIP: expandedSrc.Addr().String(),
-					})
-				}
+
+				continue
+			}
+
+			// Try to check if the token is a user, if it is, then we
+			// can use the .Username() to get the login name that
+			// corresponds with the User info in the netmap.
+			// TODO(kradalby): This is a bit of a hack, and it should go
+			// away with the new policy where users can be reliably determined.
+			if user, err := findUserFromToken(users, srcToken); err == nil {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					UserLogin: user.Username(),
+				})
+				continue
+			}
+
+			// This is kind of then non-ideal scenario where we dont really know
+			// what to do with the token, so we expand it to IP addresses of nodes.
+			// The pro here is that we have a pretty good lockdown on the mapping
+			// between users and node, but it can explode if a user owns many nodes.
+			ips, err := pol.ExpandAlias(
+				peers,
+				users,
+				srcToken,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("parsing SSH policy, expanding alias, index: %d->%d: %w", index, innerIndex, err)
+			}
+			for addr := range util.IPSetAddrIter(ips) {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					NodeIP: addr.String(),
+				})
 			}
 		}
 
@@ -890,7 +839,7 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 	build.AddPrefix(prefix)
 
 	// This is suboptimal and quite expensive, but if we only add the prefix, we will miss all the relevant IPv6
-	// addresses for the hosts that belong to tailscale. This doesnt really affect stuff like subnet routers.
+	// addresses for the hosts that belong to tailscale. This doesn't really affect stuff like subnet routers.
 	for _, node := range nodes {
 		for _, ip := range node.IPs() {
 			// log.Trace().
@@ -907,7 +856,7 @@ func (pol *ACLPolicy) expandIPsFromIPPrefix(
 func expandAutoGroup(alias string) (*netipx.IPSet, error) {
 	switch {
 	case strings.HasPrefix(alias, "autogroup:internet"):
-		return theInternet(), nil
+		return util.TheInternet(), nil
 
 	default:
 		return nil, fmt.Errorf("unknown autogroup %q", alias)
@@ -934,6 +883,7 @@ func isAutoGroup(str string) bool {
 // Invalid tags are tags added by a user on a node, and that user doesn't have authority to add this tag.
 // Valid tags are tags added by a user that is allowed in the ACL policy to add this tag.
 func (pol *ACLPolicy) TagsOfNode(
+	users []types.User,
 	node *types.Node,
 ) ([]string, []string) {
 	var validTags []string
@@ -956,7 +906,12 @@ func (pol *ACLPolicy) TagsOfNode(
 			}
 			var found bool
 			for _, owner := range owners {
-				if node.User.Username() == owner {
+				user, err := findUserFromToken(users, owner)
+				if err != nil {
+					log.Trace().Caller().Err(err).Msg("could not determine user to filter tags by")
+				}
+
+				if node.User.ID == user.ID {
 					found = true
 				}
 			}
@@ -988,29 +943,11 @@ func (pol *ACLPolicy) TagsOfNode(
 func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) types.Nodes {
 	var out types.Nodes
 
-	var potentialUsers []types.User
-	for _, user := range users {
-		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == userToken {
-			// If a user is matching with a known unique field,
-			// disgard all other users and only keep the current
-			// user.
-			potentialUsers = []types.User{user}
-
-			break
-		}
-		if user.Email == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
-		if user.Name == userToken {
-			potentialUsers = append(potentialUsers, user)
-		}
+	user, err := findUserFromToken(users, userToken)
+	if err != nil {
+		log.Trace().Caller().Err(err).Msg("could not determine user to filter nodes by")
+		return out
 	}
-
-	if len(potentialUsers) != 1 {
-		return nil
-	}
-
-	user := potentialUsers[0]
 
 	for _, node := range nodes {
 		if node.User.ID == user.ID {
@@ -1021,23 +958,39 @@ func filterNodesByUser(nodes types.Nodes, users []types.User, userToken string) 
 	return out
 }
 
-// FilterNodesByACL returns the list of peers authorized to be accessed from a given node.
-func FilterNodesByACL(
-	node *types.Node,
-	nodes types.Nodes,
-	filter []tailcfg.FilterRule,
-) types.Nodes {
-	var result types.Nodes
+var (
+	ErrorNoUserMatching       = errors.New("no user matching")
+	ErrorMultipleUserMatching = errors.New("multiple users matching")
+)
 
-	for index, peer := range nodes {
-		if peer.ID == node.ID {
-			continue
+// findUserFromToken finds and returns a user based on the given token, prioritizing matches by ProviderIdentifier, followed by email or name.
+// If no matching user is found, it returns an error of type ErrorNoUserMatching.
+// If multiple users match the token, it returns an error indicating multiple matches.
+func findUserFromToken(users []types.User, token string) (types.User, error) {
+	var potentialUsers []types.User
+
+	// This adds the v2 support to looking up users with the new required
+	// policyv2 format where usernames have @ at the end if they are not emails.
+	token = strings.TrimSuffix(token, "@")
+
+	for _, user := range users {
+		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == token {
+			// Prioritize ProviderIdentifier match and exit early
+			return user, nil
 		}
 
-		if node.CanAccess(filter, nodes[index]) || peer.CanAccess(filter, node) {
-			result = append(result, peer)
+		if user.Email == token || user.Name == token {
+			potentialUsers = append(potentialUsers, user)
 		}
 	}
 
-	return result
+	if len(potentialUsers) == 0 {
+		return types.User{}, fmt.Errorf("user with token %q not found: %w", token, ErrorNoUserMatching)
+	}
+
+	if len(potentialUsers) > 1 {
+		return types.User{}, fmt.Errorf("multiple users with token %q found: %w", token, ErrorNoUserMatching)
+	}
+
+	return potentialUsers[0], nil
 }

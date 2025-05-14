@@ -7,7 +7,8 @@
 
 This page collects third-party tools and scripts related to headscale.
 
-| Name                  | Repository Link                                                 | Description                                       |
-| --------------------- | --------------------------------------------------------------- | ------------------------------------------------- |
-| tailscale-manager     | [Github](https://github.com/singlestore-labs/tailscale-manager) | Dynamically manage Tailscale route advertisements |
-| headscalebacktosqlite | [Github](https://github.com/bigbozza/headscalebacktosqlite)     | Migrate headscale from PostgreSQL back to SQLite  |
+| Name                  | Repository Link                                                 | Description                                                          |
+| --------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| tailscale-manager     | [Github](https://github.com/singlestore-labs/tailscale-manager) | Dynamically manage Tailscale route advertisements                    |
+| headscalebacktosqlite | [Github](https://github.com/bigbozza/headscalebacktosqlite)     | Migrate headscale from PostgreSQL back to SQLite                     |
+| headscale-pf          | [Github](https://github.com/YouSysAdmin/headscale-pf)           | Populates user groups based on user groups in Jumpcloud or Authentik |

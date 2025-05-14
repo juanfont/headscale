@@ -6,16 +6,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/mail"
+	"net/url"
 	"strconv"
+	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
 type UserID uint64
+
+type Users []User
+
+func (u Users) String() string {
+	var sb strings.Builder
+	sb.WriteString("[ ")
+	for _, user := range u {
+		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
+	}
+	sb.WriteString(" ]")
+
+	return sb.String()
+}
 
 // User is the way Headscale implements the concept of users in Tailscale
 //
@@ -28,8 +44,9 @@ type User struct {
 	// you can have multiple users with the same name in OIDC,
 	// but not if you only run with CLI users.
 
-	// Username for the user, is used if email is empty
+	// Name (username) for the user, is used if email is empty
 	// Should not be used, please use Username().
+	// It is unique if ProviderIdentifier is not set.
 	Name string
 
 	// Typically the full name of the user
@@ -39,9 +56,11 @@ type User struct {
 	// Should not be used, please use Username().
 	Email string
 
-	// Unique identifier of the user from OIDC,
-	// comes from `sub` claim in the OIDC token
-	// and is used to lookup the user.
+	// ProviderIdentifier is a unique or not set identifier of the
+	// user from OIDC. It is the combination of `iss`
+	// and `sub` claim in the OIDC token.
+	// It is unique if set.
+	// It is unique together with Name.
 	ProviderIdentifier sql.NullString
 
 	// Provider is the origin of the user account,
@@ -49,6 +68,13 @@ type User struct {
 	Provider string
 
 	ProfilePicURL string
+}
+
+func (u *User) StringID() string {
+	if u == nil {
+		return ""
+	}
+	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
 // Username is the main way to get the username of a user,
@@ -59,12 +85,17 @@ type User struct {
 // should be used throughout headscale, in information returned to the
 // user and the Policy engine.
 func (u *User) Username() string {
-	return cmp.Or(u.Email, u.Name, u.ProviderIdentifier.String, strconv.FormatUint(uint64(u.ID), 10))
+	return cmp.Or(
+		u.Email,
+		u.Name,
+		u.ProviderIdentifier.String,
+		u.StringID(),
+	)
 }
 
-// DisplayNameOrUsername returns the DisplayName if it exists, otherwise
+// Display returns the DisplayName if it exists, otherwise
 // it will return the Username.
-func (u *User) DisplayNameOrUsername() string {
+func (u *User) Display() string {
 	return cmp.Or(u.DisplayName, u.Username())
 }
 
@@ -76,10 +107,8 @@ func (u *User) profilePicURL() string {
 func (u *User) TailscaleUser() *tailcfg.User {
 	user := tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
-		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
-		Logins:        []tailcfg.LoginID{},
 		Created:       u.CreatedAt,
 	}
 
@@ -88,11 +117,10 @@ func (u *User) TailscaleUser() *tailcfg.User {
 
 func (u *User) TailscaleLogin() *tailcfg.Login {
 	login := tailcfg.Login{
-		ID: tailcfg.LoginID(u.ID),
-		// TODO(kradalby): this should reflect registration method.
+		ID:            tailcfg.LoginID(u.ID),
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 
@@ -103,7 +131,7 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
 		ID:            tailcfg.UserID(u.ID),
 		LoginName:     u.Username(),
-		DisplayName:   u.DisplayNameOrUsername(),
+		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
 }
@@ -129,7 +157,7 @@ func (u *User) Proto() *v1.User {
 type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
-	var val interface{}
+	var val any
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal data: %w", err)
@@ -166,16 +194,131 @@ type OIDCClaims struct {
 	Username          string          `json:"preferred_username,omitempty"`
 }
 
+// Identifier returns a unique identifier string combining the Iss and Sub claims.
+// The format depends on whether Iss is a URL or not:
+// - For URLs: Joins the URL and sub path (e.g., "https://example.com/sub")
+// - For non-URLs: Joins with a slash (e.g., "oidc/sub")
+// - For empty Iss: Returns just "sub"
+// - For empty Sub: Returns just the Issuer
+// - For both empty: Returns empty string
+//
+// The result is cleaned using CleanIdentifier() to ensure consistent formatting.
 func (c *OIDCClaims) Identifier() string {
-	return c.Iss + "/" + c.Sub
+	// Handle empty components special cases
+	if c.Iss == "" && c.Sub == "" {
+		return ""
+	}
+	if c.Iss == "" {
+		return CleanIdentifier(c.Sub)
+	}
+	if c.Sub == "" {
+		return CleanIdentifier(c.Iss)
+	}
+
+	// We'll use the raw values and let CleanIdentifier handle all the whitespace
+	issuer := c.Iss
+	subject := c.Sub
+
+	var result string
+	// Try to parse as URL to handle URL joining correctly
+	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" {
+		// For URLs, use proper URL path joining
+		if joined, err := url.JoinPath(issuer, subject); err == nil {
+			result = joined
+		}
+	}
+
+	// If URL joining failed or issuer wasn't a URL, do simple string join
+	if result == "" {
+		// Default case: simple string joining with slash
+		issuer = strings.TrimSuffix(issuer, "/")
+		subject = strings.TrimPrefix(subject, "/")
+		result = issuer + "/" + subject
+	}
+
+	// Clean the result and return it
+	return CleanIdentifier(result)
+}
+
+// CleanIdentifier cleans a potentially malformed identifier by removing double slashes
+// while preserving protocol specifications like http://. This function will:
+// - Trim all whitespace from the beginning and end of the identifier
+// - Remove whitespace within path segments
+// - Preserve the scheme (http://, https://, etc.) for URLs
+// - Remove any duplicate slashes in the path
+// - Remove empty path segments
+// - For non-URL identifiers, it joins non-empty segments with a single slash
+// - Returns empty string for identifiers with only slashes
+// - Normalize URL schemes to lowercase
+func CleanIdentifier(identifier string) string {
+	if identifier == "" {
+		return identifier
+	}
+
+	// Trim leading/trailing whitespace
+	identifier = strings.TrimSpace(identifier)
+
+	// Handle URLs with schemes
+	u, err := url.Parse(identifier)
+	if err == nil && u.Scheme != "" {
+		// Clean path by removing empty segments and whitespace within segments
+		parts := strings.FieldsFunc(u.Path, func(c rune) bool { return c == '/' })
+		for i, part := range parts {
+			parts[i] = strings.TrimSpace(part)
+		}
+		// Remove empty parts after trimming
+		cleanParts := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part != "" {
+				cleanParts = append(cleanParts, part)
+			}
+		}
+		
+		if len(cleanParts) == 0 {
+			u.Path = ""
+		} else {
+			u.Path = "/" + strings.Join(cleanParts, "/")
+		}
+		// Ensure scheme is lowercase
+		u.Scheme = strings.ToLower(u.Scheme)
+		return u.String()
+	}
+
+	// Handle non-URL identifiers
+	parts := strings.FieldsFunc(identifier, func(c rune) bool { return c == '/' })
+	// Clean whitespace from each part
+	cleanParts := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			cleanParts = append(cleanParts, trimmed)
+		}
+	}
+	if len(cleanParts) == 0 {
+		return ""
+	}
+	return strings.Join(cleanParts, "/")
+}
+
+type OIDCUserInfo struct {
+	Sub               string          `json:"sub"`
+	Name              string          `json:"name"`
+	GivenName         string          `json:"given_name"`
+	FamilyName        string          `json:"family_name"`
+	PreferredUsername string          `json:"preferred_username"`
+	Email             string          `json:"email"`
+	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
+	Picture           string          `json:"picture"`
 }
 
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	err := util.CheckForFQDNRules(claims.Username)
+	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
+	} else {
+		log.Debug().Err(err).Msgf("Username %s is not valid", claims.Username)
 	}
 
 	if claims.EmailVerified {
@@ -185,7 +328,13 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 		}
 	}
 
-	u.ProviderIdentifier = sql.NullString{String: claims.Identifier(), Valid: true}
+	// Get provider identifier
+	identifier := claims.Identifier()
+	// Ensure provider identifier always has a leading slash for backward compatibility
+	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
+		identifier = "/" + identifier
+	}
+	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL
 	u.Provider = util.RegisterMethodOIDC

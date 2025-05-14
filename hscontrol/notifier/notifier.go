@@ -63,9 +63,26 @@ func (n *Notifier) Close() {
 	n.closed = true
 	n.b.close()
 
-	for _, c := range n.nodes {
-		close(c)
+	// Close channels safely using the helper method
+	for nodeID, c := range n.nodes {
+		n.safeCloseChannel(nodeID, c)
 	}
+
+	// Clear node map after closing channels
+	n.nodes = make(map[types.NodeID]chan<- types.StateUpdate)
+}
+
+// safeCloseChannel closes a channel and panic recovers if already closed
+func (n *Notifier) safeCloseChannel(nodeID types.NodeID, c chan<- types.StateUpdate) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Error().
+				Uint64("node.id", nodeID.Uint64()).
+				Any("recover", r).
+				Msg("recovered from panic when closing channel in Close()")
+		}
+	}()
+	close(c)
 }
 
 func (n *Notifier) tracef(nID types.NodeID, msg string, args ...any) {
@@ -90,7 +107,11 @@ func (n *Notifier) AddNode(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	// connection. Close the old channel and replace it.
 	if curr, ok := n.nodes[nodeID]; ok {
 		n.tracef(nodeID, "channel present, closing and replacing")
-		close(curr)
+		// Use the safeCloseChannel helper in a goroutine to avoid deadlocks
+		// if/when someone is waiting to send on this channel
+		go func(ch chan<- types.StateUpdate) {
+			n.safeCloseChannel(nodeID, ch)
+		}(curr)
 	}
 
 	n.nodes[nodeID] = c
@@ -153,7 +174,7 @@ func (n *Notifier) IsConnected(nodeID types.NodeID) bool {
 }
 
 // IsLikelyConnected reports if a node is connected to headscale and has a
-// poll session open, but doesnt lock, so might be wrong.
+// poll session open, but doesn't lock, so might be wrong.
 func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
 	if val, ok := n.connected.Load(nodeID); ok {
 		return val
@@ -161,6 +182,7 @@ func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
 	return false
 }
 
+// LikelyConnectedMap returns a thread safe map of connected nodes
 func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.connected
 }
@@ -243,7 +265,7 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 		// has shut down the channel and is waiting for the lock held here in RemoveNode.
 		// This means that there is potential for a deadlock which would stop all updates
 		// going out to clients. This timeout prevents that from happening by moving on to the
-		// next node if the context is cancelled. Afther sendAll releases the lock, the add/remove
+		// next node if the context is cancelled. After sendAll releases the lock, the add/remove
 		// call will succeed and the update will go to the correct nodes on the next call.
 		ctx, cancel := context.WithTimeout(context.Background(), n.cfg.Tuning.NotifierSendTimeout)
 		defer cancel()
@@ -388,19 +410,13 @@ func (b *batcher) flush() {
 		})
 
 		if b.changedNodeIDs.Slice().Len() > 0 {
-			update := types.StateUpdate{
-				Type:        types.StatePeerChanged,
-				ChangeNodes: changedNodes,
-			}
+			update := types.UpdatePeerChanged(changedNodes...)
 
 			b.n.sendAll(update)
 		}
 
 		if len(patches) > 0 {
-			patchUpdate := types.StateUpdate{
-				Type:          types.StatePeerChangedPatch,
-				ChangePatches: patches,
-			}
+			patchUpdate := types.UpdatePeerPatch(patches...)
 
 			b.n.sendAll(patchUpdate)
 		}

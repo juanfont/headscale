@@ -34,13 +34,14 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
 	assertNoErr(t, err)
 
-	scenario, err := NewScenario(dockertestMaxWait())
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
-
-	spec := map[string]int{
-		"user1": len(MustTestVersions),
-	}
 
 	derper, err := scenario.CreateDERPServer("head",
 		dsic.WithCACert(certHeadscale),
@@ -69,11 +70,10 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
-	err = scenario.CreateHeadscaleEnv(spec, []tsic.Option{tsic.WithCACert(derper.GetCert())},
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithCACert(derper.GetCert())},
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
 		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
-		hsic.WithHostnameAsServerURL(),
 		hsic.WithDERPConfig(derpMap))
 	assertNoErrHeadscaleEnv(t, err)
 

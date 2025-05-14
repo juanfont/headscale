@@ -41,13 +41,14 @@ options, run:
       headscale <COMMAND> --help
     ```
 
-## Manage users
+## Manage headscale users
 
-In headscale, a node (also known as machine or device) is always assigned to a specific user, a
-[tailnet](https://tailscale.com/kb/1136/tailnet/). Such users can be managed with the `headscale users` command. Invoke
-the built-in help for more information: `headscale users --help`.
+In headscale, a node (also known as machine or device) is always assigned to a
+headscale user. Such a headscale user may have many nodes assigned to them and
+can be managed with the `headscale users` command. Invoke the built-in help for
+more information: `headscale users --help`.
 
-### Create a user
+### Create a headscale user
 
 === "Native"
 
@@ -62,7 +63,7 @@ the built-in help for more information: `headscale users --help`.
       headscale users create <USER>
     ```
 
-### List existing users
+### List existing headscale users
 
 === "Native"
 
