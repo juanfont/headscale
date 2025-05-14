@@ -73,7 +73,11 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 
 	for _, derpMap := range derpMaps {
 		for id, region := range derpMap.Regions {
-			result.Regions[id] = region
+			if region == nil {
+				delete(result.Regions, id)
+			} else {
+				result.Regions[id] = region
+			}
 		}
 	}
 
