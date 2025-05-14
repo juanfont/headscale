@@ -82,6 +82,12 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 		maps.Copy(result.Regions, derpMap.Regions)
 	}
 
+	for id, region := range result.Regions {
+		if region == nil {
+			delete(result.Regions, id)
+		}
+	}
+
 	return &result
 }
 
