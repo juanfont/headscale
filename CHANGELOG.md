@@ -2,6 +2,8 @@
 
 ## Next
 
+## 0.26.0 (2025-05-14)
+
 ### BREAKING
 
 #### Routes
@@ -69,17 +71,17 @@ new policy code passes all of our tests.
 <summary>Migration notes when the policy is stored in the database.</summary>
 
 This section **only** applies if the policy is stored in the database and
-Headscale 0.26 doesn't start due to a policy error (`failed to load ACL
-policy`).
+Headscale 0.26 doesn't start due to a policy error
+(`failed to load ACL policy`).
 
-* Start Headscale 0.26 with the environment variable `HEADSCALE_POLICY_V1=1`
+- Start Headscale 0.26 with the environment variable `HEADSCALE_POLICY_V1=1`
   set. You can check that Headscale picked up the environment variable by
   observing this message during startup: `Using policy manager version: 1`
-* Dump the policy to a file: `headscale policy get > policy.json`
-* Edit `policy.json` and migrate to policy V2. Use the command
+- Dump the policy to a file: `headscale policy get > policy.json`
+- Edit `policy.json` and migrate to policy V2. Use the command
   `headscale policy check --file policy.json` to check for policy errors.
-* Load the modified policy: `headscale policy set --file policy.json`
-* Restart Headscale **without** the environment variable `HEADSCALE_POLICY_V1`.
+- Load the modified policy: `headscale policy set --file policy.json`
+- Restart Headscale **without** the environment variable `HEADSCALE_POLICY_V1`.
   Headscale should now print the message `Using policy manager version: 2` and
   startup successfully.
 
