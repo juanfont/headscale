@@ -12,12 +12,13 @@ import (
 	tcmp "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
 	"golang.org/x/exp/slices"
 )
 
@@ -912,13 +913,15 @@ func TestNodeTagCommand(t *testing.T) {
 	)
 }
 
+
+
 func TestNodeAdvertiseTagCommand(t *testing.T) {
 	IntegrationSkip(t)
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		policy  *policyv1.ACLPolicy
+		policy  *policyv2.Policy
 		wantTag bool
 	}{
 		{
@@ -927,51 +930,60 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 		},
 		{
 			name: "with-policy-email",
-			policy: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources:  []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				TagOwners: map[string][]string{
-					"tag:test": {"user1@test.no"},
+				TagOwners: policyv2.TagOwners{
+					policyv2.Tag("tag:test"): policyv2.Owners{usernameOwner("user1@test.no")},
 				},
 			},
 			wantTag: true,
 		},
 		{
 			name: "with-policy-username",
-			policy: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources:  []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				TagOwners: map[string][]string{
-					"tag:test": {"user1@"},
+				TagOwners: policyv2.TagOwners{
+					policyv2.Tag("tag:test"): policyv2.Owners{usernameOwner("user1@")},
 				},
 			},
 			wantTag: true,
 		},
 		{
 			name: "with-policy-groups",
-			policy: &policyv1.ACLPolicy{
-				Groups: policyv1.Groups{
-					"group:admins": []string{"user1@"},
+			policy: &policyv2.Policy{
+				Groups: policyv2.Groups{
+					policyv2.Group("group:admins"): []policyv2.Username{policyv2.Username("user1@")},
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources:  []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				TagOwners: map[string][]string{
-					"tag:test": {"group:admins"},
+				TagOwners: policyv2.TagOwners{
+					policyv2.Tag("tag:test"): policyv2.Owners{groupOwner("group:admins")},
 				},
 			},
 			wantTag: true,
@@ -1746,16 +1758,19 @@ func TestPolicyCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	p := policyv1.ACLPolicy{
-		ACLs: []policyv1.ACL{
+	p := policyv2.Policy{
+		ACLs: []policyv2.ACL{
 			{
-				Action:       "accept",
-				Sources:      []string{"*"},
-				Destinations: []string{"*:*"},
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
 			},
 		},
-		TagOwners: map[string][]string{
-			"tag:exists": {"user1@"},
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:exists"): policyv2.Owners{usernameOwner("user1@")},
 		},
 	}
 
@@ -1782,7 +1797,7 @@ func TestPolicyCommand(t *testing.T) {
 
 	// Get the current policy and check
 	// if it is the same as the one we set.
-	var output *policyv1.ACLPolicy
+	var output *policyv2.Policy
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1825,18 +1840,21 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	p := policyv1.ACLPolicy{
-		ACLs: []policyv1.ACL{
+	p := policyv2.Policy{
+		ACLs: []policyv2.ACL{
 			{
 				// This is an unknown action, so it will return an error
 				// and the config will not be applied.
-				Action:       "unknown-action",
-				Sources:      []string{"*"},
-				Destinations: []string{"*:*"},
+				Action:   "unknown-action",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
 			},
 		},
-		TagOwners: map[string][]string{
-			"tag:exists": {"user1@"},
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:exists"): policyv2.Owners{usernameOwner("user1@")},
 		},
 	}
 
