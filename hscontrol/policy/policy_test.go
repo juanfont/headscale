@@ -824,8 +824,7 @@ func TestReduceFilterRules(t *testing.T) {
 
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.pol)) {
-			version := idx + 1
-			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
 				pm, err = pmf(users, append(tt.peers, tt.node))
@@ -1644,10 +1643,6 @@ func TestSSHPolicyRules(t *testing.T) {
 		wantSSH      *tailcfg.SSHPolicy
 		expectErr    bool
 		errorMessage string
-
-		// There are some tests that will not pass on V1 since we do not
-		// have the same kind of error handling as V2, so we skip them.
-		skipV1 bool
 	}{
 		{
 			name:       "group-to-user",
@@ -1681,10 +1676,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "group-to-tag",
@@ -1722,10 +1713,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "tag-to-user",
@@ -1826,10 +1813,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "check-period-specified",
@@ -1901,7 +1884,6 @@ func TestSSHPolicyRules(t *testing.T) {
 			}`,
 			expectErr:    true,
 			errorMessage: `SSH action "invalid" is not valid, must be accept or check`,
-			skipV1:       true,
 		},
 		{
 			name:       "invalid-check-period",
@@ -1920,7 +1902,6 @@ func TestSSHPolicyRules(t *testing.T) {
 			}`,
 			expectErr:    true,
 			errorMessage: "not a valid duration string",
-			skipV1:       true,
 		},
 		{
 			name:       "multiple-ssh-users-with-autogroup",
@@ -1972,18 +1953,12 @@ func TestSSHPolicyRules(t *testing.T) {
     }`,
 			expectErr:    true,
 			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
-			skipV1:       true,
 		},
 	}
 
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
-			version := idx + 1
-			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
-				if version == 1 && tt.skipV1 {
-					t.Skip()
-				}
-
+			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
 				pm, err = pmf(users, append(tt.peers, &tt.targetNode))
