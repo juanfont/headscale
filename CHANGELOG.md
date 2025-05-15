@@ -122,6 +122,11 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2542](https://github.com/juanfont/headscale/pull/2542)
 - Pre auth key API/CLI now uses ID over username
   [#2542](https://github.com/juanfont/headscale/pull/2542)
+- A non-empty list of global nameservers needs to be specified via
+  `dns.nameservers.global` if the configuration option `dns.override_local_dns`
+  is enabled or is not specified in the configuration file. This aligns with
+  behaviour of tailscale.com.
+  [#2438](https://github.com/juanfont/headscale/pull/2438)
 
 ### Changes
 
