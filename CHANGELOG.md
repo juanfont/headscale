@@ -2,6 +2,11 @@
 
 ## Next
 
+### Changes
+
+- Support client verify for DERP
+  [#2046](https://github.com/juanfont/headscale/pull/2046)
+
 ## 0.26.0 (2025-05-14)
 
 ### BREAKING

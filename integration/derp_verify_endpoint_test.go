@@ -101,6 +101,8 @@ func DERPVerify(
 	c := derphttp.NewRegionClient(nodeKey, t.Logf, netmon.NewStatic(), func() *tailcfg.DERPRegion {
 		return &region
 	})
+	defer c.Close()
+
 	var result error
 	if err := c.Connect(context.Background()); err != nil {
 		result = fmt.Errorf("client Connect: %w", err)

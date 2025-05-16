@@ -227,7 +227,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		}
 
 		if cfg.DERP.ServerVerifyClients {
-			t := http.DefaultTransport.(*http.Transport)
+			t := http.DefaultTransport.(*http.Transport) //nolint:forcetypeassert
 			t.RegisterProtocol(
 				derpServer.DerpVerifyScheme,
 				derpServer.NewDERPVerifyTransport(app.handleVerifyRequest),
