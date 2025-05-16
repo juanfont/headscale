@@ -87,8 +87,8 @@ managed by systemd.
     sudo nano /etc/headscale/config.yaml
     ```
 
-1.  Copy [headscale's systemd service file](../../packaging/headscale.systemd.service) to
-    `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
+1.  Copy [headscale's systemd service file](https://github.com/juanfont/headscale/blob/main/packaging/systemd/headscale.service)
+    to `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
     to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
 
 1.  In `/etc/headscale/config.yaml`, override the default `headscale` unix socket with a path that is writable by the
