@@ -1567,6 +1567,8 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 			aliases[i] = string(*v)
 		case *Host:
 			aliases[i] = string(*v)
+		case Asterix:
+			aliases[i] = "*"
 		default:
 			return nil, fmt.Errorf("unknown SSH destination alias type: %T", v)
 		}
@@ -1592,6 +1594,8 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 			aliases[i] = string(*v)
 		case *AutoGroup:
 			aliases[i] = string(*v)
+		case Asterix:
+			aliases[i] = "*"
 		default:
 			return nil, fmt.Errorf("unknown SSH source alias type: %T", v)
 		}
