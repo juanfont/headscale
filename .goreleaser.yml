@@ -64,8 +64,15 @@ nfpms:
     vendor: headscale
     maintainer: Kristoffer Dalby <kristoffer@dalby.cc>
     homepage: https://github.com/juanfont/headscale
-    license: BSD
+    description: |-
+      Open source implementation of the Tailscale control server.
+      Headscale aims to implement a self-hosted, open source alternative to the
+      Tailscale control server. Headscale's goal is to provide self-hosters and
+      hobbyists with an open-source server they can use for their projects and
+      labs. It implements a narrow scope, a single Tailscale network (tailnet),
+      suitable for a personal use, or a small open-source organisation.
     bindir: /usr/bin
+    section: net
     formats:
       - deb
     contents:
@@ -74,15 +81,21 @@ nfpms:
         type: config|noreplace
         file_info:
           mode: 0644
-      - src: ./docs/packaging/headscale.systemd.service
+      - src: ./packaging/systemd/headscale.service
         dst: /usr/lib/systemd/system/headscale.service
       - dst: /var/lib/headscale
         type: dir
-      - dst: /var/run/headscale
-        type: dir
+      - src: LICENSE
+        dst: /usr/share/doc/headscale/copyright
     scripts:
-      postinstall: ./docs/packaging/postinstall.sh
-      postremove: ./docs/packaging/postremove.sh
+      postinstall: ./packaging/deb/postinst
+      postremove: ./packaging/deb/postrm
+      preremove: ./packaging/deb/prerm
+    deb:
+      lintian_overrides:
+        - no-changelog  # Our CHANGELOG.md uses a different formatting
+        - no-manual-page
+        - statically-linked-binary
 
 kos:
   - id: ghcr

@@ -58,9 +58,6 @@ theme:
 
 # Excludes
 exclude_docs: |
-  /packaging/README.md
-  /packaging/postinstall.sh
-  /packaging/postremove.sh
   /requirements.txt
 
 # Plugins
