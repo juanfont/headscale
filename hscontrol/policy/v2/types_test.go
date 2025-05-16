@@ -706,6 +706,44 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
 		},
+		{
+			name: "missing-dst-port-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `hostport must contain a colon (":")`,
+		},
+		{
+			name: "dst-port-zero-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1:0"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `first port must be >0, or use '*' for wildcard`,
+		},
 	}
 
 	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {
