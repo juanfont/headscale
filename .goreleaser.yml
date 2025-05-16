@@ -7,6 +7,7 @@ before:
 
 release:
   prerelease: auto
+  draft: true
 
 builds:
   - id: headscale
