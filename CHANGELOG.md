@@ -2,6 +2,11 @@
 
 ## Next
 
+### BREAKING
+
+- Policy: Zero or empty destination port is no longer allowed
+  [#2606](https://github.com/juanfont/headscale/pull/2606)
+
 ## 0.26.0 (2025-05-14)
 
 ### BREAKING

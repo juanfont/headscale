@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -467,6 +468,8 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 				return err
 			}
 			ve.Ports = ports
+		} else {
+			return errors.New(`hostport must contain a colon (":")`)
 		}
 
 		ve.Alias, err = parseAlias(vs)
