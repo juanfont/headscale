@@ -73,6 +73,10 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 				return nil, err
 			}
 
+			if port < 1 {
+				return nil, errors.New("first port must be >0, or use '*' for wildcard")
+			}
+
 			portRanges = append(portRanges, tailcfg.PortRange{First: port, Last: port})
 		}
 	}

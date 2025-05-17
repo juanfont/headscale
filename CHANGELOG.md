@@ -4,6 +4,13 @@
 
 ### BREAKING
 
+- Policy: Zero or empty destination port is no longer allowed
+  [#2606](https://github.com/juanfont/headscale/pull/2606)
+
+## 0.26.0 (2025-05-14)
+
+### BREAKING
+
 #### Routes
 
 Route internals have been rewritten, removing the dedicated route table in the
@@ -69,17 +76,17 @@ new policy code passes all of our tests.
 <summary>Migration notes when the policy is stored in the database.</summary>
 
 This section **only** applies if the policy is stored in the database and
-Headscale 0.26 doesn't start due to a policy error (`failed to load ACL
-policy`).
+Headscale 0.26 doesn't start due to a policy error
+(`failed to load ACL policy`).
 
-* Start Headscale 0.26 with the environment variable `HEADSCALE_POLICY_V1=1`
+- Start Headscale 0.26 with the environment variable `HEADSCALE_POLICY_V1=1`
   set. You can check that Headscale picked up the environment variable by
   observing this message during startup: `Using policy manager version: 1`
-* Dump the policy to a file: `headscale policy get > policy.json`
-* Edit `policy.json` and migrate to policy V2. Use the command
+- Dump the policy to a file: `headscale policy get > policy.json`
+- Edit `policy.json` and migrate to policy V2. Use the command
   `headscale policy check --file policy.json` to check for policy errors.
-* Load the modified policy: `headscale policy set --file policy.json`
-* Restart Headscale **without** the environment variable `HEADSCALE_POLICY_V1`.
+- Load the modified policy: `headscale policy set --file policy.json`
+- Restart Headscale **without** the environment variable `HEADSCALE_POLICY_V1`.
   Headscale should now print the message `Using policy manager version: 2` and
   startup successfully.
 
@@ -115,6 +122,11 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2542](https://github.com/juanfont/headscale/pull/2542)
 - Pre auth key API/CLI now uses ID over username
   [#2542](https://github.com/juanfont/headscale/pull/2542)
+- A non-empty list of global nameservers needs to be specified via
+  `dns.nameservers.global` if the configuration option `dns.override_local_dns`
+  is enabled or is not specified in the configuration file. This aligns with
+  behaviour of tailscale.com.
+  [#2438](https://github.com/juanfont/headscale/pull/2438)
 
 ### Changes
 
@@ -143,6 +155,8 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2438](https://github.com/juanfont/headscale/pull/2438)
 - Add documentation for routes
   [#2496](https://github.com/juanfont/headscale/pull/2496)
+- Add support for `autogroup:member`, `autogroup:tagged`
+  [#2572](https://github.com/juanfont/headscale/pull/2572)
 
 ## 0.25.1 (2025-02-25)
 

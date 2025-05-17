@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 var veryLargeDestination = []policyv2.AliasWithPorts{
@@ -1206,6 +1207,123 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			result, err := client.Curl(url)
 			assert.Empty(t, result)
 			require.Error(t, err)
+		}
+	}
+}
+
+func TestACLAutogroupMember(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(ptr.To(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
+					},
+				},
+			},
+		},
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that untagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func TestACLAutogroupTagged(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
+					},
+				},
+			},
+		},
+
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that tagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
 		}
 	}
 }

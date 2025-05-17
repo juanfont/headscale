@@ -3,6 +3,7 @@ package v2
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -42,7 +43,7 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 	if a.Alias == nil {
 		return []byte(`""`), nil
 	}
-	
+
 	var alias string
 	switch v := a.Alias.(type) {
 	case *Username:
@@ -62,17 +63,17 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("unknown alias type: %T", v)
 	}
-	
+
 	// If no ports are specified
 	if len(a.Ports) == 0 {
 		return json.Marshal(alias)
 	}
-	
+
 	// Check if it's the wildcard port range
 	if len(a.Ports) == 1 && a.Ports[0].First == 0 && a.Ports[0].Last == 65535 {
 		return json.Marshal(fmt.Sprintf("%s:*", alias))
 	}
-	
+
 	// Otherwise, format as "alias:ports"
 	var ports []string
 	for _, port := range a.Ports {
@@ -82,7 +83,7 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 			ports = append(ports, fmt.Sprintf("%d-%d", port.First, port.Last))
 		}
 	}
-	
+
 	return json.Marshal(fmt.Sprintf("%s:%s", alias, strings.Join(ports, ",")))
 }
 
@@ -467,15 +468,20 @@ type AutoGroup string
 
 const (
 	AutoGroupInternet AutoGroup = "autogroup:internet"
+	AutoGroupMember   AutoGroup = "autogroup:member"
 	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
+	AutoGroupTagged   AutoGroup = "autogroup:tagged"
 
 	// These are not yet implemented.
-	AutoGroupSelf   AutoGroup = "autogroup:self"
-	AutoGroupMember AutoGroup = "autogroup:member"
-	AutoGroupTagged AutoGroup = "autogroup:tagged"
+	AutoGroupSelf AutoGroup = "autogroup:self"
 )
 
-var autogroups = []AutoGroup{AutoGroupInternet}
+var autogroups = []AutoGroup{
+	AutoGroupInternet,
+	AutoGroupMember,
+	AutoGroupNonRoot,
+	AutoGroupTagged,
+}
 
 func (ag AutoGroup) Validate() error {
 	if slices.Contains(autogroups, ag) {
@@ -498,13 +504,76 @@ func (ag AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(ag))
 }
 
-func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+	var build netipx.IPSetBuilder
+
 	switch ag {
 	case AutoGroupInternet:
 		return util.TheInternet(), nil
-	}
 
-	return nil, nil
+	case AutoGroupMember:
+		// autogroup:member represents all untagged devices in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			// Skip if node has forced tags
+			if len(node.ForcedTags) != 0 {
+				continue
+			}
+
+			// Skip if node has any allowed requested tags
+			hasAllowedTag := false
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				for _, tag := range node.Hostinfo.RequestTags {
+					if tagips, ok := tagMap[Tag(tag)]; ok && node.InIPSet(tagips) {
+						hasAllowedTag = true
+						break
+					}
+				}
+			}
+			if hasAllowedTag {
+				continue
+			}
+
+			// Node is a member if it has no forced tags and no allowed requested tags
+			node.AppendToIPSet(&build)
+		}
+
+		return build.IPSet()
+
+	case AutoGroupTagged:
+		// autogroup:tagged represents all devices with a tag in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			// Include if node has forced tags
+			if len(node.ForcedTags) != 0 {
+				node.AppendToIPSet(&build)
+				continue
+			}
+
+			// Include if node has any allowed requested tags
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				for _, tag := range node.Hostinfo.RequestTags {
+					if _, ok := tagMap[Tag(tag)]; ok {
+						node.AppendToIPSet(&build)
+						break
+					}
+				}
+			}
+		}
+
+		return build.IPSet()
+
+	default:
+		return nil, fmt.Errorf("unknown autogroup %q", ag)
+	}
 }
 
 func (ag *AutoGroup) Is(c AutoGroup) bool {
@@ -556,6 +625,8 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 				return err
 			}
 			ve.Ports = ports
+		} else {
+			return errors.New(`hostport must contain a colon (":")`)
 		}
 
 		ve.Alias, err = parseAlias(vs)
@@ -667,7 +738,7 @@ func (a Aliases) MarshalJSON() ([]byte, error) {
 	if a == nil {
 		return []byte("[]"), nil
 	}
-	
+
 	aliases := make([]string, len(a))
 	for i, alias := range a {
 		switch v := alias.(type) {
@@ -689,7 +760,7 @@ func (a Aliases) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("unknown alias type: %T", v)
 		}
 	}
-	
+
 	return json.Marshal(aliases)
 }
 
@@ -756,7 +827,7 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 	if aa == nil {
 		return []byte("[]"), nil
 	}
-	
+
 	approvers := make([]string, len(aa))
 	for i, approver := range aa {
 		switch v := approver.(type) {
@@ -770,7 +841,7 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("unknown auto approver type: %T", v)
 		}
 	}
-	
+
 	return json.Marshal(approvers)
 }
 
@@ -848,7 +919,7 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 	if o == nil {
 		return []byte("[]"), nil
 	}
-	
+
 	owners := make([]string, len(o))
 	for i, owner := range o {
 		switch v := owner.(type) {
@@ -860,7 +931,7 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("unknown owner type: %T", v)
 		}
 	}
-	
+
 	return json.Marshal(owners)
 }
 
@@ -966,12 +1037,12 @@ func (h Hosts) MarshalJSON() ([]byte, error) {
 	if h == nil {
 		return []byte("{}"), nil
 	}
-	
+
 	rawHosts := make(map[string]string)
 	for host, prefix := range h {
 		rawHosts[string(host)] = prefix.String()
 	}
-	
+
 	return json.Marshal(rawHosts)
 }
 
@@ -985,12 +1056,12 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 	if to == nil {
 		return []byte("{}"), nil
 	}
-	
+
 	rawTagOwners := make(map[string][]string)
 	for tag, owners := range to {
 		tagStr := string(tag)
 		ownerStrs := make([]string, len(owners))
-		
+
 		for i, owner := range owners {
 			switch v := owner.(type) {
 			case *Username:
@@ -1001,10 +1072,10 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 				return nil, fmt.Errorf("unknown owner type: %T", v)
 			}
 		}
-		
+
 		rawTagOwners[tagStr] = ownerStrs
 	}
-	
+
 	return json.Marshal(rawTagOwners)
 }
 
@@ -1071,21 +1142,21 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 	if ap.Routes == nil && ap.ExitNode == nil {
 		return []byte("{}"), nil
 	}
-	
+
 	type Alias AutoApproverPolicy
-	
+
 	// Create a new object to avoid marshalling nil slices as null instead of empty arrays
 	obj := Alias(ap)
-	
+
 	// Initialize empty maps/slices to ensure they're marshalled as empty objects/arrays instead of null
 	if obj.Routes == nil {
 		obj.Routes = make(map[netip.Prefix]AutoApprovers)
 	}
-	
+
 	if obj.ExitNode == nil {
 		obj.ExitNode = AutoApprovers{}
 	}
-	
+
 	return json.Marshal(&obj)
 }
 
@@ -1182,12 +1253,13 @@ type Policy struct {
 // We use the default JSON marshalling behavior provided by the Go runtime.
 
 var (
-	autogroupForSrc       = []AutoGroup{}
-	autogroupForDst       = []AutoGroup{AutoGroupInternet}
-	autogroupForSSHSrc    = []AutoGroup{}
-	autogroupForSSHDst    = []AutoGroup{}
+	// TODO(kradalby): Add these checks for tagOwners and autoApprovers
+	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
-	autogroupNotSupported = []AutoGroup{AutoGroupSelf, AutoGroupMember, AutoGroupTagged}
+	autogroupNotSupported = []AutoGroup{AutoGroupSelf}
 )
 
 func validateAutogroupSupported(ag *AutoGroup) error {
@@ -1555,7 +1627,7 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 	if a == nil {
 		return []byte("[]"), nil
 	}
-	
+
 	aliases := make([]string, len(a))
 	for i, alias := range a {
 		switch v := alias.(type) {
@@ -1573,7 +1645,7 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("unknown SSH destination alias type: %T", v)
 		}
 	}
-	
+
 	return json.Marshal(aliases)
 }
 
@@ -1582,7 +1654,7 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	if a == nil {
 		return []byte("[]"), nil
 	}
-	
+
 	aliases := make([]string, len(a))
 	for i, alias := range a {
 		switch v := alias.(type) {
@@ -1600,7 +1672,7 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 			return nil, fmt.Errorf("unknown SSH source alias type: %T", v)
 		}
 	}
-	
+
 	return json.Marshal(aliases)
 }
 

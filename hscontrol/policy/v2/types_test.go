@@ -439,7 +439,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	],
 }
 `,
-			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet]`,
+			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged]`,
 		},
 		{
 			name: "undefined-hostname-errors-2490",
@@ -918,6 +918,44 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
 		},
+		{
+			name: "missing-dst-port-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `hostport must contain a colon (":")`,
+		},
+		{
+			name: "dst-port-zero-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1:0"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `first port must be >0, or use '*' for wildcard`,
+		},
 	}
 
 	cmps := append(util.Comparers, 
@@ -1204,6 +1242,135 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: Wildcard,
 			want:      []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
 		},
+		{
+			name:      "autogroup-member-comprehensive",
+			toResolve: ptr.To(AutoGroup(AutoGroupMember)),
+			nodes: types.Nodes{
+				// Node with no tags (should be included)
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.1"),
+				},
+				// Node with forced tags (should be excluded)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.2"),
+				},
+				// Node with allowed requested tag (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test"},
+					},
+					IPv4: ap("100.100.101.3"),
+				},
+				// Node with non-allowed requested tag (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.4"),
+				},
+				// Node with multiple requested tags, one allowed (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test", "tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.5"),
+				},
+				// Node with multiple requested tags, none allowed (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
+					},
+					IPv4: ap("100.100.101.6"),
+				},
+			},
+			pol: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+				},
+			},
+			want: []netip.Prefix{
+				mp("100.100.101.1/32"), // No tags
+				mp("100.100.101.4/32"), // Non-allowed requested tag
+				mp("100.100.101.6/32"), // Multiple non-allowed requested tags
+			},
+		},
+		{
+			name:      "autogroup-tagged",
+			toResolve: ptr.To(AutoGroup(AutoGroupTagged)),
+			nodes: types.Nodes{
+				// Node with no tags (should be excluded)
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.1"),
+				},
+				// Node with forced tag (should be included)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.2"),
+				},
+				// Node with allowed requested tag (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test"},
+					},
+					IPv4: ap("100.100.101.3"),
+				},
+				// Node with non-allowed requested tag (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.4"),
+				},
+				// Node with multiple requested tags, one allowed (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test", "tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.5"),
+				},
+				// Node with multiple requested tags, none allowed (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
+					},
+					IPv4: ap("100.100.101.6"),
+				},
+				// Node with multiple forced tags (should be included)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test", "tag:other"},
+					IPv4:       ap("100.100.101.7"),
+				},
+			},
+			pol: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+				},
+			},
+			want: []netip.Prefix{
+				mp("100.100.101.2/31"), // Forced tag and allowed requested tag consecutive IPs are put in 31 prefix
+				mp("100.100.101.5/32"), // Multiple requested tags, one allowed
+				mp("100.100.101.7/32"), // Multiple forced tags
+			},
+		},
+		{
+			name:      "autogroup-invalid",
+			toResolve: ptr.To(AutoGroup("autogroup:invalid")),
+			wantErr:   "unknown autogroup",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1367,7 +1534,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			name: "mixed-routes-and-exit-nodes",
 			policy: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"user1", "user2"},
+					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
