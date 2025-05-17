@@ -4,7 +4,7 @@ import (
 	"net/netip"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/ory/dockertest/v3"
 )
 
@@ -28,5 +28,5 @@ type ControlServer interface {
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	GetCert() []byte
 	GetHostname() string
-	SetPolicy(*policyv1.ACLPolicy) error
+	SetPolicy(*policyv2.Policy) error
 }

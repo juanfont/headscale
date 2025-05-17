@@ -263,7 +263,7 @@ func Test_fullMapResponse(t *testing.T) {
 		// {
 		// 	name:             "empty-node",
 		// 	node:          types.Node{},
-		// 	pol:              &policyv1.ACLPolicy{},
+		// 	pol:              &policyv2.Policy{},
 		// 	dnsConfig:        &tailcfg.DNSConfig{},
 		// 	baseDomain:       "",
 		// 	want:             nil,
