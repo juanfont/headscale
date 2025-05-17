@@ -384,15 +384,20 @@ type AutoGroup string
 
 const (
 	AutoGroupInternet AutoGroup = "autogroup:internet"
+	AutoGroupMember   AutoGroup = "autogroup:member"
 	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
+	AutoGroupTagged   AutoGroup = "autogroup:tagged"
 
 	// These are not yet implemented.
-	AutoGroupSelf   AutoGroup = "autogroup:self"
-	AutoGroupMember AutoGroup = "autogroup:member"
-	AutoGroupTagged AutoGroup = "autogroup:tagged"
+	AutoGroupSelf AutoGroup = "autogroup:self"
 )
 
-var autogroups = []AutoGroup{AutoGroupInternet}
+var autogroups = []AutoGroup{
+	AutoGroupInternet,
+	AutoGroupMember,
+	AutoGroupNonRoot,
+	AutoGroupTagged,
+}
 
 func (ag AutoGroup) Validate() error {
 	if slices.Contains(autogroups, ag) {
@@ -410,13 +415,76 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (ag AutoGroup) Resolve(_ *Policy, _ types.Users, _ types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+	var build netipx.IPSetBuilder
+
 	switch ag {
 	case AutoGroupInternet:
 		return util.TheInternet(), nil
-	}
 
-	return nil, nil
+	case AutoGroupMember:
+		// autogroup:member represents all untagged devices in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			// Skip if node has forced tags
+			if len(node.ForcedTags) != 0 {
+				continue
+			}
+
+			// Skip if node has any allowed requested tags
+			hasAllowedTag := false
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				for _, tag := range node.Hostinfo.RequestTags {
+					if tagips, ok := tagMap[Tag(tag)]; ok && node.InIPSet(tagips) {
+						hasAllowedTag = true
+						break
+					}
+				}
+			}
+			if hasAllowedTag {
+				continue
+			}
+
+			// Node is a member if it has no forced tags and no allowed requested tags
+			node.AppendToIPSet(&build)
+		}
+
+		return build.IPSet()
+
+	case AutoGroupTagged:
+		// autogroup:tagged represents all devices with a tag in the tailnet.
+		tagMap, err := resolveTagOwners(p, users, nodes)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, node := range nodes {
+			// Include if node has forced tags
+			if len(node.ForcedTags) != 0 {
+				node.AppendToIPSet(&build)
+				continue
+			}
+
+			// Include if node has any allowed requested tags
+			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
+				for _, tag := range node.Hostinfo.RequestTags {
+					if _, ok := tagMap[Tag(tag)]; ok {
+						node.AppendToIPSet(&build)
+						break
+					}
+				}
+			}
+		}
+
+		return build.IPSet()
+
+	default:
+		return nil, fmt.Errorf("unknown autogroup %q", ag)
+	}
 }
 
 func (ag *AutoGroup) Is(c AutoGroup) bool {
@@ -952,12 +1020,13 @@ type Policy struct {
 }
 
 var (
-	autogroupForSrc       = []AutoGroup{}
-	autogroupForDst       = []AutoGroup{AutoGroupInternet}
-	autogroupForSSHSrc    = []AutoGroup{}
-	autogroupForSSHDst    = []AutoGroup{}
+	// TODO(kradalby): Add these checks for tagOwners and autoApprovers
+	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHUser   = []AutoGroup{AutoGroupNonRoot}
-	autogroupNotSupported = []AutoGroup{AutoGroupSelf, AutoGroupMember, AutoGroupTagged}
+	autogroupNotSupported = []AutoGroup{AutoGroupSelf}
 )
 
 func validateAutogroupSupported(ag *AutoGroup) error {

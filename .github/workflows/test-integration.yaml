@@ -22,6 +22,8 @@ jobs:
           - TestACLNamedHostsCanReach
           - TestACLDevice1CanAccessDevice2
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
+          - TestACLAutogroupMember
+          - TestACLAutogroupTagged
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
