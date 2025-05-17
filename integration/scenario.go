@@ -847,6 +847,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return errParseAuthPage
 	}
 	key := keySep[1]
+	key = strings.SplitN(key, " ", 2)[0]
 	log.Printf("registering node %s", key)
 
 	if headscale, err := s.Headscale(); err == nil {

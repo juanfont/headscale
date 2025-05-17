@@ -28,7 +28,7 @@ func RegisterWeb(registrationID types.RegistrationID) *elem.Element {
 			elem.H2(nil, elem.Text("Machine registration")),
 			elem.P(nil, elem.Text("Run the command below in the headscale server to add this machine to your network: ")),
 			elem.Code(attrs.Props{attrs.Style: codeStyleRegisterWebAPI.ToInline()},
-				elem.Text(fmt.Sprintf("headscale nodes register --user USERNAME --key %s", registrationID.String())),
+				elem.Text(fmt.Sprintf("headscale nodes register --key %s --user USERNAME", registrationID.String())),
 			),
 		),
 	)
