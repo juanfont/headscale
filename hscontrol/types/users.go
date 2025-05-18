@@ -322,9 +322,11 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 
 		if claims.Email != "" && claims.EmailVerified {
 			emailParts := strings.Split(claims.Email, "@")
-			if len(emailParts) > 0 && emailParts[0] != "" {
+			err = util.ValidateUsername(emailParts[0])
+			if err == nil {
 				u.Name = emailParts[0]
-				log.Debug().Msgf("Using email prefix %s as name", u.Name)
+			} else {
+				log.Debug().Err(err).Msgf("Email prefix %s is not valid username", emailParts[0])
 			}
 		}
 	}
