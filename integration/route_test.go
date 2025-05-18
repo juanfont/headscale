@@ -814,13 +814,6 @@ func TestSubnetRouteACL(t *testing.T) {
 						aliasWithPorts(prefixp("10.33.0.0/16"), tailcfg.PortRangeAny),
 					},
 				},
-				// {
-				// 	Action:   "accept",
-				// 	Sources:  []policyv2.Alias{groupp("group:admins")},
-				// 	Destinations: []policyv2.AliasWithPorts{
-				// 		aliasWithPorts(prefixp("0.0.0.0/0"), tailcfg.PortRangeAny),
-				// 	},
-				// },
 			},
 		},
 	))
