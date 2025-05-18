@@ -273,7 +273,7 @@ func CleanIdentifier(identifier string) string {
 				cleanParts = append(cleanParts, part)
 			}
 		}
-		
+
 		if len(cleanParts) == 0 {
 			u.Path = ""
 		} else {
@@ -319,6 +319,14 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 		u.Name = claims.Username
 	} else {
 		log.Debug().Err(err).Msgf("Username %s is not valid", claims.Username)
+
+		if claims.Email != "" && claims.EmailVerified {
+			emailParts := strings.Split(claims.Email, "@")
+			if len(emailParts) > 0 && emailParts[0] != "" {
+				u.Name = emailParts[0]
+				log.Debug().Msgf("Using email prefix %s as name", u.Name)
+			}
+		}
 	}
 
 	if claims.EmailVerified {

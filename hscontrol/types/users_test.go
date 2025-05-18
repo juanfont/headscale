@@ -307,6 +307,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			want: User{
 				Provider: util.RegisterMethodOIDC,
 				Email:    "test@test.no",
+				Name:     "test", // Expect email prefix to be used as fallback name
 				ProviderIdentifier: sql.NullString{
 					String: "/test",
 					Valid:  true,
@@ -325,6 +326,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			want: User{
 				Provider: util.RegisterMethodOIDC,
 				Email:    "test2@test.no",
+				Name:     "test2", // Expect email prefix to be used as fallback name
 				ProviderIdentifier: sql.NullString{
 					String: "/test2",
 					Valid:  true,
@@ -444,6 +446,26 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 					Valid:  true,
 				},
 				ProfilePicURL: "https://cdn.casbin.org/img/casbin.svg",
+			},
+		},
+		{
+			name: "empty-username-use-email-prefix",
+			jsonstr: `
+{
+  "sub": "123456789",
+  "email": "johndoe@example.com",
+  "email_verified": true,
+  "iss": "https://auth.example.com"
+}
+			`,
+			want: User{
+				Provider: util.RegisterMethodOIDC,
+				Email:    "johndoe@example.com",
+				Name:     "johndoe", // Should use email prefix
+				ProviderIdentifier: sql.NullString{
+					String: "https://auth.example.com/123456789",
+					Valid:  true,
+				},
 			},
 		},
 	}

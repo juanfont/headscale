@@ -1,6 +1,8 @@
 # CHANGELOG
 
 ## Next
+- OIDC: Fallback to using email prefix as username if is EmailVerified when
+  preferred_username is missing
 
 ### BREAKING
 
