@@ -27,8 +27,7 @@ type PolicyManager interface {
 	DebugString() string
 }
 
-// NewPolicyManager returns a new policy manager, the version is determined by
-// the environment flag "HEADSCALE_POLICY_V1".
+// NewPolicyManager returns a new policy manager.
 func NewPolicyManager(pol []byte, users []types.User, nodes types.Nodes) (PolicyManager, error) {
 	var polMan PolicyManager
 	var err error
