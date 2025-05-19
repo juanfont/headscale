@@ -490,18 +490,6 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
 						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						// This should not be included I believe, seems like
-						// this is a bug in the v1 code.
-						// For example:
-						// If a src or dst includes "64.0.0.0/2:*", it will include 100.64/16 range, which
-						// means that it will need to fetch the IPv6 addrs of the node to include the full range.
-						// Clearly, if a user sets the dst to be "64.0.0.0/2:*", it is likely more of a exit node
-						// and this would be strange behaviour.
-						// TODO(kradalby): Remove before launch.
-						{IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::100/128", Ports: tailcfg.PortRangeAny},
-						// End
 						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},

@@ -441,25 +441,6 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 	// the node to the IPSet.
 	// appendIfNodeHasIP(nodes, &ips, pref)
 
-	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
-	// should a host with a non single IP be able to resolve the full host (inc all IPs).
-	// Currently this is done because the old implementation did this, we might want to
-	// drop it before releasing.
-	// For example:
-	// If a src or dst includes "64.0.0.0/2:*", it will include 100.64/16 range, which
-	// means that it will need to fetch the IPv6 addrs of the node to include the full range.
-	// Clearly, if a user sets the dst to be "64.0.0.0/2:*", it is likely more of a exit node
-	// and this would be strange behaviour.
-	ipsTemp, err := ips.IPSet()
-	if err != nil {
-		errs = append(errs, err)
-	}
-	for _, node := range nodes {
-		if node.InIPSet(ipsTemp) {
-			node.AppendToIPSet(&ips)
-		}
-	}
-
 	return buildIPSetMultiErr(&ips, errs)
 }
 
