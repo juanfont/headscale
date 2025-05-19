@@ -60,7 +60,6 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		route      netip.Prefix
 		policy     string
 		canApprove bool
-		skipV1     bool
 	}{
 		{
 			name:  "allow-all-routes-for-admin-user",
@@ -766,10 +765,10 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			canApprove: false,
 		},
 		{
-			name:  "empty-policy",
-			node:  normalNode,
-			route: p("192.168.1.0/24"),
-			policy: `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
+			name:       "empty-policy",
+			node:       normalNode,
+			route:      p("192.168.1.0/24"),
+			policy:     `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
 			canApprove: false,
 		},
 	}
@@ -789,13 +788,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			}
 
 			for i, pm := range policyManagers {
-				versionNum := i + 1
-				if versionNum == 1 && tt.skipV1 {
-					// Skip V1 policy manager for specific tests
-					continue
-				}
-
-				t.Run(fmt.Sprintf("PolicyV%d", versionNum), func(t *testing.T) {
+				t.Run(fmt.Sprintf("policy-index%d", i), func(t *testing.T) {
 					result := pm.NodeCanApproveRoute(&tt.node, tt.route)
 
 					if diff := cmp.Diff(tt.canApprove, result); diff != "" {
