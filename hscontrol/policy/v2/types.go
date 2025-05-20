@@ -363,7 +363,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 
 	// If the IP is a single host, look for a node to ensure we add all the IPs of
 	// the node to the IPSet.
-	// appendIfNodeHasIP(nodes, &ips, pref)
+	appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
 
 	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
 	// should a host with a non single IP be able to resolve the full host (inc all IPs).
@@ -439,9 +439,23 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 	ips.AddPrefix(netip.Prefix(p))
 	// If the IP is a single host, look for a node to ensure we add all the IPs of
 	// the node to the IPSet.
-	// appendIfNodeHasIP(nodes, &ips, pref)
+	appendIfNodeHasIP(nodes, &ips, netip.Prefix(p))
 
 	return buildIPSetMultiErr(&ips, errs)
+}
+
+// appendIfNodeHasIP appends the IPs of the nodes to the IPSet if the node has the
+// IP address in the prefix.
+func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref netip.Prefix) {
+	if !pref.IsSingleIP() && !tsaddr.IsTailscaleIP(pref.Addr()) {
+		return
+	}
+
+	for _, node := range nodes {
+		if node.HasIP(pref.Addr()) {
+			node.AppendToIPSet(ips)
+		}
+	}
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`
