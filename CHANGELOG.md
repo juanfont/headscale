@@ -7,6 +7,11 @@
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
 
+### Changes
+
+- Remove policy v1 code
+  [#2600](https://github.com/juanfont/headscale/pull/2600)
+
 ## 0.26.0 (2025-05-14)
 
 ### BREAKING

@@ -490,18 +490,6 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
 						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						// This should not be included I believe, seems like
-						// this is a bug in the v1 code.
-						// For example:
-						// If a src or dst includes "64.0.0.0/2:*", it will include 100.64/16 range, which
-						// means that it will need to fetch the IPv6 addrs of the node to include the full range.
-						// Clearly, if a user sets the dst to be "64.0.0.0/2:*", it is likely more of a exit node
-						// and this would be strange behaviour.
-						// TODO(kradalby): Remove before launch.
-						{IP: "fd7a:115c:a1e0::1/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::2/128", Ports: tailcfg.PortRangeAny},
-						{IP: "fd7a:115c:a1e0::100/128", Ports: tailcfg.PortRangeAny},
-						// End
 						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
@@ -824,8 +812,7 @@ func TestReduceFilterRules(t *testing.T) {
 
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.pol)) {
-			version := idx + 1
-			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
 				pm, err = pmf(users, append(tt.peers, tt.node))
@@ -1644,10 +1631,6 @@ func TestSSHPolicyRules(t *testing.T) {
 		wantSSH      *tailcfg.SSHPolicy
 		expectErr    bool
 		errorMessage string
-
-		// There are some tests that will not pass on V1 since we do not
-		// have the same kind of error handling as V2, so we skip them.
-		skipV1 bool
 	}{
 		{
 			name:       "group-to-user",
@@ -1681,10 +1664,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "group-to-tag",
@@ -1722,10 +1701,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "tag-to-user",
@@ -1826,10 +1801,6 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 				},
 			}},
-
-			// It looks like the group implementation in v1 is broken, so
-			// we skip this test for v1 and not let it hold up v2 replacing it.
-			skipV1: true,
 		},
 		{
 			name:       "check-period-specified",
@@ -1901,7 +1872,6 @@ func TestSSHPolicyRules(t *testing.T) {
 			}`,
 			expectErr:    true,
 			errorMessage: `SSH action "invalid" is not valid, must be accept or check`,
-			skipV1:       true,
 		},
 		{
 			name:       "invalid-check-period",
@@ -1920,7 +1890,6 @@ func TestSSHPolicyRules(t *testing.T) {
 			}`,
 			expectErr:    true,
 			errorMessage: "not a valid duration string",
-			skipV1:       true,
 		},
 		{
 			name:       "multiple-ssh-users-with-autogroup",
@@ -1972,18 +1941,12 @@ func TestSSHPolicyRules(t *testing.T) {
     }`,
 			expectErr:    true,
 			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
-			skipV1:       true,
 		},
 	}
 
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
-			version := idx + 1
-			t.Run(fmt.Sprintf("%s-v%d", tt.name, version), func(t *testing.T) {
-				if version == 1 && tt.skipV1 {
-					t.Skip()
-				}
-
+			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
 				pm, err = pmf(users, append(tt.peers, &tt.targetNode))

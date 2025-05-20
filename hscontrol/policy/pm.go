@@ -5,15 +5,9 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
-)
-
-var (
-	polv1 = envknob.Bool("HEADSCALE_POLICY_V1")
 )
 
 type PolicyManager interface {
@@ -33,21 +27,13 @@ type PolicyManager interface {
 	DebugString() string
 }
 
-// NewPolicyManager returns a new policy manager, the version is determined by
-// the environment flag "HEADSCALE_POLICY_V1".
+// NewPolicyManager returns a new policy manager.
 func NewPolicyManager(pol []byte, users []types.User, nodes types.Nodes) (PolicyManager, error) {
 	var polMan PolicyManager
 	var err error
-	if polv1 {
-		polMan, err = policyv1.NewPolicyManager(pol, users, nodes)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
-		if err != nil {
-			return nil, err
-		}
+	polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
+	if err != nil {
+		return nil, err
 	}
 
 	return polMan, err
@@ -73,9 +59,6 @@ func PolicyManagersForTest(pol []byte, users []types.User, nodes types.Nodes) ([
 func PolicyManagerFuncsForTest(pol []byte) []func([]types.User, types.Nodes) (PolicyManager, error) {
 	var polmanFuncs []func([]types.User, types.Nodes) (PolicyManager, error)
 
-	polmanFuncs = append(polmanFuncs, func(u []types.User, n types.Nodes) (PolicyManager, error) {
-		return policyv1.NewPolicyManager(pol, u, n)
-	})
 	polmanFuncs = append(polmanFuncs, func(u []types.User, n types.Nodes) (PolicyManager, error) {
 		return policyv2.NewPolicyManager(pol, u, n)
 	})
