@@ -15,6 +15,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 func TestTailNode(t *testing.T) {
@@ -73,6 +74,7 @@ func TestTailNode(t *testing.T) {
 				Tags:              []string{},
 				MachineAuthorized: true,
 
+				Online: ptr.To(false),
 				CapMap: tailcfg.NodeCapMap{
 					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
 					tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
@@ -158,6 +160,7 @@ func TestTailNode(t *testing.T) {
 
 				Tags: []string{},
 
+				Online:            ptr.To(false),
 				LastSeen:          &lastSeen,
 				MachineAuthorized: true,
 
@@ -186,6 +189,7 @@ func TestTailNode(t *testing.T) {
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
 				Tags:              []string{},
 				MachineAuthorized: true,
+				Online:            ptr.To(false),
 
 				CapMap: tailcfg.NodeCapMap{
 					tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},

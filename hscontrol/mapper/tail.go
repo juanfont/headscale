@@ -9,6 +9,7 @@ import (
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 func tailNodes(
@@ -107,7 +108,7 @@ func tailNode(
 		Hostinfo:         node.Hostinfo.View(),
 		Created:          node.CreatedAt.UTC(),
 
-		Online: node.IsOnline,
+		Online: ptr.To(node.IsOnline),
 
 		Tags: tags,
 
@@ -125,7 +126,10 @@ func tailNode(
 		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 	}
 
-	if node.IsOnline == nil || !*node.IsOnline {
+	if node.IsOnline {
+		// If the node is online, return the current time.
+		tNode.LastSeen = ptr.To(time.Now())
+	} else {
 		// LastSeen is only set when node is
 		// not connected to the control server.
 		tNode.LastSeen = node.LastSeen
