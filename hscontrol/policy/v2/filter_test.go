@@ -359,7 +359,8 @@ func TestParsing(t *testing.T) {
 					},
 					&types.Node{
 						IPv4:     ap("200.200.200.200"),
-						User:     users[0],
+						User:     &users[0],
+						UserID:   &users[0].ID,
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
 				})

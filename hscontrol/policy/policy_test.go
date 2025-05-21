@@ -17,6 +17,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 	"tailscale.com/util/must"
 )
 
@@ -142,15 +143,17 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.1"),
-				IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: users[0],
+				IPv4:   ap("100.64.0.1"),
+				IPv6:   ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
+				User:   &users[0],
+				UserID: &users[0].ID,
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: users[0],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
+					User:   &users[0],
+					UserID: &users[0].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -189,9 +192,10 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.1"),
-				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: users[1],
+				IPv4:   ap("100.64.0.1"),
+				IPv6:   ap("fd7a:115c:a1e0::1"),
+				User:   &users[1],
+				UserID: &users[1].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
@@ -200,9 +204,10 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[1],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -279,21 +284,24 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.1"),
-				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: users[1],
+				IPv4:   ap("100.64.0.1"),
+				IPv6:   ap("fd7a:115c:a1e0::1"),
+				User:   &users[1],
+				UserID: &users[1].ID,
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[2],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[2],
+					UserID: &users[2].ID,
 				},
 				// "internal" exit node
 				&types.Node{
-					IPv4: ap("100.64.0.100"),
-					IPv6: ap("fd7a:115c:a1e0::100"),
-					User: users[3],
+					IPv4:   ap("100.64.0.100"),
+					IPv6:   ap("fd7a:115c:a1e0::100"),
+					User:   &users[3],
+					UserID: &users[3].ID,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -340,23 +348,26 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.100"),
-				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: users[3],
+				IPv4:   ap("100.64.0.100"),
+				IPv6:   ap("fd7a:115c:a1e0::100"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[2],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[2],
+					UserID: &users[2].ID,
 				},
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -447,23 +458,26 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.100"),
-				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: users[3],
+				IPv4:   ap("100.64.0.100"),
+				IPv6:   ap("fd7a:115c:a1e0::100"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[2],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[2],
+					UserID: &users[2].ID,
 				},
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -557,23 +571,26 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.100"),
-				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: users[3],
+				IPv4:   ap("100.64.0.100"),
+				IPv6:   ap("fd7a:115c:a1e0::100"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[2],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[2],
+					UserID: &users[2].ID,
 				},
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -645,23 +662,26 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.100"),
-				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: users[3],
+				IPv4:   ap("100.64.0.100"),
+				IPv6:   ap("fd7a:115c:a1e0::100"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.2"),
-					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: users[2],
+					IPv4:   ap("100.64.0.2"),
+					IPv6:   ap("fd7a:115c:a1e0::2"),
+					User:   &users[2],
+					UserID: &users[2].ID,
 				},
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -725,19 +745,21 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.100"),
-				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: users[3],
+				IPv4:   ap("100.64.0.100"),
+				IPv6:   ap("fd7a:115c:a1e0::100"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
-				ForcedTags: []string{"tag:access-servers"},
+				Tags: []string{"tag:access-servers"},
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -791,15 +813,17 @@ func TestReduceFilterRules(t *testing.T) {
 }
 `,
 			node: &types.Node{
-				IPv4: ap("100.64.0.2"),
-				IPv6: ap("fd7a:115c:a1e0::2"),
-				User: users[3],
+				IPv4:   ap("100.64.0.2"),
+				IPv6:   ap("fd7a:115c:a1e0::2"),
+				User:   &users[3],
+				UserID: &users[3].ID,
 			},
 			peers: types.Nodes{
 				&types.Node{
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: users[1],
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &users[1],
+					UserID: &users[1].ID,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
 					},
@@ -846,19 +870,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -870,21 +897,24 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 				&types.Node{
-					ID:   3,
-					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					ID:     3,
+					IPv4:   ap("100.64.0.3"),
+					User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+					UserID: ptr.To(uint(3)),
 				},
 			},
 		},
@@ -893,19 +923,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -917,16 +950,18 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 			},
 		},
@@ -935,19 +970,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -959,16 +997,18 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   3,
-					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					ID:     3,
+					IPv4:   ap("100.64.0.3"),
+					User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+					UserID: ptr.To(uint(3)),
 				},
 			},
 		},
@@ -977,19 +1017,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -1001,16 +1044,18 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					UserID: ptr.To(uint(2)),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
 				},
 			},
 		},
@@ -1019,19 +1064,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -1043,21 +1091,24 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 				&types.Node{
-					ID:   3,
-					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					ID:     3,
+					IPv4:   ap("100.64.0.3"),
+					User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+					UserID: ptr.To(uint(3)),
 				},
 			},
 		},
@@ -1066,19 +1117,22 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -1090,21 +1144,24 @@ func TestReduceNodes(t *testing.T) {
 					},
 				},
 				node: &types.Node{ // current nodes
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 				&types.Node{
-					ID:   3,
-					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					ID:     3,
+					IPv4:   ap("100.64.0.3"),
+					User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+					UserID: ptr.To(uint(3)),
 				},
 			},
 		},
@@ -1113,27 +1170,31 @@ func TestReduceNodes(t *testing.T) {
 			args: args{
 				nodes: types.Nodes{ // list of all nodes in the database
 					&types.Node{
-						ID:   1,
-						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						ID:     1,
+						IPv4:   ap("100.64.0.1"),
+						User:   &types.User{Name: "joe", Model: gorm.Model{ID: 1}},
+						UserID: ptr.To(uint(1)),
 					},
 					&types.Node{
-						ID:   2,
-						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						ID:     2,
+						IPv4:   ap("100.64.0.2"),
+						User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+						UserID: ptr.To(uint(2)),
 					},
 					&types.Node{
-						ID:   3,
-						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						ID:     3,
+						IPv4:   ap("100.64.0.3"),
+						User:   &types.User{Name: "mickael", Model: gorm.Model{ID: 3}},
+						UserID: ptr.To(uint(3)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
 				},
 				node: &types.Node{ // current nodes
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "marc", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 			},
 			want: nil,
@@ -1151,28 +1212,32 @@ func TestReduceNodes(t *testing.T) {
 						Hostname: "ts-head-upcrmb",
 						IPv4:     ap("100.64.0.3"),
 						IPv6:     ap("fd7a:115c:a1e0::3"),
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					&types.Node{
 						ID:       2,
 						Hostname: "ts-unstable-rlwpvr",
 						IPv4:     ap("100.64.0.4"),
 						IPv6:     ap("fd7a:115c:a1e0::4"),
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					&types.Node{
 						ID:       3,
 						Hostname: "ts-head-8w6paa",
 						IPv4:     ap("100.64.0.1"),
 						IPv6:     ap("fd7a:115c:a1e0::1"),
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 					&types.Node{
 						ID:       4,
 						Hostname: "ts-unstable-lys2ib",
 						IPv4:     ap("100.64.0.2"),
 						IPv6:     ap("fd7a:115c:a1e0::2"),
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -1194,7 +1259,8 @@ func TestReduceNodes(t *testing.T) {
 					Hostname: "ts-head-8w6paa",
 					IPv4:     ap("100.64.0.1"),
 					IPv6:     ap("fd7a:115c:a1e0::1"),
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 			want: types.Nodes{
@@ -1203,14 +1269,16 @@ func TestReduceNodes(t *testing.T) {
 					Hostname: "ts-head-upcrmb",
 					IPv4:     ap("100.64.0.3"),
 					IPv6:     ap("fd7a:115c:a1e0::3"),
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 				&types.Node{
 					ID:       2,
 					Hostname: "ts-unstable-rlwpvr",
 					IPv4:     ap("100.64.0.4"),
 					IPv6:     ap("fd7a:115c:a1e0::4"),
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 			},
 		},
@@ -1222,13 +1290,15 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "peer1",
-						User:     types.User{Name: "mini"},
+						User:     &types.User{Name: "mini", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.3"),
 						Hostname: "peer2",
-						User:     types.User{Name: "peer2"},
+						User:     &types.User{Name: "peer2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -1244,7 +1314,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "mini",
-					User:     types.User{Name: "mini"},
+					User:     &types.User{Name: "mini", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 			},
 			want: []*types.Node{
@@ -1252,7 +1323,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
 					Hostname: "peer2",
-					User:     types.User{Name: "peer2"},
+					User:     &types.User{Name: "peer2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 		},
@@ -1264,19 +1336,22 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "user1-2",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					{
 						ID:       0,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "user1-1",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					{
 						ID:       3,
 						IPv4:     ap("100.64.0.4"),
 						Hostname: "user2-2",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -1313,7 +1388,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
 					Hostname: "user-2-1",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 			want: []*types.Node{
@@ -1321,19 +1397,22 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "user1-2",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 				{
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1-1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 				{
 					ID:       3,
 					IPv4:     ap("100.64.0.4"),
 					Hostname: "user2-2",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 		},
@@ -1345,19 +1424,22 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "user1-2",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.3"),
 						Hostname: "user-2-1",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 					{
 						ID:       3,
 						IPv4:     ap("100.64.0.4"),
 						Hostname: "user2-2",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -1394,7 +1476,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1-1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 			},
 			want: []*types.Node{
@@ -1402,19 +1485,22 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "user1-2",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 				{
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
-					Hostname: "user-2-1",
-					User:     types.User{Name: "user2"},
+					Hostname: "user-2-1", 
+					User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 				{
 					ID:       3,
 					IPv4:     ap("100.64.0.4"),
 					Hostname: "user2-2",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 		},
@@ -1426,13 +1512,15 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "user1",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 						},
@@ -1453,7 +1541,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 				},
 			},
 			want: []*types.Node{
@@ -1461,7 +1550,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
@@ -1477,7 +1567,8 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 						},
@@ -1487,7 +1578,8 @@ func TestReduceNodes(t *testing.T) {
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "node",
-						User:     types.User{Name: "node"},
+						User:     &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -1504,7 +1596,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 					},
@@ -1516,7 +1609,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "node",
-					User:     types.User{Name: "node"},
+					User:     &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 		},
@@ -1528,7 +1622,8 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router", Model: gorm.Model{ID: 1}},
+						UserID:   ptr.To(uint(1)),
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 						},
@@ -1538,7 +1633,8 @@ func TestReduceNodes(t *testing.T) {
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "node",
-						User:     types.User{Name: "node"},
+						User:     &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+						UserID:   ptr.To(uint(2)),
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -1555,7 +1651,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "node",
-					User:     types.User{Name: "node"},
+					User:     &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+					UserID:   ptr.To(uint(2)),
 				},
 			},
 			want: []*types.Node{
@@ -1563,7 +1660,8 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router", Model: gorm.Model{ID: 1}},
+					UserID:   ptr.To(uint(1)),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 					},
@@ -1599,28 +1697,28 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   1,
-		User:     users[0],
+		User:     &users[0],
+		UserID:   ptr.To(users[0].ID),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   2,
-		User:     users[1],
+		User:     &users[1],
+		UserID:   ptr.To(users[1].ID),
 	}
 	taggedServer := types.Node{
-		Hostname:   "tagged-server",
-		IPv4:       ap("100.64.0.3"),
-		UserID:     3,
-		User:       users[2],
-		ForcedTags: []string{"tag:server"},
+		Hostname: "tagged-server",
+		IPv4:     ap("100.64.0.3"),
+		User:     &users[2],
+		UserID:   ptr.To(users[2].ID),
+		Tags:     []string{"tag:server"},
 	}
 	taggedClient := types.Node{
-		Hostname:   "tagged-client",
-		IPv4:       ap("100.64.0.4"),
-		UserID:     2,
-		User:       users[1],
-		ForcedTags: []string{"tag:client"},
+		Hostname: "tagged-client",
+		IPv4:     ap("100.64.0.4"),
+		User:     &users[1],
+		UserID:   ptr.To(users[1].ID),
+		Tags:     []string{"tag:client"},
 	}
 
 	tests := []struct {
@@ -1984,9 +2082,10 @@ func TestReduceRoutes(t *testing.T) {
 			name: "node-can-access-all-routes",
 			args: args{
 				node: &types.Node{
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					User:   &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2014,7 +2113,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2040,7 +2139,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2068,7 +2167,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2095,7 +2194,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2117,10 +2216,11 @@ func TestReduceRoutes(t *testing.T) {
 			name: "node-with-both-ipv4-and-ipv6",
 			args: args{
 				node: &types.Node{
-					ID:   1,
-					IPv4: ap("100.64.0.1"),
-					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"),
+					IPv6:   ap("fd7a:115c:a1e0::1"),
+					User:   &types.User{Name: "user1", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -2151,9 +2251,10 @@ func TestReduceRoutes(t *testing.T) {
 			name: "router-with-multiple-routes-and-node-with-specific-access",
 			args: args{
 				node: &types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"), // Node IP
-					User: types.User{Name: "node"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"), // Node IP
+					User:   &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2183,9 +2284,10 @@ func TestReduceRoutes(t *testing.T) {
 			name: "node-with-access-to-one-subnet-and-partial-overlap",
 			args: args{
 				node: &types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"),
+					User:   &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2212,7 +2314,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2240,7 +2342,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2278,7 +2380,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // node with IP 100.64.0.2
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2311,9 +2413,10 @@ func TestReduceRoutes(t *testing.T) {
 			args: args{
 				// When testing from router node's perspective
 				node: &types.Node{
-					ID:   1,
-					IPv4: ap("100.64.0.1"), // router with IP 100.64.0.1
-					User: types.User{Name: "router"},
+					ID:     1,
+					IPv4:   ap("100.64.0.1"), // router with IP 100.64.0.1
+					User:   &types.User{Name: "router", Model: gorm.Model{ID: 1}},
+					UserID: ptr.To(uint(1)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2353,9 +2456,10 @@ func TestReduceRoutes(t *testing.T) {
 			name: "acl-specific-port-ranges-for-subnets",
 			args: args{
 				node: &types.Node{
-					ID:   2,
-					IPv4: ap("100.64.0.2"), // node
-					User: types.User{Name: "node"},
+					ID:     2,
+					IPv4:   ap("100.64.0.2"), // node
+					User:   &types.User{Name: "node", Model: gorm.Model{ID: 2}},
+					UserID: ptr.To(uint(2)),
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -2389,7 +2493,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // node
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),

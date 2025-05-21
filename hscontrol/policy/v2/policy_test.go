@@ -1,8 +1,9 @@
 package v2
 
 import (
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"testing"
+
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -17,8 +18,8 @@ func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) 
 		Hostname: name,
 		IPv4:     ap(ipv4),
 		IPv6:     ap(ipv6),
-		User:     user,
-		UserID:   user.ID,
+		User:     &user,
+		UserID:   &user.ID,
 		Hostinfo: hostinfo,
 	}
 }

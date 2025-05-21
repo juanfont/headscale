@@ -189,7 +189,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 	}
 
 	for _, node := range nodes {
-		if node.IsTagged() {
+		if !node.IsUserOwned() {
 			continue
 		}
 
@@ -515,7 +515,7 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 
 		for _, node := range nodes {
 			// Skip if node has forced tags
-			if len(node.ForcedTags) != 0 {
+			if len(node.Tags) != 0 {
 				continue
 			}
 
@@ -548,7 +548,7 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 
 		for _, node := range nodes {
 			// Include if node has forced tags
-			if len(node.ForcedTags) != 0 {
+			if len(node.Tags) != 0 {
 				node.AppendToIPSet(&build)
 				continue
 			}
