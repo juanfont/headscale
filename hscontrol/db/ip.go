@@ -17,6 +17,8 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
+var errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
+
 // IPAllocator is a singleton responsible for allocating
 // IP addresses for nodes and making sure the same
 // address is not handed out twice. There can only be one
@@ -236,7 +238,7 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 
 	ip, ok := netip.AddrFromSlice(valInRange.Bytes())
 	if !ok {
-		return netip.Addr{}, fmt.Errorf("generated ip bytes are invalid ip")
+		return netip.Addr{}, errGeneratedIPBytesInvalid
 	}
 
 	if !pfx.Contains(ip) {

@@ -64,7 +64,7 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types
 }
 
 // ListNodes queries the database for either all nodes if no parameters are given
-// or for the given nodes if at least one node ID is given as parameter
+// or for the given nodes if at least one node ID is given as parameter.
 func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		return ListNodes(rx, nodeIDs...)
@@ -72,7 +72,7 @@ func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) 
 }
 
 // ListNodes queries the database for either all nodes if no parameters are given
-// or for the given nodes if at least one node ID is given as parameter
+// or for the given nodes if at least one node ID is given as parameter.
 func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
 	if err := tx.
@@ -406,6 +406,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				close(reg.Registered)
 
 				newNode = true
+
 				return node, err
 			} else {
 				// If the node is already registered, this is a refresh.
@@ -413,6 +414,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				if err != nil {
 					return nil, err
 				}
+
 				return node, nil
 			}
 		}
