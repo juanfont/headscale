@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -26,6 +28,9 @@ import (
 	"tailscale.com/util/set"
 	"zgo.at/zcache/v2"
 )
+
+//go:embed schema.sql
+var dbSchema string
 
 func init() {
 	schema.RegisterSerializer("text", TextSerialiser{})
@@ -723,6 +728,30 @@ AND auth_key_id NOT IN (
 
 	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
+	}
+
+	// Validate that the schema ends up in the expected state.
+	// This is currently only done on sqlite as squibble does not
+	// support Postgres and we use our sqlite schema as our source of
+	// truth.
+	if cfg.Type == types.DatabaseSqlite {
+		sqlConn, err := dbConn.DB()
+		if err != nil {
+			return nil, fmt.Errorf("getting DB from gorm: %w", err)
+		}
+
+		// or else it blocks...
+		sqlConn.SetMaxIdleConns(100)
+		sqlConn.SetMaxOpenConns(100)
+		defer sqlConn.SetMaxIdleConns(1)
+		defer sqlConn.SetMaxOpenConns(1)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := squibble.Validate(ctx, sqlConn, dbSchema); err != nil {
+			return nil, fmt.Errorf("validating schema: %w", err)
+		}
 	}
 
 	db := HSDatabase{
