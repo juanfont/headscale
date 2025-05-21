@@ -5,14 +5,11 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
 func TestParsing(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "testuser"},
-	}
+	tu := GetTestUsers()
 	tests := []struct {
 		name    string
 		format  string
@@ -352,18 +349,19 @@ func TestParsing(t *testing.T) {
 			}
 
 			rules, err := pol.compileFilterRules(
-				users,
+				tu.FilteredSlice("testuser"),
 				types.Nodes{
 					&types.Node{
 						IPv4: ap("100.100.100.100"),
 					},
 					&types.Node{
 						IPv4:     ap("200.200.200.200"),
-						User:     &users[0],
-						UserID:   &users[0].ID,
+						User:     tu.UserPtr("testuser"),
+						UserID:   tu.IDPtr("testuser"),
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
-				})
+				},
+			)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)

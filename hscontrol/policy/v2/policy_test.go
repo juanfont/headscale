@@ -8,7 +8,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
@@ -25,10 +24,7 @@ func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) 
 }
 
 func TestPolicyManager(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "testuser", Email: "testuser@headscale.net"},
-		{Model: gorm.Model{ID: 2}, Name: "otheruser", Email: "otheruser@headscale.net"},
-	}
+	tu := GetTestUsers()
 
 	tests := []struct {
 		name         string
@@ -48,7 +44,7 @@ func TestPolicyManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes)
+			pm, err := NewPolicyManager([]byte(tt.pol), tu.FilteredSlice("testuser", "otheruser"), tt.nodes)
 			require.NoError(t, err)
 
 			filter, matchers := pm.Filter()
