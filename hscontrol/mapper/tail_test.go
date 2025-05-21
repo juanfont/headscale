@@ -15,6 +15,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 func TestTailNode(t *testing.T) {
@@ -70,7 +71,6 @@ func TestTailNode(t *testing.T) {
 				HomeDERP:          0,
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				Tags:              []string{},
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
@@ -97,14 +97,13 @@ func TestTailNode(t *testing.T) {
 				IPv4:      iap("100.64.0.1"),
 				Hostname:  "mini",
 				GivenName: "mini",
-				UserID:    0,
-				User: types.User{
+				UserID:    ptr.To(uint(0)),
+				User: &types.User{
 					Name: "mini",
 				},
-				ForcedTags: []string{},
-				AuthKey:    &types.PreAuthKey{},
-				LastSeen:   &lastSeen,
-				Expiry:     &expire,
+				AuthKey:  &types.PreAuthKey{},
+				LastSeen: &lastSeen,
+				Expiry:   &expire,
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						tsaddr.AllIPv4(),
@@ -156,8 +155,6 @@ func TestTailNode(t *testing.T) {
 				}),
 				Created: created,
 
-				Tags: []string{},
-
 				LastSeen:          &lastSeen,
 				MachineAuthorized: true,
 
@@ -184,7 +181,6 @@ func TestTailNode(t *testing.T) {
 				HomeDERP:          0,
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				Tags:              []string{},
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{

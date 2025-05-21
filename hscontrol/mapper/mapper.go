@@ -104,11 +104,16 @@ func generateUserProfiles(
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.User)
 	ids := make([]uint, 0, len(userMap))
-	userMap[node.User.ID] = &node.User
-	ids = append(ids, node.User.ID)
-	for _, peer := range peers {
-		userMap[peer.User.ID] = &peer.User
-		ids = append(ids, peer.User.ID)
+	var tagged bool
+	if node.IsUserOwned() {
+		userMap[node.User.ID] = node.User
+		ids = append(ids, node.User.ID)
+		for _, peer := range peers {
+			userMap[peer.User.ID] = peer.User
+			ids = append(ids, peer.User.ID)
+		}
+	} else {
+		tagged = true
 	}
 
 	slices.Sort(ids)
@@ -118,6 +123,10 @@ func generateUserProfiles(
 		if userMap[id] != nil {
 			profiles = append(profiles, userMap[id].TailscaleUserProfile())
 		}
+	}
+
+	if tagged {
+		profiles = append(profiles, types.TaggedDevices.TailscaleUserProfile())
 	}
 
 	return profiles

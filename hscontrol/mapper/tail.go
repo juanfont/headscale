@@ -6,7 +6,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
@@ -72,14 +71,6 @@ func tailNode(
 		return nil, fmt.Errorf("tailNode, failed to create FQDN: %s", err)
 	}
 
-	var tags []string
-	for _, tag := range node.RequestTags() {
-		if polMan.NodeCanHaveTag(node, tag) {
-			tags = append(tags, tag)
-		}
-	}
-	tags = lo.Uniq(append(tags, node.ForcedTags...))
-
 	routes := primaryRouteFunc(node.ID)
 	allowed := append(node.Prefixes(), routes...)
 	allowed = append(allowed, node.ExitRoutes()...)
@@ -90,8 +81,6 @@ func tailNode(
 		StableID: node.ID.StableID(),
 		Name:     hostname,
 		Cap:      capVer,
-
-		User: tailcfg.UserID(node.UserID),
 
 		Key:       node.NodeKey,
 		KeyExpiry: keyExpiry.UTC(),
@@ -109,10 +98,18 @@ func tailNode(
 
 		Online: node.IsOnline,
 
-		Tags: tags,
+		Tags: node.Tags,
 
 		MachineAuthorized: !node.IsExpired(),
 		Expired:           node.IsExpired(),
+	}
+
+	if node.IsUserOwned() {
+		tNode.User = tailcfg.UserID(*node.UserID)
+	}
+
+	if node.IsTagged() {
+		tNode.User = tailcfg.UserID(types.TaggedDevices.ID)
 	}
 
 	tNode.CapMap = tailcfg.NodeCapMap{

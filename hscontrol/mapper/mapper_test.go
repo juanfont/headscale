@@ -53,8 +53,8 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			mach := func(hostname, username string, userid uint) *types.Node {
 				return &types.Node{
 					Hostname: hostname,
-					UserID:   userid,
-					User: types.User{
+					UserID:   &userid,
+					User: &types.User{
 						Name: username,
 					},
 				}
@@ -128,15 +128,15 @@ func Test_fullMapResponse(t *testing.T) {
 		DiscoKey: mustDK(
 			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		),
-		IPv4:       iap("100.64.0.1"),
-		Hostname:   "mini",
-		GivenName:  "mini",
-		UserID:     user1.ID,
-		User:       user1,
-		ForcedTags: []string{},
-		AuthKey:    &types.PreAuthKey{},
-		LastSeen:   &lastSeen,
-		Expiry:     &expire,
+		IPv4:      iap("100.64.0.1"),
+		Hostname:  "mini",
+		GivenName: "mini",
+		UserID:    &user1.ID,
+		User:      &user1,
+		Tags:      []string{},
+		AuthKey:   &types.PreAuthKey{},
+		LastSeen:  &lastSeen,
+		Expiry:    &expire,
 		Hostinfo: &tailcfg.Hostinfo{
 			RoutableIPs: []netip.Prefix{
 				tsaddr.AllIPv4(),
@@ -205,16 +205,16 @@ func Test_fullMapResponse(t *testing.T) {
 		DiscoKey: mustDK(
 			"discokey:cf7b0fd05da556fdc3bab365787b506fd82d64a70745db70e00e86c1b1c03084",
 		),
-		IPv4:       iap("100.64.0.2"),
-		Hostname:   "peer1",
-		GivenName:  "peer1",
-		UserID:     user2.ID,
-		User:       user2,
-		ForcedTags: []string{},
-		LastSeen:   &lastSeen,
-		Expiry:     &expire,
-		Hostinfo:   &tailcfg.Hostinfo{},
-		CreatedAt:  created,
+		IPv4:      iap("100.64.0.2"),
+		Hostname:  "peer1",
+		GivenName: "peer1",
+		UserID:    &user2.ID,
+		User:      &user2,
+		Tags:      []string{},
+		LastSeen:  &lastSeen,
+		Expiry:    &expire,
+		Hostinfo:  &tailcfg.Hostinfo{},
+		CreatedAt: created,
 	}
 
 	tailPeer1 := &tailcfg.Node{

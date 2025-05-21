@@ -567,7 +567,9 @@ func (nodes Nodes) DebugString() string {
 func (node Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
-	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	if node.IsUserOwned() {
+		fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	}
 	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags)
 	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
