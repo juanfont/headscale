@@ -70,13 +70,14 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 			} else {
 				dstField.Set(fieldValue.Elem())
 			}
+
 			return nil
 		} else {
 			return fmt.Errorf("unsupported type: %T", fieldValue.Interface())
 		}
 	}
 
-	return
+	return err
 }
 
 func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflect.Value, fieldValue interface{}) (interface{}, error) {
@@ -92,6 +93,7 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 		if err != nil {
 			return nil, err
 		}
+
 		return string(b), nil
 	default:
 		return nil, fmt.Errorf("only encoding.TextMarshaler is supported, got %t", v)
