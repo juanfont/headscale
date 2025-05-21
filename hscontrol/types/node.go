@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -51,6 +50,7 @@ func (id NodeID) String() string {
 }
 
 // Node is a Headscale client.
+// A node is "owned" by either a user or a tag.
 type Node struct {
 	ID NodeID `gorm:"primary_key"`
 
@@ -76,21 +76,22 @@ type Node struct {
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
-	UserID    uint
-	User      User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
 
-	// ForcedTags are tags set by CLI/API. It is not considered
-	// the source of truth, but is one of the sources from
-	// which a tag might originate.
-	// ForcedTags are _always_ applied to the node.
-	ForcedTags []string `gorm:"column:forced_tags;serializer:json"`
+	// UserID defines the user that owns the node.
+	// It is a foreign key to the User table.
+	// It is not set if the node is not owned by a user and is consider a tagged node.
+	UserID *uint `sql:"DEFAULT:NULL"`
+	User   *User
 
-	// When a node has been created with a PreAuthKey, we need to
-	// prevent the preauthkey from being deleted before the node.
-	// The preauthkey can define "tags" of the node so we need it
-	// around.
+	// Tags is a list of tags associated with the node.
+	// If not non-empty, the node is tagged.
+	// For historic reason, if the node is owned by a user and the tags
+	// are defined, then the node is considered a tagged node and the
+	// user is ignored.
+	Tags []string `gorm:"column:tags;serializer:json"`
+
 	AuthKeyID *uint64 `sql:"DEFAULT:NULL"`
 	AuthKey   *PreAuthKey
 
@@ -162,27 +163,39 @@ func (node *Node) HasIP(i netip.Addr) bool {
 	return false
 }
 
+// IsUserOwned reports if a node is owned by a user.
+func (node *Node) IsUserOwned() bool {
+	// For historic reason, if the node is owned by a user and the tags
+	// are defined, then the node is considered a tagged node and the
+	// user is ignored.
+	if node.IsTagged() {
+		return false
+	}
+
+	if node.UserID == nil {
+		return false
+	}
+
+	if node.User == nil {
+		return false
+	}
+
+	return true
+}
+
 // IsTagged reports if a device is tagged
 // and therefore should not be treated as a
 // user owned device.
 // Currently, this function only handles tags set
 // via CLI ("forced tags" and preauthkeys)
 func (node *Node) IsTagged() bool {
-	if len(node.ForcedTags) > 0 {
-		return true
-	}
-
-	if node.AuthKey != nil && len(node.AuthKey.Tags) > 0 {
-		return true
-	}
-
-	if node.Hostinfo == nil {
+	if node.Tags == nil {
 		return false
 	}
 
-	// TODO(kradalby): Figure out how tagging should work
-	// and hostinfo.requestedtags.
-	// Do this in other work.
+	if len(node.Tags) > 0 {
+		return true
+	}
 
 	return false
 }
@@ -191,31 +204,12 @@ func (node *Node) IsTagged() bool {
 // Currently, this function only handles tags set
 // via CLI ("forced tags" and preauthkeys)
 func (node *Node) HasTag(tag string) bool {
-	return slices.Contains(node.Tags(), tag)
-}
-
-func (node *Node) Tags() []string {
-	var tags []string
-
-	if node.AuthKey != nil {
-		tags = append(tags, node.AuthKey.Tags...)
-	}
-
-	// TODO(kradalby): Figure out how tagging should work
-	// and hostinfo.requestedtags.
-	// Do this in other work.
-	// #2417
-
-	tags = append(tags, node.ForcedTags...)
-	sort.Strings(tags)
-	tags = slices.Compact(tags)
-
-	return tags
+	return slices.Contains(node.Tags, tag)
 }
 
 func (node *Node) RequestTags() []string {
 	if node.Hostinfo == nil {
-		return []string{}
+		return nil
 	}
 
 	return node.Hostinfo.RequestTags
@@ -341,7 +335,7 @@ func (node *Node) Proto() *v1.Node {
 		Name:        node.Hostname,
 		GivenName:   node.GivenName,
 		User:        node.User.Proto(),
-		ForcedTags:  node.ForcedTags,
+		ForcedTags:  node.Tags,
 
 		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has
 		// to be populated manually with PrimaryRoute, to ensure it includes the
@@ -574,7 +568,7 @@ func (node Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
 	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
-	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
+	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags)
 	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
 	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
