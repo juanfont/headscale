@@ -205,10 +205,14 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 type Group string
 
 func (g Group) Validate() error {
-	if isGroup(string(g)) {
-		return nil
+	if !isGroup(string(g)) {
+		return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
 	}
-	return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
+	
+	// Group name is everything after "group:"
+	groupName := string(g)[len("group:"):]
+	
+	return validateNameFormat(groupName, "Group", g)
 }
 
 func (g *Group) UnmarshalJSON(b []byte) error {
@@ -266,10 +270,14 @@ func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx
 type Tag string
 
 func (t Tag) Validate() error {
-	if isTag(string(t)) {
-		return nil
+	if !isTag(string(t)) {
+		return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
 	}
-	return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
+	
+	// Tag name is everything after "tag:"
+	tagName := string(t)[len("tag:"):]
+	
+	return validateNameFormat(tagName, "Tag", t)
 }
 
 func (t *Tag) UnmarshalJSON(b []byte) error {
@@ -652,6 +660,36 @@ func isGroup(str string) bool {
 
 func isTag(str string) bool {
 	return strings.HasPrefix(str, "tag:")
+}
+
+// validateNameFormat checks if a name follows the required format:
+// - Must start with an ASCII letter (a-z, A-Z)
+// - Can only contain ASCII letters, numbers, or dashes
+func validateNameFormat(name string, typeLabel string, original interface{}) error {
+	// Check if empty
+	if len(name) == 0 {
+		return fmt.Errorf(`%s names cannot be empty, got: %q`, typeLabel, original)
+	}
+	
+	// Check if first character is an ASCII letter
+	firstChar := name[0]
+	if !((firstChar >= 'a' && firstChar <= 'z') || (firstChar >= 'A' && firstChar <= 'Z')) {
+		return fmt.Errorf(`%s names must start with a letter, got: %q`, typeLabel, original)
+	}
+	
+	// Check if all characters are ASCII letters, numbers, or dashes
+	for i := 0; i < len(name); i++ {
+		char := name[i]
+		isAsciiLetter := (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z')
+		isDigit := char >= '0' && char <= '9'
+		isDash := char == '-'
+		
+		if !isAsciiLetter && !isDigit && !isDash {
+			return fmt.Errorf(`%s names can only contain ASCII letters, numbers, or dashes, got: %q`, typeLabel, original)
+		}
+	}
+	
+	return nil
 }
 
 func isAutoGroup(str string) bool {
@@ -1076,6 +1114,39 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 
 // TagOwners are a map of Tag to a list of the UserEntities that own the tag.
 type TagOwners map[Tag]Owners
+
+// UnmarshalJSON overrides the default JSON unmarshalling for TagOwners to ensure
+// that each tag name is validated using the isTag function and character validation rules.
+// This ensures that all tag names conform to the expected format and character rules.
+func (to *TagOwners) UnmarshalJSON(b []byte) error {
+	var rawTagOwners map[string][]string
+	if err := json.Unmarshal(b, &rawTagOwners); err != nil {
+		return err
+	}
+
+	*to = make(TagOwners)
+	for key, value := range rawTagOwners {
+		tag := Tag(key)
+		if err := tag.Validate(); err != nil {
+			return err
+		}
+
+		var owners Owners
+
+		for _, o := range value {
+			owner, err := parseOwner(o)
+			if err != nil {
+				return err
+			}
+
+			owners = append(owners, owner)
+		}
+
+		(*to)[tag] = owners
+	}
+
+	return nil
+}
 
 func (to TagOwners) Contains(tagOwner *Tag) error {
 	if tagOwner == nil {

@@ -390,6 +390,150 @@ func TestUnmarshalPolicy(t *testing.T) {
 			wantErr: `Nested groups are not allowed, found "group:inner" inside "group:example"`,
 		},
 		{
+			name: "invalid-group-name-special-chars",
+			input: `
+{
+	"groups": {
+		"group:example@invalid": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:example@invalid"`,
+		},
+		{
+			name: "invalid-group-name-starting-with-number",
+			input: `
+{
+	"groups": {
+		"group:123example": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:123example"`,
+		},
+		{
+			name: "invalid-group-name-scandinavian-characters",
+			input: `
+{
+	"groups": {
+		"group:æøå-example": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:æøå-example"`,
+		},
+		{
+			name: "invalid-group-name-cyrillic-characters",
+			input: `
+{
+	"groups": {
+		"group:группа": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:группа"`,
+		},
+		{
+			name: "invalid-group-name-emoji",
+			input: `
+{
+	"groups": {
+		"group:dev-😊": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:dev-😊"`,
+		},
+		{
+			name: "invalid-group-name-other-special-chars",
+			input: `
+{
+	"groups": {
+		"group:dev_team": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:dev_team"`,
+		},
+		{
+			name: "invalid-tag-name-special-chars",
+			input: `
+{
+	"tagOwners": {
+		"tag:test@invalid": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test@invalid"`,
+		},
+		{
+			name: "invalid-tag-name-starting-with-number",
+			input: `
+{
+	"tagOwners": {
+		"tag:123test": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:123test"`,
+		},
+		{
+			name: "invalid-tag-name-scandinavian-characters",
+			input: `
+{
+	"tagOwners": {
+		"tag:æøå-test": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:æøå-test"`,
+		},
+		{
+			name: "invalid-tag-name-cyrillic-characters",
+			input: `
+{
+	"tagOwners": {
+		"tag:тест": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:тест"`,
+		},
+		{
+			name: "invalid-tag-name-emoji",
+			input: `
+{
+	"tagOwners": {
+		"tag:test-😊": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test-😊"`,
+		},
+		{
+			name: "invalid-tag-name-other-special-chars",
+			input: `
+{
+	"tagOwners": {
+		"tag:test_underscore": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test_underscore"`,
+		},
+		{
 			name: "invalid-addr",
 			input: `
 {
