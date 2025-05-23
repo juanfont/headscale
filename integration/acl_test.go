@@ -7,50 +7,53 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	"github.com/google/go-cmp/cmp/cmpopts"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
-var veryLargeDestination = []string{
-	"0.0.0.0/5:*",
-	"8.0.0.0/7:*",
-	"11.0.0.0/8:*",
-	"12.0.0.0/6:*",
-	"16.0.0.0/4:*",
-	"32.0.0.0/3:*",
-	"64.0.0.0/2:*",
-	"128.0.0.0/3:*",
-	"160.0.0.0/5:*",
-	"168.0.0.0/6:*",
-	"172.0.0.0/12:*",
-	"172.32.0.0/11:*",
-	"172.64.0.0/10:*",
-	"172.128.0.0/9:*",
-	"173.0.0.0/8:*",
-	"174.0.0.0/7:*",
-	"176.0.0.0/4:*",
-	"192.0.0.0/9:*",
-	"192.128.0.0/11:*",
-	"192.160.0.0/13:*",
-	"192.169.0.0/16:*",
-	"192.170.0.0/15:*",
-	"192.172.0.0/14:*",
-	"192.176.0.0/12:*",
-	"192.192.0.0/10:*",
-	"193.0.0.0/8:*",
-	"194.0.0.0/7:*",
-	"196.0.0.0/6:*",
-	"200.0.0.0/5:*",
-	"208.0.0.0/4:*",
+var veryLargeDestination = []policyv2.AliasWithPorts{
+	aliasWithPorts(prefixp("0.0.0.0/5"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("8.0.0.0/7"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("11.0.0.0/8"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("12.0.0.0/6"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("16.0.0.0/4"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("32.0.0.0/3"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("64.0.0.0/2"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("128.0.0.0/3"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("160.0.0.0/5"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("168.0.0.0/6"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("172.0.0.0/12"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("172.32.0.0/11"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("172.64.0.0/10"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("172.128.0.0/9"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("173.0.0.0/8"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("174.0.0.0/7"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("176.0.0.0/4"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.0.0.0/9"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.128.0.0/11"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.160.0.0/13"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.169.0.0/16"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.170.0.0/15"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.172.0.0/14"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.176.0.0/12"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("192.192.0.0/10"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("193.0.0.0/8"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("194.0.0.0/7"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("196.0.0.0/6"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("200.0.0.0/5"), tailcfg.PortRangeAny),
+	aliasWithPorts(prefixp("208.0.0.0/4"), tailcfg.PortRangeAny),
 }
 
 func aclScenario(
 	t *testing.T,
-	policy *policyv1.ACLPolicy,
+	policy *policyv2.Policy,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
@@ -108,19 +111,21 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 	// they can access minus one (them self).
 	tests := map[string]struct {
 		users  ScenarioSpec
-		policy policyv1.ACLPolicy
+		policy policyv2.Policy
 		want   map[string]int
 	}{
 		// Test that when we have no ACL, each client netmap has
 		// the amount of peers of the total amount of clients
 		"base-acls": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			}, want: map[string]int{
@@ -133,17 +138,21 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// their own user.
 		"two-isolated-users": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: []string{"user1@:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user1@"), tailcfg.PortRangeAny),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user2@"},
-						Destinations: []string{"user2@:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			}, want: map[string]int{
@@ -156,27 +165,35 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// in the netmap.
 		"two-restricted-present-in-netmap": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: []string{"user1@:22"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user1@"), tailcfg.PortRange{First: 22, Last: 22}),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user2@"},
-						Destinations: []string{"user2@:22"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRange{First: 22, Last: 22}),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: []string{"user2@:22"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRange{First: 22, Last: 22}),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user2@"},
-						Destinations: []string{"user1@:22"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user1@"), tailcfg.PortRange{First: 22, Last: 22}),
+						},
 					},
 				},
 			}, want: map[string]int{
@@ -190,22 +207,28 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		// need them present on the other side for the "return path".
 		"two-ns-one-isolated": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: []string{"user1@:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user1@"), tailcfg.PortRangeAny),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user2@"},
-						Destinations: []string{"user2@:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: []string{"user2@:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			}, want: map[string]int{
@@ -215,22 +238,37 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		},
 		"very-large-destination-prefix-1372": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: append([]string{"user1@:*"}, veryLargeDestination...),
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: append(
+							[]policyv2.AliasWithPorts{
+								aliasWithPorts(usernamep("user1@"), tailcfg.PortRangeAny),
+							},
+							veryLargeDestination...,
+						),
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user2@"},
-						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: append(
+							[]policyv2.AliasWithPorts{
+								aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+							},
+							veryLargeDestination...,
+						),
 					},
 					{
-						Action:       "accept",
-						Sources:      []string{"user1@"},
-						Destinations: append([]string{"user2@:*"}, veryLargeDestination...),
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: append(
+							[]policyv2.AliasWithPorts{
+								aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+							},
+							veryLargeDestination...,
+						),
 					},
 				},
 			}, want: map[string]int{
@@ -240,12 +278,15 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 		},
 		"ipv6-acls-1470": {
 			users: spec,
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"0.0.0.0/0:*", "::/0:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(prefixp("0.0.0.0/0"), tailcfg.PortRangeAny),
+							aliasWithPorts(prefixp("::/0"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			}, want: map[string]int{
@@ -295,12 +336,14 @@ func TestACLAllowUser80Dst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policyv1.ACLPolicy{
-			ACLs: []policyv1.ACL{
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"user1@"},
-					Destinations: []string{"user2@:80"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{usernamep("user1@")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(usernamep("user2@"), tailcfg.PortRange{First: 80, Last: 80}),
+					},
 				},
 			},
 		},
@@ -349,15 +392,17 @@ func TestACLDenyAllPort80(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:integration-acl-test": {"user1@", "user2@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-acl-test"): []policyv2.Username{policyv2.Username("user1@"), policyv2.Username("user2@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"group:integration-acl-test"},
-					Destinations: []string{"*:22"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{groupp("group:integration-acl-test")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRange{First: 22, Last: 22}),
+					},
 				},
 			},
 		},
@@ -396,12 +441,14 @@ func TestACLAllowUserDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policyv1.ACLPolicy{
-			ACLs: []policyv1.ACL{
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"user1@"},
-					Destinations: []string{"user2@:*"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{usernamep("user1@")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+					},
 				},
 			},
 		},
@@ -452,12 +499,14 @@ func TestACLAllowStarDst(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policyv1.ACLPolicy{
-			ACLs: []policyv1.ACL{
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"user1@"},
-					Destinations: []string{"*:*"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{usernamep("user1@")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
 				},
 			},
 		},
@@ -509,16 +558,18 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 	IntegrationSkip(t)
 
 	scenario := aclScenario(t,
-		&policyv1.ACLPolicy{
-			Hosts: policyv1.Hosts{
-				"all": netip.MustParsePrefix("100.64.0.0/24"),
+		&policyv2.Policy{
+			Hosts: policyv2.Hosts{
+				"all": policyv2.Prefix(netip.MustParsePrefix("100.64.0.0/24")),
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				// Everyone can curl test3
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"all:*"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(hostp("all"), tailcfg.PortRangeAny),
+					},
 				},
 			},
 		},
@@ -606,50 +657,58 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policyv1.ACLPolicy
+		policy policyv2.Policy
 	}{
 		"ipv4": {
-			policy: policyv1.ACLPolicy{
-				Hosts: policyv1.Hosts{
-					"test1": netip.MustParsePrefix("100.64.0.1/32"),
-					"test2": netip.MustParsePrefix("100.64.0.2/32"),
-					"test3": netip.MustParsePrefix("100.64.0.3/32"),
+			policy: policyv2.Policy{
+				Hosts: policyv2.Hosts{
+					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
+					"test2": policyv2.Prefix(netip.MustParsePrefix("100.64.0.2/32")),
+					"test3": policyv2.Prefix(netip.MustParsePrefix("100.64.0.3/32")),
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					// Everyone can curl test3
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"test3:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test3"), tailcfg.PortRangeAny),
+						},
 					},
 					// test1 can curl test2
 					{
-						Action:       "accept",
-						Sources:      []string{"test1"},
-						Destinations: []string{"test2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{hostp("test1")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test2"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
 		},
 		"ipv6": {
-			policy: policyv1.ACLPolicy{
-				Hosts: policyv1.Hosts{
-					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-					"test3": netip.MustParsePrefix("fd7a:115c:a1e0::3/128"),
+			policy: policyv2.Policy{
+				Hosts: policyv2.Hosts{
+					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
+					"test2": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::2/128")),
+					"test3": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::3/128")),
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					// Everyone can curl test3
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"test3:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test3"), tailcfg.PortRangeAny),
+						},
 					},
 					// test1 can curl test2
 					{
-						Action:       "accept",
-						Sources:      []string{"test1"},
-						Destinations: []string{"test2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{hostp("test1")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test2"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
@@ -855,71 +914,81 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 	IntegrationSkip(t)
 
 	tests := map[string]struct {
-		policy policyv1.ACLPolicy
+		policy policyv2.Policy
 	}{
 		"ipv4": {
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"100.64.0.1"},
-						Destinations: []string{"100.64.0.2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{prefixp("100.64.0.1/32")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(prefixp("100.64.0.2/32"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
 		},
 		"ipv6": {
-			policy: policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			policy: policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"fd7a:115c:a1e0::1"},
-						Destinations: []string{"fd7a:115c:a1e0::2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{prefixp("fd7a:115c:a1e0::1/128")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(prefixp("fd7a:115c:a1e0::2/128"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
 		},
 		"hostv4cidr": {
-			policy: policyv1.ACLPolicy{
-				Hosts: policyv1.Hosts{
-					"test1": netip.MustParsePrefix("100.64.0.1/32"),
-					"test2": netip.MustParsePrefix("100.64.0.2/32"),
+			policy: policyv2.Policy{
+				Hosts: policyv2.Hosts{
+					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
+					"test2": policyv2.Prefix(netip.MustParsePrefix("100.64.0.2/32")),
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"test1"},
-						Destinations: []string{"test2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{hostp("test1")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test2"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
 		},
 		"hostv6cidr": {
-			policy: policyv1.ACLPolicy{
-				Hosts: policyv1.Hosts{
-					"test1": netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-					"test2": netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
+			policy: policyv2.Policy{
+				Hosts: policyv2.Hosts{
+					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
+					"test2": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::2/128")),
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"test1"},
-						Destinations: []string{"test2:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{hostp("test1")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(hostp("test2"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
 		},
 		"group": {
-			policy: policyv1.ACLPolicy{
-				Groups: map[string][]string{
-					"group:one": {"user1@"},
-					"group:two": {"user2@"},
+			policy: policyv2.Policy{
+				Groups: policyv2.Groups{
+					policyv2.Group("group:one"): []policyv2.Username{policyv2.Username("user1@")},
+					policyv2.Group("group:two"): []policyv2.Username{policyv2.Username("user2@")},
 				},
-				ACLs: []policyv1.ACL{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"group:one"},
-						Destinations: []string{"group:two:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{groupp("group:one")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(groupp("group:two"), tailcfg.PortRangeAny),
+						},
 					},
 				},
 			},
@@ -1073,15 +1142,17 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	p := policyv1.ACLPolicy{
-		ACLs: []policyv1.ACL{
+	p := policyv2.Policy{
+		ACLs: []policyv2.ACL{
 			{
-				Action:       "accept",
-				Sources:      []string{"user1@"},
-				Destinations: []string{"user2@:*"},
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user1@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+				},
 			},
 		},
-		Hosts: policyv1.Hosts{},
+		Hosts: policyv2.Hosts{},
 	}
 
 	err = headscale.SetPolicy(&p)
@@ -1089,7 +1160,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 
 	// Get the current policy and check
 	// if it is the same as the one we set.
-	var output *policyv1.ACLPolicy
+	var output *policyv2.Policy
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
@@ -1105,7 +1176,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 
 	assert.Len(t, output.ACLs, 1)
 
-	if diff := cmp.Diff(p, *output); diff != "" {
+	if diff := cmp.Diff(p, *output, cmpopts.IgnoreUnexported(policyv2.Policy{}), cmpopts.EquateEmpty()); diff != "" {
 		t.Errorf("unexpected policy(-want +got):\n%s", diff)
 	}
 
@@ -1136,6 +1207,123 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			result, err := client.Curl(url)
 			assert.Empty(t, result)
 			require.Error(t, err)
+		}
+	}
+}
+
+func TestACLAutogroupMember(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(ptr.To(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
+					},
+				},
+			},
+		},
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that untagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func TestACLAutogroupTagged(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	scenario := aclScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:  "accept",
+					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
+					},
+				},
+			},
+		},
+
+		2,
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Test that tagged nodes can access each other
+	for _, client := range allClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+			continue
+		}
+
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			status, err := peer.Status()
+			require.NoError(t, err)
+			if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("url from %s to %s", client.Hostname(), url)
+
+			result, err := client.Curl(url)
+			assert.Len(t, result, 13)
+			require.NoError(t, err)
 		}
 	}
 }

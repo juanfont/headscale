@@ -47,7 +47,6 @@ const (
 )
 
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
-var usePolicyV1ForTest = envknob.Bool("HEADSCALE_POLICY_V1")
 
 var (
 	errNoHeadscaleAvailable = errors.New("no headscale available")
@@ -412,10 +411,6 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 
 	if usePostgresForTest {
 		opts = append(opts, hsic.WithPostgres())
-	}
-
-	if usePolicyV1ForTest {
-		opts = append(opts, hsic.WithPolicyV1())
 	}
 
 	headscale, err := hsic.New(s.pool, s.Networks(), opts...)
@@ -847,6 +842,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return errParseAuthPage
 	}
 	key := keySep[1]
+	key = strings.SplitN(key, " ", 2)[0]
 	log.Printf("registering node %s", key)
 
 	if headscale, err := s.Headscale(); err == nil {

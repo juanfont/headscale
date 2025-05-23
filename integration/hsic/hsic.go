@@ -19,7 +19,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -65,7 +65,7 @@ type HeadscaleInContainer struct {
 	extraPorts       []string
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
-	aclPolicy        *policyv1.ACLPolicy
+	aclPolicy        *policyv2.Policy
 	env              map[string]string
 	tlsCert          []byte
 	tlsKey           []byte
@@ -80,7 +80,7 @@ type Option = func(c *HeadscaleInContainer)
 
 // WithACLPolicy adds a hscontrol.ACLPolicy policy to the
 // HeadscaleInContainer instance.
-func WithACLPolicy(acl *policyv1.ACLPolicy) Option {
+func WithACLPolicy(acl *policyv2.Policy) Option {
 	return func(hsic *HeadscaleInContainer) {
 		if acl == nil {
 			return
@@ -185,13 +185,6 @@ func WithFileInContainer(path string, contents []byte) Option {
 func WithPostgres() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.postgres = true
-	}
-}
-
-// WithPolicyV1 tells the integration test to use the old v1 filter.
-func WithPolicyV1() Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_POLICY_V1"] = "1"
 	}
 }
 
@@ -889,7 +882,7 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 	return userMap, nil
 }
 
-func (h *HeadscaleInContainer) SetPolicy(pol *policyv1.ACLPolicy) error {
+func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
 	err := h.writePolicy(pol)
 	if err != nil {
 		return fmt.Errorf("writing policy file: %w", err)
@@ -930,7 +923,7 @@ func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
 	return nil
 }
 
-func (h *HeadscaleInContainer) writePolicy(pol *policyv1.ACLPolicy) error {
+func (h *HeadscaleInContainer) writePolicy(pol *policyv2.Policy) error {
 	pBytes, err := json.Marshal(pol)
 	if err != nil {
 		return fmt.Errorf("marshalling pol: %w", err)

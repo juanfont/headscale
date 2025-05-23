@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 	cmpdiff "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -22,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/ipproto"
 	"tailscale.com/types/views"
 	"tailscale.com/util/must"
@@ -793,26 +795,25 @@ func TestSubnetRouteACL(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithAcceptRoutes(),
 	}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
-		&policyv1.ACLPolicy{
-			Groups: policyv1.Groups{
-				"group:admins": {user + "@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:admins"): []policyv2.Username{policyv2.Username(user + "@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"group:admins"},
-					Destinations: []string{"group:admins:*"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{groupp("group:admins")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(groupp("group:admins"), tailcfg.PortRangeAny),
+					},
 				},
 				{
-					Action:       "accept",
-					Sources:      []string{"group:admins"},
-					Destinations: []string{"10.33.0.0/16:*"},
+					Action:  "accept",
+					Sources: []policyv2.Alias{groupp("group:admins")},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(prefixp("10.33.0.0/16"), tailcfg.PortRangeAny),
+					},
 				},
-				// {
-				// 	Action:       "accept",
-				// 	Sources:      []string{"group:admins"},
-				// 	Destinations: []string{"0.0.0.0/0:*"},
-				// },
 			},
 		},
 	))
@@ -1384,29 +1385,31 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		pol      *policyv1.ACLPolicy
+		pol      *policyv2.Policy
 		approver string
 		spec     ScenarioSpec
 		withURL  bool
 	}{
 		{
 			name: "authkey-tag",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				TagOwners: map[string][]string{
-					"tag:approve": {"user1@"},
+				TagOwners: policyv2.TagOwners{
+					policyv2.Tag("tag:approve"): policyv2.Owners{usernameOwner("user1@")},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"tag:approve"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {tagApprover("tag:approve")},
 					},
-					ExitNode: []string{"tag:approve"},
+					ExitNode: policyv2.AutoApprovers{tagApprover("tag:approve")},
 				},
 			},
 			approver: "tag:approve",
@@ -1427,19 +1430,21 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 		{
 			name: "authkey-user",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"user1@"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {usernameApprover("user1@")},
 					},
-					ExitNode: []string{"user1@"},
+					ExitNode: policyv2.AutoApprovers{usernameApprover("user1@")},
 				},
 			},
 			approver: "user1@",
@@ -1460,22 +1465,24 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 		{
 			name: "authkey-group",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				Groups: policyv1.Groups{
-					"group:approve": []string{"user1@"},
+				Groups: policyv2.Groups{
+					policyv2.Group("group:approve"): []policyv2.Username{policyv2.Username("user1@")},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"group:approve"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {groupApprover("group:approve")},
 					},
-					ExitNode: []string{"group:approve"},
+					ExitNode: policyv2.AutoApprovers{groupApprover("group:approve")},
 				},
 			},
 			approver: "group:approve",
@@ -1496,19 +1503,21 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 		{
 			name: "webauth-user",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"user1@"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {usernameApprover("user1@")},
 					},
-					ExitNode: []string{"user1@"},
+					ExitNode: policyv2.AutoApprovers{usernameApprover("user1@")},
 				},
 			},
 			approver: "user1@",
@@ -1530,22 +1539,24 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 		{
 			name: "webauth-tag",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				TagOwners: map[string][]string{
-					"tag:approve": {"user1@"},
+				TagOwners: policyv2.TagOwners{
+					policyv2.Tag("tag:approve"): policyv2.Owners{usernameOwner("user1@")},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"tag:approve"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {tagApprover("tag:approve")},
 					},
-					ExitNode: []string{"tag:approve"},
+					ExitNode: policyv2.AutoApprovers{tagApprover("tag:approve")},
 				},
 			},
 			approver: "tag:approve",
@@ -1567,22 +1578,24 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 		{
 			name: "webauth-group",
-			pol: &policyv1.ACLPolicy{
-				ACLs: []policyv1.ACL{
+			pol: &policyv2.Policy{
+				ACLs: []policyv2.ACL{
 					{
-						Action:       "accept",
-						Sources:      []string{"*"},
-						Destinations: []string{"*:*"},
+						Action:  "accept",
+						Sources: []policyv2.Alias{wildcard()},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+						},
 					},
 				},
-				Groups: policyv1.Groups{
-					"group:approve": []string{"user1@"},
+				Groups: policyv2.Groups{
+					policyv2.Group("group:approve"): []policyv2.Username{policyv2.Username("user1@")},
 				},
-				AutoApprovers: policyv1.AutoApprovers{
-					Routes: map[string][]string{
-						bigRoute.String(): {"group:approve"},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						bigRoute: {groupApprover("group:approve")},
 					},
-					ExitNode: []string{"group:approve"},
+					ExitNode: policyv2.AutoApprovers{groupApprover("group:approve")},
 				},
 			},
 			approver: "group:approve",
@@ -1657,7 +1670,20 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assert.NotNil(t, headscale)
 
 					// Set the route of usernet1 to be autoapproved
-					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
+					var approvers policyv2.AutoApprovers
+					switch {
+					case strings.HasPrefix(tt.approver, "tag:"):
+						approvers = append(approvers, tagApprover(tt.approver))
+					case strings.HasPrefix(tt.approver, "group:"):
+						approvers = append(approvers, groupApprover(tt.approver))
+					default:
+						approvers = append(approvers, usernameApprover(tt.approver))
+					}
+					if tt.pol.AutoApprovers.Routes == nil {
+						tt.pol.AutoApprovers.Routes = make(map[netip.Prefix]policyv2.AutoApprovers)
+					}
+					prefix := *route
+					tt.pol.AutoApprovers.Routes[prefix] = approvers
 					err = headscale.SetPolicy(tt.pol)
 					require.NoError(t, err)
 
@@ -1767,7 +1793,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assertTracerouteViaIP(t, tr, routerUsernet1.MustIPv4())
 
 					// Remove the auto approval from the policy, any routes already enabled should be allowed.
-					delete(tt.pol.AutoApprovers.Routes, route.String())
+					prefix = *route
+					delete(tt.pol.AutoApprovers.Routes, prefix)
 					err = headscale.SetPolicy(tt.pol)
 					require.NoError(t, err)
 
@@ -1831,7 +1858,20 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 					// Add the route back to the auto approver in the policy, the route should
 					// now become available again.
-					tt.pol.AutoApprovers.Routes[route.String()] = []string{tt.approver}
+					var newApprovers policyv2.AutoApprovers
+					switch {
+					case strings.HasPrefix(tt.approver, "tag:"):
+						newApprovers = append(newApprovers, tagApprover(tt.approver))
+					case strings.HasPrefix(tt.approver, "group:"):
+						newApprovers = append(newApprovers, groupApprover(tt.approver))
+					default:
+						newApprovers = append(newApprovers, usernameApprover(tt.approver))
+					}
+					if tt.pol.AutoApprovers.Routes == nil {
+						tt.pol.AutoApprovers.Routes = make(map[netip.Prefix]policyv2.AutoApprovers)
+					}
+					prefix = *route
+					tt.pol.AutoApprovers.Routes[prefix] = newApprovers
 					err = headscale.SetPolicy(tt.pol)
 					require.NoError(t, err)
 
@@ -2070,7 +2110,9 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 				"src": [
 					"node"
 				],
-				"dst": []
+				"dst": [
+					"*:*"
+				]
 			}
 		]
 	}`)
@@ -2090,8 +2132,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
 	t.Logf("webservice: %s, %s", webip.String(), weburl)
 
-	// Create ACL policy
-	aclPolicy := &policyv1.ACLPolicy{}
+	aclPolicy := &policyv2.Policy{}
 	err = json.Unmarshal([]byte(aclPolicyStr), aclPolicy)
 	require.NoError(t, err)
 
@@ -2121,24 +2162,23 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	routerClient := allClients[0]
 	nodeClient := allClients[1]
 
-	aclPolicy.Hosts = policyv1.Hosts{
-		routerUser: must.Get(routerClient.MustIPv4().Prefix(32)),
-		nodeUser:   must.Get(nodeClient.MustIPv4().Prefix(32)),
+	aclPolicy.Hosts = policyv2.Hosts{
+		policyv2.Host(routerUser): policyv2.Prefix(must.Get(routerClient.MustIPv4().Prefix(32))),
+		policyv2.Host(nodeUser):   policyv2.Prefix(must.Get(nodeClient.MustIPv4().Prefix(32))),
 	}
-	aclPolicy.ACLs[1].Destinations = []string{
-		route.String() + ":*",
+	aclPolicy.ACLs[1].Destinations = []policyv2.AliasWithPorts{
+		aliasWithPorts(prefixp(route.String()), tailcfg.PortRangeAny),
 	}
-
 	require.NoError(t, headscale.SetPolicy(aclPolicy))
 
 	// Set up the subnet routes for the router
-	routes := []string{
-		route.String(),  // This should be accessible by the client
-		"10.10.11.0/24", // These should NOT be accessible
-		"10.10.12.0/24",
+	routes := []netip.Prefix{
+		*route,                                 // This should be accessible by the client
+		netip.MustParsePrefix("10.10.11.0/24"), // These should NOT be accessible
+		netip.MustParsePrefix("10.10.12.0/24"),
 	}
 
-	routeArg := "--advertise-routes=" + routes[0] + "," + routes[1] + "," + routes[2]
+	routeArg := "--advertise-routes=" + routes[0].String() + "," + routes[1].String() + "," + routes[2].String()
 	command := []string{
 		"tailscale",
 		"set",
@@ -2208,5 +2248,4 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	tr, err := nodeClient.Traceroute(webip)
 	require.NoError(t, err)
 	assertTracerouteViaIP(t, tr, routerClient.MustIPv4())
-
 }

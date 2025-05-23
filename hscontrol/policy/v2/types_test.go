@@ -10,6 +10,9 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/prometheus/common/model"
+	"time"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
 	xmaps "golang.org/x/exp/maps"
@@ -18,6 +21,83 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
+
+// TestUnmarshalPolicy tests the unmarshalling of JSON into Policy objects and the marshalling
+// back to JSON (round-trip). It ensures that:
+// 1. JSON can be correctly unmarshalled into a Policy object
+// 2. A Policy object can be correctly marshalled back to JSON
+// 3. The unmarshalled Policy matches the expected Policy
+// 4. The marshalled and then unmarshalled Policy is semantically equivalent to the original
+//    (accounting for nil vs empty map/slice differences)
+//
+// This test also verifies that all the required struct fields are properly marshalled and
+// unmarshalled, maintaining semantic equivalence through a complete JSON round-trip.
+
+// TestMarshalJSON tests explicit marshalling of Policy objects to JSON.
+// This test ensures our custom MarshalJSON methods properly encode
+// the various data structures used in the Policy.
+func TestMarshalJSON(t *testing.T) {
+	// Create a complex test policy
+	policy := &Policy{
+		Groups: Groups{
+			Group("group:example"): []Username{Username("user@example.com")},
+		},
+		Hosts: Hosts{
+			"host-1": Prefix(mp("100.100.100.100/32")),
+		},
+		TagOwners: TagOwners{
+			Tag("tag:test"): Owners{up("user@example.com")},
+		},
+		ACLs: []ACL{
+			{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources: Aliases{
+					ptr.To(Username("user@example.com")),
+				},
+				Destinations: []AliasWithPorts{
+					{
+						Alias: ptr.To(Username("other@example.com")),
+						Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+					},
+				},
+			},
+		},
+	}
+
+	// Marshal the policy to JSON
+	marshalled, err := json.MarshalIndent(policy, "", "  ")
+	require.NoError(t, err)
+	
+	// Make sure all expected fields are present in the JSON
+	jsonString := string(marshalled)
+	assert.Contains(t, jsonString, "group:example")
+	assert.Contains(t, jsonString, "user@example.com")
+	assert.Contains(t, jsonString, "host-1")
+	assert.Contains(t, jsonString, "100.100.100.100/32")
+	assert.Contains(t, jsonString, "tag:test")
+	assert.Contains(t, jsonString, "accept")
+	assert.Contains(t, jsonString, "tcp")
+	assert.Contains(t, jsonString, "80")
+	
+	// Unmarshal back to verify round trip
+	var roundTripped Policy
+	err = json.Unmarshal(marshalled, &roundTripped)
+	require.NoError(t, err)
+	
+	// Compare the original and round-tripped policies
+	cmps := append(util.Comparers, 
+		cmp.Comparer(func(x, y Prefix) bool {
+			return x == y
+		}),
+		cmpopts.IgnoreUnexported(Policy{}),
+		cmpopts.EquateEmpty(),
+	)
+	
+	if diff := cmp.Diff(policy, &roundTripped, cmps...); diff != "" {
+		t.Fatalf("round trip policy (-original +roundtripped):\n%s", diff)
+	}
+}
 
 func TestUnmarshalPolicy(t *testing.T) {
 	tests := []struct {
@@ -359,7 +439,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	],
 }
 `,
-			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet]`,
+			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged]`,
 		},
 		{
 			name: "undefined-hostname-errors-2490",
@@ -510,6 +590,138 @@ func TestUnmarshalPolicy(t *testing.T) {
 }
 `,
 			wantErr: `"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`,
+		},
+		{
+			name: "ssh-basic",
+			input: `
+{
+  "groups": {
+    "group:admins": ["admin@example.com"]
+  },
+  "tagOwners": {
+    "tag:servers": ["group:admins"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "tag:servers"
+      ],
+      "users": ["root", "admin"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("admin@example.com")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:servers"): Owners{gp("group:admins")},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							gp("group:admins"),
+						},
+						Destinations: SSHDstAliases{
+							tp("tag:servers"),
+						},
+						Users: []SSHUser{
+							SSHUser("root"),
+							SSHUser("admin"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-with-tag-and-user",
+			input: `
+{
+  "tagOwners": {
+    "tag:web": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:web"
+      ],
+      "dst": [
+        "admin@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:web"): Owners{ptr.To(Username("admin@example.com"))},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							tp("tag:web"),
+						},
+						Destinations: SSHDstAliases{
+							ptr.To(Username("admin@example.com")),
+						},
+						Users: []SSHUser{
+							SSHUser("*"),
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-with-check-period",
+			input: `
+{
+  "groups": {
+    "group:admins": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "admin@example.com"
+      ],
+      "users": ["root"],
+      "checkPeriod": "24h"
+    }
+  ]
+}
+`,
+			want: &Policy{
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("admin@example.com")},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							gp("group:admins"),
+						},
+						Destinations: SSHDstAliases{
+							ptr.To(Username("admin@example.com")),
+						},
+						Users: []SSHUser{
+							SSHUser("root"),
+						},
+						CheckPeriod: model.Duration(24 * time.Hour),
+					},
+				},
+			},
 		},
 		{
 			name: "group-must-be-defined-acl-src",
@@ -706,30 +918,100 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
 		},
+		{
+			name: "missing-dst-port-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `hostport must contain a colon (":")`,
+		},
+		{
+			name: "dst-port-zero-is-err",
+			input: `
+			{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "100.64.0.1:0"
+      ]
+    }
+  ]
+}
+`,
+			wantErr: `first port must be >0, or use '*' for wildcard`,
+		},
 	}
 
-	cmps := append(util.Comparers, cmp.Comparer(func(x, y Prefix) bool {
-		return x == y
-	}))
-	cmps = append(cmps, cmpopts.IgnoreUnexported(Policy{}))
+	cmps := append(util.Comparers, 
+		cmp.Comparer(func(x, y Prefix) bool {
+			return x == y
+		}),
+		cmpopts.IgnoreUnexported(Policy{}),
+	)
+	
+	// For round-trip testing, we'll normalize the policies before comparing
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Test unmarshalling
 			policy, err := unmarshalPolicy([]byte(tt.input))
 			if tt.wantErr == "" {
 				if err != nil {
-					t.Fatalf("got %v; want no error", err)
+					t.Fatalf("unmarshalling: got %v; want no error", err)
 				}
 			} else {
 				if err == nil {
-					t.Fatalf("got nil; want error %q", tt.wantErr)
+					t.Fatalf("unmarshalling: got nil; want error %q", tt.wantErr)
 				} else if !strings.Contains(err.Error(), tt.wantErr) {
-					t.Fatalf("got err %v; want error %q", err, tt.wantErr)
+					t.Fatalf("unmarshalling: got err %v; want error %q", err, tt.wantErr)
 				}
+				return // Skip the rest of the test if we expected an error
 			}
 
 			if diff := cmp.Diff(tt.want, policy, cmps...); diff != "" {
 				t.Fatalf("unexpected policy (-want +got):\n%s", diff)
+			}
+
+			// Test round-trip marshalling/unmarshalling
+			if policy != nil {
+				// Marshal the policy back to JSON
+				marshalled, err := json.MarshalIndent(policy, "", "  ")
+				if err != nil {
+					t.Fatalf("marshalling: %v", err)
+				}
+
+				// Unmarshal it again
+				roundTripped, err := unmarshalPolicy(marshalled)
+				if err != nil {
+					t.Fatalf("round-trip unmarshalling: %v", err)
+				}
+				
+				// Add EquateEmpty to handle nil vs empty maps/slices
+				roundTripCmps := append(cmps, 
+					cmpopts.EquateEmpty(),
+					cmpopts.IgnoreUnexported(Policy{}),
+				)
+
+				// Compare using the enhanced comparers for round-trip testing
+				if diff := cmp.Diff(policy, roundTripped, roundTripCmps...); diff != "" {
+					t.Fatalf("round trip policy (-original +roundtripped):\n%s", diff)
+				}
 			}
 		})
 	}
@@ -960,6 +1242,135 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: Wildcard,
 			want:      []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
 		},
+		{
+			name:      "autogroup-member-comprehensive",
+			toResolve: ptr.To(AutoGroup(AutoGroupMember)),
+			nodes: types.Nodes{
+				// Node with no tags (should be included)
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.1"),
+				},
+				// Node with forced tags (should be excluded)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.2"),
+				},
+				// Node with allowed requested tag (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test"},
+					},
+					IPv4: ap("100.100.101.3"),
+				},
+				// Node with non-allowed requested tag (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.4"),
+				},
+				// Node with multiple requested tags, one allowed (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test", "tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.5"),
+				},
+				// Node with multiple requested tags, none allowed (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
+					},
+					IPv4: ap("100.100.101.6"),
+				},
+			},
+			pol: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+				},
+			},
+			want: []netip.Prefix{
+				mp("100.100.101.1/32"), // No tags
+				mp("100.100.101.4/32"), // Non-allowed requested tag
+				mp("100.100.101.6/32"), // Multiple non-allowed requested tags
+			},
+		},
+		{
+			name:      "autogroup-tagged",
+			toResolve: ptr.To(AutoGroup(AutoGroupTagged)),
+			nodes: types.Nodes{
+				// Node with no tags (should be excluded)
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.1"),
+				},
+				// Node with forced tag (should be included)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.2"),
+				},
+				// Node with allowed requested tag (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test"},
+					},
+					IPv4: ap("100.100.101.3"),
+				},
+				// Node with non-allowed requested tag (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.4"),
+				},
+				// Node with multiple requested tags, one allowed (should be included)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test", "tag:notallowed"},
+					},
+					IPv4: ap("100.100.101.5"),
+				},
+				// Node with multiple requested tags, none allowed (should be excluded)
+				{
+					User: users["testuser"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
+					},
+					IPv4: ap("100.100.101.6"),
+				},
+				// Node with multiple forced tags (should be included)
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test", "tag:other"},
+					IPv4:       ap("100.100.101.7"),
+				},
+			},
+			pol: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+				},
+			},
+			want: []netip.Prefix{
+				mp("100.100.101.2/31"), // Forced tag and allowed requested tag consecutive IPs are put in 31 prefix
+				mp("100.100.101.5/32"), // Multiple requested tags, one allowed
+				mp("100.100.101.7/32"), // Multiple forced tags
+			},
+		},
+		{
+			name:      "autogroup-invalid",
+			toResolve: ptr.To(AutoGroup("autogroup:invalid")),
+			wantErr:   "unknown autogroup",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1123,7 +1534,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			name: "mixed-routes-and-exit-nodes",
 			policy: &Policy{
 				Groups: Groups{
-					"group:testgroup": Usernames{"user1", "user2"},
+					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{

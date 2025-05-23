@@ -7,10 +7,11 @@ import (
 	"testing"
 	"time"
 
-	policyv1 "github.com/juanfont/headscale/hscontrol/policy/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/tailcfg"
 )
 
 func isSSHNoAccessStdError(stderr string) bool {
@@ -48,7 +49,7 @@ var retry = func(times int, sleepInterval time.Duration,
 	return result, stderr, err
 }
 
-func sshScenario(t *testing.T, policy *policyv1.ACLPolicy, clientsPerUser int) *Scenario {
+func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Scenario {
 	t.Helper()
 
 	spec := ScenarioSpec{
@@ -92,23 +93,26 @@ func TestSSHOneUserToAll(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:integration-test": {"user1@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
 				},
 			},
-			SSHs: []policyv1.SSH{
+			SSHs: []policyv2.SSH{
 				{
 					Action:       "accept",
-					Sources:      []string{"group:integration-test"},
-					Destinations: []string{"*"},
-					Users:        []string{"ssh-it-user"},
+					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					Destinations: policyv2.SSHDstAliases{wildcard()},
+					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -157,23 +161,26 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:integration-test": {"user1@", "user2@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@"), policyv2.Username("user2@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
 				},
 			},
-			SSHs: []policyv1.SSH{
+			SSHs: []policyv2.SSH{
 				{
 					Action:       "accept",
-					Sources:      []string{"group:integration-test"},
-					Destinations: []string{"user1@", "user2@"},
-					Users:        []string{"ssh-it-user"},
+					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					Destinations: policyv2.SSHDstAliases{usernamep("user1@"), usernamep("user2@")},
+					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -210,18 +217,21 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:integration-test": {"user1@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
 				},
 			},
-			SSHs: []policyv1.SSH{},
+			SSHs: []policyv2.SSH{},
 		},
 		len(MustTestVersions),
 	)
@@ -252,23 +262,26 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:integration-test": {"user1@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:80"},
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRange{First: 80, Last: 80}),
+					},
 				},
 			},
-			SSHs: []policyv1.SSH{
+			SSHs: []policyv2.SSH{
 				{
 					Action:       "accept",
-					Sources:      []string{"group:integration-test"},
-					Destinations: []string{"user1@"},
-					Users:        []string{"ssh-it-user"},
+					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
+					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -301,30 +314,33 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 	t.Parallel()
 
 	scenario := sshScenario(t,
-		&policyv1.ACLPolicy{
-			Groups: map[string][]string{
-				"group:ssh1": {"user1@"},
-				"group:ssh2": {"user2@"},
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:ssh1"): []policyv2.Username{policyv2.Username("user1@")},
+				policyv2.Group("group:ssh2"): []policyv2.Username{policyv2.Username("user2@")},
 			},
-			ACLs: []policyv1.ACL{
+			ACLs: []policyv2.ACL{
 				{
-					Action:       "accept",
-					Sources:      []string{"*"},
-					Destinations: []string{"*:*"},
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
 				},
 			},
-			SSHs: []policyv1.SSH{
+			SSHs: []policyv2.SSH{
 				{
 					Action:       "accept",
-					Sources:      []string{"group:ssh1"},
-					Destinations: []string{"user1@"},
-					Users:        []string{"ssh-it-user"},
+					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh1")},
+					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
+					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 				{
 					Action:       "accept",
-					Sources:      []string{"group:ssh2"},
-					Destinations: []string{"user2@"},
-					Users:        []string{"ssh-it-user"},
+					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh2")},
+					Destinations: policyv2.SSHDstAliases{usernamep("user2@")},
+					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},

@@ -435,8 +435,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 	for _, tt := range tests {
 		pmfs := policy.PolicyManagerFuncsForTest([]byte(tt.acl))
 		for i, pmf := range pmfs {
-			version := i + 1
-			t.Run(fmt.Sprintf("%s-policyv%d", tt.name, version), func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s-policy-index%d", tt.name, i), func(t *testing.T) {
 				adb, err := newSQLiteTestDB()
 				require.NoError(t, err)
 
