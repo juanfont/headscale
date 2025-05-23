@@ -203,7 +203,7 @@ func SetTags(
 ) error {
 	if len(tags) == 0 {
 		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", "[]").Error; err != nil {
 			return fmt.Errorf("removing tags: %w", err)
 		}
 
@@ -217,7 +217,7 @@ func SetTags(
 		return err
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error; err != nil {
 		return fmt.Errorf("updating tags: %w", err)
 	}
 
@@ -376,12 +376,13 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				// Why not always?
 				// Registration of expired node with different user
 				if reg.Node.ID != 0 &&
-					reg.Node.UserID != user.ID {
+					reg.Node.UserID != nil &&
+					*reg.Node.UserID != user.ID {
 					return nil, ErrDifferentRegisteredUser
 				}
 
-				reg.Node.UserID = user.ID
-				reg.Node.User = *user
+				reg.Node.UserID = &user.ID
+				reg.Node.User = user
 				reg.Node.RegisterMethod = registrationMethod
 
 				if nodeExpiry != nil {
@@ -435,7 +436,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the a new node is registered with the same machine key, to the same user,
@@ -463,7 +463,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil

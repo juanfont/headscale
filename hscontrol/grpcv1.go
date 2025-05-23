@@ -552,7 +552,7 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 				tags = append(tags, tag)
 			}
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
+		resp.ValidTags = lo.Uniq(append(tags, node.Tags...))
 		resp.SubnetRoutes = util.PrefixesToString(append(pr.PrimaryRoutes(node.ID), node.ExitRoutes()...))
 		response[index] = resp
 	}
@@ -819,7 +819,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
-			User:       *user,
+			User:       user,
 
 			Expiry:   &time.Time{},
 			LastSeen: &time.Time{},

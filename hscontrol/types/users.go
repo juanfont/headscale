@@ -18,6 +18,16 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// TaggedDevices is a special user that is used to
+// populate the tagged devices in the Tailscale MapResponse.
+var TaggedDevices = User{
+	// This ID is arbitrarily chosen, it is naively high to avoid
+	// and conflicts with other IDs.
+	Model:       gorm.Model{ID: 2147455555},
+	Name:        "tagged-devices",
+	DisplayName: "Tagged Devices",
+}
+
 type UserID uint64
 
 type Users []User
@@ -273,7 +283,7 @@ func CleanIdentifier(identifier string) string {
 				cleanParts = append(cleanParts, part)
 			}
 		}
-		
+
 		if len(cleanParts) == 0 {
 			u.Path = ""
 		} else {

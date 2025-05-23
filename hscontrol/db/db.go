@@ -718,6 +718,22 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Migrate node table to make users optional.
+			// Rename forced_tags to tags
+			{
+				ID: "202505211519-node-user-optional-tags",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().RenameColumn(&types.Node{}, "forced_tags", "tags")
+
+					err = tx.AutoMigrate(&types.Node{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.Node: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

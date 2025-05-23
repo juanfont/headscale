@@ -193,8 +193,8 @@ func (h *Headscale) handleRegisterWithAuthKey(
 
 	nodeToRegister := types.Node{
 		Hostname:       regReq.Hostinfo.Hostname,
-		UserID:         pak.User.ID,
-		User:           pak.User,
+		UserID:         ptr.To(pak.User.ID),
+		User:           ptr.To(pak.User),
 		MachineKey:     machineKey,
 		NodeKey:        regReq.NodeKey,
 		Hostinfo:       regReq.Hostinfo,
@@ -204,9 +204,9 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		// TODO(kradalby): This should not be set on the node,
 		// they should be looked up through the key, which is
 		// attached to the node.
-		ForcedTags: pak.Proto().GetAclTags(),
-		AuthKey:    pak,
-		AuthKeyID:  &pak.ID,
+		Tags:      pak.Proto().GetAclTags(),
+		AuthKey:   pak,
+		AuthKeyID: &pak.ID,
 	}
 
 	if !regReq.Expiry.IsZero() {
