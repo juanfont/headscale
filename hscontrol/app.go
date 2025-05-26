@@ -287,8 +287,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			if changed {
 				log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
 
-				ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
-				h.nodeNotifier.NotifyAll(ctx, update)
+				h.nodeNotifier.NotifyAll(update)
 			}
 
 		case <-derpTickerChan:
@@ -299,8 +298,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
-			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
+			h.nodeNotifier.NotifyAll(types.StateUpdate{
 				Type:    types.StateDERPUpdated,
 				DERPMap: h.DERPMap,
 			})
@@ -311,10 +309,9 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			ctx := types.NotifyCtx(context.Background(), "dns-extrarecord", "all")
 			// TODO(kradalby): We can probably do better than sending a full update here,
 			// but for now this will ensure that all of the nodes get the new records.
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+			h.nodeNotifier.NotifyAll(types.UpdateFull())
 		}
 	}
 }
@@ -517,8 +514,7 @@ func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *not
 	}
 
 	if changed {
-		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
-		notif.NotifyAll(ctx, types.UpdateFull())
+		notif.NotifyAll(types.UpdateFull())
 	}
 
 	return nil
@@ -544,8 +540,7 @@ func nodesChangedHook(
 	}
 
 	if filterChanged {
-		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
-		notif.NotifyAll(ctx, types.UpdateFull())
+		notif.NotifyAll(types.UpdateFull())
 
 		return true, nil
 	}
@@ -581,12 +576,8 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	mapp := mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
-	h.mapBatcher = mapper.NewBatcher(mapp)
+	h.mapBatcher = mapper.NewBatcherAndMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
 	h.nodeNotifier = notifier.NewNotifier(h.cfg, h.mapBatcher)
-
-	// TODO(kradalby): I dont like this. Right now its done to access online status.
-	mapp.SetBatcher(h.mapBatcher)
 
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
@@ -878,8 +869,7 @@ func (h *Headscale) Serve() error {
 						log.Error().Err(err).Msg("failed to approve routes after new policy")
 					}
 
-					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+					h.nodeNotifier.NotifyAll(types.UpdateFull())
 				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }

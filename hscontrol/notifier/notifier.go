@@ -1,11 +1,11 @@
 package notifier
 
 import (
-	"context"
-	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -97,12 +97,11 @@ func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.mbatcher.LikelyConnectedMap()
 }
 
-func (n *Notifier) NotifyAll(ctx context.Context, update types.StateUpdate) {
-	n.NotifyWithIgnore(ctx, update)
+func (n *Notifier) NotifyAll(update types.StateUpdate) {
+	n.NotifyWithIgnore(update)
 }
 
 func (n *Notifier) NotifyWithIgnore(
-	ctx context.Context,
 	update types.StateUpdate,
 	ignoreNodeIDs ...types.NodeID,
 ) {
@@ -110,12 +109,10 @@ func (n *Notifier) NotifyWithIgnore(
 		return
 	}
 
-	notifierUpdateReceived.WithLabelValues(update.Type.String(), types.NotifyOriginKey.Value(ctx)).Inc()
 	n.b.addOrPassthrough(update)
 }
 
 func (n *Notifier) NotifyByNodeID(
-	ctx context.Context,
 	update types.StateUpdate,
 	nodeID types.NodeID,
 ) {
@@ -140,9 +137,7 @@ func (n *Notifier) String() string {
 	var b strings.Builder
 
 	var keys []types.NodeID
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i] < keys[j]
-	})
+	slices.Sort(keys)
 
 	return b.String()
 }
@@ -227,9 +222,7 @@ func (b *batcher) flush() {
 		}
 
 		changedNodes := b.changedNodeIDs.Slice().AsSlice()
-		sort.Slice(changedNodes, func(i, j int) bool {
-			return changedNodes[i] < changedNodes[j]
-		})
+		slices.Sort(changedNodes)
 
 		if b.changedNodeIDs.Slice().Len() > 0 {
 			update := types.UpdatePeerChanged(changedNodes...)

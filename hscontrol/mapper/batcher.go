@@ -3,6 +3,9 @@ package mapper
 import (
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
@@ -39,7 +42,7 @@ type nodeConn struct {
 type Batcher struct {
 	mu deadlock.RWMutex
 
-	mapper *Mapper
+	mapper *mapper
 
 	// connected is a map of NodeID to the time the closed a connection.
 	// This is used to track which nodes are currently connected.
@@ -58,7 +61,21 @@ type Batcher struct {
 	workCh chan *ChangeWork
 }
 
-func NewBatcher(mapper *Mapper) *Batcher {
+func NewBatcherAndMapper(
+	db *db.HSDatabase,
+	cfg *types.Config,
+	derpMap *tailcfg.DERPMap,
+	polMan policy.PolicyManager,
+	primary *routes.PrimaryRoutes,
+) *Batcher {
+	mapper := newMapper(db, cfg, derpMap, polMan, primary)
+	b := NewBatcher(mapper)
+	mapper.batcher = b
+
+	return b
+}
+
+func NewBatcher(mapper *mapper) *Batcher {
 	return &Batcher{
 		mapper:   mapper,
 		cancelCh: make(chan struct{}),
@@ -164,7 +181,7 @@ func (b *Batcher) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 
 	ret := xsync.NewMapOf[types.NodeID, bool]()
 
-	for id, _ := range b.connected {
+	for id := range b.connected {
 		ret.Store(id, b.isLikelyConnectedLocked(id))
 	}
 
@@ -250,7 +267,7 @@ func (b *Batcher) resp(id types.NodeID, nc *nodeConn, work *ChangeWork) ([]byte,
 
 	switch work.Update.Type {
 	case types.StateFullUpdate:
-		data, err = b.mapper.FullMapResponse(req, node)
+		data, err = b.mapper.fullMapResponse(req, node)
 	case types.StatePeerChanged:
 		changed := make(map[types.NodeID]bool, len(work.Update.ChangeNodes))
 
@@ -258,21 +275,21 @@ func (b *Batcher) resp(id types.NodeID, nc *nodeConn, work *ChangeWork) ([]byte,
 			changed[nodeID] = true
 		}
 
-		data, err = b.mapper.PeerChangedResponse(req, node, changed, work.Update.ChangePatches)
+		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
 
 	case types.StatePeerChangedPatch:
-		data, err = b.mapper.PeerChangedPatchResponse(req, node, work.Update.ChangePatches)
+		data, err = b.mapper.peerChangedPatchResponse(req, node, work.Update.ChangePatches)
 	case types.StatePeerRemoved:
 		changed := make(map[types.NodeID]bool, len(work.Update.Removed))
 
 		for _, nodeID := range work.Update.Removed {
 			changed[nodeID] = false
 		}
-		data, err = b.mapper.PeerChangedResponse(req, node, changed, work.Update.ChangePatches)
+		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
 	case types.StateSelfUpdate:
-		data, err = b.mapper.PeerChangedResponse(req, node, make(map[types.NodeID]bool), work.Update.ChangePatches)
-		// case types.StateDERPUpdated:
-		// 	data, err = b.mapper.DERPMapResponse(req, node, b.mapper.DERPMap)
+		data, err = b.mapper.peerChangedResponse(req, node, make(map[types.NodeID]bool), work.Update.ChangePatches)
+	case types.StateDERPUpdated:
+		data, err = b.mapper.derpMapResponse(req, node, work.Update.DERPMap)
 	}
 
 	return data, err

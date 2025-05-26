@@ -13,7 +13,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
@@ -49,7 +48,7 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 // - some sort of batching, wait for 5 or 60 seconds before sending
 
-type Mapper struct {
+type mapper struct {
 	// Configuration
 	// TODO(kradalby): figure out if this is the format we want this in
 	db      *db.HSDatabase
@@ -59,9 +58,7 @@ type Mapper struct {
 	primary *routes.PrimaryRoutes
 	batcher *Batcher
 
-	uid     string
 	created time.Time
-	seq     uint64
 }
 
 type patch struct {
@@ -69,34 +66,23 @@ type patch struct {
 	change    *tailcfg.PeerChange
 }
 
-func NewMapper(
+func newMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
 	polMan policy.PolicyManager,
 	primary *routes.PrimaryRoutes,
-) *Mapper {
-	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
+) *mapper {
 
-	return &Mapper{
+	return &mapper{
 		db:      db,
 		cfg:     cfg,
 		derpMap: derpMap,
 		polMan:  polMan,
 		primary: primary,
 
-		uid:     uid,
 		created: time.Now(),
-		seq:     0,
 	}
-}
-
-func (m *Mapper) SetBatcher(batcher *Batcher) {
-	m.batcher = batcher
-}
-
-func (m *Mapper) String() string {
-	return fmt.Sprintf("Mapper: { seq: %d, uid: %s, created: %s }", m.seq, m.uid, m.created)
 }
 
 func generateUserProfiles(
@@ -163,14 +149,18 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 	}
 }
 
-// fullMapResponse creates a complete MapResponse for a node.
-// It is a separate function to make testing easier.
-func (m *Mapper) fullMapResponse(
+// fullMapResponse returns a MapResponse for the given node.
+func (m *mapper) fullMapResponse(
+	mapRequest tailcfg.MapRequest,
 	node *types.Node,
-	peers types.Nodes,
-	capVer tailcfg.CapabilityVersion,
-) (*tailcfg.MapResponse, error) {
-	resp, err := m.baseWithConfigMapResponse(node, capVer)
+	messages ...string,
+) ([]byte, error) {
+	peers, err := m.listPeers(node.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +171,7 @@ func (m *Mapper) fullMapResponse(
 		m.polMan,
 		m.primary,
 		node,
-		capVer,
+		mapRequest.Version,
 		peers,
 		m.cfg,
 	)
@@ -189,55 +179,10 @@ func (m *Mapper) fullMapResponse(
 		return nil, err
 	}
 
-	return resp, nil
+	return marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
 }
 
-// FullMapResponse returns a MapResponse for the given node.
-func (m *Mapper) FullMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	messages ...string,
-) ([]byte, error) {
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
-}
-
-// ReadOnlyMapResponse returns a MapResponse for the given node.
-// Lite means that the peers has been omitted, this is intended
-// to be used to answer MapRequests with OmitPeers set to true.
-func (m *Mapper) ReadOnlyMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	messages ...string,
-) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
-}
-
-func (m *Mapper) KeepAliveResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-) ([]byte, error) {
-	resp := m.baseMapResponse()
-	resp.KeepAlive = true
-
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
-}
-
-func (m *Mapper) DERPMapResponse(
+func (m *mapper) derpMapResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	derpMap *tailcfg.DERPMap,
@@ -247,10 +192,10 @@ func (m *Mapper) DERPMapResponse(
 	resp := m.baseMapResponse()
 	resp.DERPMap = derpMap
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
-func (m *Mapper) PeerChangedResponse(
+func (m *mapper) peerChangedResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	changed map[types.NodeID]bool,
@@ -273,7 +218,7 @@ func (m *Mapper) PeerChangedResponse(
 	}
 	changedNodes := types.Nodes{}
 	if len(changedIDs) > 0 {
-		changedNodes, err = m.ListNodes(changedIDs...)
+		changedNodes, err = m.listNodes(changedIDs...)
 		if err != nil {
 			return nil, err
 		}
@@ -324,12 +269,12 @@ func (m *Mapper) PeerChangedResponse(
 	}
 	resp.Node = tailnode
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
+	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
 }
 
-// PeerChangedPatchResponse creates a patch MapResponse with
+// peerChangedPatchResponse creates a patch MapResponse with
 // incoming update from a state change.
-func (m *Mapper) PeerChangedPatchResponse(
+func (m *mapper) peerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
 	node *types.Node,
 	changed []*tailcfg.PeerChange,
@@ -337,18 +282,16 @@ func (m *Mapper) PeerChangedPatchResponse(
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
 }
 
-func (m *Mapper) marshalMapResponse(
+func marshalMapResponse(
 	mapRequest tailcfg.MapRequest,
 	resp *tailcfg.MapResponse,
 	node *types.Node,
 	compression string,
 	messages ...string,
 ) ([]byte, error) {
-	atomic.AddUint64(&m.seq, 1)
-
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling map response: %w", err)
@@ -392,7 +335,7 @@ func (m *Mapper) marshalMapResponse(
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%s-%s-%d-%s.json", now, m.uid, atomic.LoadUint64(&m.seq), responseType),
+			fmt.Sprintf("%s-%s.json", now, responseType),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
@@ -443,7 +386,7 @@ var zstdEncoderPool = &sync.Pool{
 
 // baseMapResponse returns a tailcfg.MapResponse with
 // KeepAlive false and ControlTime set to now.
-func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
+func (m *mapper) baseMapResponse() tailcfg.MapResponse {
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
@@ -459,7 +402,7 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // with the basic configuration from headscale set.
 // It is used in for bigger updates, such as full and lite, not
 // incremental.
-func (m *Mapper) baseWithConfigMapResponse(
+func (m *mapper) baseWithConfigMapResponse(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
@@ -494,10 +437,10 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// listPeers returns peers of node, regardless of any Policy or if the node is expired.
 // If no peer IDs are given, all peers are returned.
 // If at least one peer ID is given, only these peer nodes will be returned.
-func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
+func (m *mapper) listPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	peers, err := m.db.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
@@ -513,9 +456,9 @@ func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 	return peers, nil
 }
 
-// ListNodes queries the database for either all nodes if no parameters are given
+// listNodes queries the database for either all nodes if no parameters are given
 // or for the given nodes if at least one node ID is given as parameter
-func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
+func (m *mapper) listNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes, err := m.db.ListNodes(nodeIDs...)
 	if err != nil {
 		return nil, err

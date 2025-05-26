@@ -90,8 +90,7 @@ func (h *Headscale) handleExistingNode(
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
-				ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-				h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
+				h.nodeNotifier.NotifyAll(types.UpdatePeerRemoved(node.ID))
 			}
 
 			expired = true
@@ -102,8 +101,7 @@ func (h *Headscale) handleExistingNode(
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
 
-		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
+		h.nodeNotifier.NotifyWithIgnore(types.UpdateExpire(node.ID, requestExpiry), node.ID)
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -262,8 +260,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	}
 
 	if !updateSent || routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
+		h.nodeNotifier.NotifyAll(types.UpdatePeerChanged(node.ID))
 	}
 
 	return &tailcfg.RegisterResponse{
