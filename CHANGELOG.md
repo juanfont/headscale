@@ -2,6 +2,8 @@
 
 ## Next
 
+**Minimum supported Tailscale client version: v1.64.0**
+
 ### BREAKING
 
 - Policy: Zero or empty destination port is no longer allowed

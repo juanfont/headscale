@@ -234,6 +234,7 @@ type Tuning struct {
 	NotifierSendTimeout            time.Duration
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
+	BatcherWorkers                 int
 }
 
 func validatePKCEMethod(method string) error {
@@ -990,6 +991,12 @@ func LoadServerConfig() (*Config, error) {
 			NodeMapSessionBufferedChanSize: viper.GetInt(
 				"tuning.node_mapsession_buffered_chan_size",
 			),
+			BatcherWorkers: func() int {
+				if workers := viper.GetInt("tuning.batcher_workers"); workers > 0 {
+					return workers
+				}
+				return DefaultBatcherWorkers()
+			}(),
 		},
 	}, nil
 }
