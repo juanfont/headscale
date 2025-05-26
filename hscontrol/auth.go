@@ -153,27 +153,6 @@ func (h *Headscale) waitForFollowup(
 	return nil, NewHTTPError(http.StatusNotFound, "followup registration not found", nil)
 }
 
-// canUsePreAuthKey checks if a pre auth key can be used.
-func canUsePreAuthKey(pak *types.PreAuthKey) error {
-	if pak == nil {
-		return NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil)
-	}
-	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
-		return NewHTTPError(http.StatusUnauthorized, "authkey expired", nil)
-	}
-
-	// we don't need to check if has been used before
-	if pak.Reusable {
-		return nil
-	}
-
-	if pak.Used {
-		return NewHTTPError(http.StatusUnauthorized, "authkey already used", nil)
-	}
-
-	return nil
-}
-
 func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -183,30 +162,26 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
-		return nil, err
-	}
-
-	err = canUsePreAuthKey(pak)
-	if err != nil {
-		return nil, err
+		return nil, NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil)
 	}
 
 	nodeToRegister := types.Node{
 		Hostname:       regReq.Hostinfo.Hostname,
-		UserID:         ptr.To(pak.User.ID),
-		User:           ptr.To(pak.User),
 		MachineKey:     machineKey,
 		NodeKey:        regReq.NodeKey,
 		Hostinfo:       regReq.Hostinfo,
 		LastSeen:       ptr.To(time.Now()),
 		RegisterMethod: util.RegisterMethodAuthKey,
 
-		// TODO(kradalby): This should not be set on the node,
-		// they should be looked up through the key, which is
-		// attached to the node.
-		Tags:      pak.Proto().GetAclTags(),
 		AuthKey:   pak,
 		AuthKeyID: &pak.ID,
+	}
+
+	if pak.IsTagged() {
+		nodeToRegister.Tags = pak.Tags
+	} else {
+		nodeToRegister.UserID = pak.UserID
+		nodeToRegister.User = pak.User
 	}
 
 	if !regReq.Expiry.IsZero() {
@@ -257,7 +232,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := policy.AutoApproveRoutes(h.polMan, node)
-	if err := h.db.DB.Save(node).Error; err != nil {
+	if err := h.db.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 

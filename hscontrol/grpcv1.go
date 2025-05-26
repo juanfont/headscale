@@ -10,12 +10,10 @@ import (
 	"os"
 	"slices"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -281,7 +279,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := policy.AutoApproveRoutes(api.h.polMan, node)
-	if err := api.h.db.DB.Save(node).Error; err != nil {
+	if err := api.h.db.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
@@ -315,15 +313,27 @@ func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
+	node, err := api.h.db.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if err != nil {
+		return nil, err
+	}
+
+	var tags []string
+	var invalidTags []string
 	for _, tag := range request.GetTags() {
-		err := validateTag(tag)
-		if err != nil {
-			return nil, err
+		if api.h.polMan.NodeCanHaveTag(node, tag) {
+			tags = append(tags, tag)
+		} else {
+			invalidTags = append(invalidTags, tag)
 		}
 	}
 
-	node, err := db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := db.SetTags(tx, types.NodeID(request.GetNodeId()), request.GetTags())
+	if len(invalidTags) > 0 {
+		return nil, fmt.Errorf(`requested tags %v are invalid or not defined in policy`, invalidTags)
+	}
+
+	node, err = db.Write(api.h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		err := db.SetTags(tx, types.NodeID(request.GetNodeId()), tags)
 		if err != nil {
 			return nil, err
 		}
@@ -393,19 +403,6 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	proto.SubnetRoutes = util.PrefixesToString(api.h.primaryRoutes.PrimaryRoutes(node.ID))
 
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
-}
-
-func validateTag(tag string) error {
-	if strings.Index(tag, "tag:") != 0 {
-		return errors.New("tag must start with the string 'tag:'")
-	}
-	if strings.ToLower(tag) != tag {
-		return errors.New("tag should be lowercase")
-	}
-	if len(strings.Fields(tag)) > 1 {
-		return errors.New("tag should not contains space")
-	}
-	return nil
 }
 
 func (api headscaleV1APIServer) DeleteNode(
@@ -546,13 +543,8 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 			resp.Online = true
 		}
 
-		var tags []string
-		for _, tag := range node.RequestTags() {
-			if polMan.NodeCanHaveTag(node, tag) {
-				tags = append(tags, tag)
-			}
-		}
-		resp.ValidTags = lo.Uniq(append(tags, node.Tags...))
+		// TODO(kradalby): Rename ValidTags, there is only Tags
+		resp.ValidTags = node.Tags
 		resp.SubnetRoutes = util.PrefixesToString(append(pr.PrimaryRoutes(node.ID), node.ExitRoutes()...))
 		response[index] = resp
 	}

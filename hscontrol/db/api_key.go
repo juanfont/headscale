@@ -65,7 +65,7 @@ func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
 
 // GetAPIKey returns a ApiKey for a given key.
 func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
-	key := types.APIKey{}
+	var key types.APIKey
 	if result := hsdb.DB.First(&key, "prefix = ?", prefix); result.Error != nil {
 		return nil, result.Error
 	}
@@ -75,7 +75,7 @@ func (hsdb *HSDatabase) GetAPIKey(prefix string) (*types.APIKey, error) {
 
 // GetAPIKeyByID returns a ApiKey for a given id.
 func (hsdb *HSDatabase) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
-	key := types.APIKey{}
+	var key types.APIKey
 	if result := hsdb.DB.Find(&types.APIKey{ID: id}).First(&key); result.Error != nil {
 		return nil, result.Error
 	}

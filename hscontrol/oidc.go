@@ -509,7 +509,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		return false, err
 	}
 
-	node, newNode, err := a.db.HandleNodeFromAuthPath(
+	node, cs, err := a.db.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
 		&expiry,
@@ -540,7 +540,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := policy.AutoApproveRoutes(a.polMan, node)
-	if err := a.db.DB.Save(node).Error; err != nil {
+	if err := a.db.SaveNode(node); err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
@@ -556,7 +556,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		a.notifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 	}
 
-	return newNode, nil
+	return cs.New, nil
 }
 
 // TODO(kradalby):

@@ -183,11 +183,11 @@ func (node *Node) IsUserOwned() bool {
 	return true
 }
 
+var ErrCannotRemoveAllTags = errors.New("cannot remove all tags from node")
+
 // IsTagged reports if a device is tagged
 // and therefore should not be treated as a
 // user owned device.
-// Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys)
 func (node *Node) IsTagged() bool {
 	if node.Tags == nil {
 		return false

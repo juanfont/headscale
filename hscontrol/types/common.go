@@ -196,3 +196,14 @@ type RegisterNode struct {
 	Node       Node
 	Registered chan *Node
 }
+
+// TODO(kradalby): Not sure if this is a good idea,
+// but ran into this problem in HandleNodeFromAuthPath
+// describing what has changed in the node...
+// ChangeSet described changes that has happend to a node
+type ChangeSet struct {
+	NodeID NodeID
+	New    bool
+	Tags   bool
+	Expiry bool
+}

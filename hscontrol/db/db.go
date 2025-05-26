@@ -15,6 +15,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -44,6 +45,7 @@ type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.DatabaseConfig
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
+	polMan   policy.PolicyManager
 
 	baseDomain string
 }
@@ -764,6 +766,10 @@ AND auth_key_id NOT IN (
 	}
 
 	return &db, err
+}
+
+func (db *HSDatabase) SetPolicyManager(pol policy.PolicyManager) {
+	db.polMan = pol
 }
 
 func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
