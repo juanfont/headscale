@@ -52,7 +52,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testnode",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
@@ -110,17 +110,17 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testnode",
-		UserID:         oldUser.ID,
+		UserID:         &oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
 	trx := db.DB.Save(&node)
 	c.Assert(trx.Error, check.IsNil)
-	c.Assert(node.UserID, check.Equals, oldUser.ID)
+	c.Assert(*node.UserID, check.Equals, oldUser.ID)
 
 	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
 	c.Assert(err, check.IsNil)
-	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(*node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)
 
 	err = db.AssignNodeToUser(&node, 9584849)
@@ -128,6 +128,6 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 
 	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
 	c.Assert(err, check.IsNil)
-	c.Assert(node.UserID, check.Equals, newUser.ID)
+	c.Assert(*node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)
 }

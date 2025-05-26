@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -95,6 +96,23 @@ func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 
 		return nodes, nil
 	})
+}
+
+// SaveNode saves a node to the database.
+// It performs checks to validate if the conforms to certain restrictions:
+// - A node must be either tagged or owned by a user, not both.
+func (hsdb *HSDatabase) SaveNode(node *types.Node) error {
+	if node.IsTagged() && node.UserID != nil {
+		return fmt.Errorf("node %q is tagged and has a user ID, has to be either tagged or owned by user", node.Hostname)
+	}
+
+	if !node.IsTagged() && node.UserID == nil {
+		return fmt.Errorf("node %q is not tagged and has no user ID, has to be either tagged or owned by user", node.Hostname)
+	}
+
+	slices.Sort(node.Tags)
+	node.Tags = slices.Compact(node.Tags)
+	return hsdb.DB.Save(node).Error
 }
 
 func (hsdb *HSDatabase) getNode(uid types.UserID, name string) (*types.Node, error) {
@@ -196,18 +214,26 @@ func (hsdb *HSDatabase) SetTags(
 
 // SetTags takes a NodeID and update the forced tags.
 // It will overwrite any tags with the new list.
+// If the node has a UserID, it will be unset as a node
+// can only have a UserID or tags, not both.
 func SetTags(
 	tx *gorm.DB,
 	nodeID types.NodeID,
 	tags []string,
 ) error {
+	// If no tags are provided, return an error.
+	// Tailscale does not support removing all tags from a node.
+	// A node needs to have either a User owner, or be tagged, and
+	// it is not supported to remove all tags and "return it to a user".
 	if len(tags) == 0 {
-		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
-			return fmt.Errorf("removing tags: %w", err)
-		}
+		return types.ErrCannotRemoveAllTags
+	}
 
-		return nil
+	// If the node has a UserID, we need to remove it.
+	// This is because a node can only have a UserID or tags, not both.
+	// We need to set the UserID to nil.
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("user_id", nil).Error; err != nil {
+		return fmt.Errorf("removing user from tagged node: %w", err)
 	}
 
 	slices.Sort(tags)
@@ -217,14 +243,15 @@ func SetTags(
 		return err
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error; err != nil {
 		return fmt.Errorf("updating tags: %w", err)
 	}
 
 	return nil
 }
 
-// SetTags takes a Node struct pointer and update the forced tags.
+// SetApprovedRoutes takes a NodeID and a list of routes and updates the
+// approved routes for the node.
 func SetApprovedRoutes(
 	tx *gorm.DB,
 	nodeID types.NodeID,
@@ -339,6 +366,30 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	})
 }
 
+func checkTags(polMan policy.PolicyManager, node *types.Node, reqTags []string) ([]string, error) {
+	if len(reqTags) == 0 {
+		return nil, nil
+	}
+
+	var tags []string
+	var invalidTags []string
+	for _, tag := range reqTags {
+		if polMan.NodeCanHaveTag(node, tag) {
+			tags = append(tags, tag)
+		} else {
+			invalidTags = append(invalidTags, tag)
+		}
+	}
+
+	if len(invalidTags) > 0 {
+		return nil, fmt.Errorf(`requested tags %v are invalid or not defined in policy`, invalidTags)
+	}
+
+	slices.Sort(tags)
+	tags = slices.Compact(tags)
+	return tags, nil
+}
+
 // HandleNodeFromAuthPath is called from the OIDC or CLI auth path
 // with a registrationID to register or reauthenticate a node.
 // If the node found in the registration cache is not already registered,
@@ -352,8 +403,9 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
-) (*types.Node, bool, error) {
+) (*types.Node, types.ChangeSet, error) {
 	var newNode bool
+	cs := types.ChangeSet{}
 	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
 		if reg, ok := hsdb.regCache.Get(registrationID); ok {
 			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
@@ -376,12 +428,22 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				// Why not always?
 				// Registration of expired node with different user
 				if reg.Node.ID != 0 &&
-					reg.Node.UserID != user.ID {
+					reg.Node.UserID != nil &&
+					*reg.Node.UserID != user.ID {
 					return nil, ErrDifferentRegisteredUser
 				}
 
-				reg.Node.UserID = user.ID
-				reg.Node.User = *user
+				if reqTags := reg.Node.RequestTags(); len(reqTags) > 0 {
+					tags, err := checkTags(hsdb.polMan, &reg.Node, reqTags)
+					if err != nil {
+						return nil, err
+					}
+					reg.Node.Tags = tags
+				} else {
+					reg.Node.UserID = &user.ID
+					reg.Node.User = user
+				}
+
 				reg.Node.RegisterMethod = registrationMethod
 
 				if nodeExpiry != nil {
@@ -405,14 +467,27 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				}
 				close(reg.Registered)
 
-				newNode = true
+				cs.New = true
 				return node, err
 			} else {
+				if reqTags := reg.Node.RequestTags(); len(reqTags) > 0 {
+					tags, err := checkTags(hsdb.polMan, &reg.Node, reqTags)
+					if err != nil {
+						return nil, err
+					}
+					err = SetTags(tx, node.ID, tags)
+					if err != nil {
+						return nil, err
+					}
+					cs.Tags = true
+				}
+
 				// If the node is already registered, this is a refresh.
 				err := NodeSetExpiry(tx, node.ID, *nodeExpiry)
 				if err != nil {
 					return nil, err
 				}
+				cs.Expiry = true
 				return node, nil
 			}
 		}
@@ -420,7 +495,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 		return nil, ErrNodeNotFoundRegistrationCache
 	})
 
-	return node, newNode, err
+	return node, cs, err
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
@@ -435,7 +510,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Username()).
 		Msg("Registering node")
 
 	// If the a new node is registered with the same machine key, to the same user,
@@ -463,7 +537,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("node", node.Hostname).
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Username()).
 			Msg("Node authorized again")
 
 		return &node, nil
