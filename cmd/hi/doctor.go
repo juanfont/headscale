@@ -190,7 +190,7 @@ func checkDockerSocket(ctx context.Context) DoctorResult {
 	}
 }
 
-// checkGolangImage verifies we can access the golang Docker image.
+// checkGolangImage verifies the golang Docker image is available locally or can be pulled.
 func checkGolangImage(ctx context.Context) DoctorResult {
 	cli, err := createDockerClient()
 	if err != nil {
@@ -205,17 +205,40 @@ func checkGolangImage(ctx context.Context) DoctorResult {
 	goVersion := detectGoVersion()
 	imageName := "golang:" + goVersion
 
-	// Check if we can pull the image
+	// First check if image is available locally
+	available, err := checkImageAvailableLocally(ctx, cli, imageName)
+	if err != nil {
+		return DoctorResult{
+			Name:    "Golang Image",
+			Status:  "FAIL",
+			Message: fmt.Sprintf("Cannot check golang image %s: %v", imageName, err),
+			Suggestions: []string{
+				"Check Docker daemon status",
+				"Try: docker images | grep golang",
+			},
+		}
+	}
+
+	if available {
+		return DoctorResult{
+			Name:    "Golang Image",
+			Status:  "PASS",
+			Message: fmt.Sprintf("Golang image %s is available locally", imageName),
+		}
+	}
+
+	// Image not available locally, try to pull it
 	err = ensureImageAvailable(ctx, cli, imageName, false)
 	if err != nil {
 		return DoctorResult{
 			Name:    "Golang Image",
 			Status:  "FAIL",
-			Message: fmt.Sprintf("Cannot pull golang image %s: %v", imageName, err),
+			Message: fmt.Sprintf("Golang image %s not available locally and cannot pull: %v", imageName, err),
 			Suggestions: []string{
 				"Check internet connectivity",
 				"Verify Docker Hub access",
 				"Try: docker pull " + imageName,
+				"Or run tests offline if image was pulled previously",
 			},
 		}
 	}
@@ -223,7 +246,7 @@ func checkGolangImage(ctx context.Context) DoctorResult {
 	return DoctorResult{
 		Name:    "Golang Image",
 		Status:  "PASS",
-		Message: fmt.Sprintf("Golang image %s is available", imageName),
+		Message: fmt.Sprintf("Golang image %s is now available", imageName),
 	}
 }
 

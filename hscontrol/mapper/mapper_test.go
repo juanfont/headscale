@@ -70,7 +70,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				&types.Config{
 					TailcfgDNSConfig: &dnsConfigOrig,
 				},
-				nodeInShared1.View(),
+				nodeInShared1,
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {

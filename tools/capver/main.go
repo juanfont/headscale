@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -21,7 +20,7 @@ import (
 const (
 	releasesURL = "https://api.github.com/repos/tailscale/tailscale/releases"
 	rawFileURL  = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
-	outputFile  = "../capver_generated.go"
+	outputFile  = "../../hscontrol/capver/capver_generated.go"
 )
 
 type Release struct {
@@ -115,16 +114,13 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 	capVarToTailscaleVer := make(map[tailcfg.CapabilityVersion]string)
 	for _, v := range sortedVersions {
 		cap := versions[v]
-		log.Printf("cap for v: %d, %s", cap, v)
 
 		// If it is already set, skip and continue,
 		// we only want the first tailscale vsion per
 		// capability vsion.
 		if _, ok := capVarToTailscaleVer[cap]; ok {
-			log.Printf("Skipping %d, %s", cap, v)
 			continue
 		}
-		log.Printf("Storing %d, %s", cap, v)
 		capVarToTailscaleVer[cap] = v
 	}
 
