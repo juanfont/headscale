@@ -56,11 +56,10 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-user-created", user.Name)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
+	api.h.Change(types.Change{UserChange: types.UserChange{
+		ID:      types.UserID(user.ID),
+		NewUser: true,
+	}})
 
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
@@ -106,6 +105,11 @@ func (api headscaleV1APIServer) DeleteUser(
 	if err != nil {
 		return nil, err
 	}
+
+	api.h.Change(types.Change{UserChange: types.UserChange{
+		ID:          types.UserID(user.ID),
+		RemovedUser: true,
+	}})
 
 	return &v1.DeleteUserResponse{}, nil
 }
@@ -246,7 +250,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, fmt.Errorf("looking up user: %w", err)
 	}
 
-	node, _, err := api.h.state.HandleNodeFromAuthPath(
+	node, change, err := api.h.db.HandleNodeFromAuthPath(
 		registrationId,
 		types.UserID(user.ID),
 		nil,
@@ -273,16 +277,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	// Send policy update notifications if needed (from SaveNode or route changes)
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-nodes-change", "all")
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	if routesChanged {
-		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
-	}
+	api.h.Change(change)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
@@ -300,7 +295,7 @@ func (api headscaleV1APIServer) GetNode(
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.nodeNotifier.IsConnected(node.ID)
+	resp.Online = api.h.mapBatcher.IsLikelyConnected(node.ID)
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -323,14 +318,10 @@ func (api headscaleV1APIServer) SetTags(
 		}, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-tags", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:          node.ID,
+		TagsChanged: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -367,19 +358,11 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-routes-approved", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	if api.h.state.SetNodeRoutes(node.ID, node.SubnetRoutes()...) {
-		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	} else {
-		ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
-	}
+	api.h.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:            node.ID,
+		RoutesChanged: true,
+	}})
 
 	proto := node.Proto()
 	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID))
@@ -414,14 +397,10 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-deleted", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-	api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:          node.ID,
+		RemovedNode: true,
+	}})
 
 	return &v1.DeleteNodeResponse{}, nil
 }
@@ -437,20 +416,11 @@ func (api headscaleV1APIServer) ExpireNode(
 		return nil, err
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-expired", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByNodeID(
-		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
-
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, now), node.ID)
+	// TODO(kradalby): Ensure that both the selfupdate and peer updates are sent
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:            node.ID,
+		ExpiryChanged: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -469,14 +439,12 @@ func (api headscaleV1APIServer) RenameNode(
 		return nil, err
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-renamed", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID: node.ID,
+		// TODO(kradalby): Not sure if this is what we want to send, probably
+		// we can do a delta change here.
+		NewNode: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -495,7 +463,7 @@ func (api headscaleV1APIServer) ListNodes(
 	// probably be done once.
 	// TODO(kradalby): This should be done in one tx.
 
-	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
+	isLikelyConnected := api.h.mapBatcher.LikelyConnectedMap()
 	if request.GetUser() != "" {
 		user, err := api.h.state.GetUserByName(request.GetUser())
 		if err != nil {
@@ -553,24 +521,19 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	node, policyChanged, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
+	node, _, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
 	if err != nil {
 		return nil, err
 	}
 
-	// Send policy update notifications if needed
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-moved", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
-
-	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByNodeID(
-		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
-	ctx = types.NotifyCtx(ctx, "cli-movenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	// TODO(kradalby): Ensure the policy is also sent
+	// TODO(kradalby): ensure that both the selfupdate and peer updates are sent
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID: node.ID,
+		// TODO(kradalby): Not sure if this is what we want to send, probably
+		// we can do a delta change here.
+		NewNode: true,
+	}})
 
 	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
@@ -751,8 +714,7 @@ func (api headscaleV1APIServer) SetPolicy(
 			return nil, err
 		}
 
-		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		api.h.Change(types.Change{PolicyChanged: true})
 	}
 
 	response := &v1.SetPolicyResponse{

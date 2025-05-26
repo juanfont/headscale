@@ -56,6 +56,7 @@ type RegistrationInfo struct {
 }
 
 type AuthProviderOIDC struct {
+	h                 *Headscale
 	serverURL         string
 	cfg               *types.OIDCConfig
 	state             *state.State
@@ -498,6 +499,8 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	}
 
 	// if the user is still not found, create a new empty user.
+	// TODO(kradalby): This might cause us to not have an ID below which
+	// is a problem.
 	if user == nil {
 		newUser = true
 		user = &types.User{}
@@ -568,12 +571,9 @@ func (a *AuthProviderOIDC) handleRegistration(
 			types.UpdateSelf(node.ID),
 			node.ID,
 		)
-
-		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
-		a.notifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 	}
 
-	return newNode, nil
+	return change.NodeChange.NewNode, nil
 }
 
 // TODO(kradalby):

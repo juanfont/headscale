@@ -1,14 +1,12 @@
 package types
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
-	"tailscale.com/util/ctxkey"
 )
 
 const (
@@ -146,18 +144,6 @@ func UpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 			},
 		},
 	}
-}
-
-var (
-	NotifyOriginKey   = ctxkey.New("notify.origin", "")
-	NotifyHostnameKey = ctxkey.New("notify.hostname", "")
-)
-
-func NotifyCtx(ctx context.Context, origin, hostname string) context.Context {
-	ctx2, _ := context.WithTimeout(ctx, 3*time.Second)
-	ctx2 = NotifyOriginKey.WithValue(ctx2, origin)
-	ctx2 = NotifyHostnameKey.WithValue(ctx2, hostname)
-	return ctx2
 }
 
 const RegistrationIDLength = 24

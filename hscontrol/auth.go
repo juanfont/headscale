@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -87,16 +88,13 @@ func (h *Headscale) handleExistingNode(
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
-				// Send policy update notifications if needed
-				if policyChanged {
-					ctx := types.NotifyCtx(context.Background(), "auth-logout-ephemeral-policy", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-				} else {
-					ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
-				}
+				h.Change(types.Change{NodeChange: types.NodeChange{
+					ID:          node.ID,
+					RemovedNode: true,
 
-				return nil, nil
+					// TODO(kradalby): Remove when specifics are implemented
+					FullChange: true,
+				}})
 			}
 
 		}
@@ -106,16 +104,13 @@ func (h *Headscale) handleExistingNode(
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
 
-		// Send policy update notifications if needed
-		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "auth-expiry-policy", "na")
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		} else {
-			ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-			h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
-		}
+		h.Change(types.Change{NodeChange: types.NodeChange{
+			ID:            node.ID,
+			ExpiryChanged: true,
 
-		return nodeToRegisterResponse(n), nil
+			// TODO(kradalby): Remove when specifics are implemented
+			FullChange: true,
+		}})
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -195,18 +190,17 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := h.state.AutoApproveRoutes(node)
-	if _, _, err := h.state.SaveNode(node); err != nil {
+	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
+	// now since we dont update the node/pol here anymore
+	_ = policy.AutoApproveRoutes(h.polMan, node)
+	if err := h.db.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
-	} else if changed {
-		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
+	h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:      node.ID,
+		NewNode: true,
+	}})
 
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,

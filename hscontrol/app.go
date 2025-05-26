@@ -28,7 +28,6 @@ import (
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -82,9 +81,8 @@ type Headscale struct {
 
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
-	mapper         *mapper.Mapper
-	nodeNotifier   *notifier.Notifier
 	authProvider   AuthProvider
+	mapBatcher     *mapper.Batcher
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -118,7 +116,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		cfg:                cfg,
 		noisePrivateKey:    noisePrivateKey,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(cfg),
 		state:              s,
 	}
 
@@ -153,6 +150,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		defer cancel()
 		oidcProvider, err := NewAuthProviderOIDC(
 			ctx,
+			&app,
 			cfg.ServerURL,
 			&cfg.OIDC,
 			app.state,
@@ -270,8 +268,15 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			if changed {
 				log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
 
-				ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
-				h.nodeNotifier.NotifyAll(ctx, update)
+				// TODO(kradalby): Not sure how I feel about this one, feel like we
+				// can be more clever? but at the same time, if they are passed straight
+				// through later, its fine?
+				for _, node := range update.ChangePatches {
+					h.Change(types.Change{NodeChange: types.NodeChange{
+						ID:            types.NodeID(node.NodeID),
+						ExpiryChanged: true,
+					}})
+				}
 			}
 
 		case <-derpTickerChan:
@@ -282,11 +287,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				derpMap.Regions[region.RegionID] = &region
 			}
 
-			ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
-			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-				Type:    types.StateDERPUpdated,
-				DERPMap: derpMap,
-			})
+			h.Change(types.Change{DERPChanged: true})
 
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
@@ -294,19 +295,16 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			ctx := types.NotifyCtx(context.Background(), "dns-extrarecord", "all")
-			// TODO(kradalby): We can probably do better than sending a full update here,
-			// but for now this will ensure that all of the nodes get the new records.
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+			h.Change(types.Change{ExtraRecordsChanged: true})
 		}
 	}
 }
 
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
-	req interface{},
+	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
-) (interface{}, error) {
+) (any, error) {
 	// Check if the request is coming from the on-server client.
 	// This is not secure, but it is to maintain maintainability
 	// with the "legacy" database-based client
@@ -500,8 +498,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 // 	}
 
 // 	if changed {
-// 		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
-// 		notif.NotifyAll(ctx, types.UpdateFull())
+// 		notif.NotifyAll(types.UpdateFull())
 // 	}
 
 // 	return nil
@@ -527,8 +524,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 // 	}
 
 // 	if filterChanged {
-// 		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
-// 		notif.NotifyAll(ctx, types.UpdateFull())
+// 		notif.NotifyAll(types.UpdateFull())
 
 // 		return true, nil
 // 	}
@@ -562,8 +558,11 @@ func (h *Headscale) Serve() error {
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
-	// Fetch an initial DERP Map before we start serving
-	h.mapper = mapper.NewMapper(h.state, h.cfg, h.nodeNotifier)
+	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
+	h.mapBatcher = mapper.NewBatcherAndMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
+
+	h.mapBatcher.Start()
+	defer h.mapBatcher.Close()
 
 	// TODO(kradalby): fix state part.
 	if h.cfg.DERP.ServerEnabled {
@@ -838,8 +837,12 @@ func (h *Headscale) Serve() error {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
-					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+					err = h.autoApproveNodes()
+					if err != nil {
+						log.Error().Err(err).Msg("failed to approve routes after new policy")
+					}
+
+					h.Change(types.Change{PolicyChanged: true})
 				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
@@ -865,7 +868,6 @@ func (h *Headscale) Serve() error {
 				}
 
 				info("closing node notifier")
-				h.nodeNotifier.Close()
 
 				info("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()
