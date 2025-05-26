@@ -97,36 +97,36 @@ func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.mbatcher.LikelyConnectedMap()
 }
 
-func (n *Notifier) NotifyAll(update types.StateUpdate) {
-	n.NotifyWithIgnore(update)
-}
+// func (n *Notifier) NotifyAll(update types.StateUpdate) {
+// 	n.NotifyWithIgnore(update)
+// }
 
-func (n *Notifier) NotifyWithIgnore(
-	update types.StateUpdate,
-	ignoreNodeIDs ...types.NodeID,
-) {
-	if n.closed {
-		return
-	}
+// func (n *Notifier) NotifyWithIgnore(
+// 	update types.StateUpdate,
+// 	ignoreNodeIDs ...types.NodeID,
+// ) {
+// 	if n.closed {
+// 		return
+// 	}
 
-	n.b.addOrPassthrough(update)
-}
+// 	n.b.addOrPassthrough(update)
+// }
 
-func (n *Notifier) NotifyByNodeID(
-	update types.StateUpdate,
-	nodeID types.NodeID,
-) {
-	n.mbatcher.AddWork(&mapper.ChangeWork{
-		NodeID: &nodeID,
-		Update: update,
-	})
-}
+// func (n *Notifier) NotifyByNodeID(
+// 	update types.StateUpdate,
+// 	nodeID types.NodeID,
+// ) {
+// 	n.mbatcher.AddWork(&mapper.ChangeWork{
+// 		NodeID: &nodeID,
+// 		Update: update,
+// 	})
+// }
 
-func (n *Notifier) sendAll(update types.StateUpdate) {
-	n.mbatcher.AddWork(&mapper.ChangeWork{
-		Update: update,
-	})
-}
+// func (n *Notifier) sendAll(update types.StateUpdate) {
+// 	n.mbatcher.AddWork(&mapper.ChangeWork{
+// 		Update: update,
+// 	})
+// }
 
 func (n *Notifier) String() string {
 	notifierWaitersForLock.WithLabelValues("lock", "string").Inc()
@@ -197,7 +197,7 @@ func (b *batcher) addOrPassthrough(update types.StateUpdate) {
 		notifierBatcherPatches.WithLabelValues().Set(float64(len(b.patches)))
 
 	default:
-		b.n.sendAll(update)
+		// b.n.sendAll(update)
 	}
 }
 
@@ -225,15 +225,15 @@ func (b *batcher) flush() {
 		slices.Sort(changedNodes)
 
 		if b.changedNodeIDs.Slice().Len() > 0 {
-			update := types.UpdatePeerChanged(changedNodes...)
+			// update := types.UpdatePeerChanged(changedNodes...)
 
-			b.n.sendAll(update)
+			// b.n.sendAll(update)
 		}
 
 		if len(patches) > 0 {
-			patchUpdate := types.UpdatePeerPatch(patches...)
+			// patchUpdate := types.UpdatePeerPatch(patches...)
 
-			b.n.sendAll(patchUpdate)
+			// b.n.sendAll(patchUpdate)
 		}
 
 		b.changedNodeIDs = set.Slice[types.NodeID]{}

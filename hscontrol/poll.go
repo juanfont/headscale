@@ -163,25 +163,7 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// only update node status if the node channel was removed.
-		// in principal, it will be removed, but the client rapidly
-		// reconnects, the channel might be of another connection.
-		// In that case, it is not closed and the node is still online.
-		if m.h.mapBatcher.RemoveNode(m.node.ID, m.ch) {
-			// TODO(kradalby): All of this handling should be moved out of here
-			// to the mapBatcher(?), where there is more state (with the goal of removing it from here).
-
-			// Failover the node's routes if any.
-			m.h.updateNodeOnlineStatus(false, m.node)
-
-			// When a node disconnects, and it causes the primary route map to change,
-			// send a full update to all nodes.
-			// TODO(kradalby): This can likely be made more effective, but likely most
-			// nodes has access to the same routes, so it might not be a big deal.
-			if m.h.primaryRoutes.SetRoutes(m.node.ID) {
-				m.h.nodeNotifier.NotifyAll(types.UpdateFull())
-			}
-		}
+		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
 
 		m.afterServeLongPoll()
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
@@ -190,12 +172,6 @@ func (m *mapSession) serveLongPoll() {
 	// Set up the client stream
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
-
-	// TODO(kradalby): All of this handling should be moved out of here
-	// to the mapBatcher(?), where there is more state (with the goal of removing it from here).
-	if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-		m.h.nodeNotifier.NotifyAll(types.UpdateFull())
-	}
 
 	// TODO(kradalby): I think this didnt really work and can be reverted back to a normal write thing.
 	// Upgrade the writer to a ResponseController
@@ -211,10 +187,6 @@ func (m *mapSession) serveLongPoll() {
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
 	m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.req.Compress, m.req.Version)
-
-	// TODO(kradalby): All of this handling should be moved out of here
-	// to the mapBatcher(?), where there is more state (with the goal of removing it from here).
-	go m.h.updateNodeOnlineStatus(true, m.node)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
@@ -298,37 +270,10 @@ var keepAliveZstd = (func() []byte {
 	return zstdframe.AppendEncode(nil, msg, zstdframe.FastestCompression)
 })()
 
-// updateNodeOnlineStatus records the last seen status of a node and notifies peers
-// about change in their online/offline status.
-// It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
-func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
-	change := &tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
-		Online: &online,
-	}
-
-	if !online {
-		now := time.Now()
-
-		// lastSeen is only relevant if the node is disconnected.
-		node.LastSeen = &now
-		change.LastSeen = &now
-	}
-
-	if node.LastSeen != nil {
-		h.db.SetLastSeen(node.ID, *node.LastSeen)
-	}
-
-	h.nodeNotifier.NotifyWithIgnore(types.UpdatePeerPatch(change), node.ID)
-}
-
 func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
 	change := m.node.PeerChangeFromMapRequest(m.req)
-
-	online := m.h.nodeNotifier.IsLikelyConnected(m.node.ID)
-	change.Online = &online
 
 	m.node.ApplyPeerChange(&change)
 
@@ -355,6 +300,11 @@ func (m *mapSession) handleEndpointUpdate() {
 		return
 	}
 
+	c := types.Change{NodeChange: types.NodeChange{
+		ID:              m.node.ID,
+		HostinfoChanged: true,
+	}}
+
 	// Check if the Hostinfo of the node has changed.
 	// If it has changed, check if there has been a change to
 	// the routable IPs of the host and update them in
@@ -364,9 +314,13 @@ func (m *mapSession) handleEndpointUpdate() {
 	// If the hostinfo has changed, but not the routes, just update
 	// hostinfo and let the function continue.
 	if routesChanged {
-		// TODO(kradalby): I am not sure if we need this?
-		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
+		c.NodeChange.RoutesChanged = true
 
+		// TODO(kradalby): I am not sure if we will ultimatly move this
+		// to a more central part as part of this effort.
+		// Do we want to make a thing where when you "save" a node, all the
+		// changes are calculated based on that and updating the right subsystems?
+		//
 		// Approve any route that has been defined in policy as
 		// auto approved. Any change here is not important as any
 		// actual state change will be detected when the route manager
@@ -375,19 +329,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 		// Update the routes of the given node in the route manager to
 		// see if an update needs to be sent.
-		if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-			m.h.nodeNotifier.NotifyAll(types.UpdateFull())
-		} else {
-			m.h.nodeNotifier.NotifyWithIgnore(types.UpdatePeerChanged(m.node.ID), m.node.ID)
-
-			// TODO(kradalby): I am not sure if we need this?
-			// Send an update to the node itself with to ensure it
-			// has an updated packetfilter allowing the new route
-			// if it is defined in the ACL.
-			m.h.nodeNotifier.NotifyByNodeID(
-				types.UpdateSelf(m.node.ID),
-				m.node.ID)
-		}
+		m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...)
 	}
 
 	// Check if there has been a change to Hostname and update them
@@ -404,10 +346,7 @@ func (m *mapSession) handleEndpointUpdate() {
 		return
 	}
 
-	m.h.nodeNotifier.NotifyWithIgnore(
-		types.UpdatePeerChanged(m.node.ID),
-		m.node.ID,
-	)
+	m.h.Change(c)
 
 	m.w.WriteHeader(http.StatusOK)
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()

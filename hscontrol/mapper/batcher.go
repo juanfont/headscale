@@ -28,17 +28,6 @@ func init() {
 	}
 }
 
-type ChangeWork struct {
-	NodeID *types.NodeID
-	Update types.StateUpdate
-}
-
-type nodeConn struct {
-	c        chan<- []byte
-	compress string
-	version  tailcfg.CapabilityVersion
-}
-
 type Batcher struct {
 	mu deadlock.RWMutex
 
@@ -58,7 +47,7 @@ type Batcher struct {
 	// this should serve for the experiment.
 	cancelCh chan struct{}
 
-	workCh chan *ChangeWork
+	workCh chan *types.Change
 }
 
 func NewBatcherAndMapper(
@@ -80,7 +69,7 @@ func NewBatcher(mapper *mapper) *Batcher {
 		mapper:   mapper,
 		cancelCh: make(chan struct{}),
 		// TODO: No limit for now, this needs to be changed
-		workCh: make(chan *ChangeWork, (1<<16)-1),
+		workCh: make(chan *types.Change, (1<<16)-1),
 
 		nodes:     make(map[types.NodeID]nodeConn),
 		connected: make(map[types.NodeID]*time.Time),
@@ -110,37 +99,46 @@ func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, ver
 	}
 
 	b.nodes[id] = nodeConn{
+		id:       id,
 		c:        c,
 		compress: compress,
 		version:  version,
+
+		// TODO(kradalby): Not sure about this one yet.
+		mapper: b.mapper,
 	}
 	b.connected[id] = nil // nil means connected
 
-	b.AddWork(&ChangeWork{
-		NodeID: &id,
-		Update: types.UpdateFull(),
-	})
+	// TODO(kradalby): Handle:
+	// - Updating peers with online status
+	// - Updating routes in routemanager and peers
+	b.AddWork(&types.Change{NodeChange: types.NodeChange{
+		ID:     id,
+		Online: true,
+	}})
 }
 
-func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) bool {
+func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	if curr, ok := b.nodes[id]; ok {
 		if curr.c != c {
-			return false
+			return
 		}
 	}
 
 	delete(b.nodes, id)
 	b.connected[id] = ptr.To(time.Now())
 
-	return true
+	// TODO(kradalby): Handle:
+	// - Updating peers with lastseen status, and only if not replaced
+	// - Updating routes in routemanager and peers
 }
 
-func (b *Batcher) AddWork(work *ChangeWork) {
-	log.Trace().Msgf("adding work: %v", work.Update)
-	b.workCh <- work
+func (b *Batcher) AddWork(change *types.Change) {
+	log.Trace().Msgf("adding work: %v", change)
+	b.workCh <- change
 }
 
 func (b *Batcher) IsConnected(id types.NodeID) bool {
@@ -194,12 +192,12 @@ func (b *Batcher) doWork() {
 		case <-b.cancelCh:
 			return
 		case work := <-b.workCh:
-			b.processWork(work)
+			b.processChange(work)
 		}
 	}
 }
 
-// processWork is the current bottleneck where all the updates get picked up
+// processChange is the current bottleneck where all the updates get picked up
 // one by one and processed. This will have to change, it needs to go as fast as
 // possible and just pass it on to the nodes. Currently it wont block because the
 // work channel is super large, but it might not be able to keep up.
@@ -207,36 +205,71 @@ func (b *Batcher) doWork() {
 // mean a lot of goroutines, hanging around.
 // Another is just a worker pool that picks up work and processes it,
 // and passes it on to the nodes. That might be complicated with order?
-func (b *Batcher) processWork(work *ChangeWork) {
+func (b *Batcher) processChange(c *types.Change) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	log.Trace().Msgf("processing work: %v", work)
-
-	if work.NodeID != nil {
-		id := *work.NodeID
-		node, ok := b.nodes[id]
-		if !ok {
-			log.Trace().Msgf("node %d not found in batcher, skipping work: %v", id, work.Update)
-			return
-		}
-		resp, err := b.resp(id, &node, work)
-		if err != nil {
-			log.Debug().Msgf("creating mapResp for %d: %s", id, err)
-		}
-
-		node.c <- resp
-		return
-	}
+	log.Trace().Msgf("processing work: %v", c)
 
 	for id, node := range b.nodes {
-		resp, err := b.resp(id, &node, work)
-		if err != nil {
-			log.Debug().Msgf("creating mapResp for %d: %s", id, err)
-		}
-
-		node.c <- resp
+		err := node.change(c)
+		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msgf("processing work for node %d", id)
 	}
+}
+
+type nodeConn struct {
+	id       types.NodeID
+	c        chan<- []byte
+	compress string
+	version  tailcfg.CapabilityVersion
+	mapper   *mapper
+}
+
+type changeUpdate int
+
+const (
+	_ changeUpdate = iota
+	ignoreUpdate
+	partialUpdate
+	fullUpdate
+)
+
+func determineChange(c *types.Change) changeUpdate {
+	if c == nil {
+		return ignoreUpdate
+	}
+
+	if c.FullUpdate() {
+		return fullUpdate
+	}
+
+	return fullUpdate
+}
+
+func (nc *nodeConn) change(c *types.Change) error {
+	switch determineChange(c) {
+	case partialUpdate:
+		return nc.partialUpdate(c)
+	case fullUpdate:
+		return nc.fullUpdate()
+	default:
+		log.Trace().Msgf("ignoring change: %v", c)
+		return nil
+	}
+}
+
+func (nc *nodeConn) partialUpdate(c *types.Change) error {
+	return nil
+}
+
+func (nc *nodeConn) fullUpdate() error {
+	data, err := nc.mapper.fullMapResponse(nc.id, nc.version, nc.compress)
+	if err != nil {
+		return err
+	}
+
+	nc.c <- data
+	return nil
 }
 
 // resp is the logic that used to reside in the poller, but is now moved
@@ -245,52 +278,52 @@ func (b *Batcher) processWork(work *ChangeWork) {
 // process all the work and then send the responses to the nodes.
 // TODO(kradalby): This is a temporary solution, as we explore this
 // approach, we will likely need to refactor this further.
-func (b *Batcher) resp(id types.NodeID, nc *nodeConn, work *ChangeWork) ([]byte, error) {
-	var data []byte
-	var err error
+// func (b *Batcher) resp(id types.NodeID, nc *nodeConn, work *ChangeWork) ([]byte, error) {
+// 	var data []byte
+// 	var err error
 
-	// TODO(kradalby): This should not be necessary, mapper only
-	// use compress and version, and this can either be moved out
-	// or passed directly. The mapreq isnt needed.
-	req := tailcfg.MapRequest{
-		Compress: nc.compress,
-		Version:  nc.version,
-	}
+// 	// TODO(kradalby): This should not be necessary, mapper only
+// 	// use compress and version, and this can either be moved out
+// 	// or passed directly. The mapreq isnt needed.
+// 	req := tailcfg.MapRequest{
+// 		Compress: nc.compress,
+// 		Version:  nc.version,
+// 	}
 
-	// TODO(kradalby): We dont want to use the db here. We should
-	// just have the node available, or at least quickly accessible
-	// from the new fancy mem state we want.
-	node, err := b.mapper.db.GetNodeByID(id)
-	if err != nil {
-		return nil, err
-	}
+// 	// TODO(kradalby): We dont want to use the db here. We should
+// 	// just have the node available, or at least quickly accessible
+// 	// from the new fancy mem state we want.
+// 	node, err := b.mapper.db.GetNodeByID(id)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	switch work.Update.Type {
-	case types.StateFullUpdate:
-		data, err = b.mapper.fullMapResponse(req, node)
-	case types.StatePeerChanged:
-		changed := make(map[types.NodeID]bool, len(work.Update.ChangeNodes))
+// 	switch work.Update.Type {
+// 	case types.StateFullUpdate:
+// 		data, err = b.mapper.fullMapResponse(req, node)
+// 	case types.StatePeerChanged:
+// 		changed := make(map[types.NodeID]bool, len(work.Update.ChangeNodes))
 
-		for _, nodeID := range work.Update.ChangeNodes {
-			changed[nodeID] = true
-		}
+// 		for _, nodeID := range work.Update.ChangeNodes {
+// 			changed[nodeID] = true
+// 		}
 
-		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
+// 		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
 
-	case types.StatePeerChangedPatch:
-		data, err = b.mapper.peerChangedPatchResponse(req, node, work.Update.ChangePatches)
-	case types.StatePeerRemoved:
-		changed := make(map[types.NodeID]bool, len(work.Update.Removed))
+// 	case types.StatePeerChangedPatch:
+// 		data, err = b.mapper.peerChangedPatchResponse(req, node, work.Update.ChangePatches)
+// 	case types.StatePeerRemoved:
+// 		changed := make(map[types.NodeID]bool, len(work.Update.Removed))
 
-		for _, nodeID := range work.Update.Removed {
-			changed[nodeID] = false
-		}
-		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
-	case types.StateSelfUpdate:
-		data, err = b.mapper.peerChangedResponse(req, node, make(map[types.NodeID]bool), work.Update.ChangePatches)
-	case types.StateDERPUpdated:
-		data, err = b.mapper.derpMapResponse(req, node, work.Update.DERPMap)
-	}
+// 		for _, nodeID := range work.Update.Removed {
+// 			changed[nodeID] = false
+// 		}
+// 		data, err = b.mapper.peerChangedResponse(req, node, changed, work.Update.ChangePatches)
+// 	case types.StateSelfUpdate:
+// 		data, err = b.mapper.peerChangedResponse(req, node, make(map[types.NodeID]bool), work.Update.ChangePatches)
+// 	case types.StateDERPUpdated:
+// 		data, err = b.mapper.derpMapResponse(req, node, work.Update.DERPMap)
+// 	}
 
-	return data, err
-}
+// 	return data, err
+// }

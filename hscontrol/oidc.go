@@ -16,7 +16,6 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -54,13 +53,10 @@ type RegistrationInfo struct {
 }
 
 type AuthProviderOIDC struct {
+	h                 *Headscale
 	serverURL         string
 	cfg               *types.OIDCConfig
-	db                *db.HSDatabase
 	registrationCache *zcache.Cache[string, RegistrationInfo]
-	notifier          *notifier.Notifier
-	ipAlloc           *db.IPAllocator
-	polMan            policy.PolicyManager
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -68,12 +64,9 @@ type AuthProviderOIDC struct {
 
 func NewAuthProviderOIDC(
 	ctx context.Context,
+	h *Headscale,
 	serverURL string,
 	cfg *types.OIDCConfig,
-	db *db.HSDatabase,
-	notif *notifier.Notifier,
-	ipAlloc *db.IPAllocator,
-	polMan policy.PolicyManager,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -99,13 +92,10 @@ func NewAuthProviderOIDC(
 	)
 
 	return &AuthProviderOIDC{
+		h:                 h,
 		serverURL:         serverURL,
 		cfg:               cfg,
-		db:                db,
 		registrationCache: registrationCache,
-		notifier:          notif,
-		ipAlloc:           ipAlloc,
-		polMan:            polMan,
 
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
@@ -475,26 +465,29 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 ) (*types.User, error) {
 	var user *types.User
 	var err error
-	user, err = a.db.GetUserByOIDCIdentifier(claims.Identifier())
+	user, err = a.h.db.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
+	// TODO(kradalby): This might cause us to not have an ID below which
+	// is a problem.
 	if user == nil {
 		user = &types.User{}
 	}
 
 	user.FromClaim(claims)
-	err = a.db.DB.Save(user).Error
+	err = a.h.db.DB.Save(user).Error
 	if err != nil {
 		return nil, fmt.Errorf("creating or updating user: %w", err)
 	}
 
-	err = usersChangedHook(a.db, a.polMan, a.notifier)
-	if err != nil {
-		return nil, fmt.Errorf("updating resources using user: %w", err)
-	}
+	a.h.Change(types.Change{UserChange: types.UserChange{
+		ID: types.UserID(user.ID),
+		// TODO(kradalby): Not sure about this one yet.
+		NewUser: true,
+	}})
 
 	return user, nil
 }
@@ -504,12 +497,12 @@ func (a *AuthProviderOIDC) handleRegistration(
 	registrationID types.RegistrationID,
 	expiry time.Time,
 ) (bool, error) {
-	ipv4, ipv6, err := a.ipAlloc.Next()
+	ipv4, ipv6, err := a.h.ipAlloc.Next()
 	if err != nil {
 		return false, err
 	}
 
-	node, newNode, err := a.db.HandleNodeFromAuthPath(
+	node, change, err := a.h.db.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
 		&expiry,
@@ -518,14 +511,6 @@ func (a *AuthProviderOIDC) handleRegistration(
 	)
 	if err != nil {
 		return false, fmt.Errorf("could not register node: %w", err)
-	}
-
-	// Send an update to all nodes if this is a new node that they need to know
-	// about.
-	// If this is a refresh, just send new expiry updates.
-	updateSent, err := nodesChangedHook(a.db, a.polMan, a.notifier)
-	if err != nil {
-		return false, fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
@@ -539,21 +524,16 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := policy.AutoApproveRoutes(a.polMan, node)
-	if err := a.db.DB.Save(node).Error; err != nil {
+	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
+	// now since we dont update the node/pol here anymore
+	_ = policy.AutoApproveRoutes(a.h.polMan, node)
+	if err := a.h.db.DB.Save(node).Error; err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if !updateSent || routesChanged {
-		a.notifier.NotifyByNodeID(
-			types.UpdateSelf(node.ID),
-			node.ID,
-		)
+	a.h.Change(change)
 
-		a.notifier.NotifyWithIgnore(types.UpdatePeerChanged(node.ID), node.ID)
-	}
-
-	return newNode, nil
+	return change.NodeChange.NewNode, nil
 }
 
 // TODO(kradalby):

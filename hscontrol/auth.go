@@ -90,7 +90,13 @@ func (h *Headscale) handleExistingNode(
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
-				h.nodeNotifier.NotifyAll(types.UpdatePeerRemoved(node.ID))
+				h.Change(types.Change{NodeChange: types.NodeChange{
+					ID:          node.ID,
+					RemovedNode: true,
+
+					// TODO(kradalby): Remove when specifics are implemented
+					FullChange: true,
+				}})
 			}
 
 			expired = true
@@ -101,7 +107,13 @@ func (h *Headscale) handleExistingNode(
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
 
-		h.nodeNotifier.NotifyWithIgnore(types.UpdateExpire(node.ID, requestExpiry), node.ID)
+		h.Change(types.Change{NodeChange: types.NodeChange{
+			ID:            node.ID,
+			ExpiryChanged: true,
+
+			// TODO(kradalby): Remove when specifics are implemented
+			FullChange: true,
+		}})
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -238,11 +250,6 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		return nil, err
 	}
 
-	updateSent, err := nodesChangedHook(h.db, h.polMan, h.nodeNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("nodes changed hook: %w", err)
-	}
-
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
 	// Because the way the policy manager works, we need to have the node
@@ -254,14 +261,17 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := policy.AutoApproveRoutes(h.polMan, node)
+	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
+	// now since we dont update the node/pol here anymore
+	_ = policy.AutoApproveRoutes(h.polMan, node)
 	if err := h.db.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if !updateSent || routesChanged {
-		h.nodeNotifier.NotifyAll(types.UpdatePeerChanged(node.ID))
-	}
+	h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:      node.ID,
+		NewNode: true,
+	}})
 
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,

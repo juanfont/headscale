@@ -151,16 +151,22 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 
 // fullMapResponse returns a MapResponse for the given node.
 func (m *mapper) fullMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	nodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+	compress string,
 	messages ...string,
 ) ([]byte, error) {
-	peers, err := m.listPeers(node.ID)
+	node, err := m.db.GetNodeByID(nodeID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
+	peers, err := m.listPeers(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := m.baseWithConfigMapResponse(node, capVer)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +177,7 @@ func (m *mapper) fullMapResponse(
 		m.polMan,
 		m.primary,
 		node,
-		mapRequest.Version,
+		capVer,
 		peers,
 		m.cfg,
 	)
@@ -179,7 +185,7 @@ func (m *mapper) fullMapResponse(
 		return nil, err
 	}
 
-	return marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
+	return marshalMapResponse(resp, node, compress, messages...)
 }
 
 func (m *mapper) derpMapResponse(
@@ -192,7 +198,7 @@ func (m *mapper) derpMapResponse(
 	resp := m.baseMapResponse()
 	resp.DERPMap = derpMap
 
-	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return marshalMapResponse(&resp, node, mapRequest.Compress)
 }
 
 func (m *mapper) peerChangedResponse(
@@ -269,7 +275,7 @@ func (m *mapper) peerChangedResponse(
 	}
 	resp.Node = tailnode
 
-	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
+	return marshalMapResponse(&resp, node, mapRequest.Compress, messages...)
 }
 
 // peerChangedPatchResponse creates a patch MapResponse with
@@ -282,11 +288,10 @@ func (m *mapper) peerChangedPatchResponse(
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
 
-	return marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return marshalMapResponse(&resp, node, mapRequest.Compress)
 }
 
 func marshalMapResponse(
-	mapRequest tailcfg.MapRequest,
 	resp *tailcfg.MapResponse,
 	node *types.Node,
 	compression string,
@@ -300,7 +305,6 @@ func marshalMapResponse(
 	if debugDumpMapResponsePath != "" {
 		data := map[string]any{
 			"Messages":    messages,
-			"MapRequest":  mapRequest,
 			"MapResponse": resp,
 		}
 
