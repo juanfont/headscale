@@ -734,6 +734,20 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Migrate preauthkey table to make users and tags optional.
+			// Use prefix+hash for keys.
+			{
+				ID: "202505231615-preauthkey-user-optional-tags-user",
+				Migrate: func(tx *gorm.DB) error {
+					err = tx.AutoMigrate(&types.PreAuthKey{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.PreAuthKey: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
