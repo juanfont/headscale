@@ -95,7 +95,7 @@ type Headscale struct {
 	extraRecordMan *dns.ExtraRecordsMan
 	primaryRoutes  *routes.PrimaryRoutes
 
-	mapper       *mapper.Mapper
+	mapBatcher   *mapper.Batcher
 	nodeNotifier *notifier.Notifier
 
 	registrationCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
@@ -135,7 +135,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(cfg),
 		primaryRoutes:      routes.New(),
 	}
 
@@ -582,7 +581,15 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan, h.primaryRoutes)
+	mapp := mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
+	h.mapBatcher = mapper.NewBatcher(mapp)
+	h.nodeNotifier = notifier.NewNotifier(h.cfg, h.mapBatcher)
+
+	// TODO(kradalby): I dont like this. Right now its done to access online status.
+	mapp.SetBatcher(h.mapBatcher)
+
+	h.mapBatcher.Start()
+	defer h.mapBatcher.Close()
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server

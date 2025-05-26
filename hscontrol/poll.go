@@ -2,11 +2,9 @@ package hscontrol
 
 import (
 	"context"
-	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"net/netip"
-	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
@@ -36,7 +34,7 @@ type mapSession struct {
 
 	cancelChMu deadlock.Mutex
 
-	ch           chan types.StateUpdate
+	ch           chan []byte
 	cancelCh     chan struct{}
 	cancelChOpen bool
 
@@ -60,14 +58,16 @@ func (h *Headscale) newMapSession(
 ) *mapSession {
 	warnf, infof, tracef, errf := logPollFunc(req, node)
 
-	var updateChan chan types.StateUpdate
-	if req.Stream {
-		// Use a buffered channel in case a node is not fully ready
-		// to receive a message to make sure we dont block the entire
-		// notifier.
-		updateChan = make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
-		updateChan <- types.UpdateFull()
-	}
+	// TODO(kradalby): This needs to happen in the batcher now, give a full
+	// var updateChan chan []byte
+	// map on start.
+	// if req.Stream {
+	// 	// Use a buffered channel in case a node is not fully ready
+	// 	// to receive a message to make sure we dont block the entire
+	// 	// notifier.
+	// 	updateChan = make(chan types.StateUpdate, h.cfg.Tuning.NodeMapSessionBufferedChanSize)
+	// 	updateChan <- types.UpdateFull()
+	// }
 
 	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
 
@@ -78,9 +78,8 @@ func (h *Headscale) newMapSession(
 		w:      w,
 		node:   node,
 		capVer: req.Version,
-		mapper: h.mapper,
 
-		ch:           updateChan,
+		ch:           make(chan []byte, h.cfg.Tuning.NodeMapSessionBufferedChanSize),
 		cancelCh:     make(chan struct{}),
 		cancelChOpen: true,
 
@@ -200,7 +199,7 @@ func (m *mapSession) serveLongPoll() {
 		// in principal, it will be removed, but the client rapidly
 		// reconnects, the channel might be of another connection.
 		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+		if m.h.mapBatcher.RemoveNode(m.node.ID, m.ch) {
 			// Failover the node's routes if any.
 			m.h.updateNodeOnlineStatus(false, m.node)
 
@@ -239,7 +238,7 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
+	m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.req.Compress, m.req.Version)
 	go m.h.updateNodeOnlineStatus(true, m.node)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
@@ -261,133 +260,56 @@ func (m *mapSession) serveLongPoll() {
 
 		// Consume updates sent to node
 		case update, ok := <-m.ch:
+			m.tracef("received update from channel, ok: %t, len: %d", ok, len(update))
 			if !ok {
 				m.tracef("update channel closed, streaming session is likely being replaced")
 				return
 			}
 
-			// If the node has been removed from headscale, close the stream
-			if slices.Contains(update.Removed, m.node.ID) {
-				m.tracef("node removed, closing stream")
-				return
-			}
-
-			m.tracef("received stream update: %s %s", update.Type.String(), update.Message)
-			mapResponseUpdateReceived.WithLabelValues(update.Type.String()).Inc()
-
-			var data []byte
-			var err error
-			var lastMessage string
-
-			// Ensure the node object is updated, for example, there
-			// might have been a hostinfo update in a sidechannel
-			// which contains data needed to generate a map response.
-			m.node, err = m.h.db.GetNodeByID(m.node.ID)
+			startWrite := time.Now()
+			_, err := m.w.Write(update)
 			if err != nil {
-				m.errf(err, "Could not get machine from db")
-
+				m.errf(err, "could not write the map response, for mapSession: %p", m)
 				return
 			}
 
-			updateType := "full"
-			switch update.Type {
-			case types.StateFullUpdate:
-				m.tracef("Sending Full MapResponse")
-				data, err = m.mapper.FullMapResponse(m.req, m.node, fmt.Sprintf("from mapSession: %p, stream: %t", m, m.isStreaming()))
-			case types.StatePeerChanged:
-				changed := make(map[types.NodeID]bool, len(update.ChangeNodes))
-
-				for _, nodeID := range update.ChangeNodes {
-					changed[nodeID] = true
-				}
-
-				lastMessage = update.Message
-				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, lastMessage)
-				updateType = "change"
-
-			case types.StatePeerChangedPatch:
-				m.tracef(fmt.Sprintf("Sending Changed Patch MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedPatchResponse(m.req, m.node, update.ChangePatches)
-				updateType = "patch"
-			case types.StatePeerRemoved:
-				changed := make(map[types.NodeID]bool, len(update.Removed))
-
-				for _, nodeID := range update.Removed {
-					changed[nodeID] = false
-				}
-				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, changed, update.ChangePatches, lastMessage)
-				updateType = "remove"
-			case types.StateSelfUpdate:
-				lastMessage = update.Message
-				m.tracef(fmt.Sprintf("Sending Changed MapResponse: %v", lastMessage))
-				// create the map so an empty (self) update is sent
-				data, err = m.mapper.PeerChangedResponse(m.req, m.node, make(map[types.NodeID]bool), update.ChangePatches, lastMessage)
-				updateType = "remove"
-			case types.StateDERPUpdated:
-				m.tracef("Sending DERPUpdate MapResponse")
-				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.DERPMap)
-				updateType = "derp"
-			}
-
-			if err != nil {
-				m.errf(err, "Could not get the create map update")
-
-				return
-			}
-
-			// Only send update if there is change
-			if data != nil {
-				startWrite := time.Now()
-				_, err = m.w.Write(data)
-				if err != nil {
-					mapResponseSent.WithLabelValues("error", updateType).Inc()
-					m.errf(err, "could not write the map response(%s), for mapSession: %p", update.Type.String(), m)
-					return
-				}
-
-				err = rc.Flush()
-				if err != nil {
-					mapResponseSent.WithLabelValues("error", updateType).Inc()
-					m.errf(err, "flushing the map response to client, for mapSession: %p", m)
-					return
-				}
-
-				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
-
-				if debugHighCardinalityMetrics {
-					mapResponseLastSentSeconds.WithLabelValues(updateType, m.node.ID.String()).Set(float64(time.Now().Unix()))
-				}
-				mapResponseSent.WithLabelValues("ok", updateType).Inc()
-				m.tracef("update sent")
-				m.resetKeepAlive()
-			}
-
-		case <-m.keepAliveTicker.C:
-			data, err := m.mapper.KeepAliveResponse(m.req, m.node)
-			if err != nil {
-				m.errf(err, "Error generating the keep alive msg")
-				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
-				return
-			}
-			_, err = m.w.Write(data)
-			if err != nil {
-				m.errf(err, "Cannot write keep alive message")
-				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
-				return
-			}
 			err = rc.Flush()
 			if err != nil {
-				m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
-				mapResponseSent.WithLabelValues("error", "keepalive").Inc()
+				m.errf(err, "flushing the map response to client, for mapSession: %p", m)
 				return
 			}
 
-			if debugHighCardinalityMetrics {
-				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
-			}
-			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
+			log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
+
+			m.tracef("update sent")
+			m.resetKeepAlive()
+
+			// TODO(kradalby): This needs to be rehinked now that we do not have a mapper,
+			// maybe keepalive can be a static function? I do not think it needs state?
+			// case <-m.keepAliveTicker.C:
+			// 	data, err := m.mapper.KeepAliveResponse(m.req, m.node)
+			// 	if err != nil {
+			// 		m.errf(err, "Error generating the keep alive msg")
+			// 		mapResponseSent.WithLabelValues("error", "keepalive").Inc()
+			// 		return
+			// 	}
+			// 	_, err = m.w.Write(data)
+			// 	if err != nil {
+			// 		m.errf(err, "Cannot write keep alive message")
+			// 		mapResponseSent.WithLabelValues("error", "keepalive").Inc()
+			// 		return
+			// 	}
+			// 	err = rc.Flush()
+			// 	if err != nil {
+			// 		m.errf(err, "flushing keep alive to client, for mapSession: %p", m)
+			// 		mapResponseSent.WithLabelValues("error", "keepalive").Inc()
+			// 		return
+			// 	}
+
+			// 	if debugHighCardinalityMetrics {
+			// 		mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
+			// 	}
+			// 	mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 		}
 	}
 }

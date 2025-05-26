@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -56,9 +55,9 @@ type Mapper struct {
 	db      *db.HSDatabase
 	cfg     *types.Config
 	derpMap *tailcfg.DERPMap
-	notif   *notifier.Notifier
 	polMan  policy.PolicyManager
 	primary *routes.PrimaryRoutes
+	batcher *Batcher
 
 	uid     string
 	created time.Time
@@ -74,7 +73,6 @@ func NewMapper(
 	db *db.HSDatabase,
 	cfg *types.Config,
 	derpMap *tailcfg.DERPMap,
-	notif *notifier.Notifier,
 	polMan policy.PolicyManager,
 	primary *routes.PrimaryRoutes,
 ) *Mapper {
@@ -84,7 +82,6 @@ func NewMapper(
 		db:      db,
 		cfg:     cfg,
 		derpMap: derpMap,
-		notif:   notif,
 		polMan:  polMan,
 		primary: primary,
 
@@ -92,6 +89,10 @@ func NewMapper(
 		created: time.Now(),
 		seq:     0,
 	}
+}
+
+func (m *Mapper) SetBatcher(batcher *Batcher) {
+	m.batcher = batcher
 }
 
 func (m *Mapper) String() string {
@@ -502,8 +503,10 @@ func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 		return nil, err
 	}
 
+	// TODO(kradalby): Add back online via batcher. This was removed
+	// to avoid a circular dependency between the mapper and the notification.
 	for _, peer := range peers {
-		online := m.notif.IsLikelyConnected(peer.ID)
+		online := m.batcher.IsLikelyConnected(peer.ID)
 		peer.IsOnline = &online
 	}
 
@@ -518,8 +521,10 @@ func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 		return nil, err
 	}
 
+	// TODO(kradalby): Add back online via batcher. This was removed
+	// to avoid a circular dependency between the mapper and the notification.
 	for _, node := range nodes {
-		online := m.notif.IsLikelyConnected(node.ID)
+		online := m.batcher.IsLikelyConnected(node.ID)
 		node.IsOnline = &online
 	}
 

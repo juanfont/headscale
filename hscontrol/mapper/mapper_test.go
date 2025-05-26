@@ -420,7 +420,6 @@ func Test_fullMapResponse(t *testing.T) {
 				nil,
 				tt.cfg,
 				tt.derpMap,
-				nil,
 				polMan,
 				primary,
 			)
