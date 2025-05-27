@@ -352,8 +352,8 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
-) (*types.Node, bool, error) {
-	var newNode bool
+) (*types.Node, types.Change, error) {
+	var change types.Change
 	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
 		if reg, ok := hsdb.regCache.Get(registrationID); ok {
 			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
@@ -405,13 +405,21 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				}
 				close(reg.Registered)
 
-				newNode = true
+				change.NodeChange = types.NodeChange{
+					ID:      node.ID,
+					NewNode: true,
+				}
 				return node, err
 			} else {
 				// If the node is already registered, this is a refresh.
 				err := NodeSetExpiry(tx, node.ID, *nodeExpiry)
 				if err != nil {
 					return nil, err
+				}
+
+				change.NodeChange = types.NodeChange{
+					ID:            node.ID,
+					ExpiryChanged: true,
 				}
 				return node, nil
 			}
@@ -420,7 +428,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 		return nil, ErrNodeNotFoundRegistrationCache
 	})
 
-	return node, newNode, err
+	return node, change, err
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
