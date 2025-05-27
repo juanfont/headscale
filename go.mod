@@ -111,7 +111,7 @@ require (
 	github.com/containerd/console v1.0.4 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
 	github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6 // indirect
-	github.com/creachadair/mds v0.24.1 // indirect
+	github.com/creachadair/mds v0.24.3 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240123200102-b75a8a7d7eb0 // indirect
 	github.com/digitalocean/go-smbios v0.0.0-20180907143718-390a4f403a8e // indirect
 	github.com/docker/cli v28.1.1+incompatible // indirect
