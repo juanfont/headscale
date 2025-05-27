@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint
@@ -32,7 +31,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/routes"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
@@ -56,7 +55,6 @@ import (
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/key"
 	"tailscale.com/util/dnsname"
-	zcache "zgo.at/zcache/v2"
 )
 
 var (
@@ -74,33 +72,22 @@ const (
 	updateInterval     = 5 * time.Second
 	privateKeyFileMode = 0o600
 	headscaleDirPerm   = 0o700
-
-	registerCacheExpiration = time.Minute * 15
-	registerCacheCleanup    = time.Minute * 20
 )
 
 // Headscale represents the base app of the service.
 type Headscale struct {
 	cfg             *types.Config
-	db              *db.HSDatabase
-	ipAlloc         *db.IPAllocator
+	state           *state.State
 	noisePrivateKey *key.MachinePrivate
 	ephemeralGC     *db.EphemeralGarbageCollector
 
-	DERPMap    *tailcfg.DERPMap
 	DERPServer *derpServer.DERPServer
 
-	polManOnce     sync.Once
-	polMan         policy.PolicyManager
+	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
-	primaryRoutes  *routes.PrimaryRoutes
-
-	mapper       *mapper.Mapper
-	nodeNotifier *notifier.Notifier
-
-	registrationCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
-
-	authProvider AuthProvider
+	mapper         *mapper.Mapper
+	nodeNotifier   *notifier.Notifier
+	authProvider   AuthProvider
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -125,43 +112,25 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
-	registrationCache := zcache.New[types.RegistrationID, types.RegisterNode](
-		registerCacheExpiration,
-		registerCacheCleanup,
-	)
+	s, err := state.NewState(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("init state: %w", err)
+	}
 
 	app := Headscale{
 		cfg:                cfg,
 		noisePrivateKey:    noisePrivateKey,
-		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
 		nodeNotifier:       notifier.NewNotifier(cfg),
-		primaryRoutes:      routes.New(),
+		state:              s,
 	}
 
-	app.db, err = db.NewHeadscaleDatabase(
-		cfg.Database,
-		cfg.BaseDomain,
-		registrationCache,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("new database: %w", err)
-	}
-
-	app.ipAlloc, err = db.NewIPAllocator(app.db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
-	if err != nil {
-		return nil, err
-	}
-
-	app.ephemeralGC = db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		if err := app.db.DeleteEphemeralNode(ni); err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to delete ephemeral node")
-		}
-	})
-
-	if err = app.loadPolicyManager(); err != nil {
-		return nil, fmt.Errorf("loading ACL policy: %w", err)
-	}
+	// TODO(kradalby): move to state
+	// app.ephemeralGC = db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
+	// 	if err := app.db.DeleteEphemeralNode(ni); err != nil {
+	// 		log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to delete ephemeral node")
+	// 	}
+	// })
 
 	var authProvider AuthProvider
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
@@ -172,10 +141,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			ctx,
 			cfg.ServerURL,
 			&cfg.OIDC,
-			app.db,
+			app.state,
 			app.nodeNotifier,
-			app.ipAlloc,
-			app.polMan,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -362,7 +329,7 @@ func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 		)
 	}
 
-	valid, err := h.db.ValidateAPIKey(strings.TrimPrefix(token, AuthPrefix))
+	valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(token, AuthPrefix))
 	if err != nil {
 		return ctx, status.Error(codes.Internal, "failed to validate token")
 	}
@@ -407,7 +374,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			return
 		}
 
-		valid, err := h.db.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
+		valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 		if err != nil {
 			log.Error().
 				Caller().
@@ -490,7 +457,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
 		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
 		router.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
-		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.DERPMap))
+		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
 	}
 
 	apiRouter := router.PathPrefix("/api").Subrouter()
@@ -581,9 +548,9 @@ func (h *Headscale) Serve() error {
 		Msg("Clients with a lower minimum version will be rejected")
 
 	// Fetch an initial DERP Map before we start serving
-	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan, h.primaryRoutes)
+	h.mapper = mapper.NewMapper(h.cfg, h.state, h.nodeNotifier)
 
+	// TODO(kradalby): fix state part.
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
 		if h.cfg.DERP.STUNAddr == "" {
@@ -1079,94 +1046,6 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	}
 
 	return &machineKey, nil
-}
-
-// policyBytes returns the appropriate policy for the
-// current configuration as a []byte array.
-func (h *Headscale) policyBytes() ([]byte, error) {
-	switch h.cfg.Policy.Mode {
-	case types.PolicyModeFile:
-		path := h.cfg.Policy.Path
-
-		// It is fine to start headscale without a policy file.
-		if len(path) == 0 {
-			return nil, nil
-		}
-
-		absPath := util.AbsolutePathFromConfigPath(path)
-		policyFile, err := os.Open(absPath)
-		if err != nil {
-			return nil, err
-		}
-		defer policyFile.Close()
-
-		return io.ReadAll(policyFile)
-
-	case types.PolicyModeDB:
-		p, err := h.db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil, nil
-			}
-
-			return nil, err
-		}
-
-		if p.Data == "" {
-			return nil, nil
-		}
-
-		return []byte(p.Data), err
-	}
-
-	return nil, fmt.Errorf("unsupported policy mode: %s", h.cfg.Policy.Mode)
-}
-
-func (h *Headscale) loadPolicyManager() error {
-	var errOut error
-	h.polManOnce.Do(func() {
-		// Validate and reject configuration that would error when applied
-		// when creating a map response. This requires nodes, so there is still
-		// a scenario where they might be allowed if the server has no nodes
-		// yet, but it should help for the general case and for hot reloading
-		// configurations.
-		// Note that this check is only done for file-based policies in this function
-		// as the database-based policies are checked in the gRPC API where it is not
-		// allowed to be written to the database.
-		nodes, err := h.db.ListNodes()
-		if err != nil {
-			errOut = fmt.Errorf("loading nodes from database to validate policy: %w", err)
-			return
-		}
-		users, err := h.db.ListUsers()
-		if err != nil {
-			errOut = fmt.Errorf("loading users from database to validate policy: %w", err)
-			return
-		}
-
-		pol, err := h.policyBytes()
-		if err != nil {
-			errOut = fmt.Errorf("loading policy bytes: %w", err)
-			return
-		}
-
-		h.polMan, err = policy.NewPolicyManager(pol, users, nodes)
-		if err != nil {
-			errOut = fmt.Errorf("creating policy manager: %w", err)
-			return
-		}
-		log.Info().Msgf("Using policy manager version: %d", h.polMan.Version())
-
-		if len(nodes) > 0 {
-			_, err = h.polMan.SSHPolicy(nodes[0])
-			if err != nil {
-				errOut = fmt.Errorf("verifying SSH rules: %w", err)
-				return
-			}
-		}
-	})
-
-	return errOut
 }
 
 // autoApproveNodes mass approves routes on all nodes. It is _only_ intended for
