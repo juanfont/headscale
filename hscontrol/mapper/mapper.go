@@ -16,10 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/routes"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/klauspost/compress/zstd"
@@ -52,13 +51,9 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 
 type Mapper struct {
 	// Configuration
-	// TODO(kradalby): figure out if this is the format we want this in
-	db      *db.HSDatabase
-	cfg     *types.Config
-	derpMap *tailcfg.DERPMap
-	notif   *notifier.Notifier
-	polMan  policy.PolicyManager
-	primary *routes.PrimaryRoutes
+	state *state.State
+	cfg   *types.Config
+	notif *notifier.Notifier
 
 	uid     string
 	created time.Time
@@ -71,22 +66,16 @@ type patch struct {
 }
 
 func NewMapper(
-	db *db.HSDatabase,
+	state *state.State,
 	cfg *types.Config,
-	derpMap *tailcfg.DERPMap,
 	notif *notifier.Notifier,
-	polMan policy.PolicyManager,
-	primary *routes.PrimaryRoutes,
 ) *Mapper {
 	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
 	return &Mapper{
-		db:      db,
-		cfg:     cfg,
-		derpMap: derpMap,
-		notif:   notif,
-		polMan:  polMan,
-		primary: primary,
+		state: state,
+		cfg:   cfg,
+		notif: notif,
 
 		uid:     uid,
 		created: time.Now(),
@@ -177,8 +166,7 @@ func (m *Mapper) fullMapResponse(
 	err = appendPeerChanges(
 		resp,
 		true, // full change
-		m.polMan,
-		m.primary,
+		m.state,
 		node,
 		capVer,
 		peers,
@@ -241,8 +229,6 @@ func (m *Mapper) DERPMapResponse(
 	node *types.Node,
 	derpMap *tailcfg.DERPMap,
 ) ([]byte, error) {
-	m.derpMap = derpMap
-
 	resp := m.baseMapResponse()
 	resp.DERPMap = derpMap
 
@@ -281,8 +267,7 @@ func (m *Mapper) PeerChangedResponse(
 	err = appendPeerChanges(
 		&resp,
 		false, // partial change
-		m.polMan,
-		m.primary,
+		m.state,
 		node,
 		mapRequest.Version,
 		changedNodes,
@@ -309,13 +294,13 @@ func (m *Mapper) PeerChangedResponse(
 		resp.PeersChangedPatch = patches
 	}
 
-	_, matchers := m.polMan.Filter()
+	_, matchers := m.state.Filter()
 	// Add the node itself, it might have changed, and particularly
 	// if there are no patches or changes, this is a self update.
 	tailnode, err := tailNode(
-		node, mapRequest.Version, m.polMan,
+		node, mapRequest.Version, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -464,11 +449,11 @@ func (m *Mapper) baseWithConfigMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
 
-	_, matchers := m.polMan.Filter()
+	_, matchers := m.state.Filter()
 	tailnode, err := tailNode(
-		node, capVer, m.polMan,
+		node, capVer, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -476,7 +461,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 	}
 	resp.Node = tailnode
 
-	resp.DERPMap = m.derpMap
+	resp.DERPMap = m.state.DERPMap()
 
 	resp.Domain = m.cfg.Domain()
 
@@ -497,7 +482,7 @@ func (m *Mapper) baseWithConfigMapResponse(
 // If no peer IDs are given, all peers are returned.
 // If at least one peer ID is given, only these peer nodes will be returned.
 func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
-	peers, err := m.db.ListPeers(nodeID, peerIDs...)
+	peers, err := m.state.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +498,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 // ListNodes queries the database for either all nodes if no parameters are given
 // or for the given nodes if at least one node ID is given as parameter
 func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
-	nodes, err := m.db.ListNodes(nodeIDs...)
+	nodes, err := m.state.ListNodes(nodeIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -537,16 +522,15 @@ func appendPeerChanges(
 	resp *tailcfg.MapResponse,
 
 	fullChange bool,
-	polMan policy.PolicyManager,
-	primary *routes.PrimaryRoutes,
+	state *state.State,
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 	changed types.Nodes,
 	cfg *types.Config,
 ) error {
-	filter, matchers := polMan.Filter()
+	filter, matchers := state.Filter()
 
-	sshPolicy, err := polMan.SSHPolicy(node)
+	sshPolicy, err := state.SSHPolicy(node)
 	if err != nil {
 		return err
 	}
@@ -562,9 +546,9 @@ func appendPeerChanges(
 	dnsConfig := generateDNSConfig(cfg, node)
 
 	tailPeers, err := tailNodes(
-		changed, capVer, polMan,
+		changed, capVer, state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, primary.PrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node, state.GetNodePrimaryRoutes(id), matchers)
 		},
 		cfg)
 	if err != nil {

@@ -95,7 +95,7 @@ func (h *Headscale) handleVerifyRequest(
 		return fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
 	}
 
-	nodes, err := h.db.ListNodes()
+	nodes, err := h.state.ListNodes()
 	if err != nil {
 		return fmt.Errorf("cannot list nodes: %w", err)
 	}
@@ -171,7 +171,7 @@ func (h *Headscale) HealthHandler(
 		json.NewEncoder(writer).Encode(res)
 	}
 
-	if err := h.db.PingDB(req.Context()); err != nil {
+	if err := h.state.PingDB(req.Context()); err != nil {
 		respond(err)
 
 		return

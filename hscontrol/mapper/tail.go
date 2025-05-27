@@ -4,17 +4,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
+// NodeCanHaveTagChecker is an interface for checking if a node can have a tag
+type NodeCanHaveTagChecker interface {
+	NodeCanHaveTag(node *types.Node, tag string) bool
+}
+
 func tailNodes(
 	nodes types.Nodes,
 	capVer tailcfg.CapabilityVersion,
-	polMan policy.PolicyManager,
+	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
@@ -24,7 +28,7 @@ func tailNodes(
 		node, err := tailNode(
 			node,
 			capVer,
-			polMan,
+			checker,
 			primaryRouteFunc,
 			cfg,
 		)
@@ -42,7 +46,7 @@ func tailNodes(
 func tailNode(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
-	polMan policy.PolicyManager,
+	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
@@ -74,7 +78,7 @@ func tailNode(
 
 	var tags []string
 	for _, tag := range node.RequestTags() {
-		if polMan.NodeCanHaveTag(node, tag) {
+		if checker.NodeCanHaveTag(node, tag) {
 			tags = append(tags, tag)
 		}
 	}

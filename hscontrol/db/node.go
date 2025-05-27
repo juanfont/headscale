@@ -587,6 +587,9 @@ func ensureUniqueGivenName(
 	return givenName, nil
 }
 
+// ExpireExpiredNodes checks for nodes that have expired since the last check
+// and returns a time to be used for the next check, a StateUpdate
+// containing the expired nodes, and a boolean indicating if any nodes were found.
 func ExpireExpiredNodes(tx *gorm.DB,
 	lastCheck time.Time,
 ) (time.Time, types.StateUpdate, bool) {
