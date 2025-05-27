@@ -239,6 +239,25 @@ func determineChange(c *types.Change) changeUpdate {
 		return ignoreUpdate
 	}
 
+	if c.DERPChanged {
+		return partialUpdate
+	}
+
+	// TODO(kradalby): Make policy a partial update?
+	if c.PolicyChanged {
+		return fullUpdate
+	}
+
+	if c.NodeChange.ID != 0 {
+		if c.NodeChange.OnlyKeyChange() {
+			return partialUpdate
+		}
+
+		if c.NodeChange.ImportantNodeChange() {
+			return fullUpdate
+		}
+	}
+
 	if c.FullUpdate() {
 		return fullUpdate
 	}
@@ -259,6 +278,19 @@ func (nc *nodeConn) change(c *types.Change) error {
 }
 
 func (nc *nodeConn) partialUpdate(c *types.Change) error {
+	var data []byte
+	var err error
+	if c.DERPChanged {
+		data, err = nc.mapper.derpMapResponse(nc.id, nc.compress)
+	}
+
+	// TODO(kradalby): key update change
+
+	if err != nil {
+		return err
+	}
+
+	nc.c <- data
 	return nil
 }
 

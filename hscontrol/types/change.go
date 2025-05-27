@@ -51,7 +51,7 @@ type NodeChange struct {
 	TagsChanged bool
 }
 
-func (c *NodeChange) RegistrationChanged() bool {
+func (c *NodeChange) ImportantNodeChange() bool {
 	return c.NewNode || c.KeyChanged || c.TagsChanged
 }
 
@@ -61,7 +61,7 @@ func (c *NodeChange) OnlyKeyChange() bool {
 
 func (c *NodeChange) FullUpdate() bool {
 	if c.ID != 0 {
-		if c.RegistrationChanged() {
+		if c.ImportantNodeChange() {
 			return true
 		}
 

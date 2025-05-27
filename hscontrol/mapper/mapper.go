@@ -185,115 +185,113 @@ func (m *mapper) fullMapResponse(
 		return nil, err
 	}
 
-	return marshalMapResponse(resp, node, compress, messages...)
+	return marshalMapResponse(resp, nodeID, compress, messages...)
 }
 
 func (m *mapper) derpMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	derpMap *tailcfg.DERPMap,
+	nodeID types.NodeID,
+	compress string,
 ) ([]byte, error) {
-	m.derpMap = derpMap
-
 	resp := m.baseMapResponse()
-	resp.DERPMap = derpMap
+	// TODO(kradalby): get this from somewhere, this isnt updated
+	resp.DERPMap = m.derpMap
 
-	return marshalMapResponse(&resp, node, mapRequest.Compress)
+	return marshalMapResponse(&resp, nodeID, compress)
 }
 
-func (m *mapper) peerChangedResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	changed map[types.NodeID]bool,
-	patches []*tailcfg.PeerChange,
-	messages ...string,
-) ([]byte, error) {
-	var err error
-	resp := m.baseMapResponse()
+// func (m *mapper) peerChangedResponse(
+// 	mapRequest tailcfg.MapRequest,
+// 	nodeID types.NodeID,
+// 	changed map[types.NodeID]bool,
+// 	patches []*tailcfg.PeerChange,
+// 	messages ...string,
+// ) ([]byte, error) {
+// 	var err error
+// 	resp := m.baseMapResponse()
 
-	var removedIDs []tailcfg.NodeID
-	var changedIDs []types.NodeID
-	for nodeID, nodeChanged := range changed {
-		if nodeChanged {
-			if nodeID != node.ID {
-				changedIDs = append(changedIDs, nodeID)
-			}
-		} else {
-			removedIDs = append(removedIDs, nodeID.NodeID())
-		}
-	}
-	changedNodes := types.Nodes{}
-	if len(changedIDs) > 0 {
-		changedNodes, err = m.listNodes(changedIDs...)
-		if err != nil {
-			return nil, err
-		}
-	}
+// 	var removedIDs []tailcfg.NodeID
+// 	var changedIDs []types.NodeID
+// 	for nodeID, nodeChanged := range changed {
+// 		if nodeChanged {
+// 			if nodeID != node.ID {
+// 				changedIDs = append(changedIDs, nodeID)
+// 			}
+// 		} else {
+// 			removedIDs = append(removedIDs, nodeID.NodeID())
+// 		}
+// 	}
+// 	changedNodes := types.Nodes{}
+// 	if len(changedIDs) > 0 {
+// 		changedNodes, err = m.listNodes(changedIDs...)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	}
 
-	err = appendPeerChanges(
-		&resp,
-		false, // partial change
-		m.polMan,
-		m.primary,
-		node,
-		mapRequest.Version,
-		changedNodes,
-		m.cfg,
-	)
-	if err != nil {
-		return nil, err
-	}
+// 	err = appendPeerChanges(
+// 		&resp,
+// 		false, // partial change
+// 		m.polMan,
+// 		m.primary,
+// 		node,
+// 		mapRequest.Version,
+// 		changedNodes,
+// 		m.cfg,
+// 	)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	resp.PeersRemoved = removedIDs
+// 	resp.PeersRemoved = removedIDs
 
-	// Sending patches as a part of a PeersChanged response
-	// is technically not suppose to be done, but they are
-	// applied after the PeersChanged. The patch list
-	// should _only_ contain Nodes that are not in the
-	// PeersChanged or PeersRemoved list and the caller
-	// should filter them out.
-	//
-	// From tailcfg docs:
-	// These are applied after Peers* above, but in practice the
-	// control server should only send these on their own, without
-	// the Peers* fields also set.
-	if patches != nil {
-		resp.PeersChangedPatch = patches
-	}
+// 	// Sending patches as a part of a PeersChanged response
+// 	// is technically not suppose to be done, but they are
+// 	// applied after the PeersChanged. The patch list
+// 	// should _only_ contain Nodes that are not in the
+// 	// PeersChanged or PeersRemoved list and the caller
+// 	// should filter them out.
+// 	//
+// 	// From tailcfg docs:
+// 	// These are applied after Peers* above, but in practice the
+// 	// control server should only send these on their own, without
+// 	// the Peers* fields also set.
+// 	if patches != nil {
+// 		resp.PeersChangedPatch = patches
+// 	}
 
-	_, matchers := m.polMan.Filter()
-	// Add the node itself, it might have changed, and particularly
-	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(
-		node, mapRequest.Version, m.polMan,
-		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
-		},
-		m.cfg)
-	if err != nil {
-		return nil, err
-	}
-	resp.Node = tailnode
+// 	_, matchers := m.polMan.Filter()
+// 	// Add the node itself, it might have changed, and particularly
+// 	// if there are no patches or changes, this is a self update.
+// 	tailnode, err := tailNode(
+// 		node, mapRequest.Version, m.polMan,
+// 		func(id types.NodeID) []netip.Prefix {
+// 			return policy.ReduceRoutes(node, m.primary.PrimaryRoutes(id), matchers)
+// 		},
+// 		m.cfg)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	resp.Node = tailnode
 
-	return marshalMapResponse(&resp, node, mapRequest.Compress, messages...)
-}
+// 	return marshalMapResponse(&resp, nodeID, mapRequest.Compress, messages...)
+// }
 
 // peerChangedPatchResponse creates a patch MapResponse with
 // incoming update from a state change.
 func (m *mapper) peerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	nodeID types.NodeID,
 	changed []*tailcfg.PeerChange,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
 
-	return marshalMapResponse(&resp, node, mapRequest.Compress)
+	return marshalMapResponse(&resp, nodeID, mapRequest.Compress)
 }
 
 func marshalMapResponse(
 	resp *tailcfg.MapResponse,
-	node *types.Node,
+	nodeID types.NodeID,
 	compression string,
 	messages ...string,
 ) ([]byte, error) {
@@ -329,7 +327,7 @@ func marshalMapResponse(
 		}
 
 		perms := fs.FileMode(debugMapResponsePerm)
-		mPath := path.Join(debugDumpMapResponsePath, node.Hostname)
+		mPath := path.Join(debugDumpMapResponsePath, nodeID.String())
 		err = os.MkdirAll(mPath, perms)
 		if err != nil {
 			panic(err)
