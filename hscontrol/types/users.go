@@ -326,15 +326,25 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 	}
 
 	if !assignedName && claims.Email != "" {
-		emailPrefix := strings.Split(claims.Email, "@")[0]
-		if emailPrefix != "" {
-			err := util.ValidateUsername(emailPrefix)
-			if err == nil {
-				// Ensure uniqueness of the extracted email prefix if it's to be used as a primary username.
-				u.Name = emailPrefix
-			} else {
-				log.Debug().Err(err).Msgf("Extracted email prefix %s is not a valid username", emailPrefix)
+		// Attempt to parse the email to ensure it's well-formed before extracting the prefix.
+		// This also helps to ensure claims.Email is a simple address without display name,
+		// making the subsequent split more reliable.
+		_, parseErr := mail.ParseAddress(claims.Email)
+		if parseErr == nil {
+			// If email is parsable, extract the local part (before '@').
+			parts := strings.Split(claims.Email, "@")
+			if len(parts) > 0 && parts[0] != "" {
+				emailPrefix := parts[0]
+				valErr := util.ValidateUsername(emailPrefix)
+				if valErr == nil {
+					// For OIDC users, Name uniqueness is often scoped with ProviderIdentifier.
+					u.Name = emailPrefix
+				} else {
+					log.Debug().Err(valErr).Msgf("Extracted email prefix '%s' from '%s' is not a valid username", emailPrefix, claims.Email)
+				}
 			}
+		} else {
+			log.Debug().Err(parseErr).Msgf("Could not parse claims.Email '%s' to extract prefix for username", claims.Email)
 		}
 	}
 
