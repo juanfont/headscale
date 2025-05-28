@@ -314,15 +314,32 @@ type OIDCUserInfo struct {
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
 func (u *User) FromClaim(claims *OIDCClaims) {
-	err := util.ValidateUsername(claims.Username)
-	if err == nil {
-		u.Name = claims.Username
-	} else {
-		log.Debug().Err(err).Msgf("Username %s is not valid", claims.Username)
+	var assignedName bool
+	if claims.Username != "" {
+		err := util.ValidateUsername(claims.Username)
+		if err == nil {
+			u.Name = claims.Username
+			assignedName = true
+		} else {
+			log.Debug().Err(err).Msgf("OIDC claims.Username %s is not valid", claims.Username)
+		}
+	}
+
+	if !assignedName && claims.Email != "" {
+		emailPrefix := strings.Split(claims.Email, "@")[0]
+		if emailPrefix != "" {
+			err := util.ValidateUsername(emailPrefix)
+			if err == nil {
+				// Ensure uniqueness of the extracted email prefix if it's to be used as a primary username.
+				u.Name = emailPrefix
+			} else {
+				log.Debug().Err(err).Msgf("Extracted email prefix %s is not a valid username", emailPrefix)
+			}
+		}
 	}
 
 	if claims.EmailVerified {
-		_, err = mail.ParseAddress(claims.Email)
+		_, err := mail.ParseAddress(claims.Email)
 		if err == nil {
 			u.Email = claims.Email
 		}
