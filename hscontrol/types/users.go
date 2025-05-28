@@ -333,7 +333,7 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 		if parseErr == nil {
 			// If email is parsable, extract the local part (before '@').
 			parts := strings.Split(claims.Email, "@")
-			if len(parts) > 0 && parts[0] != "" {
+			if parts[0] != "" { 
 				emailPrefix := parts[0]
 				valErr := util.ValidateUsername(emailPrefix)
 				if valErr == nil {
