@@ -37,9 +37,9 @@ func ValidateUsername(username string) error {
 		return errors.New("username must be at least 2 characters long")
 	}
 
-	// Ensure the username does not start with a number
-	if unicode.IsDigit(rune(username[0])) {
-		return errors.New("username cannot start with a number")
+	// Ensure the username starts with a letter
+	if !unicode.IsLetter(rune(username[0])) {
+		return errors.New("username must start with a letter")
 	}
 
 	atCount := 0
