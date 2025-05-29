@@ -20,20 +20,20 @@ const (
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
-	preauthkeysCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
 
-	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "User")
+	preauthkeysCmd.PersistentFlags().String("namespace", "", "User")
 	pakNamespaceFlag := preauthkeysCmd.PersistentFlags().Lookup("namespace")
 	pakNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	pakNamespaceFlag.Hidden = true
 
-	err := preauthkeysCmd.MarkPersistentFlagRequired("user")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
+
+	usernameAndIDFlag(listPreAuthKeys)
+	usernameAndIDFlag(createPreAuthKeyCmd)
+	usernameAndIDFlag(expirePreAuthKeyCmd)
+
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().
@@ -57,17 +57,17 @@ var listPreAuthKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
-
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
+		user, err := findSingleUser(ctx, client, cmd, "list", output)
+		if err != nil {
+			return
+		}
+
 		request := &v1.ListPreAuthKeysRequest{
-			User: user,
+			User: user.GetId(),
 		}
 
 		response, err := client.ListPreAuthKeys(ctx, request)
@@ -141,9 +141,13 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetUint64("user")
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		user, err := findSingleUser(ctx, client, cmd, "list", output)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+			return
 		}
 
 		reusable, _ := cmd.Flags().GetBool("reusable")
@@ -151,7 +155,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 
 		request := &v1.CreatePreAuthKeyRequest{
-			User:      user,
+			User:      user.GetId(),
 			Reusable:  reusable,
 			Ephemeral: ephemeral,
 			AclTags:   tags,
@@ -175,10 +179,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 			Msg("expiration has been set")
 
 		request.Expiration = timestamppb.New(expiration)
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
@@ -206,17 +206,18 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
+		user, err := findSingleUser(ctx, client, cmd, "list", output)
+		if err != nil {
+			return
+		}
+
 		request := &v1.ExpirePreAuthKeyRequest{
-			User: user,
+			User: user.GetId(),
 			Key:  args[0],
 		}
 

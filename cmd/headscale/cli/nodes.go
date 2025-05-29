@@ -21,84 +21,58 @@ import (
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
-	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
-
-	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
-	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
-	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	listNodesNamespaceFlag.Hidden = true
+	usernameAndIDFlag(listNodesCmd)
 	nodeCmd.AddCommand(listNodesCmd)
-
-	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	listNodeRoutesCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
 	nodeCmd.AddCommand(listNodeRoutesCmd)
-
-	registerNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	registerNodeNamespaceFlag := registerNodeCmd.Flags().Lookup("namespace")
-	registerNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	registerNodeNamespaceFlag.Hidden = true
-
-	err := registerNodeCmd.MarkFlagRequired("user")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
+	usernameAndIDFlag(registerNodeCmd)
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
-	err = registerNodeCmd.MarkFlagRequired("key")
+	err := registerNodeCmd.MarkFlagRequired("key")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
-	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = expireNodeCmd.MarkFlagRequired("identifier")
+	expireNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	err = expireNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
-	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = renameNodeCmd.MarkFlagRequired("identifier")
+	renameNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	err = renameNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(renameNodeCmd)
 
-	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = deleteNodeCmd.MarkFlagRequired("identifier")
+	deleteNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	err = deleteNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
-	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	moveNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
 
-	err = moveNodeCmd.MarkFlagRequired("identifier")
+	err = moveNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	moveNodeCmd.Flags().Uint64P("user", "u", 0, "New user")
+	usernameAndIDFlag(moveNodeCmd, "Target user ID to move the node to", "Target username to move the node to")
 
-	moveNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	moveNodeNamespaceFlag := moveNodeCmd.Flags().Lookup("namespace")
-	moveNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	moveNodeNamespaceFlag.Hidden = true
-
-	err = moveNodeCmd.MarkFlagRequired("user")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
 	nodeCmd.AddCommand(moveNodeCmd)
 
-	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	tagCmd.MarkFlagRequired("identifier")
+	tagCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	tagCmd.MarkFlagRequired("node-id")
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
-	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	approveRoutesCmd.MarkFlagRequired("identifier")
+	approveRoutesCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	approveRoutesCmd.MarkFlagRequired("node-id")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
@@ -116,14 +90,16 @@ var registerNodeCmd = &cobra.Command{
 	Short: "Registers a node to your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
+
+		user, err := findSingleUser(ctx, client, cmd, "register Node", output)
+		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
+			return
+		}
 
 		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
@@ -136,7 +112,7 @@ var registerNodeCmd = &cobra.Command{
 
 		request := &v1.RegisterNodeRequest{
 			Key:  registrationID,
-			User: user,
+			User: user.GetName(),
 		}
 
 		response, err := client.RegisterNode(ctx, request)
@@ -163,10 +139,6 @@ var listNodesCmd = &cobra.Command{
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
 		showTags, err := cmd.Flags().GetBool("tags")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
@@ -176,8 +148,20 @@ var listNodesCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ListNodesRequest{
-			User: user,
+		// Check if user identifier flags are provided
+		id, _ := cmd.Flags().GetInt64("identifier")
+		username, _ := cmd.Flags().GetString("name")
+
+		request := &v1.ListNodesRequest{}
+
+		// Only filter by user if user flags are provided
+		if id >= 0 || username != "" {
+			user, err := findSingleUser(ctx, client, cmd, "list", output)
+			if err != nil {
+				// The helper already calls ErrorOutput, so we can just return
+				return
+			}
+			request.User = user.GetName()
 		}
 
 		response, err := client.ListNodes(ctx, request)
@@ -193,7 +177,7 @@ var listNodesCmd = &cobra.Command{
 			SuccessOutput(response.GetNodes(), "", output)
 		}
 
-		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
+		tableData, err := nodesToPtables(request.User, showTags, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 		}
@@ -464,7 +448,7 @@ var moveNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -475,20 +459,15 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting user: %s", err),
-				output,
-			)
-
-			return
-		}
-
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
+
+		user, err := findSingleUser(ctx, client, cmd, "move Node", output)
+		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
+			return
+		}
 
 		getRequest := &v1.GetNodeRequest{
 			NodeId: identifier,
@@ -510,7 +489,7 @@ var moveNodeCmd = &cobra.Command{
 
 		moveRequest := &v1.MoveNodeRequest{
 			NodeId: identifier,
-			User:   user,
+			User:   user.GetId(),
 		}
 
 		moveResponse, err := client.MoveNode(ctx, moveRequest)
