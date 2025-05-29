@@ -61,8 +61,9 @@ var listPreAuthKeys = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "list", output)
+		user, err := findSingleUser(ctx, client, cmd, "listPreAuthKeys", output)
 		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
 			return
 		}
 
@@ -145,8 +146,9 @@ var createPreAuthKeyCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "list", output)
+		user, err := findSingleUser(ctx, client, cmd, "createPreAuthKeyCmd", output)
 		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
 			return
 		}
 
@@ -211,8 +213,9 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "list", output)
+		user, err := findSingleUser(ctx, client, cmd, "expirePreAuthKeyCmd", output)
 		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
 			return
 		}
 

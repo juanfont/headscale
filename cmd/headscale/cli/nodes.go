@@ -95,7 +95,7 @@ var registerNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "register Node", output)
+		user, err := findSingleUser(ctx, client, cmd, "registerNodeCmd", output)
 		if err != nil {
 			// The helper already calls ErrorOutput, so we can just return
 			return
@@ -156,7 +156,7 @@ var listNodesCmd = &cobra.Command{
 
 		// Only filter by user if user flags are provided
 		if id >= 0 || username != "" {
-			user, err := findSingleUser(ctx, client, cmd, "list", output)
+			user, err := findSingleUser(ctx, client, cmd, "listNodesCmd", output)
 			if err != nil {
 				// The helper already calls ErrorOutput, so we can just return
 				return
@@ -199,7 +199,7 @@ var listNodeRoutesCmd = &cobra.Command{
 	Aliases: []string{"lsr", "routes"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -267,7 +267,7 @@ var expireNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -310,7 +310,7 @@ var renameNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -359,7 +359,7 @@ var deleteNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -463,7 +463,7 @@ var moveNodeCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "move Node", output)
+		user, err := findSingleUser(ctx, client, cmd, "moveNodeCmd", output)
 		if err != nil {
 			// The helper already calls ErrorOutput, so we can just return
 			return
@@ -745,7 +745,7 @@ var tagCmd = &cobra.Command{
 		defer conn.Close()
 
 		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -802,7 +802,7 @@ var approveRoutesCmd = &cobra.Command{
 		defer conn.Close()
 
 		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := cmd.Flags().GetUint64("node-id")
 		if err != nil {
 			ErrorOutput(
 				err,

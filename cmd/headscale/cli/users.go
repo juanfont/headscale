@@ -112,7 +112,7 @@ var destroyUserCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "rename", output)
+		user, err := findSingleUser(ctx, client, cmd, "destroyUserCmd", output)
 		if err != nil {
 			// The helper already calls ErrorOutput, so we can just return
 			return
@@ -232,7 +232,7 @@ var renameUserCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		user, err := findSingleUser(ctx, client, cmd, "rename", output)
+		user, err := findSingleUser(ctx, client, cmd, "renameUserCmd", output)
 		if err != nil {
 			// The helper already calls ErrorOutput, so we can just return
 			return
