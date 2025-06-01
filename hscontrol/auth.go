@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
@@ -29,7 +28,7 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.db.GetNodeByNodeKey(regReq.NodeKey)
+	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("looking up node in database: %w", err)
 	}
@@ -85,7 +84,7 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				err := h.db.DeleteNode(node)
+				err := h.state.DeleteNode(node)
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
@@ -97,7 +96,7 @@ func (h *Headscale) handleExistingNode(
 			expired = true
 		}
 
-		err := h.db.NodeSetExpiry(node.ID, requestExpiry)
+		err := h.state.NodeSetExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
@@ -138,7 +137,7 @@ func (h *Headscale) waitForFollowup(
 		return nil, NewHTTPError(http.StatusUnauthorized, "invalid registration ID", err)
 	}
 
-	if reg, ok := h.registrationCache.Get(followupReg); ok {
+	if reg, ok := h.state.GetRegistrationCacheEntry(followupReg); ok {
 		select {
 		case <-ctx.Done():
 			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
@@ -178,7 +177,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	pak, err := h.db.GetPreAuthKey(regReq.Auth.AuthKey)
+	pak, err := h.state.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
@@ -213,12 +212,12 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		nodeToRegister.Expiry = &regReq.Expiry
 	}
 
-	ipv4, ipv6, err := h.ipAlloc.Next()
+	ipv4, ipv6, err := h.state.AllocateNextIPs()
 	if err != nil {
 		return nil, fmt.Errorf("allocating IPs: %w", err)
 	}
 
-	node, err := db.Write(h.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+	node, err := h.state.WriteWithReturn(func(tx *gorm.DB) (*types.Node, error) {
 		node, err := db.RegisterNode(tx,
 			nodeToRegister,
 			ipv4, ipv6,
@@ -240,10 +239,11 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		return nil, err
 	}
 
-	updateSent, err := nodesChangedHook(h.db, h.polMan, h.nodeNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("nodes changed hook: %w", err)
-	}
+	// TODO(kradalby): This function should be replaced with state-based approach
+	// updateSent, err := nodesChangedHook(h.state, h.state.PolicyManager(), h.nodeNotifier)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("nodes changed hook: %w", err)
+	// }
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -256,12 +256,12 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := policy.AutoApproveRoutes(h.polMan, node)
-	if err := h.db.DB.Save(node).Error; err != nil {
+	routesChanged := h.state.AutoApproveRoutes(node)
+	if err := h.state.UpdateNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if !updateSent || routesChanged {
+	if routesChanged {
 		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
 		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
 	}
@@ -298,7 +298,7 @@ func (h *Headscale) handleRegisterInteractive(
 		nodeToRegister.Node.Expiry = &regReq.Expiry
 	}
 
-	h.registrationCache.Set(
+	h.state.SetRegistrationCacheEntry(
 		registrationId,
 		nodeToRegister,
 	)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -208,7 +207,7 @@ func (m *mapSession) serveLongPoll() {
 			// send a full update to all nodes.
 			// TODO(kradalby): This can likely be made more effective, but likely most
 			// nodes has access to the same routes, so it might not be a big deal.
-			if m.h.primaryRoutes.SetRoutes(m.node.ID) {
+			if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 			}
@@ -222,7 +221,7 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+	if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
 		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
@@ -282,7 +281,7 @@ func (m *mapSession) serveLongPoll() {
 			// Ensure the node object is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
-			m.node, err = m.h.db.GetNodeByID(m.node.ID)
+			m.node, err = m.h.state.GetNodeByID(m.node.ID)
 			if err != nil {
 				m.errf(err, "Could not get machine from db")
 
@@ -327,7 +326,7 @@ func (m *mapSession) serveLongPoll() {
 				updateType = "remove"
 			case types.StateDERPUpdated:
 				m.tracef("Sending DERPUpdate MapResponse")
-				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.DERPMap)
+				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.state.DERPMap())
 				updateType = "derp"
 			}
 
@@ -410,7 +409,7 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 	}
 
 	if node.LastSeen != nil {
-		h.db.SetLastSeen(node.ID, *node.LastSeen)
+		h.state.SetLastSeen(node.ID, *node.LastSeen)
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
@@ -459,18 +458,15 @@ func (m *mapSession) handleEndpointUpdate() {
 	// If the hostinfo has changed, but not the routes, just update
 	// hostinfo and let the function continue.
 	if routesChanged {
-		// TODO(kradalby): I am not sure if we need this?
-		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
-
-		// Approve any route that has been defined in policy as
+		// Auto approve any routes that have been defined in policy as
 		// auto approved. Any change here is not important as any
 		// actual state change will be detected when the route manager
 		// is updated.
-		policy.AutoApproveRoutes(m.h.polMan, m.node)
+		m.h.state.AutoApproveRoutes(m.node)
 
 		// Update the routes of the given node in the route manager to
 		// see if an update needs to be sent.
-		if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+		if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
 			ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
 			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 		} else {
@@ -495,7 +491,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	// the hostname change.
 	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
 
-	if err := m.h.db.DB.Save(m.node).Error; err != nil {
+	if err := m.h.state.UpdateNode(m.node); err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
