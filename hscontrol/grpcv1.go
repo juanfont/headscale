@@ -68,7 +68,7 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	err = api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
+	_, err = api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	err = api.h.state.DestroyUser(types.UserID(user.ID))
+	err = api.h.state.DeleteUser(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -262,7 +262,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := api.h.state.AutoApproveRoutes(node)
-	if err := api.h.state.UpdateNode(node); err != nil {
+	if _, err := api.h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
@@ -303,7 +303,7 @@ func (api headscaleV1APIServer) SetTags(
 		}
 	}
 
-	node, err := api.h.state.SetNodeTagsAndReturn(types.NodeID(request.GetNodeId()), request.GetTags())
+	node, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
 	if err != nil {
 		return &v1.SetTagsResponse{
 			Node: nil,
@@ -343,7 +343,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	tsaddr.SortPrefixes(routes)
 	routes = slices.Compact(routes)
 
-	node, err := api.h.state.SetApprovedRoutesAndReturn(types.NodeID(request.GetNodeId()), routes)
+	node, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), routes)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -401,7 +401,7 @@ func (api headscaleV1APIServer) ExpireNode(
 ) (*v1.ExpireNodeResponse, error) {
 	now := time.Now()
 
-	node, err := api.h.state.NodeSetExpiryAndReturn(types.NodeID(request.GetNodeId()), now)
+	node, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), now)
 	if err != nil {
 		return nil, err
 	}
@@ -427,7 +427,7 @@ func (api headscaleV1APIServer) RenameNode(
 	ctx context.Context,
 	request *v1.RenameNodeRequest,
 ) (*v1.RenameNodeResponse, error) {
-	node, err := api.h.state.RenameNodeAndReturn(types.NodeID(request.GetNodeId()), request.GetNewName())
+	node, err := api.h.state.RenameNode(types.NodeID(request.GetNodeId()), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +510,7 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	node, err := api.h.state.AssignNodeToUserAndReturn(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
+	node, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
 	if err != nil {
 		return nil, err
 	}

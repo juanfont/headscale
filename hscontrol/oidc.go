@@ -486,12 +486,15 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims)
 
 	if newUser {
-		err = a.state.AddUser(user)
+		user, err = a.state.CreateUser(*user)
 		if err != nil {
 			return nil, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		err = a.state.UpdateUser(user)
+		_, err = a.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+			*u = *user
+			return nil
+		})
 		if err != nil {
 			return nil, fmt.Errorf("updating user: %w", err)
 		}
@@ -535,7 +538,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := a.state.AutoApproveRoutes(node)
-	if err := a.state.UpdateNode(node); err != nil {
+	if _, err := a.state.SaveNode(node); err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 

@@ -122,7 +122,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	debug.Handle("policy-manager", "Policy Manager", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(h.state.PolicyManagerDebugString()))
+		w.Write([]byte(h.state.PolicyDebugString()))
 	}))
 
 	err := statsviz.Register(debugMux)

@@ -96,7 +96,7 @@ func (h *Headscale) handleExistingNode(
 			expired = true
 		}
 
-		err := h.state.NodeSetExpiry(node.ID, requestExpiry)
+		_, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
@@ -257,7 +257,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := h.state.AutoApproveRoutes(node)
-	if err := h.state.UpdateNode(node); err != nil {
+	if _, err := h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 

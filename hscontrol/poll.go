@@ -491,7 +491,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	// the hostname change.
 	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
 
-	if err := m.h.state.UpdateNode(m.node); err != nil {
+	if _, err := m.h.state.SaveNode(m.node); err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
