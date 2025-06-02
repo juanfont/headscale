@@ -198,25 +198,31 @@ func (s *State) WriteWithReturn(fn func(tx *gorm.DB) (*types.Node, error)) (*typ
 // User Management
 // =============================================================================
 
-func (s *State) CreateUser(user types.User) (*types.User, error) {
+func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.db.DB.Save(&user).Error; err != nil {
-		return nil, fmt.Errorf("creating user: %w", err)
+		return nil, false, fmt.Errorf("creating user: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		// Log the error but don't fail the user creation
+		return &user, false, fmt.Errorf("failed to update policy manager after user creation: %w", err)
 	}
 
 	// TODO(kradalby): implement the user in-memory cache
-	// TODO(kradalby): update policy manager with the new user
 
-	return &user, nil
+	return &user, policyChanged, nil
 }
 
-func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, error) {
+func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
+	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
 			return nil, err
@@ -230,18 +236,28 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, fmt.Errorf("updating user: %w", err)
 		}
 
-		// TODO(kradalby): implement the user in-memory cache
-		// TODO(kradalby): update policy manager with the updated user
-
 		return user, nil
 	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		return user, false, fmt.Errorf("failed to update policy manager after user update: %w", err)
+	}
+
+	// TODO(kradalby): implement the user in-memory cache
+
+	return user, policyChanged, nil
 }
 
 func (s *State) DeleteUser(userID types.UserID) error {
 	return s.db.DestroyUser(userID)
 }
 
-func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, error) {
+func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, bool, error) {
 	return s.UpdateUser(userID, func(user *types.User) error {
 		user.Name = newName
 		return nil
@@ -272,18 +288,23 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // Node Management
 // =============================================================================
 
-func (s *State) CreateNode(node *types.Node) (*types.Node, error) {
+func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, fmt.Errorf("creating node: %w", err)
+		return nil, false, fmt.Errorf("creating node: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node, false, fmt.Errorf("failed to update policy manager after node creation: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
-	// TODO(kradalby): update policy manager with the new node
 
-	return node, nil
+	return node, policyChanged, nil
 }
 
 func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error) (*types.Node, error) {
@@ -311,18 +332,23 @@ func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error
 	})
 }
 
-func (s *State) SaveNode(node *types.Node) (*types.Node, error) {
+func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, fmt.Errorf("saving node: %w", err)
+		return nil, false, fmt.Errorf("saving node: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node, false, fmt.Errorf("failed to update policy manager after node save: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
-	// TODO(kradalby): update policy manager with the updated node
 
-	return node, nil
+	return node, policyChanged, nil
 }
 
 func (s *State) DeleteNode(node *types.Node) error {
@@ -557,6 +583,42 @@ func (s *State) HandleNodeFromAuthPath(
 
 func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 	return s.ipAlloc.Next()
+}
+
+// =============================================================================
+// Policy Manager Update Hooks
+// =============================================================================
+
+// updatePolicyManagerUsers updates the policy manager with current users.
+// Returns true if the policy changed and notifications should be sent.
+func (s *State) updatePolicyManagerUsers() (bool, error) {
+	users, err := s.ListAllUsers()
+	if err != nil {
+		return false, fmt.Errorf("listing users for policy update: %w", err)
+	}
+
+	changed, err := s.polMan.SetUsers(users)
+	if err != nil {
+		return false, fmt.Errorf("updating policy manager users: %w", err)
+	}
+
+	return changed, nil
+}
+
+// updatePolicyManagerNodes updates the policy manager with current nodes.
+// Returns true if the policy changed and notifications should be sent.
+func (s *State) updatePolicyManagerNodes() (bool, error) {
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return false, fmt.Errorf("listing nodes for policy update: %w", err)
+	}
+
+	changed, err := s.polMan.SetNodes(nodes)
+	if err != nil {
+		return false, fmt.Errorf("updating policy manager nodes: %w", err)
+	}
+
+	return changed, nil
 }
 
 // =============================================================================

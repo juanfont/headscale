@@ -51,9 +51,15 @@ func (api headscaleV1APIServer) CreateUser(
 		Email:         request.GetEmail(),
 		ProfilePicURL: request.GetPictureUrl(),
 	}
-	user, err := api.h.state.CreateUser(newUser)
+	user, policyChanged, err := api.h.state.CreateUser(newUser)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-user-created", user.Name)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
@@ -68,9 +74,15 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	_, err = api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
+	_, policyChanged, err := api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
 	if err != nil {
 		return nil, err
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-user-renamed", request.GetNewName())
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	newUser, err := api.h.state.GetUserByName(request.GetNewName())
@@ -244,26 +256,27 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, err
 	}
 
-	// TODO(kradalby): This function should be replaced with state-based approach
-	// updateSent, err := nodesChangedHook(api.h.state, api.h.state.PolicyManager(), api.h.nodeNotifier)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("updating resources using node: %w", err)
-	// }
-
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
 	// Because the way the policy manager works, we need to have the node
 	// in the database, then add it to the policy manager and then we can
 	// approve the route. This means we get this dance where the node is
 	// first added to the database, then we add it to the policy manager via
-	// nodesChangedHook and then we can auto approve the routes.
+	// SaveNode (which automatically updates the policy manager) and then we can auto approve the routes.
 	// As that only approves the struct object, we need to save it again and
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := api.h.state.AutoApproveRoutes(node)
-	if _, err := api.h.state.SaveNode(node); err != nil {
+	_, policyChanged, err := api.h.state.SaveNode(node)
+	if err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
+	}
+
+	// Send policy update notifications if needed (from SaveNode or route changes)
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-nodes-change", "all")
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	if routesChanged {

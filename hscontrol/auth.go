@@ -257,7 +257,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := h.state.AutoApproveRoutes(node)
-	if _, err := h.state.SaveNode(node); err != nil {
+	if _, _, err := h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 

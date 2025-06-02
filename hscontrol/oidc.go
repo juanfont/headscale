@@ -301,10 +301,29 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		}
 	}
 
-	user, err := a.createOrUpdateUserFromClaim(&claims)
+	user, policyChanged, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
-		httpError(writer, err)
+		log.Error().
+			Err(err).
+			Caller().
+			Msgf("could not create or update user")
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.WriteHeader(http.StatusInternalServerError)
+		_, werr := writer.Write([]byte("Could not create or update user"))
+		if werr != nil {
+			log.Error().
+				Caller().
+				Err(werr).
+				Msg("Failed to write response")
+		}
+
 		return
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "oidc-user-created", user.Name)
+		a.notifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	// TODO(kradalby): Is this comment right?
@@ -468,13 +487,14 @@ func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.Regis
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, error) {
+) (*types.User, bool, error) {
 	var user *types.User
 	var err error
 	var newUser bool
+	var policyChanged bool
 	user, err = a.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, fmt.Errorf("creating or updating user: %w", err)
+		return nil, false, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -486,21 +506,21 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims)
 
 	if newUser {
-		user, err = a.state.CreateUser(*user)
+		user, policyChanged, err = a.state.CreateUser(*user)
 		if err != nil {
-			return nil, fmt.Errorf("creating user: %w", err)
+			return nil, false, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		_, err = a.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+		_, policyChanged, err = a.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
 			*u = *user
 			return nil
 		})
 		if err != nil {
-			return nil, fmt.Errorf("updating user: %w", err)
+			return nil, false, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
-	return user, nil
+	return user, policyChanged, nil
 }
 
 func (a *AuthProviderOIDC) handleRegistration(
@@ -518,28 +538,27 @@ func (a *AuthProviderOIDC) handleRegistration(
 		return false, fmt.Errorf("could not register node: %w", err)
 	}
 
-	// Send an update to all nodes if this is a new node that they need to know
-	// about.
-	// If this is a refresh, just send new expiry updates.
-	// updateSent, err := nodesChangedHook(a.db, a.polMan, a.notifier)
-	// if err != nil {
-	// 	return false, fmt.Errorf("updating resources using node: %w", err)
-	// }
-
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
 	// Because the way the policy manager works, we need to have the node
 	// in the database, then add it to the policy manager and then we can
 	// approve the route. This means we get this dance where the node is
 	// first added to the database, then we add it to the policy manager via
-	// nodesChangedHook and then we can auto approve the routes.
+	// SaveNode (which automatically updates the policy manager) and then we can auto approve the routes.
 	// As that only approves the struct object, we need to save it again and
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	routesChanged := a.state.AutoApproveRoutes(node)
-	if _, err := a.state.SaveNode(node); err != nil {
+	_, policyChanged, err := a.state.SaveNode(node)
+	if err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
+	}
+
+	// Send policy update notifications if needed (from SaveNode or route changes)
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "oidc-nodes-change", "all")
+		a.notifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	if routesChanged {
