@@ -409,7 +409,16 @@ func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
 	}
 
 	if node.LastSeen != nil {
-		h.state.SetLastSeen(node.ID, *node.LastSeen)
+		_, policyChanged, err := h.state.SetLastSeen(node.ID, *node.LastSeen)
+		if err != nil {
+			log.Error().Err(err).Uint64("node.id", node.ID.Uint64()).Msg("Failed to update last seen")
+		}
+
+		// Send policy update notifications if needed
+		if policyChanged {
+			ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus-policy", node.Hostname)
+			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		}
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
@@ -459,10 +468,8 @@ func (m *mapSession) handleEndpointUpdate() {
 	// hostinfo and let the function continue.
 	if routesChanged {
 		// Auto approve any routes that have been defined in policy as
-		// auto approved. Any change here is not important as any
-		// actual state change will be detected when the route manager
-		// is updated.
-		m.h.state.AutoApproveRoutes(m.node)
+		// auto approved. Check if this actually changed the node.
+		routesAutoApproved := m.h.state.AutoApproveRoutes(m.node)
 
 		// Update the routes of the given node in the route manager to
 		// see if an update needs to be sent.
@@ -483,6 +490,16 @@ func (m *mapSession) handleEndpointUpdate() {
 				types.UpdateSelf(m.node.ID),
 				m.node.ID)
 		}
+
+		// If routes were auto-approved, we need to save the node to persist the changes
+		if routesAutoApproved {
+			if _, _, err := m.h.state.SaveNode(m.node); err != nil {
+				m.errf(err, "Failed to save auto-approved routes to node")
+				http.Error(m.w, "", http.StatusInternalServerError)
+				mapResponseEndpointUpdates.WithLabelValues("error").Inc()
+				return
+			}
+		}
 	}
 
 	// Check if there has been a change to Hostname and update them
@@ -491,12 +508,19 @@ func (m *mapSession) handleEndpointUpdate() {
 	// the hostname change.
 	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
 
-	if _, _, err := m.h.state.SaveNode(m.node); err != nil {
+	_, policyChanged, err := m.h.state.SaveNode(m.node)
+	if err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
 
 		return
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-policy", m.node.Hostname)
+		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)

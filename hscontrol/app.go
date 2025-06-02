@@ -125,17 +125,28 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	}
 
 	// Initialize ephemeral garbage collector
-	app.ephemeralGC = db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
+	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		node, err := app.state.GetNodeByID(ni)
 		if err != nil {
 			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to get ephemeral node for deletion")
 			return
 		}
 
-		if err := app.state.DeleteNode(node); err != nil {
+		policyChanged, err := app.state.DeleteNode(node)
+		if err != nil {
 			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to delete ephemeral node")
+			return
 		}
+
+		// Send policy update notifications if needed
+		if policyChanged {
+			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname)
+			app.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		}
+
+		log.Debug().Uint64("node.id", ni.Uint64()).Msgf("deleted ephemeral node")
 	})
+	app.ephemeralGC = ephemeralGC
 
 	var authProvider AuthProvider
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)

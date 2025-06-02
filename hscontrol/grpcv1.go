@@ -316,11 +316,17 @@ func (api headscaleV1APIServer) SetTags(
 		}
 	}
 
-	node, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
+	node, policyChanged, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
 	if err != nil {
 		return &v1.SetTagsResponse{
 			Node: nil,
 		}, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-tags", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
@@ -356,9 +362,15 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	tsaddr.SortPrefixes(routes)
 	routes = slices.Compact(routes)
 
-	node, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), routes)
+	node, policyChanged, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), routes)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-routes-approved", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	if api.h.state.SetNodeRoutes(node.ID, node.SubnetRoutes()...) {
@@ -397,9 +409,15 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	err = api.h.state.DeleteNode(node)
+	policyChanged, err := api.h.state.DeleteNode(node)
 	if err != nil {
 		return nil, err
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-deleted", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
@@ -414,9 +432,15 @@ func (api headscaleV1APIServer) ExpireNode(
 ) (*v1.ExpireNodeResponse, error) {
 	now := time.Now()
 
-	node, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), now)
+	node, policyChanged, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), now)
 	if err != nil {
 		return nil, err
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-expired", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
@@ -440,9 +464,15 @@ func (api headscaleV1APIServer) RenameNode(
 	ctx context.Context,
 	request *v1.RenameNodeRequest,
 ) (*v1.RenameNodeResponse, error) {
-	node, err := api.h.state.RenameNode(types.NodeID(request.GetNodeId()), request.GetNewName())
+	node, policyChanged, err := api.h.state.RenameNode(types.NodeID(request.GetNodeId()), request.GetNewName())
 	if err != nil {
 		return nil, err
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-renamed", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
@@ -523,9 +553,15 @@ func (api headscaleV1APIServer) MoveNode(
 	ctx context.Context,
 	request *v1.MoveNodeRequest,
 ) (*v1.MoveNodeResponse, error) {
-	node, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
+	node, policyChanged, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
 	if err != nil {
 		return nil, err
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-moved", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname)

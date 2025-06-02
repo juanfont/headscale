@@ -307,11 +307,11 @@ func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 	return node, policyChanged, nil
 }
 
-func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error) (*types.Node, error) {
+func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		node, err := hsdb.GetNodeByID(tx, nodeID)
 		if err != nil {
 			return nil, err
@@ -325,11 +325,21 @@ func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error
 			return nil, fmt.Errorf("updating node: %w", err)
 		}
 
-		// TODO(kradalby): implement the node in-memory cache
-		// TODO(kradalby): update policy manager with the updated node
-
 		return node, nil
 	})
+	if err != nil {
+		return nil, false, err
+	}
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node, false, fmt.Errorf("failed to update policy manager after node update: %w", err)
+	}
+
+	// TODO(kradalby): implement the node in-memory cache
+
+	return node, policyChanged, nil
 }
 
 func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
@@ -351,8 +361,19 @@ func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
 	return node, policyChanged, nil
 }
 
-func (s *State) DeleteNode(node *types.Node) error {
-	return s.db.DeleteNode(node)
+func (s *State) DeleteNode(node *types.Node) (bool, error) {
+	err := s.db.DeleteNode(node)
+	if err != nil {
+		return false, err
+	}
+
+	// Check if policy manager needs updating after node deletion
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return false, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+	}
+
+	return policyChanged, nil
 }
 
 func (s *State) GetNodeByID(nodeID types.NodeID) (*types.Node, error) {
@@ -386,42 +407,42 @@ func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 }
 
 // Node convenience methods.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, error) {
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		node.Expiry = &expiry
 		return nil
 	})
 }
 
-func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, error) {
+func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		node.ForcedTags = tags
 		return nil
 	})
 }
 
-func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, error) {
+func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		node.ApprovedRoutes = routes
 		return nil
 	})
 }
 
-func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, error) {
+func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		node.GivenName = newName
 		return nil
 	})
 }
 
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, error) {
+func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		node.LastSeen = &lastSeen
 		return nil
 	})
 }
 
-func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, error) {
+func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
 	return s.updateNode(nodeID, func(node *types.Node) error {
 		user, err := s.db.GetUserByID(userID)
 		if err != nil {

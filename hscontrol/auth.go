@@ -84,9 +84,15 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				err := h.state.DeleteNode(node)
+				policyChanged, err := h.state.DeleteNode(node)
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
+				}
+
+				// Send policy update notifications if needed
+				if policyChanged {
+					ctx := types.NotifyCtx(context.Background(), "auth-logout-ephemeral-policy", "na")
+					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 				}
 
 				ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
@@ -96,9 +102,15 @@ func (h *Headscale) handleExistingNode(
 			expired = true
 		}
 
-		_, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
+		_, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
+		}
+
+		// Send policy update notifications if needed
+		if policyChanged {
+			ctx := types.NotifyCtx(context.Background(), "auth-expiry-policy", "na")
+			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 		}
 
 		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
