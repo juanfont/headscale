@@ -24,7 +24,7 @@ func init() {
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	usernameAndIDFlag(listNodesCmd)
 	nodeCmd.AddCommand(listNodesCmd)
-	listNodeRoutesCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	listNodeRoutesCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	nodeCmd.AddCommand(listNodeRoutesCmd)
 	usernameAndIDFlag(registerNodeCmd)
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
@@ -34,28 +34,28 @@ func init() {
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
-	expireNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	expireNodeCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	err = expireNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
-	renameNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	renameNodeCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	err = renameNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(renameNodeCmd)
 
-	deleteNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	deleteNodeCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	err = deleteNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
-	moveNodeCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	moveNodeCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 
 	err = moveNodeCmd.MarkFlagRequired("node-id")
 	if err != nil {
@@ -66,12 +66,12 @@ func init() {
 
 	nodeCmd.AddCommand(moveNodeCmd)
 
-	tagCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	tagCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	tagCmd.MarkFlagRequired("node-id")
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
-	approveRoutesCmd.Flags().Uint64P("node-id", "N", 0, "Node identifier (ID)")
+	approveRoutesCmd.Flags().Uint64P("node-id", "n", 0, "Node identifier (ID)")
 	approveRoutesCmd.MarkFlagRequired("node-id")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
@@ -150,7 +150,7 @@ var listNodesCmd = &cobra.Command{
 
 		// Check if user identifier flags are provided
 		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
+		username, _ := cmd.Flags().GetString("user")
 
 		request := &v1.ListNodesRequest{}
 

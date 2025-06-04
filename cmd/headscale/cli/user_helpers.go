@@ -22,16 +22,16 @@ func usernameAndIDFlag(cmd *cobra.Command, opts ...string) {
 		nameHelp = opts[1]
 	}
 	cmd.PersistentFlags().Int64P("identifier", "i", -1, idHelp)
-	cmd.PersistentFlags().StringP("name", "n", "", nameHelp)
+	cmd.PersistentFlags().StringP("user", "u", "", nameHelp)
 }
 
 // usernameAndIDFromFlag returns the username and ID from the flags of the command.
 // If both are empty, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
-	username, _ := cmd.Flags().GetString("name")
+	username, _ := cmd.Flags().GetString("user")
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
+		err := errors.New("--user or --identifier flag is required")
 		ErrorOutput(
 			err,
 			fmt.Sprintf(
@@ -71,7 +71,7 @@ func findSingleUser(
 	}
 
 	if len(users.GetUsers()) != 1 {
-		err := fmt.Errorf("Unable to determine user to %s, query returned multiple users, use ID", operationName)
+		err := fmt.Errorf("Unable to determine user for %s", operationName)
 		ErrorOutput(
 			err,
 			fmt.Sprintf("Error: %s", status.Convert(err).Message()),

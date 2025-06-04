@@ -168,7 +168,7 @@ var listUsersCmd = &cobra.Command{
 		request := &v1.ListUsersRequest{}
 
 		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
+		username, _ := cmd.Flags().GetString("user")
 		email, _ := cmd.Flags().GetString("email")
 
 		// filter by one param at most

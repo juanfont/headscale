@@ -27,17 +27,11 @@ func init() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-	createNodeCmd.Flags().StringP("user", "u", "", "User")
-
+	usernameAndIDFlag(createNodeCmd)
 	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
 	createNodeNamespaceFlag := createNodeCmd.Flags().Lookup("namespace")
 	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	createNodeNamespaceFlag.Hidden = true
-
-	err = createNodeCmd.MarkFlagRequired("user")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
 	createNodeCmd.Flags().StringP("key", "k", "", "Key")
 	err = createNodeCmd.MarkFlagRequired("key")
 	if err != nil {
@@ -61,14 +55,15 @@ var createNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
-
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
+
+		user, err := findSingleUser(ctx, client, cmd, "debug-createNodeCmd", output)
+		if err != nil {
+			// The helper already calls ErrorOutput, so we can just return
+			return
+		}
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -109,7 +104,7 @@ var createNodeCmd = &cobra.Command{
 		request := &v1.DebugCreateNodeRequest{
 			Key:    registrationID,
 			Name:   name,
-			User:   user,
+			User:   user.GetName(),
 			Routes: routes,
 		}
 
