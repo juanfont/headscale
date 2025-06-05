@@ -210,18 +210,19 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	}
 
 	node, err := ns.headscale.db.GetNodeByMachineKey(ns.machineKey)
-
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", nil))
 			return
 		}
 		httpError(writer, err)
+
 		return
 	}
 
+	// Ensure the NodeKey in the request matches the one associated with the machine key from the Noise session
 	if node.NodeKey != mapRequest.NodeKey {
-		httpError(writer, NewHTTPError(http.StatusNotFound, "node does not belong to machine key", nil))
+		httpError(writer, NewHTTPError(http.StatusNotFound, "node key in request does not match the one associated with this machine key", nil))
 		return
 	}
 
@@ -274,6 +275,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 				return &regReq, resp
 			} else {
 			}
+
 			return &regReq, regErr(err)
 		}
 
