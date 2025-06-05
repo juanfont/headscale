@@ -1,3 +1,5 @@
+// Package state provides core state management for Headscale, coordinating
+// between subsystems like database, IP allocation, policy management, and DERP routing.
 package state
 
 import (
@@ -25,33 +27,51 @@ import (
 )
 
 const (
+	// registerCacheExpiration defines how long node registration entries remain in cache.
 	registerCacheExpiration = time.Minute * 15
-	registerCacheCleanup    = time.Minute * 20
+
+	// registerCacheCleanup defines the interval for cleaning up expired cache entries.
+	registerCacheCleanup = time.Minute * 20
 )
 
+// ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
+// State manages Headscale's core state, coordinating between database, policy management,
+// IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
-	mu  deadlock.RWMutex
+	// mu protects all in-memory data structures from concurrent access
+	mu deadlock.RWMutex
+	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
 	// in-memory data, protected by mu
+	// nodes contains the current set of registered nodes
 	nodes types.Nodes
+	// users contains the current set of users/namespaces
 	users types.Users
 
 	// subsystem keeping state
-	db                *hsdb.HSDatabase
-	ipAlloc           *hsdb.IPAllocator
-	derpMap           *tailcfg.DERPMap
-	polMan            policy.PolicyManager
+	// db provides persistent storage and database operations
+	db *hsdb.HSDatabase
+	// ipAlloc manages IP address allocation for nodes
+	ipAlloc *hsdb.IPAllocator
+	// derpMap contains the current DERP relay configuration
+	derpMap *tailcfg.DERPMap
+	// polMan handles policy evaluation and management
+	polMan policy.PolicyManager
+	// registrationCache caches node registration data to reduce database load
 	registrationCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
-	primaryRoutes     *routes.PrimaryRoutes
+	// primaryRoutes tracks primary route assignments for nodes
+	primaryRoutes *routes.PrimaryRoutes
 }
 
 // =============================================================================
 // Core State Management
 // =============================================================================
 
+// NewState creates and initializes a new State instance, setting up the database,
+// IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
 	registrationCache := zcache.New[types.RegistrationID, types.RegisterNode](
 		registerCacheExpiration,
@@ -109,6 +129,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	}, nil
 }
 
+// Close gracefully shuts down the State instance and releases all resources.
 func (s *State) Close() error {
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing database: %w", err)
@@ -117,6 +138,8 @@ func (s *State) Close() error {
 	return nil
 }
 
+// policyBytes loads policy configuration from file or database based on the configured mode.
+// Returns nil if no policy is configured, which is valid.
 func policyBytes(db *hsdb.HSDatabase, cfg *types.Config) ([]byte, error) {
 	switch cfg.Policy.Mode {
 	case types.PolicyModeFile:
@@ -156,10 +179,13 @@ func policyBytes(db *hsdb.HSDatabase, cfg *types.Config) ([]byte, error) {
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, cfg.Policy.Mode)
 }
 
+// DERPMap returns the current DERP relay configuration for peer-to-peer connectivity.
 func (s *State) DERPMap() *tailcfg.DERPMap {
 	return s.derpMap
 }
 
+// ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
+// Returns true if the policy changed.
 func (s *State) ReloadPolicy() (bool, error) {
 	pol, err := policyBytes(s.db, s.cfg)
 	if err != nil {
@@ -181,6 +207,7 @@ func (s *State) ReloadPolicy() (bool, error) {
 	return changed, nil
 }
 
+// AutoApproveNodes processes pending nodes and auto-approves those meeting policy criteria.
 func (s *State) AutoApproveNodes() error {
 	return s.autoApproveNodes()
 }
@@ -189,6 +216,8 @@ func (s *State) AutoApproveNodes() error {
 // User Management
 // =============================================================================
 
+// CreateUser creates a new user and updates the policy manager.
+// Returns the created user, whether policies changed, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -209,6 +238,8 @@ func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 	return &user, policyChanged, nil
 }
 
+// UpdateUser modifies an existing user using the provided update function within a transaction.
+// Returns the updated user, whether policies changed, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -244,10 +275,13 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 	return user, policyChanged, nil
 }
 
+// DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).
+// This operation is irreversible.
 func (s *State) DeleteUser(userID types.UserID) error {
 	return s.db.DestroyUser(userID)
 }
 
+// RenameUser changes a user's name. The new name must be unique.
 func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, bool, error) {
 	return s.UpdateUser(userID, func(user *types.User) error {
 		user.Name = newName
@@ -255,22 +289,27 @@ func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, bo
 	})
 }
 
+// GetUserByID retrieves a user by ID.
 func (s *State) GetUserByID(userID types.UserID) (*types.User, error) {
 	return s.db.GetUserByID(userID)
 }
 
+// GetUserByName retrieves a user by name.
 func (s *State) GetUserByName(name string) (*types.User, error) {
 	return s.db.GetUserByName(name)
 }
 
+// GetUserByOIDCIdentifier retrieves a user by their OIDC identifier.
 func (s *State) GetUserByOIDCIdentifier(id string) (*types.User, error) {
 	return s.db.GetUserByOIDCIdentifier(id)
 }
 
+// ListUsersWithFilter retrieves users matching the specified filter criteria.
 func (s *State) ListUsersWithFilter(filter *types.User) ([]types.User, error) {
 	return s.db.ListUsers(filter)
 }
 
+// ListAllUsers retrieves all users in the system.
 func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
@@ -279,6 +318,8 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // Node Management
 // =============================================================================
 
+// CreateNode creates a new node and updates the policy manager.
+// Returns the created node, whether policies changed, and any error.
 func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -298,9 +339,7 @@ func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 	return node, policyChanged, nil
 }
 
-// updateNodeTx performs a transaction to update a node and returns the updated node.
-// It also checks if the policy manager needs updating after the node update.
-// Returns the updated node, a boolean indicating if the policy changed, and an error if any.
+// updateNodeTx performs a database transaction to update a node and refresh the policy manager.
 func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -336,6 +375,7 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 	return node, policyChanged, nil
 }
 
+// SaveNode persists an existing node to the database and updates the policy manager.
 func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -355,6 +395,8 @@ func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
 	return node, policyChanged, nil
 }
 
+// DeleteNode permanently removes a node and cleans up associated resources.
+// Returns whether policies changed and any error. This operation is irreversible.
 func (s *State) DeleteNode(node *types.Node) (bool, error) {
 	err := s.db.DeleteNode(node)
 	if err != nil {
@@ -370,14 +412,17 @@ func (s *State) DeleteNode(node *types.Node) (bool, error) {
 	return policyChanged, nil
 }
 
+// GetNodeByID retrieves a node by ID.
 func (s *State) GetNodeByID(nodeID types.NodeID) (*types.Node, error) {
 	return s.db.GetNodeByID(nodeID)
 }
 
+// GetNodeByNodeKey retrieves a node by its Tailscale public key.
 func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
 	return s.db.GetNodeByNodeKey(nodeKey)
 }
 
+// ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
 func (s *State) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	if len(nodeIDs) == 0 {
 		return s.db.ListNodes()
@@ -386,64 +431,76 @@ func (s *State) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return s.db.ListNodes(nodeIDs...)
 }
 
+// ListNodesByUser retrieves all nodes belonging to a specific user.
 func (s *State) ListNodesByUser(userID types.UserID) (types.Nodes, error) {
 	return hsdb.Read(s.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		return hsdb.ListNodesByUser(rx, userID)
 	})
 }
 
+// ListPeers retrieves nodes that can communicate with the specified node based on policy.
 func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	return s.db.ListPeers(nodeID, peerIDs...)
 }
 
+// ListEphemeralNodes retrieves all ephemeral (temporary) nodes in the system.
 func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 	return s.db.ListEphemeralNodes()
 }
 
-// Node convenience methods.
+// =============================================================================
+// Node Convenience Methods
+// =============================================================================
+
+// SetNodeExpiry updates the expiration time for a node.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
 }
 
+// SetNodeTags assigns tags to a node for use in access control policies.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
 }
 
+// SetApprovedRoutes sets the network routes that a node is approved to advertise.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
 }
 
+// RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
 }
 
+// SetLastSeen updates when a node was last seen, used for connectivity monitoring.
 func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
 }
 
+// AssignNodeToUser transfers a node to a different user.
 func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
 }
 
+// BackfillNodeIPs assigns IP addresses to nodes that don't have them.
 func (s *State) BackfillNodeIPs() ([]string, error) {
 	return s.db.BackfillNodeIPs(s.ipAlloc)
 }
 
-// ExpireExpiredNodes checks for nodes that have expired since the last check
-// and returns a time to be used for the next check, a StateUpdate
-// containing the expired nodes, and a boolean indicating if any nodes were found.
+// ExpireExpiredNodes finds and processes expired nodes since the last check.
+// Returns next check time, state update with expired nodes, and whether any were found.
 func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
 	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
@@ -452,34 +509,42 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateU
 // Policy Management
 // =============================================================================
 
+// SSHPolicy returns the SSH access policy for a node.
 func (s *State) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(node)
 }
 
+// Filter returns the current network filter rules and matches.
 func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	return s.polMan.Filter()
 }
 
+// NodeCanHaveTag checks if a node is allowed to have a specific tag.
 func (s *State) NodeCanHaveTag(node *types.Node, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
+// SetPolicy updates the policy configuration.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	return s.polMan.SetPolicy(pol)
 }
 
+// AutoApproveRoutes checks if a node's routes should be auto-approved.
 func (s *State) AutoApproveRoutes(node *types.Node) bool {
 	return policy.AutoApproveRoutes(s.polMan, node)
 }
 
+// PolicyDebugString returns a debug representation of the current policy.
 func (s *State) PolicyDebugString() string {
 	return s.polMan.DebugString()
 }
 
+// GetPolicy retrieves the current policy from the database.
 func (s *State) GetPolicy() (*types.Policy, error) {
 	return s.db.GetPolicy()
 }
 
+// SetPolicyInDB stores policy data in the database.
 func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
 }
@@ -488,74 +553,88 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 // Routes Management
 // =============================================================================
 
+// SetNodeRoutes sets the primary routes for a node.
 func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) bool {
 	return s.primaryRoutes.SetRoutes(nodeID, routes...)
 }
 
+// GetNodePrimaryRoutes returns the primary routes for a node.
 func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.primaryRoutes.PrimaryRoutes(nodeID)
 }
 
+// PrimaryRoutesString returns a string representation of all primary routes.
 func (s *State) PrimaryRoutesString() string {
 	return s.primaryRoutes.String()
 }
 
 // =============================================================================
-// Authentication & Authorization
+// API Key Management
 // =============================================================================
 
-func (s *State) ValidateAPIKey(key string) (bool, error) {
-	return s.db.ValidateAPIKey(key)
+// ValidateAPIKey checks if an API key is valid and active.
+func (s *State) ValidateAPIKey(keyStr string) (bool, error) {
+	return s.db.ValidateAPIKey(keyStr)
 }
 
+// CreateAPIKey generates a new API key with optional expiration.
 func (s *State) CreateAPIKey(expiration *time.Time) (string, *types.APIKey, error) {
 	return s.db.CreateAPIKey(expiration)
 }
 
+// GetAPIKey retrieves an API key by its prefix.
 func (s *State) GetAPIKey(prefix string) (*types.APIKey, error) {
 	return s.db.GetAPIKey(prefix)
 }
 
-func (s *State) ExpireAPIKey(key *types.APIKey) error {
-	return s.db.ExpireAPIKey(key)
+// ExpireAPIKey marks an API key as expired.
+func (s *State) ExpireAPIKey(prefix string) error {
+	return s.db.ExpireAPIKey(prefix)
 }
 
+// ListAPIKeys returns all API keys in the system.
 func (s *State) ListAPIKeys() ([]types.APIKey, error) {
 	return s.db.ListAPIKeys()
 }
 
-func (s *State) DestroyAPIKey(key types.APIKey) error {
-	return s.db.DestroyAPIKey(key)
+// DestroyAPIKey permanently removes an API key.
+func (s *State) DestroyAPIKey(prefix string) error {
+	return s.db.DestroyAPIKey(prefix)
 }
 
 // =============================================================================
 // PreAuth Key Management
 // =============================================================================
 
+// CreatePreAuthKey generates a new pre-authentication key for a user.
 func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKey, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
-func (s *State) GetPreAuthKey(key string) (*types.PreAuthKey, error) {
-	return s.db.GetPreAuthKey(key)
+// GetPreAuthKey retrieves a pre-authentication key by ID.
+func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
+	return s.db.GetPreAuthKey(id)
 }
 
+// ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys(userID)
 }
 
-func (s *State) ExpirePreAuthKey(key *types.PreAuthKey) error {
-	return s.db.Write(func(tx *gorm.DB) error {
-		return hsdb.ExpirePreAuthKey(tx, key)
+// ExpirePreAuthKey marks a pre-authentication key as expired.
+func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
+	return hsdb.Write(s.db.DB, func(tx *gorm.DB) error {
+		return hsdb.ExpirePreAuthKey(tx, preAuthKey)
 	})
 }
 
 // =============================================================================
-// Registration Cache Management
+// Registration Management
 // =============================================================================
 
-func (s *State) GetRegistrationCacheEntry(registrationID types.RegistrationID) (*types.RegisterNode, bool) {
-	entry, found := s.registrationCache.Get(registrationID)
+// GetRegistrationCacheEntry retrieves a node registration from cache.
+func (s *State) GetRegistrationCacheEntry(id types.RegistrationID) (*types.RegisterNode, bool) {
+	entry, found := s.registrationCache.Get(id)
 	if !found {
 		return nil, false
 	}
@@ -563,10 +642,12 @@ func (s *State) GetRegistrationCacheEntry(registrationID types.RegistrationID) (
 	return &entry, true
 }
 
-func (s *State) SetRegistrationCacheEntry(registrationID types.RegistrationID, entry types.RegisterNode) {
-	s.registrationCache.Set(registrationID, entry)
+// SetRegistrationCacheEntry stores a node registration in cache.
+func (s *State) SetRegistrationCacheEntry(id types.RegistrationID, entry types.RegisterNode) {
+	s.registrationCache.Set(id, entry)
 }
 
+// HandleNodeFromAuthPath handles node registration through authentication flow (like OIDC).
 func (s *State) HandleNodeFromAuthPath(
 	registrationID types.RegistrationID,
 	userID types.UserID,
@@ -587,6 +668,7 @@ func (s *State) HandleNodeFromAuthPath(
 	)
 }
 
+// HandleNodeFromPreAuthKey handles node registration using a pre-authentication key.
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -662,6 +744,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 // IP Allocation
 // =============================================================================
 
+// AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
 func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 	return s.ipAlloc.Next()
 }
@@ -675,6 +758,7 @@ func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 // TODO(kradalby): This is a temporary stepping stone, ultimately we should
 // have the list already available so it could go much quicker. Alternatively
 // the policy manager could have a remove or add list for users.
+// updatePolicyManagerUsers refreshes the policy manager with current user data.
 func (s *State) updatePolicyManagerUsers() (bool, error) {
 	users, err := s.ListAllUsers()
 	if err != nil {
@@ -694,6 +778,7 @@ func (s *State) updatePolicyManagerUsers() (bool, error) {
 // TODO(kradalby): This is a temporary stepping stone, ultimately we should
 // have the list already available so it could go much quicker. Alternatively
 // the policy manager could have a remove or add list for nodes.
+// updatePolicyManagerNodes refreshes the policy manager with current node data.
 func (s *State) updatePolicyManagerNodes() (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
@@ -712,6 +797,7 @@ func (s *State) updatePolicyManagerNodes() (bool, error) {
 // Database Utilities
 // =============================================================================
 
+// PingDB checks if the database connection is healthy.
 func (s *State) PingDB(ctx context.Context) error {
 	return s.db.PingDB(ctx)
 }
@@ -721,6 +807,7 @@ func (s *State) PingDB(ctx context.Context) error {
 // or updates as we send full updates after replacing the policy.
 // TODO(kradalby): This is kind of messy, maybe this is another +1
 // for an event bus. See example comments here.
+// autoApproveNodes automatically approves nodes based on policy rules.
 func (s *State) autoApproveNodes() error {
 	err := s.db.Write(func(tx *gorm.DB) error {
 		nodes, err := hsdb.ListNodes(tx)
