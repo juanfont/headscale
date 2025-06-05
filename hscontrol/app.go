@@ -48,7 +48,6 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
-	"gorm.io/gorm"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -259,14 +258,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			var update types.StateUpdate
 			var changed bool
 
-			if err := h.state.Write(func(tx *gorm.DB) error {
-				lastExpiryCheck, update, changed = db.ExpireExpiredNodes(tx, lastExpiryCheck)
-
-				return nil
-			}); err != nil {
-				log.Error().Err(err).Msg("database error while expiring nodes")
-				continue
-			}
+			lastExpiryCheck, update, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
 
 			if changed {
 				log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")

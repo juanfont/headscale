@@ -185,16 +185,6 @@ func (s *State) AutoApproveNodes() error {
 	return s.autoApproveNodes()
 }
 
-// Deprecated: Use specific database operation methods instead.
-func (s *State) Write(fn func(tx *gorm.DB) error) error {
-	return s.db.Write(fn)
-}
-
-// Deprecated: Use specific database operation methods instead.
-func (s *State) WriteWithReturn(fn func(tx *gorm.DB) (*types.Node, error)) (*types.Node, error) {
-	return hsdb.Write(s.db.DB, fn)
-}
-
 // =============================================================================
 // User Management
 // =============================================================================
@@ -449,6 +439,13 @@ func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*typ
 
 func (s *State) BackfillNodeIPs() ([]string, error) {
 	return s.db.BackfillNodeIPs(s.ipAlloc)
+}
+
+// ExpireExpiredNodes checks for nodes that have expired since the last check
+// and returns a time to be used for the next check, a StateUpdate
+// containing the expired nodes, and a boolean indicating if any nodes were found.
+func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
+	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
 
 // =============================================================================
