@@ -220,7 +220,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	if ns.nodeKey != mapRequest.NodeKey {
+	if node.NodeKey != mapRequest.NodeKey {
 		httpError(writer, NewHTTPError(http.StatusNotFound, "node does not belong to machine key", nil))
 		return
 	}
