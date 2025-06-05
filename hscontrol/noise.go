@@ -209,9 +209,8 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	ns.nodeKey = mapRequest.NodeKey
+	node, err := ns.headscale.db.GetNodeByMachineKey(ns.machineKey)
 
-	node, err := ns.headscale.db.GetNodeByNodeKey(mapRequest.NodeKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", nil))
@@ -220,6 +219,13 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		httpError(writer, err)
 		return
 	}
+
+	if ns.nodeKey != mapRequest.NodeKey {
+		httpError(writer, NewHTTPError(http.StatusNotFound, "node does not belong to machine key", nil))
+		return
+	}
+
+	ns.nodeKey = node.NodeKey
 
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
 	sess.tracef("a node sending a MapRequest with Noise protocol")
