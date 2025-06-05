@@ -9,9 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -93,16 +91,17 @@ func (h *Headscale) handleExistingNode(
 				if policyChanged {
 					ctx := types.NotifyCtx(context.Background(), "auth-logout-ephemeral-policy", "na")
 					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+				} else {
+					ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
+					h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
 				}
 
-				ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-				h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
+				return nil, nil
 			}
 
-			expired = true
 		}
 
-		_, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
+		n, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
@@ -111,10 +110,12 @@ func (h *Headscale) handleExistingNode(
 		if policyChanged {
 			ctx := types.NotifyCtx(context.Background(), "auth-expiry-policy", "na")
 			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		} else {
+			ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
+			h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
 		}
 
-		ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-		h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
+		return nodeToRegisterResponse(n), nil
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -164,98 +165,24 @@ func (h *Headscale) waitForFollowup(
 	return nil, NewHTTPError(http.StatusNotFound, "followup registration not found", nil)
 }
 
-// canUsePreAuthKey checks if a pre auth key can be used.
-func canUsePreAuthKey(pak *types.PreAuthKey) error {
-	if pak == nil {
-		return NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil)
-	}
-	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
-		return NewHTTPError(http.StatusUnauthorized, "authkey expired", nil)
-	}
-
-	// we don't need to check if has been used before
-	if pak.Reusable {
-		return nil
-	}
-
-	if pak.Used {
-		return NewHTTPError(http.StatusUnauthorized, "authkey already used", nil)
-	}
-
-	return nil
-}
-
 func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	pak, err := h.state.GetPreAuthKey(regReq.Auth.AuthKey)
+
+	node, changed, err := h.state.HandleNodeFromPreAuthKey(
+		regReq,
+		machineKey,
+	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
-		return nil, err
-	}
-
-	err = canUsePreAuthKey(pak)
-	if err != nil {
-		return nil, err
-	}
-
-	nodeToRegister := types.Node{
-		Hostname:       regReq.Hostinfo.Hostname,
-		UserID:         pak.User.ID,
-		User:           pak.User,
-		MachineKey:     machineKey,
-		NodeKey:        regReq.NodeKey,
-		Hostinfo:       regReq.Hostinfo,
-		LastSeen:       ptr.To(time.Now()),
-		RegisterMethod: util.RegisterMethodAuthKey,
-
-		// TODO(kradalby): This should not be set on the node,
-		// they should be looked up through the key, which is
-		// attached to the node.
-		ForcedTags: pak.Proto().GetAclTags(),
-		AuthKey:    pak,
-		AuthKeyID:  &pak.ID,
-	}
-
-	if !regReq.Expiry.IsZero() {
-		nodeToRegister.Expiry = &regReq.Expiry
-	}
-
-	ipv4, ipv6, err := h.state.AllocateNextIPs()
-	if err != nil {
-		return nil, fmt.Errorf("allocating IPs: %w", err)
-	}
-
-	node, err := h.state.WriteWithReturn(func(tx *gorm.DB) (*types.Node, error) {
-		node, err := db.RegisterNode(tx,
-			nodeToRegister,
-			ipv4, ipv6,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("registering node: %w", err)
+		if perr, ok := err.(types.PAKError); ok {
+			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
-
-		if !pak.Reusable {
-			err = db.UsePreAuthKey(tx, pak)
-			if err != nil {
-				return nil, fmt.Errorf("using pre auth key: %w", err)
-			}
-		}
-
-		return node, nil
-	})
-	if err != nil {
 		return nil, err
 	}
-
-	// TODO(kradalby): This function should be replaced with state-based approach
-	// updateSent, err := nodesChangedHook(h.state, h.state.PolicyManager(), h.nodeNotifier)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("nodes changed hook: %w", err)
-	// }
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -276,13 +203,16 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	if routesChanged {
 		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
 		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
+	} else if changed {
+		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
+		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              *pak.User.TailscaleUser(),
-		Login:             *pak.User.TailscaleLogin(),
+		User:              *node.User.TailscaleUser(),
+		Login:             *node.User.TailscaleLogin(),
 	}, nil
 }
 

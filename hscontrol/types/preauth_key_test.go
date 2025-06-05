@@ -1,12 +1,10 @@
-package hscontrol
+package types
 
 import (
-	"net/http"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/types"
 )
 
 func TestCanUsePreAuthKey(t *testing.T) {
@@ -16,13 +14,13 @@ func TestCanUsePreAuthKey(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		pak     *types.PreAuthKey
+		pak     *PreAuthKey
 		wantErr bool
-		err     HTTPError
+		err     PAKError
 	}{
 		{
 			name: "valid reusable key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   true,
 				Used:       false,
 				Expiration: &future,
@@ -31,7 +29,7 @@ func TestCanUsePreAuthKey(t *testing.T) {
 		},
 		{
 			name: "valid non-reusable key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       false,
 				Expiration: &future,
@@ -40,27 +38,27 @@ func TestCanUsePreAuthKey(t *testing.T) {
 		},
 		{
 			name: "expired key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       false,
 				Expiration: &past,
 			},
 			wantErr: true,
-			err:     NewHTTPError(http.StatusUnauthorized, "authkey expired", nil),
+			err:     PAKError("authkey expired"),
 		},
 		{
 			name: "used non-reusable key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       true,
 				Expiration: &future,
 			},
 			wantErr: true,
-			err:     NewHTTPError(http.StatusUnauthorized, "authkey already used", nil),
+			err:     PAKError("authkey already used"),
 		},
 		{
 			name: "used reusable key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   true,
 				Used:       true,
 				Expiration: &future,
@@ -69,7 +67,7 @@ func TestCanUsePreAuthKey(t *testing.T) {
 		},
 		{
 			name: "no expiration date",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       false,
 				Expiration: nil,
@@ -80,38 +78,38 @@ func TestCanUsePreAuthKey(t *testing.T) {
 			name:    "nil preauth key",
 			pak:     nil,
 			wantErr: true,
-			err:     NewHTTPError(http.StatusUnauthorized, "invalid authkey", nil),
+			err:     PAKError("invalid authkey"),
 		},
 		{
 			name: "expired and used key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       true,
 				Expiration: &past,
 			},
 			wantErr: true,
-			err:     NewHTTPError(http.StatusUnauthorized, "authkey expired", nil),
+			err:     PAKError("authkey expired"),
 		},
 		{
 			name: "no expiration and used key",
-			pak: &types.PreAuthKey{
+			pak: &PreAuthKey{
 				Reusable:   false,
 				Used:       true,
 				Expiration: nil,
 			},
 			wantErr: true,
-			err:     NewHTTPError(http.StatusUnauthorized, "authkey already used", nil),
+			err:     PAKError("authkey already used"),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := canUsePreAuthKey(tt.pak)
+			err := tt.pak.Validate()
 			if tt.wantErr {
 				if err == nil {
 					t.Errorf("expected error but got none")
 				} else {
-					httpErr, ok := err.(HTTPError)
+					httpErr, ok := err.(PAKError)
 					if !ok {
 						t.Errorf("expected HTTPError but got %T", err)
 					} else {

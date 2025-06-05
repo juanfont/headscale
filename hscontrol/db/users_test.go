@@ -108,7 +108,7 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	c.Assert(err, check.IsNil)
 
 	node := types.Node{
-		ID:             0,
+		ID:             12,
 		Hostname:       "testnode",
 		UserID:         oldUser.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
@@ -118,15 +118,21 @@ func (s *Suite) TestSetMachineUser(c *check.C) {
 	c.Assert(trx.Error, check.IsNil)
 	c.Assert(node.UserID, check.Equals, oldUser.ID)
 
-	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
+	err = db.Read(func(rx *gorm.DB) error {
+		return AssignNodeToUser(rx, 12, types.UserID(newUser.ID))
+	})
 	c.Assert(err, check.IsNil)
 	c.Assert(node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)
 
-	err = db.AssignNodeToUser(&node, 9584849)
+	err = db.Read(func(rx *gorm.DB) error {
+		return AssignNodeToUser(rx, 12, 9584849)
+	})
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	err = db.AssignNodeToUser(&node, types.UserID(newUser.ID))
+	err = db.Read(func(rx *gorm.DB) error {
+		return AssignNodeToUser(rx, 12, types.UserID(newUser.ID))
+	})
 	c.Assert(err, check.IsNil)
 	c.Assert(node.UserID, check.Equals, newUser.ID)
 	c.Assert(node.User.Name, check.Equals, newUser.Name)

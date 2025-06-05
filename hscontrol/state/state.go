@@ -20,6 +20,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 	zcache "zgo.at/zcache/v2"
 )
 
@@ -307,17 +308,20 @@ func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 	return node, policyChanged, nil
 }
 
-func (s *State) updateNode(nodeID types.NodeID, updateFn func(*types.Node) error) (*types.Node, bool, error) {
+// updateNodeTx performs a transaction to update a node and returns the updated node.
+// It also checks if the policy manager needs updating after the node update.
+// Returns the updated node, a boolean indicating if the policy changed, and an error if any.
+func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		node, err := hsdb.GetNodeByID(tx, nodeID)
-		if err != nil {
+		if err := updateFn(tx); err != nil {
 			return nil, err
 		}
 
-		if err := updateFn(node); err != nil {
+		node, err := hsdb.GetNodeByID(tx, nodeID)
+		if err != nil {
 			return nil, err
 		}
 
@@ -408,50 +412,38 @@ func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 
 // Node convenience methods.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		node.Expiry = &expiry
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
 }
 
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		node.ForcedTags = tags
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.SetTags(tx, nodeID, tags)
 	})
 }
 
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		node.ApprovedRoutes = routes
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
 }
 
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		node.GivenName = newName
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.RenameNode(tx, nodeID, newName)
 	})
 }
 
 func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		node.LastSeen = &lastSeen
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
 }
 
 func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
-	return s.updateNode(nodeID, func(node *types.Node) error {
-		user, err := s.db.GetUserByID(userID)
-		if err != nil {
-			return err
-		}
-		node.UserID = uint(userID)
-		node.User = *user
-
-		return nil
+	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
 }
 
@@ -598,6 +590,77 @@ func (s *State) HandleNodeFromAuthPath(
 	)
 }
 
+func (s *State) HandleNodeFromPreAuthKey(
+	regReq tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
+) (*types.Node, bool, error) {
+	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
+
+	err = pak.Validate()
+	if err != nil {
+		return nil, false, err
+	}
+
+	nodeToRegister := types.Node{
+		Hostname:       regReq.Hostinfo.Hostname,
+		UserID:         pak.User.ID,
+		User:           pak.User,
+		MachineKey:     machineKey,
+		NodeKey:        regReq.NodeKey,
+		Hostinfo:       regReq.Hostinfo,
+		LastSeen:       ptr.To(time.Now()),
+		RegisterMethod: util.RegisterMethodAuthKey,
+
+		// TODO(kradalby): This should not be set on the node,
+		// they should be looked up through the key, which is
+		// attached to the node.
+		ForcedTags: pak.Proto().GetAclTags(),
+		AuthKey:    pak,
+		AuthKeyID:  &pak.ID,
+	}
+
+	if !regReq.Expiry.IsZero() {
+		nodeToRegister.Expiry = &regReq.Expiry
+	}
+
+	ipv4, ipv6, err := s.ipAlloc.Next()
+	if err != nil {
+		return nil, false, fmt.Errorf("allocating IPs: %w", err)
+	}
+
+	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		node, err := hsdb.RegisterNode(tx,
+			nodeToRegister,
+			ipv4, ipv6,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("registering node: %w", err)
+		}
+
+		if !pak.Reusable {
+			err = hsdb.UsePreAuthKey(tx, pak)
+			if err != nil {
+				return nil, fmt.Errorf("using pre auth key: %w", err)
+			}
+		}
+
+		return node, nil
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("writing node to database: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	// This is necessary because we just created a new node.
+	// We need to ensure that the policy manager is aware of this new node.
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
+	}
+
+	return node, policyChanged, nil
+}
+
 // =============================================================================
 // IP Allocation
 // =============================================================================
@@ -612,6 +675,9 @@ func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 
 // updatePolicyManagerUsers updates the policy manager with current users.
 // Returns true if the policy changed and notifications should be sent.
+// TODO(kradalby): This is a temporary stepping stone, ultimately we should
+// have the list already available so it could go much quicker. Alternatively
+// the policy manager could have a remove or add list for users.
 func (s *State) updatePolicyManagerUsers() (bool, error) {
 	users, err := s.ListAllUsers()
 	if err != nil {
@@ -628,6 +694,9 @@ func (s *State) updatePolicyManagerUsers() (bool, error) {
 
 // updatePolicyManagerNodes updates the policy manager with current nodes.
 // Returns true if the policy changed and notifications should be sent.
+// TODO(kradalby): This is a temporary stepping stone, ultimately we should
+// have the list already available so it could go much quicker. Alternatively
+// the policy manager could have a remove or add list for nodes.
 func (s *State) updatePolicyManagerNodes() (bool, error) {
 	nodes, err := s.ListNodes()
 	if err != nil {
