@@ -588,8 +588,8 @@ func (s *State) GetAPIKey(prefix string) (*types.APIKey, error) {
 }
 
 // ExpireAPIKey marks an API key as expired.
-func (s *State) ExpireAPIKey(prefix string) error {
-	return s.db.ExpireAPIKey(prefix)
+func (s *State) ExpireAPIKey(key *types.APIKey) error {
+	return s.db.ExpireAPIKey(key)
 }
 
 // ListAPIKeys returns all API keys in the system.
@@ -598,8 +598,8 @@ func (s *State) ListAPIKeys() ([]types.APIKey, error) {
 }
 
 // DestroyAPIKey permanently removes an API key.
-func (s *State) DestroyAPIKey(prefix string) error {
-	return s.db.DestroyAPIKey(prefix)
+func (s *State) DestroyAPIKey(key types.APIKey) error {
+	return s.db.DestroyAPIKey(key)
 }
 
 // =============================================================================
@@ -623,9 +623,7 @@ func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error)
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.
 func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
-	return hsdb.Write(s.db.DB, func(tx *gorm.DB) error {
-		return hsdb.ExpirePreAuthKey(tx, preAuthKey)
-	})
+	return s.db.ExpirePreAuthKey(preAuthKey)
 }
 
 // =============================================================================
