@@ -64,9 +64,8 @@ var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not 
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
 	"machines registered with CLI does not support expire",
 )
-var ErrNoCapabilityVersion = errors.New("no capability version set")
 
-func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
+func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
 	clientCapabilityStr := req.URL.Query().Get("v")
 
 	if clientCapabilityStr == "" {
@@ -133,7 +132,7 @@ func (h *Headscale) KeyHandler(
 	req *http.Request,
 ) {
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
-	capVer, err := parseCabailityVersion(req)
+	capVer, err := parseCapabilityVersion(req)
 	if err != nil {
 		httpError(writer, err)
 		return
