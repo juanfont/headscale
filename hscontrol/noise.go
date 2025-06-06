@@ -100,6 +100,10 @@ func (h *Headscale) NoiseUpgradeHandler(
 
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)
+
+	// Endpoints outside of the register endpoint must use getAndValidateNode to
+	// get the node to ensure that the MachineKey matches the Node setting up the
+	// connection.
 	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
 
 	noiseServer.httpBaseConfig = &http.Server{
