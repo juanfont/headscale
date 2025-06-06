@@ -14,6 +14,14 @@
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 
+## 0.26.1 (2025-06-06)
+
+### Changes
+
+- Ensure nodes are matching both node key and machine key
+  when connecting.
+  [#2642](https://github.com/juanfont/headscale/pull/2642)
+
 ## 0.26.0 (2025-05-14)
 
 ### BREAKING
