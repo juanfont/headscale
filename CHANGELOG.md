@@ -13,6 +13,8 @@
   [#2600](https://github.com/juanfont/headscale/pull/2600)
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
+- Refactor OpenID Connect documentation
+  [#2625](https://github.com/juanfont/headscale/pull/2625)
 
 ## 0.26.1 (2025-06-06)
 
