@@ -200,7 +200,7 @@ func (m *mapSession) serveLongPoll() {
 		// in principal, it will be removed, but the client rapidly
 		// reconnects, the channel might be of another connection.
 		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
+		if m.node != nil && m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
 			// Failover the node's routes if any.
 			m.h.updateNodeOnlineStatus(false, m.node)
 
