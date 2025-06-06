@@ -180,6 +180,21 @@ func (h *Headscale) HealthHandler(
 	respond(nil)
 }
 
+func (h *Headscale) RobotsHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	writer.Header().Set("Content-Type", "text/plain")
+	writer.WriteHeader(http.StatusOK)
+	_, err := writer.Write([]byte("User-agent: *\nDisallow: /"))
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write response")
+	}
+}
+
 var codeStyleRegisterWebAPI = styles.Props{
 	styles.Display:         "block",
 	styles.Padding:         "20px",
