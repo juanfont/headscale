@@ -66,10 +66,6 @@ type State struct {
 	primaryRoutes *routes.PrimaryRoutes
 }
 
-// =============================================================================
-// Core State Management
-// =============================================================================
-
 // NewState creates and initializes a new State instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
@@ -212,10 +208,6 @@ func (s *State) AutoApproveNodes() error {
 	return s.autoApproveNodes()
 }
 
-// =============================================================================
-// User Management
-// =============================================================================
-
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, whether policies changed, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
@@ -314,10 +306,6 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
 
-// =============================================================================
-// Node Management
-// =============================================================================
-
 // CreateNode creates a new node and updates the policy manager.
 // Returns the created node, whether policies changed, and any error.
 func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
@@ -412,6 +400,28 @@ func (s *State) DeleteNode(node *types.Node) (bool, error) {
 	return policyChanged, nil
 }
 
+func (s *State) Connect(node *types.Node) bool {
+	_ = s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+
+	// TODO(kradalby): this should be more granular, allowing us to
+	// only send a online update change.
+	return true
+}
+
+func (s *State) Disconnect(node *types.Node) (bool, error) {
+	// TODO(kradalby): This node should update the in memory state
+	_, polChanged, err := s.SetLastSeen(node.ID, time.Now())
+	if err != nil {
+		return false, fmt.Errorf("disconnecting node: %w", err)
+	}
+
+	changed := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+
+	// TODO(kradalby): the returned change should be more nuanced allowing us to
+	// send more directed updates.
+	return changed || polChanged, nil
+}
+
 // GetNodeByID retrieves a node by ID.
 func (s *State) GetNodeByID(nodeID types.NodeID) (*types.Node, error) {
 	return s.db.GetNodeByID(nodeID)
@@ -447,10 +457,6 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.N
 func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 	return s.db.ListEphemeralNodes()
 }
-
-// =============================================================================
-// Node Convenience Methods
-// =============================================================================
 
 // SetNodeExpiry updates the expiration time for a node.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
@@ -505,10 +511,6 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateU
 	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
 
-// =============================================================================
-// Policy Management
-// =============================================================================
-
 // SSHPolicy returns the SSH access policy for a node.
 func (s *State) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(node)
@@ -549,10 +551,6 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 	return s.db.SetPolicy(data)
 }
 
-// =============================================================================
-// Routes Management
-// =============================================================================
-
 // SetNodeRoutes sets the primary routes for a node.
 func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) bool {
 	return s.primaryRoutes.SetRoutes(nodeID, routes...)
@@ -567,10 +565,6 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 func (s *State) PrimaryRoutesString() string {
 	return s.primaryRoutes.String()
 }
-
-// =============================================================================
-// API Key Management
-// =============================================================================
 
 // ValidateAPIKey checks if an API key is valid and active.
 func (s *State) ValidateAPIKey(keyStr string) (bool, error) {
@@ -602,10 +596,6 @@ func (s *State) DestroyAPIKey(key types.APIKey) error {
 	return s.db.DestroyAPIKey(key)
 }
 
-// =============================================================================
-// PreAuth Key Management
-// =============================================================================
-
 // CreatePreAuthKey generates a new pre-authentication key for a user.
 func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKey, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
@@ -625,10 +615,6 @@ func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error)
 func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
 	return s.db.ExpirePreAuthKey(preAuthKey)
 }
-
-// =============================================================================
-// Registration Management
-// =============================================================================
 
 // GetRegistrationCacheEntry retrieves a node registration from cache.
 func (s *State) GetRegistrationCacheEntry(id types.RegistrationID) (*types.RegisterNode, bool) {
@@ -738,18 +724,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	return node, policyChanged, nil
 }
 
-// =============================================================================
-// IP Allocation
-// =============================================================================
-
 // AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
 func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 	return s.ipAlloc.Next()
 }
-
-// =============================================================================
-// Policy Manager Update Hooks
-// =============================================================================
 
 // updatePolicyManagerUsers updates the policy manager with current users.
 // Returns true if the policy changed and notifications should be sent.
@@ -790,10 +768,6 @@ func (s *State) updatePolicyManagerNodes() (bool, error) {
 
 	return changed, nil
 }
-
-// =============================================================================
-// Database Utilities
-// =============================================================================
 
 // PingDB checks if the database connection is healthy.
 func (s *State) PingDB(ctx context.Context) error {

@@ -94,26 +94,6 @@ func (h *Headscale) newMapSession(
 	}
 }
 
-func (m *mapSession) close() {
-	m.cancelChMu.Lock()
-	defer m.cancelChMu.Unlock()
-
-	if !m.cancelChOpen {
-		mapResponseClosed.WithLabelValues("chanclosed").Inc()
-		return
-	}
-
-	m.tracef("mapSession (%p) sending message on cancel chan", m)
-	select {
-	case m.cancelCh <- struct{}{}:
-		mapResponseClosed.WithLabelValues("sent").Inc()
-		m.tracef("mapSession (%p) sent message on cancel chan", m)
-	case <-time.After(30 * time.Second):
-		mapResponseClosed.WithLabelValues("timeout").Inc()
-		m.tracef("mapSession (%p) timed out sending close message", m)
-	}
-}
-
 func (m *mapSession) isStreaming() bool {
 	return m.req.Stream && !m.req.ReadOnly
 }
@@ -200,14 +180,14 @@ func (m *mapSession) serveLongPoll() {
 		// reconnects, the channel might be of another connection.
 		// In that case, it is not closed and the node is still online.
 		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
-			// Failover the node's routes if any.
-			m.h.updateNodeOnlineStatus(false, m.node)
-
-			// When a node disconnects, and it causes the primary route map to change,
-			// send a full update to all nodes.
 			// TODO(kradalby): This can likely be made more effective, but likely most
 			// nodes has access to the same routes, so it might not be a big deal.
-			if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+			change, err := m.h.state.Disconnect(m.node)
+			if err != nil {
+				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+			}
+
+			if change {
 				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 			}
@@ -221,7 +201,7 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
+	if m.h.state.Connect(m.node) {
 		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
 		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
@@ -239,7 +219,14 @@ func (m *mapSession) serveLongPoll() {
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
 	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-	go m.h.updateNodeOnlineStatus(true, m.node)
+
+	go func() {
+		changed := m.h.state.Connect(m.node)
+		if changed {
+			ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
+			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		}
+	}()
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
@@ -389,40 +376,6 @@ func (m *mapSession) serveLongPoll() {
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 		}
 	}
-}
-
-// updateNodeOnlineStatus records the last seen status of a node and notifies peers
-// about change in their online/offline status.
-// It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
-func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
-	change := &tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
-		Online: &online,
-	}
-
-	if !online {
-		now := time.Now()
-
-		// lastSeen is only relevant if the node is disconnected.
-		node.LastSeen = &now
-		change.LastSeen = &now
-	}
-
-	if node.LastSeen != nil {
-		_, policyChanged, err := h.state.SetLastSeen(node.ID, *node.LastSeen)
-		if err != nil {
-			log.Error().Err(err).Uint64("node.id", node.ID.Uint64()).Msg("Failed to update last seen")
-		}
-
-		// Send policy update notifications if needed
-		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus-policy", node.Hostname)
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		}
-	}
-
-	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
-	h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerPatch(change), node.ID)
 }
 
 func (m *mapSession) handleEndpointUpdate() {
