@@ -13,6 +13,8 @@
   [#2600](https://github.com/juanfont/headscale/pull/2600)
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
+- Adds `/robots.txt` endpoint to avoid crawlers
+  [#2643](https://github.com/juanfont/headscale/pull/2643)
 
 ## 0.26.0 (2025-05-14)
 
