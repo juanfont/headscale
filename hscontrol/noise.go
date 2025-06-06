@@ -209,20 +209,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	node, err := ns.headscale.db.GetNodeByMachineKey(ns.machineKey)
+	node, err := ns.getAndValidateNode(mapRequest)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			httpError(writer, NewHTTPError(http.StatusNotFound, "node not found", nil))
-			return
-		}
 		httpError(writer, err)
-
-		return
-	}
-
-	// Ensure the NodeKey in the request matches the one associated with the machine key from the Noise session
-	if node.NodeKey != mapRequest.NodeKey {
-		httpError(writer, NewHTTPError(http.StatusNotFound, "node key in request does not match the one associated with this machine key", nil))
 		return
 	}
 
@@ -273,7 +262,6 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 					Error: httpErr.Msg,
 				}
 				return &regReq, resp
-			} else {
 			}
 
 			return &regReq, regErr(err)
@@ -296,4 +284,23 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	writer.Write(respBody)
+}
+
+// getAndValidateNode retrieves the node from the database using the NodeKey
+// and validates that it matches the MachineKey from the Noise session.
+func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (*types.Node, error) {
+	node, err := ns.headscale.db.GetNodeByNodeKey(mapRequest.NodeKey)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NewHTTPError(http.StatusNotFound, "node not found", nil)
+		}
+		return nil, err
+	}
+
+	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.
+	if ns.machineKey != node.MachineKey {
+		return nil, NewHTTPError(http.StatusNotFound, "node key in request does not match the one associated with this machine key", nil)
+	}
+
+	return node, nil
 }
