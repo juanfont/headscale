@@ -107,7 +107,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:
-    version: 0.26.0
+    version: 0.26.1
 
 # Extensions
 markdown_extensions:
