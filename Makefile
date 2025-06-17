@@ -24,17 +24,6 @@ dev: lint test build
 test:
 	gotestsum -- -short -race -coverprofile=coverage.out ./...
 
-test_integration:
-	docker run \
-		-t --rm \
-		-v ~/.cache/hs-integration-go:/go \
-		--name headscale-test-suite \
-		-v $$PWD:$$PWD -w $$PWD/integration \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v $$PWD/control_logs:/tmp/control \
-		golang:1 \
-		go run gotest.tools/gotestsum@latest -- -race -failfast ./... -timeout 120m -parallel 8
-
 lint:
 	golangci-lint run --fix --timeout 10m
 
