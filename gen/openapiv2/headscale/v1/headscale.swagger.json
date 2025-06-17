@@ -187,6 +187,44 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "userName",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "userEmail",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "userProviderId",
+            "in": "query",
+            "required": false,
+            "type": "string"
           }
         ],
         "tags": [
@@ -685,6 +723,12 @@
           },
           {
             "name": "email",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "providerId",
             "in": "query",
             "required": false,
             "type": "string"

@@ -4,6 +4,40 @@
 
 ### BREAKING
 
+#### CLI Framework Migration
+
+The CLI has been migrated from Cobra to a new command framework for improved
+maintainability and performance. While most commands remain compatible through
+backward compatibility aliases, some syntax has changed to improve consistency
+and user experience.
+
+**Node Commands**: The `--identifier` flag has been replaced with `--node` for
+better clarity and consistency:
+
+```console
+# Old syntax
+$ headscale nodes rename --identifier 1 newname
+
+# New syntax  
+$ headscale nodes rename --node 1 --new-name newname
+```
+
+**Command Structure**: Some commands have been reorganized for better hierarchy:
+
+```console
+# Old syntax
+$ headscale nodes tag --identifier 1 --tags tag:test
+$ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0
+
+# New syntax
+$ headscale nodes tags set --node 1 --tags tag:test  
+$ headscale nodes routes approve --node 1 --routes 0.0.0.0/0
+```
+
+**Backward Compatibility**: Most existing scripts will continue to work through
+aliases (`preauthkeys`, `apikeys`, `destroy` commands), but scripts using node
+commands should be updated to use the new syntax.
+
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
 

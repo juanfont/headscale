@@ -3,6 +3,7 @@ package hscontrol
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -117,16 +118,27 @@ func (api headscaleV1APIServer) ListUsers(
 	var err error
 	var users []types.User
 
+	// Build filter criteria based on request fields
+	var whereUser *types.User
 	switch {
-	case request.GetName() != "":
-		users, err = api.h.db.ListUsers(&types.User{Name: request.GetName()})
-	case request.GetEmail() != "":
-		users, err = api.h.db.ListUsers(&types.User{Email: request.GetEmail()})
 	case request.GetId() != 0:
-		users, err = api.h.db.ListUsers(&types.User{Model: gorm.Model{ID: uint(request.GetId())}})
+		whereUser = &types.User{Model: gorm.Model{ID: uint(request.GetId())}}
+	case request.GetName() != "":
+		whereUser = &types.User{Name: request.GetName()}
+	case request.GetEmail() != "":
+		whereUser = &types.User{Email: request.GetEmail()}
+	case request.GetProviderId() != "":
+		whereUser = &types.User{ProviderIdentifier: sql.NullString{String: request.GetProviderId(), Valid: true}}
 	default:
+		whereUser = nil
+	}
+
+	if whereUser != nil {
+		users, err = api.h.db.ListUsers(whereUser)
+	} else {
 		users, err = api.h.db.ListUsers()
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -499,30 +511,70 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
-	// TODO(kradalby): it looks like this can be simplified a lot,
-	// the filtering of nodes by user, vs nodes as a whole can
-	// probably be done once.
-	// TODO(kradalby): This should be done in one tx.
-
 	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
-	if request.GetUser() != "" {
-		user, err := api.h.db.GetUserByName(request.GetUser())
-		if err != nil {
-			return nil, err
-		}
 
-		nodes, err := db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+	var nodes types.Nodes
+	var err error
+
+	// Handle different filtering scenarios
+	switch {
+	case request.GetId() != 0:
+		// Filter by node ID
+		nodes, err = api.h.db.ListNodes(types.NodeID(request.GetId()))
+	case request.GetName() != "":
+		// Filter by node name (hostname or given name)
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+			return filterNodesByName(rx, request.GetName())
+		})
+	case request.GetUserId() != 0:
+		// Filter by user ID
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+			return db.ListNodesByUser(rx, types.UserID(request.GetUserId()))
+		})
+	case request.GetUserName() != "":
+		// Filter by user name
+		user, userErr := api.h.db.GetUserByName(request.GetUserName())
+		if userErr != nil {
+			return nil, userErr
+		}
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
 			return db.ListNodesByUser(rx, types.UserID(user.ID))
 		})
-		if err != nil {
-			return nil, err
+	case request.GetUserEmail() != "":
+		// Filter by user email
+		users, userErr := api.h.db.ListUsers(&types.User{Email: request.GetUserEmail()})
+		if userErr != nil {
+			return nil, userErr
 		}
-
-		response := nodesToProto(api.h.polMan, isLikelyConnected, api.h.primaryRoutes, nodes)
-		return &v1.ListNodesResponse{Nodes: response}, nil
+		if len(users) == 0 {
+			return &v1.ListNodesResponse{Nodes: []*v1.Node{}}, nil
+		}
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+			return db.ListNodesByUser(rx, types.UserID(users[0].ID))
+		})
+	case request.GetUserProviderId() != "":
+		// Filter by user provider ID
+		user, userErr := api.h.db.GetUserByOIDCIdentifier(request.GetUserProviderId())
+		if userErr != nil {
+			return nil, userErr
+		}
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+			return db.ListNodesByUser(rx, types.UserID(user.ID))
+		})
+	case request.GetUser() != "":
+		// Legacy: Filter by user name (backwards compatibility)
+		user, userErr := api.h.db.GetUserByName(request.GetUser())
+		if userErr != nil {
+			return nil, userErr
+		}
+		nodes, err = db.Read(api.h.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
+			return db.ListNodesByUser(rx, types.UserID(user.ID))
+		})
+	default:
+		// No filters - list all nodes
+		nodes, err = api.h.db.ListNodes()
 	}
 
-	nodes, err := api.h.db.ListNodes()
 	if err != nil {
 		return nil, err
 	}
@@ -533,6 +585,20 @@ func (api headscaleV1APIServer) ListNodes(
 
 	response := nodesToProto(api.h.polMan, isLikelyConnected, api.h.primaryRoutes, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
+}
+
+// filterNodesByName filters nodes by hostname or given name
+func filterNodesByName(tx *gorm.DB, name string) (types.Nodes, error) {
+	nodes := types.Nodes{}
+	if err := tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Where("hostname = ? OR given_name = ?", name, name).
+		Find(&nodes).Error; err != nil {
+		return nil, err
+	}
+	return nodes, nil
 }
 
 func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[types.NodeID, bool], pr *routes.PrimaryRoutes, nodes types.Nodes) []*v1.Node {

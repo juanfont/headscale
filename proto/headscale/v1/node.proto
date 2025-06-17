@@ -93,7 +93,15 @@ message RenameNodeRequest {
 
 message RenameNodeResponse { Node node = 1; }
 
-message ListNodesRequest { string user = 1; }
+message ListNodesRequest {
+  string user = 1;
+  uint64 id = 2;
+  string name = 3;
+  uint64 user_id = 4;
+  string user_name = 5;
+  string user_email = 6;
+  string user_provider_id = 7;
+}
 
 message ListNodesResponse { repeated Node nodes = 1; }
 
