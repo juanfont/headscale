@@ -3,42 +3,37 @@ package dockertestutil
 import (
 	"os"
 
-	"github.com/ory/dockertest/v3/docker"
+	"github.com/ory/dockertest/v3"
 )
 
+// GetIntegrationRunID returns the run ID for the current integration test session.
+// This is set by the hi tool and passed through environment variables.
+func GetIntegrationRunID() string {
+	return os.Getenv("HEADSCALE_INTEGRATION_RUN_ID")
+}
+
+// DockerAddIntegrationLabels adds integration test labels to Docker RunOptions.
+// This allows the hi tool to identify containers belonging to specific test runs.
+// This function should be called before passing RunOptions to dockertest functions.
+func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
+	runID := GetIntegrationRunID()
+	if runID == "" {
+		// If no run ID is set, do nothing for backward compatibility
+		return
+	}
+
+	if opts.Labels == nil {
+		opts.Labels = make(map[string]string)
+	}
+	opts.Labels["hi.run-id"] = runID
+	opts.Labels["hi.test-type"] = testType
+}
+
+// IsRunningInContainer checks if the current process is running inside a Docker container.
+// This is used by tests to determine if they should run integration tests.
 func IsRunningInContainer() bool {
-	if _, err := os.Stat("/.dockerenv"); err != nil {
-		return false
-	}
-
-	return true
-}
-
-func DockerRestartPolicy(config *docker.HostConfig) {
-	// set AutoRemove to true so that stopped container goes away by itself on error *immediately*.
-	// when set to false, containers remain until the end of the integration test.
-	config.AutoRemove = false
-	config.RestartPolicy = docker.RestartPolicy{
-		Name: "no",
-	}
-}
-
-func DockerAllowLocalIPv6(config *docker.HostConfig) {
-	if config.Sysctls == nil {
-		config.Sysctls = make(map[string]string, 1)
-	}
-	config.Sysctls["net.ipv6.conf.all.disable_ipv6"] = "0"
-}
-
-func DockerAllowNetworkAdministration(config *docker.HostConfig) {
-	// Needed since containerd (1.7.24)
-	// https://github.com/tailscale/tailscale/issues/14256
-	// https://github.com/opencontainers/runc/commit/2ce40b6ad72b4bd4391380cafc5ef1bad1fa0b31
-	config.CapAdd = append(config.CapAdd, "NET_ADMIN")
-	config.CapAdd = append(config.CapAdd, "NET_RAW")
-	config.Devices = append(config.Devices, docker.Device{
-		PathOnHost:        "/dev/net/tun",
-		PathInContainer:   "/dev/net/tun",
-		CgroupPermissions: "rwm",
-	})
+	// Check for the common indicator that we're in a container
+	// This could be improved with more robust detection if needed
+	_, err := os.Stat("/.dockerenv")
+	return err == nil
 }

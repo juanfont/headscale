@@ -311,18 +311,22 @@ func New(
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
-		pg, err := pool.RunWithOptions(
-			&dockertest.RunOptions{
-				Name:       fmt.Sprintf("postgres-%s", hash),
-				Repository: "postgres",
-				Tag:        "latest",
-				Networks:   networks,
-				Env: []string{
-					"POSTGRES_USER=headscale",
-					"POSTGRES_PASSWORD=headscale",
-					"POSTGRES_DB=headscale",
-				},
-			})
+		pgRunOptions := &dockertest.RunOptions{
+			Name:       fmt.Sprintf("postgres-%s", hash),
+			Repository: "postgres",
+			Tag:        "latest",
+			Networks:   networks,
+			Env: []string{
+				"POSTGRES_USER=headscale",
+				"POSTGRES_PASSWORD=headscale",
+				"POSTGRES_DB=headscale",
+			},
+		}
+
+		// Add integration test labels if running under hi tool
+		dockertestutil.DockerAddIntegrationLabels(pgRunOptions, "postgres")
+		
+		pg, err := pool.RunWithOptions(pgRunOptions)
 		if err != nil {
 			return nil, fmt.Errorf("starting postgres container: %w", err)
 		}
@@ -366,6 +370,7 @@ func New(
 		Env:        env,
 	}
 
+
 	if len(hsic.hostPortBindings) > 0 {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 		for port, hostPorts := range hsic.hostPortBindings {
@@ -386,6 +391,9 @@ func New(
 		return nil, err
 	}
 
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
+	
 	container, err := pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		runOptions,
