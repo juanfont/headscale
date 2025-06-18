@@ -32,7 +32,7 @@ func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID strin
 	})
 }
 
-// killTestContainers terminates all running test containers.
+// killTestContainers terminates and removes all test containers.
 func killTestContainers(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
@@ -47,23 +47,38 @@ func killTestContainers(ctx context.Context) error {
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	killed := 0
+	removed := 0
 	for _, cont := range containers {
-		shouldKill := false
+		shouldRemove := false
 		for _, name := range cont.Names {
 			if strings.Contains(name, "headscale-test-suite") ||
 				strings.Contains(name, "hs-") ||
-				strings.Contains(name, "ts-") {
-				shouldKill = true
+				strings.Contains(name, "ts-") ||
+				strings.Contains(name, "derp-") {
+				shouldRemove = true
 				break
 			}
 		}
 
-		if shouldKill {
-			if err := cli.ContainerKill(ctx, cont.ID, "KILL"); err == nil {
-				killed++
+		if shouldRemove {
+			// First kill the container if it's running
+			if cont.State == "running" {
+				_ = cli.ContainerKill(ctx, cont.ID, "KILL")
+			}
+			
+			// Then remove the container
+			if err := cli.ContainerRemove(ctx, cont.ID, container.RemoveOptions{
+				Force: true,
+			}); err == nil {
+				removed++
 			}
 		}
+	}
+
+	if removed > 0 {
+		fmt.Printf("Removed %d test containers\n", removed)
+	} else {
+		fmt.Println("No test containers found to remove")
 	}
 
 	return nil
@@ -77,9 +92,15 @@ func pruneDockerNetworks(ctx context.Context) error {
 	}
 	defer cli.Close()
 
-	_, err = cli.NetworksPrune(ctx, filters.Args{})
+	report, err := cli.NetworksPrune(ctx, filters.Args{})
 	if err != nil {
 		return fmt.Errorf("failed to prune networks: %w", err)
+	}
+
+	if len(report.NetworksDeleted) > 0 {
+		fmt.Printf("Removed %d unused networks\n", len(report.NetworksDeleted))
+	} else {
+		fmt.Println("No unused networks found to remove")
 	}
 
 	return nil
@@ -126,6 +147,12 @@ func cleanOldImages(ctx context.Context) error {
 		}
 	}
 
+	if removed > 0 {
+		fmt.Printf("Removed %d test images\n", removed)
+	} else {
+		fmt.Println("No test images found to remove")
+	}
+
 	return nil
 }
 
@@ -138,7 +165,12 @@ func cleanCacheVolume(ctx context.Context) error {
 	defer cli.Close()
 
 	volumeName := "hs-integration-go-cache"
-	_ = cli.VolumeRemove(ctx, volumeName, true)
+	err = cli.VolumeRemove(ctx, volumeName, true)
+	if err != nil {
+		fmt.Printf("Go module cache volume not found or already removed\n")
+	} else {
+		fmt.Printf("Removed Go module cache volume: %s\n", volumeName)
+	}
 
 	return nil
 }
