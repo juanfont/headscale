@@ -415,6 +415,7 @@ type ListUsersRequest struct {
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	ProviderId    string                 `protobuf:"bytes,4,opt,name=provider_id,json=providerId,proto3" json:"provider_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -466,6 +467,13 @@ func (x *ListUsersRequest) GetName() string {
 func (x *ListUsersRequest) GetEmail() string {
 	if x != nil {
 		return x.Email
+	}
+	return ""
+}
+
+func (x *ListUsersRequest) GetProviderId() string {
+	if x != nil {
+		return x.ProviderId
 	}
 	return ""
 }
@@ -545,11 +553,13 @@ const file_headscale_v1_user_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x12.headscale.v1.UserR\x04user\"#\n" +
 	"\x11DeleteUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"\x14\n" +
-	"\x12DeleteUserResponse\"L\n" +
+	"\x12DeleteUserResponse\"m\n" +
 	"\x10ListUsersRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
-	"\x05email\x18\x03 \x01(\tR\x05email\"=\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12\x1f\n" +
+	"\vprovider_id\x18\x04 \x01(\tR\n" +
+	"providerId\"=\n" +
 	"\x11ListUsersResponse\x12(\n" +
 	"\x05users\x18\x01 \x03(\v2\x12.headscale.v1.UserR\x05usersB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 

@@ -911,10 +911,16 @@ func (x *RenameNodeResponse) GetNode() *Node {
 }
 
 type ListNodesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	User           string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	Id             uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	Name           string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	UserId         uint64                 `protobuf:"varint,4,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	UserName       string                 `protobuf:"bytes,5,opt,name=user_name,json=userName,proto3" json:"user_name,omitempty"`
+	UserEmail      string                 `protobuf:"bytes,6,opt,name=user_email,json=userEmail,proto3" json:"user_email,omitempty"`
+	UserProviderId string                 `protobuf:"bytes,7,opt,name=user_provider_id,json=userProviderId,proto3" json:"user_provider_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListNodesRequest) Reset() {
@@ -950,6 +956,48 @@ func (*ListNodesRequest) Descriptor() ([]byte, []int) {
 func (x *ListNodesRequest) GetUser() string {
 	if x != nil {
 		return x.User
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *ListNodesRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetUserId() uint64 {
+	if x != nil {
+		return x.UserId
+	}
+	return 0
+}
+
+func (x *ListNodesRequest) GetUserName() string {
+	if x != nil {
+		return x.UserName
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetUserEmail() string {
+	if x != nil {
+		return x.UserEmail
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetUserProviderId() string {
+	if x != nil {
+		return x.UserProviderId
 	}
 	return ""
 }
@@ -1358,9 +1406,16 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x19\n" +
 	"\bnew_name\x18\x02 \x01(\tR\anewName\"<\n" +
 	"\x12RenameNodeResponse\x12&\n" +
-	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"&\n" +
+	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"\xc9\x01\n" +
 	"\x10ListNodesRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\"=\n" +
+	"\x04user\x18\x01 \x01(\tR\x04user\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x17\n" +
+	"\auser_id\x18\x04 \x01(\x04R\x06userId\x12\x1b\n" +
+	"\tuser_name\x18\x05 \x01(\tR\buserName\x12\x1d\n" +
+	"\n" +
+	"user_email\x18\x06 \x01(\tR\tuserEmail\x12(\n" +
+	"\x10user_provider_id\x18\a \x01(\tR\x0euserProviderId\"=\n" +
 	"\x11ListNodesResponse\x12(\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x12.headscale.v1.NodeR\x05nodes\">\n" +
 	"\x0fMoveNodeRequest\x12\x17\n" +

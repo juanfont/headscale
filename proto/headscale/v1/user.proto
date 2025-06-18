@@ -39,6 +39,7 @@ message ListUsersRequest {
   uint64 id = 1;
   string name = 2;
   string email = 3;
+  string provider_id = 4;
 }
 
 message ListUsersResponse { repeated User users = 1; }

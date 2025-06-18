@@ -995,9 +995,9 @@ func (h *HeadscaleInContainer) Reload() error {
 // ApproveRoutes approves routes for a node.
 func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (*v1.Node, error) {
 	command := []string{
-		"headscale", "nodes", "approve-routes",
+		"headscale", "nodes", "routes", "approve",
 		"--output", "json",
-		"--identifier", strconv.FormatUint(id, 10),
+		"--node", strconv.FormatUint(id, 10),
 		fmt.Sprintf("--routes=%s", strings.Join(util.PrefixesToString(routes), ",")),
 	}
 
