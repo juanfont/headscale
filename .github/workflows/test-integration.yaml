@@ -129,8 +129,6 @@ jobs:
       - name: Run Integration Test
         uses: Wandalen/wretry.action@master
         if: steps.changed-files.outputs.files == 'true'
-        env:
-          USE_POSTGRES: ${{ matrix.database == 'postgres' && '1' || '0' }}
         with:
           # Our integration tests are started like a thundering herd, often
           # hitting limits of the various external repositories we depend on
@@ -144,30 +142,19 @@ jobs:
           attempt_delay: 300000 # 5 min
           attempt_limit: 10
           command: |
-            nix develop --command -- docker run \
-              --tty --rm \
-              --volume ~/.cache/hs-integration-go:/go \
-              --name headscale-test-suite \
-              --volume $PWD:$PWD -w $PWD/integration \
-              --volume /var/run/docker.sock:/var/run/docker.sock \
-              --volume $PWD/control_logs:/tmp/control \
-              --env HEADSCALE_INTEGRATION_POSTGRES=${{env.USE_POSTGRES}} \
-              golang:1 \
-                go run gotest.tools/gotestsum@latest -- ./... \
-                  -failfast \
-                  -timeout 120m \
-                  -parallel 1 \
-                  -run "^${{ matrix.test }}$"
+            nix develop --command -- go run ./cmd/hi run "^${{ matrix.test }}$" \
+              --timeout=120m \
+              --postgres=${{ matrix.database == 'postgres' && 'true' || 'false' }}
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
           name: ${{ matrix.test }}-${{matrix.database}}-logs
-          path: "control_logs/*.log"
+          path: "control_logs/*/*.log"
       - uses: actions/upload-artifact@v4
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ matrix.test }}-${{matrix.database}}-pprof
-          path: "control_logs/*.pprof.tar"
+          name: ${{ matrix.test }}-${{matrix.database}}-archives
+          path: "control_logs/*/*.tar"
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}
         uses: alexellis/block-with-tmux-action@master
