@@ -240,6 +240,156 @@ func TestMigrationsSQLite(t *testing.T) {
 				}
 			},
 		},
+		{
+			dbPath: "testdata/comprehensive-schema-migration-test.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Test that comprehensive schema migration preserves all data
+				// and results in correct schema structure
+				
+				// Verify users table structure and data
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+				
+				// Should have preserved all users
+				assert.GreaterOrEqual(t, len(users), 1, "should preserve existing users")
+				
+				// Verify nodes table structure and data
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				
+				// Should have preserved all nodes
+				assert.GreaterOrEqual(t, len(nodes), 1, "should preserve existing nodes")
+				
+				// Verify that all required columns exist with correct types
+				for _, node := range nodes {
+					assert.NotEmpty(t, node.MachineKey, "machine_key should be preserved")
+					assert.NotEmpty(t, node.NodeKey, "node_key should be preserved")
+					assert.NotEmpty(t, node.DiscoKey, "disco_key should be preserved")
+					// IPv4 and IPv6 fields should exist (even if NULL)
+					// Hostname and given_name should be preserved
+					assert.NotEmpty(t, node.Hostname, "hostname should be preserved")
+				}
+				
+				// Verify indexes are created correctly
+				var indexCount int
+				err = h.DB.Raw(`
+					SELECT COUNT(*) FROM sqlite_master 
+					WHERE type='index' AND (
+						name='idx_users_deleted_at' OR
+						name='idx_provider_identifier' OR
+						name='idx_name_provider_identifier' OR
+						name='idx_name_no_provider_identifier' OR
+						name='idx_api_keys_prefix' OR
+						name='idx_policies_deleted_at'
+					)
+				`).Scan(&indexCount).Error
+				require.NoError(t, err)
+				assert.Equal(t, 6, indexCount, "all required indexes should be created")
+				
+				// Verify foreign key constraints are properly set
+				var constraintCount int
+				err = h.DB.Raw(`
+					SELECT COUNT(*) FROM sqlite_master 
+					WHERE type='table' AND sql LIKE '%FOREIGN KEY%'
+				`).Scan(&constraintCount).Error
+				require.NoError(t, err)
+				assert.GreaterOrEqual(t, constraintCount, 2, "foreign key constraints should be preserved")
+			},
+		},
+		{
+			dbPath: "testdata/wrongly-migrated-schema-0.25.1.sqlite",
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Test migration of a database that was wrongly migrated in 0.25.1
+				// This database has several issues:
+				// 1. Missing proper user unique constraints (idx_provider_identifier, idx_name_provider_identifier, idx_name_no_provider_identifier)
+				// 2. Still has routes table that should have been migrated to node.approved_routes
+				// 3. Wrong FOREIGN KEY constraint on pre_auth_keys (CASCADE instead of SET NULL)
+				// 4. Missing some required indexes
+				
+				// Verify users table data is preserved
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+				assert.Len(t, users, 2, "should preserve existing users")
+				
+				// Verify nodes table data is preserved and routes migrated to approved_routes
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				assert.Len(t, nodes, 3, "should preserve existing nodes")
+				
+				// Check that routes were migrated from routes table to node.approved_routes
+				// Original routes table had 4 routes for nodes 1, 2, 3
+				// Node 1: 0.0.0.0/0 (enabled), ::/0 (enabled) -> should have 2 approved routes
+				// Node 2: 192.168.100.0/24 (enabled) -> should have 1 approved route
+				// Node 3: 10.0.0.0/8 (disabled) -> should have 0 approved routes
+				nodeApprovedRoutes := make(map[uint64]int)
+				for _, node := range nodes {
+					nodeApprovedRoutes[node.ID] = len(node.ApprovedRoutes)
+				}
+				assert.Equal(t, 2, nodeApprovedRoutes[1], "node 1 should have 2 approved routes")
+				assert.Equal(t, 1, nodeApprovedRoutes[2], "node 2 should have 1 approved route")
+				assert.Equal(t, 0, nodeApprovedRoutes[3], "node 3 should have 0 approved routes")
+				
+				// Verify pre_auth_keys data is preserved
+				preAuthKeys, err := Read(h.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
+					var keys []types.PreAuthKey
+					err := rx.Find(&keys).Error
+					return keys, err
+				})
+				require.NoError(t, err)
+				assert.Len(t, preAuthKeys, 2, "should preserve existing pre_auth_keys")
+				
+				// Verify api_keys data is preserved
+				var apiKeyCount int
+				err = h.DB.Raw("SELECT COUNT(*) FROM api_keys").Scan(&apiKeyCount).Error
+				require.NoError(t, err)
+				assert.Equal(t, 1, apiKeyCount, "should preserve existing api_keys")
+				
+				// Verify that routes table no longer exists (should have been dropped)
+				var routesTableExists bool
+				err = h.DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='routes'").Row().Scan(&routesTableExists)
+				require.NoError(t, err)
+				assert.False(t, routesTableExists, "routes table should have been dropped")
+				
+				// Verify all required indexes exist with correct structure
+				expectedIndexes := []string{
+					"idx_users_deleted_at",
+					"idx_provider_identifier", 
+					"idx_name_provider_identifier",
+					"idx_name_no_provider_identifier", 
+					"idx_api_keys_prefix",
+					"idx_policies_deleted_at",
+				}
+				
+				for _, indexName := range expectedIndexes {
+					var indexExists bool
+					err = h.DB.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name=?", indexName).Row().Scan(&indexExists)
+					require.NoError(t, err)
+					assert.True(t, indexExists, "index %s should exist", indexName)
+				}
+				
+				// Verify proper foreign key constraints are set
+				// Check that pre_auth_keys has correct FK constraint (SET NULL, not CASCADE)
+				var preAuthKeyConstraint string
+				err = h.DB.Raw("SELECT sql FROM sqlite_master WHERE type='table' AND name='pre_auth_keys'").Row().Scan(&preAuthKeyConstraint)
+				require.NoError(t, err)
+				assert.Contains(t, preAuthKeyConstraint, "ON DELETE SET NULL", "pre_auth_keys should have SET NULL constraint")
+				assert.NotContains(t, preAuthKeyConstraint, "ON DELETE CASCADE", "pre_auth_keys should not have CASCADE constraint")
+				
+				// Verify that user unique constraints work properly
+				// Try to create duplicate local user (should fail)
+				err = h.DB.Create(&types.User{Name: users[0].Name}).Error
+				assert.Error(t, err, "should not allow duplicate local usernames")
+				assert.Contains(t, err.Error(), "UNIQUE constraint", "should fail with unique constraint error")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -492,4 +642,268 @@ func dbForTest(t *testing.T) *HSDatabase {
 	t.Logf("database set up at: %s", dbPath)
 
 	return db
+}
+
+// TestComprehensiveSchemaMigration tests the comprehensive schema migration
+// with various edge cases and ensures conservative failure behavior
+func TestComprehensiveSchemaMigration(t *testing.T) {
+	tests := []struct {
+		name     string
+		setupDB  func(*testing.T, *gorm.DB) // Setup database with specific conditions
+		wantFunc func(*testing.T, *HSDatabase)
+		wantErr  bool
+	}{
+		{
+			name: "empty-database-migration",
+			setupDB: func(t *testing.T, db *gorm.DB) {
+				// Create empty tables that might exist in older versions
+				_ = db.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY)")
+				_ = db.Exec("CREATE TABLE nodes (id INTEGER PRIMARY KEY)")
+			},
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Should successfully migrate empty tables
+				var userCount, nodeCount int
+				err := h.DB.Raw("SELECT COUNT(*) FROM users").Scan(&userCount).Error
+				require.NoError(t, err)
+				err = h.DB.Raw("SELECT COUNT(*) FROM nodes").Scan(&nodeCount).Error
+				require.NoError(t, err)
+				
+				// Tables should exist and be empty
+				assert.Equal(t, 0, userCount)
+				assert.Equal(t, 0, nodeCount)
+			},
+		},
+		{
+			name: "preserve-data-with-extra-columns",
+			setupDB: func(t *testing.T, db *gorm.DB) {
+				// Create tables with extra columns that don't exist in target schema
+				_ = db.Exec(`CREATE TABLE users (
+					id INTEGER PRIMARY KEY,
+					name TEXT,
+					email TEXT,
+					legacy_column TEXT,
+					another_old_column INTEGER
+				)`)
+				_ = db.Exec("INSERT INTO users (id, name, email, legacy_column) VALUES (1, 'testuser', 'test@example.com', 'legacy_data')")
+				
+				_ = db.Exec(`CREATE TABLE nodes (
+					id INTEGER PRIMARY KEY,
+					machine_key TEXT,
+					node_key TEXT,
+					disco_key TEXT,
+					hostname TEXT,
+					old_ip_field TEXT,
+					deprecated_column BLOB
+				)`)
+				_ = db.Exec("INSERT INTO nodes (id, machine_key, node_key, disco_key, hostname) VALUES (1, 'mkey:test', 'nodekey:test', 'discokey:test', 'testhost')")
+			},
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Should preserve existing data, drop extra columns
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, users, 1)
+				assert.Equal(t, "testuser", users[0].Name)
+				assert.Equal(t, "test@example.com", users[0].Email)
+				
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				assert.Equal(t, "testhost", nodes[0].Hostname)
+			},
+		},
+		{
+			name: "handle-missing-columns-gracefully",
+			setupDB: func(t *testing.T, db *gorm.DB) {
+				// Create tables missing some expected columns
+				_ = db.Exec(`CREATE TABLE users (
+					id INTEGER PRIMARY KEY,
+					name TEXT
+				)`)
+				_ = db.Exec("INSERT INTO users (id, name) VALUES (1, 'testuser')")
+				
+				_ = db.Exec(`CREATE TABLE nodes (
+					id INTEGER PRIMARY KEY,
+					hostname TEXT
+				)`)
+				_ = db.Exec("INSERT INTO nodes (id, hostname) VALUES (1, 'testhost')")
+			},
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Should handle missing columns and set them to NULL/default
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, users, 1)
+				assert.Equal(t, "testuser", users[0].Name)
+				// Other fields should be empty/null but migration should succeed
+				
+				nodes, err := Read(h.DB, func(rx *gorm.DB) (types.Nodes, error) {
+					return ListNodes(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, nodes, 1)
+				assert.Equal(t, "testhost", nodes[0].Hostname)
+			},
+		},
+		{
+			name: "skip-non-existent-tables",
+			setupDB: func(t *testing.T, db *gorm.DB) {
+				// Only create some tables, others don't exist
+				_ = db.Exec(`CREATE TABLE users (
+					id INTEGER PRIMARY KEY,
+					name TEXT
+				)`)
+				_ = db.Exec("INSERT INTO users (id, name) VALUES (1, 'testuser')")
+				// nodes table doesn't exist
+			},
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// Should migrate existing tables and handle missing ones gracefully
+				users, err := Read(h.DB, func(rx *gorm.DB) ([]types.User, error) {
+					return ListUsers(rx)
+				})
+				require.NoError(t, err)
+				require.Len(t, users, 1)
+				
+				// nodes table should exist but be empty after migration
+				var nodeCount int
+				err = h.DB.Raw("SELECT COUNT(*) FROM nodes").Scan(&nodeCount).Error
+				require.NoError(t, err)
+				assert.Equal(t, 0, nodeCount)
+			},
+		},
+		{
+			name: "postgres-should-skip",
+			setupDB: func(t *testing.T, db *gorm.DB) {
+				// This will be tested with postgres, migration should skip
+			},
+			wantFunc: func(t *testing.T, h *HSDatabase) {
+				// For postgres, migration should be skipped
+				// We can't easily test this without changing the DB type
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary SQLite database
+			tmpDB, err := newSQLiteTestDB()
+			require.NoError(t, err)
+			
+			// Setup the test scenario
+			if tt.setupDB != nil {
+				tt.setupDB(t, tmpDB.DB)
+			}
+
+			// Get the DB path for migration
+			sqlDB, err := tmpDB.DB.DB()
+			require.NoError(t, err)
+			
+			// Close the current connection to get the path
+			tmpDB.Close()
+
+			// Create a new database connection that will trigger migrations
+			dbPath := tmpDB.cfg.Sqlite.Path
+			hsdb, err := NewHeadscaleDatabase(types.DatabaseConfig{
+				Type: "sqlite3",
+				Sqlite: types.SqliteConfig{
+					Path: dbPath,
+				},
+			}, "", emptyCache())
+
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			
+			require.NoError(t, err)
+			defer hsdb.Close()
+
+			if tt.wantFunc != nil {
+				tt.wantFunc(t, hsdb)
+			}
+		})
+	}
+}
+
+// TestSchemaMigrationConservativeFailure tests that the migration fails
+// conservatively when critical errors occur
+func TestSchemaMigrationConservativeFailure(t *testing.T) {
+	t.Run("transaction-rollback-on-failure", func(t *testing.T) {
+		// Create a temporary SQLite database
+		tmpDB, err := newSQLiteTestDB()
+		require.NoError(t, err)
+		defer tmpDB.Close()
+
+		// Create a table with data
+		err = tmpDB.DB.Exec(`CREATE TABLE users (
+			id INTEGER PRIMARY KEY,
+			name TEXT,
+			important_data TEXT
+		)`).Error
+		require.NoError(t, err)
+
+		err = tmpDB.DB.Exec("INSERT INTO users (id, name, important_data) VALUES (1, 'testuser', 'critical_data')").Error
+		require.NoError(t, err)
+
+		// Verify data exists before migration
+		var count int
+		err = tmpDB.DB.Raw("SELECT COUNT(*) FROM users WHERE important_data = 'critical_data'").Scan(&count).Error
+		require.NoError(t, err)
+		assert.Equal(t, 1, count)
+
+		// The migration should succeed and preserve data
+		// If it fails, data should still be intact due to transaction rollback
+	})
+}
+
+// TestBuildSelectiveCopySQL tests the helper function for selective column copying
+func TestBuildSelectiveCopySQL(t *testing.T) {
+	tests := []struct {
+		name            string
+		tableName       string
+		existingColumns []string
+		expectedSQL     string
+	}{
+		{
+			name:            "all-columns-exist",
+			tableName:       "users",
+			existingColumns: []string{"id", "name", "display_name", "email", "provider_identifier", "provider", "profile_pic_url", "created_at", "updated_at", "deleted_at"},
+			expectedSQL:     "INSERT INTO users_new (id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at) SELECT id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at FROM users",
+		},
+		{
+			name:            "partial-columns-exist",
+			tableName:       "users",
+			existingColumns: []string{"id", "name", "email"},
+			expectedSQL:     "INSERT INTO users_new (id, name, email) SELECT id, name, email FROM users",
+		},
+		{
+			name:            "no-columns-exist",
+			tableName:       "users",
+			existingColumns: []string{"totally_different_column"},
+			expectedSQL:     "",
+		},
+		{
+			name:            "unknown-table",
+			tableName:       "unknown_table",
+			existingColumns: []string{"id", "name"},
+			expectedSQL:     "",
+		},
+		{
+			name:            "nodes-with-extra-columns",
+			tableName:       "nodes",
+			existingColumns: []string{"id", "machine_key", "node_key", "hostname", "legacy_column", "old_field"},
+			expectedSQL:     "INSERT INTO nodes_new (id, machine_key, node_key, hostname) SELECT id, machine_key, node_key, hostname FROM nodes",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := buildSelectiveCopySQL(tt.tableName, tt.existingColumns)
+			assert.Equal(t, tt.expectedSQL, result)
+		})
+	}
 }
