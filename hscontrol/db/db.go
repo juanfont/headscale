@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -26,6 +28,9 @@ import (
 	"tailscale.com/util/set"
 	"zgo.at/zcache/v2"
 )
+
+//go:embed schema.sql
+var dbSchema string
 
 func init() {
 	schema.RegisterSerializer("text", TextSerialiser{})
@@ -718,11 +723,364 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Schema migration to ensure all tables match the expected schema.
+			// This migration recreates all tables to match the exact structure in schema.sql,
+			// preserving all data during the process. Only runs on SQLite.
+			{
+				ID: "202506181200",
+				Migrate: func(tx *gorm.DB) error {
+					// Only run on SQLite
+					if cfg.Type != types.DatabaseSqlite {
+						log.Info().Msg("Skipping schema migration on non-SQLite database")
+						return nil
+					}
+
+					log.Info().Msg("Starting schema migration to ensure consistency")
+
+					// Pre-migration data validation: count rows before migration
+					preValidation := make(map[string]int)
+					tableNames := []string{"users", "pre_auth_keys", "api_keys", "nodes", "policies"}
+					
+					for _, tableName := range tableNames {
+						var count int
+						err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", tableName).Row().Scan(&count)
+						if err != nil || count == 0 {
+							// Table doesn't exist, skip counting
+							preValidation[tableName] = -1
+							continue
+						}
+						
+						var rowCount int
+						if err := tx.Raw("SELECT COUNT(*) FROM " + tableName).Scan(&rowCount).Error; err != nil {
+							log.Warn().Str("table", tableName).Err(err).Msg("Could not count rows before migration")
+							preValidation[tableName] = -1
+						} else {
+							preValidation[tableName] = rowCount
+							log.Info().Str("table", tableName).Int("rows", rowCount).Msg("Pre-migration row count")
+						}
+					}
+
+					// Create backup tables and migrate data
+					migrationSteps := []struct {
+						tableName string
+						createSQL string
+						copySQL   string
+					}{
+						{
+							tableName: "users",
+							createSQL: `CREATE TABLE users_new(
+								id integer PRIMARY KEY AUTOINCREMENT,
+								name text,
+								display_name text,
+								email text,
+								provider_identifier text,
+								provider text,
+								profile_pic_url text,
+								created_at datetime,
+								updated_at datetime,
+								deleted_at datetime
+							)`,
+							copySQL: `INSERT INTO users_new (id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at)
+								SELECT id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at FROM users`,
+						},
+						{
+							tableName: "pre_auth_keys",
+							createSQL: `CREATE TABLE pre_auth_keys_new(
+								id integer PRIMARY KEY AUTOINCREMENT,
+								key text,
+								user_id integer,
+								reusable numeric,
+								ephemeral numeric DEFAULT false,
+								used numeric DEFAULT false,
+								tags text,
+								expiration datetime,
+								created_at datetime,
+								CONSTRAINT fk_pre_auth_keys_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+							)`,
+							copySQL: `INSERT INTO pre_auth_keys_new (id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at)
+								SELECT id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at FROM pre_auth_keys`,
+						},
+						{
+							tableName: "api_keys",
+							createSQL: `CREATE TABLE api_keys_new(
+								id integer PRIMARY KEY AUTOINCREMENT,
+								prefix text,
+								hash blob,
+								expiration datetime,
+								last_seen datetime,
+								created_at datetime
+							)`,
+							copySQL: `INSERT INTO api_keys_new (id, prefix, hash, expiration, last_seen, created_at)
+								SELECT id, prefix, hash, expiration, last_seen, created_at FROM api_keys`,
+						},
+						{
+							tableName: "nodes",
+							createSQL: `CREATE TABLE nodes_new(
+								id integer PRIMARY KEY AUTOINCREMENT,
+								machine_key text,
+								node_key text,
+								disco_key text,
+								endpoints text,
+								host_info text,
+								ipv4 text,
+								ipv6 text,
+								hostname text,
+								given_name varchar(63),
+								user_id integer,
+								register_method text,
+								forced_tags text,
+								auth_key_id integer,
+								last_seen datetime,
+								expiry datetime,
+								created_at datetime,
+								updated_at datetime,
+								deleted_at datetime,
+								CONSTRAINT fk_nodes_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+								CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES pre_auth_keys(id)
+							)`,
+							copySQL: `INSERT INTO nodes_new (id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, created_at, updated_at, deleted_at)
+								SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, created_at, updated_at, deleted_at FROM nodes`,
+						},
+						{
+							tableName: "policies",
+							createSQL: `CREATE TABLE policies_new(
+								id integer PRIMARY KEY AUTOINCREMENT,
+								data text,
+								created_at datetime,
+								updated_at datetime,
+								deleted_at datetime
+							)`,
+							copySQL: `INSERT INTO policies_new (id, data, created_at, updated_at, deleted_at)
+								SELECT id, data, created_at, updated_at, deleted_at FROM policies`,
+						},
+					}
+
+					// Handle routes table migration if it exists (from wrongly migrated schemas)
+					var routesTableExists bool
+					err = tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='routes'").Row().Scan(&routesTableExists)
+					if err == nil && routesTableExists {
+						log.Info().Msg("Found routes table from wrongly migrated schema, migrating to node.approved_routes")
+						
+						// Ensure nodes table has approved_routes column
+						if !tx.Migrator().HasColumn(&types.Node{}, "approved_routes") {
+							err := tx.Migrator().AddColumn(&types.Node{}, "approved_routes")
+							if err != nil {
+								return fmt.Errorf("adding approved_routes column to nodes: %w", err)
+							}
+						}
+
+						// Migrate enabled routes from routes table to node.approved_routes
+						nodeRoutes := map[uint64][]netip.Prefix{}
+						
+						var routes []struct {
+							NodeID  uint64 `gorm:"column:node_id"`
+							Prefix  string `gorm:"column:prefix"`
+							Enabled bool   `gorm:"column:enabled"`
+						}
+						
+						err = tx.Table("routes").Where("enabled = ?", true).Find(&routes).Error
+						if err != nil {
+							return fmt.Errorf("fetching enabled routes: %w", err)
+						}
+
+						for _, route := range routes {
+							prefix, err := netip.ParsePrefix(route.Prefix)
+							if err != nil {
+								log.Warn().Str("prefix", route.Prefix).Err(err).Msg("Skipping invalid route prefix")
+								continue
+							}
+							nodeRoutes[route.NodeID] = append(nodeRoutes[route.NodeID], prefix)
+						}
+
+						// Update each node with its approved routes
+						for nodeID, prefixes := range nodeRoutes {
+							// Sort and deduplicate prefixes like the original migration
+							slices.Sort(prefixes)
+							prefixes = slices.Compact(prefixes)
+							
+							data, err := json.Marshal(prefixes)
+							if err != nil {
+								return fmt.Errorf("marshaling approved routes for node %d: %w", nodeID, err)
+							}
+							
+							err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", data).Error
+							if err != nil {
+								return fmt.Errorf("updating approved routes for node %d: %w", nodeID, err)
+							}
+							
+							log.Info().Uint64("node_id", nodeID).Int("route_count", len(prefixes)).Msg("Migrated routes to approved_routes")
+						}
+
+						// Drop the routes table
+						err = tx.Migrator().DropTable("routes")
+						if err != nil {
+							return fmt.Errorf("dropping routes table: %w", err)
+						}
+						
+						log.Info().Msg("Successfully migrated routes table to node.approved_routes")
+					}
+
+					// Process each table
+					for _, step := range migrationSteps {
+						log.Info().Str("table", step.tableName).Msg("Migrating table structure")
+
+						// Check if table exists
+						var tableExists bool
+						err := tx.Raw("SELECT name FROM sqlite_master WHERE type='table' AND name=?", step.tableName).Row().Scan(&tableExists)
+						if err != nil && err != sql.ErrNoRows {
+							return fmt.Errorf("checking if table %s exists: %w", step.tableName, err)
+						}
+
+						if !tableExists {
+							log.Info().Str("table", step.tableName).Msg("Table does not exist, skipping")
+							continue
+						}
+
+						// Create new table with correct structure
+						if err := tx.Exec(step.createSQL).Error; err != nil {
+							return fmt.Errorf("creating new table %s_new: %w", step.tableName, err)
+						}
+
+						// Copy data from old table to new table
+						if err := tx.Exec(step.copySQL).Error; err != nil {
+							// If copy fails, it might be due to missing columns, try a more selective approach
+							log.Warn().Str("table", step.tableName).Msg("Standard copy failed, attempting selective copy")
+							
+							// Get column names from old table
+							rows, err := tx.Raw("PRAGMA table_info(" + step.tableName + ")").Rows()
+							if err != nil {
+								return fmt.Errorf("getting column info for %s: %w", step.tableName, err)
+							}
+							
+							var existingColumns []string
+							for rows.Next() {
+								var cid int
+								var name, typ string
+								var notnull, pk int
+								var dfltValue sql.NullString
+								if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+									rows.Close()
+									return fmt.Errorf("scanning column info: %w", err)
+								}
+								existingColumns = append(existingColumns, name)
+							}
+							rows.Close()
+
+							// Build a selective copy query based on available columns
+							selectiveCopySQL := buildSelectiveCopySQL(step.tableName, existingColumns)
+							if err := tx.Exec(selectiveCopySQL).Error; err != nil {
+								return fmt.Errorf("selective copy for table %s: %w", step.tableName, err)
+							}
+						}
+
+						// Drop old table
+						if err := tx.Exec("DROP TABLE " + step.tableName).Error; err != nil {
+							return fmt.Errorf("dropping old table %s: %w", step.tableName, err)
+						}
+
+						// Rename new table to original name
+						if err := tx.Exec("ALTER TABLE " + step.tableName + "_new RENAME TO " + step.tableName).Error; err != nil {
+							return fmt.Errorf("renaming new table %s: %w", step.tableName, err)
+						}
+					}
+
+					// Create all indexes as specified in schema.sql
+					indexes := []string{
+						"CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at)",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_provider_identifier ON users(name,provider_identifier)",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL",
+						"CREATE UNIQUE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix)",
+						"CREATE INDEX IF NOT EXISTS idx_policies_deleted_at ON policies(deleted_at)",
+					}
+
+					for _, indexSQL := range indexes {
+						if err := tx.Exec(indexSQL).Error; err != nil {
+							return fmt.Errorf("creating index: %w", err)
+						}
+					}
+
+					// Post-migration validation: verify data integrity
+					for _, tableName := range tableNames {
+						expectedCount := preValidation[tableName]
+						if expectedCount == -1 {
+							// Table didn't exist before, skip validation
+							continue
+						}
+
+						var actualCount int
+						if err := tx.Raw("SELECT COUNT(*) FROM " + tableName).Scan(&actualCount).Error; err != nil {
+							return fmt.Errorf("post-migration validation failed for table %s: %w", tableName, err)
+						}
+
+						if actualCount != expectedCount {
+							return fmt.Errorf("data loss detected in table %s: expected %d rows, got %d rows", tableName, expectedCount, actualCount)
+						}
+
+						log.Info().Str("table", tableName).Int("rows", actualCount).Msg("Post-migration validation passed")
+					}
+
+					// Validate that critical foreign key relationships are intact
+					var orphanedNodes int
+					err = tx.Raw(`
+						SELECT COUNT(*) FROM nodes 
+						WHERE user_id IS NOT NULL 
+						AND user_id NOT IN (SELECT id FROM users)
+					`).Scan(&orphanedNodes).Error
+					if err != nil {
+						return fmt.Errorf("validating node-user relationships: %w", err)
+					}
+					if orphanedNodes > 0 {
+						return fmt.Errorf("found %d orphaned nodes with invalid user_id references", orphanedNodes)
+					}
+
+					var orphanedNodeAuthKeys int
+					err = tx.Raw(`
+						SELECT COUNT(*) FROM nodes 
+						WHERE auth_key_id IS NOT NULL 
+						AND auth_key_id NOT IN (SELECT id FROM pre_auth_keys)
+					`).Scan(&orphanedNodeAuthKeys).Error
+					if err != nil {
+						return fmt.Errorf("validating node-auth_key relationships: %w", err)
+					}
+					if orphanedNodeAuthKeys > 0 {
+						return fmt.Errorf("found %d orphaned nodes with invalid auth_key_id references", orphanedNodeAuthKeys)
+					}
+
+					log.Info().Msg("Schema migration completed successfully with full data validation")
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
 	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
+	}
+
+	// Validate that the schema ends up in the expected state.
+	// This is currently only done on sqlite as squibble does not
+	// support Postgres and we use our sqlite schema as our source of
+	// truth.
+	if cfg.Type == types.DatabaseSqlite {
+		sqlConn, err := dbConn.DB()
+		if err != nil {
+			return nil, fmt.Errorf("getting DB from gorm: %w", err)
+		}
+
+		// or else it blocks...
+		sqlConn.SetMaxIdleConns(100)
+		sqlConn.SetMaxOpenConns(100)
+		defer sqlConn.SetMaxIdleConns(1)
+		defer sqlConn.SetMaxOpenConns(1)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		if err := squibble.Validate(ctx, sqlConn, dbSchema); err != nil {
+			return nil, fmt.Errorf("validating schema: %w", err)
+		}
 	}
 
 	db := HSDatabase{
@@ -845,6 +1203,44 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Type,
 		errDatabaseNotSupported,
 	)
+}
+
+// buildSelectiveCopySQL creates a SQL query to copy data from old table to new table,
+// only including columns that exist in both tables
+func buildSelectiveCopySQL(tableName string, existingColumns []string) string {
+	// Define expected columns for each table based on schema.sql
+	expectedColumns := map[string][]string{
+		"users": {"id", "name", "display_name", "email", "provider_identifier", "provider", "profile_pic_url", "created_at", "updated_at", "deleted_at"},
+		"pre_auth_keys": {"id", "key", "user_id", "reusable", "ephemeral", "used", "tags", "expiration", "created_at"},
+		"api_keys": {"id", "prefix", "hash", "expiration", "last_seen", "created_at"},
+		"nodes": {"id", "machine_key", "node_key", "disco_key", "endpoints", "host_info", "ipv4", "ipv6", "hostname", "given_name", "user_id", "register_method", "forced_tags", "auth_key_id", "last_seen", "expiry", "created_at", "updated_at", "deleted_at"},
+		"policies": {"id", "data", "created_at", "updated_at", "deleted_at"},
+	}
+
+	expected, ok := expectedColumns[tableName]
+	if !ok {
+		return ""
+	}
+
+	// Find intersection of existing and expected columns
+	var commonColumns []string
+	existingMap := make(map[string]bool)
+	for _, col := range existingColumns {
+		existingMap[col] = true
+	}
+
+	for _, col := range expected {
+		if existingMap[col] {
+			commonColumns = append(commonColumns, col)
+		}
+	}
+
+	if len(commonColumns) == 0 {
+		return ""
+	}
+
+	columnList := strings.Join(commonColumns, ", ")
+	return fmt.Sprintf("INSERT INTO %s_new (%s) SELECT %s FROM %s", tableName, columnList, columnList, tableName)
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
