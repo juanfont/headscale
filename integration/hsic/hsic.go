@@ -638,9 +638,16 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 }
 
 func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
+	// If using PostgreSQL, create a note file instead of trying to extract SQLite
+	if t.postgres {
+		notePath := path.Join(savePath, t.hostname+".db-note")
+		note := "This test used PostgreSQL - no SQLite database file available.\nDatabase data is stored in the postgres container."
+		return os.WriteFile(notePath, []byte(note), 0644)
+	}
+
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch database file: %w", err)
 	}
 
 	// For database, extract the first regular file (should be the SQLite file)
