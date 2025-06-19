@@ -427,7 +427,7 @@ func listControlFiles(logsDir string) {
 		}
 
 		if entry.IsDir() {
-			// Include directories (pprof, mapresponses)
+			// Include directories (pprof, mapresponses) 
 			if strings.Contains(name, "-pprof") || strings.Contains(name, "-mapresponses") {
 				dataDirs = append(dataDirs, name)
 			}
@@ -625,22 +625,11 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 }
 
 // extractContainerFiles extracts database file and directories from headscale containers.
+// Note: The actual file extraction is now handled by the integration tests themselves
+// via SaveProfile, SaveMapResponses, and SaveDatabase functions in hsic.go
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
-	// Extract database file
-	if err := extractSingleFile(ctx, cli, containerID, "/tmp/integration_test_db.sqlite3", containerName+".db", logsDir, verbose); err != nil {
-		logExtractionError("database", containerName, err, verbose)
-	}
-
-	// Extract profile directory
-	if err := extractDirectory(ctx, cli, containerID, "/tmp/profile", containerName+"-pprof", logsDir, verbose); err != nil {
-		logExtractionError("profile directory", containerName, err, verbose)
-	}
-
-	// Extract map responses directory
-	if err := extractDirectory(ctx, cli, containerID, "/tmp/mapresponses", containerName+"-mapresponses", logsDir, verbose); err != nil {
-		logExtractionError("mapresponses directory", containerName, err, verbose)
-	}
-
+	// Files are now extracted directly by the integration tests
+	// This function is kept for potential future use or other file types
 	return nil
 }
 
