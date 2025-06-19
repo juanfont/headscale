@@ -1,6 +1,8 @@
 package hsic
 
 import (
+	"archive/tar"
+	"bytes"
 	"cmp"
 	"crypto/tls"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -561,22 +564,67 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 	return nil
 }
 
+// extractTarToDirectory extracts a tar archive to a directory.
+func extractTarToDirectory(tarData []byte, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	}
+
+	tarReader := tar.NewReader(bytes.NewReader(tarData))
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Clean the path to prevent directory traversal
+		cleanName := filepath.Clean(header.Name)
+		if strings.Contains(cleanName, "..") {
+			continue // Skip potentially dangerous paths
+		}
+
+		targetPath := filepath.Join(targetDir, filepath.Base(cleanName))
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// Create directory
+			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+		case tar.TypeReg:
+			// Create file
+			outFile, err := os.Create(targetPath)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+			}
+
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to copy file contents: %w", err)
+			}
+			outFile.Close()
+
+			// Set file permissions
+			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to set file permissions: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 	tarFile, err := t.FetchPath("/tmp/profile")
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".pprof.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	targetDir := path.Join(savePath, t.hostname+"-pprof")
+	return extractTarToDirectory(tarFile, targetDir)
 }
 
 func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
@@ -585,16 +633,8 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 		return err
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".maps.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	targetDir := path.Join(savePath, t.hostname+"-mapresponses")
+	return extractTarToDirectory(tarFile, targetDir)
 }
 
 func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
@@ -603,16 +643,35 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return err
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".db.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
+	// For database, extract the single SQLite file directly
+	tarReader := tar.NewReader(bytes.NewReader(tarFile))
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		if header.Typeflag == tar.TypeReg && strings.Contains(header.Name, ".sqlite") {
+			dbPath := path.Join(savePath, t.hostname+".db")
+			outFile, err := os.Create(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to create database file: %w", err)
+			}
+
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to copy database file: %w", err)
+			}
+			outFile.Close()
+
+			return nil
+		}
 	}
 
-	return nil
+	return fmt.Errorf("database file not found in tar archive")
 }
 
 // Execute runs a command inside the Headscale container and returns the
