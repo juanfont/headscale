@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
+	"tailscale.com/types/ptr"
 )
 
 var (
@@ -192,7 +193,7 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 // ListNodesByUser gets all the nodes in a given user.
 func ListNodesByUser(tx *gorm.DB, uid types.UserID) (types.Nodes, error) {
 	nodes := types.Nodes{}
-	if err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: uint(uid)}).Find(&nodes).Error; err != nil {
+	if err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: ptr.To(uint(uid))}).Find(&nodes).Error; err != nil {
 		return nil, err
 	}
 
@@ -211,7 +212,7 @@ func AssignNodeToUser(tx *gorm.DB, node *types.Node, uid types.UserID) error {
 	if err != nil {
 		return err
 	}
-	node.User = *user
+	node.User = user
 	if result := tx.Save(&node); result.Error != nil {
 		return result.Error
 	}

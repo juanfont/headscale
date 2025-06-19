@@ -163,6 +163,14 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("loading ACL policy: %w", err)
 	}
 
+	// TODO(kradalby): There is an circular dependency here, maybe we should
+	// look at some sort of dependency injection?
+	// https://github.com/uber-go/dig
+	// or
+	// https://github.com/uber-go/fx
+	// Maybe overkill?
+	app.db.SetPolicyManager(app.polMan)
+
 	var authProvider AuthProvider
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {

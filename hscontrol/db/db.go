@@ -15,6 +15,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -44,6 +45,7 @@ type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.DatabaseConfig
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
+	polMan   policy.PolicyManager
 
 	baseDomain string
 }
@@ -718,6 +720,36 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Migrate node table to make users optional.
+			// Rename forced_tags to tags
+			{
+				ID: "202505211519-node-user-optional-tags",
+				Migrate: func(tx *gorm.DB) error {
+					_ = tx.Migrator().RenameColumn(&types.Node{}, "forced_tags", "tags")
+
+					err = tx.AutoMigrate(&types.Node{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.Node: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// Migrate preauthkey table to make users and tags optional.
+			// Use prefix+hash for keys.
+			{
+				ID: "202505231615-preauthkey-user-optional-tags-user",
+				Migrate: func(tx *gorm.DB) error {
+					err = tx.AutoMigrate(&types.PreAuthKey{})
+					if err != nil {
+						return fmt.Errorf("automigrating types.PreAuthKey: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -734,6 +766,10 @@ AND auth_key_id NOT IN (
 	}
 
 	return &db, err
+}
+
+func (db *HSDatabase) SetPolicyManager(pol policy.PolicyManager) {
+	db.polMan = pol
 }
 
 func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {

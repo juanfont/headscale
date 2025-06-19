@@ -9,19 +9,30 @@ import (
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
-	ID        uint64 `gorm:"primary_key"`
-	Key       string
-	UserID    uint
-	User      User `gorm:"constraint:OnDelete:SET NULL;"`
+	ID uint64 `gorm:"primary_key"`
+
+	// Old Key, for backwards compatibility
+	Key string
+
+	// Encrypted key
+	Prefix string
+	Hash   []byte
+
 	Reusable  bool
 	Ephemeral bool `gorm:"default:false"`
 	Used      bool `gorm:"default:false"`
+
+	// UserID if set, is the owner of the key.
+	// If a node is authenticated with this key, the node
+	// is assigned to this user.
+	UserID *uint `sql:"DEFAULT:NULL"`
+	User   *User
 
 	// Tags are always applied to the node and is one of
 	// the sources of tags a node might have. They are copied
 	// from the PreAuthKey when the node logs in the first time,
 	// and ignored after.
-	Tags []string `gorm:"serializer:json"`
+	Tags []string `gorm:"column:tags;serializer:json"`
 
 	CreatedAt  *time.Time
 	Expiration *time.Time
@@ -47,4 +58,17 @@ func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	}
 
 	return &protoKey
+}
+
+// IsTagged reports if a key is tagged.
+func (key *PreAuthKey) IsTagged() bool {
+	if key.Tags == nil {
+		return false
+	}
+
+	if len(key.Tags) > 0 {
+		return true
+	}
+
+	return false
 }
