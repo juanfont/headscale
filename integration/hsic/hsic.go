@@ -643,6 +643,22 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return nil
 	}
 
+	// First, let's see what files are actually in /tmp
+	tmpListing, err := t.Execute([]string{"ls", "-la", "/tmp/"})
+	if err != nil {
+		log.Printf("Warning: could not list /tmp directory: %v", err)
+	} else {
+		log.Printf("Contents of /tmp in container %s:\n%s", t.hostname, tmpListing)
+	}
+
+	// Also check for any .sqlite files
+	sqliteFiles, err := t.Execute([]string{"find", "/tmp", "-name", "*.sqlite*", "-type", "f"})
+	if err != nil {
+		log.Printf("Warning: could not find sqlite files: %v", err)
+	} else {
+		log.Printf("SQLite files found in %s:\n%s", t.hostname, sqliteFiles)
+	}
+
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
 		return fmt.Errorf("failed to fetch database file: %w", err)
@@ -659,6 +675,8 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
 
+		log.Printf("Found file in tar: %s (type: %d, size: %d)", header.Name, header.Typeflag, header.Size)
+
 		// Extract the first regular file we find
 		if header.Typeflag == tar.TypeReg {
 			dbPath := path.Join(savePath, t.hostname+".db")
@@ -672,6 +690,8 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			if err != nil {
 				return fmt.Errorf("failed to copy database file: %w", err)
 			}
+
+			log.Printf("Extracted database file: %s (%d bytes written, header claimed %d bytes)", dbPath, written, header.Size)
 
 			// Check if we actually wrote something
 			if written == 0 {
