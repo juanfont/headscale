@@ -416,24 +416,29 @@ func listControlFiles(logsDir string) {
 	}
 
 	var logFiles []string
-	var tarFiles []string
+	var dataFiles []string
+	var dataDirs []string
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
 		name := entry.Name()
-		// Only show headscale (hs-*) files
+		// Only show headscale (hs-*) files and directories
 		if !strings.HasPrefix(name, "hs-") {
 			continue
 		}
 
-		switch {
-		case strings.HasSuffix(name, ".stderr.log") || strings.HasSuffix(name, ".stdout.log"):
-			logFiles = append(logFiles, name)
-		case strings.HasSuffix(name, ".db") || strings.HasSuffix(name, ".pprof") || strings.HasSuffix(name, ".mapresp"):
-			tarFiles = append(tarFiles, name)
+		if entry.IsDir() {
+			// Include directories (pprof, mapresponses)
+			if strings.Contains(name, "-pprof") || strings.Contains(name, "-mapresponses") {
+				dataDirs = append(dataDirs, name)
+			}
+		} else {
+			// Include files
+			switch {
+			case strings.HasSuffix(name, ".stderr.log") || strings.HasSuffix(name, ".stdout.log"):
+				logFiles = append(logFiles, name)
+			case strings.HasSuffix(name, ".db"):
+				dataFiles = append(dataFiles, name)
+			}
 		}
 	}
 
@@ -446,10 +451,13 @@ func listControlFiles(logsDir string) {
 		}
 	}
 
-	if len(tarFiles) > 0 {
-		log.Printf("Headscale files:")
-		for _, file := range tarFiles {
+	if len(dataFiles) > 0 || len(dataDirs) > 0 {
+		log.Printf("Headscale data:")
+		for _, file := range dataFiles {
 			log.Printf("  %s", file)
+		}
+		for _, dir := range dataDirs {
+			log.Printf("  %s/", dir)
 		}
 	}
 }
@@ -624,12 +632,12 @@ func extractContainerFiles(ctx context.Context, cli *client.Client, containerID,
 	}
 
 	// Extract profile directory
-	if err := extractDirectory(ctx, cli, containerID, "/tmp/profile", containerName+".pprof", logsDir, verbose); err != nil {
+	if err := extractDirectory(ctx, cli, containerID, "/tmp/profile", containerName+"-pprof", logsDir, verbose); err != nil {
 		logExtractionError("profile directory", containerName, err, verbose)
 	}
 
 	// Extract map responses directory
-	if err := extractDirectory(ctx, cli, containerID, "/tmp/mapresponses", containerName+".mapresp", logsDir, verbose); err != nil {
+	if err := extractDirectory(ctx, cli, containerID, "/tmp/mapresponses", containerName+"-mapresponses", logsDir, verbose); err != nil {
 		logExtractionError("mapresponses directory", containerName, err, verbose)
 	}
 
