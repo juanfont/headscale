@@ -659,6 +659,31 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		log.Printf("SQLite files found in %s:\n%s", t.hostname, sqliteFiles)
 	}
 
+	// Check if the database file exists and has a schema
+	dbPath := "/tmp/integration_test_db.sqlite3"
+	fileInfo, err := t.Execute([]string{"ls", "-la", dbPath})
+	if err != nil {
+		return fmt.Errorf("database file does not exist at %s: %w", dbPath, err)
+	}
+	log.Printf("Database file info: %s", fileInfo)
+
+	// Check if the database has any tables (schema)
+	schemaCheck, err := t.Execute([]string{"sqlite3", dbPath, ".schema"})
+	if err != nil {
+		return fmt.Errorf("failed to check database schema (sqlite3 command failed): %w", err)
+	}
+	
+	if strings.TrimSpace(schemaCheck) == "" {
+		return fmt.Errorf("database file exists but has no schema (empty database)")
+	}
+	
+	// Show a preview of the schema (first 500 chars)
+	schemaPreview := schemaCheck
+	if len(schemaPreview) > 500 {
+		schemaPreview = schemaPreview[:500] + "..."
+	}
+	log.Printf("Database schema preview:\n%s", schemaPreview)
+
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
 		return fmt.Errorf("failed to fetch database file: %w", err)
