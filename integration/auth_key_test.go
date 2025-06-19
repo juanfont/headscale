@@ -342,7 +342,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 					[]string{
 						"headscale",
 						"preauthkeys",
-						"--user",
+						"--identifier",
 						strconv.FormatUint(userMap[userName].GetId(), 10),
 						"expire",
 						key.Key,
