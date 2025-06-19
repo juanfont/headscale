@@ -643,7 +643,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return err
 	}
 
-	// For database, extract the single SQLite file directly
+	// For database, extract the first regular file (should be the SQLite file)
 	tarReader := tar.NewReader(bytes.NewReader(tarFile))
 	for {
 		header, err := tarReader.Next()
@@ -654,24 +654,30 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		if header.Typeflag == tar.TypeReg && strings.Contains(header.Name, ".sqlite") {
+		// Extract the first regular file we find
+		if header.Typeflag == tar.TypeReg {
 			dbPath := path.Join(savePath, t.hostname+".db")
 			outFile, err := os.Create(dbPath)
 			if err != nil {
 				return fmt.Errorf("failed to create database file: %w", err)
 			}
 
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
+			written, err := io.Copy(outFile, tarReader)
+			outFile.Close()
+			if err != nil {
 				return fmt.Errorf("failed to copy database file: %w", err)
 			}
-			outFile.Close()
+
+			// Check if we actually wrote something
+			if written == 0 {
+				return fmt.Errorf("database file is empty (size: %d, header size: %d)", written, header.Size)
+			}
 
 			return nil
 		}
 	}
 
-	return fmt.Errorf("database file not found in tar archive")
+	return fmt.Errorf("no regular file found in database tar archive")
 }
 
 // Execute runs a command inside the Headscale container and returns the
