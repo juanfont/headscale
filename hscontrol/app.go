@@ -30,7 +30,6 @@ import (
 	derpServer "github.com/juanfont/headscale/hscontrol/derp/server"
 	"github.com/juanfont/headscale/hscontrol/dns"
 	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -95,8 +94,7 @@ type Headscale struct {
 	extraRecordMan *dns.ExtraRecordsMan
 	primaryRoutes  *routes.PrimaryRoutes
 
-	mapper       *mapper.Mapper
-	nodeNotifier *notifier.Notifier
+	mapBatcher *mapper.Batcher
 
 	registrationCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
 
@@ -135,7 +133,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:    noisePrivateKey,
 		registrationCache:  registrationCache,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(cfg),
 		primaryRoutes:      routes.New(),
 	}
 
@@ -170,12 +167,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		defer cancel()
 		oidcProvider, err := NewAuthProviderOIDC(
 			ctx,
+			&app,
 			cfg.ServerURL,
 			&cfg.OIDC,
-			app.db,
-			app.nodeNotifier,
-			app.ipAlloc,
-			app.polMan,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -296,8 +290,15 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			if changed {
 				log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
 
-				ctx := types.NotifyCtx(context.Background(), "expire-expired", "na")
-				h.nodeNotifier.NotifyAll(ctx, update)
+				// TODO(kradalby): Not sure how I feel about this one, feel like we
+				// can be more clever? but at the same time, if they are passed straight
+				// through later, its fine?
+				for _, node := range update.ChangePatches {
+					h.Change(types.Change{NodeChange: types.NodeChange{
+						ID:            types.NodeID(node.NodeID),
+						ExpiryChanged: true,
+					}})
+				}
 			}
 
 		case <-derpTickerChan:
@@ -308,11 +309,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				h.DERPMap.Regions[region.RegionID] = &region
 			}
 
-			ctx := types.NotifyCtx(context.Background(), "derpmap-update", "na")
-			h.nodeNotifier.NotifyAll(ctx, types.StateUpdate{
-				Type:    types.StateDERPUpdated,
-				DERPMap: h.DERPMap,
-			})
+			h.Change(types.Change{DERPChanged: true})
 
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
@@ -320,19 +317,16 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			ctx := types.NotifyCtx(context.Background(), "dns-extrarecord", "all")
-			// TODO(kradalby): We can probably do better than sending a full update here,
-			// but for now this will ensure that all of the nodes get the new records.
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+			h.Change(types.Change{ExtraRecordsChanged: true})
 		}
 	}
 }
 
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
-	req interface{},
+	req any,
 	info *grpc.UnaryServerInfo,
 	handler grpc.UnaryHandler,
-) (interface{}, error) {
+) (any, error) {
 	// Check if the request is coming from the on-server client.
 	// This is not secure, but it is to maintain maintainability
 	// with the "legacy" database-based client
@@ -510,57 +504,55 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	return router
 }
 
-// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
-// Maybe we should attempt a new in memory state and not go via the DB?
-// Maybe this should be implemented as an event bus?
-// A bool is returned indicating if a full update was sent to all nodes
-func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
-	users, err := db.ListUsers()
-	if err != nil {
-		return err
-	}
+// // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// // Maybe we should attempt a new in memory state and not go via the DB?
+// // Maybe this should be implemented as an event bus?
+// // A bool is returned indicating if a full update was sent to all nodes
+// func usersChangedHook(db *db.HSDatabase, polMan policy.PolicyManager, notif *notifier.Notifier) error {
+// 	users, err := db.ListUsers()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	changed, err := polMan.SetUsers(users)
-	if err != nil {
-		return err
-	}
+// 	changed, err := polMan.SetUsers(users)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	if changed {
-		ctx := types.NotifyCtx(context.Background(), "acl-users-change", "all")
-		notif.NotifyAll(ctx, types.UpdateFull())
-	}
+// 	if changed {
+// 		notif.NotifyAll(types.UpdateFull())
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
-// TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
-// Maybe we should attempt a new in memory state and not go via the DB?
-// Maybe this should be implemented as an event bus?
-// A bool is returned indicating if a full update was sent to all nodes
-func nodesChangedHook(
-	db *db.HSDatabase,
-	polMan policy.PolicyManager,
-	notif *notifier.Notifier,
-) (bool, error) {
-	nodes, err := db.ListNodes()
-	if err != nil {
-		return false, err
-	}
+// // TODO(kradalby): Do a variant of this, and polman which only updates the node that has changed.
+// // Maybe we should attempt a new in memory state and not go via the DB?
+// // Maybe this should be implemented as an event bus?
+// // A bool is returned indicating if a full update was sent to all nodes
+// func nodesChangedHook(
+// 	db *db.HSDatabase,
+// 	polMan policy.PolicyManager,
+// 	notif *notifier.Notifier,
+// ) (bool, error) {
+// 	nodes, err := db.ListNodes()
+// 	if err != nil {
+// 		return false, err
+// 	}
 
-	filterChanged, err := polMan.SetNodes(nodes)
-	if err != nil {
-		return false, err
-	}
+// 	filterChanged, err := polMan.SetNodes(nodes)
+// 	if err != nil {
+// 		return false, err
+// 	}
 
-	if filterChanged {
-		ctx := types.NotifyCtx(context.Background(), "acl-nodes-change", "all")
-		notif.NotifyAll(ctx, types.UpdateFull())
+// 	if filterChanged {
+// 		notif.NotifyAll(types.UpdateFull())
 
-		return true, nil
-	}
+// 		return true, nil
+// 	}
 
-	return false, nil
-}
+// 	return false, nil
+// }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
@@ -590,7 +582,10 @@ func (h *Headscale) Serve() error {
 
 	// Fetch an initial DERP Map before we start serving
 	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapper = mapper.NewMapper(h.db, h.cfg, h.DERPMap, h.nodeNotifier, h.polMan, h.primaryRoutes)
+	h.mapBatcher = mapper.NewBatcherAndMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
+
+	h.mapBatcher.Start()
+	defer h.mapBatcher.Close()
 
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
@@ -879,8 +874,7 @@ func (h *Headscale) Serve() error {
 						log.Error().Err(err).Msg("failed to approve routes after new policy")
 					}
 
-					ctx := types.NotifyCtx(context.Background(), "acl-sighup", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+					h.Change(types.Change{PolicyChanged: true})
 				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
@@ -906,7 +900,6 @@ func (h *Headscale) Serve() error {
 				}
 
 				info("closing node notifier")
-				h.nodeNotifier.Close()
 
 				info("waiting for netmap stream to close")
 				h.pollNetMapStreamWG.Wait()
@@ -1208,4 +1201,8 @@ func (h *Headscale) autoApproveNodes() error {
 	}
 
 	return nil
+}
+
+func (h *Headscale) Change(c types.Change) {
+	h.mapBatcher.AddWork(&c)
 }

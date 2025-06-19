@@ -58,10 +58,10 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, err
 	}
 
-	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("updating resources using user: %w", err)
-	}
+	api.h.Change(types.Change{UserChange: types.UserChange{
+		ID:      types.UserID(user.ID),
+		NewUser: true,
+	}})
 
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
@@ -102,10 +102,10 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	err = usersChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("updating resources using user: %w", err)
-	}
+	api.h.Change(types.Change{UserChange: types.UserChange{
+		ID:          types.UserID(user.ID),
+		RemovedUser: true,
+	}})
 
 	return &v1.DeleteUserResponse{}, nil
 }
@@ -253,7 +253,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		return nil, fmt.Errorf("looking up user: %w", err)
 	}
 
-	node, _, err := api.h.db.HandleNodeFromAuthPath(
+	node, change, err := api.h.db.HandleNodeFromAuthPath(
 		registrationId,
 		types.UserID(user.ID),
 		nil,
@@ -262,11 +262,6 @@ func (api headscaleV1APIServer) RegisterNode(
 	)
 	if err != nil {
 		return nil, err
-	}
-
-	updateSent, err := nodesChangedHook(api.h.db, api.h.polMan, api.h.nodeNotifier)
-	if err != nil {
-		return nil, fmt.Errorf("updating resources using node: %w", err)
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
@@ -280,15 +275,14 @@ func (api headscaleV1APIServer) RegisterNode(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := policy.AutoApproveRoutes(api.h.polMan, node)
+	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
+	// now since we dont update the node/pol here anymore
+	_ = policy.AutoApproveRoutes(api.h.polMan, node)
 	if err := api.h.db.DB.Save(node).Error; err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if !updateSent || routesChanged {
-		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
-	}
+	api.h.Change(change)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
@@ -306,7 +300,7 @@ func (api headscaleV1APIServer) GetNode(
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.nodeNotifier.IsConnected(node.ID)
+	resp.Online = api.h.mapBatcher.IsLikelyConnected(node.ID)
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -336,8 +330,10 @@ func (api headscaleV1APIServer) SetTags(
 		}, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:          node.ID,
+		TagsChanged: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -381,13 +377,11 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if api.h.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...) {
-		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	} else {
-		ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
-	}
+	api.h.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:            node.ID,
+		RoutesChanged: true,
+	}})
 
 	proto := node.Proto()
 	proto.SubnetRoutes = util.PrefixesToString(api.h.primaryRoutes.PrimaryRoutes(node.ID))
@@ -422,8 +416,10 @@ func (api headscaleV1APIServer) DeleteNode(
 		return nil, err
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-	api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:          node.ID,
+		RemovedNode: true,
+	}})
 
 	return &v1.DeleteNodeResponse{}, nil
 }
@@ -447,14 +443,11 @@ func (api headscaleV1APIServer) ExpireNode(
 		return nil, err
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByNodeID(
-		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
-
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, now), node.ID)
+	// TODO(kradalby): Ensure that both the selfupdate and peer updates are sent
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID:            node.ID,
+		ExpiryChanged: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -484,8 +477,12 @@ func (api headscaleV1APIServer) RenameNode(
 		return nil, err
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID: node.ID,
+		// TODO(kradalby): Not sure if this is what we want to send, probably
+		// we can do a delta change here.
+		NewNode: true,
+	}})
 
 	log.Trace().
 		Str("node", node.Hostname).
@@ -504,7 +501,7 @@ func (api headscaleV1APIServer) ListNodes(
 	// probably be done once.
 	// TODO(kradalby): This should be done in one tx.
 
-	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
+	isLikelyConnected := api.h.mapBatcher.LikelyConnectedMap()
 	if request.GetUser() != "" {
 		user, err := api.h.db.GetUserByName(request.GetUser())
 		if err != nil {
@@ -581,13 +578,13 @@ func (api headscaleV1APIServer) MoveNode(
 		return nil, err
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByNodeID(
-		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
-	ctx = types.NotifyCtx(ctx, "cli-movenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	// TODO(kradalby): ensure that both the selfupdate and peer updates are sent
+	api.h.Change(types.Change{NodeChange: types.NodeChange{
+		ID: node.ID,
+		// TODO(kradalby): Not sure if this is what we want to send, probably
+		// we can do a delta change here.
+		NewNode: true,
+	}})
 
 	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
@@ -770,8 +767,7 @@ func (api headscaleV1APIServer) SetPolicy(
 			return nil, err
 		}
 
-		ctx := types.NotifyCtx(context.Background(), "acl-update", "na")
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+		api.h.Change(types.Change{PolicyChanged: true})
 	}
 
 	response := &v1.SetPolicyResponse{
