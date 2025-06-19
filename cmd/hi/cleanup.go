@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/errdefs"
 )
 
 // cleanupBeforeTest performs cleanup operations before running tests.
@@ -66,10 +67,8 @@ func killTestContainers(ctx context.Context) error {
 				_ = cli.ContainerKill(ctx, cont.ID, "KILL")
 			}
 			
-			// Then remove the container
-			if err := cli.ContainerRemove(ctx, cont.ID, container.RemoveOptions{
-				Force: true,
-			}); err == nil {
+			// Then remove the container with retry logic
+			if removeContainerWithRetry(ctx, cli, cont.ID) {
 				removed++
 			}
 		}
@@ -82,6 +81,32 @@ func killTestContainers(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// removeContainerWithRetry attempts to remove a container with exponential backoff retry logic.
+func removeContainerWithRetry(ctx context.Context, cli *client.Client, containerID string) bool {
+	maxRetries := 3
+	baseDelay := 100 * time.Millisecond
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
+			Force: true,
+		})
+		if err == nil {
+			return true
+		}
+		
+		// If this is the last attempt, don't wait
+		if attempt == maxRetries-1 {
+			break
+		}
+		
+		// Wait with exponential backoff
+		delay := baseDelay * time.Duration(1<<attempt)
+		time.Sleep(delay)
+	}
+	
+	return false
 }
 
 // pruneDockerNetworks removes unused Docker networks.
@@ -167,7 +192,13 @@ func cleanCacheVolume(ctx context.Context) error {
 	volumeName := "hs-integration-go-cache"
 	err = cli.VolumeRemove(ctx, volumeName, true)
 	if err != nil {
-		fmt.Printf("Go module cache volume not found or already removed\n")
+		if errdefs.IsNotFound(err) {
+			fmt.Printf("Go module cache volume not found: %s\n", volumeName)
+		} else if errdefs.IsConflict(err) {
+			fmt.Printf("Go module cache volume is in use and cannot be removed: %s\n", volumeName)
+		} else {
+			fmt.Printf("Failed to remove Go module cache volume %s: %v\n", volumeName, err)
+		}
 	} else {
 		fmt.Printf("Removed Go module cache volume: %s\n", volumeName)
 	}

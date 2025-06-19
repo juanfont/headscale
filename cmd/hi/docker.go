@@ -19,6 +19,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
 var (
@@ -35,7 +36,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 	defer cli.Close()
 
-	runID := generateRunID()
+	runID := dockertestutil.GenerateRunID()
 	containerName := "headscale-test-suite-" + runID
 	logsDir := filepath.Join(config.LogsDir, runID)
 
@@ -91,8 +92,10 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
-	// Give the container a moment to flush any final artifacts
-	time.Sleep(2 * time.Second)
+	// Ensure all containers have finished and logs are flushed before extracting artifacts
+	if waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose); waitErr != nil && config.Verbose {
+		log.Printf("Warning: failed to wait for container finalization: %v", waitErr)
+	}
 
 	// Extract artifacts from test containers before cleanup
 	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose {
@@ -152,7 +155,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 
 	projectRoot := findProjectRoot(pwd)
 
-	runID := generateRunIDFromContainerName(containerName)
+	runID := dockertestutil.ExtractRunIDFromContainerName(containerName)
 	
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
@@ -225,22 +228,68 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 	return -1, ErrUnexpectedContainerWait
 }
 
-// generateRunID creates a unique timestamp-based run identifier.
-func generateRunID() string {
-	now := time.Now()
-	timestamp := now.Format("20060102-150405")
-	return timestamp
+// waitForContainerFinalization ensures all test containers have properly finished and flushed their output.
+func waitForContainerFinalization(ctx context.Context, cli *client.Client, testContainerID string, verbose bool) error {
+	// First, get all related test containers
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
+	
+	// Wait for all test containers to reach a final state
+	maxWaitTime := 10 * time.Second
+	checkInterval := 500 * time.Millisecond
+	timeout := time.After(maxWaitTime)
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			if verbose {
+				log.Printf("Timeout waiting for container finalization, proceeding with artifact extraction")
+			}
+			return nil
+		case <-ticker.C:
+			allFinalized := true
+			
+			for _, testCont := range testContainers {
+				inspect, err := cli.ContainerInspect(ctx, testCont.ID)
+				if err != nil {
+					if verbose {
+						log.Printf("Warning: failed to inspect container %s: %v", testCont.name, err)
+					}
+					continue
+				}
+				
+				// Check if container is in a final state
+				if !isContainerFinalized(inspect.State) {
+					allFinalized = false
+					if verbose {
+						log.Printf("Container %s still finalizing (state: %s)", testCont.name, inspect.State.Status)
+					}
+					break
+				}
+			}
+			
+			if allFinalized {
+				if verbose {
+					log.Printf("All test containers finalized, ready for artifact extraction")
+				}
+				return nil
+			}
+		}
+	}
 }
 
-// generateRunIDFromContainerName extracts the run ID from container name.
-func generateRunIDFromContainerName(containerName string) string {
-	// Extract run ID from container name like "headscale-test-suite-20250618-143802"
-	parts := strings.Split(containerName, "-")
-	if len(parts) >= 2 {
-		return strings.Join(parts[len(parts)-2:], "-")
-	}
-	return containerName
+// isContainerFinalized checks if a container has reached a final state where logs are flushed.
+func isContainerFinalized(state *container.State) bool {
+	// Container is finalized if it's not running and has a finish time
+	return !state.Running && state.FinishedAt != ""
 }
+
 
 // findProjectRoot locates the project root by finding the directory containing go.mod.
 func findProjectRoot(startPath string) string {
@@ -466,11 +515,8 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 	}
 	
 	if runID == "" {
-		if verbose {
-			log.Printf("Warning: could not find run ID for test container %s, falling back to time-based filtering", testContainerID[:12])
-		}
-		// Fallback to time-based filtering for backward compatibility
-		return getCurrentTestContainersByTime(containers, testContainerID, verbose)
+		log.Printf("Error: test container %s missing required hi.run-id label", testContainerID[:12])
+		return testRunContainers
 	}
 	
 	if verbose {
@@ -570,76 +616,37 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	return nil
 }
 
-// getCurrentTestContainersByTime is a fallback method for containers without labels.
-func getCurrentTestContainersByTime(containers []container.Summary, testContainerID string, verbose bool) []testContainer {
-	var testRunContainers []testContainer
-	
-	// Find the test container to get its creation time
-	var testContainerCreated time.Time
-	for _, cont := range containers {
-		if cont.ID == testContainerID {
-			testContainerCreated = time.Unix(cont.Created, 0)
-			break
-		}
-	}
-	
-	if testContainerCreated.IsZero() {
-		if verbose {
-			log.Printf("Warning: could not find test container %s", testContainerID[:12])
-		}
-		return testRunContainers
-	}
-	
-	// Find containers created within a small time window after the test container
-	startTime := testContainerCreated
-	endTime := testContainerCreated.Add(5 * time.Minute)
-	
-	for _, cont := range containers {
-		for _, name := range cont.Names {
-			containerName := strings.TrimPrefix(name, "/")
-			if strings.HasPrefix(containerName, "hs-") || strings.HasPrefix(containerName, "ts-") {
-				createdTime := time.Unix(cont.Created, 0)
-				if createdTime.After(startTime) && createdTime.Before(endTime) {
-					testRunContainers = append(testRunContainers, testContainer{
-						ID:   cont.ID,
-						name: containerName,
-					})
-					if verbose {
-						log.Printf("Including container %s (created %s)", containerName, createdTime.Format("15:04:05"))
-					}
-				}
-				break
-			}
-		}
-	}
-	
-	return testRunContainers
-}
-
 // extractContainerFiles extracts database file and directories from headscale containers.
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Extract database file
 	if err := extractSingleFile(ctx, cli, containerID, "/tmp/integration_test_db.sqlite3", containerName+".db", logsDir, verbose); err != nil {
-		if verbose {
-			log.Printf("Warning: failed to extract database from %s: %v", containerName, err)
-		}
+		logExtractionError("database", containerName, err, verbose)
 	}
 
 	// Extract profile directory
 	if err := extractDirectory(ctx, cli, containerID, "/tmp/profile", containerName+".pprof", logsDir, verbose); err != nil {
-		if verbose {
-			log.Printf("Warning: failed to extract profile from %s: %v", containerName, err)
-		}
+		logExtractionError("profile directory", containerName, err, verbose)
 	}
 
 	// Extract map responses directory
 	if err := extractDirectory(ctx, cli, containerID, "/tmp/mapresponses", containerName+".mapresp", logsDir, verbose); err != nil {
-		if verbose {
-			log.Printf("Warning: failed to extract mapresponses from %s: %v", containerName, err)
-		}
+		logExtractionError("mapresponses directory", containerName, err, verbose)
 	}
 
 	return nil
+}
+
+// logExtractionError logs extraction errors with appropriate level based on error type.
+func logExtractionError(artifactType, containerName string, err error, verbose bool) {
+	if errors.Is(err, ErrFileNotFoundInTar) {
+		// File not found is expected and only logged in verbose mode
+		if verbose {
+			log.Printf("No %s found in container %s", artifactType, containerName)
+		}
+	} else {
+		// Other errors are actual failures and should be logged as warnings
+		log.Printf("Warning: failed to extract %s from %s: %v", artifactType, containerName, err)
+	}
 }
 
 // extractSingleFile copies a single file from a container.

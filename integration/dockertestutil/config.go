@@ -1,8 +1,12 @@
 package dockertestutil
 
 import (
+	"fmt"
 	"os"
+	"strings"
+	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/ory/dockertest/v3"
 )
 
@@ -18,8 +22,7 @@ func GetIntegrationRunID() string {
 func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 	runID := GetIntegrationRunID()
 	if runID == "" {
-		// If no run ID is set, do nothing for backward compatibility
-		return
+		panic("HEADSCALE_INTEGRATION_RUN_ID environment variable is required")
 	}
 
 	if opts.Labels == nil {
@@ -27,6 +30,29 @@ func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 	}
 	opts.Labels["hi.run-id"] = runID
 	opts.Labels["hi.test-type"] = testType
+}
+
+// GenerateRunID creates a unique run identifier with timestamp and random hash.
+// Format: YYYYMMDD-HHMMSS-HASH (e.g., 20250619-143052-a1b2c3)
+func GenerateRunID() string {
+	now := time.Now()
+	timestamp := now.Format("20060102-150405")
+	
+	// Add a short random hash to ensure uniqueness
+	randomHash := util.MustGenerateRandomStringDNSSafe(6)
+	return fmt.Sprintf("%s-%s", timestamp, randomHash)
+}
+
+// ExtractRunIDFromContainerName extracts the run ID from container name.
+// Expects format: "prefix-YYYYMMDD-HHMMSS-HASH"
+func ExtractRunIDFromContainerName(containerName string) string {
+	parts := strings.Split(containerName, "-")
+	if len(parts) >= 3 {
+		// Return the last three parts as the run ID (YYYYMMDD-HHMMSS-HASH)
+		return strings.Join(parts[len(parts)-3:], "-")
+	}
+	
+	panic(fmt.Sprintf("unexpected container name format: %s", containerName))
 }
 
 // IsRunningInContainer checks if the current process is running inside a Docker container.

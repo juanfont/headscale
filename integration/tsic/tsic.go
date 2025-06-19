@@ -280,6 +280,9 @@ func New(
 		return nil, err
 	}
 
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(tailscaleOptions, "tailscale")
+
 	var container *dockertest.Resource
 
 	if version != VersionHead {
@@ -311,9 +314,6 @@ func New(
 			)
 		}
 
-		// Add integration test labels if running under hi tool
-		dockertestutil.DockerAddIntegrationLabels(tailscaleOptions, "tailscale")
-		
 		container, err = pool.BuildAndRunWithBuildOptions(
 			buildOptions,
 			tailscaleOptions,
@@ -325,9 +325,6 @@ func New(
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = version
 
-		// Add integration test labels if running under hi tool
-		dockertestutil.DockerAddIntegrationLabels(tailscaleOptions, "tailscale")
-		
 		container, err = pool.RunWithOptions(
 			tailscaleOptions,
 			dockertestutil.DockerRestartPolicy,
@@ -338,9 +335,6 @@ func New(
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = "v" + version
 
-		// Add integration test labels if running under hi tool
-		dockertestutil.DockerAddIntegrationLabels(tailscaleOptions, "tailscale")
-		
 		container, err = pool.RunWithOptions(
 			tailscaleOptions,
 			dockertestutil.DockerRestartPolicy,

@@ -2,11 +2,17 @@ package main
 
 import (
 	"archive/tar"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+)
+
+var (
+	// ErrFileNotFoundInTar indicates a file was not found in the tar archive.
+	ErrFileNotFoundInTar = errors.New("file not found in tar")
 )
 
 // extractFileFromTar extracts a single file from a tar reader.
@@ -41,7 +47,7 @@ func extractFileFromTar(tarReader io.Reader, fileName, outputPath string) error 
 		}
 	}
 
-	return fmt.Errorf("file %s not found in tar", fileName)
+	return fmt.Errorf("%w: %s", ErrFileNotFoundInTar, fileName)
 }
 
 // extractDirectoryFromTar extracts all files from a tar reader to a target directory.
