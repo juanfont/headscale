@@ -142,7 +142,7 @@ jobs:
           attempt_delay: 300000 # 5 min
           attempt_limit: 10
           command: |
-            nix develop --command -- go run ./cmd/hi run "^${{ matrix.test }}$" \
+            nix develop --command -- hi run "^${{ matrix.test }}$" \
               --timeout=120m \
               --postgres=${{ matrix.database == 'postgres' && 'true' || 'false' }}
       - uses: actions/upload-artifact@v4

@@ -7,8 +7,6 @@ import (
 	"log"
 	"os/exec"
 	"strings"
-
-	"github.com/docker/docker/client"
 )
 
 var ErrSystemChecksFailed = errors.New("system checks failed")
@@ -88,7 +86,7 @@ func checkDockerBinary() DoctorResult {
 
 // checkDockerDaemon verifies Docker daemon is running and accessible.
 func checkDockerDaemon(ctx context.Context) DoctorResult {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := createDockerClient()
 	if err != nil {
 		return DoctorResult{
 			Name:    "Docker Daemon",

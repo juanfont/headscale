@@ -1,6 +1,8 @@
 package hsic
 
 import (
+	"archive/tar"
+	"bytes"
 	"cmp"
 	"crypto/tls"
 	"encoding/json"
@@ -12,6 +14,7 @@ import (
 	"net/netip"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -311,18 +314,22 @@ func New(
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
-		pg, err := pool.RunWithOptions(
-			&dockertest.RunOptions{
-				Name:       fmt.Sprintf("postgres-%s", hash),
-				Repository: "postgres",
-				Tag:        "latest",
-				Networks:   networks,
-				Env: []string{
-					"POSTGRES_USER=headscale",
-					"POSTGRES_PASSWORD=headscale",
-					"POSTGRES_DB=headscale",
-				},
-			})
+		pgRunOptions := &dockertest.RunOptions{
+			Name:       fmt.Sprintf("postgres-%s", hash),
+			Repository: "postgres",
+			Tag:        "latest",
+			Networks:   networks,
+			Env: []string{
+				"POSTGRES_USER=headscale",
+				"POSTGRES_PASSWORD=headscale",
+				"POSTGRES_DB=headscale",
+			},
+		}
+
+		// Add integration test labels if running under hi tool
+		dockertestutil.DockerAddIntegrationLabels(pgRunOptions, "postgres")
+		
+		pg, err := pool.RunWithOptions(pgRunOptions)
 		if err != nil {
 			return nil, fmt.Errorf("starting postgres container: %w", err)
 		}
@@ -366,6 +373,7 @@ func New(
 		Env:        env,
 	}
 
+
 	if len(hsic.hostPortBindings) > 0 {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 		for port, hostPorts := range hsic.hostPortBindings {
@@ -386,6 +394,9 @@ func New(
 		return nil, err
 	}
 
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
+	
 	container, err := pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		runOptions,
@@ -553,22 +564,67 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 	return nil
 }
 
+// extractTarToDirectory extracts a tar archive to a directory.
+func extractTarToDirectory(tarData []byte, targetDir string) error {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	}
+
+	tarReader := tar.NewReader(bytes.NewReader(tarData))
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		// Clean the path to prevent directory traversal
+		cleanName := filepath.Clean(header.Name)
+		if strings.Contains(cleanName, "..") {
+			continue // Skip potentially dangerous paths
+		}
+
+		targetPath := filepath.Join(targetDir, filepath.Base(cleanName))
+
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// Create directory
+			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
+		case tar.TypeReg:
+			// Create file
+			outFile, err := os.Create(targetPath)
+			if err != nil {
+				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+			}
+
+			if _, err := io.Copy(outFile, tarReader); err != nil {
+				outFile.Close()
+				return fmt.Errorf("failed to copy file contents: %w", err)
+			}
+			outFile.Close()
+
+			// Set file permissions
+			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
+				return fmt.Errorf("failed to set file permissions: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 	tarFile, err := t.FetchPath("/tmp/profile")
 	if err != nil {
 		return err
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".pprof.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	targetDir := path.Join(savePath, t.hostname+"-pprof")
+	return extractTarToDirectory(tarFile, targetDir)
 }
 
 func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
@@ -577,34 +633,101 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 		return err
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".maps.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	targetDir := path.Join(savePath, t.hostname+"-mapresponses")
+	return extractTarToDirectory(tarFile, targetDir)
 }
 
 func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
+	// If using PostgreSQL, skip database file extraction
+	if t.postgres {
+		return nil
+	}
+
+	// First, let's see what files are actually in /tmp
+	tmpListing, err := t.Execute([]string{"ls", "-la", "/tmp/"})
+	if err != nil {
+		log.Printf("Warning: could not list /tmp directory: %v", err)
+	} else {
+		log.Printf("Contents of /tmp in container %s:\n%s", t.hostname, tmpListing)
+	}
+
+	// Also check for any .sqlite files
+	sqliteFiles, err := t.Execute([]string{"find", "/tmp", "-name", "*.sqlite*", "-type", "f"})
+	if err != nil {
+		log.Printf("Warning: could not find sqlite files: %v", err)
+	} else {
+		log.Printf("SQLite files found in %s:\n%s", t.hostname, sqliteFiles)
+	}
+
+	// Check if the database file exists and has a schema
+	dbPath := "/tmp/integration_test_db.sqlite3"
+	fileInfo, err := t.Execute([]string{"ls", "-la", dbPath})
+	if err != nil {
+		return fmt.Errorf("database file does not exist at %s: %w", dbPath, err)
+	}
+	log.Printf("Database file info: %s", fileInfo)
+
+	// Check if the database has any tables (schema)
+	schemaCheck, err := t.Execute([]string{"sqlite3", dbPath, ".schema"})
+	if err != nil {
+		return fmt.Errorf("failed to check database schema (sqlite3 command failed): %w", err)
+	}
+	
+	if strings.TrimSpace(schemaCheck) == "" {
+		return fmt.Errorf("database file exists but has no schema (empty database)")
+	}
+	
+	// Show a preview of the schema (first 500 chars)
+	schemaPreview := schemaCheck
+	if len(schemaPreview) > 500 {
+		schemaPreview = schemaPreview[:500] + "..."
+	}
+	log.Printf("Database schema preview:\n%s", schemaPreview)
+
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to fetch database file: %w", err)
 	}
 
-	err = os.WriteFile(
-		path.Join(savePath, t.hostname+".db.tar"),
-		tarFile,
-		os.ModePerm,
-	)
-	if err != nil {
-		return err
+	// For database, extract the first regular file (should be the SQLite file)
+	tarReader := tar.NewReader(bytes.NewReader(tarFile))
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+
+		log.Printf("Found file in tar: %s (type: %d, size: %d)", header.Name, header.Typeflag, header.Size)
+
+		// Extract the first regular file we find
+		if header.Typeflag == tar.TypeReg {
+			dbPath := path.Join(savePath, t.hostname+".db")
+			outFile, err := os.Create(dbPath)
+			if err != nil {
+				return fmt.Errorf("failed to create database file: %w", err)
+			}
+
+			written, err := io.Copy(outFile, tarReader)
+			outFile.Close()
+			if err != nil {
+				return fmt.Errorf("failed to copy database file: %w", err)
+			}
+
+			log.Printf("Extracted database file: %s (%d bytes written, header claimed %d bytes)", dbPath, written, header.Size)
+
+			// Check if we actually wrote something
+			if written == 0 {
+				return fmt.Errorf("database file is empty (size: %d, header size: %d)", written, header.Size)
+			}
+
+			return nil
+		}
 	}
 
-	return nil
+	return fmt.Errorf("no regular file found in database tar archive")
 }
 
 // Execute runs a command inside the Headscale container and returns the

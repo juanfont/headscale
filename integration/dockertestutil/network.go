@@ -126,3 +126,24 @@ func CleanImagesInCI(pool *dockertest.Pool) error {
 
 	return nil
 }
+
+// DockerRestartPolicy sets the restart policy for containers.
+func DockerRestartPolicy(config *docker.HostConfig) {
+	config.RestartPolicy = docker.RestartPolicy{
+		Name: "unless-stopped",
+	}
+}
+
+// DockerAllowLocalIPv6 allows IPv6 traffic within the container.
+func DockerAllowLocalIPv6(config *docker.HostConfig) {
+	config.NetworkMode = "default"
+	config.Sysctls = map[string]string{
+		"net.ipv6.conf.all.disable_ipv6": "0",
+	}
+}
+
+// DockerAllowNetworkAdministration gives the container network administration capabilities.
+func DockerAllowNetworkAdministration(config *docker.HostConfig) {
+	config.CapAdd = append(config.CapAdd, "NET_ADMIN")
+	config.Privileged = true
+}

@@ -251,6 +251,7 @@ func New(
 		Env:        []string{},
 	}
 
+
 	if tsic.withWebsocketDERP {
 		if version != VersionHead {
 			return tsic, errInvalidClientConfig
@@ -278,6 +279,9 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(tailscaleOptions, "tailscale")
 
 	var container *dockertest.Resource
 

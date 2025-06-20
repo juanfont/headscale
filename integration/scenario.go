@@ -1102,6 +1102,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 		},
 	}
 
+
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: hsic.IntegrationTestDockerFileName,
 		ContextDir: dockerContextPath,
@@ -1114,6 +1115,9 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	s.mockOIDC = scenarioOIDC{}
 
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
+	
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		mockOidcOptions,
@@ -1197,6 +1201,9 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 		Networks: []*dockertest.Network{network},
 		Env:      []string{},
 	}
+
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(webOpts, "web")
 
 	webBOpts := &dockertest.BuildOptions{
 		Dockerfile: hsic.IntegrationTestDockerFileName,
