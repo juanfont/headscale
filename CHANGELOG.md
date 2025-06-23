@@ -9,8 +9,7 @@
 
 ### Changes
 
-- Remove policy v1 code
-  [#2600](https://github.com/juanfont/headscale/pull/2600)
+- Remove policy v1 code [#2600](https://github.com/juanfont/headscale/pull/2600)
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
@@ -20,8 +19,7 @@
 
 ### Changes
 
-- Ensure nodes are matching both node key and machine key
-  when connecting.
+- Ensure nodes are matching both node key and machine key when connecting.
   [#2642](https://github.com/juanfont/headscale/pull/2642)
 
 ## 0.26.0 (2025-05-14)
