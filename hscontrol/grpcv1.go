@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
