@@ -6,17 +6,16 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
-	"time"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
-	xmaps "golang.org/x/exp/maps"
-	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
@@ -68,7 +67,7 @@ func TestMarshalJSON(t *testing.T) {
 	// Marshal the policy to JSON
 	marshalled, err := json.MarshalIndent(policy, "", "  ")
 	require.NoError(t, err)
-	
+
 	// Make sure all expected fields are present in the JSON
 	jsonString := string(marshalled)
 	assert.Contains(t, jsonString, "group:example")
@@ -79,21 +78,21 @@ func TestMarshalJSON(t *testing.T) {
 	assert.Contains(t, jsonString, "accept")
 	assert.Contains(t, jsonString, "tcp")
 	assert.Contains(t, jsonString, "80")
-	
+
 	// Unmarshal back to verify round trip
 	var roundTripped Policy
 	err = json.Unmarshal(marshalled, &roundTripped)
 	require.NoError(t, err)
-	
+
 	// Compare the original and round-tripped policies
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 		cmpopts.EquateEmpty(),
 	)
-	
+
 	if diff := cmp.Diff(policy, &roundTripped, cmps...); diff != "" {
 		t.Fatalf("round trip policy (-original +roundtripped):\n%s", diff)
 	}
@@ -389,6 +388,150 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			// wantErr: `Username has to contain @, got: "group:inner"`,
 			wantErr: `Nested groups are not allowed, found "group:inner" inside "group:example"`,
+		},
+		{
+			name: "invalid-group-name-special-chars",
+			input: `
+{
+	"groups": {
+		"group:example@invalid": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:example@invalid"`,
+		},
+		{
+			name: "invalid-group-name-starting-with-number",
+			input: `
+{
+	"groups": {
+		"group:123example": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:123example"`,
+		},
+		{
+			name: "invalid-group-name-scandinavian-characters",
+			input: `
+{
+	"groups": {
+		"group:æøå-example": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:æøå-example"`,
+		},
+		{
+			name: "invalid-group-name-cyrillic-characters",
+			input: `
+{
+	"groups": {
+		"group:группа": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names must start with a letter, got: "group:группа"`,
+		},
+		{
+			name: "invalid-group-name-emoji",
+			input: `
+{
+	"groups": {
+		"group:dev-😊": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:dev-😊"`,
+		},
+		{
+			name: "invalid-group-name-other-special-chars",
+			input: `
+{
+	"groups": {
+		"group:dev_team": [
+			"valid@example.com",
+		],
+	},
+}
+`,
+			wantErr: `Group names can only contain ASCII letters, numbers, or dashes, got: "group:dev_team"`,
+		},
+		{
+			name: "invalid-tag-name-special-chars",
+			input: `
+{
+	"tagOwners": {
+		"tag:test@invalid": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test@invalid"`,
+		},
+		{
+			name: "invalid-tag-name-starting-with-number",
+			input: `
+{
+	"tagOwners": {
+		"tag:123test": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:123test"`,
+		},
+		{
+			name: "invalid-tag-name-scandinavian-characters",
+			input: `
+{
+	"tagOwners": {
+		"tag:æøå-test": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:æøå-test"`,
+		},
+		{
+			name: "invalid-tag-name-cyrillic-characters",
+			input: `
+{
+	"tagOwners": {
+		"tag:тест": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names must start with a letter, got: "tag:тест"`,
+		},
+		{
+			name: "invalid-tag-name-emoji",
+			input: `
+{
+	"tagOwners": {
+		"tag:test-😊": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test-😊"`,
+		},
+		{
+			name: "invalid-tag-name-other-special-chars",
+			input: `
+{
+	"tagOwners": {
+		"tag:test_underscore": ["valid@example.com"],
+	},
+}
+`,
+			wantErr: `Tag names can only contain ASCII letters, numbers, or dashes, got: "tag:test_underscore"`,
 		},
 		{
 			name: "invalid-addr",
@@ -958,13 +1101,13 @@ func TestUnmarshalPolicy(t *testing.T) {
 		},
 	}
 
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 	)
-	
+
 	// For round-trip testing, we'll normalize the policies before comparing
 
 	for _, tt := range tests {
@@ -1001,9 +1144,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 				if err != nil {
 					t.Fatalf("round-trip unmarshalling: %v", err)
 				}
-				
+
 				// Add EquateEmpty to handle nil vs empty maps/slices
-				roundTripCmps := append(cmps, 
+				roundTripCmps := append(cmps,
 					cmpopts.EquateEmpty(),
 					cmpopts.IgnoreUnexported(Policy{}),
 				)
@@ -1028,13 +1171,7 @@ func pp(pref string) *Prefix      { return ptr.To(Prefix(mp(pref))) }
 func p(pref string) Prefix        { return Prefix(mp(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
-	users := map[string]types.User{
-		"testuser":   {Model: gorm.Model{ID: 1}, Name: "testuser"},
-		"groupuser":  {Model: gorm.Model{ID: 2}, Name: "groupuser"},
-		"groupuser1": {Model: gorm.Model{ID: 3}, Name: "groupuser1"},
-		"groupuser2": {Model: gorm.Model{ID: 4}, Name: "groupuser2"},
-		"notme":      {Model: gorm.Model{ID: 5}, Name: "notme"},
-	}
+	tu := GetTestUsers()
 	tests := []struct {
 		name      string
 		nodes     types.Nodes
@@ -1064,33 +1201,40 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
-					IPv4: ap("100.100.101.1"),
+					User:   tu.UserPtr("notme"),
+					UserID: tu.IDPtr("notme"),
+					IPv4:   ap("100.100.101.1"),
 				},
-				// Not matching forced tags
+				// Not matching tags, usernames are ignored if a node is tagged
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:anything"},
-					IPv4:       ap("100.100.101.2"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					Tags:   []string{"tag:anything"},
+					IPv4:   ap("100.100.101.2"),
 				},
 				// not matchin pak tag
+				// since 0.27.0, tags are only considered when
+				// set directly on the node, not via pak.
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					AuthKey: &types.PreAuthKey{
 						Tags: []string{"alsotagged"},
 					},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: users["testuser"],
-					IPv4: ap("100.100.101.103"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					IPv4:   ap("100.100.101.103"),
 				},
 				{
-					User: users["testuser"],
-					IPv4: ap("100.100.101.104"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					IPv4:   ap("100.100.101.104"),
 				},
 			},
-			want: []netip.Prefix{mp("100.100.101.103/32"), mp("100.100.101.104/32")},
+			want: []netip.Prefix{mp("100.100.101.3/32"), mp("100.100.101.103/32"), mp("100.100.101.104/32")},
 		},
 		{
 			name:      "group",
@@ -1098,30 +1242,46 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
-					IPv4: ap("100.100.101.4"),
+					User:   tu.UserPtr("notme"),
+					UserID: tu.IDPtr("notme"),
+					IPv4:   ap("100.100.101.4"),
 				},
 				// Not matching forced tags
 				{
-					User:       users["groupuser"],
-					ForcedTags: []string{"tag:anything"},
-					IPv4:       ap("100.100.101.5"),
+					User:   tu.UserPtr("groupuser"),
+					UserID: tu.IDPtr("groupuser"),
+					Tags:   []string{"tag:anything"},
+					IPv4:   ap("100.100.101.5"),
 				},
 				// not matchin pak tag
+				// since 0.27.0, tags are only considered when
+				// set directly on the node, not via pak.
 				{
-					User: users["groupuser"],
+					User:   tu.UserPtr("groupuser"),
+					UserID: tu.IDPtr("groupuser"),
 					AuthKey: &types.PreAuthKey{
 						Tags: []string{"tag:alsotagged"},
 					},
 					IPv4: ap("100.100.101.6"),
 				},
 				{
-					User: users["groupuser"],
-					IPv4: ap("100.100.101.203"),
+					User:   tu.UserPtr("groupuser"),
+					UserID: tu.IDPtr("groupuser"),
+					IPv4:   ap("100.100.101.203"),
+				},
+				// not matchin username because tagged
+				// since 0.27.0, tags are only considered when
+				// set directly on the node, not via pak.
+				{
+					User:   tu.UserPtr("groupuser"),
+					UserID: tu.IDPtr("groupuser"),
+					Tags:   []string{"tag:taggg"},
+					IPv4:   ap("100.100.101.209"),
 				},
 				{
-					User: users["groupuser"],
-					IPv4: ap("100.100.101.204"),
+					User:   tu.UserPtr("groupuser1"),
+					UserID: tu.IDPtr("groupuser1"),
+					IPv4:   ap("100.100.101.204"),
 				},
 			},
 			pol: &Policy{
@@ -1130,7 +1290,7 @@ func TestResolvePolicy(t *testing.T) {
 					"group:othergroup": Usernames{"notmetoo"},
 				},
 			},
-			want: []netip.Prefix{mp("100.100.101.203/32"), mp("100.100.101.204/32")},
+			want: []netip.Prefix{mp("100.100.101.6/32"), mp("100.100.101.203/32")},
 		},
 		{
 			name:      "tag",
@@ -1138,13 +1298,14 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
-					IPv4: ap("100.100.101.9"),
+					User:   tu.UserPtr("notme"),
+					UserID: tu.IDPtr("notme"),
+					IPv4:   ap("100.100.101.9"),
 				},
 				// Not matching forced tags
 				{
-					ForcedTags: []string{"tag:anything"},
-					IPv4:       ap("100.100.101.10"),
+					Tags: []string{"tag:anything"},
+					IPv4: ap("100.100.101.10"),
 				},
 				// not matchin pak tag
 				{
@@ -1153,12 +1314,21 @@ func TestResolvePolicy(t *testing.T) {
 					},
 					IPv4: ap("100.100.101.11"),
 				},
-				// Not matching forced tags
+				// matching forced tags
 				{
-					ForcedTags: []string{"tag:test"},
-					IPv4:       ap("100.100.101.234"),
+					Tags: []string{"tag:test"},
+					IPv4: ap("100.100.101.234"),
+				},
+				// matching tag with user (user is ignored)
+				{
+					User:   tu.UserPtr("notme"),
+					UserID: tu.IDPtr("notme"),
+					Tags:   []string{"tag:test"},
+					IPv4:   ap("100.100.101.109"),
 				},
 				// not matchin pak tag
+				// since 0.27.0, tags are only considered when
+				// set directly on the node, not via pak.
 				{
 					AuthKey: &types.PreAuthKey{
 						Tags: []string{"tag:test"},
@@ -1168,7 +1338,7 @@ func TestResolvePolicy(t *testing.T) {
 			},
 			// TODO(kradalby): tests handling TagOwners + hostinfo
 			pol:  &Policy{},
-			want: []netip.Prefix{mp("100.100.101.234/32"), mp("100.100.101.239/32")},
+			want: []netip.Prefix{mp("100.100.101.109/32"), mp("100.100.101.234/32")},
 		},
 		{
 			name:      "empty-policy",
@@ -1191,12 +1361,14 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: ptr.To(Group("group:testgroup")),
 			nodes: types.Nodes{
 				{
-					User: users["groupuser1"],
-					IPv4: ap("100.100.101.203"),
+					User:   tu.UserPtr("groupuser1"),
+					UserID: tu.IDPtr("groupuser1"),
+					IPv4:   ap("100.100.101.203"),
 				},
 				{
-					User: users["groupuser2"],
-					IPv4: ap("100.100.101.204"),
+					User:   tu.UserPtr("groupuser2"),
+					UserID: tu.IDPtr("groupuser2"),
+					IPv4:   ap("100.100.101.204"),
 				},
 			},
 			pol: &Policy{
@@ -1216,8 +1388,9 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: ptr.To(Username("invaliduser@")),
 			nodes: types.Nodes{
 				{
-					User: users["testuser"],
-					IPv4: ap("100.100.101.103"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					IPv4:   ap("100.100.101.103"),
 				},
 			},
 			wantErr: `user with token "invaliduser@" not found`,
@@ -1227,8 +1400,8 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: tp("tag:invalid"),
 			nodes: types.Nodes{
 				{
-					ForcedTags: []string{"tag:test"},
-					IPv4:       ap("100.100.101.234"),
+					Tags: []string{"tag:test"},
+					IPv4: ap("100.100.101.234"),
 				},
 			},
 		},
@@ -1248,18 +1421,21 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be included)
 				{
-					User: users["testuser"],
-					IPv4: ap("100.100.101.1"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					IPv4:   ap("100.100.101.1"),
 				},
 				// Node with forced tags (should be excluded)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test"},
-					IPv4:       ap("100.100.101.2"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					Tags:   []string{"tag:test"},
+					IPv4:   ap("100.100.101.2"),
 				},
 				// Node with allowed requested tag (should be excluded)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test"},
 					},
@@ -1267,7 +1443,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with non-allowed requested tag (should be included)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed"},
 					},
@@ -1275,7 +1452,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, one allowed (should be excluded)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test", "tag:notallowed"},
 					},
@@ -1283,7 +1461,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, none allowed (should be included)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
 					},
@@ -1307,18 +1486,21 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be excluded)
 				{
-					User: users["testuser"],
-					IPv4: ap("100.100.101.1"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					IPv4:   ap("100.100.101.1"),
 				},
 				// Node with forced tag (should be included)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test"},
-					IPv4:       ap("100.100.101.2"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					Tags:   []string{"tag:test"},
+					IPv4:   ap("100.100.101.2"),
 				},
 				// Node with allowed requested tag (should be included)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test"},
 					},
@@ -1326,7 +1508,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with non-allowed requested tag (should be excluded)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed"},
 					},
@@ -1334,7 +1517,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, one allowed (should be included)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test", "tag:notallowed"},
 					},
@@ -1342,7 +1526,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, none allowed (should be excluded)
 				{
-					User: users["testuser"],
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
 					},
@@ -1350,9 +1535,10 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple forced tags (should be included)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test", "tag:other"},
-					IPv4:       ap("100.100.101.7"),
+					User:   tu.UserPtr("testuser"),
+					UserID: tu.IDPtr("testuser"),
+					Tags:   []string{"tag:test", "tag:other"},
+					IPv4:   ap("100.100.101.7"),
 				},
 			},
 			pol: &Policy{
@@ -1376,7 +1562,7 @@ func TestResolvePolicy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ips, err := tt.toResolve.Resolve(tt.pol,
-				xmaps.Values(users),
+				tu.AsSlice(),
 				tt.nodes)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -1405,32 +1591,31 @@ func TestResolvePolicy(t *testing.T) {
 }
 
 func TestResolveAutoApprovers(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
-	}
+	tu := GetTestUsers()
 
 	nodes := types.Nodes{
 		{
-			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			IPv4:   ap("100.64.0.1"),
+			User:   tu.UserPtr("user1"),
+			UserID: tu.IDPtr("user1"),
 		},
 		{
-			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			IPv4:   ap("100.64.0.2"),
+			User:   tu.UserPtr("user2"),
+			UserID: tu.IDPtr("user2"),
 		},
 		{
-			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			IPv4:   ap("100.64.0.3"),
+			User:   tu.UserPtr("user3"),
+			UserID: tu.IDPtr("user3"),
 		},
 		{
-			IPv4:       ap("100.64.0.4"),
-			ForcedTags: []string{"tag:testtag"},
+			IPv4: ap("100.64.0.4"),
+			Tags: []string{"tag:testtag"},
 		},
 		{
-			IPv4:       ap("100.64.0.5"),
-			ForcedTags: []string{"tag:exittest"},
+			IPv4: ap("100.64.0.5"),
+			Tags: []string{"tag:exittest"},
 		},
 	}
 
@@ -1557,7 +1742,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes)
+			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, tu.FilteredSlice("user1", "user2", "user3"), nodes)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1595,24 +1780,27 @@ func ipSetComparer(x, y *netipx.IPSet) bool {
 }
 
 func TestNodeCanApproveRoute(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
-	}
+	tu := GetTestUsers()
 
 	nodes := types.Nodes{
 		{
-			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			IPv4:   ap("100.64.0.1"),
+			User:   tu.UserPtr("user1"),
+			UserID: tu.IDPtr("user1"),
 		},
 		{
-			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			IPv4:   ap("100.64.0.2"),
+			User:   tu.UserPtr("user2"),
+			UserID: tu.IDPtr("user2"),
 		},
 		{
-			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			IPv4:   ap("100.64.0.3"),
+			User:   tu.UserPtr("user3"),
+			UserID: tu.IDPtr("user3"),
+		},
+		{
+			IPv4: ap("100.64.0.4"),
+			Tags: []string{"tag:testtag"},
 		},
 	}
 
@@ -1716,7 +1904,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, tu.FilteredSlice("user1", "user2", "user3"), nodes)
 			require.NoErrorf(t, err, "NewPolicyManager() error = %v", err)
 
 			got := pm.NodeCanApproveRoute(tt.node, tt.route)
@@ -1728,24 +1916,27 @@ func TestNodeCanApproveRoute(t *testing.T) {
 }
 
 func TestResolveTagOwners(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
-	}
+	tu := GetTestUsers()
 
 	nodes := types.Nodes{
 		{
-			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			IPv4:   ap("100.64.0.1"),
+			User:   tu.UserPtr("user1"),
+			UserID: tu.IDPtr("user1"),
 		},
 		{
-			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			IPv4:   ap("100.64.0.2"),
+			User:   tu.UserPtr("user2"),
+			UserID: tu.IDPtr("user2"),
 		},
 		{
-			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			IPv4:   ap("100.64.0.3"),
+			User:   tu.UserPtr("user3"),
+			UserID: tu.IDPtr("user3"),
+		},
+		{
+			IPv4: ap("100.64.0.4"),
+			Tags: []string{"tag:testtag"},
 		},
 	}
 
@@ -1800,7 +1991,7 @@ func TestResolveTagOwners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveTagOwners(tt.policy, users, nodes)
+			got, err := resolveTagOwners(tt.policy, tu.FilteredSlice("user1", "user2", "user3"), nodes)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1813,24 +2004,27 @@ func TestResolveTagOwners(t *testing.T) {
 }
 
 func TestNodeCanHaveTag(t *testing.T) {
-	users := types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "user1"},
-		{Model: gorm.Model{ID: 2}, Name: "user2"},
-		{Model: gorm.Model{ID: 3}, Name: "user3"},
-	}
+	tu := GetTestUsers()
 
 	nodes := types.Nodes{
 		{
-			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			IPv4:   ap("100.64.0.1"),
+			User:   tu.UserPtr("user1"),
+			UserID: tu.IDPtr("user1"),
 		},
 		{
-			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			IPv4:   ap("100.64.0.2"),
+			User:   tu.UserPtr("user2"),
+			UserID: tu.IDPtr("user2"),
 		},
 		{
-			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			IPv4:   ap("100.64.0.3"),
+			User:   tu.UserPtr("user3"),
+			UserID: tu.IDPtr("user3"),
+		},
+		{
+			IPv4: ap("100.64.0.4"),
+			Tags: []string{"tag:testtag"},
 		},
 	}
 
@@ -1911,7 +2105,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, tu.FilteredSlice("user1", "user2", "user3"), nodes)
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return

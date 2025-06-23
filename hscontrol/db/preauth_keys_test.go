@@ -74,7 +74,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testest",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(key.ID),
 	}
