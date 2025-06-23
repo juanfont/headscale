@@ -17,7 +17,9 @@ import (
 func isSSHNoAccessStdError(stderr string) bool {
 	return strings.Contains(stderr, "Permission denied (tailscale)") ||
 		// Since https://github.com/tailscale/tailscale/pull/14853
-		strings.Contains(stderr, "failed to evaluate SSH policy")
+		strings.Contains(stderr, "failed to evaluate SSH policy") ||
+		// Since https://github.com/tailscale/tailscale/pull/16127
+		strings.Contains(stderr, "tailnet policy does not permit you to SSH to this node")
 }
 
 var retry = func(times int, sleepInterval time.Duration,

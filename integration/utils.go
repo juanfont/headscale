@@ -3,6 +3,7 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/netip"
@@ -11,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -310,20 +311,18 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []string, contains string) {
 	t.Helper()
 
-	err := backoff.Retry(func() error {
+	_, err := backoff.Retry(context.Background(), func() (struct{}, error) {
 		stdout, stderr, err := c.Execute(command)
 		if err != nil {
-			return fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
+			return struct{}{}, fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
 		}
 
 		if !strings.Contains(stdout, contains) {
-			return fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
 		}
 
-		return nil
-	}, backoff.NewExponentialBackOff(
-		backoff.WithMaxElapsedTime(10*time.Second)),
-	)
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
 
 	assert.NoError(t, err)
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,6 +18,8 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
 var (
@@ -33,7 +36,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 	defer cli.Close()
 
-	runID := generateRunID()
+	runID := dockertestutil.GenerateRunID()
 	containerName := "headscale-test-suite-" + runID
 	logsDir := filepath.Join(config.LogsDir, runID)
 
@@ -89,6 +92,19 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
+	// Ensure all containers have finished and logs are flushed before extracting artifacts
+	if waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose); waitErr != nil && config.Verbose {
+		log.Printf("Warning: failed to wait for container finalization: %v", waitErr)
+	}
+
+	// Extract artifacts from test containers before cleanup
+	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose {
+		log.Printf("Warning: failed to extract artifacts from containers: %v", err)
+	}
+
+	// Always list control files regardless of test outcome
+	listControlFiles(logsDir)
+
 	shouldCleanup := config.CleanAfter && (!config.KeepOnFailure || exitCode == 0)
 	if shouldCleanup {
 		if config.Verbose {
@@ -108,7 +124,6 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	log.Printf("Test completed successfully!")
-	listControlFiles(logsDir)
 
 	return nil
 }
@@ -140,23 +155,36 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 
 	projectRoot := findProjectRoot(pwd)
 
+	runID := dockertestutil.ExtractRunIDFromContainerName(containerName)
+	
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
+		fmt.Sprintf("HEADSCALE_INTEGRATION_RUN_ID=%s", runID),
 	}
-
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
 		Env:        env,
 		WorkingDir: projectRoot + "/integration",
 		Tty:        true,
+		Labels: map[string]string{
+			"hi.run-id":    runID,
+			"hi.test-type": "test-runner",
+		},
+	}
+
+	// Get the correct Docker socket path from the current context
+	dockerSocketPath := getDockerSocketPath()
+	
+	if config.Verbose {
+		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
 
 	hostConfig := &container.HostConfig{
 		AutoRemove: false, // We'll remove manually for better control
 		Binds: []string{
 			fmt.Sprintf("%s:%s", projectRoot, projectRoot),
-			"/var/run/docker.sock:/var/run/docker.sock",
+			fmt.Sprintf("%s:/var/run/docker.sock", dockerSocketPath),
 			logsDir + ":/tmp/control",
 		},
 		Mounts: []mount.Mount{
@@ -200,12 +228,68 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 	return -1, ErrUnexpectedContainerWait
 }
 
-// generateRunID creates a unique timestamp-based run identifier.
-func generateRunID() string {
-	now := time.Now()
-	timestamp := now.Format("20060102-150405")
-	return timestamp
+// waitForContainerFinalization ensures all test containers have properly finished and flushed their output.
+func waitForContainerFinalization(ctx context.Context, cli *client.Client, testContainerID string, verbose bool) error {
+	// First, get all related test containers
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
+	
+	// Wait for all test containers to reach a final state
+	maxWaitTime := 10 * time.Second
+	checkInterval := 500 * time.Millisecond
+	timeout := time.After(maxWaitTime)
+	ticker := time.NewTicker(checkInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			if verbose {
+				log.Printf("Timeout waiting for container finalization, proceeding with artifact extraction")
+			}
+			return nil
+		case <-ticker.C:
+			allFinalized := true
+			
+			for _, testCont := range testContainers {
+				inspect, err := cli.ContainerInspect(ctx, testCont.ID)
+				if err != nil {
+					if verbose {
+						log.Printf("Warning: failed to inspect container %s: %v", testCont.name, err)
+					}
+					continue
+				}
+				
+				// Check if container is in a final state
+				if !isContainerFinalized(inspect.State) {
+					allFinalized = false
+					if verbose {
+						log.Printf("Container %s still finalizing (state: %s)", testCont.name, inspect.State.Status)
+					}
+					break
+				}
+			}
+			
+			if allFinalized {
+				if verbose {
+					log.Printf("All test containers finalized, ready for artifact extraction")
+				}
+				return nil
+			}
+		}
+	}
 }
+
+// isContainerFinalized checks if a container has reached a final state where logs are flushed.
+func isContainerFinalized(state *container.State) bool {
+	// Container is finalized if it's not running and has a finish time
+	return !state.Running && state.FinishedAt != ""
+}
+
 
 // findProjectRoot locates the project root by finding the directory containing go.mod.
 func findProjectRoot(startPath string) string {
@@ -288,6 +372,13 @@ func getCurrentDockerContext() (*DockerContext, error) {
 	return nil, ErrNoDockerContext
 }
 
+// getDockerSocketPath returns the correct Docker socket path for the current context.
+func getDockerSocketPath() string {
+	// Always use the default socket path for mounting since Docker handles
+	// the translation to the actual socket (e.g., colima socket) internally
+	return "/var/run/docker.sock"
+}
+
 // ensureImageAvailable pulls the specified Docker image to ensure it's available.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
 	if verbose {
@@ -325,24 +416,29 @@ func listControlFiles(logsDir string) {
 	}
 
 	var logFiles []string
-	var tarFiles []string
+	var dataFiles []string
+	var dataDirs []string
 
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
 		name := entry.Name()
-		// Only show headscale (hs-*) files
+		// Only show headscale (hs-*) files and directories
 		if !strings.HasPrefix(name, "hs-") {
 			continue
 		}
 
-		switch {
-		case strings.HasSuffix(name, ".stderr.log") || strings.HasSuffix(name, ".stdout.log"):
-			logFiles = append(logFiles, name)
-		case strings.HasSuffix(name, ".pprof.tar") || strings.HasSuffix(name, ".maps.tar") || strings.HasSuffix(name, ".db.tar"):
-			tarFiles = append(tarFiles, name)
+		if entry.IsDir() {
+			// Include directories (pprof, mapresponses) 
+			if strings.Contains(name, "-pprof") || strings.Contains(name, "-mapresponses") {
+				dataDirs = append(dataDirs, name)
+			}
+		} else {
+			// Include files
+			switch {
+			case strings.HasSuffix(name, ".stderr.log") || strings.HasSuffix(name, ".stdout.log"):
+				logFiles = append(logFiles, name)
+			case strings.HasSuffix(name, ".db"):
+				dataFiles = append(dataFiles, name)
+			}
 		}
 	}
 
@@ -355,10 +451,244 @@ func listControlFiles(logsDir string) {
 		}
 	}
 
-	if len(tarFiles) > 0 {
-		log.Printf("Headscale archives:")
-		for _, file := range tarFiles {
+	if len(dataFiles) > 0 || len(dataDirs) > 0 {
+		log.Printf("Headscale data:")
+		for _, file := range dataFiles {
 			log.Printf("  %s", file)
 		}
+		for _, dir := range dataDirs {
+			log.Printf("  %s/", dir)
+		}
 	}
+}
+
+// extractArtifactsFromContainers collects container logs and files from the specific test run.
+func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
+	cli, err := createDockerClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// List all containers
+	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
+	if err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	// Get containers from the specific test run
+	currentTestContainers := getCurrentTestContainers(containers, testContainerID, verbose)
+
+	extractedCount := 0
+	for _, cont := range currentTestContainers {
+		// Extract container logs and tar files
+		if err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose); err != nil {
+			if verbose {
+				log.Printf("Warning: failed to extract artifacts from container %s (%s): %v", cont.name, cont.ID[:12], err)
+			}
+		} else {
+			if verbose {
+				log.Printf("Extracted artifacts from container %s (%s)", cont.name, cont.ID[:12])
+			}
+			extractedCount++
+		}
+	}
+
+	if verbose && extractedCount > 0 {
+		log.Printf("Extracted artifacts from %d containers", extractedCount)
+	}
+
+	return nil
+}
+
+// testContainer represents a container from the current test run.
+type testContainer struct {
+	ID   string
+	name string
+}
+
+// getCurrentTestContainers filters containers to only include those from the current test run.
+func getCurrentTestContainers(containers []container.Summary, testContainerID string, verbose bool) []testContainer {
+	var testRunContainers []testContainer
+	
+	// Find the test container to get its run ID label
+	var runID string
+	for _, cont := range containers {
+		if cont.ID == testContainerID {
+			if cont.Labels != nil {
+				runID = cont.Labels["hi.run-id"]
+			}
+			break
+		}
+	}
+	
+	if runID == "" {
+		log.Printf("Error: test container %s missing required hi.run-id label", testContainerID[:12])
+		return testRunContainers
+	}
+	
+	if verbose {
+		log.Printf("Looking for containers with run ID: %s", runID)
+	}
+	
+	// Find all containers with the same run ID
+	for _, cont := range containers {
+		for _, name := range cont.Names {
+			containerName := strings.TrimPrefix(name, "/")
+			if strings.HasPrefix(containerName, "hs-") || strings.HasPrefix(containerName, "ts-") {
+				// Check if container has matching run ID label
+				if cont.Labels != nil && cont.Labels["hi.run-id"] == runID {
+					testRunContainers = append(testRunContainers, testContainer{
+						ID:   cont.ID,
+						name: containerName,
+					})
+					if verbose {
+						log.Printf("Including container %s (run ID: %s)", containerName, runID)
+					}
+				}
+				break
+			}
+		}
+	}
+	
+	return testRunContainers
+}
+
+// extractContainerArtifacts saves logs and tar files from a container.
+func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
+	// Ensure the logs directory exists
+	if err := os.MkdirAll(logsDir, 0755); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
+
+	// Extract container logs
+	if err := extractContainerLogs(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
+		return fmt.Errorf("failed to extract logs: %w", err)
+	}
+
+	// Extract tar files for headscale containers only
+	if strings.HasPrefix(containerName, "hs-") {
+		if err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
+			if verbose {
+				log.Printf("Warning: failed to extract files from %s: %v", containerName, err)
+			}
+			// Don't fail the whole extraction if files are missing
+		}
+	}
+
+	return nil
+}
+
+// extractContainerLogs saves the stdout and stderr logs from a container to files.
+func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
+	// Get container logs
+	logReader, err := cli.ContainerLogs(ctx, containerID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+		Timestamps: false,
+		Follow:     false,
+		Tail:       "all",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to get container logs: %w", err)
+	}
+	defer logReader.Close()
+
+	// Create log files following the headscale naming convention
+	stdoutPath := filepath.Join(logsDir, containerName+".stdout.log")
+	stderrPath := filepath.Join(logsDir, containerName+".stderr.log")
+
+	// Create buffers to capture stdout and stderr separately
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	// Demultiplex the Docker logs stream to separate stdout and stderr
+	_, err = stdcopy.StdCopy(&stdoutBuf, &stderrBuf, logReader)
+	if err != nil {
+		return fmt.Errorf("failed to demultiplex container logs: %w", err)
+	}
+
+	// Write stdout logs
+	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write stdout log: %w", err)
+	}
+
+	// Write stderr logs
+	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write stderr log: %w", err)
+	}
+
+	if verbose {
+		log.Printf("Saved logs for %s: %s, %s", containerName, stdoutPath, stderrPath)
+	}
+
+	return nil
+}
+
+// extractContainerFiles extracts database file and directories from headscale containers.
+// Note: The actual file extraction is now handled by the integration tests themselves
+// via SaveProfile, SaveMapResponses, and SaveDatabase functions in hsic.go
+func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
+	// Files are now extracted directly by the integration tests
+	// This function is kept for potential future use or other file types
+	return nil
+}
+
+// logExtractionError logs extraction errors with appropriate level based on error type.
+func logExtractionError(artifactType, containerName string, err error, verbose bool) {
+	if errors.Is(err, ErrFileNotFoundInTar) {
+		// File not found is expected and only logged in verbose mode
+		if verbose {
+			log.Printf("No %s found in container %s", artifactType, containerName)
+		}
+	} else {
+		// Other errors are actual failures and should be logged as warnings
+		log.Printf("Warning: failed to extract %s from %s: %v", artifactType, containerName, err)
+	}
+}
+
+// extractSingleFile copies a single file from a container.
+func extractSingleFile(ctx context.Context, cli *client.Client, containerID, sourcePath, fileName, logsDir string, verbose bool) error {
+	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
+	}
+	defer tarReader.Close()
+
+	// Extract the single file from the tar
+	filePath := filepath.Join(logsDir, fileName)
+	if err := extractFileFromTar(tarReader, filepath.Base(sourcePath), filePath); err != nil {
+		return fmt.Errorf("failed to extract file from tar: %w", err)
+	}
+
+	if verbose {
+		log.Printf("Extracted %s from %s", fileName, containerID[:12])
+	}
+
+	return nil
+}
+
+// extractDirectory copies a directory from a container and extracts its contents.
+func extractDirectory(ctx context.Context, cli *client.Client, containerID, sourcePath, dirName, logsDir string, verbose bool) error {
+	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
+	if err != nil {
+		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
+	}
+	defer tarReader.Close()
+
+	// Create target directory
+	targetDir := filepath.Join(logsDir, dirName)
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	}
+
+	// Extract the directory from the tar
+	if err := extractDirectoryFromTar(tarReader, targetDir); err != nil {
+		return fmt.Errorf("failed to extract directory from tar: %w", err)
+	}
+
+	if verbose {
+		log.Printf("Extracted %s/ from %s", dirName, containerID[:12])
+	}
+
+	return nil
 }

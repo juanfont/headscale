@@ -19,6 +19,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
         buildGo = pkgs.buildGo124Module;
+        vendorHash = "sha256-9e+ngBkzRb3anSYtFHTJDxt/VMzrHdb5NWwOesJz+kY=";
       in {
         headscale = buildGo {
           pname = "headscale";
@@ -30,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to those files.
-          vendorHash = "sha256-8nRaQNwUDbHkp3q54R6eLDh1GkfwBlh4b9w0IkNj2sY=";
+          inherit vendorHash;
 
           subPackages = ["cmd/headscale"];
 
@@ -40,6 +41,17 @@
             "-X github.com/juanfont/headscale/hscontrol/types.Version=${headscaleVersion}"
             "-X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=${commitHash}"
           ];
+        };
+
+        hi = buildGo {
+          pname = "hi";
+          version = headscaleVersion;
+          src = pkgs.lib.cleanSource self;
+
+          checkFlags = ["-short"];
+          inherit vendorHash;
+
+          subPackages = ["cmd/hi"];
         };
 
         protoc-gen-grpc-gateway = buildGo rec {
@@ -144,6 +156,9 @@
           buf
           clang-tools # clang-format
           protobuf-language-server
+
+          # Add hi to make it even easier to use ci runner.
+          hi
         ];
 
       # Add entry to build a docker image with headscale
