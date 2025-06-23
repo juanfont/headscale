@@ -123,9 +123,6 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-      - uses: satackey/action-docker-layer-caching@46d2c640b1d8ef50d185452ad6fb324e6bd1d052 # v0.0.11
-        if: steps.changed-files.outputs.files == 'true'
-        continue-on-error: true
       - name: Run Integration Test
         uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
         if: steps.changed-files.outputs.files == 'true'
