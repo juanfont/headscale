@@ -20,7 +20,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
-	grpcMiddleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -742,12 +741,10 @@ func (h *Headscale) Serve() error {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
 		grpcOptions := []grpc.ServerOption{
-			grpc.UnaryInterceptor(
-				grpcMiddleware.ChainUnaryServer(
-					h.grpcAuthenticationInterceptor,
-					// Uncomment to debug grpc communication.
-					// zerolog.NewUnaryServerInterceptor(),
-				),
+			grpc.ChainUnaryInterceptor(
+				h.grpcAuthenticationInterceptor,
+				// Uncomment to debug grpc communication.
+				// zerolog.NewUnaryServerInterceptor(),
 			),
 		}
 
