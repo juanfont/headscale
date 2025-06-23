@@ -544,6 +544,7 @@ func nodesToProto(polMan policy.PolicyManager, isLikelyConnected *xsync.MapOf[ty
 		// currently connected nodes.
 		if val, ok := isLikelyConnected.Load(node.ID); ok && val {
 			resp.Online = true
+			resp.LastSeen = timestamppb.New(time.Now())
 		}
 
 		var tags []string
