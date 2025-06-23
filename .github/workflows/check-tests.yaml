@@ -10,12 +10,12 @@ jobs:
   check-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         with:
           filters: |
             files:
@@ -24,9 +24,9 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
-      - uses: nixbuild/nix-quick-install-action@master
+      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad
         if: steps.changed-files.outputs.files == 'true'
-      - uses: nix-community/cache-nix-action@main
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a
         if: steps.changed-files.outputs.files == 'true'
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}

@@ -17,12 +17,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 2
       - name: Get changed files
         id: changed-files
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
         with:
           filters: |
             files:
@@ -31,9 +31,9 @@ jobs:
               - '**/*.go'
               - 'integration_test/'
               - 'config-example.yaml'
-      - uses: nixbuild/nix-quick-install-action@master
+      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad
         if: steps.changed-files.outputs.files == 'true'
-      - uses: nix-community/cache-nix-action@main
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a
         if: steps.changed-files.outputs.files == 'true'
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
@@ -55,7 +55,7 @@ jobs:
           exit $BUILD_STATUS
 
       - name: Nix gosum diverging
-        uses: actions/github-script@v6
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
         if: failure() && steps.build.outcome == 'failure'
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -67,7 +67,7 @@ jobs:
               body: 'Nix build failed with wrong gosum, please update "vendorSha256" (${{ steps.build.outputs.OLD_HASH }}) for the "headscale" package in flake.nix with the new SHA: ${{ steps.build.outputs.NEW_HASH }}'
             })
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: steps.changed-files.outputs.files == 'true'
         with:
           name: headscale-linux
@@ -86,16 +86,16 @@ jobs:
           - "GOARCH=arm64 GOOS=darwin"
           - "GOARCH=amd64 GOOS=darwin"
     steps:
-      - uses: actions/checkout@v4
-      - uses: nixbuild/nix-quick-install-action@master
-      - uses: nix-community/cache-nix-action@main
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run go cross compile
         run: env ${{ matrix.env }} nix develop --command -- go build -o "headscale" ./cmd/headscale
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: "headscale-${{ matrix.env }}"
           path: "headscale"
