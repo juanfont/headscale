@@ -14,6 +14,8 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Refactor OpenID Connect documentation
+  [#2625](https://github.com/juanfont/headscale/pull/2625)
 
 ## 0.26.1 (2025-06-06)
 
