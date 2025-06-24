@@ -93,7 +93,7 @@ nfpms:
       preremove: ./packaging/deb/prerm
     deb:
       lintian_overrides:
-        - no-changelog  # Our CHANGELOG.md uses a different formatting
+        - no-changelog # Our CHANGELOG.md uses a different formatting
         - no-manual-page
         - statically-linked-binary
 
