@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	xslices "golang.org/x/exp/slices"
@@ -142,23 +143,15 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// only update node status if the node channel was removed.
-		// in principal, it will be removed, but the client rapidly
-		// reconnects, the channel might be of another connection.
-		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
-			// TODO(kradalby): This can likely be made more effective, but likely most
-			// nodes has access to the same routes, so it might not be a big deal.
-			change, err := m.h.state.Disconnect(m.node)
-			if err != nil {
-				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
-			}
+		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
 
-			if change {
-				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
-				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-			}
+		// TODO(kradalby): This can likely be made more effective, but likely most
+		// nodes has access to the same routes, so it might not be a big deal.
+		disconnectChange, err := m.h.state.Disconnect(m.node)
+		if err != nil {
+			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
+		m.h.Change(disconnectChange)
 
 		m.afterServeLongPoll()
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
@@ -168,10 +161,7 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	if m.h.state.Connect(m.node) {
-		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
-		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
+	m.h.Change(m.h.state.Connect(m.node))
 
 	// TODO(kradalby): I think this didnt really work and can be reverted back to a normal write thing.
 	// Upgrade the writer to a ResponseController
@@ -186,15 +176,7 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-
-	go func() {
-		changed := m.h.state.Connect(m.node)
-		if changed {
-			ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
-			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		}
-	}()
+	m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.req.Compress, m.capVer)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
@@ -281,9 +263,9 @@ var keepAliveZstd = (func() []byte {
 func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
-	change := m.node.PeerChangeFromMapRequest(m.req)
+	peerChange := m.node.PeerChangeFromMapRequest(m.req)
 
-	m.node.ApplyPeerChange(&change)
+	m.node.ApplyPeerChange(&peerChange)
 
 	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
 
@@ -299,19 +281,16 @@ func (m *mapSession) handleEndpointUpdate() {
 	}
 	m.node.Hostinfo = m.req.Hostinfo
 
-	logTracePeerChange(m.node.Hostname, sendUpdate, &change)
+	logTracePeerChange(m.node.Hostname, sendUpdate, &peerChange)
 
 	// If there is no changes and nothing to save,
 	// return early.
-	if peerChangeEmpty(change) && !sendUpdate {
+	if peerChangeEmpty(peerChange) && !sendUpdate {
 		mapResponseEndpointUpdates.WithLabelValues("noop").Inc()
 		return
 	}
 
-	c := types.Change{NodeChange: types.NodeChange{
-		ID:              m.node.ID,
-		HostinfoChanged: true,
-	}}
+	c := change.NodeHostinfoChanged(m.node.ID)
 
 	// Check if the Hostinfo of the node has changed.
 	// If it has changed, check if there has been a change to
@@ -328,23 +307,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 		// Update the routes of the given node in the route manager to
 		// see if an update needs to be sent.
-		if m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-			ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
-			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		} else {
-			ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
-			m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
-
-			// TODO(kradalby): I am not sure if we need this?
-			// Send an update to the node itself with to ensure it
-			// has an updated packetfilter allowing the new route
-			// if it is defined in the ACL.
-			ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-			m.h.nodeNotifier.NotifyByNodeID(
-				ctx,
-				types.UpdateSelf(m.node.ID),
-				m.node.ID)
-		}
+		m.h.Change(m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...))
 
 		// If routes were auto-approved, we need to save the node to persist the changes
 		if routesAutoApproved {
@@ -379,24 +342,24 @@ func (m *mapSession) handleEndpointUpdate() {
 	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
 }
 
-func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.PeerChange) {
-	trace := log.Trace().Uint64("node.id", uint64(change.NodeID)).Str("hostname", hostname)
+func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcfg.PeerChange) {
+	trace := log.Trace().Uint64("node.id", uint64(peerChange.NodeID)).Str("hostname", hostname)
 
-	if change.Key != nil {
-		trace = trace.Str("node_key", change.Key.ShortString())
+	if peerChange.Key != nil {
+		trace = trace.Str("node_key", peerChange.Key.ShortString())
 	}
 
-	if change.DiscoKey != nil {
-		trace = trace.Str("disco_key", change.DiscoKey.ShortString())
+	if peerChange.DiscoKey != nil {
+		trace = trace.Str("disco_key", peerChange.DiscoKey.ShortString())
 	}
 
-	if change.Online != nil {
-		trace = trace.Bool("online", *change.Online)
+	if peerChange.Online != nil {
+		trace = trace.Bool("online", *peerChange.Online)
 	}
 
-	if change.Endpoints != nil {
-		eps := make([]string, len(change.Endpoints))
-		for idx, ep := range change.Endpoints {
+	if peerChange.Endpoints != nil {
+		eps := make([]string, len(peerChange.Endpoints))
+		for idx, ep := range peerChange.Endpoints {
 			eps[idx] = ep.String()
 		}
 
@@ -407,21 +370,21 @@ func logTracePeerChange(hostname string, hostinfoChange bool, change *tailcfg.Pe
 		trace = trace.Bool("hostinfo_changed", hostinfoChange)
 	}
 
-	if change.DERPRegion != 0 {
-		trace = trace.Int("derp_region", change.DERPRegion)
+	if peerChange.DERPRegion != 0 {
+		trace = trace.Int("derp_region", peerChange.DERPRegion)
 	}
 
-	trace.Time("last_seen", *change.LastSeen).Msg("PeerChange received")
+	trace.Time("last_seen", *peerChange.LastSeen).Msg("PeerChange received")
 }
 
-func peerChangeEmpty(chng tailcfg.PeerChange) bool {
-	return chng.Key == nil &&
-		chng.DiscoKey == nil &&
-		chng.Online == nil &&
-		chng.Endpoints == nil &&
-		chng.DERPRegion == 0 &&
-		chng.LastSeen == nil &&
-		chng.KeyExpiry == nil
+func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
+	return peerChange.Key == nil &&
+		peerChange.DiscoKey == nil &&
+		peerChange.Online == nil &&
+		peerChange.Endpoints == nil &&
+		peerChange.DERPRegion == 0 &&
+		peerChange.LastSeen == nil &&
+		peerChange.KeyExpiry == nil
 }
 
 func logPollFunc(

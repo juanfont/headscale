@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
@@ -352,8 +353,8 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
-) (*types.Node, types.Change, error) {
-	var change types.Change
+) (*types.Node, change.Change, error) {
+	var nodeChange change.Change
 	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
 		if reg, ok := hsdb.regCache.Get(registrationID); ok {
 			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
@@ -405,10 +406,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				}
 				close(reg.Registered)
 
-				change.NodeChange = types.NodeChange{
-					ID:      node.ID,
-					NewNode: true,
-				}
+				nodeChange = change.NodeAdded(node.ID)
 				return node, err
 			} else {
 				// If the node is already registered, this is a refresh.
@@ -417,10 +415,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 					return nil, err
 				}
 
-				change.NodeChange = types.NodeChange{
-					ID:            node.ID,
-					ExpiryChanged: true,
-				}
+				nodeChange = change.NodeExpiryChanged(node.ID)
 				return node, nil
 			}
 		}
@@ -428,7 +423,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 		return nil, ErrNodeNotFoundRegistrationCache
 	})
 
-	return node, change, err
+	return node, nodeChange, err
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
@@ -600,17 +595,18 @@ func ensureUniqueGivenName(
 // containing the expired nodes, and a boolean indicating if any nodes were found.
 func ExpireExpiredNodes(tx *gorm.DB,
 	lastCheck time.Time,
-) (time.Time, types.StateUpdate, bool) {
+) (time.Time, []change.Change, bool) {
 	// use the time of the start of the function to ensure we
 	// dont miss some nodes by returning it _after_ we have
 	// checked everything.
 	started := time.Now()
 
 	expired := make([]*tailcfg.PeerChange, 0)
+	var updates []change.Change
 
 	nodes, err := ListNodes(tx)
 	if err != nil {
-		return time.Unix(0, 0), types.StateUpdate{}, false
+		return time.Unix(0, 0), nil, false
 	}
 	for _, node := range nodes {
 		if node.IsExpired() && node.Expiry.After(lastCheck) {
@@ -618,14 +614,15 @@ func ExpireExpiredNodes(tx *gorm.DB,
 				NodeID:    tailcfg.NodeID(node.ID),
 				KeyExpiry: node.Expiry,
 			})
+			updates = append(updates, change.NodeExpiryChanged(node.ID))
 		}
 	}
 
 	if len(expired) > 0 {
-		return started, types.UpdatePeerPatch(expired...), true
+		return started, updates, true
 	}
 
-	return started, types.StateUpdate{}, false
+	return started, nil, false
 }
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after

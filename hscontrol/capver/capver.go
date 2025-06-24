@@ -1,5 +1,7 @@
 package capver
 
+//go:generate go run ../../tools/capver/main.go
+
 import (
 	"sort"
 	"strings"

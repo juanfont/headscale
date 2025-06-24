@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -83,34 +82,22 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				policyChanged, err := h.state.DeleteNode(node)
+				c, err := h.state.DeleteNode(node)
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
-				h.Change(types.Change{NodeChange: types.NodeChange{
-					ID:          node.ID,
-					RemovedNode: true,
-
-					// TODO(kradalby): Remove when specifics are implemented
-					FullChange: true,
-				}})
+				h.Change(c)
 			}
 
 		}
 
-		n, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
+		_, c, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
 
-		h.Change(types.Change{NodeChange: types.NodeChange{
-			ID:            node.ID,
-			ExpiryChanged: true,
-
-			// TODO(kradalby): Remove when specifics are implemented
-			FullChange: true,
-		}})
+		h.Change(c)
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -192,15 +179,13 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// eventbus.
 	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
 	// now since we dont update the node/pol here anymore
-	_ = policy.AutoApproveRoutes(h.polMan, node)
-	if err := h.db.DB.Save(node).Error; err != nil {
+	routeChange := h.state.AutoApproveRoutes(node)
+	if _, _, err := h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	h.Change(types.Change{NodeChange: types.NodeChange{
-		ID:      node.ID,
-		NewNode: true,
-	}})
+	changed.Node.RoutesChanged = routeChange
+	h.Change(changed)
 
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,

@@ -21,7 +21,7 @@ import (
 const (
 	releasesURL = "https://api.github.com/repos/tailscale/tailscale/releases"
 	rawFileURL  = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
-	outputFile  = "../capver_generated.go"
+	outputFile  = "../../hscontrol/capver/capver_generated.go"
 )
 
 type Release struct {

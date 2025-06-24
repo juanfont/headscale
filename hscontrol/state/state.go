@@ -17,6 +17,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/sasha-s/go-deadlock"
 	"gorm.io/gorm"
@@ -328,7 +329,7 @@ func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 }
 
 // updateNodeTx performs a database transaction to update a node and refresh the policy manager.
-func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, bool, error) {
+func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, change.Change, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -349,18 +350,24 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, change.None, err
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node update: %w", err)
+		return node, change.None, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	c := change.Change{}
+	if policyChanged {
+		c = c.Merge(change.PolicyUpdate())
+	}
+	// Basic node change without specific details since this is a generic update
+	c = c.Merge(change.NodeFullUpdate(node.ID))
+	return node, c, nil
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
@@ -385,41 +392,53 @@ func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
 
 // DeleteNode permanently removes a node and cleans up associated resources.
 // Returns whether policies changed and any error. This operation is irreversible.
-func (s *State) DeleteNode(node *types.Node) (bool, error) {
+func (s *State) DeleteNode(node *types.Node) (change.Change, error) {
 	err := s.db.DeleteNode(node)
 	if err != nil {
-		return false, err
+		return change.None, err
 	}
+
+	c := change.NodeRemoved(node.ID).Merge(change.NodeFullUpdate(node.ID))
 
 	// Check if policy manager needs updating after node deletion
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return false, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+		return change.None, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+	}
+	
+	if policyChanged {
+		c = c.Merge(change.PolicyUpdate())
 	}
 
-	return policyChanged, nil
+	return c, nil
 }
 
-func (s *State) Connect(node *types.Node) bool {
-	_ = s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+func (s *State) Connect(node *types.Node) change.Change {
+	c := change.NodeOnline(node.ID)
+	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
 
-	// TODO(kradalby): this should be more granular, allowing us to
-	// only send a online update change.
-	return true
+	if routeChange {
+		c = c.Merge(change.NodeRoutesChanged(node.ID))
+	}
+
+	return c
 }
 
-func (s *State) Disconnect(node *types.Node) (bool, error) {
-	// TODO(kradalby): This node should update the in memory state
-	_, polChanged, err := s.SetLastSeen(node.ID, time.Now())
+func (s *State) Disconnect(node *types.Node) (change.Change, error) {
+	c := change.NodeOffline(node.ID)
+	
+	_, lastSeenChange, err := s.SetLastSeen(node.ID, time.Now())
 	if err != nil {
-		return false, fmt.Errorf("disconnecting node: %w", err)
+		return c, fmt.Errorf("disconnecting node: %w", err)
+	}
+	c = c.Merge(lastSeenChange)
+
+	if routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...); routeChange {
+		c = c.Merge(change.NodeRoutesChanged(node.ID))
 	}
 
-	changed := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
-
-	// TODO(kradalby): the returned change should be more nuanced allowing us to
-	// send more directed updates.
-	return changed || polChanged, nil
+	// TODO(kradalby): This node should update the in memory state
+	return c, nil
 }
 
 // GetNodeByID retrieves a node by ID.
@@ -459,45 +478,76 @@ func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, change.Change, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
+	if err != nil {
+		return nil, change.None, fmt.Errorf("setting node expiry: %w", err)
+	}
+	c = c.Merge(change.NodeExpiryChanged(nodeID))
+
+	// TODO(kradalby): This should not be necessary, but we need to
+	// ensure updates for now.
+	c = c.Merge(change.NodeFullUpdate(nodeID))
+	return n, c, nil
 }
 
 // SetNodeTags assigns tags to a node for use in access control policies.
-func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, change.Change, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
+	if err != nil {
+		return nil, change.None, fmt.Errorf("setting node tags: %w", err)
+	}
+
+	c = c.Merge(change.NodeTagsChanged(nodeID))
+	return n, c, nil
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
-func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, change.Change, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
+	if err != nil {
+		return nil, change.None, fmt.Errorf("setting approved routes: %w", err)
+	}
+
+	c = c.Merge(change.NodeRoutesChanged(nodeID))
+	return n, c, nil
 }
 
 // RenameNode changes the display name of a node.
-func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, change.Change, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
+	if err != nil {
+		return nil, change.None, fmt.Errorf("renaming node: %w", err)
+	}
+	c = c.Merge(change.NodeFullUpdate(nodeID))
+	return n, c, nil
 }
 
 // SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
+func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, change.Change, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
 }
 
 // AssignNodeToUser transfers a node to a different user.
-func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, change.Change, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
+	if err != nil {
+		return nil, change.None, fmt.Errorf("assigning node to user: %w", err)
+	}
+	c = c.Merge(change.NodeFullUpdate(nodeID))
+	return n, c, nil
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -507,7 +557,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
-func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
+func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Change, bool) {
 	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
 
@@ -552,8 +602,12 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 }
 
 // SetNodeRoutes sets the primary routes for a node.
-func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) bool {
-	return s.primaryRoutes.SetRoutes(nodeID, routes...)
+func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) change.Change {
+	if s.primaryRoutes.SetRoutes(nodeID, routes...) {
+		return change.NodeRoutesChanged(nodeID)
+	}
+
+	return change.None
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
@@ -637,10 +691,10 @@ func (s *State) HandleNodeFromAuthPath(
 	userID types.UserID,
 	expiry *time.Time,
 	registrationMethod string,
-) (*types.Node, bool, error) {
+) (*types.Node, change.Change, error) {
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, err
+		return nil, change.None, err
 	}
 
 	return s.db.HandleNodeFromAuthPath(
@@ -656,12 +710,12 @@ func (s *State) HandleNodeFromAuthPath(
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-) (*types.Node, bool, error) {
+) (*types.Node, change.Change, error) {
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 
 	err = pak.Validate()
 	if err != nil {
-		return nil, false, err
+		return nil, change.None, err
 	}
 
 	nodeToRegister := types.Node{
@@ -688,7 +742,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, fmt.Errorf("allocating IPs: %w", err)
+		return nil, change.None, fmt.Errorf("allocating IPs: %w", err)
 	}
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -710,7 +764,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("writing node to database: %w", err)
+		return nil, change.None, fmt.Errorf("writing node to database: %w", err)
 	}
 
 	// Check if policy manager needs updating
@@ -718,10 +772,14 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// We need to ensure that the policy manager is aware of this new node.
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
+		return nil, change.None, fmt.Errorf("failed to update policy manager after node registration: %w", err)
 	}
 
-	return node, policyChanged, nil
+	c := change.NodeAdded(node.ID)
+	if policyChanged {
+		c = c.Merge(change.PolicyUpdate())
+	}
+	return node, c, nil
 }
 
 // AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.

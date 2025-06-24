@@ -30,6 +30,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	zerolog "github.com/philip-bui/grpc-zerolog"
 	"github.com/pkg/profile"
@@ -133,12 +134,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			return
 		}
 
-		// Send policy update notifications if needed
-		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname)
-			app.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		}
-
+		app.Change(policyChanged)
 		log.Debug().Uint64("node.id", ni.Uint64()).Msgf("deleted ephemeral node")
 	})
 	app.ephemeralGC = ephemeralGC
@@ -153,8 +149,6 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			&app,
 			cfg.ServerURL,
 			&cfg.OIDC,
-			app.state,
-			app.nodeNotifier,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {
@@ -260,22 +254,17 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-expireTicker.C:
-			var update types.StateUpdate
+			var expiredNodeChanges []change.Change
 			var changed bool
 
-			lastExpiryCheck, update, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
+			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
 
 			if changed {
-				log.Trace().Interface("nodes", update.ChangePatches).Msgf("expiring nodes")
+				log.Trace().Interface("changes", expiredNodeChanges).Msgf("expiring nodes")
 
-				// TODO(kradalby): Not sure how I feel about this one, feel like we
-				// can be more clever? but at the same time, if they are passed straight
-				// through later, its fine?
-				for _, node := range update.ChangePatches {
-					h.Change(types.Change{NodeChange: types.NodeChange{
-						ID:            types.NodeID(node.NodeID),
-						ExpiryChanged: true,
-					}})
+				// Send the changes directly since they're already in the new format
+				for _, nodeChange := range expiredNodeChanges {
+					h.Change(nodeChange)
 				}
 			}
 
@@ -287,7 +276,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				derpMap.Regions[region.RegionID] = &region
 			}
 
-			h.Change(types.Change{DERPChanged: true})
+			h.Change(change.DERPUpdate())
 
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
@@ -295,7 +284,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			h.Change(types.Change{ExtraRecordsChanged: true})
+			h.Change(change.ExtraRecordsUpdate())
 		}
 	}
 }
@@ -558,8 +547,7 @@ func (h *Headscale) Serve() error {
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
-	h.DERPMap = derp.GetDERPMap(h.cfg.DERP)
-	h.mapBatcher = mapper.NewBatcherAndMapper(h.db, h.cfg, h.DERPMap, h.polMan, h.primaryRoutes)
+	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
 
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
@@ -837,12 +825,12 @@ func (h *Headscale) Serve() error {
 					log.Info().
 						Msg("ACL policy successfully reloaded, notifying nodes of change")
 
-					err = h.autoApproveNodes()
+					err = h.state.AutoApproveNodes()
 					if err != nil {
 						log.Error().Err(err).Msg("failed to approve routes after new policy")
 					}
 
-					h.Change(types.Change{PolicyChanged: true})
+					h.Change(change.PolicyUpdate())
 				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
@@ -1048,4 +1036,13 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	}
 
 	return &machineKey, nil
+}
+
+// Change is used to send changes to nodes.
+// All change should be enqueued here and empty will be automatically
+// ignored.
+func (h *Headscale) Change(c change.Change) {
+	if c.HasChange() {
+		h.mapBatcher.AddWork(&c)
+	}
 }

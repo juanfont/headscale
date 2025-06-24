@@ -5,6 +5,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -45,7 +46,7 @@ type Batcher struct {
 	// this should serve for the experiment.
 	cancelCh chan struct{}
 
-	workCh chan *types.Change
+	workCh chan *change.Change
 }
 
 func NewBatcherAndMapper(
@@ -64,7 +65,7 @@ func NewBatcher(mapper *mapper) *Batcher {
 		mapper:   mapper,
 		cancelCh: make(chan struct{}),
 		// TODO: No limit for now, this needs to be changed
-		workCh: make(chan *types.Change, (1<<16)-1),
+		workCh: make(chan *change.Change, (1<<16)-1),
 
 		nodes:     make(map[types.NodeID]nodeConn),
 		connected: make(map[types.NodeID]*time.Time),
@@ -107,10 +108,8 @@ func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, ver
 	// TODO(kradalby): Handle:
 	// - Updating peers with online status
 	// - Updating routes in routemanager and peers
-	b.AddWork(&types.Change{NodeChange: types.NodeChange{
-		ID:     id,
-		Online: true,
-	}})
+	chg := change.NodeOnline(id)
+	b.AddWork(&chg)
 }
 
 func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
@@ -131,9 +130,9 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
 	// - Updating routes in routemanager and peers
 }
 
-func (b *Batcher) AddWork(change *types.Change) {
-	log.Trace().Msgf("adding work: %v", change)
-	b.workCh <- change
+func (b *Batcher) AddWork(c *change.Change) {
+	log.Trace().Msgf("adding work: %v", c)
+	b.workCh <- c
 }
 
 func (b *Batcher) IsConnected(id types.NodeID) bool {
@@ -200,7 +199,7 @@ func (b *Batcher) doWork() {
 // mean a lot of goroutines, hanging around.
 // Another is just a worker pool that picks up work and processes it,
 // and passes it on to the nodes. That might be complicated with order?
-func (b *Batcher) processChange(c *types.Change) {
+func (b *Batcher) processChange(c *change.Change) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -229,7 +228,7 @@ const (
 	fullUpdate
 )
 
-func determineChange(c *types.Change) changeUpdate {
+func determineChange(c *change.Change) changeUpdate {
 	if c == nil {
 		return ignoreUpdate
 	}
@@ -243,24 +242,24 @@ func determineChange(c *types.Change) changeUpdate {
 		return fullUpdate
 	}
 
-	if c.NodeChange.ID != 0 {
-		if c.NodeChange.OnlyKeyChange() {
+	if c.Node.ID != 0 {
+		if c.Node.OnlyKeyChange() {
 			return partialUpdate
 		}
 
-		if c.NodeChange.ImportantNodeChange() {
+		if c.Node.ImportantChange() {
 			return fullUpdate
 		}
 	}
 
-	if c.FullUpdate() {
+	if c.NeedsFullUpdate() {
 		return fullUpdate
 	}
 
 	return fullUpdate
 }
 
-func (nc *nodeConn) change(c *types.Change) error {
+func (nc *nodeConn) change(c *change.Change) error {
 	switch determineChange(c) {
 	case partialUpdate:
 		return nc.partialUpdate(c)
@@ -272,7 +271,7 @@ func (nc *nodeConn) change(c *types.Change) error {
 	}
 }
 
-func (nc *nodeConn) partialUpdate(c *types.Change) error {
+func (nc *nodeConn) partialUpdate(c *change.Change) error {
 	var data []byte
 	var err error
 	if c.DERPChanged {
