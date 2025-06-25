@@ -18,8 +18,8 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/tailcfg"
 	"golang.org/x/exp/slices"
+	"tailscale.com/tailcfg"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -128,7 +128,7 @@ func TestUserCommand(t *testing.T) {
 			"list",
 			"--output",
 			"json",
-			"--name=user1",
+			"--user=user1",
 		},
 		&listByUsername,
 	)
@@ -219,7 +219,7 @@ func TestUserCommand(t *testing.T) {
 			"users",
 			"destroy",
 			"--force",
-			"--name=newname",
+			"--user=newname",
 		},
 	)
 	assert.Nil(t, err)
@@ -272,7 +272,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--user",
+				"-i",
 				"1",
 				"create",
 				"--reusable",
@@ -298,7 +298,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"list",
 			"--output",
@@ -355,7 +355,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"expire",
 			listedPreAuthKeys[1].GetKey(),
@@ -369,7 +369,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"list",
 			"--output",
@@ -409,7 +409,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"create",
 			"--reusable",
@@ -426,7 +426,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"list",
 			"--output",
@@ -471,7 +471,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"create",
 			"--reusable=true",
@@ -488,7 +488,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"create",
 			"--ephemeral=true",
@@ -508,7 +508,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			"1",
 			"list",
 			"--output",
@@ -559,7 +559,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
+			"-i",
 			strconv.FormatUint(u2.GetId(), 10),
 			"create",
 			"--reusable",
@@ -860,7 +860,7 @@ func TestNodeTagCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"tag",
-			"-i", "1",
+			"-n", "1",
 			"-t", "tag:test",
 			"--output", "json",
 		},
@@ -875,7 +875,7 @@ func TestNodeTagCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"tag",
-			"-i", "2",
+			"-n", "2",
 			"-t", "wrong-tag",
 			"--output", "json",
 		},
@@ -912,8 +912,6 @@ func TestNodeTagCommand(t *testing.T) {
 		"should find a node with the tag 'tag:test' in the list of nodes",
 	)
 }
-
-
 
 func TestNodeAdvertiseTagCommand(t *testing.T) {
 	IntegrationSkip(t)
@@ -1250,7 +1248,7 @@ func TestNodeCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"delete",
-			"--identifier",
+			"--node-id",
 			// Delete the last added machine
 			"4",
 			"--output",
@@ -1376,7 +1374,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"expire",
-				"--identifier",
+				"--node-id",
 				fmt.Sprintf("%d", listAll[idx].GetId()),
 			},
 		)
@@ -1503,7 +1501,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"rename",
-				"--identifier",
+				"--node-id",
 				fmt.Sprintf("%d", listAll[idx].GetId()),
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
@@ -1541,7 +1539,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"rename",
-			"--identifier",
+			"--node-id",
 			fmt.Sprintf("%d", listAll[4].GetId()),
 			strings.Repeat("t", 64),
 		},
@@ -1642,9 +1640,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node-id",
 			strconv.FormatUint(node.GetId(), 10),
-			"--user",
+			"--identifier",
 			strconv.FormatUint(userMap["new-user"].GetId(), 10),
 			"--output",
 			"json",
@@ -1680,9 +1678,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node-id",
 			nodeID,
-			"--user",
+			"--identifier",
 			"999",
 			"--output",
 			"json",
@@ -1691,7 +1689,7 @@ func TestNodeMoveCommand(t *testing.T) {
 	assert.ErrorContains(
 		t,
 		err,
-		"user not found",
+		"Unable to determine user",
 	)
 	assert.Equal(t, node.GetUser().GetName(), "new-user")
 
@@ -1701,9 +1699,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node-id",
 			nodeID,
-			"--user",
+			"--identifier",
 			strconv.FormatUint(userMap["old-user"].GetId(), 10),
 			"--output",
 			"json",
@@ -1720,9 +1718,9 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node-id",
 			nodeID,
-			"--user",
+			"--identifier",
 			strconv.FormatUint(userMap["old-user"].GetId(), 10),
 			"--output",
 			"json",
