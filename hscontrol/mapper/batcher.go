@@ -158,20 +158,22 @@ func (b *Batcher) isLikelyConnectedLocked(id types.NodeID) bool {
 		return true
 	}
 
+	// TODO(kradalby): Currently some tests depend on getting this offline immediately
+	// so might have to rethink / not do this.
 	// If the value is not nil, it means the node is disconnected
 	// but we check if it was disconnected recently (within 10 seconds)
-	if time.Since(*b.connected[id]) < 10*time.Second {
-		return true
-	}
+	// if time.Since(*b.connected[id]) < 10*time.Second {
+	// 	return true
+	// }
 
 	return false
 }
 
-func (b *Batcher) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
+func (b *Batcher) LikelyConnectedMap() *xsync.Map[types.NodeID, bool] {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
-	ret := xsync.NewMapOf[types.NodeID, bool]()
+	ret := xsync.NewMap[types.NodeID, bool]()
 
 	for id := range b.connected {
 		ret.Store(id, b.isLikelyConnectedLocked(id))
