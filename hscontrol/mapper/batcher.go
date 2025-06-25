@@ -159,7 +159,7 @@ func (b *Batcher) isLikelyConnectedLocked(id types.NodeID) bool {
 	}
 
 	// If the value is not nil, it means the node is disconnected
-	// but we check if it was disconnected recently (within 5 seconds)
+	// but we check if it was disconnected recently (within 10 seconds)
 	if time.Since(*b.connected[id]) < 10*time.Second {
 		return true
 	}

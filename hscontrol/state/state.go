@@ -20,7 +20,9 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/sasha-s/go-deadlock"
+	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
@@ -371,23 +373,27 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
-func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
+func (s *State) SaveNode(node *types.Node) (*types.Node, change.Change, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, false, fmt.Errorf("saving node: %w", err)
+		return nil, change.None, fmt.Errorf("saving node: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node save: %w", err)
+		return node, change.None, fmt.Errorf("failed to update policy manager after node save: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	if policyChanged {
+		return node, change.PolicyUpdate(), nil
+	}
+
+	return node, change.None, nil
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
@@ -405,7 +411,7 @@ func (s *State) DeleteNode(node *types.Node) (change.Change, error) {
 	if err != nil {
 		return change.None, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
 	}
-	
+
 	if policyChanged {
 		c = c.Merge(change.PolicyUpdate())
 	}
@@ -426,7 +432,7 @@ func (s *State) Connect(node *types.Node) change.Change {
 
 func (s *State) Disconnect(node *types.Node) (change.Change, error) {
 	c := change.NodeOffline(node.ID)
-	
+
 	_, lastSeenChange, err := s.SetLastSeen(node.ID, time.Now())
 	if err != nil {
 		return c, fmt.Errorf("disconnecting node: %w", err)
@@ -867,4 +873,118 @@ func (s *State) autoApproveNodes() error {
 	}
 
 	return nil
+}
+
+// TODO(kradalby): This should just take the node ID?
+func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapRequest) (change.Change, error) {
+	// TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
+	// which means we could shortcut the whole change thing if there are no other important updates.
+	peerChange := node.PeerChangeFromMapRequest(req)
+
+	node.ApplyPeerChange(&peerChange)
+
+	sendUpdate, routesChanged := hostInfoChanged(node.Hostinfo, req.Hostinfo)
+
+	// The node might not set NetInfo if it has not changed and if
+	// the full HostInfo object is overwritten, the information is lost.
+	// If there is no NetInfo, keep the previous one.
+	// From 1.66 the client only sends it if changed:
+	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
+	// TODO(kradalby): evaluate if we need better comparing of hostinfo
+	// before we take the changes.
+	if req.Hostinfo.NetInfo == nil && node.Hostinfo != nil {
+		req.Hostinfo.NetInfo = node.Hostinfo.NetInfo
+	}
+	node.Hostinfo = req.Hostinfo
+
+	// If there is no changes and nothing to save,
+	// return early.
+	if peerChangeEmpty(peerChange) && !sendUpdate {
+		// mapResponseEndpointUpdates.WithLabelValues("noop").Inc()
+		return change.None, nil
+	}
+
+	c := change.NodeHostinfoChanged(node.ID)
+
+	// Check if the Hostinfo of the node has changed.
+	// If it has changed, check if there has been a change to
+	// the routable IPs of the host and update them in
+	// the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the route change.
+	// If the hostinfo has changed, but not the routes, just update
+	// hostinfo and let the function continue.
+	if routesChanged {
+		// Auto approve any routes that have been defined in policy as
+		// auto approved. Check if this actually changed the node.
+		_ = s.AutoApproveRoutes(node)
+
+		// Update the routes of the given node in the route manager to
+		// see if an update needs to be sent.
+		c.Merge(s.SetNodeRoutes(node.ID, node.SubnetRoutes()...))
+	}
+
+	// Check if there has been a change to Hostname and update them
+	// in the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the hostname change.
+	node.ApplyHostnameFromHostInfo(req.Hostinfo)
+
+	_, policyChange, err := s.SaveNode(node)
+	if err != nil {
+		return change.None, err
+	}
+
+	return c.Merge(policyChange), nil
+}
+
+// hostInfoChanged reports if hostInfo has changed in two ways,
+// - first bool reports if an update needs to be sent to nodes
+// - second reports if there has been changes to routes
+// the caller can then use this info to save and update nodes
+// and routes as needed.
+func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
+	if old.Equal(new) {
+		return false, false
+	}
+
+	if old == nil && new != nil {
+		return true, true
+	}
+
+	// Routes
+	oldRoutes := make([]netip.Prefix, 0)
+	if old != nil {
+		oldRoutes = old.RoutableIPs
+	}
+	newRoutes := new.RoutableIPs
+
+	tsaddr.SortPrefixes(oldRoutes)
+	tsaddr.SortPrefixes(newRoutes)
+
+	if !xslices.Equal(oldRoutes, newRoutes) {
+		return true, true
+	}
+
+	// Services is mostly useful for discovery and not critical,
+	// except for peerapi, which is how nodes talk to each other.
+	// If peerapi was not part of the initial mapresponse, we
+	// need to make sure its sent out later as it is needed for
+	// Taildrop.
+	// TODO(kradalby): Length comparison is a bit naive, replace.
+	if len(old.Services) != len(new.Services) {
+		return true, false
+	}
+
+	return false, false
+}
+
+func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
+	return peerChange.Key == nil &&
+		peerChange.DiscoKey == nil &&
+		peerChange.Online == nil &&
+		peerChange.Endpoints == nil &&
+		peerChange.DERPRegion == 0 &&
+		peerChange.LastSeen == nil &&
+		peerChange.KeyExpiry == nil
 }

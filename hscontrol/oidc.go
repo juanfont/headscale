@@ -547,18 +547,12 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
 	_ = a.h.state.AutoApproveRoutes(node)
-	_, policyChanged, err := a.h.state.SaveNode(node)
+	_, policyChange, err := a.h.state.SaveNode(node)
 	if err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if policyChanged {
-		a.h.Change(change.PolicyUpdate())
-	}
-
-	if nodeChange.HasChange() {
-		a.h.Change(nodeChange)
-	}
+	a.h.Change(nodeChange.Merge(policyChange))
 
 	return nodeChange.Node.NewNode, nil
 }

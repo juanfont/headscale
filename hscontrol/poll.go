@@ -5,15 +5,11 @@ import (
 	"encoding/json"
 	"math/rand/v2"
 	"net/http"
-	"net/netip"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
-	xslices "golang.org/x/exp/slices"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/must"
 	"tailscale.com/util/zstdframe"
@@ -123,9 +119,16 @@ func (m *mapSession) serve() {
 	// the response and just wants a 200.
 	// !req.stream && req.OmitPeers
 	if m.isEndpointUpdate() {
-		m.handleEndpointUpdate()
+		c, err := m.h.state.UpdateNodeFromMapRequest(m.node, m.req)
+		if err != nil {
+			httpError(m.w, err)
+			return
+		}
 
-		return
+		m.h.Change(c)
+
+		m.w.WriteHeader(http.StatusOK)
+		mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
 	}
 }
 
@@ -260,88 +263,6 @@ var keepAliveZstd = (func() []byte {
 	return zstdframe.AppendEncode(nil, msg, zstdframe.FastestCompression)
 })()
 
-func (m *mapSession) handleEndpointUpdate() {
-	m.tracef("received endpoint update")
-
-	peerChange := m.node.PeerChangeFromMapRequest(m.req)
-
-	m.node.ApplyPeerChange(&peerChange)
-
-	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
-
-	// The node might not set NetInfo if it has not changed and if
-	// the full HostInfo object is overwritten, the information is lost.
-	// If there is no NetInfo, keep the previous one.
-	// From 1.66 the client only sends it if changed:
-	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
-	// TODO(kradalby): evaluate if we need better comparing of hostinfo
-	// before we take the changes.
-	if m.req.Hostinfo.NetInfo == nil && m.node.Hostinfo != nil {
-		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
-	}
-	m.node.Hostinfo = m.req.Hostinfo
-
-	logTracePeerChange(m.node.Hostname, sendUpdate, &peerChange)
-
-	// If there is no changes and nothing to save,
-	// return early.
-	if peerChangeEmpty(peerChange) && !sendUpdate {
-		mapResponseEndpointUpdates.WithLabelValues("noop").Inc()
-		return
-	}
-
-	c := change.NodeHostinfoChanged(m.node.ID)
-
-	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update them in
-	// the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the route change.
-	// If the hostinfo has changed, but not the routes, just update
-	// hostinfo and let the function continue.
-	if routesChanged {
-		// Auto approve any routes that have been defined in policy as
-		// auto approved. Check if this actually changed the node.
-		routesAutoApproved := m.h.state.AutoApproveRoutes(m.node)
-
-		// Update the routes of the given node in the route manager to
-		// see if an update needs to be sent.
-		m.h.Change(m.h.state.SetNodeRoutes(m.node.ID, m.node.SubnetRoutes()...))
-
-		// If routes were auto-approved, we need to save the node to persist the changes
-		if routesAutoApproved {
-			if _, _, err := m.h.state.SaveNode(m.node); err != nil {
-				m.errf(err, "Failed to save auto-approved routes to node")
-				http.Error(m.w, "", http.StatusInternalServerError)
-				mapResponseEndpointUpdates.WithLabelValues("error").Inc()
-				return
-			}
-		}
-	}
-
-	// Check if there has been a change to Hostname and update them
-	// in the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the hostname change.
-	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
-
-	// TODO(kradalby): handle policy change?
-	_, _, err := m.h.state.SaveNode(m.node)
-	if err != nil {
-		m.errf(err, "Failed to persist/update node in the database")
-		http.Error(m.w, "", http.StatusInternalServerError)
-		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
-
-		return
-	}
-
-	m.h.Change(c)
-
-	m.w.WriteHeader(http.StatusOK)
-	mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
-}
-
 func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcfg.PeerChange) {
 	trace := log.Trace().Uint64("node.id", uint64(peerChange.NodeID)).Str("hostname", hostname)
 
@@ -375,16 +296,6 @@ func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcf
 	}
 
 	trace.Time("last_seen", *peerChange.LastSeen).Msg("PeerChange received")
-}
-
-func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
-	return peerChange.Key == nil &&
-		peerChange.DiscoKey == nil &&
-		peerChange.Online == nil &&
-		peerChange.Endpoints == nil &&
-		peerChange.DERPRegion == 0 &&
-		peerChange.LastSeen == nil &&
-		peerChange.KeyExpiry == nil
 }
 
 func logPollFunc(
@@ -428,45 +339,4 @@ func logPollFunc(
 				Err(err).
 				Msgf(msg, a...)
 		}
-}
-
-// hostInfoChanged reports if hostInfo has changed in two ways,
-// - first bool reports if an update needs to be sent to nodes
-// - second reports if there has been changes to routes
-// the caller can then use this info to save and update nodes
-// and routes as needed.
-func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
-	if old.Equal(new) {
-		return false, false
-	}
-
-	if old == nil && new != nil {
-		return true, true
-	}
-
-	// Routes
-	oldRoutes := make([]netip.Prefix, 0)
-	if old != nil {
-		oldRoutes = old.RoutableIPs
-	}
-	newRoutes := new.RoutableIPs
-
-	tsaddr.SortPrefixes(oldRoutes)
-	tsaddr.SortPrefixes(newRoutes)
-
-	if !xslices.Equal(oldRoutes, newRoutes) {
-		return true, true
-	}
-
-	// Services is mostly useful for discovery and not critical,
-	// except for peerapi, which is how nodes talk to each other.
-	// If peerapi was not part of the initial mapresponse, we
-	// need to make sure its sent out later as it is needed for
-	// Taildrop.
-	// TODO(kradalby): Length comparison is a bit naive, replace.
-	if len(old.Services) != len(new.Services) {
-		return true, false
-	}
-
-	return false, false
 }
