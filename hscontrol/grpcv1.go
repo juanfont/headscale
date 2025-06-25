@@ -773,4 +773,24 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	return &v1.DebugCreateNodeResponse{Node: newNode.Node.Proto()}, nil
 }
 
+func (api headscaleV1APIServer) Health(
+	ctx context.Context,
+	request *v1.HealthRequest,
+) (*v1.HealthResponse, error) {
+	var healthErr error
+	response := &v1.HealthResponse{}
+
+	if err := api.h.state.PingDB(ctx); err != nil {
+		healthErr = fmt.Errorf("database ping failed: %w", err)
+	} else {
+		response.DatabaseConnectivity = true
+	}
+
+	if healthErr != nil {
+		log.Error().Err(healthErr).Msg("Health check failed")
+	}
+
+	return response, healthErr
+}
+
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
