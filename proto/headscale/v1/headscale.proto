@@ -182,6 +182,14 @@ service HeadscaleService {
   }
   // --- Policy end ---
 
+  // --- Health start ---
+  rpc Health(HealthRequest) returns (HealthResponse) {
+    option (google.api.http) = {
+      get : "/api/v1/health"
+    };
+  }
+  // --- Health end ---
+
   // Implement Tailscale API
   // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
   //     option(google.api.http) = {
@@ -208,4 +216,15 @@ service HeadscaleService {
   //         post : "/api/v1/device/{id}/routes"
   //     };
   // }
+}
+
+enum HealthStatus {
+  Fail = 0;
+  Pass = 1;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  HealthStatus status = 1;
 }
