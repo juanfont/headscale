@@ -36,11 +36,7 @@ type UserChange struct {
 }
 
 var None = Change{}
-
-
-func Full() Change {
-	return Change{Full: true}
-}
+var Full = Change{Full: true}
 
 func (c Change) NeedsFullUpdate() bool {
 	if c.Full {

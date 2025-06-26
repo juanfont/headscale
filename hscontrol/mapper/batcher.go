@@ -12,6 +12,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
+	"tailscale.com/util/mak"
 )
 
 var (
@@ -30,6 +31,7 @@ func init() {
 type Batcher struct {
 	mu deadlock.RWMutex
 
+	tick   *time.Ticker
 	mapper *mapper
 
 	// connected is a map of NodeID to the time the closed a connection.
@@ -42,11 +44,15 @@ type Batcher struct {
 	// mapResp to a client.
 	nodes map[types.NodeID]nodeConn
 
+	// partialChanges
+	partialChanges    map[types.NodeID]change.Change
+	hasPartialChanges bool
+
 	// TODO: we will probably have more workers, but for now,
 	// this should serve for the experiment.
 	cancelCh chan struct{}
 
-	workCh chan *change.Change
+	workCh chan work
 }
 
 func NewBatcherAndMapper(
@@ -54,18 +60,19 @@ func NewBatcherAndMapper(
 	state *state.State,
 ) *Batcher {
 	mapper := newMapper(cfg, state)
-	b := NewBatcher(mapper)
+	b := NewBatcher(cfg.Tuning.BatchChangeDelay, mapper)
 	mapper.batcher = b
 
 	return b
 }
 
-func NewBatcher(mapper *mapper) *Batcher {
+func NewBatcher(batchTime time.Duration, mapper *mapper) *Batcher {
 	return &Batcher{
 		mapper:   mapper,
+		tick:     time.NewTicker(batchTime),
 		cancelCh: make(chan struct{}),
 		// TODO: No limit for now, this needs to be changed
-		workCh: make(chan *change.Change, (1<<16)-1),
+		workCh: make(chan work, (1<<16)-1),
 
 		nodes:     make(map[types.NodeID]nodeConn),
 		connected: make(map[types.NodeID]*time.Time),
@@ -74,6 +81,7 @@ func NewBatcher(mapper *mapper) *Batcher {
 
 func (b *Batcher) Close() {
 	b.cancelCh <- struct{}{}
+	close(b.workCh)
 }
 
 func (b *Batcher) Start() {
@@ -109,7 +117,7 @@ func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, ver
 	// - Updating peers with online status
 	// - Updating routes in routemanager and peers
 	chg := change.NodeOnline(id)
-	b.AddWork(&chg)
+	b.addWorkLocked(chg)
 }
 
 func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
@@ -130,9 +138,60 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
 	// - Updating routes in routemanager and peers
 }
 
-func (b *Batcher) AddWork(c *change.Change) {
-	log.Trace().Msgf("adding work: %v", c)
-	b.workCh <- c
+func (b *Batcher) AddWork(c change.Change) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.addWorkLocked(c)
+}
+
+func (b *Batcher) addWorkLocked(c change.Change) {
+	switch determineChange(c) {
+	case partialUpdate:
+		b.addPartialLocked(c)
+	case fullUpdate:
+		b.flushLocked(true)
+	default:
+		log.Trace().Msgf("ignoring change: %v", c)
+	}
+}
+
+func (b *Batcher) addPartialLocked(c change.Change) {
+	if cc, ok := b.partialChanges[c.Node.ID]; ok {
+		b.partialChanges[c.Node.ID] = cc.Merge(c)
+		return
+	}
+
+	mak.Set(&b.partialChanges, c.Node.ID, c)
+	b.hasPartialChanges = true
+}
+
+func (b *Batcher) flush(full bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.flushLocked(full)
+}
+
+func (b *Batcher) flushLocked(full bool) {
+	if full {
+		b.hasPartialChanges = false
+		clear(b.partialChanges)
+
+		for _, nc := range b.nodes {
+			b.workCh <- work{change.Full, &nc}
+		}
+	}
+
+	if b.hasPartialChanges {
+		for _, c := range b.partialChanges {
+			for _, nc := range b.nodes {
+				b.workCh <- work{c, &nc}
+			}
+		}
+		b.hasPartialChanges = false
+		clear(b.partialChanges)
+	}
 }
 
 func (b *Batcher) IsConnected(id types.NodeID) bool {
@@ -183,12 +242,18 @@ func (b *Batcher) LikelyConnectedMap() *xsync.Map[types.NodeID, bool] {
 }
 
 func (b *Batcher) doWork() {
+	// TODO(kradalby): figure out if it will be this integrated
+	// and make number configurable
+	for range 4 {
+		b.startWorker()
+	}
+
 	for {
 		select {
 		case <-b.cancelCh:
 			return
-		case work := <-b.workCh:
-			b.processChange(work)
+		case <-b.tick.C:
+			b.flush(false)
 		}
 	}
 }
@@ -201,7 +266,7 @@ func (b *Batcher) doWork() {
 // mean a lot of goroutines, hanging around.
 // Another is just a worker pool that picks up work and processes it,
 // and passes it on to the nodes. That might be complicated with order?
-func (b *Batcher) processChange(c *change.Change) {
+func (b *Batcher) processChange(c change.Change) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -211,6 +276,26 @@ func (b *Batcher) processChange(c *change.Change) {
 		err := node.change(c)
 		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msgf("processing work for node %d", id)
 	}
+}
+
+type work struct {
+	c  change.Change
+	nc *nodeConn
+}
+
+func (b *Batcher) startWorker() {
+	go func() {
+		for {
+			select {
+			case w, ok := <-b.workCh:
+				if !ok {
+					return
+				}
+
+				w.nc.change(w.c)
+			}
+		}
+	}()
 }
 
 type nodeConn struct {
@@ -230,11 +315,7 @@ const (
 	fullUpdate
 )
 
-func determineChange(c *change.Change) changeUpdate {
-	if c == nil {
-		return ignoreUpdate
-	}
-
+func determineChange(c change.Change) changeUpdate {
 	if c.DERPChanged {
 		return partialUpdate
 	}
@@ -261,7 +342,7 @@ func determineChange(c *change.Change) changeUpdate {
 	return fullUpdate
 }
 
-func (nc *nodeConn) change(c *change.Change) error {
+func (nc *nodeConn) change(c change.Change) error {
 	switch determineChange(c) {
 	case partialUpdate:
 		return nc.partialUpdate(c)
@@ -273,7 +354,7 @@ func (nc *nodeConn) change(c *change.Change) error {
 	}
 }
 
-func (nc *nodeConn) partialUpdate(c *change.Change) error {
+func (nc *nodeConn) partialUpdate(c change.Change) error {
 	var data []byte
 	var err error
 	if c.DERPChanged {

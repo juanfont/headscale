@@ -1043,6 +1043,6 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // ignored.
 func (h *Headscale) Change(c change.Change) {
 	if c.HasChange() {
-		h.mapBatcher.AddWork(&c)
+		h.mapBatcher.AddWork(c)
 	}
 }
