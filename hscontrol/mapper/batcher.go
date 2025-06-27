@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/state"
@@ -40,9 +41,9 @@ type Batcher struct {
 	// If value is not nil, the node is disconnected
 	connected map[types.NodeID]*time.Time
 
-	// nodes is a map of NodeID to a channel that is used to send generated
-	// mapResp to a client.
-	nodes map[types.NodeID]nodeConn
+	// nodes is a map of NodeID to a pointer to nodeConn that is used to send generated
+	// mapResp to a client. Using pointers allows in-place updates during reconnection.
+	nodes map[types.NodeID]*nodeConn
 
 	// partialChanges
 	partialChanges    map[types.NodeID]change.Change
@@ -74,7 +75,7 @@ func NewBatcher(batchTime time.Duration, mapper *mapper) *Batcher {
 		// TODO: No limit for now, this needs to be changed
 		workCh: make(chan work, (1<<16)-1),
 
-		nodes:     make(map[types.NodeID]nodeConn),
+		nodes:     make(map[types.NodeID]*nodeConn),
 		connected: make(map[types.NodeID]*time.Time),
 	}
 }
@@ -92,24 +93,27 @@ func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, ver
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// If a channel exists, it means the node has opened a new
-	// connection. Close the old channel and replace it.
+	// If a nodeConn exists, update it in place instead of creating a new one.
+	// This allows workers to automatically get the updated connection.
 	if curr, ok := b.nodes[id]; ok {
-		// Use the safeCloseChannel helper in a goroutine to avoid deadlocks
-		// if/when someone is waiting to send on this channel
-		go func(nc nodeConn) {
-			close(nc.c)
-		}(curr)
-	}
-
-	b.nodes[id] = nodeConn{
-		id:       id,
-		c:        c,
-		compress: compress,
-		version:  version,
-
-		// TODO(kradalby): Not sure about this one yet.
-		mapper: b.mapper,
+		curr.mu.Lock()
+		// Close the old channel synchronously to avoid race conditions.
+		close(curr.c)
+		
+		// Update the existing nodeConn in place
+		curr.c = c
+		curr.compress = compress
+		curr.version = version
+		curr.mu.Unlock()
+	} else {
+		// Create new nodeConn for first connection
+		b.nodes[id] = &nodeConn{
+			id:       id,
+			c:        c,
+			compress: compress,
+			version:  version,
+			mapper:   b.mapper,
+		}
 	}
 	b.connected[id] = nil // nil means connected
 
@@ -178,15 +182,15 @@ func (b *Batcher) flushLocked(full bool) {
 		b.hasPartialChanges = false
 		clear(b.partialChanges)
 
-		for _, nc := range b.nodes {
-			b.workCh <- work{change.Full, &nc}
+		for nodeID := range b.nodes {
+			b.workCh <- work{change.Full, nodeID}
 		}
 	}
 
 	if b.hasPartialChanges {
 		for _, c := range b.partialChanges {
-			for _, nc := range b.nodes {
-				b.workCh <- work{c, &nc}
+			for nodeID := range b.nodes {
+				b.workCh <- work{c, nodeID}
 			}
 		}
 		b.hasPartialChanges = false
@@ -279,8 +283,8 @@ func (b *Batcher) processChange(c change.Change) {
 }
 
 type work struct {
-	c  change.Change
-	nc *nodeConn
+	c      change.Change
+	nodeID types.NodeID
 }
 
 func (b *Batcher) startWorker() {
@@ -292,13 +296,22 @@ func (b *Batcher) startWorker() {
 					return
 				}
 
-				w.nc.change(w.c)
+				// Look up the current nodeConn for this nodeID
+				b.mu.RLock()
+				nc, exists := b.nodes[w.nodeID]
+				b.mu.RUnlock()
+
+				// Only process if the node is still connected
+				if exists {
+					nc.change(w.c)
+				}
 			}
 		}
 	}()
 }
 
 type nodeConn struct {
+	mu       deadlock.RWMutex // Protects channel updates
 	id       types.NodeID
 	c        chan<- []byte
 	compress string
@@ -354,11 +367,19 @@ func (nc *nodeConn) change(c change.Change) error {
 	}
 }
 
+// compressAndVersion atomically reads the compression and version settings
+func (nc *nodeConn) compressAndVersion() (compress string, version tailcfg.CapabilityVersion) {
+	nc.mu.RLock()
+	defer nc.mu.RUnlock()
+	return nc.compress, nc.version
+}
+
 func (nc *nodeConn) partialUpdate(c change.Change) error {
 	var data []byte
 	var err error
 	if c.DERPChanged {
-		data, err = nc.mapper.derpMapResponse(nc.id, nc.compress)
+		compress, _ := nc.compressAndVersion()
+		data, err = nc.mapper.derpMapResponse(nc.id, compress)
 	}
 
 	// TODO(kradalby): key update change
@@ -367,18 +388,33 @@ func (nc *nodeConn) partialUpdate(c change.Change) error {
 		return err
 	}
 
-	nc.c <- data
-	return nil
+	return nc.send(data)
 }
 
 func (nc *nodeConn) fullUpdate() error {
-	data, err := nc.mapper.fullMapResponse(nc.id, nc.version, nc.compress)
+	compress, version := nc.compressAndVersion()
+	data, err := nc.mapper.fullMapResponse(nc.id, version, compress)
 	if err != nil {
 		return err
 	}
 
-	nc.c <- data
-	return nil
+	return nc.send(data)
+}
+
+// send attempts to send data to the node's channel with proper synchronization.
+// With the pointer-based approach and per-nodeConn mutex, we can eliminate 
+// the panic recovery since the channel is protected by the mutex.
+func (nc *nodeConn) send(data []byte) error {
+	nc.mu.RLock()
+	defer nc.mu.RUnlock()
+
+	select {
+	case nc.c <- data:
+		return nil
+	default:
+		// Channel is full, don't block
+		return fmt.Errorf("unable to send to node %d: channel full", nc.id)
+	}
 }
 
 // resp is the logic that used to reside in the poller, but is now moved
