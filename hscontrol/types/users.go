@@ -310,6 +310,7 @@ type OIDCUserInfo struct {
 	PreferredUsername string          `json:"preferred_username"`
 	Email             string          `json:"email"`
 	EmailVerified     FlexibleBoolean `json:"email_verified,omitempty"`
+	Groups            []string        `json:"groups"`
 	Picture           string          `json:"picture"`
 }
 

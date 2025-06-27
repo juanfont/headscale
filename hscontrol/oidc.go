@@ -254,6 +254,35 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
+	// Fetch user information (email, groups, name, etc) from the userinfo endpoint
+	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
+	var userinfo *oidc.UserInfo
+	userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
+	if err != nil {
+		util.LogErr(err, "could not get userinfo; only using claims from id token")
+	}
+
+	// The oidc.UserInfo type only decodes some fields (Subject, Profile, Email, EmailVerified).
+	// We are interested in other fields too (e.g. groups are required for allowedGroups) so we
+	// decode into our own OIDCUserInfo type using the underlying claims struct.
+	var userinfo2 types.OIDCUserInfo
+	if userinfo != nil && userinfo.Claims(&userinfo2) == nil && userinfo2.Sub == claims.Sub {
+		// Update the user with the userinfo claims (with id token claims as fallback).
+		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
+		claims.Email = cmp.Or(userinfo2.Email, claims.Email)
+		claims.EmailVerified = cmp.Or(userinfo2.EmailVerified, claims.EmailVerified)
+		claims.Username = cmp.Or(userinfo2.PreferredUsername, claims.Username)
+		claims.Name = cmp.Or(userinfo2.Name, claims.Name)
+		claims.ProfilePictureURL = cmp.Or(userinfo2.Picture, claims.ProfilePictureURL)
+		if userinfo2.Groups != nil {
+			claims.Groups = userinfo2.Groups
+		}
+	} else {
+		util.LogErr(err, "could not get userinfo; only using claims from id token")
+	}
+
+	// The user claims are now updated from the the userinfo endpoint so we can verify the user a
+	// against allowed emails, email domains, and groups.
 	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, &claims); err != nil {
 		httpError(writer, err)
 		return
@@ -267,30 +296,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
 		httpError(writer, err)
 		return
-	}
-
-	var userinfo *oidc.UserInfo
-	userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
-	if err != nil {
-		util.LogErr(err, "could not get userinfo; only checking claim")
-	}
-
-	// If the userinfo is available, we can check if the subject matches the
-	// claims, then use some of the userinfo fields to update the user.
-	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
-	if userinfo != nil && userinfo.Subject == claims.Sub {
-		claims.Email = cmp.Or(claims.Email, userinfo.Email)
-		claims.EmailVerified = cmp.Or(claims.EmailVerified, types.FlexibleBoolean(userinfo.EmailVerified))
-
-		// The userinfo has some extra fields that we can use to update the user but they are only
-		// available in the underlying claims struct.
-		// TODO(kradalby): there might be more interesting fields here that we have not found yet.
-		var userinfo2 types.OIDCUserInfo
-		if err := userinfo.Claims(&userinfo2); err == nil {
-			claims.Username = cmp.Or(claims.Username, userinfo2.PreferredUsername)
-			claims.Name = cmp.Or(claims.Name, userinfo2.Name)
-			claims.ProfilePictureURL = cmp.Or(claims.ProfilePictureURL, userinfo2.Picture)
-		}
 	}
 
 	user, policyChanged, err := a.createOrUpdateUserFromClaim(&claims)
