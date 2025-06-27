@@ -69,6 +69,10 @@ systemctl start headscale
   [#2656](https://github.com/juanfont/headscale/pull/2656)
 - Adds `/robots.txt` endpoint to avoid crawlers
   [#2643](https://github.com/juanfont/headscale/pull/2643)
+- OIDC: Use group claim from UserInfo
+  [#2663](https://github.com/juanfont/headscale/pull/2663)
+- OIDC: Update user with claims from UserInfo *before* comparing with allowed
+  groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
 
 ## 0.26.1 (2025-06-06)
 
