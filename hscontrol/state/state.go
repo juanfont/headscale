@@ -876,7 +876,6 @@ func (s *State) autoApproveNodes() error {
 }
 
 // TODO(kradalby): This should just take the node ID?
-// then get the node from the state to update it?
 func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapRequest) (change.Change, error) {
 	// TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
 	// which means we could shortcut the whole change thing if there are no other important updates.
