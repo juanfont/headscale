@@ -7,7 +7,9 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -17,6 +19,7 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 const (
@@ -734,4 +737,115 @@ func (e *EphemeralGarbageCollector) Start() {
 			go e.deleteFunc(nodeID)
 		}
 	}
+}
+
+func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) *types.Node {
+	if !testing.Testing() {
+		panic("CreateNodeForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateNodeForTest requires a valid user")
+	}
+
+	nodeName := "testnode"
+	if len(hostname) > 0 && hostname[0] != "" {
+		nodeName = hostname[0]
+	}
+
+	// Create a preauth key for the node
+	pak, err := hsdb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create preauth key for test node: %v", err))
+	}
+
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+	discoKey := key.NewDisco()
+
+	node := &types.Node{
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
+		DiscoKey:       discoKey.Public(),
+		Hostname:       nodeName,
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      ptr.To(pak.ID),
+	}
+
+	err = hsdb.DB.Save(node).Error
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test node: %v", err))
+	}
+
+	return node
+}
+
+func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
+	if !testing.Testing() {
+		panic("CreateRegisteredNodeForTest can only be called during tests")
+	}
+
+	node := hsdb.CreateNodeForTest(user, hostname...)
+
+	err := hsdb.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNode(tx, *node, nil, nil)
+		return err
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register test node: %v", err))
+	}
+
+	registeredNode, err := hsdb.GetNodeByID(node.ID)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get registered test node: %v", err))
+	}
+
+	return registeredNode
+}
+
+func (hsdb *HSDatabase) CreateNodesForTest(user *types.User, count int, hostnamePrefix ...string) []*types.Node {
+	if !testing.Testing() {
+		panic("CreateNodesForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateNodesForTest requires a valid user")
+	}
+
+	prefix := "testnode"
+	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
+		prefix = hostnamePrefix[0]
+	}
+
+	nodes := make([]*types.Node, count)
+	for i := 0; i < count; i++ {
+		hostname := prefix + "-" + strconv.Itoa(i)
+		nodes[i] = hsdb.CreateNodeForTest(user, hostname)
+	}
+
+	return nodes
+}
+
+func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int, hostnamePrefix ...string) []*types.Node {
+	if !testing.Testing() {
+		panic("CreateRegisteredNodesForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateRegisteredNodesForTest requires a valid user")
+	}
+
+	prefix := "testnode"
+	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
+		prefix = hostnamePrefix[0]
+	}
+
+	nodes := make([]*types.Node, count)
+	for i := 0; i < count; i++ {
+		hostname := prefix + "-" + strconv.Itoa(i)
+		nodes[i] = hsdb.CreateRegisteredNodeForTest(user, hostname)
+	}
+
+	return nodes
 }

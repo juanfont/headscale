@@ -213,7 +213,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 	batcher.AddNode(nodeID, ch, "zstd", tailcfg.CapabilityVersion(100))
 
 	// Add multiple DERP changes rapidly
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		batcher.AddWork(change.Change{
 			DERPChanged: true,
 		})
@@ -265,7 +265,7 @@ func TestBatcherChannelClosingRace(t *testing.T) {
 	var mutex sync.Mutex
 
 	// Run rapid connect/disconnect cycles to test channel closing
-	for iteration := 0; iteration < 100; iteration++ {
+	for range 100 {
 		var wg sync.WaitGroup
 
 		// First connection
@@ -316,7 +316,7 @@ func TestBatcherChannelClosingRace(t *testing.T) {
 	defer mutex.Unlock()
 
 	t.Logf("Channel closing issues: %d out of 100 iterations", channelIssues)
-	
+
 	// The main fix prevents panics and race conditions. Some timing variations
 	// are acceptable as long as there are no crashes or deadlocks.
 	if channelIssues > 50 { // Allow some timing variations
@@ -351,7 +351,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 	var mutex sync.Mutex
 
 	// Test rapid connect/disconnect with work generation
-	for i := 0; i < 50; i++ {
+	for i := range 50 {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -363,17 +363,17 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 			}()
 
 			ch := make(chan []byte, 5)
-			
+
 			// Add node and immediately queue work
 			batcher.AddNode(nodeID, ch, "zstd", tailcfg.CapabilityVersion(100))
 			batcher.AddWork(change.Change{
 				DERPChanged: true,
 			})
-			
+
 			// Rapid removal creates race between worker and removal
 			time.Sleep(time.Duration(i%3) * 100 * time.Microsecond)
 			batcher.RemoveNode(nodeID, ch)
-			
+
 			// Give workers time to process
 			time.Sleep(2 * time.Millisecond)
 		}()
@@ -383,7 +383,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 	defer mutex.Unlock()
 
 	t.Logf("Panics during worker tests: %d out of 50 iterations", panics)
-	
+
 	if panics > 0 {
 		t.Errorf("Worker channel safety failed with %d panics", panics)
 	}
@@ -417,7 +417,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 	stableNodeID := types.NodeID(100)
 	racingNodeID := types.NodeID(200)
-	
+
 	// Add a stable client
 	stableChannel := make(chan []byte, 50)
 	batcher.AddNode(stableNodeID, stableChannel, "zstd", tailcfg.CapabilityVersion(100))
@@ -442,16 +442,16 @@ func TestBatcherConcurrentClients(t *testing.T) {
 	// Rapid connect/disconnect cycles with racing node
 	var wg sync.WaitGroup
 	numCycles := 30
-	
-	for i := 0; i < numCycles; i++ {
+
+	for i := range numCycles {
 		wg.Add(2)
-		
+
 		// Connect racing node
 		go func() {
 			defer wg.Done()
 			ch := make(chan []byte, 10)
 			batcher.AddNode(racingNodeID, ch, "zstd", tailcfg.CapabilityVersion(100))
-			
+
 			// Consume to prevent blocking
 			go func() {
 				for {
