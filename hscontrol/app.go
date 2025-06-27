@@ -83,7 +83,7 @@ type Headscale struct {
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
-	mapBatcher     *mapper.Batcher
+	mapBatcher     mapper.Batcher
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -547,7 +547,11 @@ func (h *Headscale) Serve() error {
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
 
-	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
+	// Batcher implementations can be swapped by changing the constructor:
+	// h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)        // Default (BatcherLock)
+	h.mapBatcher = mapper.NewLockFreeBatcherAndMapper(h.cfg, h.state) // Lock-free implementation
+	// h.mapBatcher = mapper.NewHybridBatcherAndMapper(h.cfg, h.state)   // Hybrid implementation
+	// h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
 
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()

@@ -29,7 +29,7 @@ func init() {
 	}
 }
 
-type Batcher struct {
+type BatcherLock struct {
 	mu deadlock.RWMutex
 
 	tick   *time.Ticker
@@ -56,19 +56,8 @@ type Batcher struct {
 	workCh chan work
 }
 
-func NewBatcherAndMapper(
-	cfg *types.Config,
-	state *state.State,
-) *Batcher {
-	mapper := newMapper(cfg, state)
-	b := NewBatcher(cfg.Tuning.BatchChangeDelay, mapper)
-	mapper.batcher = b
-
-	return b
-}
-
-func NewBatcher(batchTime time.Duration, mapper *mapper) *Batcher {
-	return &Batcher{
+func NewBatcherLock(batchTime time.Duration, mapper *mapper) *BatcherLock {
+	return &BatcherLock{
 		mapper:   mapper,
 		tick:     time.NewTicker(batchTime),
 		cancelCh: make(chan struct{}),
@@ -80,27 +69,59 @@ func NewBatcher(batchTime time.Duration, mapper *mapper) *Batcher {
 	}
 }
 
-func (b *Batcher) Close() {
+// Factory functions for different batcher implementations
+
+// NewBatcherAndMapper creates the default (BatcherLock) implementation
+func NewBatcherAndMapper(cfg *types.Config, state *state.State) Batcher {
+	m := newMapper(cfg, state)
+	b := NewBatcherLock(cfg.Tuning.BatchChangeDelay, m)
+	m.batcher = b
+	return b
+}
+
+// NewBatcherLockAndMapper creates a BatcherLock implementation
+func NewBatcherLockAndMapper(cfg *types.Config, state *state.State) Batcher {
+	m := newMapper(cfg, state)
+	b := NewBatcherLock(cfg.Tuning.BatchChangeDelay, m)
+	m.batcher = b
+	return b
+}
+
+// NewLockFreeBatcherAndMapper creates a LockFreeBatcher implementation
+func NewLockFreeBatcherAndMapper(cfg *types.Config, state *state.State) Batcher {
+	m := newMapper(cfg, state)
+	b := NewLockFreeBatcher(cfg.Tuning.BatchChangeDelay, m)
+	m.batcher = b
+	return b
+}
+
+// NewHybridBatcherAndMapper creates a HybridBatcher implementation
+func NewHybridBatcherAndMapper(cfg *types.Config, state *state.State) Batcher {
+	m := newMapper(cfg, state)
+	b := NewHybridBatcher(cfg.Tuning.BatchChangeDelay, m)
+	m.batcher = b
+	return b
+}
+
+func (b *BatcherLock) Close() {
 	b.cancelCh <- struct{}{}
 	close(b.workCh)
 }
 
-func (b *Batcher) Start() {
+func (b *BatcherLock) Start() {
 	go b.doWork()
 }
 
-func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, version tailcfg.CapabilityVersion) {
+func (b *BatcherLock) AddNode(id types.NodeID, c chan<- []byte, compress string, version tailcfg.CapabilityVersion) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	// If a nodeConn exists, update it in place instead of creating a new one.
 	// This allows workers to automatically get the updated connection.
+	// We don't close the old channel - it will be garbage collected when the
+	// HTTP handler's mapSession goes out of scope.
 	if curr, ok := b.nodes[id]; ok {
 		curr.mu.Lock()
-		// Close the old channel synchronously to avoid race conditions.
-		close(curr.c)
-		
-		// Update the existing nodeConn in place
 		curr.c = c
 		curr.compress = compress
 		curr.version = version
@@ -124,7 +145,7 @@ func (b *Batcher) AddNode(id types.NodeID, c chan<- []byte, compress string, ver
 	b.addWorkLocked(chg)
 }
 
-func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
+func (b *BatcherLock) RemoveNode(id types.NodeID, c chan<- []byte) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -142,14 +163,14 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- []byte) {
 	// - Updating routes in routemanager and peers
 }
 
-func (b *Batcher) AddWork(c change.Change) {
+func (b *BatcherLock) AddWork(c change.Change) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.addWorkLocked(c)
 }
 
-func (b *Batcher) addWorkLocked(c change.Change) {
+func (b *BatcherLock) addWorkLocked(c change.Change) {
 	switch determineChange(c) {
 	case partialUpdate:
 		b.addPartialLocked(c)
@@ -160,7 +181,7 @@ func (b *Batcher) addWorkLocked(c change.Change) {
 	}
 }
 
-func (b *Batcher) addPartialLocked(c change.Change) {
+func (b *BatcherLock) addPartialLocked(c change.Change) {
 	if cc, ok := b.partialChanges[c.Node.ID]; ok {
 		b.partialChanges[c.Node.ID] = cc.Merge(c)
 		return
@@ -170,14 +191,14 @@ func (b *Batcher) addPartialLocked(c change.Change) {
 	b.hasPartialChanges = true
 }
 
-func (b *Batcher) flush(full bool) {
+func (b *BatcherLock) flush(full bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
 	b.flushLocked(full)
 }
 
-func (b *Batcher) flushLocked(full bool) {
+func (b *BatcherLock) flushLocked(full bool) {
 	if full {
 		b.hasPartialChanges = false
 		clear(b.partialChanges)
@@ -198,7 +219,7 @@ func (b *Batcher) flushLocked(full bool) {
 	}
 }
 
-func (b *Batcher) IsConnected(id types.NodeID) bool {
+func (b *BatcherLock) IsConnected(id types.NodeID) bool {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -211,11 +232,13 @@ func (b *Batcher) IsConnected(id types.NodeID) bool {
 	return false
 }
 
-func (b *Batcher) IsLikelyConnected(id types.NodeID) bool {
+func (b *BatcherLock) IsLikelyConnected(id types.NodeID) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.isLikelyConnectedLocked(id)
 }
 
-func (b *Batcher) isLikelyConnectedLocked(id types.NodeID) bool {
+func (b *BatcherLock) isLikelyConnectedLocked(id types.NodeID) bool {
 	// If the value is nil, it means the node is connected
 	if b.connected[id] == nil {
 		return true
@@ -232,7 +255,7 @@ func (b *Batcher) isLikelyConnectedLocked(id types.NodeID) bool {
 	return false
 }
 
-func (b *Batcher) LikelyConnectedMap() *xsync.Map[types.NodeID, bool] {
+func (b *BatcherLock) LikelyConnectedMap() *xsync.Map[types.NodeID, bool] {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -245,7 +268,7 @@ func (b *Batcher) LikelyConnectedMap() *xsync.Map[types.NodeID, bool] {
 	return ret
 }
 
-func (b *Batcher) doWork() {
+func (b *BatcherLock) doWork() {
 	// TODO(kradalby): figure out if it will be this integrated
 	// and make number configurable
 	for range 4 {
@@ -270,7 +293,7 @@ func (b *Batcher) doWork() {
 // mean a lot of goroutines, hanging around.
 // Another is just a worker pool that picks up work and processes it,
 // and passes it on to the nodes. That might be complicated with order?
-func (b *Batcher) processChange(c change.Change) {
+func (b *BatcherLock) processChange(c change.Change) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -287,7 +310,7 @@ type work struct {
 	nodeID types.NodeID
 }
 
-func (b *Batcher) startWorker() {
+func (b *BatcherLock) startWorker() {
 	go func() {
 		for {
 			select {
@@ -311,7 +334,7 @@ func (b *Batcher) startWorker() {
 }
 
 type nodeConn struct {
-	mu       deadlock.RWMutex // Protects channel updates
+	mu       deadlock.RWMutex // Protects channel and metadata updates
 	id       types.NodeID
 	c        chan<- []byte
 	compress string
@@ -402,8 +425,7 @@ func (nc *nodeConn) fullUpdate() error {
 }
 
 // send attempts to send data to the node's channel with proper synchronization.
-// With the pointer-based approach and per-nodeConn mutex, we can eliminate 
-// the panic recovery since the channel is protected by the mutex.
+// If the channel is closed by its creator (HTTP handler), the send will fail gracefully.
 func (nc *nodeConn) send(data []byte) error {
 	nc.mu.RLock()
 	defer nc.mu.RUnlock()
@@ -415,6 +437,22 @@ func (nc *nodeConn) send(data []byte) error {
 		// Channel is full, don't block
 		return fmt.Errorf("unable to send to node %d: channel full", nc.id)
 	}
+}
+
+// updateConnectionUnsafe updates connection parameters without additional locking
+func (nc *nodeConn) updateConnectionUnsafe(c chan<- []byte, compress string, version tailcfg.CapabilityVersion) {
+	nc.mu.Lock()
+	defer nc.mu.Unlock()
+	nc.c = c
+	nc.compress = compress
+	nc.version = version
+}
+
+// matchesChannelUnsafe checks if the given channel matches current connection
+func (nc *nodeConn) matchesChannelUnsafe(c chan<- []byte) bool {
+	nc.mu.RLock()
+	defer nc.mu.RUnlock()
+	return nc.c == c
 }
 
 // resp is the logic that used to reside in the poller, but is now moved

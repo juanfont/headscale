@@ -51,7 +51,7 @@ type mapper struct {
 	// Configuration
 	state   *state.State
 	cfg     *types.Config
-	batcher *Batcher
+	batcher Batcher
 
 	created time.Time
 }
