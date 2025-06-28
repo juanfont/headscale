@@ -156,7 +156,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	projectRoot := findProjectRoot(pwd)
 
 	runID := dockertestutil.ExtractRunIDFromContainerName(containerName)
-	
+
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
 		fmt.Sprintf("HEADSCALE_INTEGRATION_RUN_ID=%s", runID),
@@ -175,7 +175,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 
 	// Get the correct Docker socket path from the current context
 	dockerSocketPath := getDockerSocketPath()
-	
+
 	if config.Verbose {
 		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
@@ -237,7 +237,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	}
 
 	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
-	
+
 	// Wait for all test containers to reach a final state
 	maxWaitTime := 10 * time.Second
 	checkInterval := 500 * time.Millisecond
@@ -254,7 +254,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 			return nil
 		case <-ticker.C:
 			allFinalized := true
-			
+
 			for _, testCont := range testContainers {
 				inspect, err := cli.ContainerInspect(ctx, testCont.ID)
 				if err != nil {
@@ -263,7 +263,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 					}
 					continue
 				}
-				
+
 				// Check if container is in a final state
 				if !isContainerFinalized(inspect.State) {
 					allFinalized = false
@@ -273,7 +273,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 					break
 				}
 			}
-			
+
 			if allFinalized {
 				if verbose {
 					log.Printf("All test containers finalized, ready for artifact extraction")
@@ -289,7 +289,6 @@ func isContainerFinalized(state *container.State) bool {
 	// Container is finalized if it's not running and has a finish time
 	return !state.Running && state.FinishedAt != ""
 }
-
 
 // findProjectRoot locates the project root by finding the directory containing go.mod.
 func findProjectRoot(startPath string) string {
@@ -379,10 +378,36 @@ func getDockerSocketPath() string {
 	return "/var/run/docker.sock"
 }
 
-// ensureImageAvailable pulls the specified Docker image to ensure it's available.
+// checkImageAvailableLocally checks if the specified Docker image is available locally.
+func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
+	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
+	}
+	return true, nil
+}
+
+// ensureImageAvailable checks if the image is available locally first, then pulls if needed.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
+	// First check if image is available locally
+	available, err := checkImageAvailableLocally(ctx, cli, imageName)
+	if err != nil {
+		return fmt.Errorf("failed to check local image availability: %w", err)
+	}
+
+	if available {
+		if verbose {
+			log.Printf("Image %s is available locally", imageName)
+		}
+		return nil
+	}
+
+	// Image not available locally, try to pull it
 	if verbose {
-		log.Printf("Pulling image %s...", imageName)
+		log.Printf("Image %s not found locally, pulling...", imageName)
 	}
 
 	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
@@ -427,7 +452,7 @@ func listControlFiles(logsDir string) {
 		}
 
 		if entry.IsDir() {
-			// Include directories (pprof, mapresponses) 
+			// Include directories (pprof, mapresponses)
 			if strings.Contains(name, "-pprof") || strings.Contains(name, "-mapresponses") {
 				dataDirs = append(dataDirs, name)
 			}
@@ -510,7 +535,7 @@ type testContainer struct {
 // getCurrentTestContainers filters containers to only include those from the current test run.
 func getCurrentTestContainers(containers []container.Summary, testContainerID string, verbose bool) []testContainer {
 	var testRunContainers []testContainer
-	
+
 	// Find the test container to get its run ID label
 	var runID string
 	for _, cont := range containers {
@@ -521,16 +546,16 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 			break
 		}
 	}
-	
+
 	if runID == "" {
 		log.Printf("Error: test container %s missing required hi.run-id label", testContainerID[:12])
 		return testRunContainers
 	}
-	
+
 	if verbose {
 		log.Printf("Looking for containers with run ID: %s", runID)
 	}
-	
+
 	// Find all containers with the same run ID
 	for _, cont := range containers {
 		for _, name := range cont.Names {
@@ -550,7 +575,7 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 			}
 		}
 	}
-	
+
 	return testRunContainers
 }
 

@@ -13,10 +13,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/notifier"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -49,15 +47,13 @@ var debugDumpMapResponsePath = envknob.String("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_
 // - Create a "minifier" that removes info not needed for the node
 // - some sort of batching, wait for 5 or 60 seconds before sending
 
-type Mapper struct {
+type mapper struct {
 	// Configuration
-	state *state.State
-	cfg   *types.Config
-	notif *notifier.Notifier
+	state   *state.State
+	cfg     *types.Config
+	batcher Batcher
 
-	uid     string
 	created time.Time
-	seq     uint64
 }
 
 type patch struct {
@@ -65,26 +61,18 @@ type patch struct {
 	change    *tailcfg.PeerChange
 }
 
-func NewMapper(
-	state *state.State,
+func newMapper(
 	cfg *types.Config,
-	notif *notifier.Notifier,
-) *Mapper {
-	uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
+	state *state.State,
+) *mapper {
+	// uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
 
-	return &Mapper{
+	return &mapper{
 		state: state,
 		cfg:   cfg,
-		notif: notif,
 
-		uid:     uid,
 		created: time.Now(),
-		seq:     0,
 	}
-}
-
-func (m *Mapper) String() string {
-	return fmt.Sprintf("Mapper: { seq: %d, uid: %s, created: %s }", m.seq, m.uid, m.created)
 }
 
 func generateUserProfiles(
@@ -151,13 +139,23 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 	}
 }
 
-// fullMapResponse creates a complete MapResponse for a node.
-// It is a separate function to make testing easier.
-func (m *Mapper) fullMapResponse(
-	node *types.Node,
-	peers types.Nodes,
+// fullMapResponse returns a MapResponse for the given node.
+func (m *mapper) fullMapResponse(
+	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-) (*tailcfg.MapResponse, error) {
+	compress string,
+	messages ...string,
+) ([]byte, error) {
+	node, err := m.state.GetNodeByID(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
+	peers, err := m.listPeers(nodeID)
+	if err != nil {
+		return nil, err
+	}
+
 	resp, err := m.baseWithConfigMapResponse(node, capVer)
 	if err != nil {
 		return nil, err
@@ -176,163 +174,39 @@ func (m *Mapper) fullMapResponse(
 		return nil, err
 	}
 
-	return resp, nil
+	return marshalMapResponse(resp, nodeID, compress, messages...)
 }
 
-// FullMapResponse returns a MapResponse for the given node.
-func (m *Mapper) FullMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	messages ...string,
-) ([]byte, error) {
-	peers, err := m.ListPeers(node.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
-}
-
-// ReadOnlyMapResponse returns a MapResponse for the given node.
-// Lite means that the peers has been omitted, this is intended
-// to be used to answer MapRequests with OmitPeers set to true.
-func (m *Mapper) ReadOnlyMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	messages ...string,
-) ([]byte, error) {
-	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
-	if err != nil {
-		return nil, err
-	}
-
-	return m.marshalMapResponse(mapRequest, resp, node, mapRequest.Compress, messages...)
-}
-
-func (m *Mapper) KeepAliveResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+func (m *mapper) derpMapResponse(
+	nodeID types.NodeID,
+	compress string,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
-	resp.KeepAlive = true
+	// TODO(kradalby): get this from somewhere, this isnt updated
+	resp.DERPMap = m.state.DERPMap()
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
-}
-
-func (m *Mapper) DERPMapResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	derpMap *tailcfg.DERPMap,
-) ([]byte, error) {
-	resp := m.baseMapResponse()
-	resp.DERPMap = derpMap
-
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
-}
-
-func (m *Mapper) PeerChangedResponse(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-	changed map[types.NodeID]bool,
-	patches []*tailcfg.PeerChange,
-	messages ...string,
-) ([]byte, error) {
-	var err error
-	resp := m.baseMapResponse()
-
-	var removedIDs []tailcfg.NodeID
-	var changedIDs []types.NodeID
-	for nodeID, nodeChanged := range changed {
-		if nodeChanged {
-			if nodeID != node.ID {
-				changedIDs = append(changedIDs, nodeID)
-			}
-		} else {
-			removedIDs = append(removedIDs, nodeID.NodeID())
-		}
-	}
-	changedNodes := types.Nodes{}
-	if len(changedIDs) > 0 {
-		changedNodes, err = m.ListNodes(changedIDs...)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	err = appendPeerChanges(
-		&resp,
-		false, // partial change
-		m.state,
-		node,
-		mapRequest.Version,
-		changedNodes,
-		m.cfg,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	resp.PeersRemoved = removedIDs
-
-	// Sending patches as a part of a PeersChanged response
-	// is technically not suppose to be done, but they are
-	// applied after the PeersChanged. The patch list
-	// should _only_ contain Nodes that are not in the
-	// PeersChanged or PeersRemoved list and the caller
-	// should filter them out.
-	//
-	// From tailcfg docs:
-	// These are applied after Peers* above, but in practice the
-	// control server should only send these on their own, without
-	// the Peers* fields also set.
-	if patches != nil {
-		resp.PeersChangedPatch = patches
-	}
-
-	_, matchers := m.state.Filter()
-	// Add the node itself, it might have changed, and particularly
-	// if there are no patches or changes, this is a self update.
-	tailnode, err := tailNode(
-		node, mapRequest.Version, m.state,
-		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
-		},
-		m.cfg)
-	if err != nil {
-		return nil, err
-	}
-	resp.Node = tailnode
-
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress, messages...)
+	return marshalMapResponse(&resp, nodeID, compress)
 }
 
 // PeerChangedPatchResponse creates a patch MapResponse with
 // incoming update from a state change.
-func (m *Mapper) PeerChangedPatchResponse(
+func (m *mapper) peerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	nodeID types.NodeID,
 	changed []*tailcfg.PeerChange,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.PeersChangedPatch = changed
 
-	return m.marshalMapResponse(mapRequest, &resp, node, mapRequest.Compress)
+	return marshalMapResponse(&resp, nodeID, mapRequest.Compress)
 }
 
-func (m *Mapper) marshalMapResponse(
-	mapRequest tailcfg.MapRequest,
+func marshalMapResponse(
 	resp *tailcfg.MapResponse,
-	node *types.Node,
+	nodeID types.NodeID,
 	compression string,
 	messages ...string,
 ) ([]byte, error) {
-	atomic.AddUint64(&m.seq, 1)
-
 	jsonBody, err := json.Marshal(resp)
 	if err != nil {
 		return nil, fmt.Errorf("marshalling map response: %w", err)
@@ -341,7 +215,6 @@ func (m *Mapper) marshalMapResponse(
 	if debugDumpMapResponsePath != "" {
 		data := map[string]any{
 			"Messages":    messages,
-			"MapRequest":  mapRequest,
 			"MapResponse": resp,
 		}
 
@@ -366,7 +239,7 @@ func (m *Mapper) marshalMapResponse(
 		}
 
 		perms := fs.FileMode(debugMapResponsePerm)
-		mPath := path.Join(debugDumpMapResponsePath, node.Hostname)
+		mPath := path.Join(debugDumpMapResponsePath, nodeID.String())
 		err = os.MkdirAll(mPath, perms)
 		if err != nil {
 			panic(err)
@@ -376,7 +249,7 @@ func (m *Mapper) marshalMapResponse(
 
 		mapResponsePath := path.Join(
 			mPath,
-			fmt.Sprintf("%s-%s-%d-%s.json", now, m.uid, atomic.LoadUint64(&m.seq), responseType),
+			fmt.Sprintf("%s-%s.json", now, responseType),
 		)
 
 		log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
@@ -427,7 +300,7 @@ var zstdEncoderPool = &sync.Pool{
 
 // baseMapResponse returns a tailcfg.MapResponse with
 // KeepAlive false and ControlTime set to now.
-func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
+func (m *mapper) baseMapResponse() tailcfg.MapResponse {
 	now := time.Now()
 
 	resp := tailcfg.MapResponse{
@@ -443,7 +316,7 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // with the basic configuration from headscale set.
 // It is used in for bigger updates, such as full and lite, not
 // incremental.
-func (m *Mapper) baseWithConfigMapResponse(
+func (m *mapper) baseWithConfigMapResponse(
 	node *types.Node,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
@@ -478,33 +351,37 @@ func (m *Mapper) baseWithConfigMapResponse(
 	return &resp, nil
 }
 
-// ListPeers returns peers of node, regardless of any Policy or if the node is expired.
+// listPeers returns peers of node, regardless of any Policy or if the node is expired.
 // If no peer IDs are given, all peers are returned.
 // If at least one peer ID is given, only these peer nodes will be returned.
-func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
+func (m *mapper) listPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	peers, err := m.state.ListPeers(nodeID, peerIDs...)
 	if err != nil {
 		return nil, err
 	}
 
+	// TODO(kradalby): Add back online via batcher. This was removed
+	// to avoid a circular dependency between the mapper and the notification.
 	for _, peer := range peers {
-		online := m.notif.IsLikelyConnected(peer.ID)
+		online := m.batcher.IsLikelyConnected(peer.ID)
 		peer.IsOnline = &online
 	}
 
 	return peers, nil
 }
 
-// ListNodes queries the database for either all nodes if no parameters are given
+// listNodes queries the database for either all nodes if no parameters are given
 // or for the given nodes if at least one node ID is given as parameter
-func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
+func (m *mapper) listNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes, err := m.state.ListNodes(nodeIDs...)
 	if err != nil {
 		return nil, err
 	}
 
+	// TODO(kradalby): Add back online via batcher. This was removed
+	// to avoid a circular dependency between the mapper and the notification.
 	for _, node := range nodes {
-		online := m.notif.IsLikelyConnected(node.ID)
+		online := m.batcher.IsLikelyConnected(node.ID)
 		node.IsOnline = &online
 	}
 

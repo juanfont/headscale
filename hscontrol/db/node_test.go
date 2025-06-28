@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"net/netip"
 	"regexp"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -26,82 +25,36 @@ import (
 )
 
 func (s *Suite) TestGetNode(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.getNode(types.UserID(user.ID), "testnode")
+	_, err := db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.NotNil)
 
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	node := &types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-	}
-	trx := db.DB.Save(node)
-	c.Assert(trx.Error, check.IsNil)
+	node := db.CreateNodeForTest(user, "testnode")
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
+	c.Assert(node.Hostname, check.Equals, "testnode")
 }
 
 func (s *Suite) TestGetNodeByID(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
+	_, err := db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
+	node := db.CreateNodeForTest(user, "testnode")
 
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
-	}
-	trx := db.DB.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
+	retrievedNode, err := db.GetNodeByID(node.ID)
 	c.Assert(err, check.IsNil)
+	c.Assert(retrievedNode.Hostname, check.Equals, "testnode")
 }
 
 func (s *Suite) TestHardDeleteNode(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
+	node := db.CreateNodeForTest(user, "testnode3")
 
-	nodeKey := key.NewNode()
-	machineKey := key.NewMachine()
-
-	node := types.Node{
-		ID:             0,
-		MachineKey:     machineKey.Public(),
-		NodeKey:        nodeKey.Public(),
-		Hostname:       "testnode3",
-		UserID:         user.ID,
-		RegisterMethod: util.RegisterMethodAuthKey,
-	}
-	trx := db.DB.Save(&node)
-	c.Assert(trx.Error, check.IsNil)
-
-	err = db.DeleteNode(&node)
+	err := db.DeleteNode(node)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode3")
@@ -109,42 +62,21 @@ func (s *Suite) TestHardDeleteNode(c *check.C) {
 }
 
 func (s *Suite) TestListPeers(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
-
-	_, err = db.GetNodeByID(0)
+	_, err := db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
-	for index := 0; index <= 10; index++ {
-		nodeKey := key.NewNode()
-		machineKey := key.NewMachine()
+	nodes := db.CreateNodesForTest(user, 11, "testnode")
 
-		node := types.Node{
-			ID:             types.NodeID(index),
-			MachineKey:     machineKey.Public(),
-			NodeKey:        nodeKey.Public(),
-			Hostname:       "testnode" + strconv.Itoa(index),
-			UserID:         user.ID,
-			RegisterMethod: util.RegisterMethodAuthKey,
-			AuthKeyID:      ptr.To(pak.ID),
-		}
-		trx := db.DB.Save(&node)
-		c.Assert(trx.Error, check.IsNil)
-	}
-
-	node0ByID, err := db.GetNodeByID(0)
+	firstNode := nodes[0]
+	peersOfFirstNode, err := db.ListPeers(firstNode.ID)
 	c.Assert(err, check.IsNil)
 
-	peersOfNode0, err := db.ListPeers(node0ByID.ID)
-	c.Assert(err, check.IsNil)
-
-	c.Assert(len(peersOfNode0), check.Equals, 9)
-	c.Assert(peersOfNode0[0].Hostname, check.Equals, "testnode2")
-	c.Assert(peersOfNode0[5].Hostname, check.Equals, "testnode7")
-	c.Assert(peersOfNode0[8].Hostname, check.Equals, "testnode10")
+	c.Assert(len(peersOfFirstNode), check.Equals, 10)
+	c.Assert(peersOfFirstNode[0].Hostname, check.Equals, "testnode-1")
+	c.Assert(peersOfFirstNode[5].Hostname, check.Equals, "testnode-6")
+	c.Assert(peersOfFirstNode[9].Hostname, check.Equals, "testnode-10")
 }
 
 func (s *Suite) TestExpireNode(c *check.C) {
