@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"log"
 	"net/url"
 	"os"
@@ -84,7 +83,7 @@ func newPostgresTestDB(t *testing.T) *HSDatabase {
 func newPostgresDBForTest(t *testing.T) *url.URL {
 	t.Helper()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	srv, err := postgrestest.Start(ctx)
 	if err != nil {
 		t.Fatal(err)
