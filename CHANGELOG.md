@@ -14,6 +14,8 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Remove redundant check regarding `noise` config
+  [#2658](https://github.com/juanfont/headscale/pull/2658)
 - Refactor OpenID Connect documentation
   [#2625](https://github.com/juanfont/headscale/pull/2625)
 - Don't crash if config file is missing 
