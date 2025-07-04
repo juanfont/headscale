@@ -20,6 +20,8 @@
   [#2625](https://github.com/juanfont/headscale/pull/2625)
 - Don't crash if config file is missing 
   [#2656](https://github.com/juanfont/headscale/pull/2656)
+- Adds `/robots.txt` endpoint to avoid crawlers
+  [#2643](https://github.com/juanfont/headscale/pull/2643)
 
 ## 0.26.1 (2025-06-06)
 
