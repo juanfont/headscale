@@ -14,6 +14,8 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Remove redundant check regarding `noise` config
+  [#2658](https://github.com/juanfont/headscale/pull/2658)
 
 ## 0.26.1 (2025-06-06)
 
