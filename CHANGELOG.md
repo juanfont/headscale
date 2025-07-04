@@ -14,6 +14,10 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- OIDC: Update user with claims from UserInfo *before* comparing with allowed
+  groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
+- OIDC: Use group claim from UserInfo
+  [#2663](https://github.com/juanfont/headscale/pull/2663)
 
 ## 0.26.1 (2025-06-06)
 
