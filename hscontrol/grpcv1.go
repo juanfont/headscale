@@ -823,14 +823,20 @@ func (api headscaleV1APIServer) Health(
 	ctx context.Context,
 	request *v1.HealthRequest,
 ) (*v1.HealthResponse, error) {
+	var healthErr error
+	response := &v1.HealthResponse{}
+
 	if err := api.h.state.PingDB(ctx); err != nil {
-		log.Error().
-			Err(err).
-			Msg("Health check failed: database ping failed")
-		return &v1.HealthResponse{Status: v1.HealthStatus_Fail}, nil
+		healthErr = fmt.Errorf("database ping failed: %w", err)
+	} else {
+		response.DbPing = true
 	}
 
-	return &v1.HealthResponse{Status: v1.HealthStatus_Pass}, nil
+	if healthErr != nil {
+		log.Error().Err(healthErr).Msg("Health check failed")
+	}
+
+	return response, healthErr
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/spf13/cobra"
 )
@@ -26,14 +24,6 @@ var healthCmd = &cobra.Command{
 			ErrorOutput(err, "Error checking health", output)
 		}
 
-		if response.Status == v1.HealthStatus_Pass {
-			SuccessOutput("Headscale server is healthy", "", output)
-		}
-
-		ErrorOutput(
-			fmt.Errorf("server health check failed: %s", response.Status),
-			"Headscale server is unhealthy",
-			output,
-		)
+		SuccessOutput(response, "", output)
 	},
 }

@@ -1082,18 +1082,10 @@
     "v1HealthResponse": {
       "type": "object",
       "properties": {
-        "status": {
-          "$ref": "#/definitions/v1HealthStatus"
+        "dbPing": {
+          "type": "boolean"
         }
       }
-    },
-    "v1HealthStatus": {
-      "type": "string",
-      "enum": [
-        "Fail",
-        "Pass"
-      ],
-      "default": "Fail"
     },
     "v1ListApiKeysResponse": {
       "type": "object",

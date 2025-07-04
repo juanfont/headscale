@@ -218,13 +218,8 @@ service HeadscaleService {
   // }
 }
 
-enum HealthStatus {
-  Fail = 0;
-  Pass = 1;
-}
-
 message HealthRequest {}
 
 message HealthResponse {
-  HealthStatus status = 1;
+  bool db_ping = 1;
 }
