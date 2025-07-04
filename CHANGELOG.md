@@ -14,6 +14,7 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Add healthcheck command [#2659](https://github.com/juanfont/headscale/pull/2659)
 
 ## 0.26.1 (2025-06-06)
 
