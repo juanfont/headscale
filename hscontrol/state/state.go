@@ -48,12 +48,6 @@ type State struct {
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
-	// in-memory data, protected by mu
-	// nodes contains the current set of registered nodes
-	nodes types.Nodes
-	// users contains the current set of users/namespaces
-	users types.Users
-
 	// subsystem keeping state
 	// db provides persistent storage and database operations
 	db *hsdb.HSDatabase
@@ -114,9 +108,6 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	return &State{
 		cfg: cfg,
-
-		nodes: nodes,
-		users: users,
 
 		db:      db,
 		ipAlloc: ipAlloc,
