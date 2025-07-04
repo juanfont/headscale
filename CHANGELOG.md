@@ -14,6 +14,8 @@
   [#2614](https://github.com/juanfont/headscale/pull/2614)
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
+- Don't crash if config file is missing 
+  [#2656](https://github.com/juanfont/headscale/pull/2656)
 
 ## 0.26.1 (2025-06-06)
 
