@@ -458,6 +458,16 @@ func New(
 		}
 	}
 
+	// Create necessary directories in the container
+	_, _, err = dockertestutil.ExecuteCommand(
+		container,
+		[]string{"mkdir", "-p", "/tmp/mapresponses"},
+		[]string{},
+	)
+	if err != nil {
+		log.Printf("Warning: Could not create /tmp/mapresponses directory: %v", err)
+	}
+
 	return hsic, nil
 }
 
@@ -850,7 +860,7 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 ) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
-		"--user",
+		"-i",
 		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"create",
@@ -1120,7 +1130,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	command := []string{
 		"headscale", "nodes", "approve-routes",
 		"--output", "json",
-		"--identifier", strconv.FormatUint(id, 10),
+		"--node-id", strconv.FormatUint(id, 10),
 		fmt.Sprintf("--routes=%s", strings.Join(util.PrefixesToString(routes), ",")),
 	}
 
