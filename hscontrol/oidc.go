@@ -293,7 +293,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		}
 	}
 
-	user, policyChanged, err := a.createOrUpdateUserFromClaim(&claims)
+	user, c, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -313,9 +313,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	}
 
 	// Send policy update notifications if needed
-	if policyChanged {
-		a.h.Change(change.PolicyChange())
-	}
+	a.h.Change(c)
 
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
@@ -478,14 +476,14 @@ func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.Regis
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, bool, error) {
+) (*types.User, change.ChangeSet, error) {
 	var user *types.User
 	var err error
 	var newUser bool
-	var policyChanged bool
+	var c change.ChangeSet
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, false, fmt.Errorf("creating or updating user: %w", err)
+		return nil, change.EmptySet, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -499,21 +497,21 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims)
 
 	if newUser {
-		user, policyChanged, err = a.h.state.CreateUser(*user)
+		user, c, err = a.h.state.CreateUser(*user)
 		if err != nil {
-			return nil, false, fmt.Errorf("creating user: %w", err)
+			return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		_, policyChanged, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+		_, c, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
 			*u = *user
 			return nil
 		})
 		if err != nil {
-			return nil, false, fmt.Errorf("updating user: %w", err)
+			return nil, change.EmptySet, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
-	return user, policyChanged, nil
+	return user, c, nil
 }
 
 func (a *AuthProviderOIDC) handleRegistration(

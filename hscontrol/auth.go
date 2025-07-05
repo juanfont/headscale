@@ -33,7 +33,7 @@ func (h *Headscale) handleRegister(
 		return nil, fmt.Errorf("looking up node in database: %w", err)
 	}
 
-	if node != nil {
+	if node.Valid() {
 		// If an existing node is trying to register with an auth key,
 		// we need to validate the auth key even for existing nodes
 		if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
@@ -49,7 +49,7 @@ func (h *Headscale) handleRegister(
 			return resp, nil
 		}
 
-		resp, err := h.handleExistingNode(node, regReq, machineKey)
+		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling existing node: %w", err)
 		}
@@ -106,7 +106,7 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				c, err := h.state.DeleteNode(node)
+				c, err := h.state.DeleteNode(node.View())
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
@@ -123,9 +123,9 @@ func (h *Headscale) handleExistingNode(
 		}
 
 		h.Change(c)
-		}
+	}
 
-		return nodeToRegisterResponse(node), nil
+	return nodeToRegisterResponse(node), nil
 }
 
 func nodeToRegisterResponse(node *types.Node) *tailcfg.RegisterResponse {
@@ -176,7 +176,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, changed, policyChanged, err := h.state.HandleNodeFromPreAuthKey(
+	node, changed, err := h.state.HandleNodeFromPreAuthKey(
 		regReq,
 		machineKey,
 	)
@@ -193,7 +193,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	}
 
 	// If node is nil, it means an ephemeral node was deleted during logout
-	if node == nil {
+	if node.Valid() {
 		h.Change(changed)
 		return nil, nil
 	}
@@ -217,21 +217,23 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	}
 
 	if routeChange && changed.Empty() {
-		changed = change.NodeAdded(node.ID)
+		changed = change.NodeAdded(node.ID())
 	}
 	h.Change(changed)
 
-	// If policy changed due to node registration, send a separate policy change
-	if policyChanged {
-		policyChange := change.PolicyChange()
-		h.Change(policyChange)
-	}
+	// TODO(kradalby): I think this is covered above, but we need to validate that.
+	// // If policy changed due to node registration, send a separate policy change
+	// if policyChanged {
+	// 	policyChange := change.PolicyChange()
+	// 	h.Change(policyChange)
+	// }
 
+	user := node.User()
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              *node.User.TailscaleUser(),
-		Login:             *node.User.TailscaleLogin(),
+		User:              *user.TailscaleUser(),
+		Login:             *user.TailscaleLogin(),
 	}, nil
 }
 

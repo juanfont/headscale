@@ -1940,7 +1940,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 				if err != nil {
 					t.Errorf("Error listing peers for node %d: %v", i, err)
 				} else {
-					t.Logf("Node %d should see %d peers from state", i, len(peers))
+					t.Logf("Node %d should see %d peers from state", i, peers.Len())
 				}
 			}
 
@@ -2106,9 +2106,9 @@ func TestBatcherWorkQueueTracing(t *testing.T) {
 					if err != nil {
 						t.Errorf("Error getting peers from state: %v", err)
 					} else {
-						t.Logf("State shows %d peers available for this node", len(peers))
-						if len(peers) > 0 && len(data.Peers) == 0 {
-							t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", len(peers))
+						t.Logf("State shows %d peers available for this node", peers.Len())
+						if peers.Len() > 0 && len(data.Peers) == 0 {
+							t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", peers.Len())
 						}
 					}
 				} else {
