@@ -109,6 +109,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
+	nodeNotifier := notifier.NewNotifier(cfg)
+
 	s, err := state.NewState(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("init state: %w", err)
@@ -118,7 +120,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		cfg:                cfg,
 		noisePrivateKey:    noisePrivateKey,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(cfg),
+		nodeNotifier:       nodeNotifier,
 		state:              s,
 	}
 
@@ -138,7 +140,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		// Send policy update notifications if needed
 		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname)
+			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname())
 			app.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 		}
 
@@ -597,8 +599,8 @@ func (h *Headscale) Serve() error {
 	if err != nil {
 		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
 	}
-	for _, node := range ephmNodes {
-		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	for _, node := range ephmNodes.All() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {

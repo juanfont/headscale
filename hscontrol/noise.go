@@ -293,7 +293,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, err := ns.headscale.state.GetNodeViewByNodeKey(mapRequest.NodeKey)
+	nv, err := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
