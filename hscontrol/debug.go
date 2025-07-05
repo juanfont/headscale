@@ -73,14 +73,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 
 		sshPol := make(map[string]*tailcfg.SSHPolicy)
-		for _, node := range nodes {
-			pol, err := h.state.SSHPolicy(node.View())
+		for _, node := range nodes.All() {
+			pol, err := h.state.SSHPolicy(node)
 			if err != nil {
 				httpError(w, err)
 				return
 			}
 
-			sshPol[fmt.Sprintf("id:%d  hostname:%s givenname:%s", node.ID, node.Hostname, node.GivenName)] = pol
+			sshPol[fmt.Sprintf("id:%d  hostname:%s givenname:%s", node.ID(), node.Hostname(), node.GivenName())] = pol
 		}
 
 		sshJSON, err := json.MarshalIndent(sshPol, "", "  ")

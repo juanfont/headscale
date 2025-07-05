@@ -21,7 +21,6 @@ type LockFreeBatcher struct {
 	mapper  *mapper
 	workers int
 
-	// Lock-free concurrent maps
 	nodes     *xsync.Map[types.NodeID, *nodeConn]
 	connected *xsync.Map[types.NodeID, *time.Time]
 
@@ -32,7 +31,6 @@ type LockFreeBatcher struct {
 
 	// Batching state
 	pendingChanges *xsync.Map[types.NodeID, []change.ChangeSet]
-	batchMutex     sync.RWMutex
 
 	// Metrics
 	totalNodes      atomic.Int64
@@ -46,16 +44,13 @@ type LockFreeBatcher struct {
 // It creates or updates the node's connection data, validates the initial map generation,
 // and notifies other nodes that this node has come online.
 // TODO(kradalby): See if we can move the isRouter argument somewhere else.
-func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, version tailcfg.CapabilityVersion) error {
-	// First validate that we can generate initial map before doing anything else
-	fullSelfChange := change.FullSelf(id)
-
+func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error {
 	// TODO(kradalby): This should not be generated here, but rather in MapResponseFromChange.
 	// This currently means that the goroutine for the node connection will do the processing
 	// which means that we might have uncontrolled concurrency.
 	// When we use MapResponseFromChange, it will be processed by the same worker pool, causing
 	// it to be processed in a more controlled manner.
-	initialMap, err := generateMapResponse(id, version, b.mapper, fullSelfChange)
+	initialMap, err := generateMapResponse(id, version, b.mapper, change.FullSelf(id))
 	if err != nil {
 		return fmt.Errorf("failed to generate initial map for node %d: %w", id, err)
 	}
@@ -73,10 +68,9 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		conn = newConn
 	}
 
-	// Mark as connected only after validation succeeds
 	b.connected.Store(id, nil) // nil = connected
 
-	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Msg("Node connected to batcher")
+	log.Info().Uint64("node.id", id.Uint64()).Msg("Node connected to batcher")
 
 	// Send the validated initial map
 	if initialMap != nil {
@@ -86,9 +80,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 			b.connected.Delete(id)
 			return fmt.Errorf("failed to send initial map to node %d: %w", id, err)
 		}
-
-		// Notify other nodes that this node came online
-		b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeCameOnline, IsSubnetRouter: isRouter})
 	}
 
 	return nil
@@ -97,12 +88,14 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 // RemoveNode disconnects a node from the batcher, marking it as offline and cleaning up its state.
 // It validates the connection channel matches the current one, closes the connection,
 // and notifies other nodes that this node has gone offline.
-func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool) {
+// It reports if the node was actually closed. Returns false if the channel does not match the current connection,
+// indicating that we are actually not disconnecting the node, but rather ignoring the request.
+func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool {
 	// Check if this is the current connection and mark it as closed
 	if existing, ok := b.nodes.Load(id); ok {
 		if !existing.matchesChannel(c) {
-			log.Debug().Uint64("node.id", id.Uint64()).Msg("RemoveNode called for non-current connection, ignoring")
-			return // Not the current connection, not an error
+			log.Debug().Uint64("node.id", id.Uint64()).Msg("RemoveNode called on a different channel, ignoring")
+			return false // Not the current connection, not an error
 		}
 
 		// Mark the connection as closed to prevent further sends
@@ -111,15 +104,14 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 		}
 	}
 
-	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Msg("Node disconnected from batcher, marking as offline")
+	log.Info().Uint64("node.id", id.Uint64()).Msg("Node disconnected from batcher, marking as offline")
 
 	// Remove node and mark disconnected atomically
 	b.nodes.Delete(id)
 	b.connected.Store(id, ptr.To(time.Now()))
 	b.totalNodes.Add(-1)
 
-	// Notify other nodes that this node went offline
-	b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeWentOffline, IsSubnetRouter: isRouter})
+	return true
 }
 
 // AddWork queues a change to be processed by the batcher.
@@ -214,6 +206,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Dur("duration", duration).
 						Msg("slow synchronous work processing")
 				}
+
 				continue
 			}
 
@@ -228,6 +221,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Uint64("node.id", w.nodeID.Uint64()).
 						Str("change", w.c.Change.String()).
 						Msg("skipping work for closed connection")
+
 					continue
 				}
 
@@ -240,12 +234,6 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Str("change", w.c.Change.String()).
 						Msg("failed to apply change")
 				}
-			} else {
-				log.Debug().
-					Int("workerID", workerID).
-					Uint64("node.id", w.nodeID.Uint64()).
-					Str("change", w.c.Change.String()).
-					Msg("node not found for asynchronous work - node may have disconnected")
 			}
 
 			duration := time.Since(startTime)
@@ -276,8 +264,15 @@ func (b *LockFreeBatcher) addWork(c change.ChangeSet) {
 				return true
 			}
 			b.queueWork(work{c: c, nodeID: nodeID, resultCh: nil})
+			distributedCount++
+
 			return true
 		})
+		
+		log.Info().Uint64("change.node.id", c.NodeID.Uint64()).Str("change.type", c.Change.String()).
+			Int("distributed_to", distributedCount).Int("skipped", skippedCount).Int("total_nodes", nodeCount).
+			Msg("Completed immediate change distribution")
+
 		return
 	}
 
@@ -285,7 +280,7 @@ func (b *LockFreeBatcher) addWork(c change.ChangeSet) {
 	b.addToBatch(c)
 }
 
-// queueWork safely queues work
+// queueWork safely queues work.
 func (b *LockFreeBatcher) queueWork(w work) {
 	b.workQueuedCount.Add(1)
 
@@ -298,7 +293,7 @@ func (b *LockFreeBatcher) queueWork(w work) {
 	}
 }
 
-// shouldProcessImmediately determines if a change should bypass batching
+// shouldProcessImmediately determines if a change should bypass batching.
 func (b *LockFreeBatcher) shouldProcessImmediately(c change.ChangeSet) bool {
 	// Process these changes immediately to avoid delaying critical functionality
 	switch c.Change {
@@ -309,11 +304,9 @@ func (b *LockFreeBatcher) shouldProcessImmediately(c change.ChangeSet) bool {
 	}
 }
 
-// addToBatch adds a change to the pending batch
-func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
-	b.batchMutex.Lock()
-	defer b.batchMutex.Unlock()
 
+// addToBatch adds a change to the pending batch.
+func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
 	if c.SelfUpdateOnly {
 		changes, _ := b.pendingChanges.LoadOrStore(c.NodeID, []change.ChangeSet{})
 		changes = append(changes, c)
@@ -329,15 +322,13 @@ func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
 		changes, _ := b.pendingChanges.LoadOrStore(nodeID, []change.ChangeSet{})
 		changes = append(changes, c)
 		b.pendingChanges.Store(nodeID, changes)
+
 		return true
 	})
 }
 
-// processBatchedChanges processes all pending batched changes
+// processBatchedChanges processes all pending batched changes.
 func (b *LockFreeBatcher) processBatchedChanges() {
-	b.batchMutex.Lock()
-	defer b.batchMutex.Unlock()
-
 	if b.pendingChanges == nil {
 		return
 	}
@@ -355,17 +346,28 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 
 		// Clear the pending changes for this node
 		b.pendingChanges.Delete(nodeID)
+
 		return true
 	})
 }
 
 // IsConnected is lock-free read.
 func (b *LockFreeBatcher) IsConnected(id types.NodeID) bool {
-	if val, ok := b.connected.Load(id); ok {
-		// nil means connected
-		return val == nil
+	val, ok := b.connected.Load(id)
+	if !ok {
+		return false
 	}
-	return false
+
+	// nil means connected
+	if val == nil {
+		return true
+	}
+
+	// During grace period, always return true to allow DNS resolution
+	// for logout HTTP requests to complete successfully
+	gracePeriod := 45 * time.Second
+
+	return time.Since(*val) < gracePeriod
 }
 
 // ConnectedMap returns a lock-free map of all connected nodes.
@@ -487,5 +489,6 @@ func (nc *nodeConn) send(data *tailcfg.MapResponse) error {
 	// the channel is still open.
 	connData.c <- data
 	nc.updateCount.Add(1)
+
 	return nil
 }
