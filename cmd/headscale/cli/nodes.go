@@ -551,13 +551,12 @@ be assigned to nodes.`,
 			}
 		}
 
-
 		if confirm || force {
 			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 			defer cancel()
 			defer conn.Close()
 
-			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm || force })
+			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm || force})
 			if err != nil {
 				ErrorOutput(
 					err,

@@ -45,6 +45,7 @@ func (c Change) AlsoSelf() bool {
 	case NodeRemove, NodeKeyExpiry, NodeNewOrUpdate:
 		return true
 	}
+
 	return false
 }
 
