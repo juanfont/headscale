@@ -104,7 +104,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
-	polMan, err := policy.NewPolicyManager(pol, users, nodes)
+	polMan, err := policy.NewPolicyManager(pol, users, nodes.ViewSlice())
 	if err != nil {
 		return nil, fmt.Errorf("init policy manager: %w", err)
 	}
@@ -400,22 +400,22 @@ func (s *State) DeleteNode(node *types.Node) (bool, error) {
 	return policyChanged, nil
 }
 
-func (s *State) Connect(node *types.Node) bool {
-	_ = s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+func (s *State) Connect(node types.NodeView) bool {
+	changed := s.primaryRoutes.SetRoutes(node.ID(), node.SubnetRoutes()...)
 
 	// TODO(kradalby): this should be more granular, allowing us to
 	// only send a online update change.
-	return true
+	return changed
 }
 
-func (s *State) Disconnect(node *types.Node) (bool, error) {
+func (s *State) Disconnect(node types.NodeView) (bool, error) {
 	// TODO(kradalby): This node should update the in memory state
-	_, polChanged, err := s.SetLastSeen(node.ID, time.Now())
+	_, polChanged, err := s.SetLastSeen(node.ID(), time.Now())
 	if err != nil {
 		return false, fmt.Errorf("disconnecting node: %w", err)
 	}
 
-	changed := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+	changed := s.primaryRoutes.SetRoutes(node.ID())
 
 	// TODO(kradalby): the returned change should be more nuanced allowing us to
 	// send more directed updates.
@@ -512,7 +512,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateU
 }
 
 // SSHPolicy returns the SSH access policy for a node.
-func (s *State) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
+func (s *State) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	return s.polMan.SSHPolicy(node)
 }
 
@@ -522,7 +522,7 @@ func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 }
 
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.
-func (s *State) NodeCanHaveTag(node *types.Node, tag string) bool {
+func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
@@ -761,7 +761,7 @@ func (s *State) updatePolicyManagerNodes() (bool, error) {
 		return false, fmt.Errorf("listing nodes for policy update: %w", err)
 	}
 
-	changed, err := s.polMan.SetNodes(nodes)
+	changed, err := s.polMan.SetNodes(nodes.ViewSlice())
 	if err != nil {
 		return false, fmt.Errorf("updating policy manager nodes: %w", err)
 	}

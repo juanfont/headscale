@@ -537,7 +537,7 @@ func nodesToProto(state *state.State, isLikelyConnected *xsync.MapOf[types.NodeI
 
 		var tags []string
 		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node, tag) {
+			if state.NodeCanHaveTag(node.View(), tag) {
 				tags = append(tags, tag)
 			}
 		}
@@ -733,7 +733,7 @@ func (api headscaleV1APIServer) SetPolicy(
 	}
 
 	if len(nodes) > 0 {
-		_, err = api.h.state.SSHPolicy(nodes[0])
+		_, err = api.h.state.SSHPolicy(nodes[0].View())
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}

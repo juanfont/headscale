@@ -7,8 +7,10 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"tailscale.com/types/views"
 )
 
 func init() {
@@ -111,7 +113,7 @@ var checkPolicy = &cobra.Command{
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
 		}
 
-		_, err = policy.NewPolicyManager(policyBytes, nil, nil)
+		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
 		}

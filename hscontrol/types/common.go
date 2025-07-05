@@ -1,3 +1,5 @@
+//go:generate go run tailscale.com/cmd/viewer --type=User,Node,PreAuthKey
+
 package types
 
 import (

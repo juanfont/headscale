@@ -18,6 +18,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
+	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
 
@@ -91,7 +92,7 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	// TODO(kradalby):
@@ -179,7 +180,7 @@ func (u Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -188,12 +189,13 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 		errs = append(errs, err)
 	}
 
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
+		// Skip tagged nodes
 		if node.IsTagged() {
 			continue
 		}
 
-		if node.User.ID == user.ID {
+		if node.User().ID == user.ID {
 			node.AppendToIPSet(&ips)
 		}
 	}
@@ -246,7 +248,7 @@ func (g Group) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(g))
 }
 
-func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (g Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -280,7 +282,7 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (t Tag) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	// TODO(kradalby): This is currently resolved twice, and should be resolved once.
@@ -295,17 +297,19 @@ func (t Tag) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.I
 		return nil, err
 	}
 
-	for _, node := range nodes {
-		if node.HasTag(string(t)) {
+	for _, node := range nodes.All() {
+		// Check if node has this tag in all tags (ForcedTags + AuthKey.Tags)
+		if slices.Contains(node.Tags(), string(t)) {
 			node.AppendToIPSet(&ips)
 		}
 
 		// TODO(kradalby): remove as part of #2417, see comment above
 		if tagMap != nil {
-			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo != nil {
-				for _, tag := range node.Hostinfo.RequestTags {
+			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo().Valid() {
+				for _, tag := range node.RequestTagsSlice().All() {
 					if tag == string(t) {
 						node.AppendToIPSet(&ips)
+						break
 					}
 				}
 			}
@@ -346,7 +350,7 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -371,7 +375,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 	if err != nil {
 		errs = append(errs, err)
 	}
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
 		if node.InIPSet(ipsTemp) {
 			node.AppendToIPSet(&ips)
 		}
@@ -432,7 +436,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 // of the Prefix and the Policy, Users, and Nodes.
 //
 // See [Policy], [types.Users], and [types.Nodes] for more details.
-func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -446,12 +450,12 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 
 // appendIfNodeHasIP appends the IPs of the nodes to the IPSet if the node has the
 // IP address in the prefix.
-func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref netip.Prefix) {
+func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuilder, pref netip.Prefix) {
 	if !pref.IsSingleIP() && !tsaddr.IsTailscaleIP(pref.Addr()) {
 		return
 	}
 
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
 		if node.HasIP(pref.Addr()) {
 			node.AppendToIPSet(ips)
 		}
@@ -499,7 +503,7 @@ func (ag AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(ag))
 }
 
-func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
 	switch ag {
@@ -513,17 +517,17 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 			return nil, err
 		}
 
-		for _, node := range nodes {
-			// Skip if node has forced tags
-			if len(node.ForcedTags) != 0 {
+		for _, node := range nodes.All() {
+			// Skip if node is tagged
+			if node.IsTagged() {
 				continue
 			}
 
 			// Skip if node has any allowed requested tags
 			hasAllowedTag := false
-			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
-				for _, tag := range node.Hostinfo.RequestTags {
-					if tagips, ok := tagMap[Tag(tag)]; ok && node.InIPSet(tagips) {
+			if node.RequestTagsSlice().Len() != 0 {
+				for _, tag := range node.RequestTagsSlice().All() {
+					if _, ok := tagMap[Tag(tag)]; ok {
 						hasAllowedTag = true
 						break
 					}
@@ -546,16 +550,16 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 			return nil, err
 		}
 
-		for _, node := range nodes {
-			// Include if node has forced tags
-			if len(node.ForcedTags) != 0 {
+		for _, node := range nodes.All() {
+			// Include if node is tagged
+			if node.IsTagged() {
 				node.AppendToIPSet(&build)
 				continue
 			}
 
 			// Include if node has any allowed requested tags
-			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
-				for _, tag := range node.Hostinfo.RequestTags {
+			if node.RequestTagsSlice().Len() != 0 {
+				for _, tag := range node.RequestTagsSlice().All() {
 					if _, ok := tagMap[Tag(tag)]; ok {
 						node.AppendToIPSet(&build)
 						break
@@ -588,7 +592,7 @@ type Alias interface {
 	// of the Alias and the Policy, Users and Nodes.
 	// This is an interface definition and the implementation is independent of
 	// the Alias type.
-	Resolve(*Policy, types.Users, types.Nodes) (*netipx.IPSet, error)
+	Resolve(*Policy, types.Users, views.Slice[types.NodeView]) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -759,7 +763,7 @@ func (a Aliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -1094,7 +1098,7 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 // resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
 // The resulting map can be used to quickly look up the IPSet for a given Tag.
 // It is intended for internal use in a PolicyManager.
-func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]*netipx.IPSet, error) {
+func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -1158,7 +1162,7 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 // resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.
 // The resulting map can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a PolicyManager.
-func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
+func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
 	if p == nil {
 		return nil, nil, nil
 	}
@@ -1671,7 +1675,7 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 

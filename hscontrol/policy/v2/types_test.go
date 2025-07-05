@@ -1377,7 +1377,7 @@ func TestResolvePolicy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ips, err := tt.toResolve.Resolve(tt.pol,
 				xmaps.Values(users),
-				tt.nodes)
+				tt.nodes.ViewSlice())
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("got %v; want no error", err)
@@ -1557,7 +1557,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes)
+			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes.ViewSlice())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1716,10 +1716,10 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, users, nodes.ViewSlice())
 			require.NoErrorf(t, err, "NewPolicyManager() error = %v", err)
 
-			got := pm.NodeCanApproveRoute(tt.node, tt.route)
+			got := pm.NodeCanApproveRoute(tt.node.View(), tt.route)
 			if got != tt.want {
 				t.Errorf("NodeCanApproveRoute() = %v, want %v", got, tt.want)
 			}
@@ -1800,7 +1800,7 @@ func TestResolveTagOwners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveTagOwners(tt.policy, users, nodes)
+			got, err := resolveTagOwners(tt.policy, users, nodes.ViewSlice())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1911,14 +1911,14 @@ func TestNodeCanHaveTag(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, users, nodes.ViewSlice())
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
 			require.NoError(t, err)
 
-			got := pm.NodeCanHaveTag(tt.node, tt.tag)
+			got := pm.NodeCanHaveTag(tt.node.View(), tt.tag)
 			if got != tt.want {
 				t.Errorf("NodeCanHaveTag() = %v, want %v", got, tt.want)
 			}
