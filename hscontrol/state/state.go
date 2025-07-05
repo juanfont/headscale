@@ -24,6 +24,7 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
+	"tailscale.com/types/views"
 	zcache "zgo.at/zcache/v2"
 )
 
@@ -46,11 +47,8 @@ type State struct {
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
-	// in-memory data, protected by mu
-	// nodes contains the current set of registered nodes
-	nodes types.Nodes
-	// users contains the current set of users/namespaces
-	users types.Users
+	// nodeStore provides an in-memory cache for nodes.
+	nodeStore *NodeStore
 
 	// subsystem keeping state
 	// db provides persistent storage and database operations
@@ -110,11 +108,14 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("init policy manager: %w", err)
 	}
 
+	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		_, matchers := polMan.Filter()
+		return policy.BuildPeerMap(views.SliceOf(nodes), matchers)
+	})
+	nodeStore.Start()
+
 	return &State{
 		cfg: cfg,
-
-		nodes: nodes,
-		users: users,
 
 		db:      db,
 		ipAlloc: ipAlloc,
@@ -123,11 +124,14 @@ func NewState(cfg *types.Config) (*State, error) {
 		polMan:            polMan,
 		registrationCache: registrationCache,
 		primaryRoutes:     routes.New(),
+		nodeStore:         nodeStore,
 	}, nil
 }
 
 // Close gracefully shuts down the State instance and releases all resources.
 func (s *State) Close() error {
+	s.nodeStore.Stop()
+
 	if err := s.db.Close(); err != nil {
 		return fmt.Errorf("closing database: %w", err)
 	}
@@ -309,27 +313,26 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 
 // CreateNode creates a new node and updates the policy manager.
 // Returns the created node, whether policies changed, and any error.
-func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *State) CreateNode(node *types.Node) (types.NodeView, bool, error) {
+	s.nodeStore.PutNode(*node)
 
 	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, false, fmt.Errorf("creating node: %w", err)
+		return types.NodeView{}, false, fmt.Errorf("creating node: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node creation: %w", err)
+		return node.View(), false, fmt.Errorf("failed to update policy manager after node creation: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	return node.View(), policyChanged, nil
 }
 
 // updateNodeTx performs a database transaction to update a node and refresh the policy manager.
-func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, bool, error) {
+func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (types.NodeView, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -350,44 +353,44 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return types.NodeView{}, false, err
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node update: %w", err)
+		return types.NodeView{}, false, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
-	// TODO(kradalby): implement the node in-memory cache
-
-	return node, policyChanged, nil
+	return node.View(), policyChanged, nil
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
-func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *State) SaveNode(node types.NodeView) (types.NodeView, bool, error) {
+	nodePtr := node.AsStruct()
+	s.nodeStore.PutNode(*nodePtr)
 
-	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, false, fmt.Errorf("saving node: %w", err)
+	if err := s.db.DB.Save(nodePtr).Error; err != nil {
+		return types.NodeView{}, false, fmt.Errorf("saving node: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node save: %w", err)
+		return nodePtr.View(), false, fmt.Errorf("failed to update policy manager after node save: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	return nodePtr.View(), policyChanged, nil
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
 // Returns whether policies changed and any error. This operation is irreversible.
-func (s *State) DeleteNode(node *types.Node) (bool, error) {
-	err := s.db.DeleteNode(node)
+func (s *State) DeleteNode(node types.NodeView) (bool, error) {
+	s.nodeStore.DeleteNode(node.ID())
+
+	err := s.db.DeleteNode(node.AsStruct())
 	if err != nil {
 		return false, err
 	}
@@ -402,10 +405,22 @@ func (s *State) DeleteNode(node *types.Node) (bool, error) {
 }
 
 func (s *State) Connect(id types.NodeID) {
+	// Update nodestore with online status - node is connecting so it's online
+	// Use immediate update to ensure online status changes are not delayed by batching
+	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
+		// Set the online status in the node's ephemeral field
+		n.IsOnline = ptr.To(true)
+	})
 }
 
 func (s *State) Disconnect(id types.NodeID) (bool, error) {
-	// TODO(kradalby): This node should update the in memory state
+	// Update nodestore with offline status
+	// Use immediate update to ensure online status changes are not delayed by batching
+	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
+		// Set the online status to false in the node's ephemeral field
+		n.IsOnline = ptr.To(false)
+	})
+
 	_, polChanged, err := s.SetLastSeen(id, time.Now())
 	if err != nil {
 		return false, fmt.Errorf("disconnecting node: %w", err)
@@ -419,101 +434,186 @@ func (s *State) Disconnect(id types.NodeID) (bool, error) {
 }
 
 // GetNodeByID retrieves a node by ID.
-func (s *State) GetNodeByID(nodeID types.NodeID) (*types.Node, error) {
-	return s.db.GetNodeByID(nodeID)
-}
-
-// GetNodeViewByID retrieves a node view by ID.
-func (s *State) GetNodeViewByID(nodeID types.NodeID) (types.NodeView, error) {
-	node, err := s.db.GetNodeByID(nodeID)
-	if err != nil {
-		return types.NodeView{}, err
-	}
-
-	return node.View(), nil
+func (s *State) GetNodeByID(nodeID types.NodeID) (types.NodeView, error) {
+	return s.nodeStore.GetNode(nodeID), nil
 }
 
 // GetNodeByNodeKey retrieves a node by its Tailscale public key.
-func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
-	return s.db.GetNodeByNodeKey(nodeKey)
-}
-
-// GetNodeViewByNodeKey retrieves a node view by its Tailscale public key.
-func (s *State) GetNodeViewByNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
-	node, err := s.db.GetNodeByNodeKey(nodeKey)
-	if err != nil {
-		return types.NodeView{}, err
-	}
-
-	return node.View(), nil
+func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
+	return s.nodeStore.GetNodeByNodeKey(nodeKey), nil
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
-func (s *State) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
+func (s *State) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
 	if len(nodeIDs) == 0 {
-		return s.db.ListNodes()
+		return s.nodeStore.ListNodes(), nil
 	}
 
-	return s.db.ListNodes(nodeIDs...)
+	// Filter nodes by the requested IDs
+	allNodes := s.nodeStore.ListNodes()
+	nodeIDSet := make(map[types.NodeID]struct{}, len(nodeIDs))
+	for _, id := range nodeIDs {
+		nodeIDSet[id] = struct{}{}
+	}
+
+	var filteredNodes []types.NodeView
+	for _, node := range allNodes.All() {
+		if _, exists := nodeIDSet[node.ID()]; exists {
+			filteredNodes = append(filteredNodes, node)
+		}
+	}
+
+	return views.SliceOf(filteredNodes), nil
 }
 
 // ListNodesByUser retrieves all nodes belonging to a specific user.
-func (s *State) ListNodesByUser(userID types.UserID) (types.Nodes, error) {
-	return hsdb.Read(s.db.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return hsdb.ListNodesByUser(rx, userID)
-	})
+func (s *State) ListNodesByUser(userID types.UserID) (views.Slice[types.NodeView], error) {
+	return s.nodeStore.ListNodesByUser(userID), nil
 }
 
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
-func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
-	return s.db.ListPeers(nodeID, peerIDs...)
+func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
+	if len(peerIDs) == 0 {
+		return s.nodeStore.ListPeers(nodeID), nil
+	}
+
+	// For specific peerIDs, filter from all nodes
+	allNodes := s.nodeStore.ListNodes()
+	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
+	for _, id := range peerIDs {
+		nodeIDSet[id] = struct{}{}
+	}
+
+	var filteredNodes []types.NodeView
+	for _, node := range allNodes.All() {
+		if _, exists := nodeIDSet[node.ID()]; exists {
+			filteredNodes = append(filteredNodes, node)
+		}
+	}
+
+	return views.SliceOf(filteredNodes), nil
 }
 
 // ListEphemeralNodes retrieves all ephemeral (temporary) nodes in the system.
-func (s *State) ListEphemeralNodes() (types.Nodes, error) {
-	return s.db.ListEphemeralNodes()
+func (s *State) ListEphemeralNodes() (views.Slice[types.NodeView], error) {
+	allNodes := s.nodeStore.ListNodes()
+	var ephemeralNodes []types.NodeView
+
+	for _, node := range allNodes.All() {
+		// Check if node is ephemeral by checking its AuthKey
+		if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+			ephemeralNodes = append(ephemeralNodes, node)
+		}
+	}
+
+	return views.SliceOf(ephemeralNodes), nil
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.Expiry = &expiry
+	})
+
+	return node, policyChanged, nil
 }
 
 // SetNodeTags assigns tags to a node for use in access control policies.
-func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.ForcedTags = tags
+	})
+
+	return node, policyChanged, nil
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
-func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.ApprovedRoutes = routes
+	})
+
+	return node, policyChanged, nil
 }
 
 // RenameNode changes the display name of a node.
-func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.GivenName = newName
+	})
+
+	return node, policyChanged, nil
 }
 
 // SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.LastSeen = &lastSeen
+	})
+
+	return node, policyChanged, nil
 }
 
 // AssignNodeToUser transfers a node to a different user.
-func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, bool, error) {
+	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the same change
+	// Get the updated user information from the database
+	user, err := s.GetUserByID(userID)
+	if err == nil {
+		s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+			n.UserID = uint(userID)
+			n.User = *user
+		})
+	}
+
+	return node, policyChanged, nil
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -548,8 +648,16 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 }
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
-func (s *State) AutoApproveRoutes(node *types.Node) bool {
-	return policy.AutoApproveRoutes(s.polMan, node)
+func (s *State) AutoApproveRoutes(node types.NodeView) bool {
+	nodePtr := node.AsStruct()
+	changed := policy.AutoApproveRoutes(s.polMan, nodePtr)
+	if changed {
+		s.nodeStore.PutNode(*nodePtr)
+		// Update primaryRoutes manager with the newly approved routes
+		// This is essential for actual packet forwarding to work
+		s.primaryRoutes.SetRoutes(nodePtr.ID, nodePtr.SubnetRoutes()...)
+	}
+	return changed
 }
 
 // PolicyDebugString returns a debug representation of the current policy.
@@ -653,31 +761,39 @@ func (s *State) HandleNodeFromAuthPath(
 	userID types.UserID,
 	expiry *time.Time,
 	registrationMethod string,
-) (*types.Node, bool, error) {
+) (types.NodeView, bool, error) {
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, err
+		return types.NodeView{}, false, err
 	}
 
-	return s.db.HandleNodeFromAuthPath(
+	node, policyChanged, err := s.db.HandleNodeFromAuthPath(
 		registrationID,
 		userID,
 		expiry,
 		util.RegisterMethodOIDC,
 		ipv4, ipv6,
 	)
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
+
+	return node.View(), policyChanged, nil
 }
 
 // HandleNodeFromPreAuthKey handles node registration using a pre-authentication key.
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-) (*types.Node, bool, error) {
+) (types.NodeView, bool, error) {
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
+	if err != nil {
+		return types.NodeView{}, false, err
+	}
 
 	err = pak.Validate()
 	if err != nil {
-		return nil, false, err
+		return types.NodeView{}, false, err
 	}
 
 	nodeToRegister := types.Node{
@@ -713,7 +829,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, fmt.Errorf("allocating IPs: %w", err)
+		return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
 	}
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -735,7 +851,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("writing node to database: %w", err)
+		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
 	}
 
 	// Check if policy manager needs updating
@@ -743,10 +859,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// We need to ensure that the policy manager is aware of this new node.
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
+		return types.NodeView{}, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
 	}
 
-	return node, policyChanged, nil
+	return node.View(), policyChanged, nil
 }
 
 // AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
@@ -786,7 +902,7 @@ func (s *State) updatePolicyManagerNodes() (bool, error) {
 		return false, fmt.Errorf("listing nodes for policy update: %w", err)
 	}
 
-	changed, err := s.polMan.SetNodes(nodes.ViewSlice())
+	changed, err := s.polMan.SetNodes(nodes)
 	if err != nil {
 		return false, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
@@ -816,6 +932,9 @@ func (s *State) autoApproveNodes() error {
 			// TODO(kradalby): This change should probably be sent to the rest of the system.
 			changed := policy.AutoApproveRoutes(s.polMan, node)
 			if changed {
+				// Update nodestore first if available
+				s.nodeStore.PutNode(*node)
+
 				err = tx.Save(node).Error
 				if err != nil {
 					return err

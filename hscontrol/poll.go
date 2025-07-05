@@ -175,13 +175,14 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// only update node status if the node channel was removed.
-		// in principal, it will be removed, but the client rapidly
-		// reconnects, the channel might be of another connection.
-		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID(), m.ch) {
-			// TODO(kradalby): This can likely be made more effective, but likely most
-			// nodes has access to the same routes, so it might not be a big deal.
+		// Remove this connection from the notifier
+		channelWasActive := m.h.nodeNotifier.RemoveNode(m.node.ID(), m.ch)
+		
+		// Always check if we need to mark the node as disconnected.
+		// Even if this specific channel wasn't the active one (due to rapid reconnection),
+		// we need to ensure consistency between notifier and nodestore state.
+		if channelWasActive || !m.h.nodeNotifier.IsLikelyConnected(m.node.ID()) {
+			// Only disconnect if this was the active channel OR if no other active connection exists
 			change, err := m.h.state.Disconnect(m.node.ID())
 			if err != nil {
 				m.errf(err, "Failed to disconnect node %s", m.node.Hostname())
@@ -257,7 +258,7 @@ func (m *mapSession) serveLongPoll() {
 			// Ensure the node view is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
-			m.node, err = m.h.state.GetNodeViewByID(m.node.ID())
+			m.node, err = m.h.state.GetNodeByID(m.node.ID())
 			if err != nil {
 				m.errf(err, "Could not get machine from db")
 
@@ -371,13 +372,16 @@ func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
 	// Get fresh node state from database for accurate route calculations
-	node, err := m.h.state.GetNodeByID(m.node.ID())
+	nodeView, err := m.h.state.GetNodeByID(m.node.ID())
 	if err != nil {
 		m.errf(err, "Failed to get fresh node from database for endpoint update")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
 		return
 	}
+
+	// Convert to mutable node for write operations
+	node := nodeView.AsStruct()
 
 	change := m.node.PeerChangeFromMapRequest(m.req)
 
@@ -411,7 +415,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 	// Auto approve any routes that have been defined in policy as
 	// auto approved. Check if this actually changed the node.
-	routesAutoApproved := m.h.state.AutoApproveRoutes(node)
+	routesAutoApproved := m.h.state.AutoApproveRoutes(node.View())
 
 	// Always update routes for connected nodes to handle reconnection scenarios
 	// where routes need to be restored to the primary routes system
@@ -438,7 +442,7 @@ func (m *mapSession) handleEndpointUpdate() {
 
 	// If routes were auto-approved, we need to save the node to persist the changes
 	if routesAutoApproved {
-		if _, _, err := m.h.state.SaveNode(node); err != nil {
+		if _, _, err := m.h.state.SaveNode(node.View()); err != nil {
 			m.errf(err, "Failed to save auto-approved routes to node")
 			http.Error(m.w, "", http.StatusInternalServerError)
 			mapResponseEndpointUpdates.WithLabelValues("error").Inc()
@@ -452,7 +456,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	// the hostname change.
 	node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
 
-	_, policyChanged, err := m.h.state.SaveNode(node)
+	_, policyChanged, err := m.h.state.SaveNode(node.View())
 	if err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
