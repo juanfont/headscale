@@ -691,7 +691,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			tn2 := testData.Nodes[1]
 
 			// Test AddNode with real node ID
-			batcher.AddNode(tn.n.ID, tn.ch, false, "", 100)
+			batcher.AddNode(tn.n.ID, tn.ch, false, 100)
 			if !batcher.IsConnected(tn.n.ID) {
 				t.Error("Node should be connected after AddNode")
 			}
@@ -711,7 +711,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			drainChannelTimeout(tn.ch, "first node before second", 100*time.Millisecond)
 
 			// Add the second node and verify update message
-			batcher.AddNode(tn2.n.ID, tn2.ch, false, "", 100)
+			batcher.AddNode(tn2.n.ID, tn2.ch, false, 100)
 			assert.True(t, batcher.IsConnected(tn2.n.ID))
 
 			// First node should get an update that second node has connected.
@@ -1812,7 +1812,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 				if err != nil {
 					t.Errorf("Error listing peers for node %d: %v", i, err)
 				} else {
-					t.Logf("Node %d should see %d peers from state", i, len(peers))
+					t.Logf("Node %d should see %d peers from state", i, peers.Len())
 				}
 			}
 
@@ -1960,9 +1960,9 @@ func TestBatcherWorkQueueTracing(t *testing.T) {
 					if err != nil {
 						t.Errorf("Error getting peers from state: %v", err)
 					} else {
-						t.Logf("State shows %d peers available for this node", len(peers))
-						if len(peers) > 0 && len(data.Peers) == 0 {
-							t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", len(peers))
+						t.Logf("State shows %d peers available for this node", peers.Len())
+						if peers.Len() > 0 && len(data.Peers) == 0 {
+							t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", peers.Len())
 						}
 					}
 				} else {

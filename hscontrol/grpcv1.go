@@ -25,6 +25,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/state"
@@ -59,9 +60,10 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
 	}
 
-
 	c := change.UserAdded(types.UserID(user.ID))
-	if policyChanged {
+
+	// TODO(kradalby): Both of these might be policy changes, find a better way to merge.
+	if !policyChanged.Empty() {
 		c.Change = change.Policy
 	}
 
@@ -79,15 +81,13 @@ func (api headscaleV1APIServer) RenameUser(
 		return nil, err
 	}
 
-	_, policyChanged, err := api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
+	_, c, err := api.h.state.RenameUser(types.UserID(oldUser.ID), request.GetNewName())
 	if err != nil {
 		return nil, err
 	}
 
 	// Send policy update notifications if needed
-	if policyChanged {
-		api.h.Change(change.PolicyChange())
-	}
+	api.h.Change(c)
 
 	newUser, err := api.h.state.GetUserByName(request.GetNewName())
 	if err != nil {
@@ -297,7 +297,7 @@ func (api headscaleV1APIServer) GetNode(
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.mapBatcher.IsConnected(node.ID)
+	resp.Online = api.h.mapBatcher.IsConnected(node.ID())
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -323,7 +323,7 @@ func (api headscaleV1APIServer) SetTags(
 	api.h.Change(nodeChange)
 
 	log.Trace().
-		Str("node", node.Hostname).
+		Str("node", node.Hostname()).
 		Strs("tags", request.GetTags()).
 		Msg("Changing tags of node")
 
@@ -357,7 +357,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	routeChange := api.h.state.SetNodeRoutes(node.ID, node.SubnetRoutes()...)
+	routeChange := api.h.state.SetNodeRoutes(node.ID(), node.SubnetRoutes()...)
 
 	// Always propagate node changes from SetApprovedRoutes
 	api.h.Change(nodeChange)
@@ -368,7 +368,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	}
 
 	proto := node.Proto()
-	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID))
+	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID()))
 
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
@@ -420,8 +420,8 @@ func (api headscaleV1APIServer) ExpireNode(
 	api.h.Change(nodeChange)
 
 	log.Trace().
-		Str("node", node.Hostname).
-		Time("expiry", *node.Expiry).
+		Str("node", node.Hostname()).
+		Time("expiry", *node.AsStruct().Expiry).
 		Msg("node expired")
 
 	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
@@ -440,7 +440,7 @@ func (api headscaleV1APIServer) RenameNode(
 	api.h.Change(nodeChange)
 
 	log.Trace().
-		Str("node", node.Hostname).
+		Str("node", node.Hostname()).
 		Str("new_name", request.GetNewName()).
 		Msg("node renamed")
 
@@ -477,35 +477,35 @@ func (api headscaleV1APIServer) ListNodes(
 		return nil, err
 	}
 
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID < nodes[j].ID
-	})
-
 	response := nodesToProto(api.h.state, IsConnected, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
 }
 
-func nodesToProto(state *state.State, IsConnected *xsync.MapOf[types.NodeID, bool], nodes types.Nodes) []*v1.Node {
-	response := make([]*v1.Node, len(nodes))
-	for index, node := range nodes {
+func nodesToProto(state *state.State, isLikelyConnected *xsync.Map[types.NodeID, bool], nodes views.Slice[types.NodeView]) []*v1.Node {
+	response := make([]*v1.Node, nodes.Len())
+	for index, node := range nodes.All() {
 		resp := node.Proto()
 
 		// Populate the online field based on
 		// currently connected nodes.
-		if val, ok := IsConnected.Load(node.ID); ok && val {
+		if val, ok := isLikelyConnected.Load(node.ID()); ok && val {
 			resp.Online = true
 		}
 
 		var tags []string
 		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node.View(), tag) {
+			if state.NodeCanHaveTag(node, tag) {
 				tags = append(tags, tag)
 			}
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
-		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID), node.ExitRoutes()...))
+		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
+		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
 	}
+
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Id < response[j].Id
+	})
 
 	return response
 }
@@ -683,8 +683,8 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
-	if len(nodes) > 0 {
-		_, err = api.h.state.SSHPolicy(nodes[0].View())
+	if nodes.Len() > 0 {
+		_, err = api.h.state.SSHPolicy(nodes.At(0))
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}

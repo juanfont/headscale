@@ -547,8 +547,8 @@ func (h *Headscale) Serve() error {
 	if err != nil {
 		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
 	}
-	for _, node := range ephmNodes {
-		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	for _, node := range ephmNodes.All() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {

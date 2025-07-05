@@ -296,15 +296,13 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	node, err := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	nv, err := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 		}
 		return types.NodeView{}, NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("lookup node: %s", err), nil)
 	}
-
-	nv := node.View()
 
 	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.
 	if ns.machineKey != nv.MachineKey() {
