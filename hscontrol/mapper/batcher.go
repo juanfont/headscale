@@ -64,6 +64,8 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) err
 				Online: ptr.To(false),
 			},
 		})
+	case change.NodeRemove:
+		data, err = mapper.peerRemovedResponse(nc.nodeID(), compress, c.NodeID)
 
 		// TODO(kradalby): Any other change will result in a full update to be cautious.
 		// In the future, the goal is to hit this less and less as we add specific handling.
@@ -143,9 +145,11 @@ func (b *BatcherLock) Start() {
 }
 
 func (b *BatcherLock) AddNode(id types.NodeID, c chan<- []byte, compress string, version tailcfg.CapabilityVersion) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	var sendInitialMap bool
+	var mapCompress string
+	var mapVersion tailcfg.CapabilityVersion
 
+	b.mu.Lock()
 	// If a nodeConn exists, update it in place instead of creating a new one.
 	// This allows workers to automatically get the updated connection.
 	if curr, ok := b.nodes[id]; ok {
@@ -166,6 +170,9 @@ func (b *BatcherLock) AddNode(id types.NodeID, c chan<- []byte, compress string,
 			version:  version,
 			mapper:   b.mapper,
 		}
+		sendInitialMap = true
+		mapCompress = compress
+		mapVersion = version
 	}
 	b.connected[id] = nil // nil means connected
 
@@ -173,6 +180,29 @@ func (b *BatcherLock) AddNode(id types.NodeID, c chan<- []byte, compress string,
 	// - Updating peers with online status
 	// - Updating routes in routemanager and peers
 	b.addWorkLocked(change.ChangeSet{NodeID: id, Change: change.NodeCameOnline})
+	b.mu.Unlock()
+
+	// Send initial full map response for new nodes (outside of mutex lock to avoid deadlock)
+	if sendInitialMap {
+		data, err := b.mapper.fullMapResponse(id, mapVersion, mapCompress)
+		if err == nil && len(data) > 0 {
+			// Get the nodeConn again and send the full map response
+			b.mu.RLock()
+			if nc, ok := b.nodes[id]; ok {
+				nc.mu.RLock()
+				currentChannel := nc.c
+				nc.mu.RUnlock()
+				
+				// Send the full map response directly to the node's channel
+				select {
+				case currentChannel <- data:
+				default:
+					// If channel is full, don't block
+				}
+			}
+			b.mu.RUnlock()
+		}
+	}
 }
 
 func (b *BatcherLock) RemoveNode(id types.NodeID, c chan<- []byte) {

@@ -199,6 +199,18 @@ func (m *mapper) peerChangedPatchResponse(
 	return marshalMapResponse(&resp, nodeID, compress)
 }
 
+// peerRemovedResponse creates a MapResponse indicating that a peer has been removed.
+func (m *mapper) peerRemovedResponse(
+	nodeID types.NodeID,
+	compress string,
+	removedNodeID types.NodeID,
+) ([]byte, error) {
+	resp := m.baseMapResponse()
+	resp.PeersRemoved = []tailcfg.NodeID{removedNodeID.NodeID()}
+
+	return marshalMapResponse(&resp, nodeID, compress)
+}
+
 func marshalMapResponse(
 	resp *tailcfg.MapResponse,
 	nodeID types.NodeID,

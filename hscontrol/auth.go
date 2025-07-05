@@ -89,6 +89,7 @@ func (h *Headscale) handleExistingNode(
 				}
 
 				h.Change(c)
+				return nil, nil
 			}
 
 		}
