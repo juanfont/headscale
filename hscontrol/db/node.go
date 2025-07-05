@@ -260,24 +260,18 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 }
 
 // RenameNode takes a Node struct and a new GivenName for the nodes
-// and renames it. If the name is not unique, it will return an error.
+// and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.CheckForFQDNRules(
-		newName,
-	)
-	if err != nil {
-		return fmt.Errorf("renaming node: %w", err)
+	// Check if the new name is unique
+	var count int64
+	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
 
-	uniq, err := isUniqueName(tx, newName)
-	if err != nil {
-		return fmt.Errorf("checking if name is unique: %w", err)
-	}
-
-	if !uniq {
-		return fmt.Errorf("name is not unique: %s", newName)
+	if count > 0 {
+		return errors.New("name is not unique")
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -333,108 +327,19 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	})
 }
 
-// HandleNodeFromAuthPath is called from the OIDC or CLI auth path
-// with a registrationID to register or reauthenticate a node.
-// If the node found in the registration cache is not already registered,
-// it will be registered with the user and the node will be removed from the cache.
-// If the node is already registered, the expiry will be updated.
-// The node, and a boolean indicating if it was a new node or not, will be returned.
-func (hsdb *HSDatabase) HandleNodeFromAuthPath(
-	registrationID types.RegistrationID,
-	userID types.UserID,
-	nodeExpiry *time.Time,
-	registrationMethod string,
-	ipv4 *netip.Addr,
-	ipv6 *netip.Addr,
-) (*types.Node, change.ChangeSet, error) {
-	var nodeChange change.ChangeSet
-	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if reg, ok := hsdb.regCache.Get(registrationID); ok {
-			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
-				user, err := GetUserByID(tx, userID)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed to find user in register node from auth callback, %w",
-						err,
-					)
-				}
+// RegisterNodeForTest is used only for testing purposes to register a node directly in the database.
+// Production code should use state.HandleNodeFromAuthPath or state.HandleNodeFromPreAuthKey.
+func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
+	if !testing.Testing() {
+		panic("RegisterNodeForTest can only be called during tests")
+	}
 
-				log.Debug().
-					Str("registration_id", registrationID.String()).
-					Str("username", user.Username()).
-					Str("registrationMethod", registrationMethod).
-					Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
-					Msg("Registering node from API/CLI or auth callback")
-
-				// TODO(kradalby): This looks quite wrong? why ID 0?
-				// Why not always?
-				// Registration of expired node with different user
-				if reg.Node.ID != 0 &&
-					reg.Node.UserID != user.ID {
-					return nil, ErrDifferentRegisteredUser
-				}
-
-				reg.Node.UserID = user.ID
-				reg.Node.User = *user
-				reg.Node.RegisterMethod = registrationMethod
-
-				if nodeExpiry != nil {
-					reg.Node.Expiry = nodeExpiry
-				}
-
-				node, err := RegisterNode(
-					tx,
-					reg.Node,
-					ipv4, ipv6,
-				)
-
-				if err == nil {
-					hsdb.regCache.Delete(registrationID)
-				}
-
-				// Signal to waiting clients that the machine has been registered.
-				select {
-				case reg.Registered <- node:
-				default:
-				}
-				close(reg.Registered)
-
-				nodeChange = change.NodeAdded(node.ID)
-
-				return node, err
-			} else {
-				// If the node is already registered, this is a refresh.
-				err := NodeSetExpiry(tx, node.ID, *nodeExpiry)
-				if err != nil {
-					return nil, err
-				}
-
-				nodeChange = change.KeyExpiry(node.ID)
-
-				return node, nil
-			}
-		}
-
-		return nil, ErrNodeNotFoundRegistrationCache
-	})
-
-	return node, nodeChange, err
-}
-
-func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return RegisterNode(tx, node, ipv4, ipv6)
-	})
-}
-
-// RegisterNode is executed from the CLI to register a new Node using its MachineKey.
-func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Username()).
-		Msg("Registering node")
+		Msg("Registering test node")
 
 	// If the a new node is registered with the same machine key, to the same user,
 	// update the existing node.
@@ -445,8 +350,13 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		node.ID = oldNode.ID
 		node.GivenName = oldNode.GivenName
 		node.ApprovedRoutes = oldNode.ApprovedRoutes
-		ipv4 = oldNode.IPv4
-		ipv6 = oldNode.IPv6
+		// Don't overwrite the provided IPs with old ones when they exist
+		if ipv4 == nil {
+			ipv4 = oldNode.IPv4
+		}
+		if ipv6 == nil {
+			ipv6 = oldNode.IPv6
+		}
 	}
 
 	// If the node exists and it already has IP(s), we just save it
@@ -463,7 +373,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("user", node.User.Username()).
-			Msg("Node authorized again")
+			Msg("Test node authorized again")
 
 		return &node, nil
 	}
@@ -472,7 +382,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	node.IPv6 = ipv6
 
 	if node.GivenName == "" {
-		givenName, err := ensureUniqueGivenName(tx, node.Hostname)
+		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
 		if err != nil {
 			return nil, fmt.Errorf("failed to ensure unique given name: %w", err)
 		}
@@ -487,7 +397,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).
-		Msg("Node registered with the database")
+		Msg("Test node registered with the database")
 
 	return &node, nil
 }
@@ -560,7 +470,8 @@ func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	return len(nodes) == 0, nil
 }
 
-func ensureUniqueGivenName(
+// EnsureUniqueGivenName generates a unique given name for a node based on its hostname.
+func EnsureUniqueGivenName(
 	tx *gorm.DB,
 	name string,
 ) (string, error) {
@@ -781,17 +692,21 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 
 	node := hsdb.CreateNodeForTest(user, hostname...)
 
-	err := hsdb.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNode(tx, *node, nil, nil)
+	// Allocate IPs for the test node using the database's IP allocator
+	// This is a simplified allocation for testing - in production this would use State.ipAlloc
+	ipv4, ipv6, err := hsdb.allocateTestIPs(node.ID)
+	if err != nil {
+		panic(fmt.Sprintf("failed to allocate IPs for test node: %v", err))
+	}
+
+	var registeredNode *types.Node
+	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		registeredNode, err = RegisterNodeForTest(tx, *node, ipv4, ipv6)
 		return err
 	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to register test node: %v", err))
-	}
-
-	registeredNode, err := hsdb.GetNodeByID(node.ID)
-	if err != nil {
-		panic(fmt.Sprintf("failed to get registered test node: %v", err))
 	}
 
 	return registeredNode
@@ -841,4 +756,24 @@ func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int
 	}
 
 	return nodes
+}
+
+// allocateTestIPs allocates sequential test IPs for nodes during testing.
+func (hsdb *HSDatabase) allocateTestIPs(nodeID types.NodeID) (*netip.Addr, *netip.Addr, error) {
+	if !testing.Testing() {
+		panic("allocateTestIPs can only be called during tests")
+	}
+
+	// Use simple sequential allocation for tests
+	// IPv4: 100.64.0.x (where x is nodeID)
+	// IPv6: fd7a:115c:a1e0::x (where x is nodeID)
+
+	if nodeID > 254 {
+		return nil, nil, fmt.Errorf("test node ID %d too large for simple IP allocation", nodeID)
+	}
+
+	ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(nodeID)})
+	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(nodeID)})
+
+	return &ipv4, &ipv6, nil
 }

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -112,6 +111,15 @@ func (m *mapSession) serve() {
 	// This is the mechanism where the node gives us information about its
 	// current configuration.
 	//
+	// Process the MapRequest to update node state (endpoints, hostinfo, etc.)
+	c, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
+	if err != nil {
+		httpError(m.w, err)
+		return
+	}
+
+	m.h.Change(c)
+
 	// If OmitPeers is true and Stream is false
 	// then the server will let clients update their endpoints without
 	// breaking existing long-polling (Stream == true) connections.
@@ -122,14 +130,6 @@ func (m *mapSession) serve() {
 	// the response and just wants a 200.
 	// !req.stream && req.OmitPeers
 	if m.isEndpointUpdate() {
-		c, err := m.h.state.UpdateNodeFromMapRequest(m.node, m.req)
-		if err != nil {
-			httpError(m.w, err)
-			return
-		}
-
-		m.h.Change(c)
-
 		m.w.WriteHeader(http.StatusOK)
 		mapResponseEndpointUpdates.WithLabelValues("ok").Inc()
 	}
@@ -142,6 +142,8 @@ func (m *mapSession) serve() {
 func (m *mapSession) serveLongPoll() {
 	m.beforeServeLongPoll()
 
+	log.Trace().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("Long poll session started because client connected")
+
 	// Clean up the session when the client disconnects
 	defer func() {
 		m.cancelChMu.Lock()
@@ -149,18 +151,38 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// TODO(kradalby): This can likely be made more effective, but likely most
-		// nodes has access to the same routes, so it might not be a big deal.
-		disconnectChange, err := m.h.state.Disconnect(m.node)
-		if err != nil {
-			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+		_ = m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
+
+		// When a node disconnects, it might rapidly reconnect (e.g. mobile clients, network weather).
+		// Instead of immediately marking the node as offline, we wait a few seconds to see if it reconnects.
+		// If it does reconnect, the existing mapSession will be replaced and the node remains online.
+		// If it doesn't reconnect within the timeout, we mark it as offline.
+		//
+		// This avoids flapping nodes in the UI and unnecessary churn in the network.
+		// This is not my favourite solution, but it kind of works in our eventually consistent world.
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		disconnected := true
+		// Wait up to 10 seconds for the node to reconnect.
+		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
+		for range 10 {
+			if m.h.mapBatcher.IsConnected(m.node.ID) {
+				disconnected = false
+				break
+			}
+			<-ticker.C
 		}
-		m.h.Change(disconnectChange)
 
-		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch, m.node.IsSubnetRouter())
+		if disconnected {
+			disconnectChanges, err := m.h.state.Disconnect(m.node.ID)
+			if err != nil {
+				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+			}
 
-		m.afterServeLongPoll()
-		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+			m.h.Change(disconnectChanges...)
+			m.afterServeLongPoll()
+			m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+		}
 	}()
 
 	// Set up the client stream
@@ -172,25 +194,25 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	// Add node to batcher BEFORE sending Connect change to prevent race condition
-	// where the change is sent before the node is in the batcher's node map
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.node.IsSubnetRouter(), m.capVer); err != nil {
-		m.errf(err, "failed to add node to batcher")
-		// Send empty response to client to fail fast for invalid/non-existent nodes
-		select {
-		case m.ch <- &tailcfg.MapResponse{}:
-		default:
-			// Channel might be closed
-		}
+	// Process the initial MapRequest to update node state (endpoints, hostinfo, etc.)
+	// CRITICAL: This must be done BEFORE calling Connect() to ensure routes are properly
+	// synchronized. When nodes reconnect, they send their hostinfo with announced routes
+	// in the MapRequest. We need this data in NodeStore before Connect() sets up the
+	// primary routes, otherwise SubnetRoutes() returns empty and the node is removed
+	// from AvailableRoutes.
+	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
+	if err != nil {
+		m.errf(err, "failed to update node from initial MapRequest")
 		return
 	}
 
-	// Now send the Connect change - the batcher handles NodeCameOnline internally
-	// but we still need to update routes and other state-level changes
-	connectChange := m.h.state.Connect(m.node)
-	if !connectChange.Empty() && connectChange.Change != change.NodeCameOnline {
-		m.h.Change(connectChange)
-	}
+	// Connect the node after its state has been updated.
+	// We send two separate change notifications because these are distinct operations:
+	// 1. UpdateNodeFromMapRequest: processes the client's reported state (routes, endpoints, hostinfo)
+	// 2. Connect: marks the node online and recalculates primary routes based on the updated state
+	// While this results in two notifications, it ensures route data is synchronized before
+	// primary route selection occurs, which is critical for proper HA subnet router failover.
+	connectChanges := m.h.state.Connect(m.node.ID)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
@@ -235,6 +257,7 @@ func (m *mapSession) serveLongPoll() {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
 			}
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
+			m.resetKeepAlive()
 		}
 	}
 }
