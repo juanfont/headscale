@@ -485,7 +485,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				nodes, err := adb.ListNodes()
 				assert.NoError(t, err)
 
-				pm, err := pmf(users, nodes)
+				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
 				require.NotNil(t, pm)
 

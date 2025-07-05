@@ -776,7 +776,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Initialize all policy manager implementations
-			policyManagers, err := PolicyManagersForTest([]byte(tt.policy), users, types.Nodes{&tt.node})
+			policyManagers, err := PolicyManagersForTest([]byte(tt.policy), users, types.Nodes{&tt.node}.ViewSlice())
 			if tt.name == "empty policy" {
 				// We expect this one to have a valid but empty policy
 				require.NoError(t, err)
@@ -789,7 +789,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 
 			for i, pm := range policyManagers {
 				t.Run(fmt.Sprintf("policy-index%d", i), func(t *testing.T) {
-					result := pm.NodeCanApproveRoute(&tt.node, tt.route)
+					result := pm.NodeCanApproveRoute(tt.node.View(), tt.route)
 
 					if diff := cmp.Diff(tt.canApprove, result); diff != "" {
 						t.Errorf("NodeCanApproveRoute() mismatch (-want +got):\n%s", diff)

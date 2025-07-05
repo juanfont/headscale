@@ -27,6 +27,7 @@ import (
 	"tailscale.com/smallzstd"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/views"
 )
 
 const (
@@ -88,16 +89,18 @@ func (m *Mapper) String() string {
 }
 
 func generateUserProfiles(
-	node *types.Node,
-	peers types.Nodes,
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.User)
-	ids := make([]uint, 0, len(userMap))
-	userMap[node.User.ID] = &node.User
-	ids = append(ids, node.User.ID)
-	for _, peer := range peers {
-		userMap[peer.User.ID] = &peer.User
-		ids = append(ids, peer.User.ID)
+	ids := make([]uint, 0, peers.Len()+1)
+	user := node.User()
+	userMap[user.ID] = &user
+	ids = append(ids, user.ID)
+	for _, peer := range peers.All() {
+		peerUser := peer.User()
+		userMap[peerUser.ID] = &peerUser
+		ids = append(ids, peerUser.ID)
 	}
 
 	slices.Sort(ids)
@@ -114,7 +117,7 @@ func generateUserProfiles(
 
 func generateDNSConfig(
 	cfg *types.Config,
-	node *types.Node,
+	node types.NodeView,
 ) *tailcfg.DNSConfig {
 	if cfg.TailcfgDNSConfig == nil {
 		return nil
@@ -134,16 +137,17 @@ func generateDNSConfig(
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
-				"device_name":  []string{node.Hostname},
-				"device_model": []string{node.Hostinfo.OS},
+				"device_name":  []string{node.Hostname()},
+				"device_model": []string{node.Hostinfo().OS()},
 			}
 
-			if len(node.IPs()) > 0 {
-				attrs.Add("device_ip", node.IPs()[0].String())
+			nodeIPs := node.IPs()
+			if len(nodeIPs) > 0 {
+				attrs.Add("device_ip", nodeIPs[0].String())
 			}
 
 			resolver.Addr = fmt.Sprintf("%s?%s", resolver.Addr, attrs.Encode())
@@ -154,8 +158,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
 // fullMapResponse creates a complete MapResponse for a node.
 // It is a separate function to make testing easier.
 func (m *Mapper) fullMapResponse(
-	node *types.Node,
-	peers types.Nodes,
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp, err := m.baseWithConfigMapResponse(node, capVer)
@@ -182,15 +186,15 @@ func (m *Mapper) fullMapResponse(
 // FullMapResponse returns a MapResponse for the given node.
 func (m *Mapper) FullMapResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 	messages ...string,
 ) ([]byte, error) {
-	peers, err := m.ListPeers(node.ID)
+	peers, err := m.ListPeers(node.ID())
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers.ViewSlice(), mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +207,7 @@ func (m *Mapper) FullMapResponse(
 // to be used to answer MapRequests with OmitPeers set to true.
 func (m *Mapper) ReadOnlyMapResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 	messages ...string,
 ) ([]byte, error) {
 	resp, err := m.baseWithConfigMapResponse(node, mapRequest.Version)
@@ -216,7 +220,7 @@ func (m *Mapper) ReadOnlyMapResponse(
 
 func (m *Mapper) KeepAliveResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
 	resp.KeepAlive = true
@@ -226,7 +230,7 @@ func (m *Mapper) KeepAliveResponse(
 
 func (m *Mapper) DERPMapResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 	derpMap *tailcfg.DERPMap,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
@@ -237,7 +241,7 @@ func (m *Mapper) DERPMapResponse(
 
 func (m *Mapper) PeerChangedResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 	changed map[types.NodeID]bool,
 	patches []*tailcfg.PeerChange,
 	messages ...string,
@@ -249,7 +253,7 @@ func (m *Mapper) PeerChangedResponse(
 	var changedIDs []types.NodeID
 	for nodeID, nodeChanged := range changed {
 		if nodeChanged {
-			if nodeID != node.ID {
+			if nodeID != node.ID() {
 				changedIDs = append(changedIDs, nodeID)
 			}
 		} else {
@@ -270,7 +274,7 @@ func (m *Mapper) PeerChangedResponse(
 		m.state,
 		node,
 		mapRequest.Version,
-		changedNodes,
+		changedNodes.ViewSlice(),
 		m.cfg,
 	)
 	if err != nil {
@@ -315,7 +319,7 @@ func (m *Mapper) PeerChangedResponse(
 // incoming update from a state change.
 func (m *Mapper) PeerChangedPatchResponse(
 	mapRequest tailcfg.MapRequest,
-	node *types.Node,
+	node types.NodeView,
 	changed []*tailcfg.PeerChange,
 ) ([]byte, error) {
 	resp := m.baseMapResponse()
@@ -327,7 +331,7 @@ func (m *Mapper) PeerChangedPatchResponse(
 func (m *Mapper) marshalMapResponse(
 	mapRequest tailcfg.MapRequest,
 	resp *tailcfg.MapResponse,
-	node *types.Node,
+	node types.NodeView,
 	compression string,
 	messages ...string,
 ) ([]byte, error) {
@@ -366,7 +370,7 @@ func (m *Mapper) marshalMapResponse(
 		}
 
 		perms := fs.FileMode(debugMapResponsePerm)
-		mPath := path.Join(debugDumpMapResponsePath, node.Hostname)
+		mPath := path.Join(debugDumpMapResponsePath, node.Hostname())
 		err = os.MkdirAll(mPath, perms)
 		if err != nil {
 			panic(err)
@@ -444,7 +448,7 @@ func (m *Mapper) baseMapResponse() tailcfg.MapResponse {
 // It is used in for bigger updates, such as full and lite, not
 // incremental.
 func (m *Mapper) baseWithConfigMapResponse(
-	node *types.Node,
+	node types.NodeView,
 	capVer tailcfg.CapabilityVersion,
 ) (*tailcfg.MapResponse, error) {
 	resp := m.baseMapResponse()
@@ -523,9 +527,9 @@ func appendPeerChanges(
 
 	fullChange bool,
 	state *state.State,
-	node *types.Node,
+	node types.NodeView,
 	capVer tailcfg.CapabilityVersion,
-	changed types.Nodes,
+	changed views.Slice[types.NodeView],
 	cfg *types.Config,
 ) error {
 	filter, matchers := state.Filter()
@@ -537,16 +541,19 @@ func appendPeerChanges(
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.
+	var reducedChanged views.Slice[types.NodeView]
 	if len(filter) > 0 {
-		changed = policy.ReduceNodes(node, changed, matchers)
+		reducedChanged = policy.ReduceNodes(node, changed, matchers)
+	} else {
+		reducedChanged = changed
 	}
 
-	profiles := generateUserProfiles(node, changed)
+	profiles := generateUserProfiles(node, reducedChanged)
 
 	dnsConfig := generateDNSConfig(cfg, node)
 
 	tailPeers, err := tailNodes(
-		changed, capVer, state,
+		reducedChanged, capVer, state,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(node, state.GetNodePrimaryRoutes(id), matchers)
 		},

@@ -16,13 +16,14 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/deephash"
+	"tailscale.com/types/views"
 )
 
 type PolicyManager struct {
 	mu    sync.Mutex
 	pol   *Policy
 	users []types.User
-	nodes types.Nodes
+	nodes views.Slice[types.NodeView]
 
 	filterHash deephash.Sum
 	filter     []tailcfg.FilterRule
@@ -43,7 +44,7 @@ type PolicyManager struct {
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
-func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyManager, error) {
+func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.NodeView]) (*PolicyManager, error) {
 	policy, err := unmarshalPolicy(b)
 	if err != nil {
 		return nil, fmt.Errorf("parsing policy: %w", err)
@@ -53,7 +54,7 @@ func NewPolicyManager(b []byte, users []types.User, nodes types.Nodes) (*PolicyM
 		pol:          policy,
 		users:        users,
 		nodes:        nodes,
-		sshPolicyMap: make(map[types.NodeID]*tailcfg.SSHPolicy, len(nodes)),
+		sshPolicyMap: make(map[types.NodeID]*tailcfg.SSHPolicy, nodes.Len()),
 	}
 
 	_, err = pm.updateLocked()
@@ -122,11 +123,11 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	return true, nil
 }
 
-func (pm *PolicyManager) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
+func (pm *PolicyManager) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	if sshPol, ok := pm.sshPolicyMap[node.ID]; ok {
+	if sshPol, ok := pm.sshPolicyMap[node.ID()]; ok {
 		return sshPol, nil
 	}
 
@@ -134,7 +135,7 @@ func (pm *PolicyManager) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error)
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
-	pm.sshPolicyMap[node.ID] = sshPol
+	pm.sshPolicyMap[node.ID()] = sshPol
 
 	return sshPol, nil
 }
@@ -181,7 +182,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 }
 
 // SetNodes updates the nodes in the policy manager and updates the filter rules.
-func (pm *PolicyManager) SetNodes(nodes types.Nodes) (bool, error) {
+func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, error) {
 	if pm == nil {
 		return false, nil
 	}
@@ -192,7 +193,7 @@ func (pm *PolicyManager) SetNodes(nodes types.Nodes) (bool, error) {
 	return pm.updateLocked()
 }
 
-func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
+func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	if pm == nil {
 		return false
 	}
@@ -209,7 +210,7 @@ func (pm *PolicyManager) NodeCanHaveTag(node *types.Node, tag string) bool {
 	return false
 }
 
-func (pm *PolicyManager) NodeCanApproveRoute(node *types.Node, route netip.Prefix) bool {
+func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool {
 	if pm == nil {
 		return false
 	}
@@ -322,7 +323,11 @@ func (pm *PolicyManager) DebugString() string {
 	}
 
 	sb.WriteString("\n\n")
-	sb.WriteString(pm.nodes.DebugString())
+	sb.WriteString("Nodes:\n")
+	for _, node := range pm.nodes.All() {
+		sb.WriteString(node.String())
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }

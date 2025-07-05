@@ -78,7 +78,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		sshPol := make(map[string]*tailcfg.SSHPolicy)
 		for _, node := range nodes {
-			pol, err := h.state.SSHPolicy(node)
+			pol, err := h.state.SSHPolicy(node.View())
 			if err != nil {
 				httpError(w, err)
 				return

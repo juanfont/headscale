@@ -362,7 +362,7 @@ func TestParsing(t *testing.T) {
 						User:     users[0],
 						Hostinfo: &tailcfg.Hostinfo{},
 					},
-				})
+				}.ViewSlice())
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parsing() error = %v, wantErr %v", err, tt.wantErr)

@@ -70,7 +70,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				&types.Config{
 					TailcfgDNSConfig: &dnsConfigOrig,
 				},
-				nodeInShared1,
+				nodeInShared1.View(),
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
@@ -100,14 +100,14 @@ func (m *mockState) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	return m.polMan.Filter()
 }
 
-func (m *mockState) SSHPolicy(node *types.Node) (*tailcfg.SSHPolicy, error) {
+func (m *mockState) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	if m.polMan == nil {
 		return nil, nil
 	}
 	return m.polMan.SSHPolicy(node)
 }
 
-func (m *mockState) NodeCanHaveTag(node *types.Node, tag string) bool {
+func (m *mockState) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	if m.polMan == nil {
 		return false
 	}
