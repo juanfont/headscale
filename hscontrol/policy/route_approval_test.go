@@ -771,6 +771,29 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			policy:     `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
 			canApprove: false,
 		},
+		{
+			name:  "policy-without-autoApprovers-section",
+			node:  normalNode,
+			route: p("10.33.0.0/16"),
+			policy: `{
+				"groups": {
+					"group:admin": ["user1@"]
+				},
+				"acls": [
+					{
+						"action": "accept",
+						"src": ["group:admin"],
+						"dst": ["group:admin:*"]
+					},
+					{
+						"action": "accept",
+						"src": ["group:admin"],
+						"dst": ["10.33.0.0/16:*"]
+					}
+				]
+			}`,
+			canApprove: false,
+		},
 	}
 
 	for _, tt := range tests {

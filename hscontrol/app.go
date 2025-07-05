@@ -137,9 +137,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		node, err := app.state.GetNodeByID(ni)
-		if err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to get ephemeral node for deletion")
+		node, ok := app.state.GetNodeByID(ni)
+		if !ok {
+			log.Error().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed")
+			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed because node not found in NodeStore")
 			return
 		}
 
@@ -379,15 +380,8 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 		writer http.ResponseWriter,
 		req *http.Request,
 	) {
-		log.Trace().
-			Caller().
-			Str("client_address", req.RemoteAddr).
-			Msg("HTTP authentication invoked")
-
-		authHeader := req.Header.Get("authorization")
-
-		if !strings.HasPrefix(authHeader, AuthPrefix) {
-			log.Error().
+		if err := func() error {
+			log.Trace().
 				Caller().
 				Str("client_address", req.RemoteAddr).
 				Msg(`missing "Bearer " prefix in "Authorization" header`)
@@ -501,11 +495,12 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
+	var err error
 	capver.CanOldCodeBeCleanedUp()
 
 	if profilingEnabled {
 		if profilingPath != "" {
-			err := os.MkdirAll(profilingPath, os.ModePerm)
+			err = os.MkdirAll(profilingPath, os.ModePerm)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create profiling directory")
 			}
@@ -559,12 +554,9 @@ func (h *Headscale) Serve() error {
 	// around between restarts, they will reconnect and the GC will
 	// be cancelled.
 	go h.ephemeralGC.Start()
-	ephmNodes, err := h.state.ListEphemeralNodes()
-	if err != nil {
-		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
-	}
-	for _, node := range ephmNodes {
-		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	ephmNodes := h.state.ListEphemeralNodes()
+	for _, node := range ephmNodes.All() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {
@@ -794,23 +786,14 @@ func (h *Headscale) Serve() error {
 					continue
 				}
 
-				changed, err := h.state.ReloadPolicy()
+				changes, err := h.state.ReloadPolicy()
 				if err != nil {
 					log.Error().Err(err).Msgf("reloading policy")
 					continue
 				}
 
-				if changed {
-					log.Info().
-						Msg("ACL policy successfully reloaded, notifying nodes of change")
+				h.Change(changes...)
 
-					err = h.state.AutoApproveNodes()
-					if err != nil {
-						log.Error().Err(err).Msg("failed to approve routes after new policy")
-					}
-
-					h.Change(change.PolicySet)
-				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
 				log.Info().
@@ -1020,6 +1003,6 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // Change is used to send changes to nodes.
 // All change should be enqueued here and empty will be automatically
 // ignored.
-func (h *Headscale) Change(c change.ChangeSet) {
-	h.mapBatcher.AddWork(c)
+func (h *Headscale) Change(cs ...change.ChangeSet) {
+	h.mapBatcher.AddWork(cs...)
 }

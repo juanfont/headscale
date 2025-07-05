@@ -19,6 +19,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/views"
 )
 
 const (
@@ -69,16 +70,18 @@ func newMapper(
 }
 
 func generateUserProfiles(
-	node *types.Node,
-	peers types.Nodes,
+	node types.NodeView,
+	peers views.Slice[types.NodeView],
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.User)
 	ids := make([]uint, 0, len(userMap))
-	userMap[node.User.ID] = &node.User
-	ids = append(ids, node.User.ID)
-	for _, peer := range peers {
-		userMap[peer.User.ID] = &peer.User
-		ids = append(ids, peer.User.ID)
+	user := node.User()
+	userMap[user.ID] = &user
+	ids = append(ids, user.ID)
+	for _, peer := range peers.All() {
+		peerUser := peer.User()
+		userMap[peerUser.ID] = &peerUser
+		ids = append(ids, peerUser.ID)
 	}
 
 	slices.Sort(ids)
@@ -95,7 +98,7 @@ func generateUserProfiles(
 
 func generateDNSConfig(
 	cfg *types.Config,
-	node *types.Node,
+	node types.NodeView,
 ) *tailcfg.DNSConfig {
 	if cfg.TailcfgDNSConfig == nil {
 		return nil
@@ -115,12 +118,12 @@ func generateDNSConfig(
 //
 // This will produce a resolver like:
 // `https://dns.nextdns.io/<nextdns-id>?device_name=node-name&device_model=linux&device_ip=100.64.0.1`
-func addNextDNSMetadata(resolvers []*dnstype.Resolver, node *types.Node) {
+func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 	for _, resolver := range resolvers {
 		if strings.HasPrefix(resolver.Addr, nextDNSDoHPrefix) {
 			attrs := url.Values{
-				"device_name":  []string{node.Hostname},
-				"device_model": []string{node.Hostinfo.OS},
+				"device_name":  []string{node.Hostname()},
+				"device_model": []string{node.Hostinfo().OS()},
 			}
 
 			if len(node.IPs()) > 0 {
@@ -138,10 +141,7 @@ func (m *mapper) fullMapResponse(
 	capVer tailcfg.CapabilityVersion,
 	messages ...string,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.listPeers(nodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
@@ -183,10 +183,7 @@ func (m *mapper) peerChangeResponse(
 	capVer tailcfg.CapabilityVersion,
 	changedNodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.listPeers(nodeID, changedNodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID, changedNodeID)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
@@ -208,7 +205,8 @@ func (m *mapper) peerRemovedResponse(
 
 func writeDebugMapResponse(
 	resp *tailcfg.MapResponse,
-	node *types.Node,
+	t debugType,
+	nodeID types.NodeID,
 ) {
 	body, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
@@ -234,25 +232,6 @@ func writeDebugMapResponse(
 	if err != nil {
 		panic(err)
 	}
-}
-
-// listPeers returns peers of node, regardless of any Policy or if the node is expired.
-// If no peer IDs are given, all peers are returned.
-// If at least one peer ID is given, only these peer nodes will be returned.
-func (m *mapper) listPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
-	peers, err := m.state.ListPeers(nodeID, peerIDs...)
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(kradalby): Add back online via batcher. This was removed
-	// to avoid a circular dependency between the mapper and the notification.
-	for _, peer := range peers {
-		online := m.batcher.IsConnected(peer.ID)
-		peer.IsOnline = &online
-	}
-
-	return peers, nil
 }
 
 // routeFilterFunc is a function that takes a node ID and returns a list of

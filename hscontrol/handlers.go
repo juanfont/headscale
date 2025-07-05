@@ -94,13 +94,19 @@ func (h *Headscale) handleVerifyRequest(
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err))
 	}
 
-	nodes, err := h.state.ListNodes()
-	if err != nil {
-		return fmt.Errorf("cannot list nodes: %w", err)
+	nodes := h.state.ListNodes()
+
+	// Check if any node has the requested NodeKey
+	var nodeKeyFound bool
+	for _, node := range nodes.All() {
+		if node.NodeKey() == derpAdmitClientRequest.NodePublic {
+			nodeKeyFound = true
+			break
+		}
 	}
 
 	resp := &tailcfg.DERPAdmitClientResponse{
-		Allow: nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic),
+		Allow: nodeKeyFound,
 	}
 
 	return json.NewEncoder(writer).Encode(resp)

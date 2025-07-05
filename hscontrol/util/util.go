@@ -112,7 +112,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 	}
 
 	// Parse each hop line
-	hopRegex := regexp.MustCompile("^\\s*(\\d+)\\s+(?:([^ ]+) \\(([^)]+)\\)|(\\*))(?:\\s+(\\d+\\.\\d+) ms)?(?:\\s+(\\d+\\.\\d+) ms)?(?:\\s+(\\d+\\.\\d+) ms)?")
+	hopRegex := regexp.MustCompile(`^\s*(\d+)\s+(?:([^ ]+) \(([^)]+)\)|(\*))(?:\s+(\d+\.\d+) ms)?(?:\s+(\d+\.\d+) ms)?(?:\s+(\d+\.\d+) ms)?`)
 
 	for i := 1; i < len(lines); i++ {
 		matches := hopRegex.FindStringSubmatch(lines[i])
