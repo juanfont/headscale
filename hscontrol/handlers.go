@@ -99,8 +99,17 @@ func (h *Headscale) handleVerifyRequest(
 		return fmt.Errorf("cannot list nodes: %w", err)
 	}
 
+	// Check if any node has the requested NodeKey
+	var nodeKeyFound bool
+	for _, node := range nodes.All() {
+		if node.NodeKey() == derpAdmitClientRequest.NodePublic {
+			nodeKeyFound = true
+			break
+		}
+	}
+
 	resp := &tailcfg.DERPAdmitClientResponse{
-		Allow: nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic),
+		Allow: nodeKeyFound,
 	}
 
 	return json.NewEncoder(writer).Encode(resp)

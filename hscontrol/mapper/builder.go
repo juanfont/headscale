@@ -63,9 +63,9 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(
-		node.View(), b.capVer, b.mapper.state,
+		node, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node.View(), b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		b.mapper.cfg)
 	if err != nil {
@@ -112,7 +112,7 @@ func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 		return b
 	}
 
-	sshPolicy, err := b.mapper.state.SSHPolicy(node.View())
+	sshPolicy, err := b.mapper.state.SSHPolicy(node)
 	if err != nil {
 		b.addError(err)
 		return b
@@ -135,7 +135,7 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 }
 
 // WithUserProfiles adds user profiles for the requesting node and given peers
-func (b *MapResponseBuilder) WithUserProfiles(peers types.Nodes) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 	node, err := b.mapper.state.GetNodeByID(b.nodeID)
 	if err != nil {
 		b.addError(err)
@@ -161,14 +161,14 @@ func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 	// new PacketFilters field and "base" allows us to send a full update when we
 	// have to send an empty list, avoiding the hack in the else block.
 	b.resp.PacketFilters = map[string][]tailcfg.FilterRule{
-		"base": policy.ReduceFilterRules(node.View(), filter),
+		"base": policy.ReduceFilterRules(node, filter),
 	}
 
 	return b
 }
 
 // WithPeers adds full peer list with policy filtering (for full map response)
-func (b *MapResponseBuilder) WithPeers(peers types.Nodes) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeers(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 
 	tailPeers, err := b.buildTailPeers(peers)
 	if err != nil {
@@ -181,7 +181,7 @@ func (b *MapResponseBuilder) WithPeers(peers types.Nodes) *MapResponseBuilder {
 }
 
 // WithPeerChanges adds changed peers with policy filtering (for incremental updates)
-func (b *MapResponseBuilder) WithPeerChanges(peers types.Nodes) *MapResponseBuilder {
+func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) *MapResponseBuilder {
 
 	tailPeers, err := b.buildTailPeers(peers)
 	if err != nil {
@@ -193,8 +193,8 @@ func (b *MapResponseBuilder) WithPeerChanges(peers types.Nodes) *MapResponseBuil
 	return b
 }
 
-// buildTailPeers converts types.Nodes to []tailcfg.Node with policy filtering and sorting
-func (b *MapResponseBuilder) buildTailPeers(peers types.Nodes) ([]*tailcfg.Node, error) {
+// buildTailPeers converts views.Slice[types.NodeView] to []tailcfg.Node with policy filtering and sorting
+func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
 	node, err := b.mapper.state.GetNodeByID(b.nodeID)
 	if err != nil {
 		return nil, err
@@ -206,15 +206,15 @@ func (b *MapResponseBuilder) buildTailPeers(peers types.Nodes) ([]*tailcfg.Node,
 	// access each-other at all and remove them from the peers.
 	var changedViews views.Slice[types.NodeView]
 	if len(filter) > 0 {
-		changedViews = policy.ReduceNodes(node.View(), peers.ViewSlice(), matchers)
+		changedViews = policy.ReduceNodes(node, peers, matchers)
 	} else {
-		changedViews = peers.ViewSlice()
+		changedViews = peers
 	}
 
 	tailPeers, err := tailNodes(
 		changedViews, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node.View(), b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		b.mapper.cfg)
 	if err != nil {

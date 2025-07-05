@@ -176,6 +176,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Equal(ct, "NeedsLogin", status.BackendState)
 		}
+		assertTailscaleNodesLogout(t, allClients)
 	}, shortAccessTTL+10*time.Second, 5*time.Second)
 }
 

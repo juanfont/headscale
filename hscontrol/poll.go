@@ -235,6 +235,7 @@ func (m *mapSession) serveLongPoll() {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
 			}
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
+			m.resetKeepAlive()
 		}
 	}
 }

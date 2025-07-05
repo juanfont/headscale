@@ -14,7 +14,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -279,16 +278,16 @@ func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 		return nil, fmt.Errorf("no network named: %s", name)
 	}
 
-	for _, ipam := range net.Network.IPAM.Config {
-		pref, err := netip.ParsePrefix(ipam.Subnet)
-		if err != nil {
-			return nil, err
-		}
-
-		return &pref, nil
+	if len(net.Network.IPAM.Config) == 0 {
+		return nil, fmt.Errorf("no IPAM config found in network: %s", name)
 	}
 
-	return nil, fmt.Errorf("no prefix found in network: %s", name)
+	pref, err := netip.ParsePrefix(net.Network.IPAM.Config[0].Subnet)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pref, nil
 }
 
 func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
@@ -696,7 +695,6 @@ func (s *Scenario) createHeadscaleEnv(
 		return err
 	}
 
-	sort.Strings(s.spec.Users)
 	for _, user := range s.spec.Users {
 		u, err := s.CreateUser(user)
 		if err != nil {
