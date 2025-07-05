@@ -19,7 +19,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
         buildGo = pkgs.buildGo124Module;
-        vendorHash = "sha256-ACab+UvKrh+7G5KXNS+Iu9y8ZExefQDhwEKgIv0iIvE=";
+        vendorHash = "sha256-PnE6MmdYTpEgqf5WjqzuYh5l/MN+2RL7HOp3vNc76Jg=";
       in {
         headscale = buildGo {
           pname = "headscale";
@@ -113,9 +113,9 @@
           buildGoModule = buildGo;
         };
 
-        gopls = prev.gopls.override {
-          buildGoModule = buildGo;
-        };
+        # gopls = prev.gopls.override {
+        #   buildGoModule = buildGo;
+        # };
       };
     }
     // flake-utils.lib.eachDefaultSystem

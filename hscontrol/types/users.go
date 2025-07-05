@@ -273,7 +273,7 @@ func CleanIdentifier(identifier string) string {
 				cleanParts = append(cleanParts, part)
 			}
 		}
-		
+
 		if len(cleanParts) == 0 {
 			u.Path = ""
 		} else {
