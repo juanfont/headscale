@@ -15,6 +15,12 @@
 - Support client verify for DERP
   [#2046](https://github.com/juanfont/headscale/pull/2046)
 - Add healthcheck command [#2659](https://github.com/juanfont/headscale/pull/2659)
+- Remove redundant check regarding `noise` config
+  [#2658](https://github.com/juanfont/headscale/pull/2658)
+- Refactor OpenID Connect documentation
+  [#2625](https://github.com/juanfont/headscale/pull/2625)
+- Don't crash if config file is missing 
+  [#2656](https://github.com/juanfont/headscale/pull/2656)
 
 ## 0.26.1 (2025-06-06)
 
