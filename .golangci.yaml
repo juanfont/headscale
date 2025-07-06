@@ -24,6 +24,7 @@ linters:
     - revive
     - tagliatelle
     - testpackage
+    - varnamelen
     - wrapcheck
     - wsl
   settings:
