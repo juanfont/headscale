@@ -29,7 +29,9 @@ jobs:
       - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
         if: steps.changed-files.outputs.files == 'true'
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          primary-key:
+            nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Generate and check integration tests
