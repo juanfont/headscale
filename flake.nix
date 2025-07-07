@@ -113,9 +113,9 @@
           buildGoModule = buildGo;
         };
 
-        gopls = prev.gopls.override {
-          buildGoModule = buildGo;
-        };
+        # gopls = prev.gopls.override {
+        #   buildGoModule = buildGo;
+        # };
       };
     }
     // flake-utils.lib.eachDefaultSystem
