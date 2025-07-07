@@ -38,11 +38,12 @@ func findTests() []string {
 	return tests
 }
 
-func updateYAML(tests []string, testPath string) {
+func updateYAML(tests []string, jobName string, testPath string) {
 	testsForYq := fmt.Sprintf("[%s]", strings.Join(tests, ", "))
 
 	yqCommand := fmt.Sprintf(
-		"yq eval '.jobs.integration-test.strategy.matrix.test = %s' %s -i",
+		"yq eval '.jobs.%s.strategy.matrix.test = %s' %s -i",
+		jobName,
 		testsForYq,
 		testPath,
 	)
@@ -59,7 +60,7 @@ func updateYAML(tests []string, testPath string) {
 		log.Fatalf("failed to run yq command: %s", err)
 	}
 
-	fmt.Printf("YAML file (%s) updated successfully\n", testPath)
+	fmt.Printf("YAML file (%s) job %s updated successfully\n", testPath, jobName)
 }
 
 func main() {
@@ -70,5 +71,21 @@ func main() {
 		quotedTests[i] = fmt.Sprintf("\"%s\"", test)
 	}
 
-	updateYAML(quotedTests, "./test-integration.yaml")
+	// Define selected tests for PostgreSQL
+	postgresTestNames := []string{
+		"TestACLAllowUserDst",
+		"TestPingAllByIP",
+		"TestEphemeral2006DeletedTooQuickly",
+		"TestPingAllByIPManyUpDown",
+		"TestSubnetRouterMultiNetwork",
+	}
+
+	quotedPostgresTests := make([]string, len(postgresTestNames))
+	for i, test := range postgresTestNames {
+		quotedPostgresTests[i] = fmt.Sprintf("\"%s\"", test)
+	}
+
+	// Update both SQLite and PostgreSQL job matrices
+	updateYAML(quotedTests, "sqlite", "./test-integration.yaml")
+	updateYAML(quotedPostgresTests, "postgres", "./test-integration.yaml")
 }
