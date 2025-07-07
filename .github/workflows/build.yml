@@ -36,7 +36,9 @@ jobs:
       - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
         if: steps.changed-files.outputs.files == 'true'
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          primary-key:
+            nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run nix build
@@ -90,11 +92,15 @@ jobs:
       - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad # v31
       - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
         with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          primary-key:
+            nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run go cross compile
-        run: env ${{ matrix.env }} nix develop --command -- go build -o "headscale" ./cmd/headscale
+        run:
+          env ${{ matrix.env }} nix develop --command -- go build -o "headscale"
+          ./cmd/headscale
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: "headscale-${{ matrix.env }}"
