@@ -213,15 +213,15 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	node, err := ns.getAndValidateNode(mapRequest)
+	nv, err := ns.getAndValidateNode(mapRequest)
 	if err != nil {
 		httpError(writer, err)
 		return
 	}
 
-	ns.nodeKey = node.NodeKey
+	ns.nodeKey = nv.NodeKey()
 
-	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, node)
+	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv)
 	sess.tracef("a node sending a MapRequest with Noise protocol")
 	if !sess.isStreaming() {
 		sess.serve()
@@ -292,19 +292,19 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
-func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (*types.Node, error) {
-	node, err := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
+	nv, err := ns.headscale.state.GetNodeViewByNodeKey(mapRequest.NodeKey)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, NewHTTPError(http.StatusNotFound, "node not found", nil)
+			return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 		}
-		return nil, err
+		return types.NodeView{}, err
 	}
 
 	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.
-	if ns.machineKey != node.MachineKey {
-		return nil, NewHTTPError(http.StatusNotFound, "node key in request does not match the one associated with this machine key", nil)
+	if ns.machineKey != nv.MachineKey() {
+		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node key in request does not match the one associated with this machine key", nil)
 	}
 
-	return node, nil
+	return nv, nil
 }

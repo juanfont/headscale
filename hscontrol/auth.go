@@ -206,6 +206,12 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	} else if changed {
 		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
 		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	} else {
+		// Existing node re-registering without route changes
+		// Still need to notify peers about the node being active again
+		// Use UpdateFull to ensure all peers get complete peer maps
+		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname)
+		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
 	return &tailcfg.RegisterResponse{
