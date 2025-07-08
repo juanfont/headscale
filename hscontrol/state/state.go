@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -400,22 +401,17 @@ func (s *State) DeleteNode(node *types.Node) (bool, error) {
 	return policyChanged, nil
 }
 
-func (s *State) Connect(node types.NodeView) bool {
-	changed := s.primaryRoutes.SetRoutes(node.ID(), node.SubnetRoutes()...)
-
-	// TODO(kradalby): this should be more granular, allowing us to
-	// only send a online update change.
-	return changed
+func (s *State) Connect(id types.NodeID) {
 }
 
-func (s *State) Disconnect(node types.NodeView) (bool, error) {
+func (s *State) Disconnect(id types.NodeID) (bool, error) {
 	// TODO(kradalby): This node should update the in memory state
-	_, polChanged, err := s.SetLastSeen(node.ID(), time.Now())
+	_, polChanged, err := s.SetLastSeen(id, time.Now())
 	if err != nil {
 		return false, fmt.Errorf("disconnecting node: %w", err)
 	}
 
-	changed := s.primaryRoutes.SetRoutes(node.ID())
+	changed := s.primaryRoutes.SetRoutes(id)
 
 	// TODO(kradalby): the returned change should be more nuanced allowing us to
 	// send more directed updates.
@@ -427,9 +423,27 @@ func (s *State) GetNodeByID(nodeID types.NodeID) (*types.Node, error) {
 	return s.db.GetNodeByID(nodeID)
 }
 
+// GetNodeViewByID retrieves a node view by ID.
+func (s *State) GetNodeViewByID(nodeID types.NodeID) (types.NodeView, error) {
+	node, err := s.db.GetNodeByID(nodeID)
+	if err != nil {
+		return types.NodeView{}, err
+	}
+	return node.View(), nil
+}
+
 // GetNodeByNodeKey retrieves a node by its Tailscale public key.
 func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
 	return s.db.GetNodeByNodeKey(nodeKey)
+}
+
+// GetNodeViewByNodeKey retrieves a node view by its Tailscale public key.
+func (s *State) GetNodeViewByNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
+	node, err := s.db.GetNodeByNodeKey(nodeKey)
+	if err != nil {
+		return types.NodeView{}, err
+	}
+	return node.View(), nil
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -682,8 +696,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 		AuthKeyID:  &pak.ID,
 	}
 
-	if !regReq.Expiry.IsZero() {
+	// For auth key registration, ensure we don't keep an expired node
+	// This is especially important for re-registration after logout
+	if !regReq.Expiry.IsZero() && regReq.Expiry.After(time.Now()) {
 		nodeToRegister.Expiry = &regReq.Expiry
+	} else if !regReq.Expiry.IsZero() {
+		// If client is sending an expired time (e.g., after logout), 
+		// don't set expiry so the node won't be considered expired
+		log.Debug().
+			Time("requested_expiry", regReq.Expiry).
+			Str("node", regReq.Hostinfo.Hostname).
+			Msg("Ignoring expired expiry time from auth key registration")
 	}
 
 	ipv4, ipv6, err := s.ipAlloc.Next()
