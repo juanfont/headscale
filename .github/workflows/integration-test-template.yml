@@ -15,7 +15,7 @@ on:
         type: string
 
 jobs:
-  integration-test:
+  test:
     runs-on: ubuntu-latest
     env:
       # Github does not allow us to access secrets in pull requests,
@@ -75,7 +75,7 @@ jobs:
           # Some of the jobs might still require manual restart as they are really
           # slow and this will cause them to eventually be killed by Github actions.
           attempt_delay: 300000 # 5 min
-          attempt_limit: 10
+          attempt_limit: 3
           command: |
             nix develop --command -- hi run "^${{ inputs.test }}$" \
               --timeout=120m \
