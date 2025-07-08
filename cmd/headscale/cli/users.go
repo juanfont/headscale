@@ -13,31 +13,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func usernameAndIDFlag(cmd *cobra.Command) {
-	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
-	cmd.Flags().StringP("name", "n", "", "Username")
-}
-
-// usernameAndIDFromFlag returns the username and ID from the flags of the command.
-// If both are empty, it will exit the program with an error.
-func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
-	username, _ := cmd.Flags().GetString("name")
-	identifier, _ := cmd.Flags().GetInt64("identifier")
-	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
-		ErrorOutput(
-			err,
-			fmt.Sprintf(
-				"Cannot rename user: %s",
-				status.Convert(err).Message(),
-			),
-			"",
-		)
-	}
-
-	return uint64(identifier), username
-}
-
 func init() {
 	rootCmd.AddCommand(userCmd)
 	userCmd.AddCommand(createUserCmd)
@@ -133,35 +108,15 @@ var destroyUserCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		id, username := usernameAndIDFromFlag(cmd)
-		request := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
-		users, err := client.ListUsers(ctx, request)
+		user, err := findSingleUser(ctx, client, cmd, "destroyUserCmd", output)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
-				output,
-			)
+			// The helper already calls ErrorOutput, so we can just return
+			return
 		}
-
-		if len(users.GetUsers()) != 1 {
-			err := fmt.Errorf("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
-				output,
-			)
-		}
-
-		user := users.GetUsers()[0]
 
 		confirm := false
 		force, _ := cmd.Flags().GetBool("force")
@@ -213,7 +168,7 @@ var listUsersCmd = &cobra.Command{
 		request := &v1.ListUsersRequest{}
 
 		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
+		username, _ := cmd.Flags().GetString("user")
 		email, _ := cmd.Flags().GetString("email")
 
 		// filter by one param at most
@@ -277,34 +232,16 @@ var renameUserCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		id, username := usernameAndIDFromFlag(cmd)
-		listReq := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
-		users, err := client.ListUsers(ctx, listReq)
+		user, err := findSingleUser(ctx, client, cmd, "renameUserCmd", output)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
-				output,
-			)
-		}
-
-		if len(users.GetUsers()) != 1 {
-			err := fmt.Errorf("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
-				output,
-			)
+			// The helper already calls ErrorOutput, so we can just return
+			return
 		}
 
 		newName, _ := cmd.Flags().GetString("new-name")
 
 		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
+			OldId:   user.GetId(),
 			NewName: newName,
 		}
 
