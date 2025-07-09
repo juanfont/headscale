@@ -2,13 +2,13 @@ package integration
 
 import (
 	"strings"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
 )
 
 type ClientsSpec struct {
@@ -71,9 +71,9 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2", "user3"},
 		Networks: map[string][]string{
-			"usernet1": []string{"user1"},
-			"usernet2": []string{"user2"},
-			"usernet3": []string{"user3"},
+			"usernet1": {"user1"},
+			"usernet2": {"user2"},
+			"usernet3": {"user3"},
 		},
 	}
 
@@ -106,7 +106,6 @@ func derpServerScenario(
 	furtherAssertions ...func(*Scenario),
 ) {
 	IntegrationSkip(t)
-	// t.Parallel()
 
 	scenario, err := NewScenario(spec)
 	assertNoErr(t, err)

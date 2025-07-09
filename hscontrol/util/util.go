@@ -53,37 +53,37 @@ func ParseLoginURLFromCLILogin(output string) (*url.URL, error) {
 }
 
 type TraceroutePath struct {
-  // Hop is the current jump in the total traceroute.
-  Hop int
+	// Hop is the current jump in the total traceroute.
+	Hop int
 
-  // Hostname is the resolved hostname or IP address identifying the jump
-  Hostname string
+	// Hostname is the resolved hostname or IP address identifying the jump
+	Hostname string
 
-  // IP is the IP address of the jump
-  IP netip.Addr
+	// IP is the IP address of the jump
+	IP netip.Addr
 
-  // Latencies is a list of the latencies for this jump
-  Latencies []time.Duration
+	// Latencies is a list of the latencies for this jump
+	Latencies []time.Duration
 }
 
 type Traceroute struct {
-  // Hostname is the resolved hostname or IP address identifying the target
-  Hostname string
+	// Hostname is the resolved hostname or IP address identifying the target
+	Hostname string
 
-  // IP is the IP address of the target
-  IP netip.Addr
+	// IP is the IP address of the target
+	IP netip.Addr
 
-  // Route is the path taken to reach the target if successful. The list is ordered by the path taken.
-  Route []TraceroutePath
+	// Route is the path taken to reach the target if successful. The list is ordered by the path taken.
+	Route []TraceroutePath
 
-  // Success indicates if the traceroute was successful.
-  Success bool
+	// Success indicates if the traceroute was successful.
+	Success bool
 
-  // Err contains an error if  the traceroute was not successful.
-  Err error
+	// Err contains an error if  the traceroute was not successful.
+	Err error
 }
 
-// ParseTraceroute parses the output of the traceroute command and returns a Traceroute struct
+// ParseTraceroute parses the output of the traceroute command and returns a Traceroute struct.
 func ParseTraceroute(output string) (Traceroute, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) < 1 {
@@ -112,7 +112,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 	}
 
 	// Parse each hop line
-	hopRegex := regexp.MustCompile(`^\s*(\d+)\s+(?:([^ ]+) \(([^)]+)\)|(\*))(?:\s+(\d+\.\d+) ms)?(?:\s+(\d+\.\d+) ms)?(?:\s+(\d+\.\d+) ms)?`)
+	hopRegex := regexp.MustCompile("^\\s*(\\d+)\\s+(?:([^ ]+) \\(([^)]+)\\)|(\\*))(?:\\s+(\\d+\\.\\d+) ms)?(?:\\s+(\\d+\\.\\d+) ms)?(?:\\s+(\\d+\\.\\d+) ms)?")
 
 	for i := 1; i < len(lines); i++ {
 		matches := hopRegex.FindStringSubmatch(lines[i])

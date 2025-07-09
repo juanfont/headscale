@@ -4,7 +4,6 @@ import (
 	"net/netip"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"

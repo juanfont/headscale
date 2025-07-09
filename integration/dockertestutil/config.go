@@ -33,26 +33,27 @@ func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 }
 
 // GenerateRunID creates a unique run identifier with timestamp and random hash.
-// Format: YYYYMMDD-HHMMSS-HASH (e.g., 20250619-143052-a1b2c3)
+// Format: YYYYMMDD-HHMMSS-HASH (e.g., 20250619-143052-a1b2c3).
 func GenerateRunID() string {
 	now := time.Now()
 	timestamp := now.Format("20060102-150405")
-	
+
 	// Add a short random hash to ensure uniqueness
 	randomHash := util.MustGenerateRandomStringDNSSafe(6)
+
 	return fmt.Sprintf("%s-%s", timestamp, randomHash)
 }
 
 // ExtractRunIDFromContainerName extracts the run ID from container name.
-// Expects format: "prefix-YYYYMMDD-HHMMSS-HASH"
+// Expects format: "prefix-YYYYMMDD-HHMMSS-HASH".
 func ExtractRunIDFromContainerName(containerName string) string {
 	parts := strings.Split(containerName, "-")
 	if len(parts) >= 3 {
 		// Return the last three parts as the run ID (YYYYMMDD-HHMMSS-HASH)
 		return strings.Join(parts[len(parts)-3:], "-")
 	}
-	
-	panic(fmt.Sprintf("unexpected container name format: %s", containerName))
+
+	panic("unexpected container name format: " + containerName)
 }
 
 // IsRunningInContainer checks if the current process is running inside a Docker container.

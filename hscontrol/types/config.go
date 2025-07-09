@@ -339,6 +339,7 @@ func LoadConfig(path string, isFile bool) error {
 			log.Warn().Msg("No config file found, using defaults")
 			return nil
 		}
+
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
@@ -843,7 +844,7 @@ func LoadServerConfig() (*Config, error) {
 	}
 
 	if prefix4 == nil && prefix6 == nil {
-		return nil, fmt.Errorf("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+		return nil, errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	}
 
 	allocStr := viper.GetString("prefixes.allocation")
@@ -1020,7 +1021,7 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 
 	s := len(serverDomainParts)
 	b := len(baseDomainParts)
-	for i := range len(baseDomainParts) {
+	for i := range baseDomainParts {
 		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {
 			return nil
 		}

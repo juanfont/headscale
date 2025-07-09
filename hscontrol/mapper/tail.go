@@ -11,7 +11,7 @@ import (
 	"tailscale.com/types/views"
 )
 
-// NodeCanHaveTagChecker is an interface for checking if a node can have a tag
+// NodeCanHaveTagChecker is an interface for checking if a node can have a tag.
 type NodeCanHaveTagChecker interface {
 	NodeCanHaveTag(node types.NodeView, tag string) bool
 }

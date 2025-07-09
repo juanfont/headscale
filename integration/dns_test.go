@@ -15,7 +15,6 @@ import (
 
 func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -49,7 +48,7 @@ func TestResolveMagicDNS(t *testing.T) {
 			// It is safe to ignore this error as we handled it when caching it
 			peerFQDN, _ := peer.FQDN()
 
-			assert.Equal(t, fmt.Sprintf("%s.headscale.net.", peer.Hostname()), peerFQDN)
+			assert.Equal(t, peer.Hostname()+".headscale.net.", peerFQDN)
 
 			command := []string{
 				"tailscale",
@@ -85,7 +84,6 @@ func TestResolveMagicDNS(t *testing.T) {
 
 func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -222,12 +220,14 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	_, err = hs.Execute([]string{"rm", erPath})
 	assertNoErr(t, err)
 
-	time.Sleep(2 * time.Second)
-
 	// The same paths should still be available as it is not cleared on delete.
-	for _, client := range allClients {
-		assertCommandOutputContains(t, client, []string{"dig", "docker.myvpn.example.com"}, "9.9.9.9")
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			result, _, err := client.Execute([]string{"dig", "docker.myvpn.example.com"})
+			assert.NoError(ct, err)
+			assert.Contains(ct, result, "9.9.9.9")
+		}
+	}, 10*time.Second, 1*time.Second)
 
 	// Write a new file, the backoff mechanism should make the filewatcher pick it up
 	// again.

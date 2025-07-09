@@ -251,7 +251,6 @@ func New(
 		Env:        []string{},
 	}
 
-
 	if tsic.withWebsocketDERP {
 		if version != VersionHead {
 			return tsic, errInvalidClientConfig
@@ -463,7 +462,7 @@ func (t *TailscaleInContainer) buildLoginCommand(
 
 	if len(t.withTags) > 0 {
 		command = append(command,
-			fmt.Sprintf(`--advertise-tags=%s`, strings.Join(t.withTags, ",")),
+			"--advertise-tags="+strings.Join(t.withTags, ","),
 		)
 	}
 
@@ -685,7 +684,7 @@ func (t *TailscaleInContainer) MustID() types.NodeID {
 // Panics if version is lower then minimum.
 func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 	if !util.TailscaleVersionNewerOrEqual("1.56", t.version) {
-		panic(fmt.Sprintf("tsic.Netmap() called with unsupported version: %s", t.version))
+		panic("tsic.Netmap() called with unsupported version: " + t.version)
 	}
 
 	command := []string{
@@ -1026,7 +1025,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 		"tailscale", "ping",
 		fmt.Sprintf("--timeout=%s", args.timeout),
 		fmt.Sprintf("--c=%d", args.count),
-		fmt.Sprintf("--until-direct=%s", strconv.FormatBool(args.direct)),
+		"--until-direct=" + strconv.FormatBool(args.direct),
 	}
 
 	command = append(command, hostnameOrIP)
@@ -1131,11 +1130,11 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	command := []string{
 		"curl",
 		"--silent",
-		"--connect-timeout", fmt.Sprintf("%d", int(args.connectionTimeout.Seconds())),
-		"--max-time", fmt.Sprintf("%d", int(args.maxTime.Seconds())),
-		"--retry", fmt.Sprintf("%d", args.retry),
-		"--retry-delay", fmt.Sprintf("%d", int(args.retryDelay.Seconds())),
-		"--retry-max-time", fmt.Sprintf("%d", int(args.retryMaxTime.Seconds())),
+		"--connect-timeout", strconv.Itoa(int(args.connectionTimeout.Seconds())),
+		"--max-time", strconv.Itoa(int(args.maxTime.Seconds())),
+		"--retry", strconv.Itoa(args.retry),
+		"--retry-delay", strconv.Itoa(int(args.retryDelay.Seconds())),
+		"--retry-max-time", strconv.Itoa(int(args.retryMaxTime.Seconds())),
 		url,
 	}
 
@@ -1230,7 +1229,7 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 	}
 
 	if out.Len() == 0 {
-		return nil, fmt.Errorf("file is empty")
+		return nil, errors.New("file is empty")
 	}
 
 	return out.Bytes(), nil
@@ -1259,5 +1258,6 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	if err = json.Unmarshal(currentProfile, &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current profile state: %w", err)
 	}
+
 	return &p.Persist.PrivateNodeKey, nil
 }

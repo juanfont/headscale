@@ -93,7 +93,7 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 		Avoid:      false,
 		Nodes: []*tailcfg.DERPNode{
 			{
-				Name:     fmt.Sprintf("%d", d.cfg.ServerRegionID),
+				Name:     strconv.Itoa(d.cfg.ServerRegionID),
 				RegionID: d.cfg.ServerRegionID,
 				HostName: host,
 				DERPPort: port,

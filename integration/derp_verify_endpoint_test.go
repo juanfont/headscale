@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strconv"
@@ -104,7 +103,7 @@ func DERPVerify(
 	defer c.Close()
 
 	var result error
-	if err := c.Connect(context.Background()); err != nil {
+	if err := c.Connect(t.Context()); err != nil {
 		result = fmt.Errorf("client Connect: %w", err)
 	}
 	if m, err := c.Recv(); err != nil {

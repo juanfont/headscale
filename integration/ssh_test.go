@@ -22,35 +22,6 @@ func isSSHNoAccessStdError(stderr string) bool {
 		strings.Contains(stderr, "tailnet policy does not permit you to SSH to this node")
 }
 
-var retry = func(times int, sleepInterval time.Duration,
-	doWork func() (string, string, error),
-) (string, string, error) {
-	var result string
-	var stderr string
-	var err error
-
-	for range times {
-		tempResult, tempStderr, err := doWork()
-
-		result += tempResult
-		stderr += tempStderr
-
-		if err == nil {
-			return result, stderr, nil
-		}
-
-		// If we get a permission denied error, we can fail immediately
-		// since that is something we won-t recover from by retrying.
-		if err != nil && isSSHNoAccessStdError(stderr) {
-			return result, stderr, err
-		}
-
-		time.Sleep(sleepInterval)
-	}
-
-	return result, stderr, err
-}
-
 func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Scenario {
 	t.Helper()
 
@@ -92,7 +63,6 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Sce
 
 func TestSSHOneUserToAll(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := sshScenario(t,
 		&policyv2.Policy{
@@ -160,7 +130,6 @@ func TestSSHOneUserToAll(t *testing.T) {
 
 func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := sshScenario(t,
 		&policyv2.Policy{
@@ -216,7 +185,6 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 
 func TestSSHNoSSHConfigured(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := sshScenario(t,
 		&policyv2.Policy{
@@ -261,7 +229,6 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 
 func TestSSHIsBlockedInACL(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := sshScenario(t,
 		&policyv2.Policy{
@@ -313,7 +280,6 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 
 func TestSSHUserOnlyIsolation(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := sshScenario(t,
 		&policyv2.Policy{
@@ -404,6 +370,14 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 }
 
 func doSSH(t *testing.T, client TailscaleClient, peer TailscaleClient) (string, string, error) {
+	return doSSHWithRetry(t, client, peer, true)
+}
+
+func doSSHWithoutRetry(t *testing.T, client TailscaleClient, peer TailscaleClient) (string, string, error) {
+	return doSSHWithRetry(t, client, peer, false)
+}
+
+func doSSHWithRetry(t *testing.T, client TailscaleClient, peer TailscaleClient, retry bool) (string, string, error) {
 	t.Helper()
 
 	peerFQDN, _ := peer.FQDN()
@@ -417,9 +391,29 @@ func doSSH(t *testing.T, client TailscaleClient, peer TailscaleClient) (string, 
 	log.Printf("Running from %s to %s", client.Hostname(), peer.Hostname())
 	log.Printf("Command: %s", strings.Join(command, " "))
 
-	return retry(10, 1*time.Second, func() (string, string, error) {
-		return client.Execute(command)
-	})
+	var result, stderr string
+	var err error
+
+	if retry {
+		// Use assert.EventuallyWithT to retry SSH connections for success cases
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			result, stderr, err = client.Execute(command)
+
+			// If we get a permission denied error, we can fail immediately
+			// since that is something we won't recover from by retrying.
+			if err != nil && isSSHNoAccessStdError(stderr) {
+				return // Don't retry permission denied errors
+			}
+
+			// For all other errors, assert no error to trigger retry
+			assert.NoError(ct, err)
+		}, 10*time.Second, 1*time.Second)
+	} else {
+		// For failure cases, just execute once
+		result, stderr, err = client.Execute(command)
+	}
+
+	return result, stderr, err
 }
 
 func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClient) {
@@ -434,7 +428,7 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
 	t.Helper()
 
-	result, stderr, err := doSSH(t, client, peer)
+	result, stderr, err := doSSHWithoutRetry(t, client, peer)
 
 	assert.Empty(t, result)
 
@@ -444,7 +438,7 @@ func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer Tailsc
 func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient) {
 	t.Helper()
 
-	result, stderr, _ := doSSH(t, client, peer)
+	result, stderr, _ := doSSHWithoutRetry(t, client, peer)
 
 	assert.Empty(t, result)
 

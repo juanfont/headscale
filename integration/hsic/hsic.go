@@ -191,7 +191,7 @@ func WithPostgres() Option {
 	}
 }
 
-// WithPolicy sets the policy mode for headscale
+// WithPolicy sets the policy mode for headscale.
 func WithPolicyMode(mode types.PolicyMode) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.policyMode = mode
@@ -279,7 +279,7 @@ func New(
 		return nil, err
 	}
 
-	hostname := fmt.Sprintf("hs-%s", hash)
+	hostname := "hs-" + hash
 
 	hsic := &HeadscaleInContainer{
 		hostname: hostname,
@@ -308,14 +308,14 @@ func New(
 
 	if hsic.postgres {
 		hsic.env["HEADSCALE_DATABASE_TYPE"] = "postgres"
-		hsic.env["HEADSCALE_DATABASE_POSTGRES_HOST"] = fmt.Sprintf("postgres-%s", hash)
+		hsic.env["HEADSCALE_DATABASE_POSTGRES_HOST"] = "postgres-" + hash
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_USER"] = "headscale"
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_PASS"] = "headscale"
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
 		pgRunOptions := &dockertest.RunOptions{
-			Name:       fmt.Sprintf("postgres-%s", hash),
+			Name:       "postgres-" + hash,
 			Repository: "postgres",
 			Tag:        "latest",
 			Networks:   networks,
@@ -328,7 +328,7 @@ func New(
 
 		// Add integration test labels if running under hi tool
 		dockertestutil.DockerAddIntegrationLabels(pgRunOptions, "postgres")
-		
+
 		pg, err := pool.RunWithOptions(pgRunOptions)
 		if err != nil {
 			return nil, fmt.Errorf("starting postgres container: %w", err)
@@ -373,7 +373,6 @@ func New(
 		Env:        env,
 	}
 
-
 	if len(hsic.hostPortBindings) > 0 {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 		for port, hostPorts := range hsic.hostPortBindings {
@@ -396,7 +395,7 @@ func New(
 
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
-	
+
 	container, err := pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		runOptions,
@@ -566,7 +565,7 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 
 // extractTarToDirectory extracts a tar archive to a directory.
 func extractTarToDirectory(tarData []byte, targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
 
@@ -624,6 +623,7 @@ func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 	}
 
 	targetDir := path.Join(savePath, t.hostname+"-pprof")
+
 	return extractTarToDirectory(tarFile, targetDir)
 }
 
@@ -634,6 +634,7 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 	}
 
 	targetDir := path.Join(savePath, t.hostname+"-mapresponses")
+
 	return extractTarToDirectory(tarFile, targetDir)
 }
 
@@ -672,17 +673,16 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to check database schema (sqlite3 command failed): %w", err)
 	}
-	
+
 	if strings.TrimSpace(schemaCheck) == "" {
-		return fmt.Errorf("database file exists but has no schema (empty database)")
+		return errors.New("database file exists but has no schema (empty database)")
 	}
-	
+
 	// Show a preview of the schema (first 500 chars)
 	schemaPreview := schemaCheck
 	if len(schemaPreview) > 500 {
 		schemaPreview = schemaPreview[:500] + "..."
 	}
-	log.Printf("Database schema preview:\n%s", schemaPreview)
 
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
@@ -727,7 +727,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		}
 	}
 
-	return fmt.Errorf("no regular file found in database tar archive")
+	return errors.New("no regular file found in database tar archive")
 }
 
 // Execute runs a command inside the Headscale container and returns the
@@ -756,13 +756,13 @@ func (t *HeadscaleInContainer) Execute(
 
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
-	return fmt.Sprintf("%d", t.port)
+	return strconv.Itoa(t.port)
 }
 
 // GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
 // instance.
 func (t *HeadscaleInContainer) GetHealthEndpoint() string {
-	return fmt.Sprintf("%s/health", t.GetEndpoint())
+	return t.GetEndpoint() + "/health"
 }
 
 // GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
@@ -772,10 +772,10 @@ func (t *HeadscaleInContainer) GetEndpoint() string {
 		t.port)
 
 	if t.hasTLS() {
-		return fmt.Sprintf("https://%s", hostEndpoint)
+		return "https://" + hostEndpoint
 	}
 
-	return fmt.Sprintf("http://%s", hostEndpoint)
+	return "http://" + hostEndpoint
 }
 
 // GetCert returns the public certificate of the HeadscaleInContainer.
@@ -910,6 +910,7 @@ func (t *HeadscaleInContainer) ListNodes(
 		}
 
 		ret = append(ret, nodes...)
+
 		return nil
 	}
 
@@ -932,6 +933,7 @@ func (t *HeadscaleInContainer) ListNodes(
 	sort.Slice(ret, func(i, j int) bool {
 		return cmp.Compare(ret[i].GetId(), ret[j].GetId()) == -1
 	})
+
 	return ret, nil
 }
 
@@ -943,10 +945,10 @@ func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
 
 	var userMap map[string][]*v1.Node
 	for _, node := range nodes {
-		if _, ok := userMap[node.User.Name]; !ok {
-			mak.Set(&userMap, node.User.Name, []*v1.Node{node})
+		if _, ok := userMap[node.GetUser().GetName()]; !ok {
+			mak.Set(&userMap, node.GetUser().GetName(), []*v1.Node{node})
 		} else {
-			userMap[node.User.Name] = append(userMap[node.User.Name], node)
+			userMap[node.GetUser().GetName()] = append(userMap[node.GetUser().GetName()], node)
 		}
 	}
 
@@ -999,7 +1001,7 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 
 	var userMap map[string]*v1.User
 	for _, user := range users {
-		mak.Set(&userMap, user.Name, user)
+		mak.Set(&userMap, user.GetName(), user)
 	}
 
 	return userMap, nil
@@ -1095,7 +1097,7 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 	case 1:
 		return pids[0], nil
 	default:
-		return 0, fmt.Errorf("multiple headscale processes running")
+		return 0, errors.New("multiple headscale processes running")
 	}
 }
 
@@ -1121,7 +1123,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 		"headscale", "nodes", "approve-routes",
 		"--output", "json",
 		"--identifier", strconv.FormatUint(id, 10),
-		fmt.Sprintf("--routes=%s", strings.Join(util.PrefixesToString(routes), ",")),
+		"--routes=" + strings.Join(util.PrefixesToString(routes), ","),
 	}
 
 	result, _, err := dockertestutil.ExecuteCommand(

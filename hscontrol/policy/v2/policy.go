@@ -4,19 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
-	"slices"
-
 	"github.com/juanfont/headscale/hscontrol/types"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/util/deephash"
 	"tailscale.com/types/views"
+	"tailscale.com/util/deephash"
 )
 
 type PolicyManager struct {
@@ -166,6 +164,7 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
 	return pm.filter, pm.matchers
 }
 
@@ -178,6 +177,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.users = users
+
 	return pm.updateLocked()
 }
 
@@ -190,6 +190,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 	pm.nodes = nodes
+
 	return pm.updateLocked()
 }
 
@@ -249,7 +250,6 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// cannot just lookup in the prefix map and have to check
 	// if there is a "parent" prefix available.
 	for prefix, approveAddrs := range pm.autoApproveMap {
-
 		// Check if prefix is larger (so containing) and then overlaps
 		// the route to see if the node can approve a subset of an autoapprover
 		if prefix.Bits() <= route.Bits() && prefix.Overlaps(route) {

@@ -58,5 +58,6 @@ var TheInternet = sync.OnceValue(func() *netipx.IPSet {
 	internetBuilder.RemovePrefix(netip.MustParsePrefix("169.254.0.0/16"))
 
 	theInternetSet, _ := internetBuilder.IPSet()
+
 	return theInternetSet
 })

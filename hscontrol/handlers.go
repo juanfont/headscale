@@ -32,7 +32,7 @@ const (
 	reservedResponseHeaderSize = 4
 )
 
-// httpError logs an error and sends an HTTP error response with the given
+// httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
 	var herr HTTPError
 	if errors.As(err, &herr) {
@@ -102,6 +102,7 @@ func (h *Headscale) handleVerifyRequest(
 	resp := &tailcfg.DERPAdmitClientResponse{
 		Allow: nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic),
 	}
+
 	return json.NewEncoder(writer).Encode(resp)
 }
 

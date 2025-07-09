@@ -429,6 +429,7 @@ func (s *State) GetNodeViewByID(nodeID types.NodeID) (types.NodeView, error) {
 	if err != nil {
 		return types.NodeView{}, err
 	}
+
 	return node.View(), nil
 }
 
@@ -443,6 +444,7 @@ func (s *State) GetNodeViewByNodeKey(nodeKey key.NodePublic) (types.NodeView, er
 	if err != nil {
 		return types.NodeView{}, err
 	}
+
 	return node.View(), nil
 }
 
@@ -701,7 +703,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	if !regReq.Expiry.IsZero() && regReq.Expiry.After(time.Now()) {
 		nodeToRegister.Expiry = &regReq.Expiry
 	} else if !regReq.Expiry.IsZero() {
-		// If client is sending an expired time (e.g., after logout), 
+		// If client is sending an expired time (e.g., after logout),
 		// don't set expiry so the node won't be considered expired
 		log.Debug().
 			Time("requested_expiry", regReq.Expiry).

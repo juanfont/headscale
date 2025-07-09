@@ -1,10 +1,9 @@
 package capver
 
 import (
+	"slices"
 	"sort"
 	"strings"
-
-	"slices"
 
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/tailcfg"

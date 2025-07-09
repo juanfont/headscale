@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -27,10 +28,7 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 		err := errors.New("--name or --identifier flag is required")
 		ErrorOutput(
 			err,
-			fmt.Sprintf(
-				"Cannot rename user: %s",
-				status.Convert(err).Message(),
-			),
+			"Cannot rename user: "+status.Convert(err).Message(),
 			"",
 		)
 	}
@@ -114,10 +112,7 @@ var createUserCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Cannot create user: %s",
-					status.Convert(err).Message(),
-				),
+				"Cannot create user: "+status.Convert(err).Message(),
 				output,
 			)
 		}
@@ -147,16 +142,16 @@ var destroyUserCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
+				"Error: "+status.Convert(err).Message(),
 				output,
 			)
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := fmt.Errorf("Unable to determine user to delete, query returned multiple users, use ID")
+			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
+				"Error: "+status.Convert(err).Message(),
 				output,
 			)
 		}
@@ -185,10 +180,7 @@ var destroyUserCmd = &cobra.Command{
 			if err != nil {
 				ErrorOutput(
 					err,
-					fmt.Sprintf(
-						"Cannot destroy user: %s",
-						status.Convert(err).Message(),
-					),
+					"Cannot destroy user: "+status.Convert(err).Message(),
 					output,
 				)
 			}
@@ -233,7 +225,7 @@ var listUsersCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Cannot get users: %s", status.Convert(err).Message()),
+				"Cannot get users: "+status.Convert(err).Message(),
 				output,
 			)
 		}
@@ -247,7 +239,7 @@ var listUsersCmd = &cobra.Command{
 			tableData = append(
 				tableData,
 				[]string{
-					fmt.Sprintf("%d", user.GetId()),
+					strconv.FormatUint(user.GetId(), 10),
 					user.GetDisplayName(),
 					user.GetName(),
 					user.GetEmail(),
@@ -287,16 +279,16 @@ var renameUserCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
+				"Error: "+status.Convert(err).Message(),
 				output,
 			)
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := fmt.Errorf("Unable to determine user to delete, query returned multiple users, use ID")
+			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error: %s", status.Convert(err).Message()),
+				"Error: "+status.Convert(err).Message(),
 				output,
 			)
 		}
@@ -312,10 +304,7 @@ var renameUserCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Cannot rename user: %s",
-					status.Convert(err).Message(),
-				),
+				"Cannot rename user: "+status.Convert(err).Message(),
 				output,
 			)
 		}

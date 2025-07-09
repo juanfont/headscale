@@ -98,7 +98,6 @@ func (h *Headscale) handleExistingNode(
 
 				return nil, nil
 			}
-
 		}
 
 		n, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
@@ -169,7 +168,6 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-
 	node, changed, err := h.state.HandleNodeFromPreAuthKey(
 		regReq,
 		machineKey,
@@ -178,9 +176,11 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
-		if perr, ok := err.(types.PAKError); ok {
+		var perr types.PAKError
+		if errors.As(err, &perr) {
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
+
 		return nil, err
 	}
 

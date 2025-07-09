@@ -48,5 +48,4 @@ jobs:
       - name: Deploy stable docs from tag
         if: startsWith(github.ref, 'refs/tags/v')
         # This assumes that only newer tags are pushed
-        run:
-          mike deploy --push --update-aliases ${GITHUB_REF_NAME#v} stable latest
+        run: mike deploy --push --update-aliases ${GITHUB_REF_NAME#v} stable latest

@@ -1,10 +1,10 @@
 package v2
 
 import (
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

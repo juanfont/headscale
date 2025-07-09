@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -1974,6 +1973,7 @@ func TestSSHPolicyRules(t *testing.T) {
 		}
 	}
 }
+
 func TestReduceRoutes(t *testing.T) {
 	type args struct {
 		node   *types.Node

@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/samber/lo"
@@ -131,7 +130,7 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 // AutoApproveRoutes approves any route that can be autoapproved from
 // the nodes perspective according to the given policy.
 // It reports true if any routes were approved.
-// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes
+// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes.
 func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 	if pm == nil {
 		return false

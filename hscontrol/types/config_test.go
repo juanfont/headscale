@@ -282,6 +282,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				assert.Equal(t, "trace", viper.GetString("log.level"))
 				assert.Equal(t, "100.64.0.0/10", viper.GetString("prefixes.v4"))
 				assert.False(t, viper.GetBool("database.sqlite.write_ahead_log"))
+
 				return nil, nil
 			},
 			want: nil,
