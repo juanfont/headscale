@@ -281,7 +281,7 @@ func (n *Notifier) sendAll(update types.StateUpdate) {
 				notifierUpdateSent.WithLabelValues("cancelled", update.Type.String(), "send-all").Inc()
 			}
 
-			return
+			continue
 		case c <- update:
 			if debugHighCardinalityMetrics {
 				notifierUpdateSent.WithLabelValues("ok", update.Type.String(), "send-all", id.String()).Inc()
