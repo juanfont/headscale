@@ -85,14 +85,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			t.Logf("all clients logged out")
 
 			listNodes, err = headscale.ListNodes()
-			require.Len(t, listNodes, nodeCountBeforeLogout)
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
-
-			userMap, err := headscale.MapUsers()
-			assertNoErr(t, err)
 
 			// if the server is not running with HTTPS, we have to wait a bit before
 			// reconnection as the newest Tailscale client has a measure that will only
@@ -100,11 +97,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				// Wait for the 2-minute noise dial memory to expire
-				// The Tailscale commit shows clients remember noise dials for 2 minutes
-				t.Logf("Waiting 2.5 minutes for Tailscale noise dial memory to expire...")
-				time.Sleep(2*time.Minute + 30*time.Second)
+				time.Sleep(5 * time.Minute)
 			}
+
+			userMap, err := headscale.MapUsers()
+			assertNoErr(t, err)
 
 			for _, userName := range spec.Users {
 				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
@@ -119,7 +116,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			listNodes, err = headscale.ListNodes()
-			require.Len(t, listNodes, nodeCountBeforeLogout)
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -156,7 +153,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			listNodes, err = headscale.ListNodes()
-			require.Len(t, listNodes, nodeCountBeforeLogout)
+			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
@@ -323,66 +320,32 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				userMap, err := headscale.MapUsers()
+				time.Sleep(5 * time.Minute)
+			}
+
+			userMap, err := headscale.MapUsers()
+			assertNoErr(t, err)
+
+			for _, userName := range spec.Users {
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				if err != nil {
+					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+				}
+
+				// Expire the key so it can't be used
+				_, err = headscale.Execute(
+					[]string{
+						"headscale",
+						"preauthkeys",
+						"--user",
+						strconv.FormatUint(userMap[userName].GetId(), 10),
+						"expire",
+						key.Key,
+					})
 				assertNoErr(t, err)
 
-				// Create and expire auth keys once outside the retry loop
-				userExpiredKeys := make(map[string]string)
-				for _, userName := range spec.Users {
-					key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-					assertNoErr(t, err)
-
-					// Expire the key so it can't be used
-					_, err = headscale.Execute(
-						[]string{
-							"headscale",
-							"preauthkeys",
-							"--user",
-							strconv.FormatUint(userMap[userName].GetId(), 10),
-							"expire",
-							key.GetKey(),
-						})
-					assertNoErr(t, err)
-					userExpiredKeys[userName] = key.GetKey()
-				}
-
-				// Wait for the 2-minute noise dial memory to expire
-				// The Tailscale commit shows clients remember noise dials for 2 minutes
-				t.Logf("Waiting 2.5 minutes for Tailscale noise dial memory to expire...")
-				time.Sleep(2*time.Minute + 30*time.Second)
-
-				// Try to reconnect with expired keys - should fail
-				for _, userName := range spec.Users {
-					err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), userExpiredKeys[userName])
-					assert.Error(t, err, "Should get error when using expired key")
-					assert.Contains(t, err.Error(), "authkey expired")
-				}
-			} else {
-				userMap, err := headscale.MapUsers()
-				assertNoErr(t, err)
-
-				for _, userName := range spec.Users {
-					key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-					if err != nil {
-						t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-					}
-
-					// Expire the key so it can't be used
-					_, err = headscale.Execute(
-						[]string{
-							"headscale",
-							"preauthkeys",
-							"--user",
-							strconv.FormatUint(userMap[userName].GetId(), 10),
-							"expire",
-							key.GetKey(),
-						})
-					assertNoErr(t, err)
-
-					err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-					assert.Error(t, err, "Should get error when using expired key")
-					assert.Contains(t, err.Error(), "authkey expired")
-				}
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				assert.ErrorContains(t, err, "authkey expired")
 			}
 		})
 	}
