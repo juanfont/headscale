@@ -91,49 +91,30 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				assertLastSeenSet(t, node)
 			}
 
+			userMap, err := headscale.MapUsers()
+			assertNoErr(t, err)
+
 			// if the server is not running with HTTPS, we have to wait a bit before
 			// reconnection as the newest Tailscale client has a measure that will only
 			// reconnect over HTTPS if they saw a noise connection previously.
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				userMap, err := headscale.MapUsers()
-				assertNoErr(t, err)
-
-				// Create auth keys once outside the retry loop
-				userKeys := make(map[string]string)
-				for _, userName := range spec.Users {
-					key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-					assertNoErr(t, err)
-					userKeys[userName] = key.GetKey()
-				}
-
 				// Wait for the 2-minute noise dial memory to expire
 				// The Tailscale commit shows clients remember noise dials for 2 minutes
 				t.Logf("Waiting 2.5 minutes for Tailscale noise dial memory to expire...")
 				time.Sleep(2*time.Minute + 30*time.Second)
+			}
 
-				// Wait for clients to be ready to reconnect over HTTP after HTTPS
-				assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-					for _, userName := range spec.Users {
-						err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), userKeys[userName])
-						assert.NoError(ct, err, "Client should be able to reconnect over HTTP")
-					}
-				}, 6*time.Minute, 30*time.Second)
-			} else {
-				userMap, err := headscale.MapUsers()
-				assertNoErr(t, err)
+			for _, userName := range spec.Users {
+				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				if err != nil {
+					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
+				}
 
-				for _, userName := range spec.Users {
-					key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
-					if err != nil {
-						t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
-					}
-
-					err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-					if err != nil {
-						t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
-					}
+				err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
+				if err != nil {
+					t.Fatalf("failed to run tailscale up for user %s: %s", userName, err)
 				}
 			}
 
