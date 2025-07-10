@@ -346,14 +346,17 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 					userExpiredKeys[userName] = key.GetKey()
 				}
 
-				// Wait for clients to be ready to reconnect over HTTP after HTTPS
-				assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-					for _, userName := range spec.Users {
-						err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), userExpiredKeys[userName])
-						assert.Error(ct, err, "Should get error when using expired key")
-						assert.Contains(ct, err.Error(), "authkey expired")
-					}
-				}, 6*time.Minute, 30*time.Second)
+				// Wait for the 2-minute noise dial memory to expire
+				// The Tailscale commit shows clients remember noise dials for 2 minutes
+				t.Logf("Waiting 2.5 minutes for Tailscale noise dial memory to expire...")
+				time.Sleep(2*time.Minute + 30*time.Second)
+
+				// Try to reconnect with expired keys - should fail
+				for _, userName := range spec.Users {
+					err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), userExpiredKeys[userName])
+					assert.Error(t, err, "Should get error when using expired key")
+					assert.Contains(t, err.Error(), "authkey expired")
+				}
 			} else {
 				userMap, err := headscale.MapUsers()
 				assertNoErr(t, err)
@@ -377,7 +380,8 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 					assertNoErr(t, err)
 
 					err = scenario.RunTailscaleUp(userName, headscale.GetEndpoint(), key.GetKey())
-					assert.ErrorContains(t, err, "authkey expired")
+					assert.Error(t, err, "Should get error when using expired key")
+					assert.Contains(t, err.Error(), "authkey expired")
 				}
 			}
 		})
