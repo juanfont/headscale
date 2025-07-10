@@ -1,6 +1,7 @@
 package types
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -109,7 +110,8 @@ func TestCanUsePreAuthKey(t *testing.T) {
 				if err == nil {
 					t.Errorf("expected error but got none")
 				} else {
-					httpErr, ok := err.(PAKError)
+					var httpErr PAKError
+					ok := errors.As(err, &httpErr)
 					if !ok {
 						t.Errorf("expected HTTPError but got %T", err)
 					} else {

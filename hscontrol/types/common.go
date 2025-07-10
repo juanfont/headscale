@@ -180,6 +180,7 @@ func MustRegistrationID() RegistrationID {
 	if err != nil {
 		panic(err)
 	}
+
 	return rid
 }
 

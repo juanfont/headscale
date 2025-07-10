@@ -1,4 +1,6 @@
 package types
 
-var Version = "dev"
-var GitCommitHash = "dev"
+var (
+	Version       = "dev"
+	GitCommitHash = "dev"
+)

@@ -84,11 +84,8 @@ func NewAuthProviderOIDC(
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
 		Endpoint:     oidcProvider.Endpoint(),
-		RedirectURL: fmt.Sprintf(
-			"%s/oidc/callback",
-			strings.TrimSuffix(serverURL, "/"),
-		),
-		Scopes: cfg.Scope,
+		RedirectURL:  strings.TrimSuffix(serverURL, "/") + "/oidc/callback",
+		Scopes:       cfg.Scope,
 	}
 
 	registrationCache := zcache.New[string, RegistrationInfo](
@@ -131,7 +128,7 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-	registrationIdStr, _ := vars["registration_id"]
+	registrationIdStr := vars["registration_id"]
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
@@ -232,7 +229,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	}
 
 	oauth2Token, err := a.getOauth2Token(req.Context(), code, state)
-
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -364,6 +360,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
 	httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+
 	return
 }
 
@@ -402,6 +399,7 @@ func (a *AuthProviderOIDC) getOauth2Token(
 	if err != nil {
 		return nil, NewHTTPError(http.StatusForbidden, "invalid code", fmt.Errorf("could not exchange code for token: %w", err))
 	}
+
 	return oauth2Token, err
 }
 

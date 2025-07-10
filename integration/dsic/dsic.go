@@ -159,7 +159,6 @@ func New(
 		},
 	}
 
-
 	if dsic.workdir != "" {
 		runOptions.WorkingDir = dsic.workdir
 	}
@@ -192,7 +191,7 @@ func New(
 	}
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "derp")
-	
+
 	container, err = pool.BuildAndRunWithBuildOptions(
 		buildOptions,
 		runOptions,

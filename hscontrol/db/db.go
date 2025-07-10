@@ -764,13 +764,13 @@ AND auth_key_id NOT IN (
 					// Drop all indexes first to avoid conflicts
 					indexesToDrop := []string{
 						"idx_users_deleted_at",
-						"idx_provider_identifier", 
+						"idx_provider_identifier",
 						"idx_name_provider_identifier",
 						"idx_name_no_provider_identifier",
 						"idx_api_keys_prefix",
 						"idx_policies_deleted_at",
 					}
-					
+
 					for _, index := range indexesToDrop {
 						_ = tx.Exec("DROP INDEX IF EXISTS " + index).Error
 					}
@@ -927,6 +927,7 @@ AND auth_key_id NOT IN (
 					}
 
 					log.Info().Msg("Schema recreation completed successfully")
+
 					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },

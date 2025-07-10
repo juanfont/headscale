@@ -18,8 +18,8 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/tailcfg"
 	"golang.org/x/exp/slices"
+	"tailscale.com/tailcfg"
 )
 
 func executeAndUnmarshal[T any](headscale ControlServer, command []string, result T) error {
@@ -30,7 +30,7 @@ func executeAndUnmarshal[T any](headscale ControlServer, command []string, resul
 
 	err = json.Unmarshal([]byte(str), result)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal: %s\n command err: %s", err, str)
+		return fmt.Errorf("failed to unmarshal: %w\n command err: %s", err, str)
 	}
 
 	return nil
@@ -48,7 +48,6 @@ func sortWithID[T GRPCSortable](a, b T) int {
 
 func TestUserCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1", "user2"},
@@ -184,7 +183,7 @@ func TestUserCommand(t *testing.T) {
 			"--identifier=1",
 		},
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
 	var listAfterIDDelete []*v1.User
@@ -222,7 +221,7 @@ func TestUserCommand(t *testing.T) {
 			"--name=newname",
 		},
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
 	var listAfterNameDelete []v1.User
@@ -238,12 +237,11 @@ func TestUserCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	require.Len(t, listAfterNameDelete, 0)
+	require.Empty(t, listAfterNameDelete)
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user := "preauthkeyspace"
 	count := 3
@@ -347,7 +345,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, listedPreAuthKeys[index].GetAclTags(), []string{"tag:test1", "tag:test2"})
+		assert.Equal(t, []string{"tag:test1", "tag:test2"}, listedPreAuthKeys[index].GetAclTags())
 	}
 
 	// Test key expiry
@@ -386,7 +384,6 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user := "pre-auth-key-without-exp-user"
 	spec := ScenarioSpec{
@@ -448,7 +445,6 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user := "pre-auth-key-reus-ephm-user"
 	spec := ScenarioSpec{
@@ -524,7 +520,6 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user1 := "user1"
 	user2 := "user2"
@@ -575,7 +570,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	listNodes, err := headscale.ListNodes()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Len(t, listNodes, 1)
 	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
 
@@ -613,7 +608,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	}
 
 	listNodes, err = headscale.ListNodes()
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Len(t, listNodes, 2)
 	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
 	assert.Equal(t, user2, listNodes[1].GetUser().GetName())
@@ -621,7 +616,6 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 
 func TestApiKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	count := 5
 
@@ -653,7 +647,7 @@ func TestApiKeyCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.NotEmpty(t, apiResult)
 
 		keys[idx] = apiResult
@@ -672,7 +666,7 @@ func TestApiKeyCommand(t *testing.T) {
 		},
 		&listedAPIKeys,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listedAPIKeys, 5)
 
@@ -728,7 +722,7 @@ func TestApiKeyCommand(t *testing.T) {
 				listedAPIKeys[idx].GetPrefix(),
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		expiredPrefixes[listedAPIKeys[idx].GetPrefix()] = true
 	}
@@ -744,7 +738,7 @@ func TestApiKeyCommand(t *testing.T) {
 		},
 		&listedAfterExpireAPIKeys,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for index := range listedAfterExpireAPIKeys {
 		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
@@ -770,7 +764,7 @@ func TestApiKeyCommand(t *testing.T) {
 			"--prefix",
 			listedAPIKeys[0].GetPrefix(),
 		})
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	var listedAPIKeysAfterDelete []v1.ApiKey
 	err = executeAndUnmarshal(headscale,
@@ -783,14 +777,13 @@ func TestApiKeyCommand(t *testing.T) {
 		},
 		&listedAPIKeysAfterDelete,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listedAPIKeysAfterDelete, 4)
 }
 
 func TestNodeTagCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1"},
@@ -811,7 +804,7 @@ func TestNodeTagCommand(t *testing.T) {
 		types.MustRegistrationID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -829,7 +822,7 @@ func TestNodeTagCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -847,7 +840,7 @@ func TestNodeTagCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		nodes[index] = &node
 	}
@@ -866,7 +859,7 @@ func TestNodeTagCommand(t *testing.T) {
 		},
 		&node,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
 
@@ -894,7 +887,7 @@ func TestNodeTagCommand(t *testing.T) {
 		},
 		&resultMachines,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 	found := false
 	for _, node := range resultMachines {
 		if node.GetForcedTags() != nil {
@@ -905,19 +898,15 @@ func TestNodeTagCommand(t *testing.T) {
 			}
 		}
 	}
-	assert.Equal(
+	assert.True(
 		t,
-		true,
 		found,
 		"should find a node with the tag 'tag:test' in the list of nodes",
 	)
 }
 
-
-
 func TestNodeAdvertiseTagCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	tests := []struct {
 		name    string
@@ -1024,7 +1013,7 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 				},
 				&resultMachines,
 			)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 			found := false
 			for _, node := range resultMachines {
 				if tags := node.GetValidTags(); tags != nil {
@@ -1043,7 +1032,6 @@ func TestNodeAdvertiseTagCommand(t *testing.T) {
 
 func TestNodeCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-user", "other-user"},
@@ -1067,7 +1055,7 @@ func TestNodeCommand(t *testing.T) {
 		types.MustRegistrationID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -1085,7 +1073,7 @@ func TestNodeCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1103,7 +1091,7 @@ func TestNodeCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		nodes[index] = &node
 	}
@@ -1123,7 +1111,7 @@ func TestNodeCommand(t *testing.T) {
 		},
 		&listAll,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAll, 5)
 
@@ -1144,7 +1132,7 @@ func TestNodeCommand(t *testing.T) {
 		types.MustRegistrationID().String(),
 	}
 	otherUserMachines := make([]*v1.Node, len(otherUserRegIDs))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for index, regID := range otherUserRegIDs {
 		_, err := headscale.Execute(
@@ -1162,7 +1150,7 @@ func TestNodeCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1180,7 +1168,7 @@ func TestNodeCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		otherUserMachines[index] = &node
 	}
@@ -1200,7 +1188,7 @@ func TestNodeCommand(t *testing.T) {
 		},
 		&listAllWithotherUser,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
@@ -1226,7 +1214,7 @@ func TestNodeCommand(t *testing.T) {
 		},
 		&listOnlyotherUserMachineUser,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
@@ -1258,7 +1246,7 @@ func TestNodeCommand(t *testing.T) {
 			"--force",
 		},
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// Test: list main user after node is deleted
 	var listOnlyMachineUserAfterDelete []v1.Node
@@ -1275,14 +1263,13 @@ func TestNodeCommand(t *testing.T) {
 		},
 		&listOnlyMachineUserAfterDelete,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listOnlyMachineUserAfterDelete, 4)
 }
 
 func TestNodeExpireCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-expire-user"},
@@ -1323,7 +1310,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		var node v1.Node
 		err = executeAndUnmarshal(
@@ -1341,7 +1328,7 @@ func TestNodeExpireCommand(t *testing.T) {
 			},
 			&node,
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		nodes[index] = &node
 	}
@@ -1360,7 +1347,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		},
 		&listAll,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAll, 5)
 
@@ -1377,10 +1364,10 @@ func TestNodeExpireCommand(t *testing.T) {
 				"nodes",
 				"expire",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].GetId()),
+				strconv.FormatUint(listAll[idx].GetId(), 10),
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}
 
 	var listAllAfterExpiry []v1.Node
@@ -1395,7 +1382,7 @@ func TestNodeExpireCommand(t *testing.T) {
 		},
 		&listAllAfterExpiry,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
@@ -1408,7 +1395,6 @@ func TestNodeExpireCommand(t *testing.T) {
 
 func TestNodeRenameCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-rename-command"},
@@ -1432,7 +1418,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		types.MustRegistrationID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -1487,7 +1473,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		},
 		&listAll,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAll, 5)
 
@@ -1504,11 +1490,11 @@ func TestNodeRenameCommand(t *testing.T) {
 				"nodes",
 				"rename",
 				"--identifier",
-				fmt.Sprintf("%d", listAll[idx].GetId()),
+				strconv.FormatUint(listAll[idx].GetId(), 10),
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 
 		assert.Contains(t, res, "Node renamed")
 	}
@@ -1525,7 +1511,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		},
 		&listAllAfterRename,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAllAfterRename, 5)
 
@@ -1542,7 +1528,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			"nodes",
 			"rename",
 			"--identifier",
-			fmt.Sprintf("%d", listAll[4].GetId()),
+			strconv.FormatUint(listAll[4].GetId(), 10),
 			strings.Repeat("t", 64),
 		},
 	)
@@ -1560,7 +1546,7 @@ func TestNodeRenameCommand(t *testing.T) {
 		},
 		&listAllAfterRenameAttempt,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
@@ -1573,7 +1559,6 @@ func TestNodeRenameCommand(t *testing.T) {
 
 func TestNodeMoveCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"old-user", "new-user"},
@@ -1610,7 +1595,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"json",
 		},
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	var node v1.Node
 	err = executeAndUnmarshal(
@@ -1628,13 +1613,13 @@ func TestNodeMoveCommand(t *testing.T) {
 		},
 		&node,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Equal(t, uint64(1), node.GetId())
 	assert.Equal(t, "nomad-node", node.GetName())
-	assert.Equal(t, node.GetUser().GetName(), "old-user")
+	assert.Equal(t, "old-user", node.GetUser().GetName())
 
-	nodeID := fmt.Sprintf("%d", node.GetId())
+	nodeID := strconv.FormatUint(node.GetId(), 10)
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1651,9 +1636,9 @@ func TestNodeMoveCommand(t *testing.T) {
 		},
 		&node,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	assert.Equal(t, node.GetUser().GetName(), "new-user")
+	assert.Equal(t, "new-user", node.GetUser().GetName())
 
 	var allNodes []v1.Node
 	err = executeAndUnmarshal(
@@ -1667,13 +1652,13 @@ func TestNodeMoveCommand(t *testing.T) {
 		},
 		&allNodes,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	assert.Len(t, allNodes, 1)
 
 	assert.Equal(t, allNodes[0].GetId(), node.GetId())
 	assert.Equal(t, allNodes[0].GetUser(), node.GetUser())
-	assert.Equal(t, allNodes[0].GetUser().GetName(), "new-user")
+	assert.Equal(t, "new-user", allNodes[0].GetUser().GetName())
 
 	_, err = headscale.Execute(
 		[]string{
@@ -1693,7 +1678,7 @@ func TestNodeMoveCommand(t *testing.T) {
 		err,
 		"user not found",
 	)
-	assert.Equal(t, node.GetUser().GetName(), "new-user")
+	assert.Equal(t, "new-user", node.GetUser().GetName())
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1710,9 +1695,9 @@ func TestNodeMoveCommand(t *testing.T) {
 		},
 		&node,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	assert.Equal(t, node.GetUser().GetName(), "old-user")
+	assert.Equal(t, "old-user", node.GetUser().GetName())
 
 	err = executeAndUnmarshal(
 		headscale,
@@ -1729,14 +1714,13 @@ func TestNodeMoveCommand(t *testing.T) {
 		},
 		&node,
 	)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
-	assert.Equal(t, node.GetUser().GetName(), "old-user")
+	assert.Equal(t, "old-user", node.GetUser().GetName())
 }
 
 func TestPolicyCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1"},
@@ -1817,7 +1801,6 @@ func TestPolicyCommand(t *testing.T) {
 
 func TestPolicyBrokenConfigCommand(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,

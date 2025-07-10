@@ -184,7 +184,7 @@ var listNodesCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Cannot get nodes: %s", status.Convert(err).Message()),
+				"Cannot get nodes: "+status.Convert(err).Message(),
 				output,
 			)
 		}
@@ -398,10 +398,7 @@ var deleteNodeCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Error getting node node: %s",
-					status.Convert(err).Message(),
-				),
+				"Error getting node node: "+status.Convert(err).Message(),
 				output,
 			)
 
@@ -437,10 +434,7 @@ var deleteNodeCmd = &cobra.Command{
 			if err != nil {
 				ErrorOutput(
 					err,
-					fmt.Sprintf(
-						"Error deleting node: %s",
-						status.Convert(err).Message(),
-					),
+					"Error deleting node: "+status.Convert(err).Message(),
 					output,
 				)
 
@@ -498,10 +492,7 @@ var moveNodeCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Error getting node: %s",
-					status.Convert(err).Message(),
-				),
+				"Error getting node: "+status.Convert(err).Message(),
 				output,
 			)
 
@@ -517,10 +508,7 @@ var moveNodeCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf(
-					"Error moving node: %s",
-					status.Convert(err).Message(),
-				),
+				"Error moving node: "+status.Convert(err).Message(),
 				output,
 			)
 
@@ -567,10 +555,7 @@ be assigned to nodes.`,
 			if err != nil {
 				ErrorOutput(
 					err,
-					fmt.Sprintf(
-						"Error backfilling IPs: %s",
-						status.Convert(err).Message(),
-					),
+					"Error backfilling IPs: "+status.Convert(err).Message(),
 					output,
 				)
 

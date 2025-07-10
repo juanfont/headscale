@@ -66,7 +66,7 @@ func killTestContainers(ctx context.Context) error {
 			if cont.State == "running" {
 				_ = cli.ContainerKill(ctx, cont.ID, "KILL")
 			}
-			
+
 			// Then remove the container with retry logic
 			if removeContainerWithRetry(ctx, cli, cont.ID) {
 				removed++
@@ -87,25 +87,25 @@ func killTestContainers(ctx context.Context) error {
 func removeContainerWithRetry(ctx context.Context, cli *client.Client, containerID string) bool {
 	maxRetries := 3
 	baseDelay := 100 * time.Millisecond
-	
-	for attempt := 0; attempt < maxRetries; attempt++ {
+
+	for attempt := range maxRetries {
 		err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 			Force: true,
 		})
 		if err == nil {
 			return true
 		}
-		
+
 		// If this is the last attempt, don't wait
 		if attempt == maxRetries-1 {
 			break
 		}
-		
+
 		// Wait with exponential backoff
 		delay := baseDelay * time.Duration(1<<attempt)
 		time.Sleep(delay)
 	}
-	
+
 	return false
 }
 

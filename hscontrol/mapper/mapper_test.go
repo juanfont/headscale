@@ -80,7 +80,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 	}
 }
 
-// mockState is a mock implementation that provides the required methods
+// mockState is a mock implementation that provides the required methods.
 type mockState struct {
 	polMan  policy.PolicyManager
 	derpMap *tailcfg.DERPMap
@@ -133,6 +133,7 @@ func (m *mockState) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (typ
 				}
 			}
 		}
+
 		return filtered, nil
 	}
 	// Return all peers except the node itself
@@ -142,6 +143,7 @@ func (m *mockState) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (typ
 			filtered = append(filtered, peer)
 		}
 	}
+
 	return filtered, nil
 }
 
@@ -157,8 +159,10 @@ func (m *mockState) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 				}
 			}
 		}
+
 		return filtered, nil
 	}
+
 	return m.nodes, nil
 }
 

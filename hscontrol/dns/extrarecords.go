@@ -103,7 +103,6 @@ func (e *ExtraRecordsMan) Run() {
 
 					return struct{}{}, nil
 				}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
-
 				if err != nil {
 					log.Error().Caller().Err(err).Msgf("extra records filewatcher retrying to find file after delete")
 					continue

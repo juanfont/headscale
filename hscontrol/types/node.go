@@ -28,8 +28,10 @@ var (
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 )
 
-type NodeID uint64
-type NodeIDs []NodeID
+type (
+	NodeID  uint64
+	NodeIDs []NodeID
+)
 
 func (n NodeIDs) Len() int           { return len(n) }
 func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
@@ -169,6 +171,7 @@ func (node *Node) HasIP(i netip.Addr) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -176,7 +179,7 @@ func (node *Node) HasIP(i netip.Addr) bool {
 // and therefore should not be treated as a
 // user owned device.
 // Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys)
+// via CLI ("forced tags" and preauthkeys).
 func (node *Node) IsTagged() bool {
 	if len(node.ForcedTags) > 0 {
 		return true
@@ -199,7 +202,7 @@ func (node *Node) IsTagged() bool {
 
 // HasTag reports if a node has a given tag.
 // Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys)
+// via CLI ("forced tags" and preauthkeys).
 func (node *Node) HasTag(tag string) bool {
 	return slices.Contains(node.Tags(), tag)
 }
@@ -577,6 +580,7 @@ func (nodes Nodes) DebugString() string {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")
 	}
+
 	return sb.String()
 }
 
@@ -590,6 +594,7 @@ func (node Node) DebugString() string {
 	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
 	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
 	sb.WriteString("\n")
+
 	return sb.String()
 }
 
@@ -689,7 +694,7 @@ func (v NodeView) Tags() []string {
 // and therefore should not be treated as a
 // user owned device.
 // Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys)
+// via CLI ("forced tags" and preauthkeys).
 func (v NodeView) IsTagged() bool {
 	if !v.Valid() {
 		return false
@@ -727,7 +732,7 @@ func (v NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 // GetFQDN returns the fully qualified domain name for the node.
 func (v NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !v.Valid() {
-		return "", fmt.Errorf("failed to create valid FQDN: node view is invalid")
+		return "", errors.New("failed to create valid FQDN: node view is invalid")
 	}
 	return v.ж.GetFQDN(baseDomain)
 }
@@ -773,4 +778,3 @@ func (v NodeView) IPsAsString() []string {
 	}
 	return v.ж.IPsAsString()
 }
-

@@ -1,13 +1,11 @@
 package integration
 
 import (
-	"fmt"
+	"maps"
 	"net/netip"
 	"sort"
 	"testing"
 	"time"
-
-	"maps"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -21,7 +19,6 @@ import (
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	// Logins to MockOIDC is served by a queue with a strict order,
 	// if we use more than one node per user, the order of the logins
@@ -119,7 +116,6 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 // This test is really flaky.
 func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	shortAccessTTL := 5 * time.Minute
 
@@ -174,9 +170,13 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	// of safety reasons) before checking if the clients have logged out.
 	// The Wait function can't do it itself as it has an upper bound of 1
 	// min.
-	time.Sleep(shortAccessTTL + 10*time.Second)
-
-	assertTailscaleNodesLogout(t, allClients)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err)
+			assert.Equal(ct, "NeedsLogin", status.BackendState)
+		}
+	}, shortAccessTTL+10*time.Second, 5*time.Second)
 }
 
 func TestOIDC024UserCreation(t *testing.T) {
@@ -295,9 +295,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			spec := ScenarioSpec{
 				NodesPerUser: 1,
 			}
-			for _, user := range tt.cliUsers {
-				spec.Users = append(spec.Users, user)
-			}
+			spec.Users = append(spec.Users, tt.cliUsers...)
 
 			for _, user := range tt.oidcUsers {
 				spec.OIDCUsers = append(spec.OIDCUsers, oidcMockUser(user, tt.emailVerified))
@@ -350,7 +348,6 @@ func TestOIDC024UserCreation(t *testing.T) {
 
 func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	// Single user with one node for testing PKCE flow
 	spec := ScenarioSpec{
@@ -402,7 +399,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 
 func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	// Create no nodes and no users
 	scenario, err := NewScenario(ScenarioSpec{
@@ -440,7 +436,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	listUsers, err := headscale.ListUsers()
 	assertNoErr(t, err)
-	assert.Len(t, listUsers, 0)
+	assert.Empty(t, listUsers)
 
 	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
 	assertNoErr(t, err)
@@ -482,7 +478,13 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	err = ts.Logout()
 	assertNoErr(t, err)
 
-	time.Sleep(5 * time.Second)
+	// Wait for logout to complete and then do second logout
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Check that the first logout completed
+		status, err := ts.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "NeedsLogin", status.BackendState)
+	}, 5*time.Second, 1*time.Second)
 
 	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
 	// logs in immediately after the first logout and I cannot reproduce it
@@ -530,16 +532,22 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	// Machine key is the same as the "machine" has not changed,
 	// but Node key is not as it is a new node
-	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterNewUserLogin[0].MachineKey)
-	assert.Equal(t, listNodesAfterNewUserLogin[0].MachineKey, listNodesAfterNewUserLogin[1].MachineKey)
-	assert.NotEqual(t, listNodesAfterNewUserLogin[0].NodeKey, listNodesAfterNewUserLogin[1].NodeKey)
+	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
+	assert.Equal(t, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
+	assert.NotEqual(t, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey())
 
 	// Log out user2, and log into user1, no new node should be created,
 	// the node should now "become" node1 again
 	err = ts.Logout()
 	assertNoErr(t, err)
 
-	time.Sleep(5 * time.Second)
+	// Wait for logout to complete and then do second logout
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Check that the first logout completed
+		status, err := ts.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "NeedsLogin", status.BackendState)
+	}, 5*time.Second, 1*time.Second)
 
 	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
 	// logs in immediately after the first logout and I cannot reproduce it
@@ -588,24 +596,24 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	// Validate that the machine we had when we logged in the first time, has the same
 	// machine key, but a different ID than the newly logged in version of the same
 	// machine.
-	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterNewUserLogin[0].MachineKey)
-	assert.Equal(t, listNodes[0].NodeKey, listNodesAfterNewUserLogin[0].NodeKey)
-	assert.Equal(t, listNodes[0].Id, listNodesAfterNewUserLogin[0].Id)
-	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterNewUserLogin[1].MachineKey)
-	assert.NotEqual(t, listNodes[0].Id, listNodesAfterNewUserLogin[1].Id)
-	assert.NotEqual(t, listNodes[0].User.Id, listNodesAfterNewUserLogin[1].User.Id)
+	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
+	assert.Equal(t, listNodes[0].GetNodeKey(), listNodesAfterNewUserLogin[0].GetNodeKey())
+	assert.Equal(t, listNodes[0].GetId(), listNodesAfterNewUserLogin[0].GetId())
+	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
+	assert.NotEqual(t, listNodes[0].GetId(), listNodesAfterNewUserLogin[1].GetId())
+	assert.NotEqual(t, listNodes[0].GetUser().GetId(), listNodesAfterNewUserLogin[1].GetUser().GetId())
 
 	// Even tho we are logging in again with the same user, the previous key has been expired
 	// and a new one has been generated. The node entry in the database should be the same
 	// as the user + machinekey still matches.
-	assert.Equal(t, listNodes[0].MachineKey, listNodesAfterLoggingBackIn[0].MachineKey)
-	assert.NotEqual(t, listNodes[0].NodeKey, listNodesAfterLoggingBackIn[0].NodeKey)
-	assert.Equal(t, listNodes[0].Id, listNodesAfterLoggingBackIn[0].Id)
+	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterLoggingBackIn[0].GetMachineKey())
+	assert.NotEqual(t, listNodes[0].GetNodeKey(), listNodesAfterLoggingBackIn[0].GetNodeKey())
+	assert.Equal(t, listNodes[0].GetId(), listNodesAfterLoggingBackIn[0].GetId())
 
 	// The "logged back in" machine should have the same machinekey but a different nodekey
 	// than the version logged in with a different user.
-	assert.Equal(t, listNodesAfterLoggingBackIn[0].MachineKey, listNodesAfterLoggingBackIn[1].MachineKey)
-	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].NodeKey, listNodesAfterLoggingBackIn[1].NodeKey)
+	assert.Equal(t, listNodesAfterLoggingBackIn[0].GetMachineKey(), listNodesAfterLoggingBackIn[1].GetMachineKey())
+	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey())
 }
 
 func assertTailscaleNodesLogout(t *testing.T, clients []TailscaleClient) {
@@ -623,7 +631,7 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 	return mockoidc.MockUser{
 		Subject:           username,
 		PreferredUsername: username,
-		Email:             fmt.Sprintf("%s@headscale.net", username),
+		Email:             username + "@headscale.net",
 		EmailVerified:     emailVerified,
 	}
 }

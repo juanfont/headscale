@@ -500,7 +500,7 @@ func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 }
 
 // ListNodes queries the database for either all nodes if no parameters are given
-// or for the given nodes if at least one node ID is given as parameter
+// or for the given nodes if at least one node ID is given as parameter.
 func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes, err := m.state.ListNodes(nodeIDs...)
 	if err != nil {

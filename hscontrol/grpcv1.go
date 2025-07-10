@@ -475,7 +475,10 @@ func (api headscaleV1APIServer) RenameNode(
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-renamenode", node.Hostname)
+	ctx = types.NotifyCtx(ctx, "cli-renamenode-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByNodeID(ctx, types.UpdateSelf(node.ID), node.ID)
+
+	ctx = types.NotifyCtx(ctx, "cli-renamenode-peers", node.Hostname)
 	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 
 	log.Trace().

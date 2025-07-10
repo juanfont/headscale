@@ -123,7 +123,7 @@ type ScenarioSpec struct {
 	// NodesPerUser is how many nodes should be attached to each user.
 	NodesPerUser int
 
-	// Networks, if set, is the seperate Docker networks that should be
+	// Networks, if set, is the separate Docker networks that should be
 	// created and a list of the users that should be placed in those networks.
 	// If not set, a single network will be created and all users+nodes will be
 	// added there.
@@ -1077,7 +1077,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	hash, _ := util.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
 
-	hostname := fmt.Sprintf("hs-oidcmock-%s", hash)
+	hostname := "hs-oidcmock-" + hash
 
 	usersJSON, err := json.Marshal(users)
 	if err != nil {
@@ -1093,15 +1093,14 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 		},
 		Networks: s.Networks(),
 		Env: []string{
-			fmt.Sprintf("MOCKOIDC_ADDR=%s", hostname),
+			"MOCKOIDC_ADDR=" + hostname,
 			fmt.Sprintf("MOCKOIDC_PORT=%d", port),
 			"MOCKOIDC_CLIENT_ID=superclient",
 			"MOCKOIDC_CLIENT_SECRET=supersecret",
-			fmt.Sprintf("MOCKOIDC_ACCESS_TTL=%s", accessTTL.String()),
-			fmt.Sprintf("MOCKOIDC_USERS=%s", string(usersJSON)),
+			"MOCKOIDC_ACCESS_TTL=" + accessTTL.String(),
+			"MOCKOIDC_USERS=" + string(usersJSON),
 		},
 	}
-
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: hsic.IntegrationTestDockerFileName,
@@ -1117,7 +1116,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
-	
+
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		mockOidcOptions,
@@ -1184,7 +1183,7 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 
 	hash := util.MustGenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
 
-	hostname := fmt.Sprintf("hs-webservice-%s", hash)
+	hostname := "hs-webservice-" + hash
 
 	network, ok := s.networks[s.prefixedNetworkName(networkName)]
 	if !ok {

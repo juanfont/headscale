@@ -11,7 +11,7 @@ import (
 type PAKError string
 
 func (e PAKError) Error() string { return string(e) }
-func (e PAKError) Unwrap() error { return fmt.Errorf("preauth key error: %s", e) }
+func (e PAKError) Unwrap() error { return fmt.Errorf("preauth key error: %w", e) }
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {

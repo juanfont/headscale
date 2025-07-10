@@ -3,11 +3,10 @@ package integration
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
-
-	"slices"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
@@ -19,7 +18,6 @@ import (
 
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
@@ -66,7 +64,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErrGetHeadscale(t, err)
 
 			listNodes, err := headscale.ListNodes()
-			assert.Equal(t, len(listNodes), len(allClients))
+			assert.Len(t, allClients, len(listNodes))
 			nodeCountBeforeLogout := len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -161,12 +159,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func assertLastSeenSet(t *testing.T, node *v1.Node) {
 	assert.NotNil(t, node)
-	assert.NotNil(t, node.LastSeen)
+	assert.NotNil(t, node.GetLastSeen())
 }
 
 // This test will first log in two sets of nodes to two sets of users, then
@@ -175,7 +172,6 @@ func assertLastSeenSet(t *testing.T, node *v1.Node) {
 // still has nodes, but they are not connected.
 func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -204,7 +200,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	assertNoErrGetHeadscale(t, err)
 
 	listNodes, err := headscale.ListNodes()
-	assert.Equal(t, len(listNodes), len(allClients))
+	assert.Len(t, allClients, len(listNodes))
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -259,7 +255,6 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	for _, https := range []bool{true, false} {
 		t.Run(fmt.Sprintf("with-https-%t", https), func(t *testing.T) {
@@ -303,7 +298,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			assertNoErrGetHeadscale(t, err)
 
 			listNodes, err := headscale.ListNodes()
-			assert.Equal(t, len(listNodes), len(allClients))
+			assert.Len(t, allClients, len(listNodes))
 			nodeCountBeforeLogout := len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 

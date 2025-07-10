@@ -3,7 +3,6 @@ package integration
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"net/netip"
@@ -267,7 +266,7 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 
 	// This isn't really relevant for Self as it won't be in its own socket/wireguard.
 	// assert.Truef(t, status.Self.InMagicSock, "%q is not tracked by magicsock", client.Hostname())
-	// assert.Truef(t, status.Self.InEngine, "%q is not in in wireguard engine", client.Hostname())
+	// assert.Truef(t, status.Self.InEngine, "%q is not in wireguard engine", client.Hostname())
 
 	for _, peer := range status.Peer {
 		assert.NotEmptyf(t, peer.HostName, "peer (%s) of %q does not have HostName set, likely missing Hostinfo", peer.DNSName, client.Hostname())
@@ -311,7 +310,7 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []string, contains string) {
 	t.Helper()
 
-	_, err := backoff.Retry(context.Background(), func() (struct{}, error) {
+	_, err := backoff.Retry(t.Context(), func() (struct{}, error) {
 		stdout, stderr, err := c.Execute(command)
 		if err != nil {
 			return struct{}{}, fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
@@ -492,6 +491,7 @@ func groupApprover(name string) policyv2.AutoApprover {
 func tagApprover(name string) policyv2.AutoApprover {
 	return ptr.To(policyv2.Tag(name))
 }
+
 //
 // // findPeerByHostname takes a hostname and a map of peers from status.Peer, and returns a *ipnstate.PeerStatus
 // // if there is a peer with the given hostname. If no peer is found, nil is returned.

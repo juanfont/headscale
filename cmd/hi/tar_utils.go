@@ -10,10 +10,8 @@ import (
 	"strings"
 )
 
-var (
-	// ErrFileNotFoundInTar indicates a file was not found in the tar archive.
-	ErrFileNotFoundInTar = errors.New("file not found in tar")
-)
+// ErrFileNotFoundInTar indicates a file was not found in the tar archive.
+var ErrFileNotFoundInTar = errors.New("file not found in tar")
 
 // extractFileFromTar extracts a single file from a tar reader.
 func extractFileFromTar(tarReader io.Reader, fileName, outputPath string) error {
@@ -42,6 +40,7 @@ func extractFileFromTar(tarReader io.Reader, fileName, outputPath string) error 
 				if _, err := io.Copy(outFile, tr); err != nil {
 					return fmt.Errorf("failed to copy file contents: %w", err)
 				}
+
 				return nil
 			}
 		}

@@ -13,9 +13,7 @@ import (
 	"tailscale.com/types/views"
 )
 
-var (
-	ErrInvalidAction = errors.New("invalid action")
-)
+var ErrInvalidAction = errors.New("invalid action")
 
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
@@ -52,7 +50,7 @@ func (pol *Policy) compileFilterRules(
 
 		var destPorts []tailcfg.NetPortRange
 		for _, dest := range acl.Destinations {
-			ips, err := dest.Alias.Resolve(pol, users, nodes)
+			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Err(err).Msgf("resolving destination ips")
 			}
@@ -174,5 +172,6 @@ func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
 	for _, pref := range ips.Prefixes() {
 		out = append(out, pref.String())
 	}
+
 	return out
 }

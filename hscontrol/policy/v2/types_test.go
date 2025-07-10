@@ -5,13 +5,13 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
-	"time"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
@@ -68,7 +68,7 @@ func TestMarshalJSON(t *testing.T) {
 	// Marshal the policy to JSON
 	marshalled, err := json.MarshalIndent(policy, "", "  ")
 	require.NoError(t, err)
-	
+
 	// Make sure all expected fields are present in the JSON
 	jsonString := string(marshalled)
 	assert.Contains(t, jsonString, "group:example")
@@ -79,21 +79,21 @@ func TestMarshalJSON(t *testing.T) {
 	assert.Contains(t, jsonString, "accept")
 	assert.Contains(t, jsonString, "tcp")
 	assert.Contains(t, jsonString, "80")
-	
+
 	// Unmarshal back to verify round trip
 	var roundTripped Policy
 	err = json.Unmarshal(marshalled, &roundTripped)
 	require.NoError(t, err)
-	
+
 	// Compare the original and round-tripped policies
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 		cmpopts.EquateEmpty(),
 	)
-	
+
 	if diff := cmp.Diff(policy, &roundTripped, cmps...); diff != "" {
 		t.Fatalf("round trip policy (-original +roundtripped):\n%s", diff)
 	}
@@ -958,13 +958,13 @@ func TestUnmarshalPolicy(t *testing.T) {
 		},
 	}
 
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 	)
-	
+
 	// For round-trip testing, we'll normalize the policies before comparing
 
 	for _, tt := range tests {
@@ -981,6 +981,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				} else if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("unmarshalling: got err %v; want error %q", err, tt.wantErr)
 				}
+
 				return // Skip the rest of the test if we expected an error
 			}
 
@@ -1001,9 +1002,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 				if err != nil {
 					t.Fatalf("round-trip unmarshalling: %v", err)
 				}
-				
+
 				// Add EquateEmpty to handle nil vs empty maps/slices
-				roundTripCmps := append(cmps, 
+				roundTripCmps := append(cmps,
 					cmpopts.EquateEmpty(),
 					cmpopts.IgnoreUnexported(Policy{}),
 				)
@@ -1584,6 +1585,7 @@ func mustIPSet(prefixes ...string) *netipx.IPSet {
 		builder.AddPrefix(mp(p))
 	}
 	ipSet, _ := builder.IPSet()
+
 	return ipSet
 }
 

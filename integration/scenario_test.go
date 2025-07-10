@@ -28,7 +28,6 @@ func IntegrationSkip(t *testing.T) {
 // nolint:tparallel
 func TestHeadscale(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	var err error
 
@@ -75,7 +74,6 @@ func TestHeadscale(t *testing.T) {
 // nolint:tparallel
 func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	var err error
 

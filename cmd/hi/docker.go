@@ -156,10 +156,10 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	projectRoot := findProjectRoot(pwd)
 
 	runID := dockertestutil.ExtractRunIDFromContainerName(containerName)
-	
+
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
-		fmt.Sprintf("HEADSCALE_INTEGRATION_RUN_ID=%s", runID),
+		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
@@ -175,7 +175,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 
 	// Get the correct Docker socket path from the current context
 	dockerSocketPath := getDockerSocketPath()
-	
+
 	if config.Verbose {
 		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
@@ -184,7 +184,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		AutoRemove: false, // We'll remove manually for better control
 		Binds: []string{
 			fmt.Sprintf("%s:%s", projectRoot, projectRoot),
-			fmt.Sprintf("%s:/var/run/docker.sock", dockerSocketPath),
+			dockerSocketPath + ":/var/run/docker.sock",
 			logsDir + ":/tmp/control",
 		},
 		Mounts: []mount.Mount{
@@ -237,7 +237,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	}
 
 	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
-	
+
 	// Wait for all test containers to reach a final state
 	maxWaitTime := 10 * time.Second
 	checkInterval := 500 * time.Millisecond
@@ -254,7 +254,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 			return nil
 		case <-ticker.C:
 			allFinalized := true
-			
+
 			for _, testCont := range testContainers {
 				inspect, err := cli.ContainerInspect(ctx, testCont.ID)
 				if err != nil {
@@ -263,17 +263,18 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 					}
 					continue
 				}
-				
+
 				// Check if container is in a final state
 				if !isContainerFinalized(inspect.State) {
 					allFinalized = false
 					if verbose {
 						log.Printf("Container %s still finalizing (state: %s)", testCont.name, inspect.State.Status)
 					}
+
 					break
 				}
 			}
-			
+
 			if allFinalized {
 				if verbose {
 					log.Printf("All test containers finalized, ready for artifact extraction")
@@ -289,7 +290,6 @@ func isContainerFinalized(state *container.State) bool {
 	// Container is finalized if it's not running and has a finish time
 	return !state.Running && state.FinishedAt != ""
 }
-
 
 // findProjectRoot locates the project root by finding the directory containing go.mod.
 func findProjectRoot(startPath string) string {
@@ -427,7 +427,7 @@ func listControlFiles(logsDir string) {
 		}
 
 		if entry.IsDir() {
-			// Include directories (pprof, mapresponses) 
+			// Include directories (pprof, mapresponses)
 			if strings.Contains(name, "-pprof") || strings.Contains(name, "-mapresponses") {
 				dataDirs = append(dataDirs, name)
 			}
@@ -510,7 +510,7 @@ type testContainer struct {
 // getCurrentTestContainers filters containers to only include those from the current test run.
 func getCurrentTestContainers(containers []container.Summary, testContainerID string, verbose bool) []testContainer {
 	var testRunContainers []testContainer
-	
+
 	// Find the test container to get its run ID label
 	var runID string
 	for _, cont := range containers {
@@ -521,16 +521,16 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 			break
 		}
 	}
-	
+
 	if runID == "" {
 		log.Printf("Error: test container %s missing required hi.run-id label", testContainerID[:12])
 		return testRunContainers
 	}
-	
+
 	if verbose {
 		log.Printf("Looking for containers with run ID: %s", runID)
 	}
-	
+
 	// Find all containers with the same run ID
 	for _, cont := range containers {
 		for _, name := range cont.Names {
@@ -546,18 +546,19 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 						log.Printf("Including container %s (run ID: %s)", containerName, runID)
 					}
 				}
+
 				break
 			}
 		}
 	}
-	
+
 	return testRunContainers
 }
 
 // extractContainerArtifacts saves logs and tar files from a container.
 func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Ensure the logs directory exists
-	if err := os.MkdirAll(logsDir, 0755); err != nil {
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create logs directory: %w", err)
 	}
 
@@ -608,12 +609,12 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	}
 
 	// Write stdout logs
-	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stdout log: %w", err)
 	}
 
 	// Write stderr logs
-	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stderr log: %w", err)
 	}
 
@@ -626,7 +627,7 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 
 // extractContainerFiles extracts database file and directories from headscale containers.
 // Note: The actual file extraction is now handled by the integration tests themselves
-// via SaveProfile, SaveMapResponses, and SaveDatabase functions in hsic.go
+// via SaveProfile, SaveMapResponses, and SaveDatabase functions in hsic.go.
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Files are now extracted directly by the integration tests
 	// This function is kept for potential future use or other file types
@@ -677,7 +678,7 @@ func extractDirectory(ctx context.Context, cli *client.Client, containerID, sour
 
 	// Create target directory
 	targetDir := filepath.Join(logsDir, dirName)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
 

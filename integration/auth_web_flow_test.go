@@ -2,9 +2,8 @@ package integration
 
 import (
 	"net/netip"
-	"testing"
-
 	"slices"
+	"testing"
 
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
@@ -55,7 +54,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 
 func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -95,7 +93,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	assertNoErrGetHeadscale(t, err)
 
 	listNodes, err := headscale.ListNodes()
-	assert.Equal(t, len(listNodes), len(allClients))
+	assert.Len(t, allClients, len(listNodes))
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -140,7 +138,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	listNodes, err = headscale.ListNodes()
-	require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+	require.Len(t, listNodes, nodeCountBeforeLogout)
 	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 
 	for _, client := range allClients {

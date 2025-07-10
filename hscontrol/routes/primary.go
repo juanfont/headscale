@@ -158,6 +158,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 	}
 
 	tsaddr.SortPrefixes(routes)
+
 	return routes
 }
 

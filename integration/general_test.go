@@ -26,7 +26,6 @@ import (
 
 func TestPingAllByIP(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -68,7 +67,6 @@ func TestPingAllByIP(t *testing.T) {
 
 func TestPingAllByIPPublicDERP(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -118,7 +116,6 @@ func TestEphemeralInAlternateTimezone(t *testing.T) {
 
 func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -191,7 +188,6 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 // deleted by accident if they are still online and active.
 func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -260,18 +256,21 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	// Wait a bit and bring up the clients again before the expiry
 	// time of the ephemeral nodes.
 	// Nodes should be able to reconnect and work fine.
-	time.Sleep(30 * time.Second)
-
 	for _, client := range allClients {
 		err := client.Up()
 		if err != nil {
 			t.Fatalf("failed to take down client %s: %s", client.Hostname(), err)
 		}
 	}
-	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
 
-	success = pingAllHelper(t, allClients, allAddrs)
+	// Wait for clients to sync and be able to ping each other after reconnection
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err = scenario.WaitForTailscaleSync()
+		assert.NoError(ct, err)
+
+		success = pingAllHelper(t, allClients, allAddrs)
+		assert.Greater(ct, success, 0, "Ephemeral nodes should be able to reconnect and ping")
+	}, 60*time.Second, 2*time.Second)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	// Take down all clients, this should start an expiry timer for each.
@@ -284,7 +283,13 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 
 	// This time wait for all of the nodes to expire and check that they are no longer
 	// registered.
-	time.Sleep(3 * time.Minute)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, userName := range spec.Users {
+			nodes, err := headscale.ListNodes(userName)
+			assert.NoError(ct, err)
+			assert.Len(ct, nodes, 0, "Ephemeral nodes should be expired and removed for user %s", userName)
+		}
+	}, 4*time.Minute, 10*time.Second)
 
 	for _, userName := range spec.Users {
 		nodes, err := headscale.ListNodes(userName)
@@ -305,7 +310,6 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 
 func TestPingAllByHostname(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -341,20 +345,6 @@ func TestPingAllByHostname(t *testing.T) {
 // nolint:tparallel
 func TestTaildrop(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
-
-	retry := func(times int, sleepInterval time.Duration, doWork func() error) error {
-		var err error
-		for range times {
-			err = doWork()
-			if err == nil {
-				return nil
-			}
-			time.Sleep(sleepInterval)
-		}
-
-		return err
-	}
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -396,40 +386,27 @@ func TestTaildrop(t *testing.T) {
 			"/var/run/tailscale/tailscaled.sock",
 			"http://local-tailscaled.sock/localapi/v0/file-targets",
 		}
-		err = retry(10, 1*time.Second, func() error {
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			result, _, err := client.Execute(curlCommand)
-			if err != nil {
-				return err
-			}
+			assert.NoError(ct, err)
+
 			var fts []apitype.FileTarget
 			err = json.Unmarshal([]byte(result), &fts)
-			if err != nil {
-				return err
-			}
+			assert.NoError(ct, err)
 
 			if len(fts) != len(allClients)-1 {
 				ftStr := fmt.Sprintf("FileTargets for %s:\n", client.Hostname())
 				for _, ft := range fts {
 					ftStr += fmt.Sprintf("\t%s\n", ft.Node.Name)
 				}
-				return fmt.Errorf(
-					"client %s does not have all its peers as FileTargets, got %d, want: %d\n%s",
-					client.Hostname(),
+				assert.Failf(ct, "client %s does not have all its peers as FileTargets",
+					"got %d, want: %d\n%s",
 					len(fts),
 					len(allClients)-1,
 					ftStr,
 				)
 			}
-
-			return err
-		})
-		if err != nil {
-			t.Errorf(
-				"failed to query localapi for filetarget on %s, err: %s",
-				client.Hostname(),
-				err,
-			)
-		}
+		}, 10*time.Second, 1*time.Second)
 	}
 
 	for _, client := range allClients {
@@ -454,24 +431,15 @@ func TestTaildrop(t *testing.T) {
 					fmt.Sprintf("%s:", peerFQDN),
 				}
 
-				err := retry(10, 1*time.Second, func() error {
+				assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 					t.Logf(
 						"Sending file from %s to %s\n",
 						client.Hostname(),
 						peer.Hostname(),
 					)
 					_, _, err := client.Execute(command)
-
-					return err
-				})
-				if err != nil {
-					t.Fatalf(
-						"failed to send taildrop file on %s with command %q, err: %s",
-						client.Hostname(),
-						strings.Join(command, " "),
-						err,
-					)
-				}
+					assert.NoError(ct, err)
+				}, 10*time.Second, 1*time.Second)
 			})
 		}
 	}
@@ -520,7 +488,6 @@ func TestTaildrop(t *testing.T) {
 
 func TestUpdateHostnameFromClient(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	hostnames := map[string]string{
 		"1": "user1-host",
@@ -603,9 +570,47 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		assertNoErr(t, err)
 	}
 
-	time.Sleep(5 * time.Second)
+	// Verify that the server-side rename is reflected in DNSName while HostName remains unchanged
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Build a map of expected DNSNames by node ID
+		expectedDNSNames := make(map[string]string)
+		for _, node := range nodes {
+			nodeID := strconv.FormatUint(node.GetId(), 10)
+			expectedDNSNames[nodeID] = fmt.Sprintf("%d-givenname.headscale.net.", node.GetId())
+		}
 
-	// Verify that the clients can see the new hostname, but no givenName
+		// Verify from each client's perspective
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err)
+
+			// Check self node
+			selfID := string(status.Self.ID)
+			expectedDNS := expectedDNSNames[selfID]
+			assert.Equal(ct, expectedDNS, status.Self.DNSName,
+				"Self DNSName should be renamed for client %s (ID: %s)", client.Hostname(), selfID)
+
+			// HostName should remain as the original client-reported hostname
+			originalHostname := hostnames[selfID]
+			assert.Equal(ct, originalHostname, status.Self.HostName,
+				"Self HostName should remain unchanged for client %s (ID: %s)", client.Hostname(), selfID)
+
+			// Check peers
+			for _, peer := range status.Peer {
+				peerID := string(peer.ID)
+				if expectedDNS, ok := expectedDNSNames[peerID]; ok {
+					assert.Equal(ct, expectedDNS, peer.DNSName,
+						"Peer DNSName should be renamed for peer ID %s as seen by client %s", peerID, client.Hostname())
+
+					// HostName should remain as the original client-reported hostname
+					originalHostname := hostnames[peerID]
+					assert.Equal(ct, originalHostname, peer.HostName,
+						"Peer HostName should remain unchanged for peer ID %s as seen by client %s", peerID, client.Hostname())
+				}
+			}
+		}
+	}, 60*time.Second, 2*time.Second)
+
 	for _, client := range allClients {
 		status, err := client.Status()
 		assertNoErr(t, err)
@@ -647,7 +652,6 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 
 func TestExpireNode(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -707,7 +711,23 @@ func TestExpireNode(t *testing.T) {
 
 	t.Logf("Node %s with node_key %s has been expired", node.GetName(), expiredNodeKey.String())
 
-	time.Sleep(2 * time.Minute)
+	// Verify that the expired node has been marked in all peers list.
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err)
+
+			if client.Hostname() != node.GetName() {
+				// Check if the expired node appears as expired in this client's peer list
+				for key, peer := range status.Peer {
+					if key == expiredNodeKey {
+						assert.True(ct, peer.Expired, "Node should be marked as expired for client %s", client.Hostname())
+						break
+					}
+				}
+			}
+		}
+	}, 3*time.Minute, 10*time.Second)
 
 	now := time.Now()
 
@@ -774,7 +794,6 @@ func TestExpireNode(t *testing.T) {
 
 func TestNodeOnlineStatus(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -890,7 +909,6 @@ func TestNodeOnlineStatus(t *testing.T) {
 // five times ensuring they are able to restablish connectivity.
 func TestPingAllByIPManyUpDown(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -944,8 +962,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 			t.Fatalf("failed to take down all nodes: %s", err)
 		}
 
-		time.Sleep(5 * time.Second)
-
 		for _, client := range allClients {
 			c := client
 			wg.Go(func() error {
@@ -958,10 +974,14 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 			t.Fatalf("failed to take down all nodes: %s", err)
 		}
 
-		time.Sleep(5 * time.Second)
+		// Wait for sync and successful pings after nodes come back up
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			err = scenario.WaitForTailscaleSync()
+			assert.NoError(ct, err)
 
-		err = scenario.WaitForTailscaleSync()
-		assertNoErrSync(t, err)
+			success := pingAllHelper(t, allClients, allAddrs)
+			assert.Greater(ct, success, 0, "Nodes should be able to ping after coming back up")
+		}, 30*time.Second, 2*time.Second)
 
 		success := pingAllHelper(t, allClients, allAddrs)
 		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
@@ -970,7 +990,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 
 func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -1042,10 +1061,24 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	time.Sleep(2 * time.Second)
-
 	// Ensure that the node has been deleted, this did not occur due to a panic.
 	var nodeListAfter []v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"list",
+				"--output",
+				"json",
+			},
+			&nodeListAfter,
+		)
+		assert.NoError(ct, err)
+		assert.Len(ct, nodeListAfter, 1, "Node should be deleted from list")
+	}, 10*time.Second, 1*time.Second)
+
 	err = executeAndUnmarshal(
 		headscale,
 		[]string{
