@@ -46,7 +46,8 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc) *NodeStore {
 	snap := snapshotFromNodes(nodes, peersFunc)
 
 	store := &NodeStore{
-		peersFunc: peersFunc,
+		peersFunc:  peersFunc,
+		writeQueue: make(chan work, batchSize),
 	}
 	store.data.Store(&snap)
 
@@ -138,7 +139,6 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 }
 
 func (s *NodeStore) Start() {
-	s.writeQueue = make(chan work)
 	go s.processWrite()
 }
 
@@ -157,13 +157,13 @@ func (s *NodeStore) processWrite() {
 				c.Stop()
 				return
 			}
-			
+
 			// Handle immediate operations right away
 			if w.immediate {
 				s.applyBatch([]work{w})
 				continue
 			}
-			
+
 			batch = append(batch, w)
 			if len(batch) >= batchSize {
 				s.applyBatch(batch)
