@@ -407,6 +407,8 @@ func (s *State) DeleteNode(node types.NodeView) (bool, error) {
 func (s *State) Connect(id types.NodeID) {
 	// Update nodestore with online status - node is connecting so it's online
 	// Use immediate update to ensure online status changes are not delayed by batching
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
 	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
 		// Set the online status in the node's ephemeral field
 		n.IsOnline = ptr.To(true)
@@ -416,6 +418,8 @@ func (s *State) Connect(id types.NodeID) {
 func (s *State) Disconnect(id types.NodeID) (bool, error) {
 	// Update nodestore with offline status
 	// Use immediate update to ensure online status changes are not delayed by batching
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
 	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
 		// Set the online status to false in the node's ephemeral field
 		n.IsOnline = ptr.To(false)
@@ -586,8 +590,12 @@ func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.Node
 		return types.NodeView{}, false, err
 	}
 
-	// Update nodestore with the same change
-	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+	// Update nodestore with immediate processing to ensure LastSeen is immediately
+	// consistent between database and nodestore. This is critical for ephemeral GC
+	// which relies on accurate LastSeen timestamps to determine when nodes should be deleted.
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
+	s.nodeStore.UpdateNodeImmediate(nodeID, func(n *types.Node) {
 		n.LastSeen = &lastSeen
 	})
 
