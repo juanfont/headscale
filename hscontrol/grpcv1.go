@@ -292,9 +292,9 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	resp := node.Proto()
@@ -405,9 +405,9 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	policyChanged, err := api.h.state.DeleteNode(node)

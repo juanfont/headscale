@@ -235,7 +235,10 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 
 // GetNode retrieves a node by its ID.
 func (s *NodeStore) GetNode(id types.NodeID) types.NodeView {
-	n := s.data.Load().nodesByID[id]
+	n, exists := s.data.Load().nodesByID[id]
+	if !exists {
+		return types.NodeView{}
+	}
 	return n.View()
 }
 

@@ -438,13 +438,13 @@ func (s *State) Disconnect(id types.NodeID) (bool, error) {
 }
 
 // GetNodeByID retrieves a node by ID.
-func (s *State) GetNodeByID(nodeID types.NodeID) (types.NodeView, error) {
-	return s.nodeStore.GetNode(nodeID), nil
+func (s *State) GetNodeByID(nodeID types.NodeID) types.NodeView {
+	return s.nodeStore.GetNode(nodeID)
 }
 
 // GetNodeByNodeKey retrieves a node by its Tailscale public key.
-func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
-	return s.nodeStore.GetNodeByNodeKey(nodeKey), nil
+func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
+	return s.nodeStore.GetNodeByNodeKey(nodeKey)
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.

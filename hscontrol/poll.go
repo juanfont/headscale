@@ -258,9 +258,9 @@ func (m *mapSession) serveLongPoll() {
 			// Ensure the node view is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
-			m.node, err = m.h.state.GetNodeByID(m.node.ID())
-			if err != nil {
-				m.errf(err, "Could not get machine from db")
+			m.node = m.h.state.GetNodeByID(m.node.ID())
+			if !m.node.Valid() {
+				m.errf(nil, "Could not get machine from db")
 
 				return
 			}
@@ -372,9 +372,9 @@ func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
 	// Get fresh node state from database for accurate route calculations
-	nodeView, err := m.h.state.GetNodeByID(m.node.ID())
-	if err != nil {
-		m.errf(err, "Failed to get fresh node from database for endpoint update")
+	nodeView := m.h.state.GetNodeByID(m.node.ID())
+	if !nodeView.Valid() {
+		m.errf(nil, "Failed to get fresh node from database for endpoint update")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
 		return

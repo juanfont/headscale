@@ -26,10 +26,7 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("looking up node in database: %w", err)
-	}
+	node := h.state.GetNodeByNodeKey(regReq.NodeKey)
 
 	if node.Valid() {
 		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
