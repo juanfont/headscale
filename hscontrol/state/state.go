@@ -764,7 +764,7 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, false, err
 	}
 
-	node, policyChanged, err := s.db.HandleNodeFromAuthPath(
+	node, _, err := s.db.HandleNodeFromAuthPath(
 		registrationID,
 		userID,
 		expiry,
@@ -773,6 +773,15 @@ func (s *State) HandleNodeFromAuthPath(
 	)
 	if err != nil {
 		return types.NodeView{}, false, err
+	}
+
+	// Update nodestore with the newly created node
+	s.nodeStore.PutNode(*node)
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node.View(), false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
 	}
 
 	return node.View(), policyChanged, nil
@@ -850,6 +859,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 	if err != nil {
 		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
 	}
+
+	// Update nodestore with the newly created node
+	s.nodeStore.PutNode(*node)
 
 	// Check if policy manager needs updating
 	// This is necessary because we just created a new node.
