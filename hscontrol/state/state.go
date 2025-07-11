@@ -311,9 +311,9 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
 
-// CreateNode creates a new node and updates the policy manager.
+// createNode creates a new node and updates the policy manager.
 // Returns the created node, whether policies changed, and any error.
-func (s *State) CreateNode(node *types.Node) (types.NodeView, bool, error) {
+func (s *State) createNode(node *types.Node) (types.NodeView, bool, error) {
 	s.nodeStore.PutNode(*node)
 
 	if err := s.db.DB.Save(node).Error; err != nil {
@@ -425,7 +425,7 @@ func (s *State) Disconnect(id types.NodeID) (bool, error) {
 		n.IsOnline = ptr.To(false)
 	})
 
-	_, polChanged, err := s.SetLastSeen(id, time.Now())
+	_, polChanged, err := s.setLastSeen(id, time.Now())
 	if err != nil {
 		return false, fmt.Errorf("disconnecting node: %w", err)
 	}
@@ -581,8 +581,8 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	return node, policyChanged, nil
 }
 
-// SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, bool, error) {
+// setLastSeen updates when a node was last seen, used for connectivity monitoring.
+func (s *State) setLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, bool, error) {
 	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
@@ -767,7 +767,7 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, bool, error) {
-	ipv4, ipv6, err := s.ipAlloc.Next()
+	ipv4, ipv6, err := s.allocateNextIPs()
 	if err != nil {
 		return types.NodeView{}, false, err
 	}
@@ -841,7 +841,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Msg("Ignoring expired expiry time from auth key registration")
 	}
 
-	ipv4, ipv6, err := s.ipAlloc.Next()
+	ipv4, ipv6, err := s.allocateNextIPs()
 	if err != nil {
 		return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
 	}
@@ -882,8 +882,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 	return node.View(), policyChanged, nil
 }
 
-// AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
-func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
+// allocateNextIPs allocates the next available IPv4 and IPv6 addresses.
+func (s *State) allocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 	return s.ipAlloc.Next()
 }
 
