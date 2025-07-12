@@ -23,13 +23,21 @@ After introducing NodeStore as an intermediate layer between the database and ap
 - **Finding**: Test is now passing, likely fixed by recent NodeStore changes
 
 ### 2. Auth Related Tests
-**Tests: TestOIDCExpireNodesBasedOnTokenExpiry, TestAuthKeyLogoutAndReloginSameUser, TestAuthKeyLogoutAndReloginSameUserExpiredKey**
+**Test: TestOIDCExpireNodesBasedOnTokenExpiry**
 - **Hypothesis**: Node expiry/logout operations might not update NodeStore or auth state checks bypass NodeStore
 - **Investigation Steps**:
-  - [ ] Check node expiry update path
-  - [ ] Verify logout updates NodeStore
-  - [ ] Ensure auth key validation uses NodeStore
-  - [ ] Check node online/offline state updates
+  - [x] Check node expiry update path
+  - [x] Verify logout updates NodeStore
+  - [x] Ensure auth key validation uses NodeStore
+  - [x] Check node online/offline state updates
+- **Status**: FIXED - Issue was NodeStore not being updated when nodes expire
+- **Finding**: ExpireExpiredNodes only updated database, not NodeStore. Added NodeStore update logic.
+- **Fix**: Modified ExpireExpiredNodes in state.go to update NodeStore with expired nodes
+
+**Test: TestAuthKeyLogoutAndReloginSameUser**
+- **Status**: Not Started
+
+**Test: TestAuthKeyLogoutAndReloginSameUserExpiredKey**
 - **Status**: Not Started
 
 ### 3. Route Related Tests
