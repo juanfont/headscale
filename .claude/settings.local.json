@@ -100,7 +100,8 @@
       "Bash(git config:*)",
       "Bash(git -c commit.gpgsign=false add -A)",
       "Bash(git -c commit.gpgsign=false commit -m \"Fix NodeStore not being updated when nodes expire\n\nThe ExpireExpiredNodes function was only updating the database but not\nthe NodeStore. This caused NodeStore reads to return outdated node\ninformation, making expired nodes appear as still running.\n\nThis fix ensures that when nodes expire, the NodeStore is updated\nwith the latest node information from the database, maintaining\nconsistency between the database and NodeStore layers.\")",
-      "Bash(git -c commit.gpgsign=false commit -m \"Fix missing ListNodes method causing tests to fail\n\nAfter NodeStore introduction, tests were calling state.ListNodes() which\nwas missing from the State interface. The existing ListNodes method with\noptional parameters already provided the necessary functionality.\")"
+      "Bash(git -c commit.gpgsign=false commit -m \"Fix missing ListNodes method causing tests to fail\n\nAfter NodeStore introduction, tests were calling state.ListNodes() which\nwas missing from the State interface. The existing ListNodes method with\noptional parameters already provided the necessary functionality.\")",
+      "Bash(git -c commit.gpgsign=false commit -m \"Fix NodeStore synchronization issues\n\nKey fixes:\n1. ExpireExpiredNodes now updates NodeStore when nodes expire\n2. Fixes multiple failing tests including OIDC expiry, ping, and ephemeral tests\n3. Most tests now pass with SQLite backend\n\nRemaining issues:\n- Some route auto-approval tests still fail\n- PostgreSQL backend may have timing issues  \n- Some auth key tests have infrastructure problems\")"
     ],
     "deny": []
   },
