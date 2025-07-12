@@ -632,7 +632,26 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
 func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
-	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
+	nextCheck, update, changed := hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
+	
+	// Update NodeStore with expired nodes to ensure reads reflect the expired state
+	if changed {
+		// Reload expired nodes from database and update NodeStore
+		nodes, err := hsdb.ListNodes(s.db.DB)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to list nodes after expiry check")
+			return nextCheck, update, changed
+		}
+		
+		// Update NodeStore with all expired nodes
+		for _, node := range nodes {
+			if node.IsExpired() {
+				s.nodeStore.PutNode(*node)
+			}
+		}
+	}
+	
+	return nextCheck, update, changed
 }
 
 // SSHPolicy returns the SSH access policy for a node.

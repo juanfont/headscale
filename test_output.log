@@ -1,0 +1,459 @@
+2025/07/09 05:09:09 Running pre-flight system checks...
+2025/07/09 05:09:09 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/07/09 05:09:09 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/07/09 05:09:09 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/07/09 05:09:11 Image golang:1.24.0 pulled successfully
+2025/07/09 05:09:11 🔍 System Health Check Results
+2025/07/09 05:09:11 ================================
+2025/07/09 05:09:11 ✅ Docker Binary: Docker binary found
+2025/07/09 05:09:11 ✅ Docker Daemon: Docker daemon is running and accessible
+2025/07/09 05:09:11 ✅ Docker Context: Using Docker context: default
+2025/07/09 05:09:11 ✅ Docker Socket: Docker socket accessible (Server: 27.5.1)
+2025/07/09 05:09:11 ✅ Golang Image: Golang image golang:1.24.0 is available
+2025/07/09 05:09:11 ✅ Go Installation: go version go1.24.4 linux/amd64
+2025/07/09 05:09:11 ✅ Git Repository: Running in Git repository
+2025/07/09 05:09:11 ✅ Required Files: All required files found
+2025/07/09 05:09:11 ================================
+2025/07/09 05:09:11 ✅ All system checks passed - ready to run integration tests!
+2025/07/09 05:09:11 Running test: TestResolveMagicDNS
+2025/07/09 05:09:11 Go version: 1.24.0
+2025/07/09 05:09:11 Timeout: 10m0s
+2025/07/09 05:09:11 Use PostgreSQL: false
+2025/07/09 05:09:11 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/07/09 05:09:11 Run ID: 20250709-050911-unk1ei
+2025/07/09 05:09:11 Container name: headscale-test-suite-20250709-050911-unk1ei
+2025/07/09 05:09:11 Logs directory: control_logs/20250709-050911-unk1ei
+2025/07/09 05:09:11 Running pre-test cleanup...
+2025/07/09 05:09:11 Using Docker host from context 'default': unix:///var/run/docker.sock
+No test containers found to remove
+2025/07/09 05:09:11 Using Docker host from context 'default': unix:///var/run/docker.sock
+No unused networks found to remove
+2025/07/09 05:09:11 Command: go test ./... -run TestResolveMagicDNS -failfast -timeout 10m0s -v
+2025/07/09 05:09:11 Pulling image golang:1.24.0...
+{"status":"Pulling from library/golang","id":"1.24.0"}
+{"status":"Digest: sha256:3f7444391c51a11a039bf0359ee81cc64e663c17d787ad0e637a4de1a3f62a71"}
+{"status":"Status: Image is up to date for golang:1.24.0"}
+2025/07/09 05:09:12 Using Docker socket: /var/run/docker.sock
+2025/07/09 05:09:12 Created container: 8a2fa6a000a2d401692e454b5ea0281c58b885b253f498ff2af3ca028dccdcc6
+2025/07/09 05:09:12 Starting test: TestResolveMagicDNS
+go: downloading tailscale.com v1.84.2
+go: downloading github.com/ory/dockertest/v3 v3.12.0
+go: downloading github.com/cenkalti/backoff/v5 v5.0.2
+go: downloading github.com/stretchr/testify v1.10.0
+go: downloading github.com/oauth2-proxy/mockoidc v0.0.0-20240214162133-caebfff84d25
+go: downloading github.com/puzpuzpuz/xsync/v4 v4.1.0
+go: downloading github.com/samber/lo v1.51.0
+go: downloading github.com/google/go-cmp v0.7.0
+go: downloading golang.org/x/sync v0.15.0
+go: downloading github.com/rs/zerolog v1.34.0
+go: downloading golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0
+go: downloading github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+go: downloading gopkg.in/yaml.v3 v3.0.1
+go: downloading github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.0
+go: downloading google.golang.org/genproto/googleapis/api v0.0.0-20250603155806-513f23925822
+go: downloading google.golang.org/grpc v1.73.0
+go: downloading google.golang.org/protobuf v1.36.6
+go: downloading github.com/spf13/viper v1.20.1
+go: downloading go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
+go: downloading gorm.io/gorm v1.30.0
+go: downloading github.com/coreos/go-oidc/v3 v3.14.1
+go: downloading github.com/prometheus/common v0.65.0
+go: downloading github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
+go: downloading github.com/go-jose/go-jose/v3 v3.0.4
+go: downloading github.com/golang-jwt/jwt/v5 v5.2.2
+go: downloading golang.org/x/text v0.26.0
+go: downloading github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
+go: downloading github.com/docker/go-units v0.5.0
+go: downloading github.com/cenkalti/backoff/v4 v4.3.0
+go: downloading github.com/mattn/go-colorable v0.1.14
+go: downloading github.com/fsnotify/fsnotify v1.9.0
+go: downloading github.com/go-viper/mapstructure/v2 v2.2.1
+go: downloading github.com/spf13/afero v1.14.0
+go: downloading github.com/spf13/cast v1.8.0
+go: downloading github.com/sagikazarmark/locafero v0.9.0
+go: downloading github.com/spf13/pflag v1.0.6
+go: downloading github.com/jinzhu/now v1.1.5
+go: downloading golang.org/x/net v0.41.0
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20250603155806-513f23925822
+go: downloading golang.org/x/sys v0.33.0
+go: downloading go4.org/mem v0.0.0-20240501181205-ae6ca9944745
+go: downloading golang.org/x/crypto v0.39.0
+go: downloading golang.org/x/time v0.10.0
+go: downloading github.com/jsimonetti/rtnetlink v1.4.1
+go: downloading github.com/mdlayher/netlink v1.7.3-0.20250113171957-fbb4dce95f42
+go: downloading github.com/sirupsen/logrus v1.9.3
+go: downloading github.com/docker/cli v28.1.1+incompatible
+go: downloading github.com/opencontainers/runc v1.3.0
+go: downloading github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5
+go: downloading github.com/moby/term v0.5.2
+go: downloading github.com/opencontainers/image-spec v1.1.1
+go: downloading github.com/subosito/gotenv v1.6.0
+go: downloading github.com/pelletier/go-toml/v2 v2.2.4
+go: downloading github.com/jinzhu/inflection v1.0.0
+go: downloading github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874
+go: downloading github.com/fxamacker/cbor/v2 v2.7.0
+go: downloading github.com/hdevalence/ed25519consensus v0.2.0
+go: downloading github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
+go: downloading github.com/tailscale/goupnp v1.0.1-0.20210804011211-c64d0f06ea05
+go: downloading github.com/coder/websocket v1.8.13
+go: downloading github.com/gaissmai/bart v0.18.0
+go: downloading github.com/docker/go-connections v0.5.0
+go: downloading github.com/prometheus/client_model v0.6.2
+go: downloading github.com/containerd/continuity v0.4.5
+go: downloading github.com/sourcegraph/conc v0.3.0
+go: downloading github.com/mattn/go-isatty v0.0.20
+go: downloading github.com/mdlayher/socket v0.5.0
+go: downloading github.com/google/nftables v0.2.1-0.20240414091927-5e242ec57806
+go: downloading github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7
+go: downloading github.com/go-jose/go-jose/v4 v4.1.0
+go: downloading filippo.io/edwards25519 v1.1.0
+go: downloading github.com/coreos/go-iptables v0.7.1-0.20240112124308-65c67c9f46e6
+go: downloading github.com/mitchellh/go-ps v1.0.0
+go: downloading golang.org/x/oauth2 v0.30.0
+go: downloading dario.cat/mergo v1.0.1
+go: downloading github.com/docker/docker v28.2.2+incompatible
+go: downloading github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
+go: downloading github.com/pkg/errors v0.9.1
+go: downloading github.com/opencontainers/go-digest v1.0.0
+go: downloading github.com/x448/float16 v0.8.4
+go: downloading github.com/miekg/dns v1.1.58
+go: downloading github.com/xeipuuv/gojsonschema v1.2.0
+go: downloading github.com/moby/sys/user v0.4.0
+go: downloading github.com/vishvananda/netns v0.0.4
+go: downloading github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415
+go: downloading github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb
+go: downloading github.com/gogo/protobuf v1.3.2
+go: downloading github.com/moby/docker-image-spec v1.3.1
+=== RUN   TestResolveMagicDNS
+=== PAUSE TestResolveMagicDNS
+=== RUN   TestResolveMagicDNSExtraRecordsPath
+=== PAUSE TestResolveMagicDNSExtraRecordsPath
+=== CONT  TestResolveMagicDNS
+=== CONT  TestResolveMagicDNSExtraRecordsPath
+2025/07/09 05:09:25 Skipping image cleanup outside of CI
+2025/07/09 05:09:25 Skipping image cleanup outside of CI
+2025/07/09 05:09:26 NAME:  hs-magicdns-fn2s5s
+2025/07/09 05:09:26 ENV: 
+(map[string]string) (len=22) {
+ (string) (len=26) "HEADSCALE_PRIVATE_KEY_PATH": (string) (len=16) "/tmp/private.key",
+ (string) (len=32) "HEADSCALE_NOISE_PRIVATE_KEY_PATH": (string) (len=22) "/tmp/noise_private.key",
+ (string) (len=34) "HEADSCALE_DERP_AUTO_UPDATE_ENABLED": (string) (len=5) "false",
+ (string) (len=19) "HEADSCALE_LOG_LEVEL": (string) (len=5) "trace",
+ (string) (len=21) "HEADSCALE_POLICY_PATH": (string) "",
+ (string) (len=43) "HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": (string) (len=3) "30m",
+ (string) (len=25) "HEADSCALE_DNS_BASE_DOMAIN": (string) (len=13) "headscale.net",
+ (string) (len=29) "HEADSCALE_METRICS_LISTEN_ADDR": (string) (len=12) "0.0.0.0:9090",
+ (string) (len=19) "HEADSCALE_DERP_URLS": (string) (len=50) "https://controlplane.tailscale.com/derpmap/default",
+ (string) (len=31) "HEADSCALE_DERP_UPDATE_FREQUENCY": (string) (len=2) "1m",
+ (string) (len=29) "HEADSCALE_PREFIXES_ALLOCATION": (string) (len=10) "sequential",
+ (string) (len=21) "HEADSCALE_PREFIXES_V6": (string) (len=19) "fd7a:115c:a1e0::/48",
+ (string) (len=32) "HEADSCALE_DNS_NAMESERVERS_GLOBAL": (string) (len=18) "127.0.0.11 1.1.1.1",
+ (string) (len=23) "HEADSCALE_DATABASE_TYPE": (string) (len=6) "sqlite",
+ (string) (len=21) "HEADSCALE_PREFIXES_V4": (string) (len=13) "100.64.0.0/10",
+ (string) (len=20) "HEADSCALE_SERVER_URL": (string) (len=30) "http://hs-magicdns-fn2s5s:8080",
+ (string) (len=21) "HEADSCALE_LISTEN_ADDR": (string) (len=12) "0.0.0.0:8080",
+ (string) (len=30) "HEADSCALE_DATABASE_SQLITE_PATH": (string) (len=32) "/tmp/integration_test_db.sqlite3",
+ (string) (len=24) "HEADSCALE_DATABASE_DEBUG": (string) (len=1) "0",
+ (string) (len=38) "HEADSCALE_DATABASE_GORM_SLOW_THRESHOLD": (string) (len=1) "1",
+ (string) (len=23) "HEADSCALE_DNS_MAGIC_DNS": (string) (len=4) "true",
+ (string) (len=32) "HEADSCALE_DNS_OVERRIDE_LOCAL_DNS": (string) (len=5) "false"
+}
+2025/07/09 05:09:29 NAME:  hs-extrarecords-nkzt7m
+2025/07/09 05:09:29 ENV: 
+(map[string]string) (len=33) {
+ (string) (len=43) "HEADSCALE_EPHEMERAL_NODE_INACTIVITY_TIMEOUT": (string) (len=3) "30m",
+ (string) (len=38) "HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": (string) (len=12) "0.0.0.0:3478",
+ (string) (len=20) "HEADSCALE_SERVER_URL": (string) (len=35) "https://hs-extrarecords-nkzt7m:8080",
+ (string) (len=21) "HEADSCALE_LISTEN_ADDR": (string) (len=12) "0.0.0.0:8080",
+ (string) (len=23) "HEADSCALE_DATABASE_TYPE": (string) (len=6) "sqlite",
+ (string) (len=15) "DERP_DEBUG_LOGS": (string) (len=4) "true",
+ (string) (len=21) "HEADSCALE_POLICY_PATH": (string) "",
+ (string) (len=38) "HEADSCALE_DATABASE_GORM_SLOW_THRESHOLD": (string) (len=1) "1",
+ (string) (len=21) "HEADSCALE_PREFIXES_V4": (string) (len=13) "100.64.0.0/10",
+ (string) (len=25) "HEADSCALE_DNS_BASE_DOMAIN": (string) (len=13) "headscale.net",
+ (string) (len=32) "HEADSCALE_DNS_NAMESERVERS_GLOBAL": (string) "",
+ (string) (len=19) "HEADSCALE_DERP_URLS": (string) "",
+ (string) (len=33) "HEADSCALE_DERP_SERVER_REGION_NAME": (string) (len=23) "Headscale Embedded DERP",
+ (string) (len=30) "HEADSCALE_DATABASE_SQLITE_PATH": (string) (len=32) "/tmp/integration_test_db.sqlite3",
+ (string) (len=34) "HEADSCALE_DERP_AUTO_UPDATE_ENABLED": (string) (len=5) "false",
+ (string) (len=29) "HEADSCALE_DERP_SERVER_ENABLED": (string) (len=4) "true",
+ (string) (len=24) "HEADSCALE_DATABASE_DEBUG": (string) (len=1) "0",
+ (string) (len=21) "HEADSCALE_PREFIXES_V6": (string) (len=19) "fd7a:115c:a1e0::/48",
+ (string) (len=29) "HEADSCALE_METRICS_LISTEN_ADDR": (string) (len=12) "0.0.0.0:9090",
+ (string) (len=29) "HEADSCALE_PREFIXES_ALLOCATION": (string) (len=10) "sequential",
+ (string) (len=38) "HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": (string) (len=13) "/tmp/derp.key",
+ (string) (len=22) "DERP_PROBER_DEBUG_LOGS": (string) (len=4) "true",
+ (string) (len=22) "HEADSCALE_TLS_KEY_PATH": (string) (len=22) "/etc/headscale/tls.key",
+ (string) (len=23) "HEADSCALE_DNS_MAGIC_DNS": (string) (len=4) "true",
+ (string) (len=32) "HEADSCALE_DNS_EXTRA_RECORDS_PATH": (string) (len=23) "/tmp/extra_records.json",
+ (string) (len=23) "HEADSCALE_TLS_CERT_PATH": (string) (len=23) "/etc/headscale/tls.cert",
+ (string) (len=19) "HEADSCALE_LOG_LEVEL": (string) (len=5) "trace",
+ (string) (len=32) "HEADSCALE_DNS_OVERRIDE_LOCAL_DNS": (string) (len=5) "false",
+ (string) (len=26) "HEADSCALE_PRIVATE_KEY_PATH": (string) (len=16) "/tmp/private.key",
+ (string) (len=32) "HEADSCALE_NOISE_PRIVATE_KEY_PATH": (string) (len=22) "/tmp/noise_private.key",
+ (string) (len=31) "HEADSCALE_DERP_UPDATE_FREQUENCY": (string) (len=2) "1m",
+ (string) (len=31) "HEADSCALE_DERP_SERVER_REGION_ID": (string) (len=3) "999",
+ (string) (len=33) "HEADSCALE_DERP_SERVER_REGION_CODE": (string) (len=9) "headscale"
+}
+2025/07/09 05:11:05 Created hs-extrarecords-nkzt7m container
+2025/07/09 05:11:05 Created hs-magicdns-fn2s5s container
+2025/07/09 05:11:05 waiting for headscale to be ready at http://hs-magicdns-fn2s5s:8080/health
+2025/07/09 05:11:05 waiting for headscale to be ready at https://hs-extrarecords-nkzt7m:8080/health
+2025/07/09 05:11:22 Created ts-unstable-0s0btf container
+2025/07/09 05:11:29 Created ts-1-82-7d8jrv container
+2025/07/09 05:11:36 Created ts-1-64-rgukui container
+2025/07/09 05:11:43 Created ts-1-66-nc55p4 container
+2025/07/09 05:11:50 Created ts-1-80-vuoecf container
+2025/07/09 05:12:40 Created ts-head-oqllt2 container
+2025/07/09 05:12:41 Created ts-head-anwnap container
+2025/07/09 05:12:44 testing versions [head unstable 1.64 1.66 1.80 1.82], MustTestVersions [head unstable 1.64 1.66 1.80 1.82]
+2025/07/09 05:12:46 testing versions [head], MustTestVersions [head unstable 1.64 1.66 1.80 1.82]
+2025/07/09 05:12:47 Created ts-1-82-x3fmm3 container
+2025/07/09 05:12:48 Created ts-unstable-iiv0vz container
+2025/07/09 05:12:49 Created ts-head-a8juve container
+2025/07/09 05:12:50 Created ts-head-myrck6 container
+2025/07/09 05:12:50 Created ts-1-64-url8hs container
+2025/07/09 05:12:51 Created ts-1-66-zp258o container
+2025/07/09 05:12:52 Created ts-1-80-jpaxmk container
+2025/07/09 05:12:55 testing versions [head], MustTestVersions [head unstable 1.64 1.66 1.80 1.82]
+2025/07/09 05:12:55 testing versions [head unstable 1.64 1.66 1.80 1.82], MustTestVersions [head unstable 1.64 1.66 1.80 1.82]
+    dns_test.go:145: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:145
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "6.6.6.6" not found in "\n; <<>> DiG 9.18.37 <<>> test.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 36746\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;test.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t891\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 14 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:08 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:145: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:145
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "6.6.6.6" not found in "\n; <<>> DiG 9.18.37 <<>> test.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 62558\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;test.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t896\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 15 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:15 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:164: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:164
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "2.2.2.2" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 50004\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t895\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 15 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:22 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+2025/07/09 05:13:24 Saving logs for /hs-magicdns-fn2s5s to /tmp/control
+2025/07/09 05:13:24 Contents of /tmp in container hs-magicdns-fn2s5s:
+total 1136
+drwxrwxrwt  1 root root    4096 Jul  9 05:12 .
+drwxr-xr-x  1 root root    4096 Jul  9 05:13 ..
+-rw-r--r--  1 root root    4096 Jul  9 05:11 integration_test_db.sqlite3
+-rw-r--r--  1 root root   32768 Jul  9 05:13 integration_test_db.sqlite3-shm
+-rw-r--r--  1 root root 1104192 Jul  9 05:13 integration_test_db.sqlite3-wal
+drwxr-xr-x 14 root root    4096 Jul  9 05:12 mapresponses
+-rw-------  1 root root      72 Jul  9 05:11 noise_private.key
+drwxr-xr-x  2 root root    4096 Jul  9 05:11 profile
+2025/07/09 05:13:24 SQLite files found in hs-magicdns-fn2s5s:
+/tmp/integration_test_db.sqlite3-wal
+/tmp/integration_test_db.sqlite3
+/tmp/integration_test_db.sqlite3-shm
+2025/07/09 05:13:24 Database file info: -rw-r--r-- 1 root root 4096 Jul  9 05:11 /tmp/integration_test_db.sqlite3
+2025/07/09 05:13:24 Database schema preview:
+CREATE TABLE `migrations` (`id` text,PRIMARY KEY (`id`));
+CREATE TABLE sqlite_sequence(name,seq);
+CREATE TABLE users(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  name text,
+  display_name text,
+  email text,
+  provider_identifier text,
+  provider text,
+  profile_pic_url text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+);
+CREATE TABLE pre_auth_keys(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  key text,
+  user_id integer,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+...
+2025/07/09 05:13:24 Found file in tar: integration_test_db.sqlite3 (type: 48, size: 90112)
+2025/07/09 05:13:24 Extracted database file: /tmp/control/hs-magicdns-fn2s5s.db (90112 bytes written, header claimed 90112 bytes)
+2025/07/09 05:13:25 removing client ts-1-82-7d8jrv in user user1
+2025/07/09 05:13:25 Saving logs for /ts-1-82-7d8jrv to /tmp/control
+2025/07/09 05:13:25 removing client ts-1-64-rgukui in user user1
+2025/07/09 05:13:25 Saving logs for /ts-1-64-rgukui to /tmp/control
+2025/07/09 05:13:26 removing client ts-1-66-nc55p4 in user user1
+2025/07/09 05:13:26 Saving logs for /ts-1-66-nc55p4 to /tmp/control
+2025/07/09 05:13:26 removing client ts-1-80-vuoecf in user user1
+2025/07/09 05:13:26 Saving logs for /ts-1-80-vuoecf to /tmp/control
+2025/07/09 05:13:26 removing client ts-head-anwnap in user user1
+2025/07/09 05:13:26 Saving logs for /ts-head-anwnap to /tmp/control
+2025/07/09 05:13:27 removing client ts-unstable-0s0btf in user user1
+2025/07/09 05:13:27 Saving logs for /ts-unstable-0s0btf to /tmp/control
+2025/07/09 05:13:27 removing client ts-1-80-jpaxmk in user user2
+2025/07/09 05:13:27 Saving logs for /ts-1-80-jpaxmk to /tmp/control
+2025/07/09 05:13:27 removing client ts-1-82-x3fmm3 in user user2
+2025/07/09 05:13:27 Saving logs for /ts-1-82-x3fmm3 to /tmp/control
+2025/07/09 05:13:28 removing client ts-unstable-iiv0vz in user user2
+2025/07/09 05:13:28 Saving logs for /ts-unstable-iiv0vz to /tmp/control
+2025/07/09 05:13:28 removing client ts-head-a8juve in user user2
+2025/07/09 05:13:28 Saving logs for /ts-head-a8juve to /tmp/control
+2025/07/09 05:13:28 removing client ts-1-64-url8hs in user user2
+2025/07/09 05:13:28 Saving logs for /ts-1-64-url8hs to /tmp/control
+2025/07/09 05:13:28 removing client ts-1-66-zp258o in user user2
+2025/07/09 05:13:28 Saving logs for /ts-1-66-zp258o to /tmp/control
+2025/07/09 05:13:29 Skipping image cleanup outside of CI
+--- PASS: TestResolveMagicDNS (243.84s)
+=== NAME  TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:164: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:164
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "2.2.2.2" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 22701\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t890\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:30 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:182: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:182
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "6.6.6.6" not found in "\n; <<>> DiG 9.18.37 <<>> test.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 32221\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;test.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t870\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:39 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:183: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:183
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "7.7.7.7" not found in "\n; <<>> DiG 9.18.37 <<>> otherrecord.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 60384\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;otherrecord.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t895\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 14 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:48 UTC 2025\n;; MSG SIZE  rcvd: 114\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:182: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:182
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "6.6.6.6" not found in "\n; <<>> DiG 9.18.37 <<>> test.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 1692\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;test.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t880\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:13:55 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:183: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:183
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "7.7.7.7" not found in "\n; <<>> DiG 9.18.37 <<>> otherrecord.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 9621\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;otherrecord.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t898\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 14 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:02 UTC 2025\n;; MSG SIZE  rcvd: 114\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:202: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:202
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "8.8.8.8" not found in "\n; <<>> DiG 9.18.37 <<>> copy.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 58053\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;copy.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t896\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 15 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:12 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:202: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:202
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "8.8.8.8" not found in "\n; <<>> DiG 9.18.37 <<>> copy.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 21041\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;copy.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t883\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:20 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:218: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:218
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "9.9.9.9" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 25087\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t834\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 12 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:26 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:218: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:218
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "9.9.9.9" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 46902\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t821\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:36 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:229: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:229
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "9.9.9.9" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 37700\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t809\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:48 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:229: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:229
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "9.9.9.9" not found in "\n; <<>> DiG 9.18.37 <<>> docker.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 62121\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;docker.myvpn.example.com.\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t806\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:14:54 UTC 2025\n;; MSG SIZE  rcvd: 109\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:238: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:238
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "8.8.8.8" not found in "\n; <<>> DiG 9.18.37 <<>> copy.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 54304\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n;; QUESTION SECTION:\n;copy.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t849\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 14 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:15:03 UTC 2025\n;; MSG SIZE  rcvd: 107\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+    dns_test.go:238: 
+        	Error Trace:	/home/kradalby/git/headscale/integration/utils.go:327
+        	            				/home/kradalby/git/headscale/integration/dns_test.go:238
+        	Error:      	Received unexpected error:
+        	            	executing command, expected string "8.8.8.8" not found in "\n; <<>> DiG 9.18.37 <<>> copy.myvpn.example.com\n;; global options: +cmd\n;; Got answer:\n;; ->>HEADER<<- opcode: QUERY, status: NXDOMAIN, id: 23628\n;; flags: qr rd ra ad; QUERY: 1, ANSWER: 0, AUTHORITY: 1, ADDITIONAL: 1\n\n;; OPT PSEUDOSECTION:\n; EDNS: version: 0, flags:; udp: 512\n; EDE: 29: (Result from negative cache for entire name)\n;; QUESTION SECTION:\n;copy.myvpn.example.com.\t\tIN\tA\n\n;; AUTHORITY SECTION:\nexample.com.\t\t833\tIN\tSOA\tns.icann.org. noc.dns.icann.org. 2025011704 7200 3600 1209600 3600\n\n;; Query time: 13 msec\n;; SERVER: 127.0.0.11#53(127.0.0.11) (UDP)\n;; WHEN: Wed Jul 09 05:15:11 UTC 2025\n;; MSG SIZE  rcvd: 155\n\n"
+        	Test:       	TestResolveMagicDNSExtraRecordsPath
+2025/07/09 05:15:11 Saving logs for /hs-extrarecords-nkzt7m to /tmp/control
+2025/07/09 05:15:11 Contents of /tmp in container hs-extrarecords-nkzt7m:
+total 928
+drwxrwxrwt 1 root root   4096 Jul  9 05:14 .
+drwxr-xr-x 1 root root   4096 Jul  9 05:15 ..
+-rw------- 1 root root     72 Jul  9 05:11 derp.key
+---------- 1 root root     64 Jan  1  1970 extra_records.json
+---------- 1 root root     64 Jan  1  1970 extra_records.json3
+-rw-r--r-- 1 root root   4096 Jul  9 05:11 integration_test_db.sqlite3
+-rw-r--r-- 1 root root  32768 Jul  9 05:15 integration_test_db.sqlite3-shm
+-rw-r--r-- 1 root root 877592 Jul  9 05:15 integration_test_db.sqlite3-wal
+drwxr-xr-x 4 root root   4096 Jul  9 05:12 mapresponses
+-rw------- 1 root root     72 Jul  9 05:11 noise_private.key
+drwxr-xr-x 2 root root   4096 Jul  9 05:11 profile
+2025/07/09 05:15:11 SQLite files found in hs-extrarecords-nkzt7m:
+/tmp/integration_test_db.sqlite3-wal
+/tmp/integration_test_db.sqlite3
+/tmp/integration_test_db.sqlite3-shm
+2025/07/09 05:15:11 Database file info: -rw-r--r-- 1 root root 4096 Jul  9 05:11 /tmp/integration_test_db.sqlite3
+2025/07/09 05:15:11 Database schema preview:
+CREATE TABLE `migrations` (`id` text,PRIMARY KEY (`id`));
+CREATE TABLE users(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  name text,
+  display_name text,
+  email text,
+  provider_identifier text,
+  provider text,
+  profile_pic_url text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+);
+CREATE TABLE sqlite_sequence(name,seq);
+CREATE TABLE pre_auth_keys(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  key text,
+  user_id integer,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+...
+2025/07/09 05:15:11 Found file in tar: integration_test_db.sqlite3 (type: 48, size: 65536)
+2025/07/09 05:15:11 Extracted database file: /tmp/control/hs-extrarecords-nkzt7m.db (65536 bytes written, header claimed 65536 bytes)
+2025/07/09 05:15:11 removing client ts-head-oqllt2 in user user1
+2025/07/09 05:15:11 Saving logs for /ts-head-oqllt2 to /tmp/control
+2025/07/09 05:15:12 removing client ts-head-myrck6 in user user2
+2025/07/09 05:15:12 Saving logs for /ts-head-myrck6 to /tmp/control
+2025/07/09 05:15:12 Skipping image cleanup outside of CI
+--- FAIL: TestResolveMagicDNSExtraRecordsPath (347.02s)
+FAIL
+FAIL	github.com/juanfont/headscale/integration	347.028s
+?   	github.com/juanfont/headscale/integration/dockertestutil	[no test files]
+?   	github.com/juanfont/headscale/integration/dsic	[no test files]
+?   	github.com/juanfont/headscale/integration/hsic	[no test files]
+?   	github.com/juanfont/headscale/integration/integrationutil	[no test files]
+?   	github.com/juanfont/headscale/integration/tsic	[no test files]
+FAIL
+2025/07/09 05:15:13 Looking for containers with run ID: 20250709-050911-unk1ei
+2025/07/09 05:15:13 All test containers finalized, ready for artifact extraction
+2025/07/09 05:15:13 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/07/09 05:15:13 Looking for containers with run ID: 20250709-050911-unk1ei
+2025/07/09 05:15:13 Test artifacts saved to: control_logs/20250709-050911-unk1ei
+2025/07/09 05:15:13 Headscale logs:
+2025/07/09 05:15:13   hs-extrarecords-nkzt7m.stderr.log
+2025/07/09 05:15:13   hs-extrarecords-nkzt7m.stdout.log
+2025/07/09 05:15:13   hs-magicdns-fn2s5s.stderr.log
+2025/07/09 05:15:13   hs-magicdns-fn2s5s.stdout.log
+2025/07/09 05:15:13 Headscale data:
+2025/07/09 05:15:13   hs-extrarecords-nkzt7m.db
+2025/07/09 05:15:13   hs-magicdns-fn2s5s.db
+2025/07/09 05:15:13   hs-extrarecords-nkzt7m-mapresponses/
+2025/07/09 05:15:13   hs-extrarecords-nkzt7m-pprof/
+2025/07/09 05:15:13   hs-magicdns-fn2s5s-mapresponses/
+2025/07/09 05:15:13   hs-magicdns-fn2s5s-pprof/
+2025/07/09 05:15:13 Running post-test cleanup...
+2025/07/09 05:15:13 Error: test failed: exit code 1
+exit status 1

@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "gopls": {
+      "type": "stdio",
+      "command": "/Users/kradalby/go/bin/mcp-language-server",
+      "args": [
+        "--workspace",
+        "/Users/kradalby/git/headscale",
+        "--lsp",
+        "gopls"
+      ],
+      "env": {}
+    }
+  }
+}
