@@ -475,6 +475,12 @@ func (s *State) ListNodesByUser(userID types.UserID) (views.Slice[types.NodeView
 	return s.nodeStore.ListNodesByUser(userID), nil
 }
 
+// UpdateNodeInStore updates a node in the NodeStore without touching the database.
+// This is useful for updating the NodeStore with temporary changes before auto-approval.
+func (s *State) UpdateNodeInStore(node types.Node) {
+	s.nodeStore.PutNode(node)
+}
+
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
 func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
 	if len(peerIDs) == 0 {

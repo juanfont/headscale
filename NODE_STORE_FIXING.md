@@ -83,5 +83,22 @@ After introducing NodeStore as an intermediate layer between the database and ap
 
 ## Progress Tracking
 - Total Tests to Fix: 11
-- Tests Fixed: 2
-- Current Test: TestEnablingRoutes
+- Tests Fixed: 5 (SQLite)
+- Tests Failed: 1 (PostgreSQL version)
+- Remaining Issues: 5 tests + PostgreSQL timing issues
+
+**Fixed Tests:**
+1. TestACLAutogroupTagged ✅
+2. TestOIDCExpireNodesBasedOnTokenExpiry ✅  
+3. TestEnablingRoutes ✅
+4. TestPingAllByIPManyUpDown ✅ (SQLite)
+5. TestEphemeral2006DeletedTooQuickly ✅
+
+**Still Failing:**
+- TestPingAllByIPManyUpDown (PostgreSQL) - timing issue
+- TestAutoApproveMultiNetwork - route auto-approval
+- TestHASubnetRouterFailover - route/subnet issues  
+- TestAuthKeyLogoutAndReloginSameUser - DNS/infrastructure
+- TestAuthKeyLogoutAndReloginSameUserExpiredKey - auth key expiry
+- TestSubnetRouteACLFiltering - route ACL
+- TestSubnetRouterMultiNetwork - route multi-network

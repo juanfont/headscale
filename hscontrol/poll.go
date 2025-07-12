@@ -404,6 +404,7 @@ func (m *mapSession) handleEndpointUpdate() {
 	}
 	node.Hostinfo = m.req.Hostinfo
 
+
 	logTracePeerChange(node.Hostname, sendUpdate, &change)
 
 	// If there is no changes and nothing to save,
@@ -416,6 +417,15 @@ func (m *mapSession) handleEndpointUpdate() {
 	// Auto approve any routes that have been defined in policy as
 	// auto approved. Check if this actually changed the node.
 	routesAutoApproved := m.h.state.AutoApproveRoutes(node.View())
+	
+	// If routes were auto-approved, get the updated node from NodeStore
+	// to ensure the node object includes the auto-approved routes
+	if routesAutoApproved {
+		updatedNodeView := m.h.state.GetNodeByID(node.ID)
+		if updatedNodeView.Valid() {
+			node = updatedNodeView.AsStruct()
+		}
+	}
 
 	// Always update routes for connected nodes to handle reconnection scenarios
 	// where routes need to be restored to the primary routes system
@@ -440,15 +450,6 @@ func (m *mapSession) handleEndpointUpdate() {
 			node.ID)
 	}
 
-	// If routes were auto-approved, we need to save the node to persist the changes
-	if routesAutoApproved {
-		if _, _, err := m.h.state.SaveNode(node.View()); err != nil {
-			m.errf(err, "Failed to save auto-approved routes to node")
-			http.Error(m.w, "", http.StatusInternalServerError)
-			mapResponseEndpointUpdates.WithLabelValues("error").Inc()
-			return
-		}
-	}
 
 	// Check if there has been a change to Hostname and update them
 	// in the database. Then send a Changed update
