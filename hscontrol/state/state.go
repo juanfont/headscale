@@ -447,6 +447,11 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
 	return s.nodeStore.GetNodeByNodeKey(nodeKey)
 }
 
+// GetNodeByMachineKey retrieves a node by its machine key.
+func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic) types.NodeView {
+	return s.nodeStore.GetNodeByMachineKey(machineKey)
+}
+
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
 func (s *State) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
 	if len(nodeIDs) == 0 {
@@ -566,6 +571,15 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
 		n.ApprovedRoutes = routes
 	})
+
+	// Update primaryRoutes manager to keep route state synchronized
+	// This ensures ACL filtering has accurate route information
+	// Get the updated node from NodeStore to ensure we have the correct approved routes
+	updatedNodeView := s.GetNodeByID(nodeID)
+	if updatedNodeView.Valid() {
+		routesToSet := updatedNodeView.SubnetRoutes()
+		s.primaryRoutes.SetRoutes(nodeID, routesToSet...)
+	}
 
 	return node, policyChanged, nil
 }
@@ -866,9 +880,28 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Msg("Ignoring expired expiry time from auth key registration")
 	}
 
-	ipv4, ipv6, err := s.allocateNextIPs()
-	if err != nil {
-		return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
+	// Check for existing node with same machine key using NodeStore
+	// This ensures we use consistent data during logout/login scenarios
+	var ipv4, ipv6 *netip.Addr
+	existingNodeView := s.GetNodeByMachineKey(machineKey)
+	if existingNodeView.Valid() && existingNodeView.UserID() == nodeToRegister.UserID {
+		// Node exists with same machine key and user - reuse IDs and IPs
+		existingNode := existingNodeView.AsStruct()
+		nodeToRegister.ID = existingNode.ID
+		nodeToRegister.GivenName = existingNode.GivenName
+		nodeToRegister.IPv4 = existingNode.IPv4
+		nodeToRegister.IPv6 = existingNode.IPv6
+		ipv4 = existingNode.IPv4
+		ipv6 = existingNode.IPv6
+	} else {
+		// Allocate new IPs for new node
+		var err error
+		ipv4, ipv6, err = s.allocateNextIPs()
+		if err != nil {
+			return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
+		}
+		nodeToRegister.IPv4 = ipv4
+		nodeToRegister.IPv6 = ipv6
 	}
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {

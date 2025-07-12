@@ -59,10 +59,11 @@ type Snapshot struct {
 	nodesByID map[types.NodeID]types.Node
 
 	// calculated from nodesByID
-	nodesByNodeKey map[key.NodePublic]types.NodeView
-	peersByNode    map[types.NodeID][]types.NodeView
-	nodesByUser    map[types.UserID][]types.NodeView
-	allNodes       []types.NodeView
+	nodesByNodeKey    map[key.NodePublic]types.NodeView
+	nodesByMachineKey map[key.MachinePublic]types.NodeView
+	peersByNode       map[types.NodeID][]types.NodeView
+	nodesByUser       map[types.UserID][]types.NodeView
+	allNodes          []types.NodeView
 }
 
 type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
@@ -216,18 +217,20 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 	}
 
 	newSnap := Snapshot{
-		nodesByID:      nodes,
-		allNodes:       allNodes,
-		nodesByNodeKey: make(map[key.NodePublic]types.NodeView),
-		peersByNode:    peersFunc(allNodes),
-		nodesByUser:    make(map[types.UserID][]types.NodeView),
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
+		nodesByMachineKey: make(map[key.MachinePublic]types.NodeView),
+		peersByNode:       peersFunc(allNodes),
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
 	}
 
-	// Build nodesByUser and nodesByNodeKey maps
+	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
 		nodeView := n.View()
 		newSnap.nodesByUser[types.UserID(n.UserID)] = append(newSnap.nodesByUser[types.UserID(n.UserID)], nodeView)
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+		newSnap.nodesByMachineKey[n.MachineKey] = nodeView
 	}
 
 	return newSnap
@@ -245,6 +248,11 @@ func (s *NodeStore) GetNode(id types.NodeID) types.NodeView {
 // GetNodeByNodeKey retrieves a node by its NodeKey.
 func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
 	return s.data.Load().nodesByNodeKey[nodeKey]
+}
+
+// GetNodeByMachineKey retrieves a node by its MachineKey.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) types.NodeView {
+	return s.data.Load().nodesByMachineKey[machineKey]
 }
 
 // ListNodes returns a slice of all nodes in the store.
