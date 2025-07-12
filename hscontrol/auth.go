@@ -26,13 +26,10 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("looking up node in database: %w", err)
-	}
+	node := h.state.GetNodeByNodeKey(regReq.NodeKey)
 
-	if node != nil {
-		resp, err := h.handleExistingNode(node, regReq, machineKey)
+	if node.Valid() {
+		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling existing node: %w", err)
 		}
@@ -82,7 +79,7 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				policyChanged, err := h.state.DeleteNode(node)
+				policyChanged, err := h.state.DeleteNode(node.View())
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
@@ -114,7 +111,7 @@ func (h *Headscale) handleExistingNode(
 			h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
 		}
 
-		return nodeToRegisterResponse(n), nil
+		return nodeToRegisterResponse(n.AsStruct()), nil
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -201,24 +198,25 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	}
 
 	if routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
+		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname())
+		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID()))
 	} else if changed {
-		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname())
 		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	} else {
 		// Existing node re-registering without route changes
 		// Still need to notify peers about the node being active again
 		// Use UpdateFull to ensure all peers get complete peer maps
-		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname())
 		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
+	user := node.User()
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              *node.User.TailscaleUser(),
-		Login:             *node.User.TailscaleLogin(),
+		User:              *user.TailscaleUser(),
+		Login:             *user.TailscaleLogin(),
 	}, nil
 }
 

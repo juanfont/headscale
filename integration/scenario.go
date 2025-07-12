@@ -14,7 +14,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -696,7 +695,6 @@ func (s *Scenario) createHeadscaleEnv(
 		return err
 	}
 
-	sort.Strings(s.spec.Users)
 	for _, user := range s.spec.Users {
 		u, err := s.CreateUser(user)
 		if err != nil {

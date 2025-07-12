@@ -109,6 +109,8 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		return nil, fmt.Errorf("failed to read or create Noise protocol private key: %w", err)
 	}
 
+	nodeNotifier := notifier.NewNotifier(cfg)
+
 	s, err := state.NewState(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("init state: %w", err)
@@ -118,16 +120,32 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		cfg:                cfg,
 		noisePrivateKey:    noisePrivateKey,
 		pollNetMapStreamWG: sync.WaitGroup{},
-		nodeNotifier:       notifier.NewNotifier(cfg),
+		nodeNotifier:       nodeNotifier,
 		state:              s,
 	}
 
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		node, err := app.state.GetNodeByID(ni)
-		if err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to get ephemeral node for deletion")
+		node := app.state.GetNodeByID(ni)
+		if !node.Valid() {
+			log.Warn().Uint64("node.id", ni.Uint64()).Msgf("ephemeral node not found for deletion")
 			return
+		}
+
+		// Check if the node should actually be deleted based on its LastSeen timestamp.
+		// The timer only tells us when to check, but the actual deletion decision should
+		// be based on LastSeen + timeout vs current time to handle cases where the node
+		// reconnected after the timer was scheduled.
+		if node.LastSeen().Valid() {
+			timeSinceLastSeen := time.Since(node.LastSeen().Get())
+			if timeSinceLastSeen < app.cfg.EphemeralNodeInactivityTimeout {
+				log.Debug().
+					Uint64("node.id", ni.Uint64()).
+					Dur("timeSinceLastSeen", timeSinceLastSeen).
+					Dur("timeout", app.cfg.EphemeralNodeInactivityTimeout).
+					Msgf("ephemeral node not yet eligible for deletion, skipping")
+				return
+			}
 		}
 
 		policyChanged, err := app.state.DeleteNode(node)
@@ -138,7 +156,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		// Send policy update notifications if needed
 		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname)
+			ctx := types.NotifyCtx(context.Background(), "ephemeral-gc-policy", node.Hostname())
 			app.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 		}
 
@@ -597,8 +615,8 @@ func (h *Headscale) Serve() error {
 	if err != nil {
 		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
 	}
-	for _, node := range ephmNodes {
-		h.ephemeralGC.Schedule(node.ID, h.cfg.EphemeralNodeInactivityTimeout)
+	for _, node := range ephmNodes.All() {
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {

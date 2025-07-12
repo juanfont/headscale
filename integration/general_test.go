@@ -533,27 +533,34 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
+	// Wait for nodestore batch processing to complete
+	// NodeStore batching timeout is 500ms, so we wait up to 1 second
 	var nodes []*v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"node",
-			"list",
-			"--output",
-			"json",
-		},
-		&nodes,
-	)
+	assert.Eventually(t, func() bool {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"node",
+				"list",
+				"--output",
+				"json",
+			},
+			&nodes,
+		)
 
-	assertNoErr(t, err)
-	assert.Len(t, nodes, 3)
+		if err != nil || len(nodes) != 3 {
+			return false
+		}
 
-	for _, node := range nodes {
-		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-		assert.Equal(t, hostname, node.GetName())
-		assert.Equal(t, util.ConvertWithFQDNRules(hostname), node.GetGivenName())
-	}
+		for _, node := range nodes {
+			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+			if node.GetName() != hostname || node.GetGivenName() != util.ConvertWithFQDNRules(hostname) {
+				return false
+			}
+		}
+		return true
+	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list")
 
 	// Rename givenName in nodes
 	for _, node := range nodes {
@@ -627,27 +634,34 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"node",
-			"list",
-			"--output",
-			"json",
-		},
-		&nodes,
-	)
+	// Wait for nodestore batch processing to complete
+	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	assert.Eventually(t, func() bool {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"node",
+				"list",
+				"--output",
+				"json",
+			},
+			&nodes,
+		)
 
-	assertNoErr(t, err)
-	assert.Len(t, nodes, 3)
+		if err != nil || len(nodes) != 3 {
+			return false
+		}
 
-	for _, node := range nodes {
-		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-		givenName := fmt.Sprintf("%d-givenname", node.GetId())
-		assert.Equal(t, hostname+"NEW", node.GetName())
-		assert.Equal(t, givenName, node.GetGivenName())
-	}
+		for _, node := range nodes {
+			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+			givenName := fmt.Sprintf("%d-givenname", node.GetId())
+			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
+				return false
+			}
+		}
+		return true
+	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list with NEW suffix")
 }
 
 func TestExpireNode(t *testing.T) {

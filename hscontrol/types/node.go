@@ -13,6 +13,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/net/tsaddr"
@@ -506,11 +507,25 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	if node.Hostname != hostInfo.Hostname {
+		log.Trace().
+			Str("node_id", node.ID.String()).
+			Str("old_hostname", node.Hostname).
+			Str("new_hostname", hostInfo.Hostname).
+			Str("old_given_name", node.GivenName).
+			Bool("given_name_changed", node.GivenNameHasBeenChanged()).
+			Msg("Updating hostname from hostinfo")
+
 		if node.GivenNameHasBeenChanged() {
 			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
 		}
 
 		node.Hostname = hostInfo.Hostname
+		
+		log.Trace().
+			Str("node_id", node.ID.String()).
+			Str("new_hostname", node.Hostname).
+			Str("new_given_name", node.GivenName).
+			Msg("Hostname updated")
 	}
 }
 
@@ -745,6 +760,22 @@ func (v NodeView) ExitRoutes() []netip.Prefix {
 		return nil
 	}
 	return v.ж.ExitRoutes()
+}
+
+// RequestTags returns the ACL tags that the node is requesting.
+func (v NodeView) RequestTags() []string {
+	if !v.Valid() || !v.Hostinfo().Valid() {
+		return []string{}
+	}
+	return v.Hostinfo().RequestTags().AsSlice()
+}
+
+// Proto converts the NodeView to a protobuf representation.
+func (v NodeView) Proto() *v1.Node {
+	if !v.Valid() {
+		return nil
+	}
+	return v.ж.Proto()
 }
 
 // HasIP reports if a node has a given IP address.

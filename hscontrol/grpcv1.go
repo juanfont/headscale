@@ -23,6 +23,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/views"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/state"
@@ -280,8 +281,8 @@ func (api headscaleV1APIServer) RegisterNode(
 	}
 
 	if routesChanged {
-		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname)
-		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
+		ctx = types.NotifyCtx(context.Background(), "web-node-login", node.Hostname())
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID()))
 	}
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
@@ -291,16 +292,16 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	resp := node.Proto()
 
 	// Populate the online field based on
 	// currently connected nodes.
-	resp.Online = api.h.nodeNotifier.IsConnected(node.ID)
+	resp.Online = api.h.nodeNotifier.IsConnected(node.ID())
 
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
@@ -325,15 +326,15 @@ func (api headscaleV1APIServer) SetTags(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-tags", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-tags", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	ctx = types.NotifyCtx(ctx, "cli-settags", node.Hostname())
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID()), node.ID())
 
 	log.Trace().
-		Str("node", node.Hostname).
+		Str("node", node.Hostname()).
 		Strs("tags", request.GetTags()).
 		Msg("Changing tags of node")
 
@@ -369,20 +370,20 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-routes-approved", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-routes-approved", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	if api.h.state.SetNodeRoutes(node.ID, node.SubnetRoutes()...) {
-		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname)
+	if api.h.state.SetNodeRoutes(node.ID(), node.SubnetRoutes()...) {
+		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	} else {
-		ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname)
-		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+		ctx = types.NotifyCtx(ctx, "cli-approveroutes", node.Hostname())
+		api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID()), node.ID())
 	}
 
 	proto := node.Proto()
-	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID))
+	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID()))
 
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
@@ -404,9 +405,9 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	policyChanged, err := api.h.state.DeleteNode(node)
@@ -416,12 +417,12 @@ func (api headscaleV1APIServer) DeleteNode(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-deleted", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-deleted", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname)
-	api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
+	ctx = types.NotifyCtx(ctx, "cli-deletenode", node.Hostname())
+	api.h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID()))
 
 	return &v1.DeleteNodeResponse{}, nil
 }
@@ -439,22 +440,22 @@ func (api headscaleV1APIServer) ExpireNode(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-expired", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-expired", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname)
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-self", node.Hostname())
 	api.h.nodeNotifier.NotifyByNodeID(
 		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
+		types.UpdateSelf(node.ID()),
+		node.ID())
 
-	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, now), node.ID)
+	ctx = types.NotifyCtx(ctx, "cli-expirenode-peers", node.Hostname())
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID(), now), node.ID())
 
 	log.Trace().
-		Str("node", node.Hostname).
-		Time("expiry", *node.Expiry).
+		Str("node", node.Hostname()).
+		Time("expiry", *node.AsStruct().Expiry).
 		Msg("node expired")
 
 	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
@@ -471,18 +472,18 @@ func (api headscaleV1APIServer) RenameNode(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-renamed", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-renamed", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-renamenode-self", node.Hostname)
-	api.h.nodeNotifier.NotifyByNodeID(ctx, types.UpdateSelf(node.ID), node.ID)
+	ctx = types.NotifyCtx(ctx, "cli-renamenode-self", node.Hostname())
+	api.h.nodeNotifier.NotifyByNodeID(ctx, types.UpdateSelf(node.ID()), node.ID())
 
-	ctx = types.NotifyCtx(ctx, "cli-renamenode-peers", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+	ctx = types.NotifyCtx(ctx, "cli-renamenode-peers", node.Hostname())
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID()), node.ID())
 
 	log.Trace().
-		Str("node", node.Hostname).
+		Str("node", node.Hostname()).
 		Str("new_name", request.GetNewName()).
 		Msg("node renamed")
 
@@ -519,33 +520,34 @@ func (api headscaleV1APIServer) ListNodes(
 		return nil, err
 	}
 
-	sort.Slice(nodes, func(i, j int) bool {
-		return nodes[i].ID < nodes[j].ID
-	})
-
 	response := nodesToProto(api.h.state, isLikelyConnected, nodes)
+
+	// Sort the response by ID
+	sort.Slice(response, func(i, j int) bool {
+		return response[i].Id < response[j].Id
+	})
 	return &v1.ListNodesResponse{Nodes: response}, nil
 }
 
-func nodesToProto(state *state.State, isLikelyConnected *xsync.MapOf[types.NodeID, bool], nodes types.Nodes) []*v1.Node {
-	response := make([]*v1.Node, len(nodes))
-	for index, node := range nodes {
+func nodesToProto(state *state.State, isLikelyConnected *xsync.MapOf[types.NodeID, bool], nodes views.Slice[types.NodeView]) []*v1.Node {
+	response := make([]*v1.Node, nodes.Len())
+	for index, node := range nodes.All() {
 		resp := node.Proto()
 
 		// Populate the online field based on
 		// currently connected nodes.
-		if val, ok := isLikelyConnected.Load(node.ID); ok && val {
+		if val, ok := isLikelyConnected.Load(node.ID()); ok && val {
 			resp.Online = true
 		}
 
 		var tags []string
 		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node.View(), tag) {
+			if state.NodeCanHaveTag(node, tag) {
 				tags = append(tags, tag)
 			}
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags...))
-		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID), node.ExitRoutes()...))
+		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
+		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
 	}
 
@@ -563,17 +565,17 @@ func (api headscaleV1APIServer) MoveNode(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "grpc-node-moved", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-moved", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname)
+	ctx = types.NotifyCtx(ctx, "cli-movenode-self", node.Hostname())
 	api.h.nodeNotifier.NotifyByNodeID(
 		ctx,
-		types.UpdateSelf(node.ID),
-		node.ID)
-	ctx = types.NotifyCtx(ctx, "cli-movenode", node.Hostname)
-	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+		types.UpdateSelf(node.ID()),
+		node.ID())
+	ctx = types.NotifyCtx(ctx, "cli-movenode", node.Hostname())
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID()), node.ID())
 
 	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
@@ -735,8 +737,8 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
 
-	if len(nodes) > 0 {
-		_, err = api.h.state.SSHPolicy(nodes[0].View())
+	if nodes.Len() > 0 {
+		_, err = api.h.state.SSHPolicy(nodes.At(0))
 		if err != nil {
 			return nil, fmt.Errorf("verifying SSH rules: %w", err)
 		}
