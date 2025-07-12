@@ -216,12 +216,14 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		allNodes = append(allNodes, n.View())
 	}
 
+	peersByNode := peersFunc(allNodes)
+
 	newSnap := Snapshot{
 		nodesByID:         nodes,
 		allNodes:          allNodes,
 		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
 		nodesByMachineKey: make(map[key.MachinePublic]types.NodeView),
-		peersByNode:       peersFunc(allNodes),
+		peersByNode:       peersByNode,
 		nodesByUser:       make(map[types.UserID][]types.NodeView),
 	}
 
@@ -262,7 +264,19 @@ func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
 
 // ListPeers returns a slice of all peers for a given node ID.
 func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
-	return views.SliceOf(s.data.Load().peersByNode[id])
+	snap := s.data.Load()
+	if snap.peersByNode == nil || len(snap.peersByNode) == 0 {
+		// Compute peers on demand if they weren't computed during startup
+		peers := s.peersFunc(snap.allNodes)
+		
+		// Create a new snapshot with peers computed
+		newSnap := *snap
+		newSnap.peersByNode = peers
+		s.data.Store(&newSnap)
+		
+		return views.SliceOf(peers[id])
+	}
+	return views.SliceOf(snap.peersByNode[id])
 }
 
 // ListNodesByUser returns a slice of all nodes for a given user ID.

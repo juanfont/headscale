@@ -109,6 +109,14 @@ func NewState(cfg *types.Config) (*State, error) {
 	}
 
 	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		// Always defer peer computation during startup for performance
+		// Peers will be computed lazily when actually needed
+		if len(nodes) > 0 {
+			log.Debug().Int("node_count", len(nodes)).Msg("Deferring peer computation until needed")
+			return make(map[types.NodeID][]types.NodeView)
+		}
+		
+		// For empty node list, safe to compute immediately
 		_, matchers := polMan.Filter()
 		return policy.BuildPeerMap(views.SliceOf(nodes), matchers)
 	})
