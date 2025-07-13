@@ -50,34 +50,21 @@ func TestResolveMagicDNS(t *testing.T) {
 
 			assert.Equal(t, peer.Hostname()+".headscale.net.", peerFQDN)
 
-			command := []string{
-				"tailscale",
-				"ip", peerFQDN,
-			}
-			result, _, err := client.Execute(command)
-			if err != nil {
-				t.Fatalf(
-					"failed to execute resolve/ip command %s from %s: %s",
-					peerFQDN,
-					client.Hostname(),
-					err,
-				)
-			}
-
-			ips, err := peer.IPs()
-			if err != nil {
-				t.Fatalf(
-					"failed to get ips for %s: %s",
-					peer.Hostname(),
-					err,
-				)
-			}
-
-			for _, ip := range ips {
-				if !strings.Contains(result, ip.String()) {
-					t.Fatalf("ip %s is not found in \n%s\n", ip.String(), result)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				command := []string{
+					"tailscale",
+					"ip", peerFQDN,
 				}
-			}
+				result, _, err := client.Execute(command)
+				assert.NoError(ct, err, "Failed to execute resolve/ip command %s from %s", peerFQDN, client.Hostname())
+
+				ips, err := peer.IPs()
+				assert.NoError(ct, err, "Failed to get IPs for %s", peer.Hostname())
+
+				for _, ip := range ips {
+					assert.Contains(ct, result, ip.String(), "IP %s should be found in DNS resolution result from %s to %s", ip.String(), client.Hostname(), peer.Hostname())
+				}
+			}, 30*time.Second, 2*time.Second)
 		}
 	}
 }

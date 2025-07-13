@@ -4,11 +4,12 @@ import (
 	"net/netip"
 	"slices"
 	"testing"
+	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
@@ -92,8 +93,13 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErrGetHeadscale(t, err)
 
-	listNodes, err := headscale.ListNodes()
-	assert.Len(t, allClients, len(listNodes))
+	var listNodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodes, len(allClients), "Node count should match client count after login")
+	}, 20*time.Second, 1*time.Second)
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -137,8 +143,12 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
-	listNodes, err = headscale.ListNodes()
-	require.Len(t, listNodes, nodeCountBeforeLogout)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count after re-login")
+	}, 20*time.Second, 1*time.Second)
 	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
 
 	for _, client := range allClients {

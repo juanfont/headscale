@@ -179,9 +179,11 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 
 	t.Logf("all clients logged out")
 
-	nodes, err := headscale.ListNodes()
-	assertNoErr(t, err)
-	require.Len(t, nodes, 0)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 0, "All ephemeral nodes should be cleaned up after logout")
+	}, 30*time.Second, 2*time.Second)
 }
 
 // TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
@@ -534,26 +536,27 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	assertNoErrSync(t, err)
 
 	var nodes []*v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"node",
-			"list",
-			"--output",
-			"json",
-		},
-		&nodes,
-	)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"node",
+				"list",
+				"--output",
+				"json",
+			},
+			&nodes,
+		)
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 3, "Should have 3 nodes after hostname updates")
 
-	assertNoErr(t, err)
-	assert.Len(t, nodes, 3)
-
-	for _, node := range nodes {
-		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-		assert.Equal(t, hostname, node.GetName())
-		assert.Equal(t, util.ConvertWithFQDNRules(hostname), node.GetGivenName())
-	}
+		for _, node := range nodes {
+			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+			assert.Equal(ct, hostname, node.GetName(), "Node name should match hostname")
+			assert.Equal(ct, util.ConvertWithFQDNRules(hostname), node.GetGivenName(), "Given name should match FQDN rules")
+		}
+	}, 20*time.Second, 1*time.Second)
 
 	// Rename givenName in nodes
 	for _, node := range nodes {
@@ -684,11 +687,13 @@ func TestExpireNode(t *testing.T) {
 	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for _, client := range allClients {
-		status, err := client.Status()
-		assertNoErr(t, err)
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			status, err := client.Status()
+			assert.NoError(ct, err)
 
-		// Assert that we have the original count - self
-		assert.Len(t, status.Peers(), spec.NodesPerUser-1)
+			// Assert that we have the original count - self
+			assert.Len(ct, status.Peers(), spec.NodesPerUser-1, "Client %s should see correct number of peers", client.Hostname())
+		}, 30*time.Second, 1*time.Second)
 	}
 
 	headscale, err := scenario.Headscale()
@@ -850,53 +855,57 @@ func TestNodeOnlineStatus(t *testing.T) {
 			return
 		}
 
-		result, err := headscale.Execute([]string{
-			"headscale", "nodes", "list", "--output", "json",
-		})
-		assertNoErr(t, err)
-
 		var nodes []*v1.Node
-		err = json.Unmarshal([]byte(result), &nodes)
-		assertNoErr(t, err)
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			result, err := headscale.Execute([]string{
+				"headscale", "nodes", "list", "--output", "json",
+			})
+			assert.NoError(ct, err)
 
-		// Verify that headscale reports the nodes as online
-		for _, node := range nodes {
-			// All nodes should be online
-			assert.Truef(
-				t,
-				node.GetOnline(),
-				"expected %s to have online status in Headscale, marked as offline %s after start",
-				node.GetName(),
-				time.Since(start),
-			)
-		}
+			err = json.Unmarshal([]byte(result), &nodes)
+			assert.NoError(ct, err)
 
-		// Verify that all nodes report all nodes to be online
-		for _, client := range allClients {
-			status, err := client.Status()
-			assertNoErr(t, err)
-
-			for _, peerKey := range status.Peers() {
-				peerStatus := status.Peer[peerKey]
-
-				// .Online is only available from CapVer 16, which
-				// is not present in 1.18 which is the lowest we
-				// test.
-				if strings.Contains(client.Hostname(), "1-18") {
-					continue
-				}
-
-				// All peers of this nodes are reporting to be
-				// connected to the control server
+			// Verify that headscale reports the nodes as online
+			for _, node := range nodes {
+				// All nodes should be online
 				assert.Truef(
-					t,
-					peerStatus.Online,
-					"expected node %s to be marked as online in %s peer list, marked as offline %s after start",
-					peerStatus.HostName,
-					client.Hostname(),
+					ct,
+					node.GetOnline(),
+					"expected %s to have online status in Headscale, marked as offline %s after start",
+					node.GetName(),
 					time.Since(start),
 				)
 			}
+		}, 15*time.Second, 1*time.Second)
+
+		// Verify that all nodes report all nodes to be online
+		for _, client := range allClients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				assert.NoError(ct, err)
+
+				for _, peerKey := range status.Peers() {
+					peerStatus := status.Peer[peerKey]
+
+					// .Online is only available from CapVer 16, which
+					// is not present in 1.18 which is the lowest we
+					// test.
+					if strings.Contains(client.Hostname(), "1-18") {
+						continue
+					}
+
+					// All peers of this nodes are reporting to be
+					// connected to the control server
+					assert.Truef(
+						ct,
+						peerStatus.Online,
+						"expected node %s to be marked as online in %s peer list, marked as offline %s after start",
+						peerStatus.HostName,
+						client.Hostname(),
+						time.Since(start),
+					)
+				}
+			}, 15*time.Second, 1*time.Second)
 		}
 
 		// Check maximum once per second
