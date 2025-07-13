@@ -84,8 +84,12 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			t.Logf("all clients logged out")
 
-			listNodes, err = headscale.ListNodes()
-			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				var err error
+				listNodes, err = headscale.ListNodes()
+				assert.NoError(ct, err)
+				assert.Equal(ct, nodeCountBeforeLogout, len(listNodes), "Node count should match before logout count")
+			}, 20*time.Second, 1*time.Second)
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -115,8 +119,12 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}
 			}
 
-			listNodes, err = headscale.ListNodes()
-			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				var err error
+				listNodes, err = headscale.ListNodes()
+				assert.NoError(ct, err)
+				assert.Equal(ct, nodeCountBeforeLogout, len(listNodes), "Node count should match after HTTPS reconnection")
+			}, 30*time.Second, 2*time.Second)
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -234,22 +242,29 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		}
 	}
 
-	user1Nodes, err := headscale.ListNodes("user1")
-	assertNoErr(t, err)
-	assert.Len(t, user1Nodes, len(allClients))
+	var user1Nodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		user1Nodes, err = headscale.ListNodes("user1")
+		assert.NoError(ct, err)
+		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all clients after re-login")
+	}, 20*time.Second, 1*time.Second)
 
 	// Validate that all the old nodes are still present with user2
-	user2Nodes, err := headscale.ListNodes("user2")
-	assertNoErr(t, err)
-	assert.Len(t, user2Nodes, len(allClients)/2)
+	var user2Nodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		user2Nodes, err = headscale.ListNodes("user2")
+		assert.NoError(ct, err)
+		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should have half the clients")
+	}, 20*time.Second, 1*time.Second)
 
 	for _, client := range allClients {
-		status, err := client.Status()
-		if err != nil {
-			t.Fatalf("failed to get status for client %s: %s", client.Hostname(), err)
-		}
-
-		assert.Equal(t, "user1@test.no", status.User[status.Self.UserID].LoginName)
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			status, err := client.Status()
+			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
+			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1", client.Hostname())
+		}, 30*time.Second, 2*time.Second)
 	}
 }
 

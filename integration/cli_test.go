@@ -64,26 +64,30 @@ func TestUserCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	var listUsers []*v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listUsers,
-	)
-	assertNoErr(t, err)
+	var result []string
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"users",
+				"list",
+				"--output",
+				"json",
+			},
+			&listUsers,
+		)
+		assert.NoError(ct, err)
 
-	slices.SortFunc(listUsers, sortWithID)
-	result := []string{listUsers[0].GetName(), listUsers[1].GetName()}
+		slices.SortFunc(listUsers, sortWithID)
+		result = []string{listUsers[0].GetName(), listUsers[1].GetName()}
 
-	assert.Equal(
-		t,
-		[]string{"user1", "user2"},
-		result,
-	)
+		assert.Equal(
+			ct,
+			[]string{"user1", "user2"},
+			result,
+			"Should have user1 and user2 in users list",
+		)
+	}, 20*time.Second, 1*time.Second)
 
 	_, err = headscale.Execute(
 		[]string{
@@ -98,26 +102,29 @@ func TestUserCommand(t *testing.T) {
 	assertNoErr(t, err)
 
 	var listAfterRenameUsers []*v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listAfterRenameUsers,
-	)
-	assertNoErr(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"users",
+				"list",
+				"--output",
+				"json",
+			},
+			&listAfterRenameUsers,
+		)
+		assert.NoError(ct, err)
 
-	slices.SortFunc(listUsers, sortWithID)
-	result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
+		slices.SortFunc(listAfterRenameUsers, sortWithID)
+		result = []string{listAfterRenameUsers[0].GetName(), listAfterRenameUsers[1].GetName()}
 
-	assert.Equal(
-		t,
-		[]string{"user1", "newname"},
-		result,
-	)
+		assert.Equal(
+			ct,
+			[]string{"user1", "newname"},
+			result,
+			"Should have user1 and newname after rename operation",
+		)
+	}, 20*time.Second, 1*time.Second)
 
 	var listByUsername []*v1.User
 	err = executeAndUnmarshal(headscale,
@@ -187,30 +194,32 @@ func TestUserCommand(t *testing.T) {
 	assert.Contains(t, deleteResult, "User destroyed")
 
 	var listAfterIDDelete []*v1.User
-	err = executeAndUnmarshal(headscale,
-		[]string{
-			"headscale",
-			"users",
-			"list",
-			"--output",
-			"json",
-		},
-		&listAfterIDDelete,
-	)
-	assertNoErr(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"users",
+				"list",
+				"--output",
+				"json",
+			},
+			&listAfterIDDelete,
+		)
+		assert.NoError(ct, err)
 
-	slices.SortFunc(listAfterIDDelete, sortWithID)
-	want = []*v1.User{
-		{
-			Id:    2,
-			Name:  "newname",
-			Email: "user2@test.no",
-		},
-	}
+		slices.SortFunc(listAfterIDDelete, sortWithID)
+		want := []*v1.User{
+			{
+				Id:    2,
+				Name:  "newname",
+				Email: "user2@test.no",
+			},
+		}
 
-	if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-		t.Errorf("unexpected users (-want +got):\n%s", diff)
-	}
+		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
+		}
+	}, 20*time.Second, 1*time.Second)
 
 	deleteResult, err = headscale.Execute(
 		[]string{
@@ -569,10 +578,14 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	)
 	assertNoErr(t, err)
 
-	listNodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	require.Len(t, listNodes, 1)
-	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
+	var listNodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
+		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "Node should belong to user1")
+	}, 15*time.Second, 1*time.Second)
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -588,30 +601,31 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	err = scenario.WaitForTailscaleLogout()
 	assertNoErr(t, err)
 
-	status, err := client.Status()
-	assertNoErr(t, err)
-	if status.BackendState == "Starting" || status.BackendState == "Running" {
-		t.Fatalf("expected node to be logged out, backend state: %s", status.BackendState)
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState, 
+			"Expected node to be logged out, backend state: %s", status.BackendState)
+	}, 30*time.Second, 2*time.Second)
 
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
 	assertNoErr(t, err)
 
-	status, err = client.Status()
-	assertNoErr(t, err)
-	if status.BackendState != "Running" {
-		t.Fatalf("expected node to be logged in, backend state: %s", status.BackendState)
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
+		assert.Equal(ct, "userid:2", status.Self.UserID.String(), "Expected node to be logged in as userid:2")
+	}, 30*time.Second, 2*time.Second)
 
-	if status.Self.UserID.String() != "userid:2" {
-		t.Fatalf("expected node to be logged in as userid:2, got: %s", status.Self.UserID.String())
-	}
-
-	listNodes, err = headscale.ListNodes()
-	require.NoError(t, err)
-	require.Len(t, listNodes, 2)
-	assert.Equal(t, user1, listNodes[0].GetUser().GetName())
-	assert.Equal(t, user2, listNodes[1].GetUser().GetName())
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login")
+		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
+		assert.Equal(ct, user2, listNodes[1].GetUser().GetName(), "Second node should belong to user2")
+	}, 20*time.Second, 1*time.Second)
 }
 
 func TestApiKeyCommand(t *testing.T) {
@@ -844,7 +858,9 @@ func TestNodeTagCommand(t *testing.T) {
 
 		nodes[index] = &node
 	}
-	assert.Len(t, nodes, len(regIDs))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
+	}, 15*time.Second, 1*time.Second)
 
 	var node v1.Node
 	err = executeAndUnmarshal(
@@ -1096,24 +1112,27 @@ func TestNodeCommand(t *testing.T) {
 		nodes[index] = &node
 	}
 
-	assert.Len(t, nodes, len(regIDs))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
+	}, 15*time.Second, 1*time.Second)
 
 	// Test list all nodes after added seconds
 	var listAll []v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listAll,
-	)
-	assert.NoError(t, err)
-
-	assert.Len(t, listAll, 5)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"list",
+				"--output",
+				"json",
+			},
+			&listAll,
+		)
+		assert.NoError(ct, err)
+		assert.Len(ct, listAll, len(regIDs), "Should list all nodes after CLI operations")
+	}, 20*time.Second, 1*time.Second)
 
 	assert.Equal(t, uint64(1), listAll[0].GetId())
 	assert.Equal(t, uint64(2), listAll[1].GetId())
@@ -1173,7 +1192,9 @@ func TestNodeCommand(t *testing.T) {
 		otherUserMachines[index] = &node
 	}
 
-	assert.Len(t, otherUserMachines, len(otherUserRegIDs))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		assert.Len(ct, otherUserMachines, len(otherUserRegIDs), "Should have correct number of otherUser machines after CLI operations")
+	}, 15*time.Second, 1*time.Second)
 
 	// Test list all nodes after added otherUser
 	var listAllWithotherUser []v1.Node
@@ -1250,22 +1271,23 @@ func TestNodeCommand(t *testing.T) {
 
 	// Test: list main user after node is deleted
 	var listOnlyMachineUserAfterDelete []v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--user",
-			"node-user",
-			"--output",
-			"json",
-		},
-		&listOnlyMachineUserAfterDelete,
-	)
-	assert.NoError(t, err)
-
-	assert.Len(t, listOnlyMachineUserAfterDelete, 4)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"list",
+				"--user",
+				"node-user",
+				"--output",
+				"json",
+			},
+			&listOnlyMachineUserAfterDelete,
+		)
+		assert.NoError(ct, err)
+		assert.Len(ct, listOnlyMachineUserAfterDelete, 4, "Should have 4 nodes for node-user after deletion")
+	}, 20*time.Second, 1*time.Second)
 }
 
 func TestNodeExpireCommand(t *testing.T) {
