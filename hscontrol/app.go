@@ -126,10 +126,26 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		node, err := app.state.GetNodeByID(ni)
-		if err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to get ephemeral node for deletion")
+		node := app.state.GetNodeByID(ni)
+		if !node.Valid() {
+			log.Warn().Uint64("node.id", ni.Uint64()).Msgf("ephemeral node not found for deletion")
 			return
+		}
+
+		// Check if the node should actually be deleted based on its LastSeen timestamp.
+		// The timer only tells us when to check, but the actual deletion decision should
+		// be based on LastSeen + timeout vs current time to handle cases where the node
+		// reconnected after the timer was scheduled.
+		if node.LastSeen().Valid() {
+			timeSinceLastSeen := time.Since(node.LastSeen().Get())
+			if timeSinceLastSeen < app.cfg.EphemeralNodeInactivityTimeout {
+				log.Debug().
+					Uint64("node.id", ni.Uint64()).
+					Dur("timeSinceLastSeen", timeSinceLastSeen).
+					Dur("timeout", app.cfg.EphemeralNodeInactivityTimeout).
+					Msgf("ephemeral node not yet eligible for deletion, skipping")
+				return
+			}
 		}
 
 		policyChanged, err := app.state.DeleteNode(node)

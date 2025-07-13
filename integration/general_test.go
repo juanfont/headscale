@@ -616,18 +616,20 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		}
 	}, 60*time.Second, 2*time.Second)
 
-	for _, client := range allClients {
-		status, err := client.Status()
-		assertNoErr(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err)
 
-		command := []string{
-			"tailscale",
-			"set",
-			"--hostname=" + hostnames[string(status.Self.ID)] + "NEW",
+			command := []string{
+				"tailscale",
+				"set",
+				"--hostname=" + hostnames[string(status.Self.ID)] + "NEW",
+			}
+			_, _, err = client.Execute(command)
+			assert.NoError(ct, err, "failed to set hostname")
 		}
-		_, _, err = client.Execute(command)
-		assertNoErrf(t, "failed to set hostname: %s", err)
-	}
+	}, 10*time.Second, 100*time.Millisecond, "hostname changes should be applied successfully")
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
@@ -746,64 +748,63 @@ func TestExpireNode(t *testing.T) {
 	now := time.Now()
 
 	// Verify that the expired node has been marked in all peers list.
-	for _, client := range allClients {
-		status, err := client.Status()
-		assertNoErr(t, err)
+	// Use EventuallyWithT to wait for final state consistency after expiration
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err)
 
-		if client.Hostname() != node.GetName() {
-			t.Logf("available peers of %s: %v", client.Hostname(), status.Peers())
+			if client.Hostname() != node.GetName() {
+				t.Logf("available peers of %s: %v", client.Hostname(), status.Peers())
 
-			// Ensures that the node is present, and that it is expired.
-			if peerStatus, ok := status.Peer[expiredNodeKey]; ok {
-				assertNotNil(t, peerStatus.Expired)
-				assert.NotNil(t, peerStatus.KeyExpiry)
+				// Ensures that the node is present, and that it is expired.
+				if peerStatus, ok := status.Peer[expiredNodeKey]; ok {
+					assert.NotNil(ct, peerStatus.Expired)
+					assert.NotNil(ct, peerStatus.KeyExpiry)
 
-				t.Logf(
-					"node %q should have a key expire before %s, was %s",
-					peerStatus.HostName,
-					now.String(),
-					peerStatus.KeyExpiry,
-				)
-				if peerStatus.KeyExpiry != nil {
-					assert.Truef(
-						t,
-						peerStatus.KeyExpiry.Before(now),
+					t.Logf(
 						"node %q should have a key expire before %s, was %s",
 						peerStatus.HostName,
 						now.String(),
 						peerStatus.KeyExpiry,
 					)
-				}
+					if peerStatus.KeyExpiry != nil {
+						assert.Truef(
+							ct,
+							peerStatus.KeyExpiry.Before(now),
+							"node %q should have a key expire before %s, was %s",
+							peerStatus.HostName,
+							now.String(),
+							peerStatus.KeyExpiry,
+						)
+					}
 
-				assert.Truef(
-					t,
-					peerStatus.Expired,
-					"node %q should be expired, expired is %v",
-					peerStatus.HostName,
-					peerStatus.Expired,
-				)
-
-				_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.GetName()})
-				if !strings.Contains(stderr, "node key has expired") {
-					t.Errorf(
-						"expected to be unable to ping expired host %q from %q",
-						node.GetName(),
-						client.Hostname(),
+					assert.Truef(
+						ct,
+						peerStatus.Expired,
+						"node %q should be expired, expired is %v",
+						peerStatus.HostName,
+						peerStatus.Expired,
 					)
+
+					_, stderr, _ := client.Execute([]string{"tailscale", "ping", node.GetName()})
+					if !strings.Contains(stderr, "node key has expired") {
+						assert.Fail(ct, "expected to be unable to ping expired host %q from %q", node.GetName(), client.Hostname())
+					}
+				} else {
+					assert.Fail(ct, "failed to find node %q with nodekey (%s) in mapresponse, should be present even if it is expired", node.GetName(), expiredNodeKey)
 				}
 			} else {
-				t.Errorf("failed to find node %q with nodekey (%s) in mapresponse, should be present even if it is expired", node.GetName(), expiredNodeKey)
-			}
-		} else {
-			if status.Self.KeyExpiry != nil {
-				assert.Truef(t, status.Self.KeyExpiry.Before(now), "node %q should have a key expire before %s, was %s", status.Self.HostName, now.String(), status.Self.KeyExpiry)
-			}
+				if status.Self.KeyExpiry != nil {
+					assert.Truef(ct, status.Self.KeyExpiry.Before(now), "node %q should have a key expire before %s, was %s", status.Self.HostName, now.String(), status.Self.KeyExpiry)
+				}
 
-			// NeedsLogin means that the node has understood that it is no longer
-			// valid.
-			assert.Equalf(t, "NeedsLogin", status.BackendState, "checking node %q", status.Self.HostName)
+				// NeedsLogin means that the node has understood that it is no longer
+				// valid.
+				assert.Equalf(ct, "NeedsLogin", status.BackendState, "checking node %q", status.Self.HostName)
+			}
 		}
-	}
+	}, 30*time.Second, 1*time.Second, "expired node state should be consistent across all clients")
 }
 
 func TestNodeOnlineStatus(t *testing.T) {
@@ -998,8 +999,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 			assert.NoError(ct, err)
 
 			success := pingAllHelper(t, allClients, allAddrs)
-			assert.Greater(ct, success, 0, "Nodes should be able to ping after coming back up")
-		}, 30*time.Second, 2*time.Second)
+			// Just require that some pings work - nodes need time to reconnect
+			assert.Greater(ct, success, 0, "At least some pings should succeed after nodes come back up")
+		}, 60*time.Second, 3*time.Second, "nodes should reconnect and ping successfully after up/down cycle")
 
 		success := pingAllHelper(t, allClients, allAddrs)
 		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))

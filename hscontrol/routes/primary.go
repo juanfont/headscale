@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
@@ -110,8 +111,17 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
+	// DEBUG: Log primary route setting
+	log.Debug().
+		Str("node_id", node.String()).
+		Any("prefixes", prefixes).
+		Msg("DEBUG: PrimaryRoutes.SetRoutes called")
+
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {
+		log.Debug().
+			Str("node_id", node.String()).
+			Msg("DEBUG: PrimaryRoutes.SetRoutes - removing node (no prefixes)")
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
 			return pr.updatePrimaryLocked()
@@ -129,15 +139,30 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 
 	if rs.Len() != 0 {
 		pr.routes[node] = rs
+		log.Debug().
+			Str("node_id", node.String()).
+			Any("filtered_routes", rs).
+			Msg("DEBUG: PrimaryRoutes.SetRoutes - setting routes for node")
 	} else {
 		delete(pr.routes, node)
+		log.Debug().
+			Str("node_id", node.String()).
+			Msg("DEBUG: PrimaryRoutes.SetRoutes - deleting node (no non-exit routes)")
 	}
 
-	return pr.updatePrimaryLocked()
+	changed := pr.updatePrimaryLocked()
+	log.Debug().
+		Str("node_id", node.String()).
+		Bool("primary_routes_changed", changed).
+		Msg("DEBUG: PrimaryRoutes.SetRoutes - completed")
+	return changed
 }
 
 func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 	if pr == nil {
+		log.Debug().
+			Str("node_id", id.String()).
+			Msg("DEBUG: PrimaryRoutes.PrimaryRoutes - pr is nil")
 		return nil
 	}
 
@@ -146,6 +171,9 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 
 	// Short circuit if the node is not a primary for any route.
 	if _, ok := pr.isPrimary[id]; !ok {
+		log.Debug().
+			Str("node_id", id.String()).
+			Msg("DEBUG: PrimaryRoutes.PrimaryRoutes - node not found in isPrimary map")
 		return nil
 	}
 
@@ -156,6 +184,11 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 			routes = append(routes, prefix)
 		}
 	}
+
+	log.Debug().
+		Str("node_id", id.String()).
+		Any("primary_routes", routes).
+		Msg("DEBUG: PrimaryRoutes.PrimaryRoutes - returning routes")
 
 	tsaddr.SortPrefixes(routes)
 

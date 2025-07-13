@@ -423,11 +423,28 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
 
-	for _, route := range node.AnnouncedRoutes() {
-		if slices.Contains(node.ApprovedRoutes, route) {
+	announced := node.AnnouncedRoutes()
+	approved := node.ApprovedRoutes
+
+	// DEBUG: Log subnet route calculation
+	log.Debug().
+		Str("node_id", node.ID.String()).
+		Str("hostname", node.Hostname).
+		Any("announced_routes", announced).
+		Any("approved_routes", approved).
+		Msg("DEBUG: SubnetRoutes calculation")
+
+	for _, route := range announced {
+		if slices.Contains(approved, route) {
 			routes = append(routes, route)
 		}
 	}
+
+	log.Debug().
+		Str("node_id", node.ID.String()).
+		Str("hostname", node.Hostname).
+		Any("subnet_routes", routes).
+		Msg("DEBUG: SubnetRoutes result")
 
 	return routes
 }

@@ -304,7 +304,14 @@ func (m *Mapper) PeerChangedResponse(
 	tailnode, err := tailNode(
 		node, mapRequest.Version, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := m.state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in mapper
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in mapper")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -457,7 +464,14 @@ func (m *Mapper) baseWithConfigMapResponse(
 	tailnode, err := tailNode(
 		node, capVer, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := m.state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in tailnode
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in tailnode")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -535,7 +549,14 @@ func appendPeerChanges(
 	tailPeers, err := tailNodes(
 		reducedChanged, capVer, state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in tailPeers
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in tailPeers")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		cfg)
 	if err != nil {

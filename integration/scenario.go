@@ -743,6 +743,12 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 				loginURL, err := tsc.LoginWithURL(loginServer)
 				if err != nil {
 					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
+					return err
+				}
+
+				// Check if loginURL is nil to prevent panic in doLoginURL
+				if loginURL == nil {
+					return fmt.Errorf("%s received nil login URL", tsc.Hostname())
 				}
 
 				body, err := doLoginURL(tsc.Hostname(), loginURL)

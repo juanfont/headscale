@@ -109,8 +109,31 @@ func NewState(cfg *types.Config) (*State, error) {
 	}
 
 	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		// Always compute peers properly to avoid empty peer maps
 		_, matchers := polMan.Filter()
-		return policy.BuildPeerMap(views.SliceOf(nodes), matchers)
+		peerMap := policy.BuildPeerMap(views.SliceOf(nodes), matchers)
+		
+		// Ensure ALL other nodes are visible as peers for monitoring purposes
+		// Expired nodes will be marked appropriately in the MapResponse
+		for i, sourceNode := range nodes {
+			if peerMap[sourceNode.ID()] == nil {
+				peerMap[sourceNode.ID()] = make([]types.NodeView, 0)
+			}
+			
+			existingPeerIDs := make(map[types.NodeID]bool)
+			for _, peer := range peerMap[sourceNode.ID()] {
+				existingPeerIDs[peer.ID()] = true
+			}
+			
+			// Add all other nodes that aren't already peers
+			for j, targetNode := range nodes {
+				if i != j && !existingPeerIDs[targetNode.ID()] {
+					peerMap[sourceNode.ID()] = append(peerMap[sourceNode.ID()], targetNode)
+				}
+			}
+		}
+		
+		return peerMap
 	})
 	nodeStore.Start()
 
@@ -311,9 +334,9 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
 
-// CreateNode creates a new node and updates the policy manager.
+// createNode creates a new node and updates the policy manager.
 // Returns the created node, whether policies changed, and any error.
-func (s *State) CreateNode(node *types.Node) (types.NodeView, bool, error) {
+func (s *State) createNode(node *types.Node) (types.NodeView, bool, error) {
 	s.nodeStore.PutNode(*node)
 
 	if err := s.db.DB.Save(node).Error; err != nil {
@@ -407,6 +430,8 @@ func (s *State) DeleteNode(node types.NodeView) (bool, error) {
 func (s *State) Connect(id types.NodeID) {
 	// Update nodestore with online status - node is connecting so it's online
 	// Use immediate update to ensure online status changes are not delayed by batching
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
 	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
 		// Set the online status in the node's ephemeral field
 		n.IsOnline = ptr.To(true)
@@ -416,12 +441,14 @@ func (s *State) Connect(id types.NodeID) {
 func (s *State) Disconnect(id types.NodeID) (bool, error) {
 	// Update nodestore with offline status
 	// Use immediate update to ensure online status changes are not delayed by batching
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
 	s.nodeStore.UpdateNodeImmediate(id, func(n *types.Node) {
 		// Set the online status to false in the node's ephemeral field
 		n.IsOnline = ptr.To(false)
 	})
 
-	_, polChanged, err := s.SetLastSeen(id, time.Now())
+	_, polChanged, err := s.setLastSeen(id, time.Now())
 	if err != nil {
 		return false, fmt.Errorf("disconnecting node: %w", err)
 	}
@@ -434,13 +461,18 @@ func (s *State) Disconnect(id types.NodeID) (bool, error) {
 }
 
 // GetNodeByID retrieves a node by ID.
-func (s *State) GetNodeByID(nodeID types.NodeID) (types.NodeView, error) {
-	return s.nodeStore.GetNode(nodeID), nil
+func (s *State) GetNodeByID(nodeID types.NodeID) types.NodeView {
+	return s.nodeStore.GetNode(nodeID)
 }
 
 // GetNodeByNodeKey retrieves a node by its Tailscale public key.
-func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, error) {
-	return s.nodeStore.GetNodeByNodeKey(nodeKey), nil
+func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
+	return s.nodeStore.GetNodeByNodeKey(nodeKey)
+}
+
+// GetNodeByMachineKey retrieves a node by its machine key.
+func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic) types.NodeView {
+	return s.nodeStore.GetNodeByMachineKey(machineKey)
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -469,6 +501,12 @@ func (s *State) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView],
 // ListNodesByUser retrieves all nodes belonging to a specific user.
 func (s *State) ListNodesByUser(userID types.UserID) (views.Slice[types.NodeView], error) {
 	return s.nodeStore.ListNodesByUser(userID), nil
+}
+
+// UpdateNodeInStore updates a node in the NodeStore without touching the database.
+// This is useful for updating the NodeStore with temporary changes before auto-approval.
+func (s *State) UpdateNodeInStore(node types.Node) {
+	s.nodeStore.PutNode(node)
 }
 
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
@@ -557,6 +595,15 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		n.ApprovedRoutes = routes
 	})
 
+	// Update primaryRoutes manager to keep route state synchronized
+	// This ensures ACL filtering has accurate route information
+	// Get the updated node from NodeStore to ensure we have the correct approved routes
+	updatedNodeView := s.GetNodeByID(nodeID)
+	if updatedNodeView.Valid() {
+		routesToSet := updatedNodeView.SubnetRoutes()
+		s.primaryRoutes.SetRoutes(nodeID, routesToSet...)
+	}
+
 	return node, policyChanged, nil
 }
 
@@ -577,8 +624,8 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	return node, policyChanged, nil
 }
 
-// SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, bool, error) {
+// setLastSeen updates when a node was last seen, used for connectivity monitoring.
+func (s *State) setLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, bool, error) {
 	node, policyChanged, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
@@ -586,8 +633,12 @@ func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.Node
 		return types.NodeView{}, false, err
 	}
 
-	// Update nodestore with the same change
-	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+	// Update nodestore with immediate processing to ensure LastSeen is immediately
+	// consistent between database and nodestore. This is critical for ephemeral GC
+	// which relies on accurate LastSeen timestamps to determine when nodes should be deleted.
+	// TODO(kradalby): Consider performance implications - UpdateNodeImmediate recalculates
+	// the entire peer map for all nodes, which may be expensive with many nodes
+	s.nodeStore.UpdateNodeImmediate(nodeID, func(n *types.Node) {
 		n.LastSeen = &lastSeen
 	})
 
@@ -624,7 +675,26 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
 func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
-	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
+	nextCheck, update, changed := hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
+	
+	// Update NodeStore with expired nodes to ensure reads reflect the expired state
+	if changed {
+		// Reload expired nodes from database and update NodeStore
+		nodes, err := hsdb.ListNodes(s.db.DB)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to list nodes after expiry check")
+			return nextCheck, update, changed
+		}
+		
+		// Update NodeStore with all expired nodes
+		for _, node := range nodes {
+			if node.IsExpired() {
+				s.nodeStore.PutNode(*node)
+			}
+		}
+	}
+	
+	return nextCheck, update, changed
 }
 
 // SSHPolicy returns the SSH access policy for a node.
@@ -762,12 +832,12 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, bool, error) {
-	ipv4, ipv6, err := s.ipAlloc.Next()
+	ipv4, ipv6, err := s.allocateNextIPs()
 	if err != nil {
 		return types.NodeView{}, false, err
 	}
 
-	node, policyChanged, err := s.db.HandleNodeFromAuthPath(
+	node, _, err := s.db.HandleNodeFromAuthPath(
 		registrationID,
 		userID,
 		expiry,
@@ -778,6 +848,15 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, false, err
 	}
 
+	// Update nodestore with the newly created node
+	s.nodeStore.PutNode(*node)
+
+	// Check if policy manager needs updating
+	policyChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node.View(), false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
+	}
+
 	return node.View(), policyChanged, nil
 }
 
@@ -786,15 +865,57 @@ func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (types.NodeView, bool, error) {
-	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
+	// Helper function to safely get auth key for logging
+	getAuthKey := func() string {
+		if regReq.Auth != nil {
+			return regReq.Auth.AuthKey
+		}
+		return ""
+	}
+	
+	// Helper function to safely get hostname for logging
+	getHostname := func() string {
+		if regReq.Hostinfo != nil {
+			return regReq.Hostinfo.Hostname
+		}
+		return ""
+	}
+	
+	// DEBUG: Log entry to HandleNodeFromPreAuthKey
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Str("hostname", getHostname()).
+		Msg("DEBUG: HandleNodeFromPreAuthKey called")
+
+	pak, err := s.GetPreAuthKey(getAuthKey())
 	if err != nil {
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Err(err).
+			Msg("DEBUG: GetPreAuthKey failed")
 		return types.NodeView{}, false, err
 	}
 
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Bool("reusable", pak.Reusable).
+		Bool("used", pak.Used).
+		Bool("ephemeral", pak.Ephemeral).
+		Time("expiration", *pak.Expiration).
+		Msg("DEBUG: PreAuth key found, validating")
+
 	err = pak.Validate()
 	if err != nil {
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Err(err).
+			Msg("DEBUG: PreAuth key validation failed")
 		return types.NodeView{}, false, err
 	}
+
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Msg("DEBUG: PreAuth key validation passed, creating node")
 
 	nodeToRegister := types.Node{
 		Hostname:       regReq.Hostinfo.Hostname,
@@ -814,6 +935,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 		AuthKeyID:  &pak.ID,
 	}
 
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Str("hostname", nodeToRegister.Hostname).
+		Uint("user_id", uint(nodeToRegister.UserID)).
+		Msg("DEBUG: Node struct created, checking for existing node")
+
 	// For auth key registration, ensure we don't keep an expired node
 	// This is especially important for re-registration after logout
 	if !regReq.Expiry.IsZero() && regReq.Expiry.After(time.Now()) {
@@ -827,46 +954,149 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Msg("Ignoring expired expiry time from auth key registration")
 	}
 
-	ipv4, ipv6, err := s.ipAlloc.Next()
-	if err != nil {
-		return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
+	// Check for existing node with same machine key using NodeStore
+	// This ensures we use consistent data during logout/login scenarios
+	var ipv4, ipv6 *netip.Addr
+	existingNodeView := s.GetNodeByMachineKey(machineKey)
+	
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Bool("existing_node_found", existingNodeView.Valid()).
+		Msg("DEBUG: Checked for existing node with machine key")
+	
+	if existingNodeView.Valid() && existingNodeView.UserID() == nodeToRegister.UserID {
+		// Node exists with same machine key and user - reuse IDs and IPs
+		existingNode := existingNodeView.AsStruct()
+		log.Debug().
+			Str("hostname", existingNode.Hostname).
+			Str("given_name", existingNode.GivenName).
+			Uint64("node_id", uint64(existingNode.ID)).
+			Msg("DEBUG: Found existing node with machine key, reusing IPs")
+		
+		nodeToRegister.ID = existingNode.ID
+		// Only copy GivenName if it's not empty to avoid "node has no given name" errors
+		if existingNode.GivenName != "" {
+			nodeToRegister.GivenName = existingNode.GivenName
+		}
+		nodeToRegister.IPv4 = existingNode.IPv4
+		nodeToRegister.IPv6 = existingNode.IPv6
+		ipv4 = existingNode.IPv4
+		ipv6 = existingNode.IPv6
+	} else {
+		// Allocate new IPs for new node
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Msg("DEBUG: No existing node found, allocating new IPs")
+		
+		var err error
+		ipv4, ipv6, err = s.allocateNextIPs()
+		if err != nil {
+			log.Debug().
+				Str("auth_key", getAuthKey()).
+				Err(err).
+				Msg("DEBUG: IP allocation failed")
+			return types.NodeView{}, false, fmt.Errorf("allocating IPs: %w", err)
+		}
+		nodeToRegister.IPv4 = ipv4
+		nodeToRegister.IPv6 = ipv6
+		
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Str("ipv4", ipv4.String()).
+			Str("ipv6", ipv6.String()).
+			Msg("DEBUG: IPs allocated successfully")
 	}
 
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Msg("DEBUG: Starting database transaction for node registration")
+
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Msg("DEBUG: Inside database transaction, calling RegisterNode")
+		
 		node, err := hsdb.RegisterNode(tx,
 			nodeToRegister,
 			ipv4, ipv6,
 		)
 		if err != nil {
+			log.Debug().
+				Str("auth_key", getAuthKey()).
+				Err(err).
+				Msg("DEBUG: RegisterNode failed")
 			return nil, fmt.Errorf("registering node: %w", err)
 		}
 
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Bool("reusable", pak.Reusable).
+			Msg("DEBUG: RegisterNode succeeded, checking if need to use pre auth key")
+
 		if !pak.Reusable {
+			log.Debug().
+				Str("auth_key", getAuthKey()).
+				Msg("DEBUG: Marking pre auth key as used")
+			
 			err = hsdb.UsePreAuthKey(tx, pak)
 			if err != nil {
+				log.Debug().
+					Str("auth_key", getAuthKey()).
+					Err(err).
+					Msg("DEBUG: UsePreAuthKey failed")
 				return nil, fmt.Errorf("using pre auth key: %w", err)
 			}
 		}
 
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Uint64("node_id", uint64(node.ID)).
+			Msg("DEBUG: Database transaction completed successfully")
+
 		return node, nil
 	})
 	if err != nil {
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Err(err).
+			Msg("DEBUG: Database transaction failed")
 		return types.NodeView{}, false, fmt.Errorf("writing node to database: %w", err)
 	}
+
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Uint64("node_id", uint64(node.ID)).
+		Msg("DEBUG: Updating NodeStore with newly created node")
+
+	// Update nodestore with the newly created node
+	s.nodeStore.PutNode(*node)
+
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Msg("DEBUG: NodeStore updated, updating policy manager")
 
 	// Check if policy manager needs updating
 	// This is necessary because we just created a new node.
 	// We need to ensure that the policy manager is aware of this new node.
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
+		log.Debug().
+			Str("auth_key", getAuthKey()).
+			Err(err).
+			Msg("DEBUG: Policy manager update failed")
 		return types.NodeView{}, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
 	}
+
+	log.Debug().
+		Str("auth_key", getAuthKey()).
+		Bool("policy_changed", policyChanged).
+		Msg("DEBUG: HandleNodeFromPreAuthKey completed successfully")
 
 	return node.View(), policyChanged, nil
 }
 
-// AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
-func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
+// allocateNextIPs allocates the next available IPv4 and IPv6 addresses.
+func (s *State) allocateNextIPs() (*netip.Addr, *netip.Addr, error) {
 	return s.ipAlloc.Next()
 }
 

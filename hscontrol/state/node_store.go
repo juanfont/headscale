@@ -46,7 +46,8 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc) *NodeStore {
 	snap := snapshotFromNodes(nodes, peersFunc)
 
 	store := &NodeStore{
-		peersFunc: peersFunc,
+		peersFunc:  peersFunc,
+		writeQueue: make(chan work, batchSize),
 	}
 	store.data.Store(&snap)
 
@@ -58,10 +59,11 @@ type Snapshot struct {
 	nodesByID map[types.NodeID]types.Node
 
 	// calculated from nodesByID
-	nodesByNodeKey map[key.NodePublic]types.NodeView
-	peersByNode    map[types.NodeID][]types.NodeView
-	nodesByUser    map[types.UserID][]types.NodeView
-	allNodes       []types.NodeView
+	nodesByNodeKey    map[key.NodePublic]types.NodeView
+	nodesByMachineKey map[key.MachinePublic]types.NodeView
+	peersByNode       map[types.NodeID][]types.NodeView
+	nodesByUser       map[types.UserID][]types.NodeView
+	allNodes          []types.NodeView
 }
 
 type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
@@ -138,7 +140,6 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 }
 
 func (s *NodeStore) Start() {
-	s.writeQueue = make(chan work)
 	go s.processWrite()
 }
 
@@ -157,13 +158,13 @@ func (s *NodeStore) processWrite() {
 				c.Stop()
 				return
 			}
-			
+
 			// Handle immediate operations right away
 			if w.immediate {
 				s.applyBatch([]work{w})
 				continue
 			}
-			
+
 			batch = append(batch, w)
 			if len(batch) >= batchSize {
 				s.applyBatch(batch)
@@ -215,19 +216,23 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		allNodes = append(allNodes, n.View())
 	}
 
+	peersByNode := peersFunc(allNodes)
+
 	newSnap := Snapshot{
-		nodesByID:      nodes,
-		allNodes:       allNodes,
-		nodesByNodeKey: make(map[key.NodePublic]types.NodeView),
-		peersByNode:    peersFunc(allNodes),
-		nodesByUser:    make(map[types.UserID][]types.NodeView),
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
+		nodesByMachineKey: make(map[key.MachinePublic]types.NodeView),
+		peersByNode:       peersByNode,
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
 	}
 
-	// Build nodesByUser and nodesByNodeKey maps
+	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
 		nodeView := n.View()
 		newSnap.nodesByUser[types.UserID(n.UserID)] = append(newSnap.nodesByUser[types.UserID(n.UserID)], nodeView)
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+		newSnap.nodesByMachineKey[n.MachineKey] = nodeView
 	}
 
 	return newSnap
@@ -235,13 +240,21 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 
 // GetNode retrieves a node by its ID.
 func (s *NodeStore) GetNode(id types.NodeID) types.NodeView {
-	n := s.data.Load().nodesByID[id]
+	n, exists := s.data.Load().nodesByID[id]
+	if !exists {
+		return types.NodeView{}
+	}
 	return n.View()
 }
 
 // GetNodeByNodeKey retrieves a node by its NodeKey.
 func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
 	return s.data.Load().nodesByNodeKey[nodeKey]
+}
+
+// GetNodeByMachineKey retrieves a node by its MachineKey.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) types.NodeView {
+	return s.data.Load().nodesByMachineKey[machineKey]
 }
 
 // ListNodes returns a slice of all nodes in the store.
@@ -251,7 +264,8 @@ func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
 
 // ListPeers returns a slice of all peers for a given node ID.
 func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
-	return views.SliceOf(s.data.Load().peersByNode[id])
+	snap := s.data.Load()
+	return views.SliceOf(snap.peersByNode[id])
 }
 
 // ListNodesByUser returns a slice of all nodes for a given user ID.

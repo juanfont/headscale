@@ -292,9 +292,9 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	resp := node.Proto()
@@ -374,7 +374,20 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
-	if api.h.state.SetNodeRoutes(node.ID(), node.SubnetRoutes()...) {
+	// Get the current node state from NodeStore to ensure we have the latest Hostinfo
+	// which includes routes announced by the client via MapRequest.
+	// The node returned by SetApprovedRoutes comes from database and may not have
+	// the current Hostinfo.RoutableIPs that were updated in NodeStore.
+	currentNodeView := api.h.state.GetNodeByID(node.ID())
+	var subnetRoutes []netip.Prefix
+	if currentNodeView.Valid() {
+		subnetRoutes = currentNodeView.SubnetRoutes()
+	} else {
+		// Fallback to database node if NodeStore lookup fails
+		subnetRoutes = node.SubnetRoutes()
+	}
+
+	if api.h.state.SetNodeRoutes(node.ID(), subnetRoutes...) {
 		ctx := types.NotifyCtx(ctx, "poll-primary-change", node.Hostname())
 		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	} else {
@@ -405,9 +418,9 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !node.Valid() {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	policyChanged, err := api.h.state.DeleteNode(node)
