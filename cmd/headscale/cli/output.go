@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -46,6 +47,7 @@ func (om *OutputManager) HasMachineOutput() bool {
 // TableColumn defines a table column with header and data extraction function
 type TableColumn struct {
 	Header   string
+	Key      string // Unique key for column selection
 	Width    int // Optional width specification
 	Extract  func(item interface{}) string
 	Color    func(value string) string // Optional color function
@@ -68,8 +70,9 @@ func NewTableRenderer(om *OutputManager) *TableRenderer {
 }
 
 // AddColumn adds a column to the table
-func (tr *TableRenderer) AddColumn(header string, extract func(interface{}) string) *TableRenderer {
+func (tr *TableRenderer) AddColumn(key, header string, extract func(interface{}) string) *TableRenderer {
 	tr.columns = append(tr.columns, TableColumn{
+		Key:     key,
 		Header:  header,
 		Extract: extract,
 	})
@@ -77,8 +80,9 @@ func (tr *TableRenderer) AddColumn(header string, extract func(interface{}) stri
 }
 
 // AddColoredColumn adds a column with color formatting
-func (tr *TableRenderer) AddColoredColumn(header string, extract func(interface{}) string, color func(string) string) *TableRenderer {
+func (tr *TableRenderer) AddColoredColumn(key, header string, extract func(interface{}) string, color func(string) string) *TableRenderer {
 	tr.columns = append(tr.columns, TableColumn{
+		Key:     key,
 		Header:  header,
 		Extract: extract,
 		Color:   color,
@@ -89,6 +93,30 @@ func (tr *TableRenderer) AddColoredColumn(header string, extract func(interface{
 // SetData sets the data for the table
 func (tr *TableRenderer) SetData(data []interface{}) *TableRenderer {
 	tr.data = data
+	return tr
+}
+
+// FilterColumns filters columns based on comma-separated list of column keys
+func (tr *TableRenderer) FilterColumns(columnKeys string) *TableRenderer {
+	if columnKeys == "" {
+		return tr // No filtering
+	}
+	
+	keys := strings.Split(columnKeys, ",")
+	var filteredColumns []TableColumn
+	
+	// Filter columns based on keys, maintaining order from column keys
+	for _, key := range keys {
+		trimmedKey := strings.TrimSpace(key)
+		for _, col := range tr.columns {
+			if col.Key == trimmedKey {
+				filteredColumns = append(filteredColumns, col)
+				break
+			}
+		}
+	}
+	
+	tr.columns = filteredColumns
 	return tr
 }
 
@@ -329,6 +357,12 @@ func ListOutput(cmd *cobra.Command, data []interface{}, tableSetup func(*TableRe
 	renderer := NewTableRenderer(om)
 	renderer.SetData(data)
 	tableSetup(renderer)
+	
+	// Apply column filtering if --columns flag is provided
+	if columnsFlag := GetColumnsFlag(cmd); columnsFlag != "" {
+		renderer.FilterColumns(columnsFlag)
+	}
+	
 	renderer.Render()
 }
 

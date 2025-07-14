@@ -28,6 +28,17 @@ func AddRequiredIdentifierFlag(cmd *cobra.Command, name string, help string) {
 	}
 }
 
+// AddColumnsFlag adds a columns flag for table output customization
+func AddColumnsFlag(cmd *cobra.Command, defaultColumns string) {
+	cmd.Flags().String("columns", defaultColumns, "Comma-separated list of columns to display")
+}
+
+// GetColumnsFlag gets the columns flag value
+func GetColumnsFlag(cmd *cobra.Command) string {
+	columns, _ := cmd.Flags().GetString("columns")
+	return columns
+}
+
 // AddUserFlag adds a user flag (string for username or email)
 func AddUserFlag(cmd *cobra.Command) {
 	cmd.Flags().StringP("user", "u", "", "User")

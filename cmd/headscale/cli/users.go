@@ -8,7 +8,6 @@ import (
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -45,6 +44,7 @@ func init() {
 	userCmd.AddCommand(listUsersCmd)
 	usernameAndIDFlag(listUsersCmd)
 	listUsersCmd.Flags().StringP("email", "e", "", "Email")
+	AddColumnsFlag(listUsersCmd, "id,name,username,email,created")
 	userCmd.AddCommand(destroyUserCmd)
 	usernameAndIDFlag(destroyUserCmd)
 	userCmd.AddCommand(renameUserCmd)
@@ -230,31 +230,35 @@ var listUsersCmd = &cobra.Command{
 			)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetUsers(), "", output)
+		// Convert users to []interface{} for generic table handling
+		users := make([]interface{}, len(response.GetUsers()))
+		for i, user := range response.GetUsers() {
+			users[i] = user
 		}
 
-		tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
-		for _, user := range response.GetUsers() {
-			tableData = append(
-				tableData,
-				[]string{
-					strconv.FormatUint(user.GetId(), 10),
-					user.GetDisplayName(),
-					user.GetName(),
-					user.GetEmail(),
-					user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				},
-			)
-		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
-		}
+		// Use the new table system with column filtering support
+		ListOutput(cmd, users, func(tr *TableRenderer) {
+			tr.AddColumn("id", "ID", func(item interface{}) string {
+				user := item.(*v1.User)
+				return strconv.FormatUint(user.GetId(), 10)
+			}).
+			AddColumn("name", "Name", func(item interface{}) string {
+				user := item.(*v1.User)
+				return user.GetDisplayName()
+			}).
+			AddColumn("username", "Username", func(item interface{}) string {
+				user := item.(*v1.User)
+				return user.GetName()
+			}).
+			AddColumn("email", "Email", func(item interface{}) string {
+				user := item.(*v1.User)
+				return user.GetEmail()
+			}).
+			AddColumn("created", "Created", func(item interface{}) string {
+				user := item.(*v1.User)
+				return user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat)
+			})
+		})
 	},
 }
 
