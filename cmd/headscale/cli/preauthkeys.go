@@ -15,9 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	DefaultPreAuthKeyExpiry = "1h"
-)
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
@@ -117,7 +114,7 @@ var listPreAuthKeys = &cobra.Command{
 					strconv.FormatBool(key.GetEphemeral()),
 					strconv.FormatBool(key.GetUsed()),
 					expiration,
-					key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
 					aclTags,
 				})
 

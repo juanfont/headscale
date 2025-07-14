@@ -52,7 +52,7 @@ func init() {
 	userCmd.AddCommand(renameUserCmd)
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	renameNodeCmd.MarkFlagRequired("new-name")
+	renameUserCmd.MarkFlagRequired("new-name")
 }
 
 var errMissingParameter = errors.New("missing parameters")
@@ -75,8 +75,7 @@ var createUserCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		userName := args[0]
 
 		request := &v1.CreateUserRequest{Name: userName}
@@ -133,7 +132,7 @@ var destroyUserCmd = &cobra.Command{
 	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		id, username := usernameAndIDFromFlag(cmd)
 		request := &v1.ListUsersRequest{
@@ -217,7 +216,7 @@ var listUsersCmd = &cobra.Command{
 	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			request := &v1.ListUsersRequest{}
@@ -260,7 +259,7 @@ var listUsersCmd = &cobra.Command{
 						user.GetDisplayName(),
 						user.GetName(),
 						user.GetEmail(),
-						user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+						user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
 					},
 				)
 			}
@@ -289,7 +288,7 @@ var renameUserCmd = &cobra.Command{
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		id, username := usernameAndIDFromFlag(cmd)
 		newName, _ := cmd.Flags().GetString("new-name")

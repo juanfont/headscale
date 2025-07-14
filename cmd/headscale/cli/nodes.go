@@ -639,14 +639,14 @@ func nodesToPtables(
 		var lastSeenTime string
 		if node.GetLastSeen() != nil {
 			lastSeen = node.GetLastSeen().AsTime()
-			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
+			lastSeenTime = lastSeen.Format(HeadscaleDateTimeFormat)
 		}
 
 		var expiry time.Time
 		var expiryTime string
 		if node.GetExpiry() != nil {
 			expiry = node.GetExpiry().AsTime()
-			expiryTime = expiry.Format("2006-01-02 15:04:05")
+			expiryTime = expiry.Format(HeadscaleDateTimeFormat)
 		} else {
 			expiryTime = "N/A"
 		}

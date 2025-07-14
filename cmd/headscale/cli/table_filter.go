@@ -10,6 +10,8 @@ import (
 const (
 	deprecateNamespaceMessage = "use --user"
 	HeadscaleDateTimeFormat   = "2006-01-02 15:04:05"
+	DefaultAPIKeyExpiry       = "90d"
+	DefaultPreAuthKeyExpiry   = "1h"
 )
 
 // FilterTableColumns filters table columns based on --columns flag

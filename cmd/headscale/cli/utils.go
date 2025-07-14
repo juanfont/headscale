@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -198,4 +199,10 @@ func (t tokenAuth) GetRequestMetadata(
 
 func (tokenAuth) RequireTransportSecurity() bool {
 	return true
+}
+
+// GetOutputFlag returns the output flag value (never fails)
+func GetOutputFlag(cmd *cobra.Command) string {
+	output, _ := cmd.Flags().GetString("output")
+	return output
 }

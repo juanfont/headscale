@@ -15,10 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const (
-	// 90 days.
-	DefaultAPIKeyExpiry = "90d"
-)
 
 func init() {
 	rootCmd.AddCommand(apiKeysCmd)
@@ -53,7 +49,7 @@ var listAPIKeys = &cobra.Command{
 	Short:   "List the Api keys for headscale",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			request := &v1.ListApiKeysRequest{}
@@ -118,7 +114,7 @@ and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		request := &v1.CreateApiKeyRequest{}
 
@@ -164,15 +160,10 @@ var expireAPIKeyCmd = &cobra.Command{
 	Short:   "Expire an ApiKey",
 	Aliases: []string{"revoke", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		prefix, err := cmd.Flags().GetString("prefix")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
-				output,
-			)
+			ErrorOutput(err, fmt.Sprintf("Error getting prefix from CLI flag: %s", err), output)
 			return
 		}
 
@@ -206,15 +197,10 @@ var deleteAPIKeyCmd = &cobra.Command{
 	Short:   "Delete an ApiKey",
 	Aliases: []string{"remove", "del"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		prefix, err := cmd.Flags().GetString("prefix")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
-				output,
-			)
+			ErrorOutput(err, fmt.Sprintf("Error getting prefix from CLI flag: %s", err), output)
 			return
 		}
 
