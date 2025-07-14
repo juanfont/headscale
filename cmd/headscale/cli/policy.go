@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -41,21 +42,26 @@ var getPolicy = &cobra.Command{
 	Aliases: []string{"show", "view", "fetch"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.GetPolicyRequest{}
 
-		request := &v1.GetPolicyRequest{}
+			response, err := client.GetPolicy(ctx, request)
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
+				return err
+			}
 
-		response, err := client.GetPolicy(ctx, request)
+			// TODO(pallabpain): Maybe print this better?
+			// This does not pass output as we dont support yaml, json or json-line
+			// output for this command. It is HuJSON already.
+			SuccessOutput("", response.GetPolicy(), "")
+			return nil
+		})
+		
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
+			return
 		}
-
-		// TODO(pallabpain): Maybe print this better?
-		// This does not pass output as we dont support yaml, json or json-line
-		// output for this command. It is HuJSON already.
-		SuccessOutput("", response.GetPolicy(), "")
 	},
 }
 
@@ -73,25 +79,31 @@ var setPolicy = &cobra.Command{
 		f, err := os.Open(policyPath)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
+			return
 		}
 		defer f.Close()
 
 		policyBytes, err := io.ReadAll(f)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
+			return
 		}
 
 		request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			if _, err := client.SetPolicy(ctx, request); err != nil {
+				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+				return err
+			}
 
-		if _, err := client.SetPolicy(ctx, request); err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+			SuccessOutput(nil, "Policy updated.", "")
+			return nil
+		})
+		
+		if err != nil {
+			return
 		}
-
-		SuccessOutput(nil, "Policy updated.", "")
 	},
 }
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -44,7 +46,7 @@ func init() {
 	userCmd.AddCommand(listUsersCmd)
 	usernameAndIDFlag(listUsersCmd)
 	listUsersCmd.Flags().StringP("email", "e", "", "Email")
-	AddColumnsFlag(listUsersCmd, "id,name,username,email,created")
+	listUsersCmd.Flags().String("columns", "", "Comma-separated list of columns to display (ID,Name,Username,Email,Created)")
 	userCmd.AddCommand(destroyUserCmd)
 	usernameAndIDFlag(destroyUserCmd)
 	userCmd.AddCommand(renameUserCmd)
@@ -77,12 +79,6 @@ var createUserCmd = &cobra.Command{
 
 		userName := args[0]
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
-		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
-
 		request := &v1.CreateUserRequest{Name: userName}
 
 		if displayName, _ := cmd.Flags().GetString("display-name"); displayName != "" {
@@ -103,21 +99,32 @@ var createUserCmd = &cobra.Command{
 					),
 					output,
 				)
+				return
 			}
 			request.PictureUrl = pictureURL
 		}
 
-		log.Trace().Interface("request", request).Msg("Sending CreateUser request")
-		response, err := client.CreateUser(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot create user: "+status.Convert(err).Message(),
-				output,
-			)
-		}
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			log.Trace().Interface("client", client).Msg("Obtained gRPC client")
+			log.Trace().Interface("request", request).Msg("Sending CreateUser request")
+			
+			response, err := client.CreateUser(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot create user: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		SuccessOutput(response.GetUser(), "User created", output)
+			SuccessOutput(response.GetUser(), "User created", output)
+			return nil
+		})
+		
+		if err != nil {
+			return
+		}
 	},
 }
 
@@ -134,29 +141,35 @@ var destroyUserCmd = &cobra.Command{
 			Id:   id,
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		var user *v1.User
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			users, err := client.ListUsers(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		users, err := client.ListUsers(ctx, request)
+			if len(users.GetUsers()) != 1 {
+				err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			user = users.GetUsers()[0]
+			return nil
+		})
+		
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return
 		}
-
-		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
-		user := users.GetUsers()[0]
 
 		confirm := false
 		force, _ := cmd.Flags().GetBool("force")
@@ -174,17 +187,25 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if confirm || force {
-			request := &v1.DeleteUserRequest{Id: user.GetId()}
+			err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+				request := &v1.DeleteUserRequest{Id: user.GetId()}
 
-			response, err := client.DeleteUser(ctx, request)
+				response, err := client.DeleteUser(ctx, request)
+				if err != nil {
+					ErrorOutput(
+						err,
+						"Cannot destroy user: "+status.Convert(err).Message(),
+						output,
+					)
+					return err
+				}
+				SuccessOutput(response, "User destroyed", output)
+				return nil
+			})
+			
 			if err != nil {
-				ErrorOutput(
-					err,
-					"Cannot destroy user: "+status.Convert(err).Message(),
-					output,
-				)
+				return
 			}
-			SuccessOutput(response, "User destroyed", output)
 		} else {
 			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
 		}
@@ -198,67 +219,68 @@ var listUsersCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.ListUsersRequest{}
 
-		request := &v1.ListUsersRequest{}
+			id, _ := cmd.Flags().GetInt64("identifier")
+			username, _ := cmd.Flags().GetString("name")
+			email, _ := cmd.Flags().GetString("email")
 
-		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
-		email, _ := cmd.Flags().GetString("email")
+			// filter by one param at most
+			switch {
+			case id > 0:
+				request.Id = uint64(id)
+			case username != "":
+				request.Name = username
+			case email != "":
+				request.Email = email
+			}
 
-		// filter by one param at most
-		switch {
-		case id > 0:
-			request.Id = uint64(id)
-			break
-		case username != "":
-			request.Name = username
-			break
-		case email != "":
-			request.Email = email
-			break
-		}
+			response, err := client.ListUsers(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot get users: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		response, err := client.ListUsers(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot get users: "+status.Convert(err).Message(),
-				output,
-			)
-		}
+			if output != "" {
+				SuccessOutput(response.GetUsers(), "", output)
+				return nil
+			}
 
-		// Convert users to []interface{} for generic table handling
-		users := make([]interface{}, len(response.GetUsers()))
-		for i, user := range response.GetUsers() {
-			users[i] = user
-		}
-
-		// Use the new table system with column filtering support
-		ListOutput(cmd, users, func(tr *TableRenderer) {
-			tr.AddColumn("id", "ID", func(item interface{}) string {
-				user := item.(*v1.User)
-				return strconv.FormatUint(user.GetId(), 10)
-			}).
-			AddColumn("name", "Name", func(item interface{}) string {
-				user := item.(*v1.User)
-				return user.GetDisplayName()
-			}).
-			AddColumn("username", "Username", func(item interface{}) string {
-				user := item.(*v1.User)
-				return user.GetName()
-			}).
-			AddColumn("email", "Email", func(item interface{}) string {
-				user := item.(*v1.User)
-				return user.GetEmail()
-			}).
-			AddColumn("created", "Created", func(item interface{}) string {
-				user := item.(*v1.User)
-				return user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat)
-			})
+			tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
+			for _, user := range response.GetUsers() {
+				tableData = append(
+					tableData,
+					[]string{
+						strconv.FormatUint(user.GetId(), 10),
+						user.GetDisplayName(),
+						user.GetName(),
+						user.GetEmail(),
+						user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					},
+				)
+			}
+			tableData = FilterTableColumns(cmd, tableData)
+			err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Failed to render pterm table: %s", err),
+					output,
+				)
+				return err
+			}
+			return nil
 		})
+		
+		if err != nil {
+			// Error already handled in closure
+			return
+		}
 	},
 }
 
@@ -269,50 +291,56 @@ var renameUserCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		id, username := usernameAndIDFromFlag(cmd)
-		listReq := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
-		users, err := client.ListUsers(ctx, listReq)
-		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
-		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
 		newName, _ := cmd.Flags().GetString("new-name")
+		
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			listReq := &v1.ListUsersRequest{
+				Name: username,
+				Id:   id,
+			}
 
-		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
-			NewName: newName,
-		}
+			users, err := client.ListUsers(ctx, listReq)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		response, err := client.RenameUser(ctx, renameReq)
+			if len(users.GetUsers()) != 1 {
+				err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			renameReq := &v1.RenameUserRequest{
+				OldId:   id,
+				NewName: newName,
+			}
+
+			response, err := client.RenameUser(ctx, renameReq)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot rename user: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			SuccessOutput(response.GetUser(), "User renamed", output)
+			return nil
+		})
+		
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot rename user: "+status.Convert(err).Message(),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response.GetUser(), "User renamed", output)
 	},
 }
