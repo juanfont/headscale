@@ -47,10 +47,14 @@ func runIntegrationTest(env *command.Env) error {
 
 	// Check for existing runs unless --force is used
 	if !runConfig.Force {
-		if activeRun, err := checkForActiveRun(env.Context()); err != nil {
+		if activeRuns, err := checkForActiveRuns(env.Context()); err != nil {
 			return fmt.Errorf("failed to check for active runs: %w", err)
-		} else if activeRun != "" {
-			return fmt.Errorf("Another run is already running %s, wait for it to finish or use --force to kill all containers", activeRun)
+		} else if len(activeRuns) > 0 {
+			if len(activeRuns) == 1 {
+				return fmt.Errorf("Another run is already running %s, wait for it to finish or use --force to kill all containers", activeRuns[0])
+			} else {
+				return fmt.Errorf("Multiple runs are already running (%d total), wait for them to finish or use --force to kill all containers", len(activeRuns))
+			}
 		}
 	} else {
 		if runConfig.Verbose {
@@ -141,11 +145,11 @@ func indexOf(s, substr string) int {
 	return -1
 }
 
-// checkForActiveRun checks if there are any active test containers running.
-func checkForActiveRun(ctx context.Context) (string, error) {
+// checkForActiveRuns checks for all active test containers running.
+func checkForActiveRuns(ctx context.Context) ([]string, error) {
 	cli, err := createDockerClient()
 	if err != nil {
-		return "", fmt.Errorf("failed to create Docker client: %w", err)
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -153,17 +157,19 @@ func checkForActiveRun(ctx context.Context) (string, error) {
 		All: false, // Only running containers
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to list containers: %w", err)
+		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
+	var activeRuns []string
 	for _, cont := range containers {
 		for _, name := range cont.Names {
 			containerName := strings.TrimPrefix(name, "/")
 			if strings.HasPrefix(containerName, "headscale-test-suite-") {
-				return containerName, nil
+				activeRuns = append(activeRuns, containerName)
+				break // Only add each container once
 			}
 		}
 	}
 
-	return "", nil
+	return activeRuns, nil
 }
