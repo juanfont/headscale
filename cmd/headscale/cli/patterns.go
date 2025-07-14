@@ -28,15 +28,15 @@ type DeleteResourceFunc func(*ClientWrapper, *cobra.Command) (interface{}, error
 // UpdateResourceFunc represents a function that updates a resource
 type UpdateResourceFunc func(*ClientWrapper, *cobra.Command, []string) (interface{}, error)
 
-// ExecuteListCommand handles standard list command pattern
+// ExecuteListCommand handles standard list command pattern  
 func ExecuteListCommand(cmd *cobra.Command, args []string, listFunc ListCommandFunc, tableSetup TableSetupFunc) {
 	ExecuteWithClient(cmd, func(client *ClientWrapper) error {
-		data, err := listFunc(client, cmd)
+		items, err := listFunc(client, cmd)
 		if err != nil {
 			return err
 		}
-
-		ListOutput(cmd, data, tableSetup)
+		
+		ListOutput(cmd, items, tableSetup)
 		return nil
 	})
 }
@@ -48,20 +48,20 @@ func ExecuteCreateCommand(cmd *cobra.Command, args []string, createFunc CreateCo
 		if err != nil {
 			return err
 		}
-
-		DetailOutput(cmd, result, successMessage)
+		
+		ConfirmationOutput(cmd, result, successMessage)
 		return nil
 	})
 }
 
-// ExecuteGetCommand handles standard get/show command pattern
+// ExecuteGetCommand handles standard get/show command pattern  
 func ExecuteGetCommand(cmd *cobra.Command, args []string, getFunc GetResourceFunc, resourceName string) {
 	ExecuteWithClient(cmd, func(client *ClientWrapper) error {
 		result, err := getFunc(client, cmd)
 		if err != nil {
 			return err
 		}
-
+		
 		DetailOutput(cmd, result, fmt.Sprintf("%s details", resourceName))
 		return nil
 	})
@@ -74,8 +74,8 @@ func ExecuteUpdateCommand(cmd *cobra.Command, args []string, updateFunc UpdateRe
 		if err != nil {
 			return err
 		}
-
-		DetailOutput(cmd, result, successMessage)
+		
+		ConfirmationOutput(cmd, result, successMessage)
 		return nil
 	})
 }
@@ -84,48 +84,30 @@ func ExecuteUpdateCommand(cmd *cobra.Command, args []string, updateFunc UpdateRe
 func ExecuteDeleteCommand(cmd *cobra.Command, args []string, getFunc GetResourceFunc, deleteFunc DeleteResourceFunc, resourceName string) {
 	ExecuteWithClient(cmd, func(client *ClientWrapper) error {
 		// First get the resource to show what will be deleted
-		resource, err := getFunc(client, cmd)
+		_, err := getFunc(client, cmd)
 		if err != nil {
 			return err
 		}
-
-		// Check if force flag is set
-		force := GetForce(cmd)
 		
-		// Get resource name for confirmation
-		var displayName string
-		switch r := resource.(type) {
-		case *v1.Node:
-			displayName = fmt.Sprintf("node '%s'", r.GetName())
-		case *v1.User:
-			displayName = fmt.Sprintf("user '%s'", r.GetName())
-		case *v1.ApiKey:
-			displayName = fmt.Sprintf("API key '%s'", r.GetPrefix())
-		case *v1.PreAuthKey:
-			displayName = fmt.Sprintf("preauth key '%s'", r.GetKey())
-		default:
-			displayName = resourceName
-		}
-
-		// Ask for confirmation unless force is used
+		// Check if force flag is set
+		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			confirmed, err := ConfirmAction(fmt.Sprintf("Delete %s?", displayName))
+			confirm, err := ConfirmDeletion(resourceName)
 			if err != nil {
-				return err
+				return fmt.Errorf("confirmation failed: %w", err)
 			}
-			if !confirmed {
-				ConfirmationOutput(cmd, map[string]string{"Result": "Deletion cancelled"}, "Deletion cancelled")
-				return nil
+			if !confirm {
+				return fmt.Errorf("operation cancelled")
 			}
 		}
-
-		// Proceed with deletion
+		
+		// Perform the deletion
 		result, err := deleteFunc(client, cmd)
 		if err != nil {
 			return err
 		}
-
-		ConfirmationOutput(cmd, result, fmt.Sprintf("%s deleted successfully", displayName))
+		
+		ConfirmationOutput(cmd, result, fmt.Sprintf("%s deleted successfully", resourceName))
 		return nil
 	})
 }
@@ -160,29 +142,38 @@ func ResolveUserByNameOrID(client *ClientWrapper, cmd *cobra.Command, nameOrID s
 	if err != nil {
 		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
-
-	// Try to find by ID first (if it's numeric)
+	
+	var candidates []*v1.User
+	
+	// First, try exact matches
 	for _, user := range response.GetUsers() {
+		if user.GetName() == nameOrID || user.GetEmail() == nameOrID {
+			return user, nil
+		}
 		if fmt.Sprintf("%d", user.GetId()) == nameOrID {
 			return user, nil
 		}
 	}
-
-	// Try to find by name
+	
+	// Then try partial matches on name
 	for _, user := range response.GetUsers() {
-		if user.GetName() == nameOrID {
-			return user, nil
+		if fmt.Sprintf("%s", user.GetName()) != user.GetName() {
+			continue
+		}
+		if len(user.GetName()) >= len(nameOrID) && user.GetName()[:len(nameOrID)] == nameOrID {
+			candidates = append(candidates, user)
 		}
 	}
-
-	// Try to find by email
-	for _, user := range response.GetUsers() {
-		if user.GetEmail() == nameOrID {
-			return user, nil
-		}
+	
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no user found matching '%s'", nameOrID)
 	}
-
-	return nil, fmt.Errorf("no user found matching '%s'", nameOrID)
+	
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	
+	return nil, fmt.Errorf("ambiguous user identifier '%s' matches multiple users", nameOrID)
 }
 
 // ResolveNodeByIdentifier resolves a node by hostname, IP, name, or ID
@@ -191,62 +182,44 @@ func ResolveNodeByIdentifier(client *ClientWrapper, cmd *cobra.Command, identifi
 	if err != nil {
 		return nil, fmt.Errorf("failed to list nodes: %w", err)
 	}
-
-	var matches []*v1.Node
-
-	// Try to find by ID first (if it's numeric)
+	
+	var candidates []*v1.Node
+	
+	// First, try exact matches
 	for _, node := range response.GetNodes() {
+		if node.GetName() == identifier || node.GetGivenName() == identifier {
+			return node, nil
+		}
 		if fmt.Sprintf("%d", node.GetId()) == identifier {
-			matches = append(matches, node)
+			return node, nil
 		}
-	}
-
-	// Try to find by hostname
-	for _, node := range response.GetNodes() {
-		if node.GetName() == identifier {
-			matches = append(matches, node)
-		}
-	}
-
-	// Try to find by given name
-	for _, node := range response.GetNodes() {
-		if node.GetGivenName() == identifier {
-			matches = append(matches, node)
-		}
-	}
-
-	// Try to find by IP address
-	for _, node := range response.GetNodes() {
+		// Check IP addresses
 		for _, ip := range node.GetIpAddresses() {
 			if ip == identifier {
-				matches = append(matches, node)
-				break
+				return node, nil
 			}
 		}
 	}
-
-	// Remove duplicates
-	uniqueMatches := make([]*v1.Node, 0)
-	seen := make(map[uint64]bool)
-	for _, match := range matches {
-		if !seen[match.GetId()] {
-			uniqueMatches = append(uniqueMatches, match)
-			seen[match.GetId()] = true
+	
+	// Then try partial matches on name
+	for _, node := range response.GetNodes() {
+		if fmt.Sprintf("%s", node.GetName()) != node.GetName() {
+			continue
+		}
+		if len(node.GetName()) >= len(identifier) && node.GetName()[:len(identifier)] == identifier {
+			candidates = append(candidates, node)
 		}
 	}
-
-	if len(uniqueMatches) == 0 {
+	
+	if len(candidates) == 0 {
 		return nil, fmt.Errorf("no node found matching '%s'", identifier)
 	}
-	if len(uniqueMatches) > 1 {
-		var names []string
-		for _, node := range uniqueMatches {
-			names = append(names, fmt.Sprintf("%s (ID: %d)", node.GetName(), node.GetId()))
-		}
-		return nil, fmt.Errorf("ambiguous node identifier '%s', matches: %v", identifier, names)
+	
+	if len(candidates) == 1 {
+		return candidates[0], nil
 	}
-
-	return uniqueMatches[0], nil
+	
+	return nil, fmt.Errorf("ambiguous node identifier '%s' matches multiple nodes", identifier)
 }
 
 // Bulk operations
@@ -274,19 +247,23 @@ func ProcessMultipleResources[T any](
 // Validation helpers for common operations
 
 // ValidateRequiredArgs ensures the required number of arguments are provided
-func ValidateRequiredArgs(cmd *cobra.Command, args []string, minArgs int, usage string) error {
-	if len(args) < minArgs {
-		return fmt.Errorf("insufficient arguments provided\n\nUsage: %s", usage)
+func ValidateRequiredArgs(minArgs int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < minArgs {
+			return fmt.Errorf("insufficient arguments provided\n\nUsage: %s", usage)
+		}
+		return nil
 	}
-	return nil
 }
 
 // ValidateExactArgs ensures exactly the specified number of arguments are provided
-func ValidateExactArgs(cmd *cobra.Command, args []string, exactArgs int, usage string) error {
-	if len(args) != exactArgs {
-		return fmt.Errorf("expected %d argument(s), got %d\n\nUsage: %s", exactArgs, len(args), usage)
+func ValidateExactArgs(exactArgs int, usage string) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) != exactArgs {
+			return fmt.Errorf("expected %d argument(s), got %d\n\nUsage: %s", exactArgs, len(args), usage)
+		}
+		return nil
 	}
-	return nil
 }
 
 // Common command patterns as helpers

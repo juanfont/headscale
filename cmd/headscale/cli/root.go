@@ -14,9 +14,6 @@ import (
 	"github.com/tcnksm/go-latest"
 )
 
-const (
-	deprecateNamespaceMessage = "use --user"
-)
 
 var cfgFile string = ""
 

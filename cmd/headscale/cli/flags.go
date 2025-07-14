@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	deprecateNamespaceMessage = "use --user"
+)
+
 // Flag registration helpers - standardize how flags are added to commands
 
 // AddIdentifierFlag adds a uint64 identifier flag with consistent naming

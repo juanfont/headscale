@@ -132,7 +132,8 @@ func TestValidateRequiredArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "test"}
-			err := ValidateRequiredArgs(cmd, tt.args, tt.minArgs, tt.usage)
+			validator := ValidateRequiredArgs(tt.minArgs, tt.usage)
+			err := validator(cmd, tt.args)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -178,7 +179,8 @@ func TestValidateExactArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "test"}
-			err := ValidateExactArgs(cmd, tt.args, tt.exactArgs, tt.usage)
+			validator := ValidateExactArgs(tt.exactArgs, tt.usage)
+			err := validator(cmd, tt.args)
 
 			if tt.expectError {
 				assert.Error(t, err)
