@@ -46,3 +46,7 @@ integration_test/etc/config.dump.yaml
 /site
 
 __debug_bin
+
+node_modules/
+package-lock.json
+package.json
