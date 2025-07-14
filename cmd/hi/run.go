@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/creachadair/command"
+	"github.com/docker/docker/api/types/container"
 )
 
 var ErrTestPatternRequired = errors.New("test pattern is required as first argument or use --test flag")
@@ -24,6 +27,7 @@ type RunConfig struct {
 	KeepOnFailure bool          `flag:"keep-on-failure,default=false,Keep containers on test failure"`
 	LogsDir       string        `flag:"logs-dir,default=control_logs,Control logs directory"`
 	Verbose       bool          `flag:"verbose,default=false,Verbose output"`
+	Force         bool          `flag:"force,default=false,Kill all containers and force run"`
 }
 
 // runIntegrationTest executes the integration test workflow.
@@ -39,6 +43,22 @@ func runIntegrationTest(env *command.Env) error {
 
 	if runConfig.GoVersion == "" {
 		runConfig.GoVersion = detectGoVersion()
+	}
+
+	// Check for existing runs unless --force is used
+	if !runConfig.Force {
+		if activeRun, err := checkForActiveRun(env.Context()); err != nil {
+			return fmt.Errorf("failed to check for active runs: %w", err)
+		} else if activeRun != "" {
+			return fmt.Errorf("Another run is already running %s, wait for it to finish or use --force to kill all containers", activeRun)
+		}
+	} else {
+		if runConfig.Verbose {
+			log.Printf("Force flag enabled, killing all test containers...")
+		}
+		if err := killTestContainers(env.Context()); err != nil {
+			return fmt.Errorf("failed to force kill containers: %w", err)
+		}
 	}
 
 	// Run pre-flight checks
@@ -119,4 +139,31 @@ func indexOf(s, substr string) int {
 	}
 
 	return -1
+}
+
+// checkForActiveRun checks if there are any active test containers running.
+func checkForActiveRun(ctx context.Context) (string, error) {
+	cli, err := createDockerClient()
+	if err != nil {
+		return "", fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: false, // Only running containers
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	for _, cont := range containers {
+		for _, name := range cont.Names {
+			containerName := strings.TrimPrefix(name, "/")
+			if strings.HasPrefix(containerName, "headscale-test-suite-") {
+				return containerName, nil
+			}
+		}
+	}
+
+	return "", nil
 }
