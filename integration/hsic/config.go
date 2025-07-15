@@ -32,6 +32,10 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
 
+		// CLI timeout for integration tests - needs to be longer than the default 5s
+		// to account for container startup delays and network latency
+		"HEADSCALE_CLI_TIMEOUT": "30s",
+
 		// a bunch of tests (ACL/Policy) rely on predictable IP alloc,
 		// so ensure the sequential alloc is used by default.
 		"HEADSCALE_PREFIXES_ALLOCATION": string(types.IPAllocationStrategySequential),
