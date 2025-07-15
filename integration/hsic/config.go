@@ -31,6 +31,7 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
 		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
 		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
+		"HEADSCALE_DEBUG_PORT":                        "40000",
 
 		// a bunch of tests (ACL/Policy) rely on predictable IP alloc,
 		// so ensure the sequential alloc is used by default.
