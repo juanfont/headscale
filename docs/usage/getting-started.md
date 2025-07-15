@@ -117,14 +117,14 @@ headscale instance. By default, the key is valid for one hour and can only be us
 === "Native"
 
     ```shell
-    headscale preauthkeys create --user <USER>
+    headscale preauthkeys create --user <USER_ID>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale preauthkeys create --user <USER>
+      headscale preauthkeys create --user <USER_ID>
     ```
 
 The command returns the preauthkey on success which is used to connect a node to the headscale instance via the
