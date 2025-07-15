@@ -129,7 +129,7 @@ var createUserCmd = &cobra.Command{
 }
 
 var destroyUserCmd = &cobra.Command{
-	Use:     "destroy --identifier ID or --name NAME",
+	Use:     "destroy --user USER or --name NAME",
 	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
 	Run: func(cmd *cobra.Command, args []string) {

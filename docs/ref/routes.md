@@ -49,7 +49,7 @@ ID | Hostname | Approved | Available                  | Serving (Primary)
 Approve all desired routes of a subnet router by specifying them as comma separated list:
 
 ```console
-$ headscale nodes approve-routes --identifier 1 --routes 10.0.0.0/8,192.168.0.0/24
+$ headscale nodes approve-routes --node 1 --routes 10.0.0.0/8,192.168.0.0/24
 Node updated
 ```
 
@@ -175,7 +175,7 @@ ID | Hostname | Approved | Available       | Serving (Primary)
 For exit nodes, it is sufficient to approve either the IPv4 or IPv6 route. The other will be approved automatically.
 
 ```console
-$ headscale nodes approve-routes --identifier 1 --routes 0.0.0.0/0
+$ headscale nodes approve-routes --node 1 --routes 0.0.0.0/0
 Node updated
 ```
 
