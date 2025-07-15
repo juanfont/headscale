@@ -74,12 +74,10 @@ func init() {
 		log.Fatal(err.Error())
 	}
 
-	moveNodeCmd.Flags().Uint64P("user", "u", 0, "New user")
+	moveNodeCmd.Flags().StringP("user", "u", "", "New user (ID, name, or email)")
+	moveNodeCmd.Flags().String("name", "", "New username")
 
-	err = moveNodeCmd.MarkFlagRequired("user")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
+	// One of --user or --name is required (checked in GetUserIdentifier)
 	nodeCmd.AddCommand(moveNodeCmd)
 
 	tagCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
@@ -505,7 +503,7 @@ var moveNodeCmd = &cobra.Command{
 			return
 		}
 
-		user, err := cmd.Flags().GetUint64("user")
+		userID, err := GetUserIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -532,7 +530,7 @@ var moveNodeCmd = &cobra.Command{
 
 			moveRequest := &v1.MoveNodeRequest{
 				NodeId: identifier,
-				User:   user,
+				User:   userID,
 			}
 
 			moveResponse, err := client.MoveNode(ctx, moveRequest)
