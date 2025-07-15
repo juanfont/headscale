@@ -18,16 +18,12 @@ import (
 
 func usernameAndIDFlag(cmd *cobra.Command) {
 	cmd.Flags().StringP("user", "u", "", "User identifier (ID, name, or email)")
-	cmd.Flags().Uint64P("identifier", "i", 0, "User identifier (ID) - deprecated, use --user")
-	identifierFlag := cmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --user"
-	identifierFlag.Hidden = true
 	cmd.Flags().StringP("name", "n", "", "Username")
 }
 
-// usernameAndIDFromFlag returns the user ID using smart lookup.
+// userIDFromFlag returns the user ID using smart lookup.
 // If no user is specified, it will exit the program with an error.
-func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
+func userIDFromFlag(cmd *cobra.Command) uint64 {
 	userID, err := GetUserIdentifier(cmd)
 	if err != nil {
 		ErrorOutput(
@@ -37,7 +33,7 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 		)
 	}
 
-	return userID, ""
+	return userID
 }
 
 func init() {
@@ -52,11 +48,6 @@ func init() {
 	listUsersCmd.Flags().Uint64P("id", "", 0, "Filter by user ID")
 	listUsersCmd.Flags().StringP("name", "n", "", "Filter by username")
 	listUsersCmd.Flags().StringP("email", "e", "", "Filter by email address")
-	// Backward compatibility (deprecated)
-	listUsersCmd.Flags().Uint64P("identifier", "i", 0, "Filter by user ID - deprecated, use --id")
-	identifierFlag := listUsersCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --id"
-	identifierFlag.Hidden = true
 	listUsersCmd.Flags().String("columns", "", "Comma-separated list of columns to display (ID,Name,Username,Email,Created)")
 	userCmd.AddCommand(destroyUserCmd)
 	usernameAndIDFlag(destroyUserCmd)
@@ -117,7 +108,7 @@ var createUserCmd = &cobra.Command{
 		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			log.Trace().Interface("client", client).Msg("Obtained gRPC client")
 			log.Trace().Interface("request", request).Msg("Sending CreateUser request")
-			
+
 			response, err := client.CreateUser(ctx, request)
 			if err != nil {
 				ErrorOutput(
@@ -131,7 +122,6 @@ var createUserCmd = &cobra.Command{
 			SuccessOutput(response.GetUser(), "User created", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -145,10 +135,9 @@ var destroyUserCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output := GetOutputFlag(cmd)
 
-		id, username := usernameAndIDFromFlag(cmd)
+		id := userIDFromFlag(cmd)
 		request := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
+			Id: id,
 		}
 
 		var user *v1.User
@@ -176,7 +165,6 @@ var destroyUserCmd = &cobra.Command{
 			user = users.GetUsers()[0]
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -212,7 +200,6 @@ var destroyUserCmd = &cobra.Command{
 				SuccessOutput(response, "User destroyed", output)
 				return nil
 			})
-			
 			if err != nil {
 				return
 			}
@@ -247,8 +234,6 @@ var listUsersCmd = &cobra.Command{
 				// Check specific filter flags
 				if id, _ := cmd.Flags().GetUint64("id"); id > 0 {
 					request.Id = id
-				} else if identifier, _ := cmd.Flags().GetUint64("identifier"); identifier > 0 {
-					request.Id = identifier // backward compatibility
 				} else if name, _ := cmd.Flags().GetString("name"); name != "" {
 					request.Name = name
 				} else if email, _ := cmd.Flags().GetString("email"); email != "" {
@@ -296,7 +281,6 @@ var listUsersCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			// Error already handled in closure
 			return
@@ -311,13 +295,12 @@ var renameUserCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output := GetOutputFlag(cmd)
 
-		id, username := usernameAndIDFromFlag(cmd)
+		id := userIDFromFlag(cmd)
 		newName, _ := cmd.Flags().GetString("new-name")
-		
+
 		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			listReq := &v1.ListUsersRequest{
-				Name: username,
-				Id:   id,
+				Id: id,
 			}
 
 			users, err := client.ListUsers(ctx, listReq)
@@ -358,7 +341,6 @@ var renameUserCmd = &cobra.Command{
 			SuccessOutput(response.GetUser(), "User renamed", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}

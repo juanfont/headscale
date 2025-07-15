@@ -8,10 +8,9 @@ import (
 )
 
 const (
-	deprecateNamespaceMessage = "use --user"
-	HeadscaleDateTimeFormat   = "2006-01-02 15:04:05"
-	DefaultAPIKeyExpiry       = "90d"
-	DefaultPreAuthKeyExpiry   = "1h"
+	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
+	DefaultAPIKeyExpiry     = "90d"
+	DefaultPreAuthKeyExpiry = "1h"
 )
 
 // FilterTableColumns filters table columns based on --columns flag
@@ -23,7 +22,7 @@ func FilterTableColumns(cmd *cobra.Command, tableData pterm.TableData) pterm.Tab
 
 	headers := tableData[0]
 	wantedColumns := strings.Split(columns, ",")
-	
+
 	// Find column indices
 	var indices []int
 	for _, wanted := range wantedColumns {

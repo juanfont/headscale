@@ -14,7 +14,6 @@ import (
 	"github.com/tcnksm/go-latest"
 )
 
-
 var cfgFile string = ""
 
 func init() {

@@ -32,26 +32,12 @@ func init() {
 	// Display options
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	listNodesCmd.Flags().String("columns", "", "Comma-separated list of columns to display")
-	// Backward compatibility
-	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
-	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
-	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	listNodesNamespaceFlag.Hidden = true
 	nodeCmd.AddCommand(listNodesCmd)
 
 	listNodeRoutesCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
-	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
-	identifierFlag := listNodeRoutesCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --node"
-	identifierFlag.Hidden = true
 	nodeCmd.AddCommand(listNodeRoutesCmd)
 
 	registerNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	registerNodeNamespaceFlag := registerNodeCmd.Flags().Lookup("namespace")
-	registerNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	registerNodeNamespaceFlag.Hidden = true
 
 	err := registerNodeCmd.MarkFlagRequired("user")
 	if err != nil {
@@ -65,40 +51,24 @@ func init() {
 	nodeCmd.AddCommand(registerNodeCmd)
 
 	expireNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
-	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
-	identifierFlag = expireNodeCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --node"
-	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
 	renameNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
-	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
-	identifierFlag = renameNodeCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --node"
-	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(renameNodeCmd)
 
 	deleteNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
-	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
-	identifierFlag = deleteNodeCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --node"
-	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	moveNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
-	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
-	identifierFlag = moveNodeCmd.Flags().Lookup("identifier")
-	identifierFlag.Deprecated = "use --node"
-	identifierFlag.Hidden = true
 
 	if err != nil {
 		log.Fatal(err.Error())
@@ -106,24 +76,19 @@ func init() {
 
 	moveNodeCmd.Flags().Uint64P("user", "u", 0, "New user")
 
-	moveNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	moveNodeNamespaceFlag := moveNodeCmd.Flags().Lookup("namespace")
-	moveNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	moveNodeNamespaceFlag.Hidden = true
-
 	err = moveNodeCmd.MarkFlagRequired("user")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(moveNodeCmd)
 
-	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	tagCmd.MarkFlagRequired("identifier")
+	tagCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	tagCmd.MarkFlagRequired("node")
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
-	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	approveRoutesCmd.MarkFlagRequired("identifier")
+	approveRoutesCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	approveRoutesCmd.MarkFlagRequired("node")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
@@ -140,7 +105,7 @@ var registerNodeCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Registers a node to your network",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
@@ -181,7 +146,6 @@ var registerNodeCmd = &cobra.Command{
 				fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()), output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -202,15 +166,12 @@ var listNodesCmd = &cobra.Command{
 
 		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			request := &v1.ListNodesRequest{}
-			
+
 			// Handle user filtering (existing functionality)
 			if user, _ := cmd.Flags().GetString("user"); user != "" {
 				request.User = user
 			}
-			if namespace, _ := cmd.Flags().GetString("namespace"); namespace != "" {
-				request.User = namespace // backward compatibility
-			}
-			
+
 			// Handle node filtering (new functionality)
 			if nodeFlag, _ := cmd.Flags().GetString("node"); nodeFlag != "" {
 				// Use smart lookup to determine filter type
@@ -267,7 +228,6 @@ var listNodesCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -279,7 +239,7 @@ var listNodeRoutesCmd = &cobra.Command{
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
@@ -339,7 +299,6 @@ var listNodeRoutesCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -352,7 +311,7 @@ var expireNodeCmd = &cobra.Command{
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -385,7 +344,6 @@ var expireNodeCmd = &cobra.Command{
 			SuccessOutput(response.GetNode(), "Node expired", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -396,7 +354,7 @@ var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
 	Short: "Renames a node in your network",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -412,7 +370,7 @@ var renameNodeCmd = &cobra.Command{
 		if len(args) > 0 {
 			newName = args[0]
 		}
-		
+
 		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			request := &v1.RenameNodeRequest{
 				NodeId:  identifier,
@@ -435,7 +393,6 @@ var renameNodeCmd = &cobra.Command{
 			SuccessOutput(response.GetNode(), "Node renamed", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -447,7 +404,7 @@ var deleteNodeCmd = &cobra.Command{
 	Short:   "Delete a node",
 	Aliases: []string{"del"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -477,7 +434,6 @@ var deleteNodeCmd = &cobra.Command{
 			nodeName = getResponse.GetNode().GetName()
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -502,7 +458,7 @@ var deleteNodeCmd = &cobra.Command{
 				deleteRequest := &v1.DeleteNodeRequest{
 					NodeId: identifier,
 				}
-				
+
 				response, err := client.DeleteNode(ctx, deleteRequest)
 				if output != "" {
 					SuccessOutput(response, "", output)
@@ -523,7 +479,6 @@ var deleteNodeCmd = &cobra.Command{
 				)
 				return nil
 			})
-			
 			if err != nil {
 				return
 			}
@@ -538,7 +493,7 @@ var moveNodeCmd = &cobra.Command{
 	Short:   "Move node to another user",
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -593,7 +548,6 @@ var moveNodeCmd = &cobra.Command{
 			SuccessOutput(moveResponse.GetNode(), "Node moved to another user", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -618,7 +572,7 @@ it can be run to remove the IPs that should no longer
 be assigned to nodes.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var err error
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		confirm := false
 		prompt := &survey.Confirm{
@@ -643,7 +597,6 @@ be assigned to nodes.`,
 				SuccessOutput(changes, "Node IPs backfilled successfully", output)
 				return nil
 			})
-			
 			if err != nil {
 				return
 			}
@@ -829,8 +782,8 @@ var tagCmd = &cobra.Command{
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-		
+		output := GetOutputFlag(cmd)
+
 		// retrieve flags from CLI
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -876,7 +829,6 @@ var tagCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -887,8 +839,8 @@ var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-		
+		output := GetOutputFlag(cmd)
+
 		// retrieve flags from CLI
 		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
@@ -934,7 +886,6 @@ var approveRoutesCmd = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}

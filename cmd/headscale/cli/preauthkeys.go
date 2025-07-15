@@ -15,15 +15,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
 	preauthkeysCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
-
-	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "User")
-	pakNamespaceFlag := preauthkeysCmd.PersistentFlags().Lookup("namespace")
-	pakNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	pakNamespaceFlag.Hidden = true
 
 	err := preauthkeysCmd.MarkPersistentFlagRequired("user")
 	if err != nil {
@@ -53,7 +47,7 @@ var listPreAuthKeys = &cobra.Command{
 	Short:   "List the preauthkeys for this user",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
@@ -130,7 +124,6 @@ var listPreAuthKeys = &cobra.Command{
 			}
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -142,7 +135,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Short:   "Creates a new preauthkey in the specified user",
 	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
@@ -195,7 +188,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 			SuccessOutput(response.GetPreAuthKey(), response.GetPreAuthKey().GetKey(), output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}
@@ -214,7 +206,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		user, err := cmd.Flags().GetUint64("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
@@ -240,7 +232,6 @@ var expirePreAuthKeyCmd = &cobra.Command{
 			SuccessOutput(response, "Key expired", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}

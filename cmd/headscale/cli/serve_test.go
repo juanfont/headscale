@@ -28,11 +28,11 @@ func TestServeCommandArgs(t *testing.T) {
 	// Test that the Args function is defined and accepts any arguments
 	// The current implementation always returns nil (accepts any args)
 	assert.NotNil(t, serveCmd.Args)
-	
+
 	// Test the args function directly
 	err := serveCmd.Args(serveCmd, []string{})
 	assert.NoError(t, err, "Args function should accept empty arguments")
-	
+
 	err = serveCmd.Args(serveCmd, []string{"extra", "args"})
 	assert.NoError(t, err, "Args function should accept extra arguments")
 }
@@ -48,7 +48,7 @@ func TestServeCommandStructure(t *testing.T) {
 	// Test basic command structure
 	assert.Equal(t, "serve", serveCmd.Name())
 	assert.Equal(t, "Launches the headscale server", serveCmd.Short)
-	
+
 	// Test that it has no subcommands (it's a leaf command)
 	subcommands := serveCmd.Commands()
 	assert.Empty(t, subcommands, "Serve command should not have subcommands")

@@ -14,7 +14,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print the version",
 	Long:  "The version of headscale",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		SuccessOutput(map[string]string{
 			"version": types.Version,
 			"commit":  types.GitCommitHash,

@@ -37,7 +37,7 @@ func TestGenerateCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Help text should contain expected information
 		assert.Contains(t, result, "generate", "help should mention generate command")
 		assert.Contains(t, result, "Generate commands", "help should contain command description")
@@ -54,7 +54,7 @@ func TestGenerateCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should work with alias
 		assert.Contains(t, result, "generate", "alias should work and show generate help")
 		assert.Contains(t, result, "private-key", "alias help should mention private-key subcommand")
@@ -71,7 +71,7 @@ func TestGenerateCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Help text should contain expected information
 		assert.Contains(t, result, "private-key", "help should mention private-key command")
 		assert.Contains(t, result, "Generate a private key", "help should contain command description")
@@ -105,17 +105,17 @@ func TestGeneratePrivateKeyCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should output a private key
 		assert.NotEmpty(t, result, "private key generation should produce output")
-		
+
 		// Private key should start with expected prefix
 		trimmed := strings.TrimSpace(result)
-		assert.True(t, strings.HasPrefix(trimmed, "privkey:"), 
+		assert.True(t, strings.HasPrefix(trimmed, "privkey:"),
 			"private key should start with 'privkey:' prefix, got: %s", trimmed)
-		
+
 		// Should be reasonable length (64+ hex characters after prefix)
-		assert.True(t, len(trimmed) > 70, 
+		assert.True(t, len(trimmed) > 70,
 			"private key should be reasonable length, got length: %d", len(trimmed))
 	})
 
@@ -130,21 +130,21 @@ func TestGeneratePrivateKeyCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should produce valid JSON output
 		var keyData map[string]interface{}
 		err = json.Unmarshal([]byte(result), &keyData)
 		assert.NoError(t, err, "private key generation should produce valid JSON output")
-		
+
 		// Should contain private_key field
 		privateKey, exists := keyData["private_key"]
 		assert.True(t, exists, "JSON output should contain 'private_key' field")
 		assert.NotEmpty(t, privateKey, "private_key field should not be empty")
-		
+
 		// Private key should be a string with correct format
 		privateKeyStr, ok := privateKey.(string)
 		assert.True(t, ok, "private_key should be a string")
-		assert.True(t, strings.HasPrefix(privateKeyStr, "privkey:"), 
+		assert.True(t, strings.HasPrefix(privateKeyStr, "privkey:"),
 			"private key should start with 'privkey:' prefix")
 	})
 
@@ -159,7 +159,7 @@ func TestGeneratePrivateKeyCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should produce YAML output
 		assert.NotEmpty(t, result, "YAML output should not be empty")
 		assert.Contains(t, result, "private_key:", "YAML output should contain private_key field")
@@ -169,7 +169,7 @@ func TestGeneratePrivateKeyCommand(t *testing.T) {
 	t.Run("test_generate_private_key_multiple_calls", func(t *testing.T) {
 		// Test that multiple calls generate different keys
 		var keys []string
-		
+
 		for i := 0; i < 3; i++ {
 			result, err := headscale.Execute(
 				[]string{
@@ -179,13 +179,13 @@ func TestGeneratePrivateKeyCommand(t *testing.T) {
 				},
 			)
 			assertNoErr(t, err)
-			
+
 			trimmed := strings.TrimSpace(result)
 			keys = append(keys, trimmed)
-			assert.True(t, strings.HasPrefix(trimmed, "privkey:"), 
+			assert.True(t, strings.HasPrefix(trimmed, "privkey:"),
 				"each generated private key should have correct prefix")
 		}
-		
+
 		// All keys should be different
 		assert.NotEqual(t, keys[0], keys[1], "generated keys should be different")
 		assert.NotEqual(t, keys[1], keys[2], "generated keys should be different")
@@ -221,12 +221,12 @@ func TestGeneratePrivateKeyCommandValidation(t *testing.T) {
 				"args",
 			},
 		)
-		
+
 		// Should either succeed (ignoring extra args) or fail gracefully
 		if err == nil {
 			// If successful, should still produce valid key
 			trimmed := strings.TrimSpace(result)
-			assert.True(t, strings.HasPrefix(trimmed, "privkey:"), 
+			assert.True(t, strings.HasPrefix(trimmed, "privkey:"),
 				"should produce valid private key even with extra args")
 		} else {
 			// If failed, should be a reasonable error, not a panic
@@ -244,7 +244,7 @@ func TestGeneratePrivateKeyCommandValidation(t *testing.T) {
 				"--output", "invalid-format",
 			},
 		)
-		
+
 		// Should handle invalid output format gracefully
 		// Might succeed with default format or fail gracefully
 		if err == nil {
@@ -265,10 +265,10 @@ func TestGeneratePrivateKeyCommandValidation(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should still generate valid private key
 		trimmed := strings.TrimSpace(result)
-		assert.True(t, strings.HasPrefix(trimmed, "privkey:"), 
+		assert.True(t, strings.HasPrefix(trimmed, "privkey:"),
 			"should generate valid private key with config flag")
 	})
 }
@@ -298,7 +298,7 @@ func TestGenerateCommandEdgeCases(t *testing.T) {
 				"generate",
 			},
 		)
-		
+
 		// Should show help or list available subcommands
 		if err == nil {
 			assert.Contains(t, result, "private-key", "should show available subcommands")
@@ -317,10 +317,12 @@ func TestGenerateCommandEdgeCases(t *testing.T) {
 				"nonexistent-command",
 			},
 		)
-		
+
 		// Should fail gracefully for non-existent subcommand
 		assert.Error(t, err, "should fail for non-existent subcommand")
-		assert.NotContains(t, err.Error(), "panic", "should not panic on non-existent subcommand")
+		if err != nil {
+			assert.NotContains(t, err.Error(), "panic", "should not panic on non-existent subcommand")
+		}
 	})
 
 	t.Run("test_generate_key_format_consistency", func(t *testing.T) {
@@ -333,24 +335,24 @@ func TestGenerateCommandEdgeCases(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		trimmed := strings.TrimSpace(result)
-		
+
 		// Check format consistency
-		assert.True(t, strings.HasPrefix(trimmed, "privkey:"), 
+		assert.True(t, strings.HasPrefix(trimmed, "privkey:"),
 			"private key should start with 'privkey:' prefix")
-		
+
 		// Should be hex characters after prefix
 		keyPart := strings.TrimPrefix(trimmed, "privkey:")
-		assert.True(t, len(keyPart) == 64, 
+		assert.True(t, len(keyPart) == 64,
 			"private key should be 64 hex characters after prefix, got length: %d", len(keyPart))
-		
+
 		// Should only contain valid hex characters
 		for _, char := range keyPart {
-			assert.True(t, 
-				(char >= '0' && char <= '9') || 
-				(char >= 'a' && char <= 'f') || 
-				(char >= 'A' && char <= 'F'),
+			assert.True(t,
+				(char >= '0' && char <= '9') ||
+					(char >= 'a' && char <= 'f') ||
+					(char >= 'A' && char <= 'F'),
 				"private key should only contain hex characters, found: %c", char)
 		}
 	})
@@ -365,7 +367,7 @@ func TestGenerateCommandEdgeCases(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err1)
-		
+
 		result2, err2 := headscale.Execute(
 			[]string{
 				"headscale",
@@ -374,18 +376,18 @@ func TestGenerateCommandEdgeCases(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err2)
-		
+
 		// Both should produce valid keys (though different values)
 		trimmed1 := strings.TrimSpace(result1)
 		trimmed2 := strings.TrimSpace(result2)
-		
-		assert.True(t, strings.HasPrefix(trimmed1, "privkey:"), 
+
+		assert.True(t, strings.HasPrefix(trimmed1, "privkey:"),
 			"generate command should produce valid key")
-		assert.True(t, strings.HasPrefix(trimmed2, "privkey:"), 
+		assert.True(t, strings.HasPrefix(trimmed2, "privkey:"),
 			"gen alias should produce valid key")
-		
+
 		// Keys should be different (they're randomly generated)
-		assert.NotEqual(t, trimmed1, trimmed2, 
+		assert.NotEqual(t, trimmed1, trimmed2,
 			"different calls should produce different keys")
 	})
 }

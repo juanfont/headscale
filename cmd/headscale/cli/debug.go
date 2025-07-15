@@ -15,11 +15,6 @@ const (
 	errPreAuthKeyMalformed = Error("key is malformed. expected 64 hex characters with `nodekey` prefix")
 )
 
-// Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
-type Error string
-
-func (e Error) Error() string { return string(e) }
-
 func init() {
 	rootCmd.AddCommand(debugCmd)
 
@@ -29,11 +24,6 @@ func init() {
 		log.Fatal().Err(err).Msg("")
 	}
 	createNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	createNodeNamespaceFlag := createNodeCmd.Flags().Lookup("namespace")
-	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	createNodeNamespaceFlag.Hidden = true
 
 	err = createNodeCmd.MarkFlagRequired("user")
 	if err != nil {
@@ -60,7 +50,7 @@ var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `nodes register <>` command",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
@@ -129,7 +119,6 @@ var createNodeCmd = &cobra.Command{
 			SuccessOutput(response.GetNode(), "Node created", output)
 			return nil
 		})
-		
 		if err != nil {
 			return
 		}

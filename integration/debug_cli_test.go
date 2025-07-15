@@ -38,10 +38,10 @@ func TestDebugCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Help text should contain expected information
 		assert.Contains(t, result, "debug", "help should mention debug command")
-		assert.Contains(t, result, "debug and testing commands", "help should contain command description")
+		assert.Contains(t, result, "debugging and testing", "help should contain command description")
 		assert.Contains(t, result, "create-node", "help should mention create-node subcommand")
 	})
 
@@ -56,7 +56,7 @@ func TestDebugCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Help text should contain expected information
 		assert.Contains(t, result, "create-node", "help should mention create-node command")
 		assert.Contains(t, result, "name", "help should mention name flag")
@@ -100,7 +100,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 		nodeName := "debug-test-node"
 		// Generate a mock registration key (64 hex chars with nodekey prefix)
 		registrationKey := "nodekey:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-		
+
 		result, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -112,7 +112,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should output node creation confirmation
 		assert.Contains(t, result, "Node created", "should confirm node creation")
 		assert.Contains(t, result, nodeName, "should mention the created node name")
@@ -122,7 +122,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 		// Test debug create-node with advertised routes
 		nodeName := "debug-route-node"
 		registrationKey := "nodekey:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-		
+
 		result, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -136,7 +136,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should output node creation confirmation
 		assert.Contains(t, result, "Node created", "should confirm node creation")
 		assert.Contains(t, result, nodeName, "should mention the created node name")
@@ -146,7 +146,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 		// Test debug create-node with JSON output
 		nodeName := "debug-json-node"
 		registrationKey := "nodekey:fedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321"
-		
+
 		result, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -159,7 +159,7 @@ func TestDebugCreateNodeCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Should produce valid JSON output
 		var node v1.Node
 		err = json.Unmarshal([]byte(result), &node)
@@ -200,7 +200,7 @@ func TestDebugCreateNodeCommandValidation(t *testing.T) {
 	t.Run("test_debug_create_node_missing_name", func(t *testing.T) {
 		// Test debug create-node with missing name flag
 		registrationKey := "nodekey:1111111111111111111111111111111111111111111111111111111111111111"
-		
+
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -217,7 +217,7 @@ func TestDebugCreateNodeCommandValidation(t *testing.T) {
 	t.Run("test_debug_create_node_missing_user", func(t *testing.T) {
 		// Test debug create-node with missing user flag
 		registrationKey := "nodekey:2222222222222222222222222222222222222222222222222222222222222222"
-		
+
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -265,7 +265,7 @@ func TestDebugCreateNodeCommandValidation(t *testing.T) {
 	t.Run("test_debug_create_node_nonexistent_user", func(t *testing.T) {
 		// Test debug create-node with non-existent user
 		registrationKey := "nodekey:3333333333333333333333333333333333333333333333333333333333333333"
-		
+
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -285,7 +285,7 @@ func TestDebugCreateNodeCommandValidation(t *testing.T) {
 		nodeName := "duplicate-node"
 		registrationKey1 := "nodekey:4444444444444444444444444444444444444444444444444444444444444444"
 		registrationKey2 := "nodekey:5555555555555555555555555555555555555555555555555555555555555555"
-		
+
 		// Create first node
 		_, err := headscale.Execute(
 			[]string{
@@ -298,7 +298,7 @@ func TestDebugCreateNodeCommandValidation(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Try to create second node with same name
 		_, err = headscale.Execute(
 			[]string{
@@ -348,7 +348,7 @@ func TestDebugCreateNodeCommandEdgeCases(t *testing.T) {
 		// Test debug create-node with invalid route format
 		nodeName := "invalid-route-node"
 		registrationKey := "nodekey:6666666666666666666666666666666666666666666666666666666666666666"
-		
+
 		_, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -368,7 +368,7 @@ func TestDebugCreateNodeCommandEdgeCases(t *testing.T) {
 		// Test debug create-node with empty route
 		nodeName := "empty-route-node"
 		registrationKey := "nodekey:7777777777777777777777777777777777777777777777777777777777777777"
-		
+
 		result, err := headscale.Execute(
 			[]string{
 				"headscale",
@@ -395,7 +395,7 @@ func TestDebugCreateNodeCommandEdgeCases(t *testing.T) {
 			longName += "-very-long-segment"
 		}
 		registrationKey := "nodekey:8888888888888888888888888888888888888888888888888888888888888888"
-		
+
 		_, _ = headscale.Execute(
 			[]string{
 				"headscale",

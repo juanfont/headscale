@@ -35,10 +35,10 @@ func TestVersionCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Version output should contain version information
 		assert.NotEmpty(t, result, "version output should not be empty")
-		// In development, version is "dev", in releases it would be semver like "1.0.0"  
+		// In development, version is "dev", in releases it would be semver like "1.0.0"
 		trimmed := strings.TrimSpace(result)
 		assert.True(t, trimmed == "dev" || len(trimmed) > 2, "version should be 'dev' or valid version string")
 	})
@@ -53,7 +53,7 @@ func TestVersionCommand(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Help text should contain expected information
 		assert.Contains(t, result, "version", "help should mention version command")
 		assert.Contains(t, result, "version of headscale", "help should contain command description")
@@ -81,7 +81,7 @@ func TestVersionCommand(t *testing.T) {
 				},
 			)
 		}, "version command should handle extra arguments gracefully")
-		
+
 		// If it succeeds, should still contain version info
 		if err == nil {
 			assert.NotEmpty(t, result, "version output should not be empty")

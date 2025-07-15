@@ -37,7 +37,7 @@ func TestConfigTestCommandHelp(t *testing.T) {
 // 1. It depends on configuration files being present
 // 2. It calls log.Fatal() which would exit the test process
 // 3. It tries to initialize a full Headscale server
-// 
+//
 // In a real refactor, we would:
 // 1. Extract the configuration validation logic to a testable function
 // 2. Return errors instead of calling log.Fatal()

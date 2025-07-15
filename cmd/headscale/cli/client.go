@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	
+
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 )
 
@@ -11,6 +11,6 @@ func WithClient(fn func(context.Context, v1.HeadscaleServiceClient) error) error
 	ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 	defer cancel()
 	defer conn.Close()
-	
+
 	return fn(ctx, client)
 }

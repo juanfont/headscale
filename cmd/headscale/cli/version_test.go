@@ -39,7 +39,7 @@ func TestVersionCommandFlags(t *testing.T) {
 func TestVersionCommandRun(t *testing.T) {
 	// Test that Run function is set
 	assert.NotNil(t, versionCmd.Run)
-	
+
 	// We can't easily test the actual execution without mocking SuccessOutput
 	// but we can verify the function exists and has the right signature
 }

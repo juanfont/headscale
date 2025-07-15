@@ -15,7 +15,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-
 func init() {
 	rootCmd.AddCommand(apiKeysCmd)
 	apiKeysCmd.AddCommand(listAPIKeys)
@@ -98,7 +97,6 @@ var listAPIKeys = &cobra.Command{
 			}
 			return nil
 		})
-
 		if err != nil {
 			return
 		}
@@ -148,7 +146,6 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 			SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
 			return nil
 		})
-
 		if err != nil {
 			return
 		}
@@ -185,7 +182,6 @@ var expireAPIKeyCmd = &cobra.Command{
 			SuccessOutput(response, "Key expired", output)
 			return nil
 		})
-
 		if err != nil {
 			return
 		}
@@ -222,7 +218,6 @@ var deleteAPIKeyCmd = &cobra.Command{
 			SuccessOutput(response, "Key deleted", output)
 			return nil
 		})
-
 		if err != nil {
 			return
 		}

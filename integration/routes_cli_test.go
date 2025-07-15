@@ -112,7 +112,7 @@ func TestRouteCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"list-routes",
-				"--identifier",
+				"--node",
 				fmt.Sprintf("%d", nodeID),
 			},
 		)
@@ -124,7 +124,7 @@ func TestRouteCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"approve-routes",
-				"--identifier",
+				"--node",
 				fmt.Sprintf("%d", nodeID),
 				"--routes",
 				"10.0.0.0/24",
@@ -158,7 +158,7 @@ func TestRouteCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"approve-routes",
-				"--identifier",
+				"--node",
 				fmt.Sprintf("%d", nodeID),
 				"--routes",
 				"", // Empty string removes all routes
@@ -192,7 +192,7 @@ func TestRouteCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"list-routes",
-				"--identifier",
+				"--node",
 				fmt.Sprintf("%d", nodeID),
 				"--output",
 				"json",
@@ -231,7 +231,7 @@ func TestRouteCommandEdgeCases(t *testing.T) {
 				"headscale",
 				"nodes",
 				"list-routes",
-				"--identifier",
+				"--node",
 				"999999",
 			},
 		)
@@ -246,7 +246,7 @@ func TestRouteCommandEdgeCases(t *testing.T) {
 				"headscale",
 				"nodes",
 				"approve-routes",
-				"--identifier",
+				"--node",
 				"1",
 				"--routes",
 				"invalid-cidr",
@@ -284,10 +284,10 @@ func TestRouteCommandHelp(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Verify help text contains expected information
 		assert.Contains(t, result, "list-routes", "help should mention list-routes command")
-		assert.Contains(t, result, "identifier", "help should mention identifier flag")
+		assert.Contains(t, result, "node", "help should mention node flag")
 	})
 
 	t.Run("test_approve_routes_help", func(t *testing.T) {
@@ -300,10 +300,10 @@ func TestRouteCommandHelp(t *testing.T) {
 			},
 		)
 		assertNoErr(t, err)
-		
+
 		// Verify help text contains expected information
 		assert.Contains(t, result, "approve-routes", "help should mention approve-routes command")
-		assert.Contains(t, result, "identifier", "help should mention identifier flag")
+		assert.Contains(t, result, "node", "help should mention node flag")
 		assert.Contains(t, result, "routes", "help should mention routes flag")
 	})
 }

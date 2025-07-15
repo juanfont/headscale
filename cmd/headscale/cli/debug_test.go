@@ -41,7 +41,7 @@ func TestCreateNodeCommandInDebugCommand(t *testing.T) {
 
 func TestCreateNodeCommandFlags(t *testing.T) {
 	// Test that create-node has the required flags
-	
+
 	// Test name flag
 	nameFlag := createNodeCmd.Flags().Lookup("name")
 	assert.NotNil(t, nameFlag)
@@ -63,22 +63,16 @@ func TestCreateNodeCommandFlags(t *testing.T) {
 	assert.NotNil(t, routeFlag)
 	assert.Equal(t, "r", routeFlag.Shorthand)
 
-	// Test deprecated namespace flag
-	namespaceFlag := createNodeCmd.Flags().Lookup("namespace")
-	assert.NotNil(t, namespaceFlag)
-	assert.Equal(t, "n", namespaceFlag.Shorthand)
-	assert.True(t, namespaceFlag.Hidden, "Namespace flag should be hidden")
-	assert.Equal(t, deprecateNamespaceMessage, namespaceFlag.Deprecated)
 }
 
 func TestCreateNodeCommandRequiredFlags(t *testing.T) {
 	// Test that required flags are marked as required
 	// We can't easily test the actual requirement enforcement without executing the command
 	// But we can test that the flags exist and have the expected properties
-	
+
 	// These flags should be required based on the init() function
 	requiredFlags := []string{"name", "user", "key"}
-	
+
 	for _, flagName := range requiredFlags {
 		flag := createNodeCmd.Flags().Lookup(flagName)
 		assert.NotNil(t, flag, "Required flag %s should exist", flagName)
@@ -134,8 +128,6 @@ func TestCreateNodeCommandFlagDescriptions(t *testing.T) {
 	routeFlag := createNodeCmd.Flags().Lookup("route")
 	assert.Contains(t, routeFlag.Usage, "routes to advertise")
 
-	namespaceFlag := createNodeCmd.Flags().Lookup("namespace")
-	assert.Equal(t, "User", namespaceFlag.Usage) // Same as user flag
 }
 
 // Note: We can't easily test the actual execution of create-node because:
