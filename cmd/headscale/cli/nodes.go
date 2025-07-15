@@ -22,17 +22,28 @@ import (
 
 func init() {
 	rootCmd.AddCommand(nodeCmd)
+	// User filtering
 	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
+	// Node filtering
+	listNodesCmd.Flags().StringP("node", "", "", "Filter by node (ID, name, hostname, or IP)")
+	listNodesCmd.Flags().Uint64P("id", "", 0, "Filter by node ID")
+	listNodesCmd.Flags().StringP("name", "", "", "Filter by node hostname")
+	listNodesCmd.Flags().StringP("ip", "", "", "Filter by node IP address")
+	// Display options
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 	listNodesCmd.Flags().String("columns", "", "Comma-separated list of columns to display")
-
+	// Backward compatibility
 	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
 	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
 	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	listNodesNamespaceFlag.Hidden = true
 	nodeCmd.AddCommand(listNodesCmd)
 
-	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	listNodeRoutesCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
+	identifierFlag := listNodeRoutesCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --node"
+	identifierFlag.Hidden = true
 	nodeCmd.AddCommand(listNodeRoutesCmd)
 
 	registerNodeCmd.Flags().StringP("user", "u", "", "User")
@@ -53,30 +64,42 @@ func init() {
 	}
 	nodeCmd.AddCommand(registerNodeCmd)
 
-	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = expireNodeCmd.MarkFlagRequired("identifier")
+	expireNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
+	identifierFlag = expireNodeCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --node"
+	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
 
-	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = renameNodeCmd.MarkFlagRequired("identifier")
+	renameNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
+	identifierFlag = renameNodeCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --node"
+	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(renameNodeCmd)
 
-	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	err = deleteNodeCmd.MarkFlagRequired("identifier")
+	deleteNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
+	identifierFlag = deleteNodeCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --node"
+	identifierFlag.Hidden = true
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(deleteNodeCmd)
 
-	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	moveNodeCmd.Flags().StringP("node", "n", "", "Node identifier (ID, name, hostname, or IP)")
+	moveNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID) - deprecated, use --node")
+	identifierFlag = moveNodeCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --node"
+	identifierFlag.Hidden = true
 
-	err = moveNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -170,19 +193,43 @@ var listNodesCmd = &cobra.Command{
 	Short:   "List nodes",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
+		output := GetOutputFlag(cmd)
 		showTags, err := cmd.Flags().GetBool("tags")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
+			return
 		}
 
 		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
-			request := &v1.ListNodesRequest{
-				User: user,
+			request := &v1.ListNodesRequest{}
+			
+			// Handle user filtering (existing functionality)
+			if user, _ := cmd.Flags().GetString("user"); user != "" {
+				request.User = user
+			}
+			if namespace, _ := cmd.Flags().GetString("namespace"); namespace != "" {
+				request.User = namespace // backward compatibility
+			}
+			
+			// Handle node filtering (new functionality)
+			if nodeFlag, _ := cmd.Flags().GetString("node"); nodeFlag != "" {
+				// Use smart lookup to determine filter type
+				if id, err := strconv.ParseUint(nodeFlag, 10, 64); err == nil && id > 0 {
+					request.Id = id
+				} else if isIPAddress(nodeFlag) {
+					request.IpAddresses = []string{nodeFlag}
+				} else {
+					request.Name = nodeFlag
+				}
+			} else {
+				// Check specific filter flags
+				if id, _ := cmd.Flags().GetUint64("id"); id > 0 {
+					request.Id = id
+				} else if name, _ := cmd.Flags().GetString("name"); name != "" {
+					request.Name = name
+				} else if ip, _ := cmd.Flags().GetString("ip"); ip != "" {
+					request.IpAddresses = []string{ip}
+				}
 			}
 
 			response, err := client.ListNodes(ctx, request)
@@ -200,7 +247,9 @@ var listNodesCmd = &cobra.Command{
 				return nil
 			}
 
-			tableData, err := nodesToPtables(user, showTags, response.GetNodes())
+			// Get user for table display (if filtering by user)
+			userFilter := request.User
+			tableData, err := nodesToPtables(userFilter, showTags, response.GetNodes())
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 				return err
@@ -231,11 +280,11 @@ var listNodeRoutesCmd = &cobra.Command{
 	Aliases: []string{"lsr", "routes"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -305,11 +354,11 @@ var expireNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -349,11 +398,11 @@ var renameNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -400,11 +449,11 @@ var deleteNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -491,11 +540,11 @@ var moveNodeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -552,8 +601,9 @@ var moveNodeCmd = &cobra.Command{
 }
 
 var backfillNodeIPsCmd = &cobra.Command{
-	Use:   "backfillips",
-	Short: "Backfill IPs missing from nodes",
+	Use:     "backfill-ips",
+	Short:   "Backfill IPs missing from nodes",
+	Aliases: []string{"backfillips"},
 	Long: `
 Backfill IPs can be used to add/remove IPs from nodes
 based on the current configuration of Headscale.
@@ -782,11 +832,11 @@ var tagCmd = &cobra.Command{
 		output, _ := cmd.Flags().GetString("output")
 		
 		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return
@@ -840,11 +890,11 @@ var approveRoutesCmd = &cobra.Command{
 		output, _ := cmd.Flags().GetString("output")
 		
 		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
+		identifier, err := GetNodeIdentifier(cmd)
 		if err != nil {
 			ErrorOutput(
 				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
+				fmt.Sprintf("Error getting node identifier: %s", err),
 				output,
 			)
 			return

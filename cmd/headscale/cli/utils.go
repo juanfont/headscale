@@ -5,7 +5,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
+	"strconv"
+	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
@@ -205,4 +208,157 @@ func (tokenAuth) RequireTransportSecurity() bool {
 func GetOutputFlag(cmd *cobra.Command) string {
 	output, _ := cmd.Flags().GetString("output")
 	return output
+}
+
+// GetNodeIdentifier returns the node ID using smart lookup via gRPC ListNodes call
+func GetNodeIdentifier(cmd *cobra.Command) (uint64, error) {
+	nodeFlag, _ := cmd.Flags().GetString("node")
+	identifierFlag, _ := cmd.Flags().GetUint64("identifier")
+	
+	// Check if --identifier (deprecated) was used
+	if identifierFlag > 0 {
+		return identifierFlag, nil
+	}
+	
+	// Use --node flag
+	if nodeFlag == "" {
+		return 0, fmt.Errorf("--node flag is required")
+	}
+	
+	// Use smart lookup via gRPC
+	return lookupNodeBySpecifier(nodeFlag)
+}
+
+// lookupNodeBySpecifier performs smart lookup of a node by ID, name, hostname, or IP
+func lookupNodeBySpecifier(specifier string) (uint64, error) {
+	var nodeID uint64
+	
+	err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+		request := &v1.ListNodesRequest{}
+		
+		// Detect what type of specifier this is and set appropriate filter
+		if id, err := strconv.ParseUint(specifier, 10, 64); err == nil && id > 0 {
+			// Looks like a numeric ID
+			request.Id = id
+		} else if isIPAddress(specifier) {
+			// Looks like an IP address
+			request.IpAddresses = []string{specifier}
+		} else {
+			// Treat as hostname/name
+			request.Name = specifier
+		}
+		
+		response, err := client.ListNodes(ctx, request)
+		if err != nil {
+			return fmt.Errorf("failed to lookup node: %w", err)
+		}
+		
+		nodes := response.GetNodes()
+		if len(nodes) == 0 {
+			return fmt.Errorf("no node found matching '%s'", specifier)
+		}
+		
+		if len(nodes) > 1 {
+			var nodeInfo []string
+			for _, node := range nodes {
+				nodeInfo = append(nodeInfo, fmt.Sprintf("ID=%d name=%s", node.GetId(), node.GetName()))
+			}
+			return fmt.Errorf("multiple nodes found matching '%s': %s", specifier, strings.Join(nodeInfo, ", "))
+		}
+		
+		// Exactly one match - this is what we want
+		nodeID = nodes[0].GetId()
+		return nil
+	})
+	
+	if err != nil {
+		return 0, err
+	}
+	
+	return nodeID, nil
+}
+
+// isIPAddress checks if a string looks like an IP address
+func isIPAddress(s string) bool {
+	// Try parsing as IP address (both IPv4 and IPv6)
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	// Try parsing as CIDR
+	if _, _, err := net.ParseCIDR(s); err == nil {
+		return true
+	}
+	return false
+}
+
+// GetUserIdentifier returns the user ID using smart lookup via gRPC ListUsers call
+func GetUserIdentifier(cmd *cobra.Command) (uint64, error) {
+	userFlag, _ := cmd.Flags().GetString("user")
+	nameFlag, _ := cmd.Flags().GetString("name")
+	identifierFlag, _ := cmd.Flags().GetUint64("identifier")
+	
+	var specifier string
+	
+	// Determine which flag was used (prefer --user, fall back to legacy flags)
+	if userFlag != "" {
+		specifier = userFlag
+	} else if nameFlag != "" {
+		specifier = nameFlag
+	} else if identifierFlag > 0 {
+		return identifierFlag, nil // Direct ID, no lookup needed
+	} else {
+		return 0, fmt.Errorf("--user flag is required")
+	}
+	
+	// Use smart lookup via gRPC
+	return lookupUserBySpecifier(specifier)
+}
+
+// lookupUserBySpecifier performs smart lookup of a user by ID, name, or email
+func lookupUserBySpecifier(specifier string) (uint64, error) {
+	var userID uint64
+	
+	err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+		request := &v1.ListUsersRequest{}
+		
+		// Detect what type of specifier this is and set appropriate filter
+		if id, err := strconv.ParseUint(specifier, 10, 64); err == nil && id > 0 {
+			// Looks like a numeric ID
+			request.Id = id
+		} else if strings.Contains(specifier, "@") {
+			// Looks like an email address
+			request.Email = specifier
+		} else {
+			// Treat as username
+			request.Name = specifier
+		}
+		
+		response, err := client.ListUsers(ctx, request)
+		if err != nil {
+			return fmt.Errorf("failed to lookup user: %w", err)
+		}
+		
+		users := response.GetUsers()
+		if len(users) == 0 {
+			return fmt.Errorf("no user found matching '%s'", specifier)
+		}
+		
+		if len(users) > 1 {
+			var userInfo []string
+			for _, user := range users {
+				userInfo = append(userInfo, fmt.Sprintf("ID=%d name=%s email=%s", user.GetId(), user.GetName(), user.GetEmail()))
+			}
+			return fmt.Errorf("multiple users found matching '%s': %s", specifier, strings.Join(userInfo, ", "))
+		}
+		
+		// Exactly one match - this is what we want
+		userID = users[0].GetId()
+		return nil
+	})
+	
+	if err != nil {
+		return 0, err
+	}
+	
+	return userID, nil
 }

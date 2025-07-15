@@ -493,31 +493,19 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
-	// TODO(kradalby): it looks like this can be simplified a lot,
-	// the filtering of nodes by user, vs nodes as a whole can
-	// probably be done once.
-	// TODO(kradalby): This should be done in one tx.
+	var nodes types.Nodes
+	var err error
 
 	isLikelyConnected := api.h.nodeNotifier.LikelyConnectedMap()
-	if request.GetUser() != "" {
-		user, err := api.h.state.GetUserByName(request.GetUser())
-		if err != nil {
-			return nil, err
-		}
 
-		nodes, err := api.h.state.ListNodesByUser(types.UserID(user.ID))
-		if err != nil {
-			return nil, err
-		}
-
-		response := nodesToProto(api.h.state, isLikelyConnected, nodes)
-		return &v1.ListNodesResponse{Nodes: response}, nil
-	}
-
-	nodes, err := api.h.state.ListNodes()
+	// Start with all nodes and apply filters
+	nodes, err = api.h.state.ListNodes()
 	if err != nil {
 		return nil, err
 	}
+
+	// Apply filters based on request
+	nodes = api.filterNodes(nodes, request)
 
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].ID < nodes[j].ID
@@ -525,6 +513,57 @@ func (api headscaleV1APIServer) ListNodes(
 
 	response := nodesToProto(api.h.state, isLikelyConnected, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
+}
+
+// filterNodes applies the filters from ListNodesRequest to the node list
+func (api headscaleV1APIServer) filterNodes(nodes types.Nodes, request *v1.ListNodesRequest) types.Nodes {
+	var filtered types.Nodes
+
+	for _, node := range nodes {
+		// Filter by user
+		if request.GetUser() != "" && node.User.Name != request.GetUser() {
+			continue
+		}
+
+		// Filter by ID (backward compatibility)
+		if request.GetId() != 0 && uint64(node.ID) != request.GetId() {
+			continue
+		}
+
+		// Filter by name (exact match)
+		if request.GetName() != "" && node.Hostname != request.GetName() {
+			continue
+		}
+
+		// Filter by hostname (alias for name)
+		if request.GetHostname() != "" && node.Hostname != request.GetHostname() {
+			continue
+		}
+
+		// Filter by IP addresses
+		if len(request.GetIpAddresses()) > 0 {
+			hasMatchingIP := false
+			for _, requestIP := range request.GetIpAddresses() {
+				for _, nodeIP := range node.IPs() {
+					if nodeIP.String() == requestIP {
+						hasMatchingIP = true
+						break
+					}
+				}
+				if hasMatchingIP {
+					break
+				}
+			}
+			if !hasMatchingIP {
+				continue
+			}
+		}
+
+		// If we get here, node matches all filters
+		filtered = append(filtered, node)
+	}
+
+	return filtered
 }
 
 func nodesToProto(state *state.State, isLikelyConnected *xsync.MapOf[types.NodeID, bool], nodes types.Nodes) []*v1.Node {

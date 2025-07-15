@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -16,25 +17,27 @@ import (
 )
 
 func usernameAndIDFlag(cmd *cobra.Command) {
-	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
+	cmd.Flags().StringP("user", "u", "", "User identifier (ID, name, or email)")
+	cmd.Flags().Uint64P("identifier", "i", 0, "User identifier (ID) - deprecated, use --user")
+	identifierFlag := cmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --user"
+	identifierFlag.Hidden = true
 	cmd.Flags().StringP("name", "n", "", "Username")
 }
 
-// usernameAndIDFromFlag returns the username and ID from the flags of the command.
-// If both are empty, it will exit the program with an error.
+// usernameAndIDFromFlag returns the user ID using smart lookup.
+// If no user is specified, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
-	username, _ := cmd.Flags().GetString("name")
-	identifier, _ := cmd.Flags().GetInt64("identifier")
-	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
+	userID, err := GetUserIdentifier(cmd)
+	if err != nil {
 		ErrorOutput(
 			err,
-			"Cannot rename user: "+status.Convert(err).Message(),
-			"",
+			"Cannot identify user: "+err.Error(),
+			GetOutputFlag(cmd),
 		)
 	}
 
-	return uint64(identifier), username
+	return userID, ""
 }
 
 func init() {
@@ -44,8 +47,16 @@ func init() {
 	createUserCmd.Flags().StringP("email", "e", "", "Email")
 	createUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL")
 	userCmd.AddCommand(listUsersCmd)
-	usernameAndIDFlag(listUsersCmd)
-	listUsersCmd.Flags().StringP("email", "e", "", "Email")
+	// Smart lookup filters - can be used individually or combined
+	listUsersCmd.Flags().StringP("user", "u", "", "Filter by user (ID, name, or email)")
+	listUsersCmd.Flags().Uint64P("id", "", 0, "Filter by user ID")
+	listUsersCmd.Flags().StringP("name", "n", "", "Filter by username")
+	listUsersCmd.Flags().StringP("email", "e", "", "Filter by email address")
+	// Backward compatibility (deprecated)
+	listUsersCmd.Flags().Uint64P("identifier", "i", 0, "Filter by user ID - deprecated, use --id")
+	identifierFlag := listUsersCmd.Flags().Lookup("identifier")
+	identifierFlag.Deprecated = "use --id"
+	identifierFlag.Hidden = true
 	listUsersCmd.Flags().String("columns", "", "Comma-separated list of columns to display (ID,Name,Username,Email,Created)")
 	userCmd.AddCommand(destroyUserCmd)
 	usernameAndIDFlag(destroyUserCmd)
@@ -221,18 +232,28 @@ var listUsersCmd = &cobra.Command{
 		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
 			request := &v1.ListUsersRequest{}
 
-			id, _ := cmd.Flags().GetInt64("identifier")
-			username, _ := cmd.Flags().GetString("name")
-			email, _ := cmd.Flags().GetString("email")
-
-			// filter by one param at most
-			switch {
-			case id > 0:
-				request.Id = uint64(id)
-			case username != "":
-				request.Name = username
-			case email != "":
-				request.Email = email
+			// Check for smart lookup flag first
+			userFlag, _ := cmd.Flags().GetString("user")
+			if userFlag != "" {
+				// Use smart lookup to determine filter type
+				if id, err := strconv.ParseUint(userFlag, 10, 64); err == nil && id > 0 {
+					request.Id = id
+				} else if strings.Contains(userFlag, "@") {
+					request.Email = userFlag
+				} else {
+					request.Name = userFlag
+				}
+			} else {
+				// Check specific filter flags
+				if id, _ := cmd.Flags().GetUint64("id"); id > 0 {
+					request.Id = id
+				} else if identifier, _ := cmd.Flags().GetUint64("identifier"); identifier > 0 {
+					request.Id = identifier // backward compatibility
+				} else if name, _ := cmd.Flags().GetString("name"); name != "" {
+					request.Name = name
+				} else if email, _ := cmd.Flags().GetString("email"); email != "" {
+					request.Email = email
+				}
 			}
 
 			response, err := client.ListUsers(ctx, request)
