@@ -305,7 +305,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("grpc_listen_addr", ":50443")
 	viper.SetDefault("grpc_allow_insecure", false)
 
-	viper.SetDefault("cli.timeout", "5s")
+	viper.SetDefault("cli.timeout", "30s")
 	viper.SetDefault("cli.insecure", false)
 
 	viper.SetDefault("database.postgres.ssl", false)

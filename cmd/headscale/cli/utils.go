@@ -246,7 +246,7 @@ func lookupNodeBySpecifier(specifier string) (uint64, error) {
 
 		nodes := response.GetNodes()
 		if len(nodes) == 0 {
-			return fmt.Errorf("no node found matching '%s'", specifier)
+			return fmt.Errorf("node not found")
 		}
 
 		if len(nodes) > 1 {
@@ -327,7 +327,7 @@ func lookupUserBySpecifier(specifier string) (uint64, error) {
 
 		users := response.GetUsers()
 		if len(users) == 0 {
-			return fmt.Errorf("no user found matching '%s'", specifier)
+			return fmt.Errorf("user not found")
 		}
 
 		if len(users) > 1 {
