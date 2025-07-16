@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -40,22 +41,26 @@ var getPolicy = &cobra.Command{
 	Short:   "Print the current ACL Policy",
 	Aliases: []string{"show", "view", "fetch"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		output := GetOutputFlag(cmd)
 
-		request := &v1.GetPolicyRequest{}
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.GetPolicyRequest{}
 
-		response, err := client.GetPolicy(ctx, request)
+			response, err := client.GetPolicy(ctx, request)
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
+				return err
+			}
+
+			// TODO(pallabpain): Maybe print this better?
+			// This does not pass output as we dont support yaml, json or json-line
+			// output for this command. It is HuJSON already.
+			SuccessOutput("", response.GetPolicy(), "")
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
+			return
 		}
-
-		// TODO(pallabpain): Maybe print this better?
-		// This does not pass output as we dont support yaml, json or json-line
-		// output for this command. It is HuJSON already.
-		SuccessOutput("", response.GetPolicy(), "")
 	},
 }
 
@@ -67,31 +72,36 @@ var setPolicy = &cobra.Command{
 	This command only works when the acl.policy_mode is set to "db", and the policy will be stored in the database.`,
 	Aliases: []string{"put", "update"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		policyPath, _ := cmd.Flags().GetString("file")
 
 		f, err := os.Open(policyPath)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
+			return
 		}
 		defer f.Close()
 
 		policyBytes, err := io.ReadAll(f)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
+			return
 		}
 
 		request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			if _, err := client.SetPolicy(ctx, request); err != nil {
+				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+				return err
+			}
 
-		if _, err := client.SetPolicy(ctx, request); err != nil {
-			ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+			SuccessOutput(nil, "Policy updated.", "")
+			return nil
+		})
+		if err != nil {
+			return
 		}
-
-		SuccessOutput(nil, "Policy updated.", "")
 	},
 }
 
@@ -99,23 +109,26 @@ var checkPolicy = &cobra.Command{
 	Use:   "check",
 	Short: "Check the Policy file for errors",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		policyPath, _ := cmd.Flags().GetString("file")
 
 		f, err := os.Open(policyPath)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
+			return
 		}
 		defer f.Close()
 
 		policyBytes, err := io.ReadAll(f)
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
+			return
 		}
 
 		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
+			return
 		}
 
 		SuccessOutput(nil, "Policy is valid", "")

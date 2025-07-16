@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -15,25 +17,23 @@ import (
 )
 
 func usernameAndIDFlag(cmd *cobra.Command) {
-	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
+	cmd.Flags().StringP("user", "u", "", "User identifier (ID, name, or email)")
 	cmd.Flags().StringP("name", "n", "", "Username")
 }
 
-// usernameAndIDFromFlag returns the username and ID from the flags of the command.
-// If both are empty, it will exit the program with an error.
-func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
-	username, _ := cmd.Flags().GetString("name")
-	identifier, _ := cmd.Flags().GetInt64("identifier")
-	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
+// userIDFromFlag returns the user ID using smart lookup.
+// If no user is specified, it will exit the program with an error.
+func userIDFromFlag(cmd *cobra.Command) uint64 {
+	userID, err := GetUserIdentifier(cmd)
+	if err != nil {
 		ErrorOutput(
 			err,
-			"Cannot rename user: "+status.Convert(err).Message(),
-			"",
+			"Cannot identify user: "+err.Error(),
+			GetOutputFlag(cmd),
 		)
 	}
 
-	return uint64(identifier), username
+	return userID
 }
 
 func init() {
@@ -43,14 +43,18 @@ func init() {
 	createUserCmd.Flags().StringP("email", "e", "", "Email")
 	createUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL")
 	userCmd.AddCommand(listUsersCmd)
-	usernameAndIDFlag(listUsersCmd)
-	listUsersCmd.Flags().StringP("email", "e", "", "Email")
+	// Smart lookup filters - can be used individually or combined
+	listUsersCmd.Flags().StringP("user", "u", "", "Filter by user (ID, name, or email)")
+	listUsersCmd.Flags().Uint64P("id", "", 0, "Filter by user ID")
+	listUsersCmd.Flags().StringP("name", "n", "", "Filter by username")
+	listUsersCmd.Flags().StringP("email", "e", "", "Filter by email address")
+	listUsersCmd.Flags().String("columns", "", "Comma-separated list of columns to display (ID,Name,Username,Email,Created)")
 	userCmd.AddCommand(destroyUserCmd)
 	usernameAndIDFlag(destroyUserCmd)
 	userCmd.AddCommand(renameUserCmd)
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	renameNodeCmd.MarkFlagRequired("new-name")
+	renameUserCmd.MarkFlagRequired("new-name")
 }
 
 var errMissingParameter = errors.New("missing parameters")
@@ -73,15 +77,8 @@ var createUserCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		userName := args[0]
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
-		log.Trace().Interface("client", client).Msg("Obtained gRPC client")
 
 		request := &v1.CreateUserRequest{Name: userName}
 
@@ -103,60 +100,74 @@ var createUserCmd = &cobra.Command{
 					),
 					output,
 				)
+				return
 			}
 			request.PictureUrl = pictureURL
 		}
 
-		log.Trace().Interface("request", request).Msg("Sending CreateUser request")
-		response, err := client.CreateUser(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot create user: "+status.Convert(err).Message(),
-				output,
-			)
-		}
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			log.Trace().Interface("client", client).Msg("Obtained gRPC client")
+			log.Trace().Interface("request", request).Msg("Sending CreateUser request")
 
-		SuccessOutput(response.GetUser(), "User created", output)
+			response, err := client.CreateUser(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot create user: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			SuccessOutput(response.GetUser(), "User created", output)
+			return nil
+		})
+		if err != nil {
+			return
+		}
 	},
 }
 
 var destroyUserCmd = &cobra.Command{
-	Use:     "destroy --identifier ID or --name NAME",
+	Use:     "destroy --user USER",
 	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
-		id, username := usernameAndIDFromFlag(cmd)
+		id := userIDFromFlag(cmd)
 		request := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
+			Id: id,
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		var user *v1.User
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			users, err := client.ListUsers(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		users, err := client.ListUsers(ctx, request)
+			if len(users.GetUsers()) != 1 {
+				err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			user = users.GetUsers()[0]
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return
 		}
-
-		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
-		user := users.GetUsers()[0]
 
 		confirm := false
 		force, _ := cmd.Flags().GetBool("force")
@@ -174,17 +185,24 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if confirm || force {
-			request := &v1.DeleteUserRequest{Id: user.GetId()}
+			err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+				request := &v1.DeleteUserRequest{Id: user.GetId()}
 
-			response, err := client.DeleteUser(ctx, request)
+				response, err := client.DeleteUser(ctx, request)
+				if err != nil {
+					ErrorOutput(
+						err,
+						"Cannot destroy user: "+status.Convert(err).Message(),
+						output,
+					)
+					return err
+				}
+				SuccessOutput(response, "User destroyed", output)
+				return nil
+			})
 			if err != nil {
-				ErrorOutput(
-					err,
-					"Cannot destroy user: "+status.Convert(err).Message(),
-					output,
-				)
+				return
 			}
-			SuccessOutput(response, "User destroyed", output)
 		} else {
 			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
 		}
@@ -196,64 +214,76 @@ var listUsersCmd = &cobra.Command{
 	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.ListUsersRequest{}
 
-		request := &v1.ListUsersRequest{}
+			// Check for smart lookup flag first
+			userFlag, _ := cmd.Flags().GetString("user")
+			if userFlag != "" {
+				// Use smart lookup to determine filter type
+				if id, err := strconv.ParseUint(userFlag, 10, 64); err == nil && id > 0 {
+					request.Id = id
+				} else if strings.Contains(userFlag, "@") {
+					request.Email = userFlag
+				} else {
+					request.Name = userFlag
+				}
+			} else {
+				// Check specific filter flags
+				if id, _ := cmd.Flags().GetUint64("id"); id > 0 {
+					request.Id = id
+				} else if name, _ := cmd.Flags().GetString("name"); name != "" {
+					request.Name = name
+				} else if email, _ := cmd.Flags().GetString("email"); email != "" {
+					request.Email = email
+				}
+			}
 
-		id, _ := cmd.Flags().GetInt64("identifier")
-		username, _ := cmd.Flags().GetString("name")
-		email, _ := cmd.Flags().GetString("email")
+			response, err := client.ListUsers(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot get users: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
 
-		// filter by one param at most
-		switch {
-		case id > 0:
-			request.Id = uint64(id)
-			break
-		case username != "":
-			request.Name = username
-			break
-		case email != "":
-			request.Email = email
-			break
-		}
+			if output != "" {
+				SuccessOutput(response.GetUsers(), "", output)
+				return nil
+			}
 
-		response, err := client.ListUsers(ctx, request)
+			tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
+			for _, user := range response.GetUsers() {
+				tableData = append(
+					tableData,
+					[]string{
+						strconv.FormatUint(user.GetId(), 10),
+						user.GetDisplayName(),
+						user.GetName(),
+						user.GetEmail(),
+						user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+					},
+				)
+			}
+			tableData = FilterTableColumns(cmd, tableData)
+			err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Failed to render pterm table: %s", err),
+					output,
+				)
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot get users: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
-		if output != "" {
-			SuccessOutput(response.GetUsers(), "", output)
-		}
-
-		tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
-		for _, user := range response.GetUsers() {
-			tableData = append(
-				tableData,
-				[]string{
-					strconv.FormatUint(user.GetId(), 10),
-					user.GetDisplayName(),
-					user.GetName(),
-					user.GetEmail(),
-					user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				},
-			)
-		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			// Error already handled in closure
+			return
 		}
 	},
 }
@@ -263,52 +293,56 @@ var renameUserCmd = &cobra.Command{
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
-		id, username := usernameAndIDFromFlag(cmd)
-		listReq := &v1.ListUsersRequest{
-			Name: username,
-			Id:   id,
-		}
-
-		users, err := client.ListUsers(ctx, listReq)
-		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
-		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
-		}
-
+		id := userIDFromFlag(cmd)
 		newName, _ := cmd.Flags().GetString("new-name")
 
-		renameReq := &v1.RenameUserRequest{
-			OldId:   id,
-			NewName: newName,
-		}
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			listReq := &v1.ListUsersRequest{
+				Id: id,
+			}
 
-		response, err := client.RenameUser(ctx, renameReq)
+			users, err := client.ListUsers(ctx, listReq)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			if len(users.GetUsers()) != 1 {
+				err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+				ErrorOutput(
+					err,
+					"Error: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			renameReq := &v1.RenameUserRequest{
+				OldId:   id,
+				NewName: newName,
+			}
+
+			response, err := client.RenameUser(ctx, renameReq)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot rename user: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			SuccessOutput(response.GetUser(), "User renamed", output)
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot rename user: "+status.Convert(err).Message(),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response.GetUser(), "User renamed", output)
 	},
 }

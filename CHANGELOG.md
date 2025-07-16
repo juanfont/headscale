@@ -41,6 +41,47 @@ systemctl start headscale
 
 ### BREAKING
 
+- **CLI: Remove deprecated flags**
+  - `--identifier` flag removed - use `--node` or `--user` instead
+  - `--namespace` flag removed - use `--user` instead
+  
+  **Command changes:**
+  ```bash
+  # Before
+  headscale nodes expire --identifier 123
+  headscale nodes rename --identifier 123 new-name
+  headscale nodes delete --identifier 123
+  headscale nodes move --identifier 123 --user 456
+  headscale nodes list-routes --identifier 123
+  
+  # After
+  headscale nodes expire --node 123
+  headscale nodes rename --node 123 new-name
+  headscale nodes delete --node 123
+  headscale nodes move --node 123 --user 456
+  headscale nodes list-routes --node 123
+  
+  # Before
+  headscale users destroy --identifier 123
+  headscale users rename --identifier 123 --new-name john
+  headscale users list --identifier 123
+  
+  # After
+  headscale users destroy --user 123
+  headscale users rename --user 123 --new-name john
+  headscale users list --user 123
+  
+  # Before
+  headscale nodes register --namespace myuser nodekey
+  headscale nodes list --namespace myuser
+  headscale preauthkeys create --namespace myuser
+  
+  # After
+  headscale nodes register --user myuser nodekey
+  headscale nodes list --user myuser
+  headscale preauthkeys create --user myuser
+  ```
+
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
 

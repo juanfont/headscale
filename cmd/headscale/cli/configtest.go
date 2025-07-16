@@ -11,8 +11,8 @@ func init() {
 
 var configTestCmd = &cobra.Command{
 	Use:   "configtest",
-	Short: "Test the configuration.",
-	Long:  "Run a test of the configuration and exit.",
+	Short: "Test the configuration",
+	Long:  "Run a test of the configuration and exit",
 	Run: func(cmd *cobra.Command, args []string) {
 		_, err := newHeadscaleServerWithConfig()
 		if err != nil {

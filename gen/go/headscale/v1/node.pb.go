@@ -913,6 +913,10 @@ func (x *RenameNodeResponse) GetNode() *Node {
 type ListNodesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	Id            uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
+	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	Hostname      string                 `protobuf:"bytes,4,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	IpAddresses   []string               `protobuf:"bytes,5,rep,name=ip_addresses,json=ipAddresses,proto3" json:"ip_addresses,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -952,6 +956,34 @@ func (x *ListNodesRequest) GetUser() string {
 		return x.User
 	}
 	return ""
+}
+
+func (x *ListNodesRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *ListNodesRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetHostname() string {
+	if x != nil {
+		return x.Hostname
+	}
+	return ""
+}
+
+func (x *ListNodesRequest) GetIpAddresses() []string {
+	if x != nil {
+		return x.IpAddresses
+	}
+	return nil
 }
 
 type ListNodesResponse struct {
@@ -1358,9 +1390,13 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x19\n" +
 	"\bnew_name\x18\x02 \x01(\tR\anewName\"<\n" +
 	"\x12RenameNodeResponse\x12&\n" +
-	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"&\n" +
+	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"\x89\x01\n" +
 	"\x10ListNodesRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\"=\n" +
+	"\x04user\x18\x01 \x01(\tR\x04user\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1a\n" +
+	"\bhostname\x18\x04 \x01(\tR\bhostname\x12!\n" +
+	"\fip_addresses\x18\x05 \x03(\tR\vipAddresses\"=\n" +
 	"\x11ListNodesResponse\x12(\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x12.headscale.v1.NodeR\x05nodes\">\n" +
 	"\x0fMoveNodeRequest\x12\x17\n" +

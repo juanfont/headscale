@@ -24,7 +24,7 @@ const (
 	// derpPingTimeout defines the timeout for individual DERP ping operations
 	// Used in DERP connectivity tests to verify relay server communication
 	derpPingTimeout = 2 * time.Second
-	
+
 	// derpPingCount defines the number of ping attempts for DERP connectivity tests
 	// Higher count provides better reliability assessment of DERP connectivity
 	derpPingCount = 10
@@ -317,7 +317,7 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 
 // assertCommandOutputContains executes a command with exponential backoff retry until the output
 // contains the expected string or timeout is reached (10 seconds).
-// This implements eventual consistency patterns and should be used instead of time.Sleep 
+// This implements eventual consistency patterns and should be used instead of time.Sleep
 // before executing commands that depend on network state propagation.
 //
 // Timeout: 10 seconds with exponential backoff

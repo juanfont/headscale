@@ -564,10 +564,10 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 		_, err = headscale.Execute(
 			[]string{
 				"headscale",
-				"node",
+				"nodes",
 				"rename",
 				givenName,
-				"--identifier",
+				"--node",
 				strconv.FormatUint(node.GetId(), 10),
 			})
 		assertNoErr(t, err)
@@ -702,7 +702,7 @@ func TestExpireNode(t *testing.T) {
 	// TODO(kradalby): This is Headscale specific and would not play nicely
 	// with other implementations of the ControlServer interface
 	result, err := headscale.Execute([]string{
-		"headscale", "nodes", "expire", "--identifier", "1", "--output", "json",
+		"headscale", "nodes", "expire", "--node", "1", "--output", "json",
 	})
 	assertNoErr(t, err)
 
@@ -1060,7 +1060,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 			"headscale",
 			"nodes",
 			"delete",
-			"--identifier",
+			"--node",
 			// Delete the last added machine
 			fmt.Sprintf("%d", nodeList[0].GetId()),
 			"--output",

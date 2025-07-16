@@ -1122,7 +1122,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	command := []string{
 		"headscale", "nodes", "approve-routes",
 		"--output", "json",
-		"--identifier", strconv.FormatUint(id, 10),
+		"--node", strconv.FormatUint(id, 10),
 		"--routes=" + strings.Join(util.PrefixesToString(routes), ","),
 	}
 

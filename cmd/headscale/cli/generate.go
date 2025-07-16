@@ -22,7 +22,7 @@ var generatePrivateKeyCmd = &cobra.Command{
 	Use:   "private-key",
 	Short: "Generate a private key for the headscale server",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 		machineKey := key.NewMachine()
 
 		machineKeyStr, err := machineKey.MarshalText()

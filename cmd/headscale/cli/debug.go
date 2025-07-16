@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -14,11 +15,6 @@ const (
 	errPreAuthKeyMalformed = Error("key is malformed. expected 64 hex characters with `nodekey` prefix")
 )
 
-// Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
-type Error string
-
-func (e Error) Error() string { return string(e) }
-
 func init() {
 	rootCmd.AddCommand(debugCmd)
 
@@ -28,11 +24,6 @@ func init() {
 		log.Fatal().Err(err).Msg("")
 	}
 	createNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	createNodeNamespaceFlag := createNodeCmd.Flags().Lookup("namespace")
-	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	createNodeNamespaceFlag.Hidden = true
 
 	err = createNodeCmd.MarkFlagRequired("user")
 	if err != nil {
@@ -59,16 +50,13 @@ var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `nodes register <>` command",
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+			return
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -77,6 +65,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting node from flag: %s", err),
 				output,
 			)
+			return
 		}
 
 		registrationID, err := cmd.Flags().GetString("key")
@@ -86,6 +75,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting key from flag: %s", err),
 				output,
 			)
+			return
 		}
 
 		_, err = types.RegistrationIDFromString(registrationID)
@@ -95,6 +85,7 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Failed to parse machine key from flag: %s", err),
 				output,
 			)
+			return
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
@@ -104,24 +95,32 @@ var createNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting routes from flag: %s", err),
 				output,
 			)
+			return
 		}
 
-		request := &v1.DebugCreateNodeRequest{
-			Key:    registrationID,
-			Name:   name,
-			User:   user,
-			Routes: routes,
-		}
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.DebugCreateNodeRequest{
+				Key:    registrationID,
+				Name:   name,
+				User:   user,
+				Routes: routes,
+			}
 
-		response, err := client.DebugCreateNode(ctx, request)
+			response, err := client.DebugCreateNode(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Cannot create node: "+status.Convert(err).Message(),
+					output,
+				)
+				return err
+			}
+
+			SuccessOutput(response.GetNode(), "Node created", output)
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot create node: "+status.Convert(err).Message(),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response.GetNode(), "Node created", output)
 	},
 }

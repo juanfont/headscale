@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 	"tailscale.com/tailcfg"
 )
 
@@ -95,7 +95,7 @@ func TestUserCommand(t *testing.T) {
 			"users",
 			"rename",
 			"--output=json",
-			fmt.Sprintf("--identifier=%d", listUsers[1].GetId()),
+			fmt.Sprintf("--user=%d", listUsers[1].GetId()),
 			"--new-name=newname",
 		},
 	)
@@ -161,7 +161,7 @@ func TestUserCommand(t *testing.T) {
 			"list",
 			"--output",
 			"json",
-			"--identifier=1",
+			"--user=1",
 		},
 		&listByID,
 	)
@@ -187,7 +187,7 @@ func TestUserCommand(t *testing.T) {
 			"destroy",
 			"--force",
 			// Delete "user1"
-			"--identifier=1",
+			"--user=1",
 		},
 	)
 	assert.NoError(t, err)
@@ -354,7 +354,10 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, []string{"tag:test1", "tag:test2"}, listedPreAuthKeys[index].GetAclTags())
+		// Sort tags for consistent comparison
+		tags := listedPreAuthKeys[index].GetAclTags()
+		slices.Sort(tags)
+		assert.Equal(t, []string{"tag:test1", "tag:test2"}, tags)
 	}
 
 	// Test key expiry
@@ -604,7 +607,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
-		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState, 
+		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
 			"Expected node to be logged out, backend state: %s", status.BackendState)
 	}, 30*time.Second, 2*time.Second)
 
@@ -869,7 +872,7 @@ func TestNodeTagCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"tag",
-			"-i", "1",
+			"--node", "1",
 			"-t", "tag:test",
 			"--output", "json",
 		},
@@ -884,7 +887,7 @@ func TestNodeTagCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"tag",
-			"-i", "2",
+			"--node", "2",
 			"-t", "wrong-tag",
 			"--output", "json",
 		},
@@ -1259,7 +1262,7 @@ func TestNodeCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"delete",
-			"--identifier",
+			"--node",
 			// Delete the last added machine
 			"4",
 			"--output",
@@ -1385,7 +1388,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"expire",
-				"--identifier",
+				"--node",
 				strconv.FormatUint(listAll[idx].GetId(), 10),
 			},
 		)
@@ -1511,7 +1514,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				"headscale",
 				"nodes",
 				"rename",
-				"--identifier",
+				"--node",
 				strconv.FormatUint(listAll[idx].GetId(), 10),
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
@@ -1549,7 +1552,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"rename",
-			"--identifier",
+			"--node",
 			strconv.FormatUint(listAll[4].GetId(), 10),
 			strings.Repeat("t", 64),
 		},
@@ -1649,7 +1652,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node",
 			strconv.FormatUint(node.GetId(), 10),
 			"--user",
 			strconv.FormatUint(userMap["new-user"].GetId(), 10),
@@ -1687,7 +1690,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node",
 			nodeID,
 			"--user",
 			"999",
@@ -1708,7 +1711,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node",
 			nodeID,
 			"--user",
 			strconv.FormatUint(userMap["old-user"].GetId(), 10),
@@ -1727,7 +1730,7 @@ func TestNodeMoveCommand(t *testing.T) {
 			"headscale",
 			"nodes",
 			"move",
-			"--identifier",
+			"--node",
 			nodeID,
 			"--user",
 			strconv.FormatUint(userMap["old-user"].GetId(), 10),

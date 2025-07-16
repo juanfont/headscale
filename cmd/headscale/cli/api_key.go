@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -12,11 +13,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
-)
-
-const (
-	// 90 days.
-	DefaultAPIKeyExpiry = "90d"
 )
 
 func init() {
@@ -43,75 +39,80 @@ func init() {
 
 var apiKeysCmd = &cobra.Command{
 	Use:     "apikeys",
-	Short:   "Handle the Api keys in Headscale",
+	Short:   "Handle the API keys in Headscale",
 	Aliases: []string{"apikey", "api"},
 }
 
 var listAPIKeys = &cobra.Command{
 	Use:     "list",
-	Short:   "List the Api keys for headscale",
+	Short:   "List the API keys for Headscale",
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err := WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.ListApiKeysRequest{}
 
-		request := &v1.ListApiKeysRequest{}
-
-		response, err := client.ListApiKeys(ctx, request)
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting the list of keys: %s", err),
-				output,
-			)
-		}
-
-		if output != "" {
-			SuccessOutput(response.GetApiKeys(), "", output)
-		}
-
-		tableData := pterm.TableData{
-			{"ID", "Prefix", "Expiration", "Created"},
-		}
-		for _, key := range response.GetApiKeys() {
-			expiration := "-"
-
-			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.GetExpiration().AsTime())
+			response, err := client.ListApiKeys(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Error getting the list of keys: %s", err),
+					output,
+				)
+				return err
 			}
 
-			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), util.Base10),
-				key.GetPrefix(),
-				expiration,
-				key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
-			})
+			if output != "" {
+				SuccessOutput(response.GetApiKeys(), "", output)
+				return nil
+			}
 
-		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			tableData := pterm.TableData{
+				{"ID", "Prefix", "Expiration", "Created"},
+			}
+			for _, key := range response.GetApiKeys() {
+				expiration := "-"
+
+				if key.GetExpiration() != nil {
+					expiration = ColourTime(key.GetExpiration().AsTime())
+				}
+
+				tableData = append(tableData, []string{
+					strconv.FormatUint(key.GetId(), util.Base10),
+					key.GetPrefix(),
+					expiration,
+					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+				})
+
+			}
+			err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Failed to render pterm table: %s", err),
+					output,
+				)
+				return err
+			}
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return
 		}
 	},
 }
 
 var createAPIKeyCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Creates a new Api key",
+	Short: "Create a new API key",
 	Long: `
 Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", "new"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+		output := GetOutputFlag(cmd)
 
 		request := &v1.CreateApiKeyRequest{}
 
@@ -124,99 +125,101 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 				fmt.Sprintf("Could not parse duration: %s\n", err),
 				output,
 			)
+			return
 		}
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
 
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			response, err := client.CreateApiKey(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Cannot create Api Key: %s\n", err),
+					output,
+				)
+				return err
+			}
 
-		response, err := client.CreateApiKey(ctx, request)
+			SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot create Api Key: %s\n", err),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
 	},
 }
 
 var expireAPIKeyCmd = &cobra.Command{
 	Use:     "expire",
-	Short:   "Expire an ApiKey",
+	Short:   "Expire an API key",
 	Aliases: []string{"revoke", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		prefix, err := cmd.Flags().GetString("prefix")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
-				output,
-			)
+			ErrorOutput(err, fmt.Sprintf("Error getting prefix from CLI flag: %s", err), output)
+			return
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.ExpireApiKeyRequest{
+				Prefix: prefix,
+			}
 
-		request := &v1.ExpireApiKeyRequest{
-			Prefix: prefix,
-		}
+			response, err := client.ExpireApiKey(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Cannot expire Api Key: %s\n", err),
+					output,
+				)
+				return err
+			}
 
-		response, err := client.ExpireApiKey(ctx, request)
+			SuccessOutput(response, "Key expired", output)
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot expire Api Key: %s\n", err),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response, "Key expired", output)
 	},
 }
 
 var deleteAPIKeyCmd = &cobra.Command{
 	Use:     "delete",
-	Short:   "Delete an ApiKey",
+	Short:   "Delete an API key",
 	Aliases: []string{"remove", "del"},
 	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+		output := GetOutputFlag(cmd)
 		prefix, err := cmd.Flags().GetString("prefix")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
-				output,
-			)
+			ErrorOutput(err, fmt.Sprintf("Error getting prefix from CLI flag: %s", err), output)
+			return
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		err = WithClient(func(ctx context.Context, client v1.HeadscaleServiceClient) error {
+			request := &v1.DeleteApiKeyRequest{
+				Prefix: prefix,
+			}
 
-		request := &v1.DeleteApiKeyRequest{
-			Prefix: prefix,
-		}
+			response, err := client.DeleteApiKey(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Cannot delete Api Key: %s\n", err),
+					output,
+				)
+				return err
+			}
 
-		response, err := client.DeleteApiKey(ctx, request)
+			SuccessOutput(response, "Key deleted", output)
+			return nil
+		})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot delete Api Key: %s\n", err),
-				output,
-			)
+			return
 		}
-
-		SuccessOutput(response, "Key deleted", output)
 	},
 }

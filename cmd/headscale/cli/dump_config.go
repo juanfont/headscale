@@ -12,9 +12,10 @@ func init() {
 }
 
 var dumpConfigCmd = &cobra.Command{
-	Use:    "dumpConfig",
-	Short:  "dump current config to /etc/headscale/config.dump.yaml, integration test only",
-	Hidden: true,
+	Use:     "dump-config",
+	Short:   "Dump current config to /etc/headscale/config.dump.yaml, integration test only",
+	Aliases: []string{"dumpConfig"},
+	Hidden:  true,
 	Args: func(cmd *cobra.Command, args []string) error {
 		return nil
 	},
