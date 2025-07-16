@@ -1,10 +1,10 @@
 package v2
 
 import (
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -47,7 +47,7 @@ func TestPolicyManager(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes)
+			pm, err := NewPolicyManager([]byte(tt.pol), users, tt.nodes.ViewSlice())
 			require.NoError(t, err)
 
 			filter, matchers := pm.Filter()

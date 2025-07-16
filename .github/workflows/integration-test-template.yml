@@ -1,0 +1,95 @@
+name: Integration Test Template
+
+on:
+  workflow_call:
+    inputs:
+      test:
+        required: true
+        type: string
+      postgres_flag:
+        required: false
+        type: string
+        default: ""
+      database_name:
+        required: true
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # Github does not allow us to access secrets in pull requests,
+      # so this env var is used to check if we have the secret or not.
+      # If we have the secrets, meaning we are running on push in a fork,
+      # there might be secrets available for more debugging.
+      # If TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET is set, then the job
+      # will join a debug tailscale network, set up SSH and a tmux session.
+      # The SSH will be configured to use the SSH key of the Github user
+      # that triggered the build.
+      HAS_TAILSCALE_SECRET: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 2
+      - name: Get changed files
+        id: changed-files
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            files:
+              - '*.nix'
+              - 'go.*'
+              - '**/*.go'
+              - 'integration_test/'
+              - 'config-example.yaml'
+      - name: Tailscale
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: tailscale/github-action@6986d2c82a91fbac2949fe01f5bab95cf21b5102 # v3.2.2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:gh
+      - name: Setup SSH server for Actor
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: alexellis/setup-sshd-actor@master
+      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad # v31
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          primary-key:
+            nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
+            '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+      - name: Run Integration Test
+        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          # Our integration tests are started like a thundering herd, often
+          # hitting limits of the various external repositories we depend on
+          # like docker hub. This will retry jobs every 5 min, 10 times,
+          # hopefully letting us avoid manual intervention and restarting jobs.
+          # One could of course argue that we should invest in trying to avoid
+          # this, but currently it seems like a larger investment to be cleverer
+          # about this.
+          # Some of the jobs might still require manual restart as they are really
+          # slow and this will cause them to eventually be killed by Github actions.
+          attempt_delay: 300000 # 5 min
+          attempt_limit: 2
+          command: |
+            nix develop --command -- hi run "^${{ inputs.test }}$" \
+              --timeout=120m \
+              ${{ inputs.postgres_flag }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && steps.changed-files.outputs.files == 'true'
+        with:
+          name: ${{ inputs.database_name }}-${{ inputs.test }}-logs
+          path: "control_logs/*/*.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always() && steps.changed-files.outputs.files == 'true'
+        with:
+          name: ${{ inputs.database_name }}-${{ inputs.test }}-archives
+          path: "control_logs/*/*.tar"
+      - name: Setup a blocking tmux session
+        if: ${{ env.HAS_TAILSCALE_SECRET }}
+        uses: alexellis/block-with-tmux-action@master

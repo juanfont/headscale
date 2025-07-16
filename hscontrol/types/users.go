@@ -249,7 +249,7 @@ func (c *OIDCClaims) Identifier() string {
 // - Remove empty path segments
 // - For non-URL identifiers, it joins non-empty segments with a single slash
 // - Returns empty string for identifiers with only slashes
-// - Normalize URL schemes to lowercase
+// - Normalize URL schemes to lowercase.
 func CleanIdentifier(identifier string) string {
 	if identifier == "" {
 		return identifier
@@ -273,7 +273,7 @@ func CleanIdentifier(identifier string) string {
 				cleanParts = append(cleanParts, part)
 			}
 		}
-		
+
 		if len(cleanParts) == 0 {
 			u.Path = ""
 		} else {
@@ -281,6 +281,7 @@ func CleanIdentifier(identifier string) string {
 		}
 		// Ensure scheme is lowercase
 		u.Scheme = strings.ToLower(u.Scheme)
+
 		return u.String()
 	}
 
@@ -297,6 +298,7 @@ func CleanIdentifier(identifier string) string {
 	if len(cleanParts) == 0 {
 		return ""
 	}
+
 	return strings.Join(cleanParts, "/")
 }
 

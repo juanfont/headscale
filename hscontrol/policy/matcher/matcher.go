@@ -2,9 +2,8 @@ package matcher
 
 import (
 	"net/netip"
-	"strings"
-
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"go4.org/netipx"
@@ -28,6 +27,7 @@ func (m Match) DebugString() string {
 	for _, prefix := range m.dests.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
+
 	return sb.String()
 }
 
@@ -36,6 +36,7 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 	for _, rule := range rules {
 		matches = append(matches, MatchFromFilterRule(rule))
 	}
+
 	return matches
 }
 

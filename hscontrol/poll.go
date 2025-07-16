@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -43,7 +42,7 @@ type mapSession struct {
 	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
 
-	node *types.Node
+	node types.NodeView
 	w    http.ResponseWriter
 
 	warnf  func(string, ...any)
@@ -56,9 +55,9 @@ func (h *Headscale) newMapSession(
 	ctx context.Context,
 	req tailcfg.MapRequest,
 	w http.ResponseWriter,
-	node *types.Node,
+	nv types.NodeView,
 ) *mapSession {
-	warnf, infof, tracef, errf := logPollFunc(req, node)
+	warnf, infof, tracef, errf := logPollFuncView(req, nv)
 
 	var updateChan chan types.StateUpdate
 	if req.Stream {
@@ -76,7 +75,7 @@ func (h *Headscale) newMapSession(
 		ctx:    ctx,
 		req:    req,
 		w:      w,
-		node:   node,
+		node:   nv,
 		capVer: req.Version,
 		mapper: h.mapper,
 
@@ -92,26 +91,6 @@ func (h *Headscale) newMapSession(
 		infof:  infof,
 		tracef: tracef,
 		errf:   errf,
-	}
-}
-
-func (m *mapSession) close() {
-	m.cancelChMu.Lock()
-	defer m.cancelChMu.Unlock()
-
-	if !m.cancelChOpen {
-		mapResponseClosed.WithLabelValues("chanclosed").Inc()
-		return
-	}
-
-	m.tracef("mapSession (%p) sending message on cancel chan", m)
-	select {
-	case m.cancelCh <- struct{}{}:
-		mapResponseClosed.WithLabelValues("sent").Inc()
-		m.tracef("mapSession (%p) sent message on cancel chan", m)
-	case <-time.After(30 * time.Second):
-		mapResponseClosed.WithLabelValues("timeout").Inc()
-		m.tracef("mapSession (%p) timed out sending close message", m)
 	}
 }
 
@@ -133,13 +112,13 @@ func (m *mapSession) resetKeepAlive() {
 
 func (m *mapSession) beforeServeLongPoll() {
 	if m.node.IsEphemeral() {
-		m.h.ephemeralGC.Cancel(m.node.ID)
+		m.h.ephemeralGC.Cancel(m.node.ID())
 	}
 }
 
 func (m *mapSession) afterServeLongPoll() {
 	if m.node.IsEphemeral() {
-		m.h.ephemeralGC.Schedule(m.node.ID, m.h.cfg.EphemeralNodeInactivityTimeout)
+		m.h.ephemeralGC.Schedule(m.node.ID(), m.h.cfg.EphemeralNodeInactivityTimeout)
 	}
 }
 
@@ -200,16 +179,16 @@ func (m *mapSession) serveLongPoll() {
 		// in principal, it will be removed, but the client rapidly
 		// reconnects, the channel might be of another connection.
 		// In that case, it is not closed and the node is still online.
-		if m.h.nodeNotifier.RemoveNode(m.node.ID, m.ch) {
-			// Failover the node's routes if any.
-			m.h.updateNodeOnlineStatus(false, m.node)
-
-			// When a node disconnects, and it causes the primary route map to change,
-			// send a full update to all nodes.
+		if m.h.nodeNotifier.RemoveNode(m.node.ID(), m.ch) {
 			// TODO(kradalby): This can likely be made more effective, but likely most
 			// nodes has access to the same routes, so it might not be a big deal.
-			if m.h.primaryRoutes.SetRoutes(m.node.ID) {
-				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
+			change, err := m.h.state.Disconnect(m.node.ID())
+			if err != nil {
+				m.errf(err, "Failed to disconnect node %s", m.node.Hostname())
+			}
+
+			if change {
+				ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname())
 				m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 			}
 		}
@@ -222,10 +201,7 @@ func (m *mapSession) serveLongPoll() {
 	m.h.pollNetMapStreamWG.Add(1)
 	defer m.h.pollNetMapStreamWG.Done()
 
-	if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-		ctx := types.NotifyCtx(context.Background(), "poll-primary-change", m.node.Hostname)
-		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	}
+	m.h.state.Connect(m.node.ID())
 
 	// Upgrade the writer to a ResponseController
 	rc := http.NewResponseController(m.w)
@@ -234,13 +210,12 @@ func (m *mapSession) serveLongPoll() {
 	// so it needs to be disabled.
 	rc.SetWriteDeadline(time.Time{})
 
-	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
+	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname()))
 	defer cancel()
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	m.h.nodeNotifier.AddNode(m.node.ID, m.ch)
-	go m.h.updateNodeOnlineStatus(true, m.node)
+	m.h.nodeNotifier.AddNode(m.node.ID(), m.ch)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
@@ -267,7 +242,7 @@ func (m *mapSession) serveLongPoll() {
 			}
 
 			// If the node has been removed from headscale, close the stream
-			if slices.Contains(update.Removed, m.node.ID) {
+			if slices.Contains(update.Removed, m.node.ID()) {
 				m.tracef("node removed, closing stream")
 				return
 			}
@@ -279,10 +254,10 @@ func (m *mapSession) serveLongPoll() {
 			var err error
 			var lastMessage string
 
-			// Ensure the node object is updated, for example, there
+			// Ensure the node view is updated, for example, there
 			// might have been a hostinfo update in a sidechannel
 			// which contains data needed to generate a map response.
-			m.node, err = m.h.db.GetNodeByID(m.node.ID)
+			m.node, err = m.h.state.GetNodeViewByID(m.node.ID())
 			if err != nil {
 				m.errf(err, "Could not get machine from db")
 
@@ -327,7 +302,7 @@ func (m *mapSession) serveLongPoll() {
 				updateType = "remove"
 			case types.StateDERPUpdated:
 				m.tracef("Sending DERPUpdate MapResponse")
-				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.DERPMap)
+				data, err = m.mapper.DERPMapResponse(m.req, m.node, m.h.state.DERPMap())
 				updateType = "derp"
 			}
 
@@ -354,10 +329,10 @@ func (m *mapSession) serveLongPoll() {
 					return
 				}
 
-				log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
+				log.Trace().Str("node", m.node.Hostname()).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey().String()).Msg("finished writing mapresp to node")
 
 				if debugHighCardinalityMetrics {
-					mapResponseLastSentSeconds.WithLabelValues(updateType, m.node.ID.String()).Set(float64(time.Now().Unix()))
+					mapResponseLastSentSeconds.WithLabelValues(updateType, m.node.ID().String()).Set(float64(time.Now().Unix()))
 				}
 				mapResponseSent.WithLabelValues("ok", updateType).Inc()
 				m.tracef("update sent")
@@ -385,49 +360,33 @@ func (m *mapSession) serveLongPoll() {
 			}
 
 			if debugHighCardinalityMetrics {
-				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
+				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID().String()).Set(float64(time.Now().Unix()))
 			}
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 		}
 	}
 }
 
-// updateNodeOnlineStatus records the last seen status of a node and notifies peers
-// about change in their online/offline status.
-// It takes a StateUpdateType of either StatePeerOnlineChanged or StatePeerOfflineChanged.
-func (h *Headscale) updateNodeOnlineStatus(online bool, node *types.Node) {
-	change := &tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
-		Online: &online,
-	}
-
-	if !online {
-		now := time.Now()
-
-		// lastSeen is only relevant if the node is disconnected.
-		node.LastSeen = &now
-		change.LastSeen = &now
-	}
-
-	if node.LastSeen != nil {
-		h.db.SetLastSeen(node.ID, *node.LastSeen)
-	}
-
-	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-onlinestatus", node.Hostname)
-	h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerPatch(change), node.ID)
-}
-
 func (m *mapSession) handleEndpointUpdate() {
 	m.tracef("received endpoint update")
 
+	// Get fresh node state from database for accurate route calculations
+	node, err := m.h.state.GetNodeByID(m.node.ID())
+	if err != nil {
+		m.errf(err, "Failed to get fresh node from database for endpoint update")
+		http.Error(m.w, "", http.StatusInternalServerError)
+		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
+		return
+	}
+
 	change := m.node.PeerChangeFromMapRequest(m.req)
 
-	online := m.h.nodeNotifier.IsLikelyConnected(m.node.ID)
+	online := m.h.nodeNotifier.IsLikelyConnected(m.node.ID())
 	change.Online = &online
 
-	m.node.ApplyPeerChange(&change)
+	node.ApplyPeerChange(&change)
 
-	sendUpdate, routesChanged := hostInfoChanged(m.node.Hostinfo, m.req.Hostinfo)
+	sendUpdate, routesChanged := hostInfoChanged(node.Hostinfo, m.req.Hostinfo)
 
 	// The node might not set NetInfo if it has not changed and if
 	// the full HostInfo object is overwritten, the information is lost.
@@ -436,12 +395,12 @@ func (m *mapSession) handleEndpointUpdate() {
 	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
 	// TODO(kradalby): evaluate if we need better comparing of hostinfo
 	// before we take the changes.
-	if m.req.Hostinfo.NetInfo == nil && m.node.Hostinfo != nil {
-		m.req.Hostinfo.NetInfo = m.node.Hostinfo.NetInfo
+	if m.req.Hostinfo.NetInfo == nil && node.Hostinfo != nil {
+		m.req.Hostinfo.NetInfo = node.Hostinfo.NetInfo
 	}
-	m.node.Hostinfo = m.req.Hostinfo
+	node.Hostinfo = m.req.Hostinfo
 
-	logTracePeerChange(m.node.Hostname, sendUpdate, &change)
+	logTracePeerChange(node.Hostname, sendUpdate, &change)
 
 	// If there is no changes and nothing to save,
 	// return early.
@@ -450,42 +409,40 @@ func (m *mapSession) handleEndpointUpdate() {
 		return
 	}
 
-	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update them in
-	// the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the route change.
-	// If the hostinfo has changed, but not the routes, just update
-	// hostinfo and let the function continue.
-	if routesChanged {
+	// Auto approve any routes that have been defined in policy as
+	// auto approved. Check if this actually changed the node.
+	routesAutoApproved := m.h.state.AutoApproveRoutes(node)
+
+	// Always update routes for connected nodes to handle reconnection scenarios
+	// where routes need to be restored to the primary routes system
+	routesToSet := node.SubnetRoutes()
+
+	if m.h.state.SetNodeRoutes(node.ID, routesToSet...) {
+		ctx := types.NotifyCtx(m.ctx, "poll-primary-change", node.Hostname)
+		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	} else if routesChanged {
+		// Only send peer changed notification if routes actually changed
+		ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", node.Hostname)
+		m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
+
 		// TODO(kradalby): I am not sure if we need this?
-		nodesChangedHook(m.h.db, m.h.polMan, m.h.nodeNotifier)
+		// Send an update to the node itself with to ensure it
+		// has an updated packetfilter allowing the new route
+		// if it is defined in the ACL.
+		ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", node.Hostname)
+		m.h.nodeNotifier.NotifyByNodeID(
+			ctx,
+			types.UpdateSelf(node.ID),
+			node.ID)
+	}
 
-		// Approve any route that has been defined in policy as
-		// auto approved. Any change here is not important as any
-		// actual state change will be detected when the route manager
-		// is updated.
-		policy.AutoApproveRoutes(m.h.polMan, m.node)
-
-		// Update the routes of the given node in the route manager to
-		// see if an update needs to be sent.
-		if m.h.primaryRoutes.SetRoutes(m.node.ID, m.node.SubnetRoutes()...) {
-			ctx := types.NotifyCtx(m.ctx, "poll-primary-change", m.node.Hostname)
-			m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		} else {
-			ctx := types.NotifyCtx(m.ctx, "cli-approveroutes", m.node.Hostname)
-			m.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(m.node.ID), m.node.ID)
-
-			// TODO(kradalby): I am not sure if we need this?
-			// Send an update to the node itself with to ensure it
-			// has an updated packetfilter allowing the new route
-			// if it is defined in the ACL.
-			ctx = types.NotifyCtx(m.ctx, "poll-nodeupdate-self-hostinfochange", m.node.Hostname)
-			m.h.nodeNotifier.NotifyByNodeID(
-				ctx,
-				types.UpdateSelf(m.node.ID),
-				m.node.ID)
+	// If routes were auto-approved, we need to save the node to persist the changes
+	if routesAutoApproved {
+		if _, _, err := m.h.state.SaveNode(node); err != nil {
+			m.errf(err, "Failed to save auto-approved routes to node")
+			http.Error(m.w, "", http.StatusInternalServerError)
+			mapResponseEndpointUpdates.WithLabelValues("error").Inc()
+			return
 		}
 	}
 
@@ -493,9 +450,10 @@ func (m *mapSession) handleEndpointUpdate() {
 	// in the database. Then send a Changed update
 	// (containing the whole node object) to peers to inform about
 	// the hostname change.
-	m.node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
+	node.ApplyHostnameFromHostInfo(m.req.Hostinfo)
 
-	if err := m.h.db.DB.Save(m.node).Error; err != nil {
+	_, policyChanged, err := m.h.state.SaveNode(node)
+	if err != nil {
 		m.errf(err, "Failed to persist/update node in the database")
 		http.Error(m.w, "", http.StatusInternalServerError)
 		mapResponseEndpointUpdates.WithLabelValues("error").Inc()
@@ -503,11 +461,17 @@ func (m *mapSession) handleEndpointUpdate() {
 		return
 	}
 
-	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", m.node.Hostname)
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-policy", node.Hostname)
+		m.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	}
+
+	ctx := types.NotifyCtx(context.Background(), "poll-nodeupdate-peers-patch", node.Hostname)
 	m.h.nodeNotifier.NotifyWithIgnore(
 		ctx,
-		types.UpdatePeerChanged(m.node.ID),
-		m.node.ID,
+		types.UpdatePeerChanged(node.ID),
+		node.ID,
 	)
 
 	m.w.WriteHeader(http.StatusOK)
@@ -625,6 +589,53 @@ func logPollFunc(
 				Bool("stream", mapRequest.Stream).
 				Uint64("node.id", node.ID.Uint64()).
 				Str("node", node.Hostname).
+				Err(err).
+				Msgf(msg, a...)
+		}
+}
+
+func logPollFuncView(
+	mapRequest tailcfg.MapRequest,
+	nodeView types.NodeView,
+) (func(string, ...any), func(string, ...any), func(string, ...any), func(error, string, ...any)) {
+	return func(msg string, a ...any) {
+			log.Warn().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Uint64("node.id", nodeView.ID().Uint64()).
+				Str("node", nodeView.Hostname()).
+				Msgf(msg, a...)
+		},
+		func(msg string, a ...any) {
+			log.Info().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Uint64("node.id", nodeView.ID().Uint64()).
+				Str("node", nodeView.Hostname()).
+				Msgf(msg, a...)
+		},
+		func(msg string, a ...any) {
+			log.Trace().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Uint64("node.id", nodeView.ID().Uint64()).
+				Str("node", nodeView.Hostname()).
+				Msgf(msg, a...)
+		},
+		func(err error, msg string, a ...any) {
+			log.Error().
+				Caller().
+				Bool("readOnly", mapRequest.ReadOnly).
+				Bool("omitPeers", mapRequest.OmitPeers).
+				Bool("stream", mapRequest.Stream).
+				Uint64("node.id", nodeView.ID().Uint64()).
+				Str("node", nodeView.Hostname()).
 				Err(err).
 				Msgf(msg, a...)
 		}

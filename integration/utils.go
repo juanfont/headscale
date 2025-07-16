@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v5"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -21,8 +21,13 @@ import (
 )
 
 const (
+	// derpPingTimeout defines the timeout for individual DERP ping operations
+	// Used in DERP connectivity tests to verify relay server communication
 	derpPingTimeout = 2 * time.Second
-	derpPingCount   = 10
+	
+	// derpPingCount defines the number of ping attempts for DERP connectivity tests
+	// Higher count provides better reliability assessment of DERP connectivity
+	derpPingCount = 10
 )
 
 func assertNoErr(t *testing.T, err error) {
@@ -105,6 +110,9 @@ func didClientUseWebsocketForDERP(t *testing.T, client TailscaleClient) bool {
 	return count > 0
 }
 
+// pingAllHelper performs ping tests between all clients and addresses, returning success count.
+// This is used to validate network connectivity in integration tests.
+// Returns the total number of successful ping operations.
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
 	t.Helper()
 	success := 0
@@ -123,6 +131,9 @@ func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts
 	return success
 }
 
+// pingDerpAllHelper performs DERP-based ping tests between all clients and addresses.
+// This specifically tests connectivity through DERP relay servers, which is important
+// for validating NAT traversal and relay functionality. Returns success count.
 func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 	t.Helper()
 	success := 0
@@ -266,7 +277,7 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 
 	// This isn't really relevant for Self as it won't be in its own socket/wireguard.
 	// assert.Truef(t, status.Self.InMagicSock, "%q is not tracked by magicsock", client.Hostname())
-	// assert.Truef(t, status.Self.InEngine, "%q is not in in wireguard engine", client.Hostname())
+	// assert.Truef(t, status.Self.InEngine, "%q is not in wireguard engine", client.Hostname())
 
 	for _, peer := range status.Peer {
 		assert.NotEmptyf(t, peer.HostName, "peer (%s) of %q does not have HostName set, likely missing Hostinfo", peer.DNSName, client.Hostname())
@@ -304,26 +315,28 @@ func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 	assert.NotEqualf(t, 0, report.PreferredDERP, "%q does not have a DERP relay", client.Hostname())
 }
 
-// assertCommandOutputContains executes a command for a set time and asserts that the output
-// reaches a desired state.
-// It should be used instead of sleeping before executing.
+// assertCommandOutputContains executes a command with exponential backoff retry until the output
+// contains the expected string or timeout is reached (10 seconds).
+// This implements eventual consistency patterns and should be used instead of time.Sleep 
+// before executing commands that depend on network state propagation.
+//
+// Timeout: 10 seconds with exponential backoff
+// Use cases: DNS resolution, route propagation, policy updates
 func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []string, contains string) {
 	t.Helper()
 
-	err := backoff.Retry(func() error {
+	_, err := backoff.Retry(t.Context(), func() (struct{}, error) {
 		stdout, stderr, err := c.Execute(command)
 		if err != nil {
-			return fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
+			return struct{}{}, fmt.Errorf("executing command, stdout: %q stderr: %q, err: %w", stdout, stderr, err)
 		}
 
 		if !strings.Contains(stdout, contains) {
-			return fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
 		}
 
-		return nil
-	}, backoff.NewExponentialBackOff(
-		backoff.WithMaxElapsedTime(10*time.Second)),
-	)
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
 
 	assert.NoError(t, err)
 }
@@ -493,6 +506,7 @@ func groupApprover(name string) policyv2.AutoApprover {
 func tagApprover(name string) policyv2.AutoApprover {
 	return ptr.To(policyv2.Tag(name))
 }
+
 //
 // // findPeerByHostname takes a hostname and a map of peers from status.Peer, and returns a *ipnstate.PeerStatus
 // // if there is a peer with the given hostname. If no peer is found, nil is returned.

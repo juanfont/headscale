@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -21,8 +22,10 @@ const (
 	LabelHostnameLength = 63
 )
 
-var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
-var invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
+var (
+	invalidDNSRegex         = regexp.MustCompile("[^a-z0-9-.]+")
+	invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
+)
 
 var ErrInvalidUserName = errors.New("invalid user name")
 
@@ -37,9 +40,9 @@ func ValidateUsername(username string) error {
 		return errors.New("username must be at least 2 characters long")
 	}
 
-	// Ensure the username does not start with a number
-	if unicode.IsDigit(rune(username[0])) {
-		return errors.New("username cannot start with a number")
+	// Ensure the username starts with a letter
+	if !unicode.IsLetter(rune(username[0])) {
+		return errors.New("username must start with a letter")
 	}
 
 	atCount := 0
@@ -141,7 +144,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
 	for i := lastOctet - 1; i >= 0; i-- {
-		rdnsSlice = append(rdnsSlice, fmt.Sprintf("%d", netRange.IP[i]))
+		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(netRange.IP[i]), 10))
 	}
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
 	rdnsBase := strings.Join(rdnsSlice, ".")
@@ -205,7 +208,7 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	makeDomain := func(variablePrefix ...string) (dnsname.FQDN, error) {
 		prefix := strings.Join(append(variablePrefix, prefixConstantParts...), ".")
 
-		return dnsname.ToFQDN(fmt.Sprintf("%s.ip6.arpa", prefix))
+		return dnsname.ToFQDN(prefix + ".ip6.arpa")
 	}
 
 	var fqdns []dnsname.FQDN

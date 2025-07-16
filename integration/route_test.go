@@ -4,12 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"time"
-
-	"slices"
 
 	cmpdiff "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -37,7 +36,6 @@ var allPorts = filter.PortRange{First: 0, Last: 0xffff}
 // routes.
 func TestEnablingRoutes(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 3,
@@ -182,11 +180,12 @@ func TestEnablingRoutes(t *testing.T) {
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
 
-			if peerStatus.ID == "1" {
+			switch peerStatus.ID {
+			case "1":
 				requirePeerSubnetRoutes(t, peerStatus, nil)
-			} else if peerStatus.ID == "2" {
+			case "2":
 				requirePeerSubnetRoutes(t, peerStatus, nil)
-			} else {
+			default:
 				requirePeerSubnetRoutes(t, peerStatus, []netip.Prefix{netip.MustParsePrefix("10.0.2.0/24")})
 			}
 		}
@@ -195,7 +194,6 @@ func TestEnablingRoutes(t *testing.T) {
 
 func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 3,
@@ -779,7 +777,6 @@ func TestHASubnetRouterFailover(t *testing.T) {
 // https://github.com/juanfont/headscale/issues/1604
 func TestSubnetRouteACL(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user := "user4"
 
@@ -1003,7 +1000,6 @@ func TestSubnetRouteACL(t *testing.T) {
 // set during login instead of set.
 func TestEnablingExitRoutes(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	user := "user2"
 
@@ -1097,7 +1093,6 @@ func TestEnablingExitRoutes(t *testing.T) {
 // subnet router is working as expected.
 func TestSubnetRouterMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -1177,7 +1172,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 	// Enable route
 	_, err = headscale.ApproveRoutes(
-		nodes[0].Id,
+		nodes[0].GetId(),
 		[]netip.Prefix{*pref},
 	)
 	require.NoError(t, err)
@@ -1224,7 +1219,6 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -1300,7 +1294,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	}
 
 	// Enable route
-	_, err = headscale.ApproveRoutes(nodes[0].Id, []netip.Prefix{tsaddr.AllIPv4()})
+	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{tsaddr.AllIPv4()})
 	require.NoError(t, err)
 
 	time.Sleep(5 * time.Second)
@@ -1719,7 +1713,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						pak, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
 						assertNoErr(t, err)
 
-						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.Key)
+						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.GetKey())
 						assertNoErr(t, err)
 					}
 					// extra creation end.
@@ -2065,7 +2059,6 @@ func requireNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, sub
 // that are explicitly allowed in the ACL.
 func TestSubnetRouteACLFiltering(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	// Use router and node users for better clarity
 	routerUser := "router"
@@ -2090,7 +2083,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	// Set up the ACL policy that allows the node to access only one of the subnet routes (10.10.10.0/24)
-	aclPolicyStr := fmt.Sprintf(`{
+	aclPolicyStr := `{
 		"hosts": {
 			"router": "100.64.0.1/32",
 			"node": "100.64.0.2/32"
@@ -2115,7 +2108,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 				]
 			}
 		]
-	}`)
+	}`
 
 	route, err := scenario.SubnetOfNetwork("usernet1")
 	require.NoError(t, err)

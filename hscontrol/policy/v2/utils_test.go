@@ -73,10 +73,10 @@ func TestParsePortRange(t *testing.T) {
 		expected []tailcfg.PortRange
 		err      string
 	}{
-		{"80", []tailcfg.PortRange{{80, 80}}, ""},
-		{"80-90", []tailcfg.PortRange{{80, 90}}, ""},
-		{"80,90", []tailcfg.PortRange{{80, 80}, {90, 90}}, ""},
-		{"80-91,92,93-95", []tailcfg.PortRange{{80, 91}, {92, 92}, {93, 95}}, ""},
+		{"80", []tailcfg.PortRange{{First: 80, Last: 80}}, ""},
+		{"80-90", []tailcfg.PortRange{{First: 80, Last: 90}}, ""},
+		{"80,90", []tailcfg.PortRange{{First: 80, Last: 80}, {First: 90, Last: 90}}, ""},
+		{"80-91,92,93-95", []tailcfg.PortRange{{First: 80, Last: 91}, {First: 92, Last: 92}, {First: 93, Last: 95}}, ""},
 		{"*", []tailcfg.PortRange{tailcfg.PortRangeAny}, ""},
 		{"80-", nil, "invalid port range format"},
 		{"-90", nil, "invalid port range format"},

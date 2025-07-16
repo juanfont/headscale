@@ -15,7 +15,6 @@ import (
 
 func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -49,43 +48,29 @@ func TestResolveMagicDNS(t *testing.T) {
 			// It is safe to ignore this error as we handled it when caching it
 			peerFQDN, _ := peer.FQDN()
 
-			assert.Equal(t, fmt.Sprintf("%s.headscale.net.", peer.Hostname()), peerFQDN)
+			assert.Equal(t, peer.Hostname()+".headscale.net.", peerFQDN)
 
-			command := []string{
-				"tailscale",
-				"ip", peerFQDN,
-			}
-			result, _, err := client.Execute(command)
-			if err != nil {
-				t.Fatalf(
-					"failed to execute resolve/ip command %s from %s: %s",
-					peerFQDN,
-					client.Hostname(),
-					err,
-				)
-			}
-
-			ips, err := peer.IPs()
-			if err != nil {
-				t.Fatalf(
-					"failed to get ips for %s: %s",
-					peer.Hostname(),
-					err,
-				)
-			}
-
-			for _, ip := range ips {
-				if !strings.Contains(result, ip.String()) {
-					t.Fatalf("ip %s is not found in \n%s\n", ip.String(), result)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				command := []string{
+					"tailscale",
+					"ip", peerFQDN,
 				}
-			}
+				result, _, err := client.Execute(command)
+				assert.NoError(ct, err, "Failed to execute resolve/ip command %s from %s", peerFQDN, client.Hostname())
+
+				ips, err := peer.IPs()
+				assert.NoError(ct, err, "Failed to get IPs for %s", peer.Hostname())
+
+				for _, ip := range ips {
+					assert.Contains(ct, result, ip.String(), "IP %s should be found in DNS resolution result from %s to %s", ip.String(), client.Hostname(), peer.Hostname())
+				}
+			}, 30*time.Second, 2*time.Second)
 		}
 	}
 }
 
 func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -222,12 +207,14 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	_, err = hs.Execute([]string{"rm", erPath})
 	assertNoErr(t, err)
 
-	time.Sleep(2 * time.Second)
-
 	// The same paths should still be available as it is not cleared on delete.
-	for _, client := range allClients {
-		assertCommandOutputContains(t, client, []string{"dig", "docker.myvpn.example.com"}, "9.9.9.9")
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			result, _, err := client.Execute([]string{"dig", "docker.myvpn.example.com"})
+			assert.NoError(ct, err)
+			assert.Contains(ct, result, "9.9.9.9")
+		}
+	}, 10*time.Second, 1*time.Second)
 
 	// Write a new file, the backoff mechanism should make the filewatcher pick it up
 	// again.

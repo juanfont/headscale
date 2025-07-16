@@ -61,12 +61,12 @@ of Headscale:
 
 1. An environment with 1000 servers
 
-    - they rarely  "move" (change their endpoints)
-    - new nodes are added rarely
+   - they rarely "move" (change their endpoints)
+   - new nodes are added rarely
 
 2. An environment with 80 laptops/phones (end user devices)
 
-    - nodes move often, e.g. switching from home to office
+   - nodes move often, e.g. switching from home to office
 
 Headscale calculates a map of all nodes that need to talk to each other,
 creating this "world map" requires a lot of CPU time. When an event that
@@ -121,7 +121,6 @@ help to the community.
 ## Can I use headscale and tailscale on the same machine?
 
 Running headscale on a machine that is also in the tailnet can cause problems with subnet routers, traffic relay nodes, and MagicDNS. It might work, but it is not supported.
-
 
 ## Why do two nodes see each other in their status, even if an ACL allows traffic only in one direction?
 

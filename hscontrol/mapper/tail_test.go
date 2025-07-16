@@ -202,7 +202,7 @@ func TestTailNode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{}, types.Nodes{tt.node})
+			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{}, types.Nodes{tt.node}.ViewSlice())
 			require.NoError(t, err)
 			primary := routes.New()
 			cfg := &types.Config{
@@ -216,7 +216,7 @@ func TestTailNode(t *testing.T) {
 			// This should be baked into the test case proper if it is extended in the future.
 			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
 			got, err := tailNode(
-				tt.node,
+				tt.node.View(),
 				0,
 				polMan,
 				func(id types.NodeID) []netip.Prefix {
@@ -272,11 +272,11 @@ func TestNodeExpiry(t *testing.T) {
 				GivenName: "test",
 				Expiry:    tt.exp,
 			}
-			polMan, err := policy.NewPolicyManager(nil, nil, nil)
+			polMan, err := policy.NewPolicyManager(nil, nil, types.Nodes{}.ViewSlice())
 			require.NoError(t, err)
 
 			tn, err := tailNode(
-				node,
+				node.View(),
 				0,
 				polMan,
 				func(id types.NodeID) []netip.Prefix {

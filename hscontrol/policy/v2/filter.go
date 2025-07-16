@@ -10,17 +10,16 @@ import (
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/views"
 )
 
-var (
-	ErrInvalidAction = errors.New("invalid action")
-)
+var ErrInvalidAction = errors.New("invalid action")
 
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *Policy) compileFilterRules(
 	users types.Users,
-	nodes types.Nodes,
+	nodes views.Slice[types.NodeView],
 ) ([]tailcfg.FilterRule, error) {
 	if pol == nil {
 		return tailcfg.FilterAllowAll, nil
@@ -51,7 +50,7 @@ func (pol *Policy) compileFilterRules(
 
 		var destPorts []tailcfg.NetPortRange
 		for _, dest := range acl.Destinations {
-			ips, err := dest.Alias.Resolve(pol, users, nodes)
+			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Err(err).Msgf("resolving destination ips")
 			}
@@ -97,8 +96,8 @@ func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 
 func (pol *Policy) compileSSHPolicy(
 	users types.Users,
-	node *types.Node,
-	nodes types.Nodes,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
 ) (*tailcfg.SSHPolicy, error) {
 	if pol == nil || pol.SSHs == nil || len(pol.SSHs) == 0 {
 		return nil, nil
@@ -173,5 +172,6 @@ func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
 	for _, pref := range ips.Prefixes() {
 		out = append(out, pref.String())
 	}
+
 	return out
 }

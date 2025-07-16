@@ -176,7 +176,7 @@ nav:
           - Windows: usage/connect/windows.md
   - Reference:
       - Configuration: ref/configuration.md
-      - OIDC authentication: ref/oidc.md
+      - OpenID Connect: ref/oidc.md
       - Routes: ref/routes.md
       - TLS: ref/tls.md
       - ACLs: ref/acls.md

@@ -19,6 +19,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
         buildGo = pkgs.buildGo124Module;
+        vendorHash = "sha256-S2GnCg2dyfjIyi5gXhVEuRs5Bop2JAhZcnhg1fu4/Gg=";
       in {
         headscale = buildGo {
           pname = "headscale";
@@ -30,7 +31,7 @@
 
           # When updating go.mod or go.sum, a new sha will need to be calculated,
           # update this if you have a mismatch after doing a change to those files.
-          vendorHash = "sha256-dR8xmUIDMIy08lhm7r95GNNMAbXv4qSH3v9HR40HlNk=";
+          inherit vendorHash;
 
           subPackages = ["cmd/headscale"];
 
@@ -40,6 +41,17 @@
             "-X github.com/juanfont/headscale/hscontrol/types.Version=${headscaleVersion}"
             "-X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=${commitHash}"
           ];
+        };
+
+        hi = buildGo {
+          pname = "hi";
+          version = headscaleVersion;
+          src = pkgs.lib.cleanSource self;
+
+          checkFlags = ["-short"];
+          inherit vendorHash;
+
+          subPackages = ["cmd/hi"];
         };
 
         protoc-gen-grpc-gateway = buildGo rec {
@@ -101,9 +113,9 @@
           buildGoModule = buildGo;
         };
 
-        gopls = prev.gopls.override {
-          buildGoModule = buildGo;
-        };
+        # gopls = prev.gopls.override {
+        #   buildGoModule = buildGo;
+        # };
       };
     }
     // flake-utils.lib.eachDefaultSystem
@@ -144,7 +156,11 @@
           buf
           clang-tools # clang-format
           protobuf-language-server
-        ];
+
+          # Add hi to make it even easier to use ci runner.
+          hi
+        ]
+        ++ lib.optional pkgs.stdenv.isLinux [traceroute];
 
       # Add entry to build a docker image with headscale
       # caveat: only works on Linux

@@ -5,38 +5,38 @@ import (
 	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/views"
 )
 
 // ReduceNodes returns the list of peers authorized to be accessed from a given node.
 func ReduceNodes(
-	node *types.Node,
-	nodes types.Nodes,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
 	matchers []matcher.Match,
-) types.Nodes {
-	var result types.Nodes
+) views.Slice[types.NodeView] {
+	var result []types.NodeView
 
-	for index, peer := range nodes {
-		if peer.ID == node.ID {
+	for _, peer := range nodes.All() {
+		if peer.ID() == node.ID() {
 			continue
 		}
 
-		if node.CanAccess(matchers, nodes[index]) || peer.CanAccess(matchers, node) {
+		if node.CanAccess(matchers, peer) || peer.CanAccess(matchers, node) {
 			result = append(result, peer)
 		}
 	}
 
-	return result
+	return views.SliceOf(result)
 }
 
 // ReduceRoutes returns a reduced list of routes for a given node that it can access.
 func ReduceRoutes(
-	node *types.Node,
+	node types.NodeView,
 	routes []netip.Prefix,
 	matchers []matcher.Match,
 ) []netip.Prefix {
@@ -51,9 +51,36 @@ func ReduceRoutes(
 	return result
 }
 
+// BuildPeerMap builds a map of all peers that can be accessed by each node.
+func BuildPeerMap(
+	nodes views.Slice[types.NodeView],
+	matchers []matcher.Match,
+) map[types.NodeID][]types.NodeView {
+	ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
+
+	// Build the map of all peers according to the matchers.
+	// Compared to ReduceNodes, which builds the list per node, we end up with doing
+	// the full work for every node (On^2), while this will reduce the list as we see
+	// relationships while building the map, making it O(n^2/2) in the end, but with less work per node.
+	for i := range nodes.Len() {
+		for j := i + 1; j < nodes.Len(); j++ {
+			if nodes.At(i).ID() == nodes.At(j).ID() {
+				continue
+			}
+
+			if nodes.At(i).CanAccess(matchers, nodes.At(j)) || nodes.At(j).CanAccess(matchers, nodes.At(i)) {
+				ret[nodes.At(i).ID()] = append(ret[nodes.At(i).ID()], nodes.At(j))
+				ret[nodes.At(j).ID()] = append(ret[nodes.At(j).ID()], nodes.At(i))
+			}
+		}
+	}
+
+	return ret
+}
+
 // ReduceFilterRules takes a node and a set of rules and removes all rules and destinations
 // that are not relevant to that particular node.
-func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcfg.FilterRule {
 	ret := []tailcfg.FilterRule{}
 
 	for _, rule := range rules {
@@ -75,9 +102,10 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 
 			// If the node exposes routes, ensure they are note removed
 			// when the filters are reduced.
-			if node.Hostinfo != nil {
-				if len(node.Hostinfo.RoutableIPs) > 0 {
-					for _, routableIP := range node.Hostinfo.RoutableIPs {
+			if node.Hostinfo().Valid() {
+				routableIPs := node.Hostinfo().RoutableIPs()
+				if routableIPs.Len() > 0 {
+					for _, routableIP := range routableIPs.All() {
 						if expanded.OverlapsPrefix(routableIP) {
 							dests = append(dests, dest)
 							continue DEST_LOOP
@@ -102,13 +130,15 @@ func ReduceFilterRules(node *types.Node, rules []tailcfg.FilterRule) []tailcfg.F
 // AutoApproveRoutes approves any route that can be autoapproved from
 // the nodes perspective according to the given policy.
 // It reports true if any routes were approved.
+// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes.
 func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 	if pm == nil {
 		return false
 	}
+	nodeView := node.View()
 	var newApproved []netip.Prefix
-	for _, route := range node.AnnouncedRoutes() {
-		if pm.NodeCanApproveRoute(node, route) {
+	for _, route := range nodeView.AnnouncedRoutes() {
+		if pm.NodeCanApproveRoute(nodeView, route) {
 			newApproved = append(newApproved, route)
 		}
 	}

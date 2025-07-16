@@ -1077,7 +1077,6 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -1213,7 +1212,6 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 
 func TestACLAutogroupMember(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := aclScenario(t,
 		&policyv2.Policy{
@@ -1271,7 +1269,6 @@ func TestACLAutogroupMember(t *testing.T) {
 
 func TestACLAutogroupTagged(t *testing.T) {
 	IntegrationSkip(t)
-	t.Parallel()
 
 	scenario := aclScenario(t,
 		&policyv2.Policy{

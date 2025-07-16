@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,9 +16,11 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
+	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -27,11 +30,22 @@ import (
 	"zgo.at/zcache/v2"
 )
 
+//go:embed schema.sql
+var dbSchema string
+
 func init() {
 	schema.RegisterSerializer("text", TextSerialiser{})
 }
 
 var errDatabaseNotSupported = errors.New("database type not supported")
+
+var errForeignKeyConstraintsViolated = errors.New("foreign key constraints violated")
+
+const (
+	maxIdleConns       = 100
+	maxOpenConns       = 100
+	contextTimeoutSecs = 10
+)
 
 // KV is a key-value store in a psql table. For future use...
 // TODO(kradalby): Is this used for anything?
@@ -471,6 +485,7 @@ func NewHeadscaleDatabase(
 
 					// Drop the old table.
 					_ = tx.Migrator().DropTable(&preAuthKeyACLTag{})
+
 					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
@@ -602,7 +617,7 @@ COMMIT;
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
-			// Ensure there are no nodes refering to a deleted preauthkey.
+			// Ensure there are no nodes referring to a deleted preauthkey.
 			{
 				ID: "202502070949",
 				Migrate: func(tx *gorm.DB) error {
@@ -718,11 +733,238 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			// Schema migration to ensure all tables match the expected schema.
+			// This migration recreates all tables to match the exact structure in schema.sql,
+			// preserving all data during the process.
+			// Only SQLite will be migrated for consistency.
+			{
+				ID: "202507021200",
+				Migrate: func(tx *gorm.DB) error {
+					// Only run on SQLite
+					if cfg.Type != types.DatabaseSqlite {
+						log.Info().Msg("Skipping schema migration on non-SQLite database")
+						return nil
+					}
+
+					log.Info().Msg("Starting schema recreation with table renaming")
+
+					// Rename existing tables to _old versions
+					tablesToRename := []string{"users", "pre_auth_keys", "api_keys", "nodes", "policies"}
+
+					// Check if routes table exists and drop it (should have been migrated already)
+					var routesExists bool
+					err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='routes'").Row().Scan(&routesExists)
+					if err == nil && routesExists {
+						log.Info().Msg("Dropping leftover routes table")
+						if err := tx.Exec("DROP TABLE routes").Error; err != nil {
+							return fmt.Errorf("dropping routes table: %w", err)
+						}
+					}
+
+					// Drop all indexes first to avoid conflicts
+					indexesToDrop := []string{
+						"idx_users_deleted_at",
+						"idx_provider_identifier",
+						"idx_name_provider_identifier",
+						"idx_name_no_provider_identifier",
+						"idx_api_keys_prefix",
+						"idx_policies_deleted_at",
+					}
+
+					for _, index := range indexesToDrop {
+						_ = tx.Exec("DROP INDEX IF EXISTS " + index).Error
+					}
+
+					for _, table := range tablesToRename {
+						// Check if table exists before renaming
+						var exists bool
+						err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Row().Scan(&exists)
+						if err != nil {
+							return fmt.Errorf("checking if table %s exists: %w", table, err)
+						}
+
+						if exists {
+							// Drop old table if it exists from previous failed migration
+							_ = tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error
+
+							// Rename current table to _old
+							if err := tx.Exec("ALTER TABLE " + table + " RENAME TO " + table + "_old").Error; err != nil {
+								return fmt.Errorf("renaming table %s to %s_old: %w", table, table, err)
+							}
+						}
+					}
+
+					// Create new tables with correct schema
+					tableCreationSQL := []string{
+						`CREATE TABLE users(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  name text,
+  display_name text,
+  email text,
+  provider_identifier text,
+  provider text,
+  profile_pic_url text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+)`,
+						`CREATE TABLE pre_auth_keys(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  key text,
+  user_id integer,
+  reusable numeric,
+  ephemeral numeric DEFAULT false,
+  used numeric DEFAULT false,
+  tags text,
+  expiration datetime,
+  created_at datetime,
+  CONSTRAINT fk_pre_auth_keys_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
+)`,
+						`CREATE TABLE api_keys(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  prefix text,
+  hash blob,
+  expiration datetime,
+  last_seen datetime,
+  created_at datetime
+)`,
+						`CREATE TABLE nodes(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  machine_key text,
+  node_key text,
+  disco_key text,
+  endpoints text,
+  host_info text,
+  ipv4 text,
+  ipv6 text,
+  hostname text,
+  given_name varchar(63),
+  user_id integer,
+  register_method text,
+  forced_tags text,
+  auth_key_id integer,
+  last_seen datetime,
+  expiry datetime,
+  approved_routes text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime,
+  CONSTRAINT fk_nodes_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES pre_auth_keys(id)
+)`,
+						`CREATE TABLE policies(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  data text,
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime
+)`,
+					}
+
+					for _, createSQL := range tableCreationSQL {
+						if err := tx.Exec(createSQL).Error; err != nil {
+							return fmt.Errorf("creating new table: %w", err)
+						}
+					}
+
+					// Copy data directly using SQL
+					dataCopySQL := []string{
+						`INSERT INTO users (id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at)
+             SELECT id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at 
+             FROM users_old`,
+
+						`INSERT INTO pre_auth_keys (id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at)
+             SELECT id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at 
+             FROM pre_auth_keys_old`,
+
+						`INSERT INTO api_keys (id, prefix, hash, expiration, last_seen, created_at)
+             SELECT id, prefix, hash, expiration, last_seen, created_at 
+             FROM api_keys_old`,
+
+						`INSERT INTO nodes (id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at)
+             SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at 
+             FROM nodes_old`,
+
+						`INSERT INTO policies (id, data, created_at, updated_at, deleted_at)
+             SELECT id, data, created_at, updated_at, deleted_at 
+             FROM policies_old`,
+					}
+
+					for _, copySQL := range dataCopySQL {
+						if err := tx.Exec(copySQL).Error; err != nil {
+							return fmt.Errorf("copying data: %w", err)
+						}
+					}
+
+					// Create indexes
+					indexes := []string{
+						"CREATE INDEX idx_users_deleted_at ON users(deleted_at)",
+						`CREATE UNIQUE INDEX idx_provider_identifier ON users(
+  provider_identifier
+) WHERE provider_identifier IS NOT NULL`,
+						`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(
+  name,
+  provider_identifier
+)`,
+						`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
+  name
+) WHERE provider_identifier IS NULL`,
+						"CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)",
+						"CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)",
+					}
+
+					for _, indexSQL := range indexes {
+						if err := tx.Exec(indexSQL).Error; err != nil {
+							return fmt.Errorf("creating index: %w", err)
+						}
+					}
+
+					// Drop old tables only after everything succeeds
+					for _, table := range tablesToRename {
+						if err := tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error; err != nil {
+							log.Warn().Str("table", table+"_old").Err(err).Msg("Failed to drop old table, but migration succeeded")
+						}
+					}
+
+					log.Info().Msg("Schema recreation completed successfully")
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			// From this point, the following rules must be followed:
+			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
+			// - AutoMigrate depends on the struct staying exactly the same, which it wont over time.
+			// - Never write migrations that requires foreign keys to be disabled.
 		},
 	)
 
 	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
+	}
+
+	// Validate that the schema ends up in the expected state.
+	// This is currently only done on sqlite as squibble does not
+	// support Postgres and we use our sqlite schema as our source of
+	// truth.
+	if cfg.Type == types.DatabaseSqlite {
+		sqlConn, err := dbConn.DB()
+		if err != nil {
+			return nil, fmt.Errorf("getting DB from gorm: %w", err)
+		}
+
+		// or else it blocks...
+		sqlConn.SetMaxIdleConns(maxIdleConns)
+		sqlConn.SetMaxOpenConns(maxOpenConns)
+		defer sqlConn.SetMaxIdleConns(1)
+		defer sqlConn.SetMaxOpenConns(1)
+
+		ctx, cancel := context.WithTimeout(context.Background(), contextTimeoutSecs*time.Second)
+		defer cancel()
+
+		if err := squibble.Validate(ctx, sqlConn, dbSchema); err != nil {
+			return nil, fmt.Errorf("validating schema: %w", err)
+		}
 	}
 
 	db := HSDatabase{
@@ -758,31 +1000,25 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			Str("path", cfg.Sqlite.Path).
 			Msg("Opening database")
 
+		// Build SQLite configuration with pragmas set at connection time
+		sqliteConfig := sqliteconfig.Default(cfg.Sqlite.Path)
+		if cfg.Sqlite.WriteAheadLog {
+			sqliteConfig.JournalMode = sqliteconfig.JournalModeWAL
+			sqliteConfig.WALAutocheckpoint = cfg.Sqlite.WALAutoCheckPoint
+		}
+
+		connectionURL, err := sqliteConfig.ToURL()
+		if err != nil {
+			return nil, fmt.Errorf("building sqlite connection URL: %w", err)
+		}
+
 		db, err := gorm.Open(
-			sqlite.Open(cfg.Sqlite.Path),
+			sqlite.Open(connectionURL),
 			&gorm.Config{
 				PrepareStmt: cfg.Gorm.PrepareStmt,
 				Logger:      dbLogger,
 			},
 		)
-
-		if err := db.Exec(`
-			PRAGMA foreign_keys=ON;
-			PRAGMA busy_timeout=10000;
-			PRAGMA auto_vacuum=INCREMENTAL;
-			PRAGMA synchronous=NORMAL;
-			`).Error; err != nil {
-			return nil, fmt.Errorf("enabling foreign keys: %w", err)
-		}
-
-		if cfg.Sqlite.WriteAheadLog {
-			if err := db.Exec(fmt.Sprintf(`
-				PRAGMA journal_mode=WAL;
-				PRAGMA wal_autocheckpoint=%d;
-				`, cfg.Sqlite.WALAutoCheckPoint)).Error; err != nil {
-				return nil, fmt.Errorf("setting WAL mode: %w", err)
-			}
-		}
 
 		// The pure Go SQLite library does not handle locking in
 		// the same way as the C based one and we can't use the gorm
@@ -812,7 +1048,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 				dbString += " sslmode=disable"
 			}
 		} else {
-			dbString += fmt.Sprintf(" sslmode=%s", cfg.Postgres.Ssl)
+			dbString += " sslmode=" + cfg.Postgres.Ssl
 		}
 
 		if cfg.Postgres.Port != 0 {
@@ -820,7 +1056,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 		}
 
 		if cfg.Postgres.Pass != "" {
-			dbString += fmt.Sprintf(" password=%s", cfg.Postgres.Pass)
+			dbString += " password=" + cfg.Postgres.Pass
 		}
 
 		db, err := gorm.Open(postgres.Open(dbString), &gorm.Config{
@@ -848,29 +1084,84 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 }
 
 func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormigrate.Gormigrate) error {
-	// Turn off foreign keys for the duration of the migration if using sqlite to
-	// prevent data loss due to the way the GORM migrator handles certain schema
-	// changes.
 	if cfg.Type == types.DatabaseSqlite {
-		var fkEnabled int
-		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkEnabled).Error; err != nil {
+		// SQLite: Run migrations step-by-step, only disabling foreign keys when necessary
+
+		// List of migration IDs that require foreign keys to be disabled
+		// These are migrations that perform complex schema changes that GORM cannot handle safely with FK enabled
+		// NO NEW MIGRATIONS SHOULD BE ADDED HERE. ALL NEW MIGRATIONS MUST RUN WITH FOREIGN KEYS ENABLED.
+		migrationsRequiringFKDisabled := map[string]bool{
+			"202312101416":  true, // Initial migration with complex table/column renames
+			"202402151347":  true, // Migration that removes last_successful_update column
+			"2024041121742": true, // Migration that changes IP address storage format
+			"202407191627":  true, // User table automigration with FK constraint issues
+			"202408181235":  true, // User table automigration with FK constraint issues
+			"202501221827":  true, // Route table automigration with FK constraint issues
+			"202501311657":  true, // PreAuthKey table automigration with FK constraint issues
+			// Add other migration IDs here as they are identified to need FK disabled
+		}
+
+		// Get the current foreign key status
+		var fkOriginallyEnabled int
+		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkOriginallyEnabled).Error; err != nil {
 			return fmt.Errorf("checking foreign key status: %w", err)
 		}
-		if fkEnabled == 1 {
-			if err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
-				return fmt.Errorf("disabling foreign keys: %w", err)
-			}
-			defer dbConn.Exec("PRAGMA foreign_keys = ON")
+
+		// Get all migration IDs in order from the actual migration definitions
+		// Only IDs that are in the migrationsRequiringFKDisabled map will be processed with FK disabled
+		// any other new migrations are ran after.
+		migrationIDs := []string{
+			"202312101416",
+			"202312101430",
+			"202402151347",
+			"2024041121742",
+			"202406021630",
+			"202407191627",
+			"202408181235",
+			"202409271400",
+			"202501221827",
+			"202501311657",
+			"202502070949",
+			"202502131714",
+			"202502171819",
+			"202505091439",
+			"202505141324",
+			// As of 2025-07-02, no new IDs should be added here.
+			// They will be ran by the migrations.Migrate() call below.
 		}
-	}
 
-	if err := migrations.Migrate(); err != nil {
-		return err
-	}
+		for _, migrationID := range migrationIDs {
+			log.Trace().Str("migration_id", migrationID).Msg("Running migration")
+			needsFKDisabled := migrationsRequiringFKDisabled[migrationID]
 
-	// Since we disabled foreign keys for the migration, we need to check for
-	// constraint violations manually at the end of the migration.
-	if cfg.Type == types.DatabaseSqlite {
+			if needsFKDisabled {
+				// Disable foreign keys for this migration
+				if err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+					return fmt.Errorf("disabling foreign keys for migration %s: %w", migrationID, err)
+				}
+			} else {
+				// Ensure foreign keys are enabled for this migration
+				if err := dbConn.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+					return fmt.Errorf("enabling foreign keys for migration %s: %w", migrationID, err)
+				}
+			}
+
+			// Run up to this specific migration (will only run the next pending migration)
+			if err := migrations.MigrateTo(migrationID); err != nil {
+				return fmt.Errorf("running migration %s: %w", migrationID, err)
+			}
+		}
+
+		if err := dbConn.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+			return fmt.Errorf("restoring foreign keys: %w", err)
+		}
+
+		// Run the rest of the migrations
+		if err := migrations.Migrate(); err != nil {
+			return err
+		}
+
+		// Check for constraint violations at the end
 		type constraintViolation struct {
 			Table           string
 			RowID           int
@@ -904,7 +1195,12 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 					Msg("Foreign key constraint violated")
 			}
 
-			return fmt.Errorf("foreign key constraints violated")
+			return errForeignKeyConstraintsViolated
+		}
+	} else {
+		// PostgreSQL can run all migrations in one block - no foreign key issues
+		if err := migrations.Migrate(); err != nil {
+			return err
 		}
 	}
 
@@ -949,6 +1245,7 @@ func Read[T any](db *gorm.DB, fn func(rx *gorm.DB) (T, error)) (T, error) {
 		var no T
 		return no, err
 	}
+
 	return ret, nil
 }
 
@@ -970,5 +1267,6 @@ func Write[T any](db *gorm.DB, fn func(tx *gorm.DB) (T, error)) (T, error) {
 		var no T
 		return no, err
 	}
+
 	return ret, tx.Commit().Error
 }

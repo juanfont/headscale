@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/arl/statsviz"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tailcfg"
 	"tailscale.com/tsweb"
@@ -30,17 +32,33 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(config)
 	}))
 	debug.Handle("policy", "Current policy", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pol, err := h.policyBytes()
-		if err != nil {
-			httpError(w, err)
-			return
+		switch h.cfg.Policy.Mode {
+		case types.PolicyModeDB:
+			p, err := h.state.GetPolicy()
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(p.Data))
+		case types.PolicyModeFile:
+			// Read the file directly for debug purposes
+			absPath := util.AbsolutePathFromConfigPath(h.cfg.Policy.Path)
+			pol, err := os.ReadFile(absPath)
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(pol)
+		default:
+			httpError(w, fmt.Errorf("unsupported policy mode: %s", h.cfg.Policy.Mode))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(pol)
 	}))
 	debug.Handle("filter", "Current filter", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		filter, _ := h.polMan.Filter()
+		filter, _ := h.state.Filter()
 
 		filterJSON, err := json.MarshalIndent(filter, "", "  ")
 		if err != nil {
@@ -52,7 +70,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(filterJSON)
 	}))
 	debug.Handle("ssh", "SSH Policy per node", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nodes, err := h.db.ListNodes()
+		nodes, err := h.state.ListNodes()
 		if err != nil {
 			httpError(w, err)
 			return
@@ -60,7 +78,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		sshPol := make(map[string]*tailcfg.SSHPolicy)
 		for _, node := range nodes {
-			pol, err := h.polMan.SSHPolicy(node)
+			pol, err := h.state.SSHPolicy(node.View())
 			if err != nil {
 				httpError(w, err)
 				return
@@ -79,7 +97,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(sshJSON)
 	}))
 	debug.Handle("derpmap", "Current DERPMap", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		dm := h.DERPMap
+		dm := h.state.DERPMap()
 
 		dmJSON, err := json.MarshalIndent(dm, "", "  ")
 		if err != nil {
@@ -91,24 +109,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(dmJSON)
 	}))
 	debug.Handle("registration-cache", "Pending registrations", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		registrationsJSON, err := json.MarshalIndent(h.registrationCache.Items(), "", "  ")
-		if err != nil {
-			httpError(w, err)
-			return
-		}
+		// TODO(kradalby): This should be replaced with a proper state method that returns registration info
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(registrationsJSON)
+		w.Write([]byte("{}")) // For now, return empty object
 	}))
 	debug.Handle("routes", "Routes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(h.primaryRoutes.String()))
+		w.Write([]byte(h.state.PrimaryRoutesString()))
 	}))
 	debug.Handle("policy-manager", "Policy Manager", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(h.polMan.DebugString()))
+		w.Write([]byte(h.state.PolicyDebugString()))
 	}))
 
 	err := statsviz.Register(debugMux)

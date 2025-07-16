@@ -11,8 +11,8 @@ to ensure you have the correct example configuration. The `main` branch might
 contain unreleased changes. The documentation is available for stable and
 development versions:
 
-* [Documentation for the stable version](https://headscale.net/stable/)
-* [Documentation for the development version](https://headscale.net/development/)
+- [Documentation for the stable version](https://headscale.net/stable/)
+- [Documentation for the development version](https://headscale.net/development/)
 
 ## What is Tailscale
 
@@ -139,14 +139,27 @@ make test
 To build the program:
 
 ```shell
-nix build
-```
-
-or
-
-```shell
 make build
 ```
+
+### Development workflow
+
+We recommend using Nix for dependency management to ensure you have all required tools. If you prefer to manage dependencies yourself, you can use Make directly:
+
+**With Nix (recommended):**
+```shell
+nix develop
+make test
+make build
+```
+
+**With your own dependencies:**
+```shell
+make test
+make build
+```
+
+The Makefile will warn you if any required tools are missing and suggest running `nix develop`. Run `make help` to see all available targets.
 
 ## Contributors
 

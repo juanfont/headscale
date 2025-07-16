@@ -5,13 +5,13 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
-	"time"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
@@ -68,7 +68,7 @@ func TestMarshalJSON(t *testing.T) {
 	// Marshal the policy to JSON
 	marshalled, err := json.MarshalIndent(policy, "", "  ")
 	require.NoError(t, err)
-	
+
 	// Make sure all expected fields are present in the JSON
 	jsonString := string(marshalled)
 	assert.Contains(t, jsonString, "group:example")
@@ -79,21 +79,21 @@ func TestMarshalJSON(t *testing.T) {
 	assert.Contains(t, jsonString, "accept")
 	assert.Contains(t, jsonString, "tcp")
 	assert.Contains(t, jsonString, "80")
-	
+
 	// Unmarshal back to verify round trip
 	var roundTripped Policy
 	err = json.Unmarshal(marshalled, &roundTripped)
 	require.NoError(t, err)
-	
+
 	// Compare the original and round-tripped policies
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 		cmpopts.EquateEmpty(),
 	)
-	
+
 	if diff := cmp.Diff(policy, &roundTripped, cmps...); diff != "" {
 		t.Fatalf("round trip policy (-original +roundtripped):\n%s", diff)
 	}
@@ -958,13 +958,13 @@ func TestUnmarshalPolicy(t *testing.T) {
 		},
 	}
 
-	cmps := append(util.Comparers, 
+	cmps := append(util.Comparers,
 		cmp.Comparer(func(x, y Prefix) bool {
 			return x == y
 		}),
 		cmpopts.IgnoreUnexported(Policy{}),
 	)
-	
+
 	// For round-trip testing, we'll normalize the policies before comparing
 
 	for _, tt := range tests {
@@ -981,6 +981,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				} else if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("unmarshalling: got err %v; want error %q", err, tt.wantErr)
 				}
+
 				return // Skip the rest of the test if we expected an error
 			}
 
@@ -1001,9 +1002,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 				if err != nil {
 					t.Fatalf("round-trip unmarshalling: %v", err)
 				}
-				
+
 				// Add EquateEmpty to handle nil vs empty maps/slices
-				roundTripCmps := append(cmps, 
+				roundTripCmps := append(cmps,
 					cmpopts.EquateEmpty(),
 					cmpopts.IgnoreUnexported(Policy{}),
 				)
@@ -1377,7 +1378,7 @@ func TestResolvePolicy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ips, err := tt.toResolve.Resolve(tt.pol,
 				xmaps.Values(users),
-				tt.nodes)
+				tt.nodes.ViewSlice())
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Fatalf("got %v; want no error", err)
@@ -1557,7 +1558,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes)
+			got, gotAllIPRoutes, err := resolveAutoApprovers(tt.policy, users, nodes.ViewSlice())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1584,6 +1585,7 @@ func mustIPSet(prefixes ...string) *netipx.IPSet {
 		builder.AddPrefix(mp(p))
 	}
 	ipSet, _ := builder.IPSet()
+
 	return ipSet
 }
 
@@ -1716,10 +1718,10 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, users, nodes.ViewSlice())
 			require.NoErrorf(t, err, "NewPolicyManager() error = %v", err)
 
-			got := pm.NodeCanApproveRoute(tt.node, tt.route)
+			got := pm.NodeCanApproveRoute(tt.node.View(), tt.route)
 			if got != tt.want {
 				t.Errorf("NodeCanApproveRoute() = %v, want %v", got, tt.want)
 			}
@@ -1800,7 +1802,7 @@ func TestResolveTagOwners(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := resolveTagOwners(tt.policy, users, nodes)
+			got, err := resolveTagOwners(tt.policy, users, nodes.ViewSlice())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1911,14 +1913,14 @@ func TestNodeCanHaveTag(t *testing.T) {
 			b, err := json.Marshal(tt.policy)
 			require.NoError(t, err)
 
-			pm, err := NewPolicyManager(b, users, nodes)
+			pm, err := NewPolicyManager(b, users, nodes.ViewSlice())
 			if tt.wantErr != "" {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
 			require.NoError(t, err)
 
-			got := pm.NodeCanHaveTag(tt.node, tt.tag)
+			got := pm.NodeCanHaveTag(tt.node.View(), tt.tag)
 			if got != tt.want {
 				t.Errorf("NodeCanHaveTag() = %v, want %v", got, tt.want)
 			}

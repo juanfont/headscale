@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-
 	"github.com/google/go-cmp/cmp"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -815,11 +814,11 @@ func TestReduceFilterRules(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
-				pm, err = pmf(users, append(tt.peers, tt.node))
+				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
 				got, _ := pm.Filter()
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
-				got = ReduceFilterRules(tt.node, got)
+				got = ReduceFilterRules(tt.node.View(), got)
 
 				if diff := cmp.Diff(tt.want, got); diff != "" {
 					log.Trace().Interface("got", got).Msg("result")
@@ -1576,11 +1575,16 @@ func TestReduceNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
-			got := ReduceNodes(
-				tt.args.node,
-				tt.args.nodes,
+			gotViews := ReduceNodes(
+				tt.args.node.View(),
+				tt.args.nodes.ViewSlice(),
 				matchers,
 			)
+			// Convert views back to nodes for comparison in tests
+			var got types.Nodes
+			for _, v := range gotViews.All() {
+				got = append(got, v.AsStruct())
+			}
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
 			}
@@ -1949,7 +1953,7 @@ func TestSSHPolicyRules(t *testing.T) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
 				var pm PolicyManager
 				var err error
-				pm, err = pmf(users, append(tt.peers, &tt.targetNode))
+				pm, err = pmf(users, append(tt.peers, &tt.targetNode).ViewSlice())
 
 				if tt.expectErr {
 					require.Error(t, err)
@@ -1959,7 +1963,7 @@ func TestSSHPolicyRules(t *testing.T) {
 
 				require.NoError(t, err)
 
-				got, err := pm.SSHPolicy(&tt.targetNode)
+				got, err := pm.SSHPolicy(tt.targetNode.View())
 				require.NoError(t, err)
 
 				if diff := cmp.Diff(tt.wantSSH, got); diff != "" {
@@ -1969,6 +1973,7 @@ func TestSSHPolicyRules(t *testing.T) {
 		}
 	}
 }
+
 func TestReduceRoutes(t *testing.T) {
 	type args struct {
 		node   *types.Node
@@ -2426,7 +2431,7 @@ func TestReduceRoutes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
 			got := ReduceRoutes(
-				tt.args.node,
+				tt.args.node.View(),
 				tt.args.routes,
 				matchers,
 			)

@@ -118,7 +118,7 @@ func (s *Suite) TestListPeers(c *check.C) {
 	_, err = db.GetNodeByID(0)
 	c.Assert(err, check.NotNil)
 
-	for index := 0; index <= 10; index++ {
+	for index := range 11 {
 		nodeKey := key.NewNode()
 		machineKey := key.NewMachine()
 
@@ -485,7 +485,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				nodes, err := adb.ListNodes()
 				assert.NoError(t, err)
 
-				pm, err := pmf(users, nodes)
+				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
 				require.NotNil(t, pm)
 
@@ -589,6 +589,7 @@ func generateRandomNumber(t *testing.T, max int64) int64 {
 	if err != nil {
 		t.Fatalf("getting random number: %s", err)
 	}
+
 	return n.Int64() + 1
 }
 
@@ -692,6 +693,7 @@ func TestRenameNode(t *testing.T) {
 			return err
 		}
 		_, err = RegisterNode(tx, node2, nil, nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -792,6 +794,7 @@ func TestListPeers(t *testing.T) {
 			return err
 		}
 		_, err = RegisterNode(tx, node2, nil, nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -804,30 +807,30 @@ func TestListPeers(t *testing.T) {
 	// No parameter means no filter, should return all peers
 	nodes, err = db.ListPeers(1)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 1)
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Empty node list should return all peers
 	nodes, err = db.ListPeers(1, types.NodeIDs{}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 1)
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// No match in IDs should return empty list and no error
 	nodes, err = db.ListPeers(1, types.NodeIDs{3, 4, 5}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 0)
+	assert.Empty(t, nodes)
 
 	// Partial match in IDs
 	nodes, err = db.ListPeers(1, types.NodeIDs{2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 1)
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Several matched IDs, but node ID is still filtered out
 	nodes, err = db.ListPeers(1, types.NodeIDs{1, 2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 1)
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 }
 
@@ -876,6 +879,7 @@ func TestListNodes(t *testing.T) {
 			return err
 		}
 		_, err = RegisterNode(tx, node2, nil, nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -888,32 +892,32 @@ func TestListNodes(t *testing.T) {
 	// No parameter means no filter, should return all nodes
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 2)
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 
 	// Empty node list should return all nodes
 	nodes, err = db.ListNodes(types.NodeIDs{}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 2)
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 
 	// No match in IDs should return empty list and no error
 	nodes, err = db.ListNodes(types.NodeIDs{3, 4, 5}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 0)
+	assert.Empty(t, nodes)
 
 	// Partial match in IDs
 	nodes, err = db.ListNodes(types.NodeIDs{2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 1)
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Several matched IDs
 	nodes, err = db.ListNodes(types.NodeIDs{1, 2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, len(nodes), 2)
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 }

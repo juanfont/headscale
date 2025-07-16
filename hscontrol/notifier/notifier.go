@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/puzpuzpuz/xsync/v3"
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	"tailscale.com/envknob"
@@ -50,6 +50,7 @@ func NewNotifier(cfg *types.Config) *Notifier {
 	n.b = b
 
 	go b.doWork()
+
 	return n
 }
 
@@ -72,7 +73,7 @@ func (n *Notifier) Close() {
 	n.nodes = make(map[types.NodeID]chan<- types.StateUpdate)
 }
 
-// safeCloseChannel closes a channel and panic recovers if already closed
+// safeCloseChannel closes a channel and panic recovers if already closed.
 func (n *Notifier) safeCloseChannel(nodeID types.NodeID, c chan<- types.StateUpdate) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -170,6 +171,7 @@ func (n *Notifier) IsConnected(nodeID types.NodeID) bool {
 	if val, ok := n.connected.Load(nodeID); ok {
 		return val
 	}
+
 	return false
 }
 
@@ -182,7 +184,7 @@ func (n *Notifier) IsLikelyConnected(nodeID types.NodeID) bool {
 	return false
 }
 
-// LikelyConnectedMap returns a thread safe map of connected nodes
+// LikelyConnectedMap returns a thread safe map of connected nodes.
 func (n *Notifier) LikelyConnectedMap() *xsync.MapOf[types.NodeID, bool] {
 	return n.connected
 }

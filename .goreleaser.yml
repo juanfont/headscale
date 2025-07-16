@@ -19,12 +19,8 @@ builds:
       - darwin_amd64
       - darwin_arm64
       - freebsd_amd64
-      - linux_386
       - linux_amd64
       - linux_arm64
-      - linux_arm_5
-      - linux_arm_6
-      - linux_arm_7
     flags:
       - -mod=readonly
     ldflags:
@@ -93,7 +89,7 @@ nfpms:
       preremove: ./packaging/deb/prerm
     deb:
       lintian_overrides:
-        - no-changelog  # Our CHANGELOG.md uses a different formatting
+        - no-changelog # Our CHANGELOG.md uses a different formatting
         - no-manual-page
         - statically-linked-binary
 
@@ -113,9 +109,7 @@ kos:
       - CGO_ENABLED=0
     platforms:
       - linux/amd64
-      - linux/386
       - linux/arm64
-      - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}"
       - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
@@ -142,9 +136,7 @@ kos:
       - CGO_ENABLED=0
     platforms:
       - linux/amd64
-      - linux/386
       - linux/arm64
-      - linux/arm/v7
     tags:
       - "{{ if not .Prerelease }}latest-debug{{ end }}"
       - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"

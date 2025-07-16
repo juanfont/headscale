@@ -111,5 +111,6 @@ func (r *respWriterProm) Write(b []byte) (int, error) {
 	}
 	n, err := r.ResponseWriter.Write(b)
 	r.written += int64(n)
+
 	return n, err
 }

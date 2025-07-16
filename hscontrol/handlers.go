@@ -32,7 +32,7 @@ const (
 	reservedResponseHeaderSize = 4
 )
 
-// httpError logs an error and sends an HTTP error response with the given
+// httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
 	var herr HTTPError
 	if errors.As(err, &herr) {
@@ -64,9 +64,8 @@ var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not 
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
 	"machines registered with CLI does not support expire",
 )
-var ErrNoCapabilityVersion = errors.New("no capability version set")
 
-func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
+func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
 	clientCapabilityStr := req.URL.Query().Get("v")
 
 	if clientCapabilityStr == "" {
@@ -81,28 +80,34 @@ func parseCabailityVersion(req *http.Request) (tailcfg.CapabilityVersion, error)
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
 }
 
-func (h *Headscale) derpRequestIsAllowed(
+func (h *Headscale) handleVerifyRequest(
 	req *http.Request,
-) (bool, error) {
+	writer io.Writer,
+) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return false, fmt.Errorf("cannot read request body: %w", err)
+		return fmt.Errorf("cannot read request body: %w", err)
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
-		return false, fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
+		return fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
 	}
 
-	nodes, err := h.db.ListNodes()
+	nodes, err := h.state.ListNodes()
 	if err != nil {
-		return false, fmt.Errorf("cannot list nodes: %w", err)
+		return fmt.Errorf("cannot list nodes: %w", err)
 	}
 
-	return nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic), nil
+	resp := &tailcfg.DERPAdmitClientResponse{
+		Allow: nodes.ContainsNodeKey(derpAdmitClientRequest.NodePublic),
+	}
+
+	return json.NewEncoder(writer).Encode(resp)
 }
 
-// see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159, Derp use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
+// VerifyHandler see https://github.com/tailscale/tailscale/blob/964282d34f06ecc06ce644769c66b0b31d118340/derp/derp_server.go#L1159
+// DERP use verifyClientsURL to verify whether a client is allowed to connect to the DERP server.
 func (h *Headscale) VerifyHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
@@ -112,18 +117,12 @@ func (h *Headscale) VerifyHandler(
 		return
 	}
 
-	allow, err := h.derpRequestIsAllowed(req)
+	err := h.handleVerifyRequest(req, writer)
 	if err != nil {
 		httpError(writer, err)
 		return
 	}
-
-	resp := tailcfg.DERPAdmitClientResponse{
-		Allow: allow,
-	}
-
 	writer.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(writer).Encode(resp)
 }
 
 // KeyHandler provides the Headscale pub key
@@ -133,7 +132,7 @@ func (h *Headscale) KeyHandler(
 	req *http.Request,
 ) {
 	// New Tailscale clients send a 'v' parameter to indicate the CurrentCapabilityVersion
-	capVer, err := parseCabailityVersion(req)
+	capVer, err := parseCapabilityVersion(req)
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -172,7 +171,7 @@ func (h *Headscale) HealthHandler(
 		json.NewEncoder(writer).Encode(res)
 	}
 
-	if err := h.db.PingDB(req.Context()); err != nil {
+	if err := h.state.PingDB(req.Context()); err != nil {
 		respond(err)
 
 		return

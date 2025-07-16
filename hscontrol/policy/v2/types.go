@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"strings"
-
 	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -18,6 +18,7 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
+	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
 
@@ -71,14 +72,14 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 
 	// Check if it's the wildcard port range
 	if len(a.Ports) == 1 && a.Ports[0].First == 0 && a.Ports[0].Last == 65535 {
-		return json.Marshal(fmt.Sprintf("%s:*", alias))
+		return json.Marshal(alias + ":*")
 	}
 
 	// Otherwise, format as "alias:ports"
 	var ports []string
 	for _, port := range a.Ports {
 		if port.First == port.Last {
-			ports = append(ports, fmt.Sprintf("%d", port.First))
+			ports = append(ports, strconv.FormatUint(uint64(port.First), 10))
 		} else {
 			ports = append(ports, fmt.Sprintf("%d-%d", port.First, port.Last))
 		}
@@ -91,7 +92,7 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	// TODO(kradalby):
@@ -132,6 +133,7 @@ func (u *Username) UnmarshalJSON(b []byte) error {
 	if err := u.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -179,7 +181,7 @@ func (u Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -188,12 +190,13 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 		errs = append(errs, err)
 	}
 
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
+		// Skip tagged nodes
 		if node.IsTagged() {
 			continue
 		}
 
-		if node.User.ID == user.ID {
+		if node.User().ID == user.ID {
 			node.AppendToIPSet(&ips)
 		}
 	}
@@ -201,7 +204,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes types.Nodes) (*net
 	return buildIPSetMultiErr(&ips, errs)
 }
 
-// Group is a special string which is always prefixed with `group:`
+// Group is a special string which is always prefixed with `group:`.
 type Group string
 
 func (g Group) Validate() error {
@@ -216,6 +219,7 @@ func (g *Group) UnmarshalJSON(b []byte) error {
 	if err := g.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -246,7 +250,7 @@ func (g Group) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(g))
 }
 
-func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (g Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -262,7 +266,7 @@ func (g Group) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx
 	return buildIPSetMultiErr(&ips, errs)
 }
 
-// Tag is a special string which is always prefixed with `tag:`
+// Tag is a special string which is always prefixed with `tag:`.
 type Tag string
 
 func (t Tag) Validate() error {
@@ -277,10 +281,11 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 	if err := t.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (t Tag) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
 	// TODO(kradalby): This is currently resolved twice, and should be resolved once.
@@ -295,17 +300,19 @@ func (t Tag) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.I
 		return nil, err
 	}
 
-	for _, node := range nodes {
-		if node.HasTag(string(t)) {
+	for _, node := range nodes.All() {
+		// Check if node has this tag in all tags (ForcedTags + AuthKey.Tags)
+		if slices.Contains(node.Tags(), string(t)) {
 			node.AppendToIPSet(&ips)
 		}
 
 		// TODO(kradalby): remove as part of #2417, see comment above
 		if tagMap != nil {
-			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo != nil {
-				for _, tag := range node.Hostinfo.RequestTags {
+			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo().Valid() {
+				for _, tag := range node.RequestTagsSlice().All() {
 					if tag == string(t) {
 						node.AppendToIPSet(&ips)
+						break
 					}
 				}
 			}
@@ -343,10 +350,11 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	if err := h.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -371,7 +379,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSe
 	if err != nil {
 		errs = append(errs, err)
 	}
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
 		if node.InIPSet(ipsTemp) {
 			node.AppendToIPSet(&ips)
 		}
@@ -405,6 +413,7 @@ func (p *Prefix) parseString(addr string) error {
 		}
 
 		*p = Prefix(addrPref)
+
 		return nil
 	}
 
@@ -413,6 +422,7 @@ func (p *Prefix) parseString(addr string) error {
 		return err
 	}
 	*p = Prefix(pref)
+
 	return nil
 }
 
@@ -424,6 +434,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 	if err := p.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -432,7 +443,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 // of the Prefix and the Policy, Users, and Nodes.
 //
 // See [Policy], [types.Users], and [types.Nodes] for more details.
-func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -446,19 +457,19 @@ func (p Prefix) Resolve(_ *Policy, _ types.Users, nodes types.Nodes) (*netipx.IP
 
 // appendIfNodeHasIP appends the IPs of the nodes to the IPSet if the node has the
 // IP address in the prefix.
-func appendIfNodeHasIP(nodes types.Nodes, ips *netipx.IPSetBuilder, pref netip.Prefix) {
+func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuilder, pref netip.Prefix) {
 	if !pref.IsSingleIP() && !tsaddr.IsTailscaleIP(pref.Addr()) {
 		return
 	}
 
-	for _, node := range nodes {
+	for _, node := range nodes.All() {
 		if node.HasIP(pref.Addr()) {
 			node.AppendToIPSet(ips)
 		}
 	}
 }
 
-// AutoGroup is a special string which is always prefixed with `autogroup:`
+// AutoGroup is a special string which is always prefixed with `autogroup:`.
 type AutoGroup string
 
 const (
@@ -491,6 +502,7 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	if err := ag.Validate(); err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -499,7 +511,7 @@ func (ag AutoGroup) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(ag))
 }
 
-func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
 	switch ag {
@@ -513,17 +525,17 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 			return nil, err
 		}
 
-		for _, node := range nodes {
-			// Skip if node has forced tags
-			if len(node.ForcedTags) != 0 {
+		for _, node := range nodes.All() {
+			// Skip if node is tagged
+			if node.IsTagged() {
 				continue
 			}
 
 			// Skip if node has any allowed requested tags
 			hasAllowedTag := false
-			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
-				for _, tag := range node.Hostinfo.RequestTags {
-					if tagips, ok := tagMap[Tag(tag)]; ok && node.InIPSet(tagips) {
+			if node.RequestTagsSlice().Len() != 0 {
+				for _, tag := range node.RequestTagsSlice().All() {
+					if _, ok := tagMap[Tag(tag)]; ok {
 						hasAllowedTag = true
 						break
 					}
@@ -546,16 +558,16 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*n
 			return nil, err
 		}
 
-		for _, node := range nodes {
-			// Include if node has forced tags
-			if len(node.ForcedTags) != 0 {
+		for _, node := range nodes.All() {
+			// Include if node is tagged
+			if node.IsTagged() {
 				node.AppendToIPSet(&build)
 				continue
 			}
 
 			// Include if node has any allowed requested tags
-			if node.Hostinfo != nil && len(node.Hostinfo.RequestTags) != 0 {
-				for _, tag := range node.Hostinfo.RequestTags {
+			if node.RequestTagsSlice().Len() != 0 {
+				for _, tag := range node.RequestTagsSlice().All() {
 					if _, ok := tagMap[Tag(tag)]; ok {
 						node.AppendToIPSet(&build)
 						break
@@ -588,7 +600,7 @@ type Alias interface {
 	// of the Alias and the Policy, Users and Nodes.
 	// This is an interface definition and the implementation is independent of
 	// the Alias type.
-	Resolve(*Policy, types.Users, types.Nodes) (*netipx.IPSet, error)
+	Resolve(*Policy, types.Users, views.Slice[types.NodeView]) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -628,13 +640,14 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		if err != nil {
 			return err
 		}
-		if err := ve.Alias.Validate(); err != nil {
+		if err := ve.Validate(); err != nil {
 			return err
 		}
 
 	default:
 		return fmt.Errorf("type %T not supported", vs)
 	}
+
 	return nil
 }
 
@@ -709,6 +722,7 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	ve.Alias = ptr
+
 	return nil
 }
 
@@ -725,6 +739,7 @@ func (a *Aliases) UnmarshalJSON(b []byte) error {
 	for i, alias := range aliases {
 		(*a)[i] = alias.Alias
 	}
+
 	return nil
 }
 
@@ -759,7 +774,7 @@ func (a Aliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a Aliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a Aliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 
@@ -780,7 +795,7 @@ func buildIPSetMultiErr(ipBuilder *netipx.IPSetBuilder, errs []error) (*netipx.I
 	return ips, multierr.New(append(errs, err)...)
 }
 
-// Helper function to unmarshal a JSON string into either an AutoApprover or Owner pointer
+// Helper function to unmarshal a JSON string into either an AutoApprover or Owner pointer.
 func unmarshalPointer[T any](
 	b []byte,
 	parseFunc func(string) (T, error),
@@ -814,6 +829,7 @@ func (aa *AutoApprovers) UnmarshalJSON(b []byte) error {
 	for i, autoApprover := range autoApprovers {
 		(*aa)[i] = autoApprover.AutoApprover
 	}
+
 	return nil
 }
 
@@ -870,6 +886,7 @@ func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	ve.AutoApprover = ptr
+
 	return nil
 }
 
@@ -890,6 +907,7 @@ func (ve *OwnerEnc) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	ve.Owner = ptr
+
 	return nil
 }
 
@@ -906,6 +924,7 @@ func (o *Owners) UnmarshalJSON(b []byte) error {
 	for i, owner := range owners {
 		(*o)[i] = owner.Owner
 	}
+
 	return nil
 }
 
@@ -937,6 +956,7 @@ func parseOwner(s string) (Owner, error) {
 	case isGroup(s):
 		return ptr.To(Group(s)), nil
 	}
+
 	return nil, fmt.Errorf(`Invalid Owner %q. An alias must be one of the following types:
 - user (containing an "@")
 - group (starting with "group:")
@@ -997,6 +1017,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 
 		(*g)[group] = usernames
 	}
+
 	return nil
 }
 
@@ -1094,7 +1115,7 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 // resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
 // The resulting map can be used to quickly look up the IPSet for a given Tag.
 // It is intended for internal use in a PolicyManager.
-func resolveTagOwners(p *Policy, users types.Users, nodes types.Nodes) (map[Tag]*netipx.IPSet, error) {
+func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
 	if p == nil {
 		return nil, nil
 	}
@@ -1158,7 +1179,7 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 // resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.
 // The resulting map can be used to quickly look up if a node can self-approve a route.
 // It is intended for internal use in a PolicyManager.
-func resolveAutoApprovers(p *Policy, users types.Users, nodes types.Nodes) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
+func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
 	if p == nil {
 		return nil, nil, nil
 	}
@@ -1248,7 +1269,7 @@ type Policy struct {
 // We use the default JSON marshalling behavior provided by the Go runtime.
 
 var (
-	// TODO(kradalby): Add these checks for tagOwners and autoApprovers
+	// TODO(kradalby): Add these checks for tagOwners and autoApprovers.
 	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
@@ -1275,7 +1296,7 @@ func validateAutogroupForSrc(src *AutoGroup) error {
 	}
 
 	if src.Is(AutoGroupInternet) {
-		return fmt.Errorf(`"autogroup:internet" used in source, it can only be used in ACL destinations`)
+		return errors.New(`"autogroup:internet" used in source, it can only be used in ACL destinations`)
 	}
 
 	if !slices.Contains(autogroupForSrc, *src) {
@@ -1303,7 +1324,7 @@ func validateAutogroupForSSHSrc(src *AutoGroup) error {
 	}
 
 	if src.Is(AutoGroupInternet) {
-		return fmt.Errorf(`"autogroup:internet" used in SSH source, it can only be used in ACL destinations`)
+		return errors.New(`"autogroup:internet" used in SSH source, it can only be used in ACL destinations`)
 	}
 
 	if !slices.Contains(autogroupForSSHSrc, *src) {
@@ -1319,7 +1340,7 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 	}
 
 	if dst.Is(AutoGroupInternet) {
-		return fmt.Errorf(`"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`)
+		return errors.New(`"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`)
 	}
 
 	if !slices.Contains(autogroupForSSHDst, *dst) {
@@ -1356,14 +1377,14 @@ func (p *Policy) validate() error {
 
 	for _, acl := range p.ACLs {
 		for _, src := range acl.Sources {
-			switch src.(type) {
+			switch src := src.(type) {
 			case *Host:
-				h := src.(*Host)
+				h := src
 				if !p.Hosts.exist(*h) {
 					errs = append(errs, fmt.Errorf(`Host %q is not defined in the Policy, please define or remove the reference to it`, *h))
 				}
 			case *AutoGroup:
-				ag := src.(*AutoGroup)
+				ag := src
 
 				if err := validateAutogroupSupported(ag); err != nil {
 					errs = append(errs, err)
@@ -1375,12 +1396,12 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := src.(*Group)
+				g := src
 				if err := p.Groups.Contains(g); err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				tagOwner := src.(*Tag)
+				tagOwner := src
 				if err := p.TagOwners.Contains(tagOwner); err != nil {
 					errs = append(errs, err)
 				}
@@ -1436,9 +1457,9 @@ func (p *Policy) validate() error {
 		}
 
 		for _, src := range ssh.Sources {
-			switch src.(type) {
+			switch src := src.(type) {
 			case *AutoGroup:
-				ag := src.(*AutoGroup)
+				ag := src
 
 				if err := validateAutogroupSupported(ag); err != nil {
 					errs = append(errs, err)
@@ -1450,21 +1471,21 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := src.(*Group)
+				g := src
 				if err := p.Groups.Contains(g); err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				tagOwner := src.(*Tag)
+				tagOwner := src
 				if err := p.TagOwners.Contains(tagOwner); err != nil {
 					errs = append(errs, err)
 				}
 			}
 		}
 		for _, dst := range ssh.Destinations {
-			switch dst.(type) {
+			switch dst := dst.(type) {
 			case *AutoGroup:
-				ag := dst.(*AutoGroup)
+				ag := dst
 				if err := validateAutogroupSupported(ag); err != nil {
 					errs = append(errs, err)
 					continue
@@ -1475,7 +1496,7 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Tag:
-				tagOwner := dst.(*Tag)
+				tagOwner := dst
 				if err := p.TagOwners.Contains(tagOwner); err != nil {
 					errs = append(errs, err)
 				}
@@ -1485,9 +1506,9 @@ func (p *Policy) validate() error {
 
 	for _, tagOwners := range p.TagOwners {
 		for _, tagOwner := range tagOwners {
-			switch tagOwner.(type) {
+			switch tagOwner := tagOwner.(type) {
 			case *Group:
-				g := tagOwner.(*Group)
+				g := tagOwner
 				if err := p.Groups.Contains(g); err != nil {
 					errs = append(errs, err)
 				}
@@ -1497,14 +1518,14 @@ func (p *Policy) validate() error {
 
 	for _, approvers := range p.AutoApprovers.Routes {
 		for _, approver := range approvers {
-			switch approver.(type) {
+			switch approver := approver.(type) {
 			case *Group:
-				g := approver.(*Group)
+				g := approver
 				if err := p.Groups.Contains(g); err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				tagOwner := approver.(*Tag)
+				tagOwner := approver
 				if err := p.TagOwners.Contains(tagOwner); err != nil {
 					errs = append(errs, err)
 				}
@@ -1513,14 +1534,14 @@ func (p *Policy) validate() error {
 	}
 
 	for _, approver := range p.AutoApprovers.ExitNode {
-		switch approver.(type) {
+		switch approver := approver.(type) {
 		case *Group:
-			g := approver.(*Group)
+			g := approver
 			if err := p.Groups.Contains(g); err != nil {
 				errs = append(errs, err)
 			}
 		case *Tag:
-			tagOwner := approver.(*Tag)
+			tagOwner := approver
 			if err := p.TagOwners.Contains(tagOwner); err != nil {
 				errs = append(errs, err)
 			}
@@ -1532,6 +1553,7 @@ func (p *Policy) validate() error {
 	}
 
 	p.validated = true
+
 	return nil
 }
 
@@ -1585,6 +1607,7 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -1614,6 +1637,7 @@ func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 			)
 		}
 	}
+
 	return nil
 }
 
@@ -1671,7 +1695,7 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 	return json.Marshal(aliases)
 }
 
-func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes types.Nodes) (*netipx.IPSet, error) {
+func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 	var errs []error
 

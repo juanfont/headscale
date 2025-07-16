@@ -189,6 +189,9 @@ func New(
 			Value: "v" + version,
 		})
 	}
+	// Add integration test labels if running under hi tool
+	dockertestutil.DockerAddIntegrationLabels(runOptions, "derp")
+
 	container, err = pool.BuildAndRunWithBuildOptions(
 		buildOptions,
 		runOptions,
