@@ -194,7 +194,7 @@ func (m *Mapper) FullMapResponse(
 		return nil, err
 	}
 
-	resp, err := m.fullMapResponse(node, peers.ViewSlice(), mapRequest.Version)
+	resp, err := m.fullMapResponse(node, peers, mapRequest.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +260,7 @@ func (m *Mapper) PeerChangedResponse(
 			removedIDs = append(removedIDs, nodeID.NodeID())
 		}
 	}
-	changedNodes := types.Nodes{}
+	var changedNodes views.Slice[types.NodeView]
 	if len(changedIDs) > 0 {
 		changedNodes, err = m.ListNodes(changedIDs...)
 		if err != nil {
@@ -274,7 +274,7 @@ func (m *Mapper) PeerChangedResponse(
 		m.state,
 		node,
 		mapRequest.Version,
-		changedNodes.ViewSlice(),
+		changedNodes,
 		m.cfg,
 	)
 	if err != nil {
@@ -304,7 +304,14 @@ func (m *Mapper) PeerChangedResponse(
 	tailnode, err := tailNode(
 		node, mapRequest.Version, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := m.state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in mapper
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in mapper")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -457,7 +464,14 @@ func (m *Mapper) baseWithConfigMapResponse(
 	tailnode, err := tailNode(
 		node, capVer, m.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, m.state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := m.state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in tailnode
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in tailnode")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		m.cfg)
 	if err != nil {
@@ -485,34 +499,14 @@ func (m *Mapper) baseWithConfigMapResponse(
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.
 // If no peer IDs are given, all peers are returned.
 // If at least one peer ID is given, only these peer nodes will be returned.
-func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
-	peers, err := m.state.ListPeers(nodeID, peerIDs...)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, peer := range peers {
-		online := m.notif.IsLikelyConnected(peer.ID)
-		peer.IsOnline = &online
-	}
-
-	return peers, nil
+func (m *Mapper) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
+	return m.state.ListPeers(nodeID, peerIDs...)
 }
 
 // ListNodes queries the database for either all nodes if no parameters are given
-// or for the given nodes if at least one node ID is given as parameter.
-func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
-	nodes, err := m.state.ListNodes(nodeIDs...)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, node := range nodes {
-		online := m.notif.IsLikelyConnected(node.ID)
-		node.IsOnline = &online
-	}
-
-	return nodes, nil
+// or for the given nodes if at least one node ID is given as parameter
+func (m *Mapper) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
+	return m.state.ListNodes(nodeIDs...)
 }
 
 // routeFilterFunc is a function that takes a node ID and returns a list of
@@ -555,7 +549,14 @@ func appendPeerChanges(
 	tailPeers, err := tailNodes(
 		reducedChanged, capVer, state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, state.GetNodePrimaryRoutes(id), matchers)
+			primaryRoutes := state.GetNodePrimaryRoutes(id)
+			// DEBUG: Log GetNodePrimaryRoutes call in tailPeers
+			log.Debug().
+				Str("requesting_node", node.Hostname()).
+				Str("target_node_id", id.String()).
+				Any("primary_routes_from_state", primaryRoutes).
+				Msg("DEBUG: GetNodePrimaryRoutes called in tailPeers")
+			return policy.ReduceRoutes(node, primaryRoutes, matchers)
 		},
 		cfg)
 	if err != nil {

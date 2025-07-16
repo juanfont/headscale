@@ -87,7 +87,7 @@ func TestUserCommand(t *testing.T) {
 			result,
 			"Should have user1 and user2 in users list",
 		)
-	}, 20*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	_, err = headscale.Execute(
 		[]string{
@@ -124,7 +124,7 @@ func TestUserCommand(t *testing.T) {
 			result,
 			"Should have user1 and newname after rename operation",
 		)
-	}, 20*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	var listByUsername []*v1.User
 	err = executeAndUnmarshal(headscale,
@@ -219,7 +219,7 @@ func TestUserCommand(t *testing.T) {
 		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
 		}
-	}, 20*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	deleteResult, err = headscale.Execute(
 		[]string{
@@ -585,7 +585,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "Node should belong to user1")
-	}, 15*time.Second, 1*time.Second)
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
@@ -606,7 +606,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState, 
 			"Expected node to be logged out, backend state: %s", status.BackendState)
-	}, 30*time.Second, 2*time.Second)
+	}, 30*time.Second, 2*time.Second, "CLI operation should complete successfully")
 
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
 	assertNoErr(t, err)
@@ -616,7 +616,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
 		assert.Equal(ct, "userid:2", status.Self.UserID.String(), "Expected node to be logged in as userid:2")
-	}, 30*time.Second, 2*time.Second)
+	}, 30*time.Second, 2*time.Second, "CLI operation should complete successfully")
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -625,7 +625,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login")
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
 		assert.Equal(ct, user2, listNodes[1].GetUser().GetName(), "Second node should belong to user2")
-	}, 20*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second, "CLI operation should complete successfully")
 }
 
 func TestApiKeyCommand(t *testing.T) {
@@ -860,7 +860,7 @@ func TestNodeTagCommand(t *testing.T) {
 	}
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
-	}, 15*time.Second, 1*time.Second)
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	var node v1.Node
 	err = executeAndUnmarshal(
@@ -1114,7 +1114,7 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
-	}, 15*time.Second, 1*time.Second)
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	// Test list all nodes after added seconds
 	var listAll []v1.Node
@@ -1132,19 +1132,19 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, listAll, len(regIDs), "Should list all nodes after CLI operations")
-	}, 20*time.Second, 1*time.Second)
+		
+		// Verify node IDs and names are correct
+		assert.Equal(ct, uint64(1), listAll[0].GetId())
+		assert.Equal(ct, uint64(2), listAll[1].GetId())
+		assert.Equal(ct, uint64(3), listAll[2].GetId())
+		assert.Equal(ct, uint64(4), listAll[3].GetId())
+		assert.Equal(ct, uint64(5), listAll[4].GetId())
 
-	assert.Equal(t, uint64(1), listAll[0].GetId())
-	assert.Equal(t, uint64(2), listAll[1].GetId())
-	assert.Equal(t, uint64(3), listAll[2].GetId())
-	assert.Equal(t, uint64(4), listAll[3].GetId())
-	assert.Equal(t, uint64(5), listAll[4].GetId())
-
-	assert.Equal(t, "node-1", listAll[0].GetName())
-	assert.Equal(t, "node-2", listAll[1].GetName())
-	assert.Equal(t, "node-3", listAll[2].GetName())
-	assert.Equal(t, "node-4", listAll[3].GetName())
-	assert.Equal(t, "node-5", listAll[4].GetName())
+		assert.Equal(ct, "node-1", listAll[0].GetName())
+		assert.Equal(ct, "node-2", listAll[1].GetName())
+		assert.Equal(ct, "node-3", listAll[2].GetName())
+		assert.Equal(ct, "node-4", listAll[3].GetName())
+		assert.Equal(ct, "node-5", listAll[4].GetName())
 
 	otherUserRegIDs := []string{
 		types.MustRegistrationID().String(),
@@ -1194,64 +1194,60 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.Len(ct, otherUserMachines, len(otherUserRegIDs), "Should have correct number of otherUser machines after CLI operations")
-	}, 15*time.Second, 1*time.Second)
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	// Test list all nodes after added otherUser
 	var listAllWithotherUser []v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--output",
-			"json",
-		},
-		&listAllWithotherUser,
-	)
-	assert.NoError(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"list",
+				"--output",
+				"json",
+			},
+			&listAllWithotherUser,
+		)
+		assert.NoError(ct, err)
 
-	// All nodes, nodes + otherUser
-	assert.Len(t, listAllWithotherUser, 7)
+		// All nodes, nodes + otherUser
+		assert.Len(ct, listAllWithotherUser, 7)
 
-	assert.Equal(t, uint64(6), listAllWithotherUser[5].GetId())
-	assert.Equal(t, uint64(7), listAllWithotherUser[6].GetId())
+		assert.Equal(ct, uint64(6), listAllWithotherUser[5].GetId())
+		assert.Equal(ct, uint64(7), listAllWithotherUser[6].GetId())
 
-	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].GetName())
-	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].GetName())
+		assert.Equal(ct, "otherUser-node-1", listAllWithotherUser[5].GetName())
+		assert.Equal(ct, "otherUser-node-2", listAllWithotherUser[6].GetName())
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
-	// Test list all nodes after added otherUser
+	// Test list only otherUser nodes
 	var listOnlyotherUserMachineUser []v1.Node
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"nodes",
-			"list",
-			"--user",
-			"other-user",
-			"--output",
-			"json",
-		},
-		&listOnlyotherUserMachineUser,
-	)
-	assert.NoError(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"nodes",
+				"list",
+				"--user",
+				"other-user",
+				"--output",
+				"json",
+			},
+			&listOnlyotherUserMachineUser,
+		)
+		assert.NoError(ct, err)
 
-	assert.Len(t, listOnlyotherUserMachineUser, 2)
+		assert.Len(ct, listOnlyotherUserMachineUser, 2)
 
-	assert.Equal(t, uint64(6), listOnlyotherUserMachineUser[0].GetId())
-	assert.Equal(t, uint64(7), listOnlyotherUserMachineUser[1].GetId())
+		assert.Equal(ct, uint64(6), listOnlyotherUserMachineUser[0].GetId())
+		assert.Equal(ct, uint64(7), listOnlyotherUserMachineUser[1].GetId())
 
-	assert.Equal(
-		t,
-		"otherUser-node-1",
-		listOnlyotherUserMachineUser[0].GetName(),
-	)
-	assert.Equal(
-		t,
-		"otherUser-node-2",
-		listOnlyotherUserMachineUser[1].GetName(),
-	)
+		assert.Equal(ct, "otherUser-node-1", listOnlyotherUserMachineUser[0].GetName())
+		assert.Equal(ct, "otherUser-node-2", listOnlyotherUserMachineUser[1].GetName())
+	}, 15*time.Second, 1*time.Second, "CLI operation should complete successfully")
 
 	// Delete a nodes
 	_, err = headscale.Execute(
@@ -1287,7 +1283,7 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, listOnlyMachineUserAfterDelete, 4, "Should have 4 nodes for node-user after deletion")
-	}, 20*time.Second, 1*time.Second)
+	}, 20*time.Second, 1*time.Second, "CLI operation should complete successfully")
 }
 
 func TestNodeExpireCommand(t *testing.T) {

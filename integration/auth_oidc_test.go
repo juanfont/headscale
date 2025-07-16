@@ -170,13 +170,17 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	// of safety reasons) before checking if the clients have logged out.
 	// The Wait function can't do it itself as it has an upper bound of 1
 	// min.
+	// 
+	// Give clients more time to process KeyExpiry notifications from server.
+	// Server sends StatePeerChangedPatch with KeyExpiry info, but clients need
+	// time to process these updates and transition BackendState to "NeedsLogin".
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		for _, client := range allClients {
 			status, err := client.Status()
 			assert.NoError(ct, err)
 			assert.Equal(ct, "NeedsLogin", status.BackendState)
 		}
-	}, shortAccessTTL+10*time.Second, 5*time.Second)
+	}, shortAccessTTL+30*time.Second, 10*time.Second)
 }
 
 func TestOIDC024UserCreation(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -26,13 +27,22 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("looking up node in database: %w", err)
-	}
+	// DEBUG: Log handleRegister entry
+	log.Debug().
+		Str("hostname", regReq.Hostinfo.Hostname).
+		Str("node_key", regReq.NodeKey.ShortString()).
+		Str("machine_key", machineKey.ShortString()).
+		Bool("has_auth_key", regReq.Auth != nil && regReq.Auth.AuthKey != "").
+		Str("followup", regReq.Followup).
+		Msg("DEBUG: handleRegister called")
 
-	if node != nil {
-		resp, err := h.handleExistingNode(node, regReq, machineKey)
+	node := h.state.GetNodeByNodeKey(regReq.NodeKey)
+
+	if node.Valid() {
+		log.Debug().
+			Str("hostname", regReq.Hostinfo.Hostname).
+			Msg("DEBUG: Node exists, handling existing node")
+		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling existing node: %w", err)
 		}
@@ -41,10 +51,18 @@ func (h *Headscale) handleRegister(
 	}
 
 	if regReq.Followup != "" {
+		log.Debug().
+			Str("hostname", regReq.Hostinfo.Hostname).
+			Str("followup", regReq.Followup).
+			Msg("DEBUG: Handling followup registration")
 		return h.waitForFollowup(ctx, regReq)
 	}
 
 	if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
+		log.Debug().
+			Str("hostname", regReq.Hostinfo.Hostname).
+			Str("auth_key", regReq.Auth.AuthKey).
+			Msg("DEBUG: Handling registration with auth key")
 		resp, err := h.handleRegisterWithAuthKey(regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling register with auth key: %w", err)
@@ -53,6 +71,9 @@ func (h *Headscale) handleRegister(
 		return resp, nil
 	}
 
+	log.Debug().
+		Str("hostname", regReq.Hostinfo.Hostname).
+		Msg("DEBUG: Handling interactive registration")
 	resp, err := h.handleRegisterInteractive(regReq, machineKey)
 	if err != nil {
 		return nil, fmt.Errorf("handling register interactive: %w", err)
@@ -82,7 +103,7 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				policyChanged, err := h.state.DeleteNode(node)
+				policyChanged, err := h.state.DeleteNode(node.View())
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
@@ -114,7 +135,7 @@ func (h *Headscale) handleExistingNode(
 			h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
 		}
 
-		return nodeToRegisterResponse(n), nil
+		return nodeToRegisterResponse(n.AsStruct()), nil
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -168,19 +189,57 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
+	// DEBUG: Log auth key registration attempt
+	authKey := ""
+	hostname := ""
+	if regReq.Auth != nil {
+		authKey = regReq.Auth.AuthKey
+	}
+	if regReq.Hostinfo != nil {
+		hostname = regReq.Hostinfo.Hostname
+	}
+	log.Debug().
+		Str("auth_key", authKey).
+		Str("hostname", hostname).
+		Str("machine_key", machineKey.ShortString()).
+		Msg("DEBUG: Registration attempt with auth key")
+
 	node, changed, err := h.state.HandleNodeFromPreAuthKey(
 		regReq,
 		machineKey,
 	)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			authKeyForLog := ""
+			if regReq.Auth != nil {
+				authKeyForLog = regReq.Auth.AuthKey
+			}
+			log.Debug().
+				Str("auth_key", authKeyForLog).
+				Msg("DEBUG: Auth key not found in database")
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
 		var perr types.PAKError
 		if errors.As(err, &perr) {
+			authKeyForLog := ""
+			if regReq.Auth != nil {
+				authKeyForLog = regReq.Auth.AuthKey
+			}
+			log.Debug().
+				Str("auth_key", authKeyForLog).
+				Str("error", perr.Error()).
+				Msg("DEBUG: Auth key validation failed")
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
 
+		authKeyForLog := ""
+		if regReq.Auth != nil {
+			authKeyForLog = regReq.Auth.AuthKey
+		}
+		log.Debug().
+			Str("auth_key", authKeyForLog).
+			Err(err).
+			Msg("DEBUG: Auth key processing failed with unexpected error")
 		return nil, err
 	}
 
@@ -201,24 +260,25 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	}
 
 	if routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
+		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname())
+		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID()))
 	} else if changed {
-		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname())
 		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	} else {
 		// Existing node re-registering without route changes
 		// Still need to notify peers about the node being active again
 		// Use UpdateFull to ensure all peers get complete peer maps
-		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname)
+		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname())
 		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
 	}
 
+	user := node.User()
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              *node.User.TailscaleUser(),
-		Login:             *node.User.TailscaleLogin(),
+		User:              *user.TailscaleUser(),
+		Login:             *user.TailscaleLogin(),
 	}, nil
 }
 

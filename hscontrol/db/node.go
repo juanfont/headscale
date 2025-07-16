@@ -438,6 +438,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Username()).
+		Str("given_name", node.GivenName).
 		Msg("Registering node")
 
 	// If the a new node is registered with the same machine key, to the same user,
@@ -446,16 +447,41 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	// a new node.
 	oldNode, _ := GetNodeByMachineKey(tx, node.MachineKey)
 	if oldNode != nil && oldNode.UserID == node.UserID {
+		log.Debug().
+			Str("hostname", oldNode.Hostname).
+			Str("old_given_name", oldNode.GivenName).
+			Str("new_given_name", node.GivenName).
+			Uint64("node_id", uint64(oldNode.ID)).
+			Msg("Found existing node with machine key")
+		
 		node.ID = oldNode.ID
-		node.GivenName = oldNode.GivenName
+		// Only copy GivenName if it's not empty to avoid "node has no given name" errors
+		if oldNode.GivenName != "" {
+			node.GivenName = oldNode.GivenName
+		}
 		ipv4 = oldNode.IPv4
 		ipv6 = oldNode.IPv6
+		
+		log.Debug().
+			Str("hostname", node.Hostname).
+			Str("final_given_name", node.GivenName).
+			Uint64("node_id", uint64(node.ID)).
+			Msg("After copying from existing node")
 	}
 
 	// If the node exists and it already has IP(s), we just save it
 	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
 	if node.IPv4 != nil || node.IPv6 != nil {
+		// Ensure GivenName is set even for nodes with existing IPs
+		if node.GivenName == "" {
+			givenName, err := ensureUniqueGivenName(tx, node.Hostname)
+			if err != nil {
+				return nil, fmt.Errorf("failed to ensure unique given name: %w", err)
+			}
+			node.GivenName = givenName
+		}
+		
 		if err := tx.Save(&node).Error; err != nil {
 			return nil, fmt.Errorf("failed register existing node in the database: %w", err)
 		}

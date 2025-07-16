@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
-	"gorm.io/gorm"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp/controlhttpserver"
 	"tailscale.com/tailcfg"
@@ -56,6 +55,14 @@ func (h *Headscale) NoiseUpgradeHandler(
 	req *http.Request,
 ) {
 	log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
+	
+	// DEBUG: Log noise connection details
+	log.Debug().
+		Str("remote_addr", req.RemoteAddr).
+		Str("path", req.URL.Path).
+		Str("method", req.Method).
+		Str("upgrade_header", req.Header.Get("Upgrade")).
+		Msg("DEBUG: Noise upgrade request received")
 
 	upgrade := req.Header.Get("Upgrade")
 	if upgrade == "" {
@@ -256,6 +263,22 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 			return &regReq, regErr(err)
 		}
 
+		// DEBUG: Log registration request details
+		authKey := ""
+		hostname := ""
+		if regReq.Auth != nil {
+			authKey = regReq.Auth.AuthKey
+		}
+		if regReq.Hostinfo != nil {
+			hostname = regReq.Hostinfo.Hostname
+		}
+		log.Debug().
+			Str("auth_key", authKey).
+			Str("hostname", hostname).
+			Str("node_key", regReq.NodeKey.ShortString()).
+			Str("remote_addr", req.RemoteAddr).
+			Msg("DEBUG: Parsed registration request in noise handler")
+
 		ns.nodeKey = regReq.NodeKey
 
 		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
@@ -293,12 +316,9 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, err := ns.headscale.state.GetNodeViewByNodeKey(mapRequest.NodeKey)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
-		}
-		return types.NodeView{}, err
+	nv := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	if !nv.Valid() {
+		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}
 
 	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.

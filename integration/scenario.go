@@ -14,7 +14,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -696,7 +695,6 @@ func (s *Scenario) createHeadscaleEnv(
 		return err
 	}
 
-	sort.Strings(s.spec.Users)
 	for _, user := range s.spec.Users {
 		u, err := s.CreateUser(user)
 		if err != nil {
@@ -745,6 +743,12 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 				loginURL, err := tsc.LoginWithURL(loginServer)
 				if err != nil {
 					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
+					return err
+				}
+
+				// Check if loginURL is nil to prevent panic in doLoginURL
+				if loginURL == nil {
+					return fmt.Errorf("%s received nil login URL", tsc.Hostname())
 				}
 
 				body, err := doLoginURL(tsc.Hostname(), loginURL)
