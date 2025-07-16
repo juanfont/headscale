@@ -41,6 +41,8 @@ systemctl start headscale
 
 ### BREAKING
 
+- Remove support for 32-bit binaries
+  [#2692](https://github.com/juanfont/headscale/pull/2692)
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
 
