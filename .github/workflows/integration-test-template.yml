@@ -77,7 +77,7 @@ jobs:
           attempt_delay: 300000 # 5 min
           attempt_limit: 2
           command: |
-            nix develop --command -- hi run "^${{ inputs.test }}$" \
+            nix develop --command -- hi run --stats --ts-memory-limit=300 --hs-memory-limit=500 "^${{ inputs.test }}$" \
               --timeout=120m \
               ${{ inputs.postgres_flag }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
