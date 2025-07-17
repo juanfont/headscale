@@ -24,6 +24,9 @@ type RunConfig struct {
 	KeepOnFailure bool          `flag:"keep-on-failure,default=false,Keep containers on test failure"`
 	LogsDir       string        `flag:"logs-dir,default=control_logs,Control logs directory"`
 	Verbose       bool          `flag:"verbose,default=false,Verbose output"`
+	Stats           bool          `flag:"stats,default=false,Collect and display container resource usage statistics"`
+	HSMemoryLimit   float64       `flag:"hs-memory-limit,default=0,Fail test if any Headscale container exceeds this memory limit in MB (0 = disabled)"`
+	TSMemoryLimit   float64       `flag:"ts-memory-limit,default=0,Fail test if any Tailscale container exceeds this memory limit in MB (0 = disabled)"`
 }
 
 // runIntegrationTest executes the integration test workflow.

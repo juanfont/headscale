@@ -90,6 +90,32 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	log.Printf("Starting test: %s", config.TestPattern)
 
+	// Start stats collection for container resource monitoring (if enabled)
+	var statsCollector *StatsCollector
+	if config.Stats {
+		var err error
+		statsCollector, err = NewStatsCollector()
+		if err != nil {
+			if config.Verbose {
+				log.Printf("Warning: failed to create stats collector: %v", err)
+			}
+			statsCollector = nil
+		}
+
+		if statsCollector != nil {
+			defer statsCollector.Close()
+			
+			// Start stats collection immediately - no need for complex retry logic
+			// The new implementation monitors Docker events and will catch containers as they start
+			if err := statsCollector.StartCollection(ctx, runID, config.Verbose); err != nil {
+				if config.Verbose {
+					log.Printf("Warning: failed to start stats collection: %v", err)
+				}
+			}
+			defer statsCollector.StopCollection()
+		}
+	}
+
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
 	// Ensure all containers have finished and logs are flushed before extracting artifacts
@@ -104,6 +130,20 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	// Always list control files regardless of test outcome
 	listControlFiles(logsDir)
+
+	// Print stats summary and check memory limits if enabled
+	if config.Stats && statsCollector != nil {
+		violations := statsCollector.PrintSummaryAndCheckLimits(config.HSMemoryLimit, config.TSMemoryLimit)
+		if len(violations) > 0 {
+			log.Printf("MEMORY LIMIT VIOLATIONS DETECTED:")
+			log.Printf("=================================")
+			for _, violation := range violations {
+				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB", 
+					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
+			}
+			return fmt.Errorf("test failed: %d container(s) exceeded memory limits", len(violations))
+		}
+	}
 
 	shouldCleanup := config.CleanAfter && (!config.KeepOnFailure || exitCode == 0)
 	if shouldCleanup {
