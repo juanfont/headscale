@@ -56,10 +56,13 @@ func (pol *Policy) compileFilterRules(
 			}
 
 			if ips == nil {
+				log.Debug().Msgf("destination resolved to nil ips: %v", dest)
 				continue
 			}
 
-			for _, pref := range ips.Prefixes() {
+			prefixes := ips.Prefixes()
+
+			for _, pref := range prefixes {
 				for _, port := range dest.Ports {
 					pr := tailcfg.NetPortRange{
 						IP:    pref.String(),
@@ -103,6 +106,8 @@ func (pol *Policy) compileSSHPolicy(
 		return nil, nil
 	}
 
+	log.Trace().Msgf("compiling SSH policy for node %q", node.Hostname())
+
 	var rules []*tailcfg.SSHRule
 
 	for index, rule := range pol.SSHs {
@@ -137,7 +142,8 @@ func (pol *Policy) compileSSHPolicy(
 		var principals []*tailcfg.SSHPrincipal
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Err(err).Msgf("resolving source ips")
+			log.Trace().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
+			continue // Skip this rule if we can't resolve sources
 		}
 
 		for addr := range util.IPSetAddrIter(srcIPs) {

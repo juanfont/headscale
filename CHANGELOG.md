@@ -2,6 +2,8 @@
 
 ## Next
 
+**Minimum supported Tailscale client version: v1.64.0**
+
 ### Database integrity improvements
 
 This release includes a significant database migration that addresses longstanding

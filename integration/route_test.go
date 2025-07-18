@@ -310,7 +310,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Enable route on node 1
 	t.Logf("Enabling route on subnet router 1, no HA")
 	_, err = headscale.ApproveRoutes(
-		1,
+		MustFindNode(subRouter1.Hostname(), nodes).GetId(),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -366,7 +366,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Enable route on node 2, now we will have a HA subnet router
 	t.Logf("Enabling route on subnet router 2, now HA, subnetrouter 1 is primary, 2 is standby")
 	_, err = headscale.ApproveRoutes(
-		2,
+		MustFindNode(subRouter2.Hostname(), nodes).GetId(),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -422,7 +422,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// be enabled.
 	t.Logf("Enabling route on subnet router 3, now HA, subnetrouter 1 is primary, 2 and 3 is standby")
 	_, err = headscale.ApproveRoutes(
-		3,
+		MustFindNode(subRouter3.Hostname(), nodes).GetId(),
 		[]netip.Prefix{pref},
 	)
 	require.NoError(t, err)
@@ -639,7 +639,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	t.Logf("disabling route in subnet router r3 (%s)", subRouter3.Hostname())
 	t.Logf("expecting route to failover to r1 (%s), which is still available with r2", subRouter1.Hostname())
-	_, err = headscale.ApproveRoutes(nodes[2].GetId(), []netip.Prefix{})
+	_, err = headscale.ApproveRoutes(MustFindNode(subRouter3.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	time.Sleep(5 * time.Second)
 
@@ -647,9 +647,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	requireNodeRouteCount(t, nodes[0], 1, 1, 1)
-	requireNodeRouteCount(t, nodes[1], 1, 1, 0)
-	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter1.Hostname(), nodes), 1, 1, 1)
+	requireNodeRouteCount(t, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -684,7 +684,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Disable the route of subnet router 1, making it failover to 2
 	t.Logf("disabling route in subnet router r1 (%s)", subRouter1.Hostname())
 	t.Logf("expecting route to failover to r2 (%s)", subRouter2.Hostname())
-	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{})
+	_, err = headscale.ApproveRoutes(MustFindNode(subRouter1.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	time.Sleep(5 * time.Second)
 
@@ -692,9 +692,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
-	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
-	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter1.Hostname(), nodes), 1, 0, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 1)
+	requireNodeRouteCount(t, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()
@@ -729,9 +729,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// enable the route of subnet router 1, no change expected
 	t.Logf("enabling route in subnet router 1 (%s)", subRouter1.Hostname())
 	t.Logf("both online, expecting r2 (%s) to still be primary (no flapping)", subRouter2.Hostname())
+	r1Node := MustFindNode(subRouter1.Hostname(), nodes)
 	_, err = headscale.ApproveRoutes(
-		nodes[0].GetId(),
-		util.MustStringsToPrefixes(nodes[0].GetAvailableRoutes()),
+		r1Node.GetId(),
+		util.MustStringsToPrefixes(r1Node.GetAvailableRoutes()),
 	)
 
 	time.Sleep(5 * time.Second)
@@ -740,9 +741,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, nodes, 6)
 
-	requireNodeRouteCount(t, nodes[0], 1, 1, 0)
-	requireNodeRouteCount(t, nodes[1], 1, 1, 1)
-	requireNodeRouteCount(t, nodes[2], 1, 0, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter1.Hostname(), nodes), 1, 1, 0)
+	requireNodeRouteCount(t, MustFindNode(subRouter2.Hostname(), nodes), 1, 1, 1)
+	requireNodeRouteCount(t, MustFindNode(subRouter3.Hostname(), nodes), 1, 0, 0)
 
 	// Verify that the route is announced from subnet router 1
 	clientStatus, err = client.Status()

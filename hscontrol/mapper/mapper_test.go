@@ -3,6 +3,7 @@ package mapper
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -70,7 +71,7 @@ func TestDNSConfigMapResponse(t *testing.T) {
 				&types.Config{
 					TailcfgDNSConfig: &dnsConfigOrig,
 				},
-				nodeInShared1.View(),
+				nodeInShared1,
 			)
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
@@ -126,11 +127,8 @@ func (m *mockState) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (typ
 		// Filter peers by the provided IDs
 		var filtered types.Nodes
 		for _, peer := range m.peers {
-			for _, id := range peerIDs {
-				if peer.ID == id {
-					filtered = append(filtered, peer)
-					break
-				}
+			if slices.Contains(peerIDs, peer.ID) {
+				filtered = append(filtered, peer)
 			}
 		}
 
@@ -152,11 +150,8 @@ func (m *mockState) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 		// Filter nodes by the provided IDs
 		var filtered types.Nodes
 		for _, node := range m.nodes {
-			for _, id := range nodeIDs {
-				if node.ID == id {
-					filtered = append(filtered, node)
-					break
-				}
+			if slices.Contains(nodeIDs, node.ID) {
+				filtered = append(filtered, node)
 			}
 		}
 

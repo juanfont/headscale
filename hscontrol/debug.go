@@ -17,10 +17,6 @@ import (
 func (h *Headscale) debugHTTPServer() *http.Server {
 	debugMux := http.NewServeMux()
 	debug := tsweb.Debugger(debugMux)
-	debug.Handle("notifier", "Connected nodes in notifier", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(h.nodeNotifier.String()))
-	}))
 	debug.Handle("config", "Current configuration", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		config, err := json.MarshalIndent(h.cfg, "", "  ")
 		if err != nil {

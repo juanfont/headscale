@@ -87,10 +87,9 @@ lint-proto: check-deps $(PROTO_SOURCES)
 
 # Code generation
 .PHONY: generate
-generate: check-deps $(PROTO_SOURCES)
-	@echo "Generating code from Protocol Buffers..."
-	rm -rf gen
-	buf generate proto
+generate: check-deps
+	@echo "Generating code..."
+	go generate ./...
 
 # Clean targets
 .PHONY: clean

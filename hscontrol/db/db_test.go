@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -362,8 +361,8 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 				}
 
 				if diff := cmp.Diff(expectedKeys, keys, cmp.Comparer(func(a, b []string) bool {
-					sort.Sort(sort.StringSlice(a))
-					sort.Sort(sort.StringSlice(b))
+					slices.Sort(a)
+					slices.Sort(b)
 					return slices.Equal(a, b)
 				}), cmpopts.IgnoreFields(types.PreAuthKey{}, "User", "CreatedAt", "Reusable", "Ephemeral", "Used", "Expiration")); diff != "" {
 					t.Errorf("TestSQLiteMigrationAndDataValidation() pre-auth key tags migration mismatch (-want +got):\n%s", diff)

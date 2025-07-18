@@ -1730,7 +1730,7 @@ func (u SSHUser) MarshalJSON() ([]byte, error) {
 // In addition to unmarshalling, it will also validate the policy.
 // This is the only entrypoint of reading a policy from a file or other source.
 func unmarshalPolicy(b []byte) (*Policy, error) {
-	if b == nil || len(b) == 0 {
+	if len(b) == 0 {
 		return nil, nil
 	}
 
