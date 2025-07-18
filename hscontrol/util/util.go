@@ -143,7 +143,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 
 		// Parse latencies
 		for j := 5; j <= 7; j++ {
-			if matches[j] != "" {
+			if j < len(matches) && matches[j] != "" {
 				ms, err := strconv.ParseFloat(matches[j], 64)
 				if err != nil {
 					return Traceroute{}, fmt.Errorf("parsing latency: %w", err)

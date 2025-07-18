@@ -212,13 +212,10 @@ var listUsersCmd = &cobra.Command{
 		switch {
 		case id > 0:
 			request.Id = uint64(id)
-			break
 		case username != "":
 			request.Name = username
-			break
 		case email != "":
 			request.Email = email
-			break
 		}
 
 		response, err := client.ListUsers(ctx, request)

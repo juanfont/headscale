@@ -3,6 +3,8 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -216,4 +218,41 @@ func AssignNodeToUser(tx *gorm.DB, nodeID types.NodeID, uid types.UserID) error 
 	}
 
 	return nil
+}
+
+func (hsdb *HSDatabase) CreateUserForTest(name ...string) *types.User {
+	if !testing.Testing() {
+		panic("CreateUserForTest can only be called during tests")
+	}
+
+	userName := "testuser"
+	if len(name) > 0 && name[0] != "" {
+		userName = name[0]
+	}
+
+	user, err := hsdb.CreateUser(types.User{Name: userName})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test user: %v", err))
+	}
+
+	return user
+}
+
+func (hsdb *HSDatabase) CreateUsersForTest(count int, namePrefix ...string) []*types.User {
+	if !testing.Testing() {
+		panic("CreateUsersForTest can only be called during tests")
+	}
+
+	prefix := "testuser"
+	if len(namePrefix) > 0 && namePrefix[0] != "" {
+		prefix = namePrefix[0]
+	}
+
+	users := make([]*types.User, count)
+	for i := range count {
+		name := prefix + "-" + strconv.Itoa(i)
+		users[i] = hsdb.CreateUserForTest(name)
+	}
+
+	return users
 }

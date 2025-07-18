@@ -147,3 +147,9 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 	config.CapAdd = append(config.CapAdd, "NET_ADMIN")
 	config.Privileged = true
 }
+
+// DockerMemoryLimit sets memory limit and disables OOM kill for containers.
+func DockerMemoryLimit(config *docker.HostConfig) {
+	config.Memory = 2 * 1024 * 1024 * 1024 // 2GB in bytes
+	config.OOMKillDisable = true
+}
