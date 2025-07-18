@@ -113,6 +113,17 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 					}
 				}
 			}
+
+			// Also check approved subnet routes - nodes should have access
+			// to subnets they're approved to route traffic for.
+			subnetRoutes := node.SubnetRoutes()
+
+			for _, subnetRoute := range subnetRoutes {
+				if expanded.OverlapsPrefix(subnetRoute) {
+					dests = append(dests, dest)
+					continue DEST_LOOP
+				}
+			}
 		}
 
 		if len(dests) > 0 {

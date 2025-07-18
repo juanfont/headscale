@@ -13,11 +13,10 @@ func TestTailscaleLatestMajorMinor(t *testing.T) {
 		stripV   bool
 		expected []string
 	}{
-		{3, false, []string{"v1.78", "v1.80", "v1.82"}},
-		{2, true, []string{"1.80", "1.82"}},
+		{3, false, []string{"v1.80", "v1.82", "v1.84"}},
+		{2, true, []string{"1.82", "1.84"}},
 		// Lazy way to see all supported versions
 		{10, true, []string{
-			"1.64",
 			"1.66",
 			"1.68",
 			"1.70",
@@ -27,6 +26,7 @@ func TestTailscaleLatestMajorMinor(t *testing.T) {
 			"1.78",
 			"1.80",
 			"1.82",
+			"1.84",
 		}},
 		{0, false, nil},
 	}
@@ -46,7 +46,6 @@ func TestCapVerMinimumTailscaleVersion(t *testing.T) {
 		input    tailcfg.CapabilityVersion
 		expected string
 	}{
-		{88, "v1.62.0"},
 		{90, "v1.64.0"},
 		{95, "v1.66.0"},
 		{106, "v1.74.0"},

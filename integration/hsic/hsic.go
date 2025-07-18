@@ -258,7 +258,9 @@ func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_TUNING_BATCH_CHANGE_DELAY"] = batchTimeout.String()
-		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(mapSessionChanSize)
+		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(
+			mapSessionChanSize,
+		)
 	}
 }
 
@@ -369,8 +371,12 @@ func New(
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
-		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; update-ca-certificates ; headscale serve ; /bin/sleep 30"},
-		Env:        env,
+		Entrypoint: []string{
+			"/bin/bash",
+			"-c",
+			"/bin/sleep 3 ; update-ca-certificates ; headscale serve ; /bin/sleep 30",
+		},
+		Env: env,
 	}
 
 	if len(hsic.hostPortBindings) > 0 {
@@ -644,14 +650,6 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return nil
 	}
 
-	// First, let's see what files are actually in /tmp
-	tmpListing, err := t.Execute([]string{"ls", "-la", "/tmp/"})
-	if err != nil {
-		log.Printf("Warning: could not list /tmp directory: %v", err)
-	} else {
-		log.Printf("Contents of /tmp in container %s:\n%s", t.hostname, tmpListing)
-	}
-
 	// Also check for any .sqlite files
 	sqliteFiles, err := t.Execute([]string{"find", "/tmp", "-name", "*.sqlite*", "-type", "f"})
 	if err != nil {
@@ -678,12 +676,6 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return errors.New("database file exists but has no schema (empty database)")
 	}
 
-	// Show a preview of the schema (first 500 chars)
-	schemaPreview := schemaCheck
-	if len(schemaPreview) > 500 {
-		schemaPreview = schemaPreview[:500] + "..."
-	}
-
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
 		return fmt.Errorf("failed to fetch database file: %w", err)
@@ -700,7 +692,12 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		log.Printf("Found file in tar: %s (type: %d, size: %d)", header.Name, header.Typeflag, header.Size)
+		log.Printf(
+			"Found file in tar: %s (type: %d, size: %d)",
+			header.Name,
+			header.Typeflag,
+			header.Size,
+		)
 
 		// Extract the first regular file we find
 		if header.Typeflag == tar.TypeReg {
@@ -716,11 +713,20 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 				return fmt.Errorf("failed to copy database file: %w", err)
 			}
 
-			log.Printf("Extracted database file: %s (%d bytes written, header claimed %d bytes)", dbPath, written, header.Size)
+			log.Printf(
+				"Extracted database file: %s (%d bytes written, header claimed %d bytes)",
+				dbPath,
+				written,
+				header.Size,
+			)
 
 			// Check if we actually wrote something
 			if written == 0 {
-				return fmt.Errorf("database file is empty (size: %d, header size: %d)", written, header.Size)
+				return fmt.Errorf(
+					"database file is empty (size: %d, header size: %d)",
+					written,
+					header.Size,
+				)
 			}
 
 			return nil
@@ -821,7 +827,15 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
 ) (*v1.User, error) {
-	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user), "--output", "json"}
+	command := []string{
+		"headscale",
+		"users",
+		"create",
+		user,
+		fmt.Sprintf("--email=%s@test.no", user),
+		"--output",
+		"json",
+	}
 
 	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
