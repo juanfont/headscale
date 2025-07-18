@@ -419,10 +419,37 @@ func getDockerSocketPath() string {
 	return "/var/run/docker.sock"
 }
 
-// ensureImageAvailable pulls the specified Docker image to ensure it's available.
+// checkImageAvailableLocally checks if the specified Docker image is available locally.
+func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
+	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
+	}
+
+	return true, nil
+}
+
+// ensureImageAvailable checks if the image is available locally first, then pulls if needed.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
+	// First check if image is available locally
+	available, err := checkImageAvailableLocally(ctx, cli, imageName)
+	if err != nil {
+		return fmt.Errorf("failed to check local image availability: %w", err)
+	}
+
+	if available {
+		if verbose {
+			log.Printf("Image %s is available locally", imageName)
+		}
+		return nil
+	}
+
+	// Image not available locally, try to pull it
 	if verbose {
-		log.Printf("Pulling image %s...", imageName)
+		log.Printf("Image %s not found locally, pulling...", imageName)
 	}
 
 	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})

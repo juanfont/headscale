@@ -1,5 +1,7 @@
 package capver
 
+//go:generate go run ../../tools/capver/main.go
+
 import (
 	"slices"
 	"sort"
@@ -10,7 +12,7 @@ import (
 	"tailscale.com/util/set"
 )
 
-const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 88
+const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 90
 
 // CanOldCodeBeCleanedUp is intended to be called on startup to see if
 // there are old code that can ble cleaned up, entries should contain

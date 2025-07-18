@@ -883,6 +883,10 @@ func TestNodeOnlineStatus(t *testing.T) {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				status, err := client.Status()
 				assert.NoError(ct, err)
+				if status == nil {
+					assert.Fail(ct, "status is nil")
+					return
+				}
 
 				for _, peerKey := range status.Peers() {
 					peerStatus := status.Peer[peerKey]
@@ -984,16 +988,11 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		}
 
 		// Wait for sync and successful pings after nodes come back up
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			err = scenario.WaitForTailscaleSync()
-			assert.NoError(ct, err)
-
-			success := pingAllHelper(t, allClients, allAddrs)
-			assert.Greater(ct, success, 0, "Nodes should be able to ping after coming back up")
-		}, 30*time.Second, 2*time.Second)
+		err = scenario.WaitForTailscaleSync()
+		assert.NoError(t, err)
 
 		success := pingAllHelper(t, allClients, allAddrs)
-		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
 	}
 }
 

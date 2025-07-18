@@ -17,3 +17,7 @@ LICENSE
 .vscode
 
 *.sock
+
+node_modules/
+package-lock.json
+package.json

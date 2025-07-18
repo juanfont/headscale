@@ -1,14 +1,10 @@
 package capver
 
-// Generated DO NOT EDIT
+//Generated DO NOT EDIT
 
 import "tailscale.com/tailcfg"
 
 var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
-	"v1.60.0": 87,
-	"v1.60.1": 87,
-	"v1.62.0": 88,
-	"v1.62.1": 88,
 	"v1.64.0": 90,
 	"v1.64.1": 90,
 	"v1.64.2": 90,
@@ -36,18 +32,21 @@ var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
 	"v1.80.3": 113,
 	"v1.82.0": 115,
 	"v1.82.5": 115,
+	"v1.84.0": 116,
+	"v1.84.1": 116,
+	"v1.84.2": 116,
 }
 
+
 var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
-	87:  "v1.60.0",
-	88:  "v1.62.0",
-	90:  "v1.64.0",
-	95:  "v1.66.0",
-	97:  "v1.68.0",
-	102: "v1.70.0",
-	104: "v1.72.0",
-	106: "v1.74.0",
-	109: "v1.78.0",
-	113: "v1.80.0",
-	115: "v1.82.0",
+	90:		"v1.64.0",
+	95:		"v1.66.0",
+	97:		"v1.68.0",
+	102:		"v1.70.0",
+	104:		"v1.72.0",
+	106:		"v1.74.0",
+	109:		"v1.78.0",
+	113:		"v1.80.0",
+	115:		"v1.82.0",
+	116:		"v1.84.0",
 }

@@ -113,6 +113,17 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 					}
 				}
 			}
+
+			// Also check approved subnet routes - nodes should have access
+			// to subnets they're approved to route traffic for.
+			subnetRoutes := node.SubnetRoutes()
+
+			for _, subnetRoute := range subnetRoutes {
+				if expanded.OverlapsPrefix(subnetRoute) {
+					dests = append(dests, dest)
+					continue DEST_LOOP
+				}
+			}
 		}
 
 		if len(dests) > 0 {
@@ -142,16 +153,23 @@ func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 			newApproved = append(newApproved, route)
 		}
 	}
-	if newApproved != nil {
-		newApproved = append(newApproved, node.ApprovedRoutes...)
-		tsaddr.SortPrefixes(newApproved)
-		newApproved = slices.Compact(newApproved)
-		newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
+
+	// Only modify ApprovedRoutes if we have new routes to approve.
+	// This prevents clearing existing approved routes when nodes
+	// temporarily don't have announced routes during policy changes.
+	if len(newApproved) > 0 {
+		combined := append(newApproved, node.ApprovedRoutes...)
+		tsaddr.SortPrefixes(combined)
+		combined = slices.Compact(combined)
+		combined = lo.Filter(combined, func(route netip.Prefix, index int) bool {
 			return route.IsValid()
 		})
-		node.ApprovedRoutes = newApproved
 
-		return true
+		// Only update if the routes actually changed
+		if !slices.Equal(node.ApprovedRoutes, combined) {
+			node.ApprovedRoutes = combined
+			return true
+		}
 	}
 
 	return false

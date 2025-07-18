@@ -3,6 +3,8 @@ package db
 import (
 	"errors"
 	"fmt"
+	"strconv"
+	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -110,9 +112,7 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 }
 
 func (hsdb *HSDatabase) GetUserByID(uid types.UserID) (*types.User, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.User, error) {
-		return GetUserByID(rx, uid)
-	})
+	return GetUserByID(hsdb.DB, uid)
 }
 
 func GetUserByID(tx *gorm.DB, uid types.UserID) (*types.User, error) {
@@ -146,9 +146,7 @@ func GetUserByOIDCIdentifier(tx *gorm.DB, id string) (*types.User, error) {
 }
 
 func (hsdb *HSDatabase) ListUsers(where ...*types.User) ([]types.User, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) ([]types.User, error) {
-		return ListUsers(rx, where...)
-	})
+	return ListUsers(hsdb.DB, where...)
 }
 
 // ListUsers gets all the existing users.
@@ -216,4 +214,41 @@ func AssignNodeToUser(tx *gorm.DB, nodeID types.NodeID, uid types.UserID) error 
 	}
 
 	return nil
+}
+
+func (hsdb *HSDatabase) CreateUserForTest(name ...string) *types.User {
+	if !testing.Testing() {
+		panic("CreateUserForTest can only be called during tests")
+	}
+
+	userName := "testuser"
+	if len(name) > 0 && name[0] != "" {
+		userName = name[0]
+	}
+
+	user, err := hsdb.CreateUser(types.User{Name: userName})
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test user: %v", err))
+	}
+
+	return user
+}
+
+func (hsdb *HSDatabase) CreateUsersForTest(count int, namePrefix ...string) []*types.User {
+	if !testing.Testing() {
+		panic("CreateUsersForTest can only be called during tests")
+	}
+
+	prefix := "testuser"
+	if len(namePrefix) > 0 && namePrefix[0] != "" {
+		prefix = namePrefix[0]
+	}
+
+	users := make([]*types.User, count)
+	for i := range count {
+		name := prefix + "-" + strconv.Itoa(i)
+		users[i] = hsdb.CreateUserForTest(name)
+	}
+
+	return users
 }

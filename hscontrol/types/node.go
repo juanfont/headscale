@@ -431,6 +431,11 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 	return routes
 }
 
+// IsSubnetRouter reports if the node has any subnet routes.
+func (node *Node) IsSubnetRouter() bool {
+	return len(node.SubnetRoutes()) > 0
+}
+
 func (node *Node) String() string {
 	return node.Hostname
 }
@@ -667,6 +672,13 @@ func (v NodeView) SubnetRoutes() []netip.Prefix {
 		return nil
 	}
 	return v.ж.SubnetRoutes()
+}
+
+func (v NodeView) IsSubnetRouter() bool {
+	if !v.Valid() {
+		return false
+	}
+	return v.ж.IsSubnetRouter()
 }
 
 func (v NodeView) AppendToIPSet(build *netipx.IPSetBuilder) {

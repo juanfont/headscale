@@ -70,7 +70,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// TODO(kradalby): This could potentially be optimized by only clearing the
 	// policies for nodes that have changed. Particularly if the only difference is
 	// that nodes has been added or removed.
-	defer clear(pm.sshPolicyMap)
+	clear(pm.sshPolicyMap)
 
 	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
 	if err != nil {
