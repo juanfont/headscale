@@ -1,6 +1,7 @@
 ignored/
 tailscale/
 .vscode/
+.claude/
 
 # Binaries for programs and plugins
 *.exe
