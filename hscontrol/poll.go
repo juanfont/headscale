@@ -148,8 +148,6 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch, m.node.IsSubnetRouter())
-
 		// TODO(kradalby): This can likely be made more effective, but likely most
 		// nodes has access to the same routes, so it might not be a big deal.
 		disconnectChange, err := m.h.state.Disconnect(m.node)
@@ -157,6 +155,8 @@ func (m *mapSession) serveLongPoll() {
 			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
 		m.h.Change(disconnectChange)
+
+		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch, m.node.IsSubnetRouter())
 
 		m.afterServeLongPoll()
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)

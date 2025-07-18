@@ -431,8 +431,8 @@ func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 		return c, fmt.Errorf("disconnecting node: %w", err)
 	}
 
-	if routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...); routeChange {
-		c = change.NodeAdded(node.ID)
+	if routeChange := s.primaryRoutes.SetRoutes(node.ID); routeChange {
+		c = change.PolicyChange()
 	}
 
 	// TODO(kradalby): This node should update the in memory state
@@ -536,8 +536,25 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*
 		return nil, change.EmptySet, fmt.Errorf("setting approved routes: %w", err)
 	}
 
-	if !c.IsFull() {
-		c = change.NodeAdded(nodeID)
+	// Update primary routes after changing approved routes
+	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.SubnetRoutes()...)
+
+	// When routes change, we need to ensure all nodes with subnet routes are properly
+	// represented in the primary routes system. This is necessary because changing
+	// one node's routes might affect the primary route assignment for other nodes.
+	// We do this always, not just when routeChange is true, to ensure consistency.
+	nodes, err := s.ListNodes()
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("listing nodes for primary route update: %w", err)
+	}
+	for _, node := range nodes {
+		if node.ID != nodeID { // Skip the node we just updated
+			s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+		}
+	}
+
+	if routeChange || !c.IsFull() {
+		c = change.PolicyChange()
 	}
 
 	return n, c, nil
