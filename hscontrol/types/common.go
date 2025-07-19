@@ -17,6 +17,7 @@ const (
 	SelfUpdateIdentifier = "self-update"
 	DatabasePostgres     = "postgres"
 	DatabaseSqlite       = "sqlite3"
+	TlsCertHetzner       = "hetzner"
 )
 
 var ErrCannotParsePrefix = errors.New("cannot parse prefix")

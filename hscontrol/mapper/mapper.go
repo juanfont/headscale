@@ -126,8 +126,19 @@ func generateDNSConfig(
 	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
+	addHostNameToCertDomains(dnsConfig, node)
 
 	return dnsConfig
+}
+
+func addHostNameToCertDomains(dnsConfig *tailcfg.DNSConfig, node types.NodeView) {
+	hostName := strings.ToLower(node.Hostname())
+	for i, certDomain := range dnsConfig.CertDomains {
+		prependedDomain := fmt.Sprintf("%s.%s", hostName, certDomain)
+		if prependedDomain != certDomain {
+			dnsConfig.CertDomains[i] = prependedDomain
+		}
+	}
 }
 
 // If any nextdns DoH resolvers are present in the list of resolvers it will
