@@ -779,6 +779,7 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	cfg.Routes = routes
 	if dns.BaseDomain != "" {
 		cfg.Domains = []string{dns.BaseDomain}
+		cfg.CertDomains = cfg.Domains
 	}
 	cfg.Domains = append(cfg.Domains, dns.SearchDomains...)
 
