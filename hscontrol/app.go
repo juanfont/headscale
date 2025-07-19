@@ -81,10 +81,11 @@ type Headscale struct {
 	DERPServer *derpServer.DERPServer
 
 	// Things that generate changes
-	extraRecordMan *dns.ExtraRecordsMan
-	mapper         *mapper.Mapper
-	nodeNotifier   *notifier.Notifier
-	authProvider   AuthProvider
+	extraRecordMan  *dns.ExtraRecordsMan
+	mapper          *mapper.Mapper
+	nodeNotifier    *notifier.Notifier
+	authProvider    AuthProvider
+	tlsCertProvider TlsCertProvider
 
 	pollNetMapStreamWG sync.WaitGroup
 }
@@ -192,6 +193,10 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		for _, d := range magicDNSDomains {
 			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
+	}
+
+	if app.cfg.DNSConfig.TlsCert.Type == types.TlsCertHetzner {
+		app.tlsCertProvider = NewHetznerTlsCertProvider(app.cfg.DNSConfig.TlsCert.Hetzner)
 	}
 
 	if cfg.DERP.ServerEnabled {

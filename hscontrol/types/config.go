@@ -101,13 +101,27 @@ type Config struct {
 }
 
 type DNSConfig struct {
-	MagicDNS         bool   `mapstructure:"magic_dns"`
-	BaseDomain       string `mapstructure:"base_domain"`
-	OverrideLocalDNS bool   `mapstructure:"override_local_dns"`
+	MagicDNS         bool          `mapstructure:"magic_dns"`
+	BaseDomain       string        `mapstructure:"base_domain"`
+	TlsCert          TlsCertConfig `mapstructure:"tls_cert"`
+	OverrideLocalDNS bool          `mapstructure:"override_local_dns"`
 	Nameservers      Nameservers
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+}
+
+type TlsCertConfig struct {
+	// Type sets the tls cert type, one of "hetzner", ...
+	Type    string
+	Hetzner HetznerTlsCertConfig `mapstructure:"hetzner"`
+}
+
+type HetznerTlsCertConfig struct {
+	ApiToken string `mapstructure:"api_token"`
+	ZoneId   string `mapstructure:"zone_id"`
+	ZoneName string `mapstructure:"zone_name"`
+	Ttl      int    `mapstructure:"ttl"`
 }
 
 type Nameservers struct {
@@ -638,6 +652,22 @@ func dns() (DNSConfig, error) {
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
+
+	if viper.IsSet("dns.tls_cert") {
+		zoneName := dns.BaseDomain
+		if viper.IsSet("dns.tls_cert.hetzner.zone_name") {
+			zoneName = viper.GetString("dns.tls_cert.hetzner.zone_name")
+		}
+
+		dns.TlsCert = TlsCertConfig{
+			Hetzner: HetznerTlsCertConfig{
+				ApiToken: viper.GetString("dns.tls_cert.hetzner.api_token"),
+				ZoneId:   viper.GetString("dns.tls_cert.hetzner.zone_id"),
+				ZoneName: zoneName,
+				Ttl:      viper.GetInt("dns.tls_cert.hetzner.ttl"),
+			},
+		}
+	}
 
 	if viper.IsSet("dns.extra_records") {
 		var extraRecords []tailcfg.DNSRecord

@@ -101,6 +101,8 @@ func (h *Headscale) NoiseUpgradeHandler(
 	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
 		Methods(http.MethodPost)
 
+	router.HandleFunc("/machine/set-dns", noiseServer.NoiseSetDnsHandler).
+		Methods(http.MethodPost)
 	// Endpoints outside of the register endpoint must use getAndValidateNode to
 	// get the node to ensure that the MachineKey matches the Node setting up the
 	// connection.
@@ -232,6 +234,55 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 
 func regErr(err error) *tailcfg.RegisterResponse {
 	return &tailcfg.RegisterResponse{Error: err.Error()}
+}
+
+func (ns *noiseServer) NoiseSetDnsHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	if req.Method != http.MethodPost {
+		httpError(writer, errMethodNotAllowed)
+
+		return
+	}
+
+	setDnsRequest, setDnsResponse := func() (*tailcfg.SetDNSRequest, *tailcfg.SetDNSResponse) {
+		var resp *tailcfg.SetDNSResponse
+
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return &tailcfg.SetDNSRequest{}, &tailcfg.SetDNSResponse{}
+		}
+
+		var setDnsReq tailcfg.SetDNSRequest
+		if err := json.Unmarshal(body, &setDnsReq); err != nil {
+			return &setDnsReq, &tailcfg.SetDNSResponse{}
+		}
+
+		ns.nodeKey = setDnsReq.NodeKey
+
+		resp, err = ns.headscale.handleSetDns(req.Context(), setDnsReq)
+		if err != nil {
+			return &setDnsReq, &tailcfg.SetDNSResponse{}
+		}
+
+		return &setDnsReq, resp
+	}()
+
+	// Reject unsupported versions
+	if rejectUnsupported(writer, setDnsRequest.Version, ns.machineKey, setDnsRequest.NodeKey) {
+		return
+	}
+
+	respBody, err := json.Marshal(setDnsResponse)
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+	writer.Write(respBody)
 }
 
 // NoiseRegistrationHandler handles the actual registration process of a node.
