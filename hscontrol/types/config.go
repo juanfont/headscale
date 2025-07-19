@@ -113,7 +113,7 @@ type DNSConfig struct {
 
 type TlsCertConfig struct {
 	// Type sets the tls cert type, one of "hetzner", ...
-	Type    string
+	Type    string               `mapstructure:"type"`
 	Hetzner HetznerTlsCertConfig `mapstructure:"hetzner"`
 }
 
@@ -654,18 +654,22 @@ func dns() (DNSConfig, error) {
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
 	if viper.IsSet("dns.tls_cert") {
-		zoneName := dns.BaseDomain
-		if viper.IsSet("dns.tls_cert.hetzner.zone_name") {
-			zoneName = viper.GetString("dns.tls_cert.hetzner.zone_name")
-		}
+		certType := viper.GetString("dns.tls_cert.type")
+		if certType == TlsCertHetzner {
+			zoneName := dns.BaseDomain
+			if viper.IsSet("dns.tls_cert.hetzner.zone_name") {
+				zoneName = viper.GetString("dns.tls_cert.hetzner.zone_name")
+			}
 
-		dns.TlsCert = TlsCertConfig{
-			Hetzner: HetznerTlsCertConfig{
-				ApiToken: viper.GetString("dns.tls_cert.hetzner.api_token"),
-				ZoneId:   viper.GetString("dns.tls_cert.hetzner.zone_id"),
-				ZoneName: zoneName,
-				Ttl:      viper.GetInt("dns.tls_cert.hetzner.ttl"),
-			},
+			dns.TlsCert = TlsCertConfig{
+				Type: certType,
+				Hetzner: HetznerTlsCertConfig{
+					ApiToken: viper.GetString("dns.tls_cert.hetzner.api_token"),
+					ZoneId:   viper.GetString("dns.tls_cert.hetzner.zone_id"),
+					ZoneName: zoneName,
+					Ttl:      viper.GetInt("dns.tls_cert.hetzner.ttl"),
+				},
+			}
 		}
 	}
 
