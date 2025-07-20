@@ -38,7 +38,7 @@ func New() *PrimaryRoutes {
 // updatePrimaryLocked recalculates the primary routes and updates the internal state.
 // It returns true if the primary routes have changed.
 // It is assumed that the caller holds the lock.
-// The algorthm is as follows:
+// The algorithm is as follows:
 // 1. Reset the primaries map.
 // 2. Iterate over the routes and count the number of times a prefix is advertised.
 // 3. If a prefix is advertised by at least two nodes, it is a primary route.

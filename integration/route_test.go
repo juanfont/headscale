@@ -1334,10 +1334,10 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	web := services[0]
 	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
 
-	// We cant mess to much with ip forwarding in containers so
+	// We can't mess to much with ip forwarding in containers so
 	// we settle for a simple ping here.
 	// Direct is false since we use internal DERP which means we
-	// cant discover a direct path between docker networks.
+	// can't discover a direct path between docker networks.
 	err = user2c.Ping(webip.String(),
 		tsic.WithPingUntilDirect(false),
 		tsic.WithPingCount(1),
@@ -1693,7 +1693,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					// with an additional tsOpt which advertises the route as part
 					// of the `tailscale up` command. If we do this as part of the
 					// scenario creation, it will be added to all nodes and turn
-					// into a HA node, which isnt something we are testing here.
+					// into a HA node, which isn't something we are testing here.
 					routerUsernet1, err := scenario.CreateTailscaleNode("head", tsOpts...)
 					require.NoError(t, err)
 					defer routerUsernet1.Shutdown()
