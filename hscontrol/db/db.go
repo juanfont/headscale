@@ -496,7 +496,7 @@ func NewHeadscaleDatabase(
 				ID: "202407191627",
 				Migrate: func(tx *gorm.DB) error {
 					// Fix an issue where the automigration in GORM expected a constraint to
-					// exists that didnt, and add the one it wanted.
+					// exists that didn't, and add the one it wanted.
 					// Fixes https://github.com/juanfont/headscale/issues/2351
 					if cfg.Type == types.DatabasePostgres {
 						err := tx.Exec(`
@@ -934,7 +934,7 @@ AND auth_key_id NOT IN (
 			},
 			// From this point, the following rules must be followed:
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
-			// - AutoMigrate depends on the struct staying exactly the same, which it wont over time.
+			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
 		},
 	)

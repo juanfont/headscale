@@ -76,7 +76,7 @@ new "world map" is created for every node in the network.
 This means that under certain conditions, Headscale can likely handle 100s
 of devices (maybe more), if there is _little to no change_ happening in the
 network. For example, in Scenario 1, the process of computing the world map is
-extremly demanding due to the size of the network, but when the map has been
+extremely demanding due to the size of the network, but when the map has been
 created and the nodes are not changing, the Headscale instance will likely
 return to a very low resource usage until the next time there is an event
 requiring the new map.
