@@ -355,13 +355,16 @@ unix_socket_permission: "0770"
 #   # Note: enabling this will cause `oidc.expiry` to be ignored.
 #   use_expiry_from_token: false
 #
-#   # The OIDC scopes to use, defaults to "openid", "profile" and "email".
-#   # Custom scopes can be configured as needed, be sure to always include the
-#   # required "openid" scope.
-#   scope: ["openid", "profile", "email"]
+#   # Grace period for invalidating sessions of nodes that have been offline
+#   # Sessions for nodes offline longer than this duration will be invalidated (new SSO login required).
+#   # Default: 30m
+#   session_invalidation_grace_period: 30m
 #
-#   # Provide custom key/value pairs which get sent to the identity provider's
-#   # authorization endpoint.
+#   # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
+#   # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
+#   # To enable automatic token refresh, add "offline_access" to the scope list.
+#
+#   scope: ["openid", "profile", "email", "offline_access"]
 #   extra_params:
 #     domain_hint: example.com
 #

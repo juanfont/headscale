@@ -302,6 +302,39 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	}
 }
 
+func (h *Headscale) oidcTokenRefreshJob(ctx context.Context, oidcProvider *AuthProviderOIDC) {
+	refreshTicker := time.NewTicker(15 * time.Minute)
+	gracePeriodTicker := time.NewTicker(15 * time.Minute)
+	defer refreshTicker.Stop()
+	defer gracePeriodTicker.Stop()
+
+	log.Info().Msg("OIDC: Background token refresh job started (checking every 15 minute for tokens expiring within 30 minutes)")
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info().Caller().Msg("OIDC token refresh job is shutting down.")
+			return
+
+		// Refresh expired tokens every 15 minutes. Will be refreshed if their expiry is within the next 30 minutes.
+		case <-refreshTicker.C:
+			refreshCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+			if err := oidcProvider.RefreshExpiredTokens(refreshCtx); err != nil {
+				log.Error().Err(err).Msg("OIDC: Failed to refresh expired tokens")
+			}
+			cancel()
+
+		// Invalidate sessions for nodes that have been offline for longer than the configured grace period
+		case <-gracePeriodTicker.C:
+			log.Debug().Msg("OIDC: Checking for nodes offline beyond grace period")
+			gracePeriod := oidcProvider.cfg.SessionInvalidationGracePeriod
+			if err := h.db.InvalidateExpiredOIDCSessions(gracePeriod); err != nil {
+				log.Error().Err(err).Msg("OIDC: Failed to invalidate sessions for offline nodes")
+			}
+		}
+	}
+}
+
 func (h *Headscale) grpcAuthenticationInterceptor(ctx context.Context,
 	req interface{},
 	info *grpc.UnaryServerInfo,
@@ -616,6 +649,11 @@ func (h *Headscale) Serve() error {
 	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
 	defer scheduleCancel()
 	go h.scheduledTasks(scheduleCtx)
+
+	// Start OIDC token refresh background job if OIDC is enabled
+	if oidcProvider, ok := h.authProvider.(*AuthProviderOIDC); ok {
+		go h.oidcTokenRefreshJob(scheduleCtx, oidcProvider)
+	}
 
 	if zl.GlobalLevel() == zl.TraceLevel {
 		zerolog.RespLog = true

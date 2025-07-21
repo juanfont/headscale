@@ -927,7 +927,6 @@ AND auth_key_id NOT IN (
 					}
 
 					log.Info().Msg("Schema recreation completed successfully")
-
 					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
@@ -936,6 +935,23 @@ AND auth_key_id NOT IN (
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
+			{
+				ID: "202507140001",
+				Migrate: func(tx *gorm.DB) error {
+					// Create OIDC sessions table for managing OIDC refresh tokens
+					// This replaces the old OIDC token columns in the users table
+					if !tx.Migrator().HasTable(&types.OIDCSession{}) {
+						err := tx.AutoMigrate(&types.OIDCSession{})
+						if err != nil {
+							return fmt.Errorf("creating OIDC sessions table: %w", err)
+						}
+						log.Debug().Msg("Created OIDC sessions table")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
