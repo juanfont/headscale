@@ -225,9 +225,11 @@ tls_cert_path: ""
 tls_key_path: ""
 
 log:
+  # Valid log levels: panic, fatal, error, warn, info, debug, trace
+  level: info
+
   # Output formatting for logs: text or json
   format: text
-  level: info
 
 ## Policy
 # headscale supports Tailscale's ACL policies.
