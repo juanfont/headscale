@@ -77,6 +77,10 @@ body:
     attributes:
       label: Debug information
       description: |
+        Please have a look at our [Debugging and troubleshooting
+        guide](https://headscale.net/development/ref/debug/) to learn about
+        common debugging techniques.
+
         Links? References? Anything that will give us more context about the issue you are encountering.
         If **any** of these are omitted we will likely close your issue, do **not** ignore them.
 
