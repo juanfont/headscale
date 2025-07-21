@@ -430,7 +430,6 @@ AND auth_key_id NOT IN (
 					}
 
 					log.Info().Msg("Schema recreation completed successfully")
-
 					return nil
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
@@ -683,6 +682,22 @@ AND auth_key_id NOT IN (
 							Strs("existing_tags", existingTags).
 							Strs("merged_tags", mergedTags).
 							Msg("Migrated validated RequestTags from host_info to tags column")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202602050001-oidc-sessions",
+				Migrate: func(tx *gorm.DB) error {
+					// Create OIDC sessions table for managing OIDC refresh tokens
+					if !tx.Migrator().HasTable(&types.OIDCSession{}) {
+						err := tx.AutoMigrate(&types.OIDCSession{})
+						if err != nil {
+							return fmt.Errorf("creating OIDC sessions table: %w", err)
+						}
+						log.Debug().Msg("Created OIDC sessions table")
 					}
 
 					return nil
