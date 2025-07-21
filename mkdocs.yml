@@ -182,6 +182,7 @@ nav:
       - ACLs: ref/acls.md
       - DNS: ref/dns.md
       - Remote CLI: ref/remote-cli.md
+      - Debug: ref/debug.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md
           - Web UI: ref/integration/web-ui.md
