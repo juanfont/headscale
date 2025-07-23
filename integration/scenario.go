@@ -27,6 +27,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/ory/dockertest/v3"
@@ -39,6 +40,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 	"tailscale.com/util/mak"
+	"tailscale.com/util/multierr"
 )
 
 const (
@@ -498,7 +500,7 @@ func (s *Scenario) CreateTailscaleNode(
 		)
 	}
 
-	err = tsClient.WaitForNeedsLogin()
+	err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to wait for tailscaled (%s) to need login: %w",
@@ -561,7 +563,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					)
 				}
 
-				err = tsClient.WaitForNeedsLogin()
+				err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 				if err != nil {
 					return fmt.Errorf(
 						"failed to wait for tailscaled (%s) to need login: %w",
@@ -607,7 +609,7 @@ func (s *Scenario) RunTailscaleUp(
 		}
 
 		for _, client := range user.Clients {
-			err := client.WaitForRunning()
+			err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			if err != nil {
 				return fmt.Errorf("%s failed to up tailscale node: %w", client.Hostname(), err)
 			}
@@ -636,7 +638,7 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	err := s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	err := s.WaitForTailscaleSyncWithPeerCount(tsCount-1, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 	if err != nil {
 		for _, user := range s.users {
 			for _, client := range user.Clients {
@@ -653,19 +655,24 @@ func (s *Scenario) WaitForTailscaleSync() error {
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports
 // to have all other TailscaleClients present in their netmap.NetworkMap.
-func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int) error {
+func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, retryInterval time.Duration) error {
+	var allErrors []error
+
 	for _, user := range s.users {
 		for _, client := range user.Clients {
 			c := client
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForPeers(peerCount)
+				return c.WaitForPeers(peerCount, timeout, retryInterval)
 			})
 		}
 		if err := user.syncWaitGroup.Wait(); err != nil {
-			return err
+			allErrors = append(allErrors, err)
 		}
 	}
 
+	if len(allErrors) > 0 {
+		return multierr.New(allErrors...)
+	}
 	return nil
 }
 
@@ -767,7 +774,7 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 		}
 
 		for _, client := range user.Clients {
-			err := client.WaitForRunning()
+			err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			if err != nil {
 				return fmt.Errorf(
 					"%s tailscale node has not reached running: %w",
@@ -1001,7 +1008,7 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 		for _, client := range user.Clients {
 			c := client
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForNeedsLogin()
+				return c.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 			})
 		}
 		if err := user.syncWaitGroup.Wait(); err != nil {

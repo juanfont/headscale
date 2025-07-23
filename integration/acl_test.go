@@ -11,6 +11,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -312,7 +313,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 			allClients, err := scenario.ListTailscaleClients()
 			require.NoError(t, err)
 
-			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1@test.no"])
+			err = scenario.WaitForTailscaleSyncWithPeerCount(testCase.want["user1@test.no"], integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 			require.NoError(t, err)
 
 			for _, client := range allClients {
