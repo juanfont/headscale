@@ -31,6 +31,7 @@ import (
 	"tailscale.com/paths"
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
+	"tailscale.com/util/multierr"
 )
 
 const (
@@ -529,7 +530,7 @@ func (t *TailscaleInContainer) Logout() error {
 		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
 	}
 
-	return t.waitForBackendState("NeedsLogin")
+	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
 }
 
 // Helper that runs `tailscale up` with no arguments.
@@ -904,75 +905,115 @@ func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
 // started and needs to be logged into.
-func (t *TailscaleInContainer) WaitForNeedsLogin() error {
-	return t.waitForBackendState("NeedsLogin")
+func (t *TailscaleInContainer) WaitForNeedsLogin(timeout time.Duration) error {
+	return t.waitForBackendState("NeedsLogin", timeout)
 }
 
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
 // and ready to be used.
-func (t *TailscaleInContainer) WaitForRunning() error {
-	return t.waitForBackendState("Running")
+func (t *TailscaleInContainer) WaitForRunning(timeout time.Duration) error {
+	return t.waitForBackendState("Running", timeout)
 }
 
-func (t *TailscaleInContainer) waitForBackendState(state string) error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
+func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Duration) error {
+	ticker := time.NewTicker(integrationutil.PeerSyncRetryInterval())
+	defer ticker.Stop()
 
-		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
-		// https://github.com/tailscale/tailscale/pull/3865
-		//
-		// Before that, we can check the BackendState to see if the
-		// tailscaled daemon is connected to the control system.
-		if status.BackendState == state {
-			return nil
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-		return errTailscaleNotConnected
-	})
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for backend state %s on %s after %v", state, t.hostname, timeout)
+		case <-ticker.C:
+			status, err := t.Status()
+			if err != nil {
+				continue // Keep retrying on status errors
+			}
+
+			// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
+			// https://github.com/tailscale/tailscale/pull/3865
+			//
+			// Before that, we can check the BackendState to see if the
+			// tailscaled daemon is connected to the control system.
+			if status.BackendState == state {
+				return nil
+			}
+		}
+	}
 }
 
 // WaitForPeers blocks until N number of peers is present in the
 // Peer list of the Tailscale instance and is reporting Online.
-func (t *TailscaleInContainer) WaitForPeers(expected int) error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
+//
+// The method verifies that each peer:
+// - Has the expected peer count
+// - All peers are Online
+// - All peers have a hostname
+// - All peers have a DERP relay assigned
+//
+// Uses multierr to collect all validation errors.
+func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval time.Duration) error {
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
 
-		if peers := status.Peers(); len(peers) != expected {
-			return fmt.Errorf(
-				"%s err: %w expected %d, got %d",
-				t.hostname,
-				errTailscaleWrongPeerCount,
-				expected,
-				len(peers),
-			)
-		} else {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var lastErrs []error
+	for {
+		select {
+		case <-ctx.Done():
+			if len(lastErrs) > 0 {
+				return fmt.Errorf("timeout waiting for %d peers on %s after %v, errors: %w", expected, t.hostname, timeout, multierr.New(lastErrs...))
+			}
+			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout)
+		case <-ticker.C:
+			status, err := t.Status()
+			if err != nil {
+				lastErrs = []error{errTailscaleStatus(t.hostname, err)}
+				continue // Keep retrying on status errors
+			}
+
+			if peers := status.Peers(); len(peers) != expected {
+				lastErrs = []error{fmt.Errorf(
+					"%s err: %w expected %d, got %d",
+					t.hostname,
+					errTailscaleWrongPeerCount,
+					expected,
+					len(peers),
+				)}
+				continue
+			}
+
 			// Verify that the peers of a given node is Online
 			// has a hostname and a DERP relay.
-			for _, peerKey := range peers {
+			var peerErrors []error
+			for _, peerKey := range status.Peers() {
 				peer := status.Peer[peerKey]
 
 				if !peer.Online {
-					return fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName))
 				}
 
 				if peer.HostName == "" {
-					return fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName))
 				}
 
 				if peer.Relay == "" {
-					return fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName))
 				}
 			}
-		}
 
-		return nil
-	})
+			if len(peerErrors) > 0 {
+				lastErrs = peerErrors
+				continue
+			}
+
+			return nil
+		}
+	}
 }
 
 type (
