@@ -49,6 +49,35 @@ type mapper struct {
 	created time.Time
 }
 
+// addOnlineStatusToPeers adds fresh online status from batcher to peer nodes.
+//
+// We do a last-minute copy-and-write on the NodeView to inject current online status
+// from the batcher's connection map. Online status is not populated upstream in NodeStore
+// for consistency reasons - it's runtime connection state that should come from the
+// connection manager (batcher) to ensure map responses have the freshest data.
+func (m *mapper) addOnlineStatusToPeers(peers views.Slice[types.NodeView]) views.Slice[types.NodeView] {
+	if peers.Len() == 0 || m.batcher == nil {
+		return peers
+	}
+
+	result := make([]types.NodeView, 0, peers.Len())
+	for _, peer := range peers.All() {
+		if !peer.Valid() {
+			result = append(result, peer)
+			continue
+		}
+
+		// Get online status from batcher connection map
+		isOnline := m.batcher.IsConnected(peer.ID())
+
+		// Create a mutable copy and set online status
+		peerCopy := peer.AsStruct()
+		peerCopy.IsOnline = &isOnline
+		result = append(result, peerCopy.View())
+	}
+	return views.SliceOf(result)
+}
+
 type patch struct {
 	timestamp time.Time
 	change    *tailcfg.PeerChange
@@ -145,6 +174,9 @@ func (m *mapper) fullMapResponse(
 		return nil, err
 	}
 
+	// Add fresh online status to peers from batcher connection state
+	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
+
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
@@ -154,9 +186,9 @@ func (m *mapper) fullMapResponse(
 		WithDebugConfig().
 		WithSSHPolicy().
 		WithDNSConfig().
-		WithUserProfiles(peers).
+		WithUserProfiles(peersWithOnlineStatus).
 		WithPacketFilters().
-		WithPeers(peers).
+		WithPeers(peersWithOnlineStatus).
 		Build(messages...)
 }
 
@@ -190,11 +222,14 @@ func (m *mapper) peerChangeResponse(
 		return nil, err
 	}
 
+	// Add fresh online status to peers from batcher connection state
+	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
+
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
-		WithUserProfiles(peers).
-		WithPeerChanges(peers).
+		WithUserProfiles(peersWithOnlineStatus).
+		WithPeerChanges(peersWithOnlineStatus).
 		Build()
 }
 

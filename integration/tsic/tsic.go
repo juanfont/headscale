@@ -573,7 +573,7 @@ func (t *TailscaleInContainer) Down() error {
 
 // IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
-	if t.ips != nil && len(t.ips) != 0 {
+	if len(t.ips) != 0 {
 		return t.ips, nil
 	}
 
@@ -589,7 +589,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		return []netip.Addr{}, fmt.Errorf("%s failed to join tailscale client: %w", t.hostname, err)
 	}
 
-	for _, address := range strings.Split(result, "\n") {
+	for address := range strings.SplitSeq(result, "\n") {
 		address = strings.TrimSuffix(address, "\n")
 		if len(address) < 1 {
 			continue

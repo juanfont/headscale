@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -149,6 +148,12 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
+		// Mark node as disconnected in batcher FIRST so that when map responses
+		// are generated for the disconnect notification, the online status will be correct.
+		// We use MarkDisconnected instead of RemoveNode to avoid duplicate notifications
+		// since the Change() call below will handle sending the disconnect notifications.
+		m.h.mapBatcher.MarkDisconnected(m.node.ID, m.ch)
+
 		// TODO(kradalby): This can likely be made more effective, but likely most
 		// nodes has access to the same routes, so it might not be a big deal.
 		disconnectChange, err := m.h.state.Disconnect(m.node)
@@ -156,8 +161,6 @@ func (m *mapSession) serveLongPoll() {
 			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
 		m.h.Change(disconnectChange)
-
-		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch, m.node.IsSubnetRouter())
 
 		m.afterServeLongPoll()
 		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
@@ -172,10 +175,17 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	// Add node to batcher BEFORE sending Connect change to prevent race condition
-	// where the change is sent before the node is in the batcher's node map
+	// Update NodeStore BEFORE adding node to batcher to ensure initial map
+	// generation includes correct online status for all peers
+	connectChange := m.h.state.Connect(m.node)
+
+	// Add node to batcher AFTER updating NodeStore so initial map has correct online status
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.node.IsSubnetRouter(), m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
+
+		// TODO(kradalby): This looks meaningless, we should probably return
+		// an http error here instead of sending an empty response.
+		//
 		// Send empty response to client to fail fast for invalid/non-existent nodes
 		select {
 		case m.ch <- &tailcfg.MapResponse{}:
@@ -185,12 +195,8 @@ func (m *mapSession) serveLongPoll() {
 		return
 	}
 
-	// Now send the Connect change - the batcher handles NodeCameOnline internally
-	// but we still need to update routes and other state-level changes
-	connectChange := m.h.state.Connect(m.node)
-	if !connectChange.Empty() && connectChange.Change != change.NodeCameOnline {
-		m.h.Change(connectChange)
-	}
+	// Send the Connect change for route updates and peer notifications
+	m.h.Change(connectChange)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
