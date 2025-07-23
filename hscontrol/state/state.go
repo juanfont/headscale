@@ -1418,11 +1418,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 	return savedNode.View(), c, nil
 }
 
-// AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
-func (s *State) AllocateNextIPs() (*netip.Addr, *netip.Addr, error) {
-	return s.ipAlloc.Next()
-}
-
 // updatePolicyManagerUsers updates the policy manager with current users.
 // Returns true if the policy changed and notifications should be sent.
 // TODO(kradalby): This is a temporary stepping stone, ultimately we should
