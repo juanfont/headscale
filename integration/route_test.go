@@ -83,14 +83,19 @@ func TestEnablingRoutes(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
+	var nodes []*v1.Node
+	// Wait for route advertisements to propagate to NodeStore
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
 
-	for _, node := range nodes {
-		assert.Len(t, node.GetAvailableRoutes(), 1)
-		assert.Empty(t, node.GetApprovedRoutes())
-		assert.Empty(t, node.GetSubnetRoutes())
-	}
+		for _, node := range nodes {
+			assert.Len(ct, node.GetAvailableRoutes(), 1)
+			assert.Empty(ct, node.GetApprovedRoutes())
+			assert.Empty(ct, node.GetSubnetRoutes())
+		}
+	}, 10*time.Second, 100*time.Millisecond, "route advertisements should propagate to all nodes")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -113,14 +118,18 @@ func TestEnablingRoutes(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	nodes, err = headscale.ListNodes()
-	require.NoError(t, err)
+	// Wait for route approvals to propagate to NodeStore
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
 
-	for _, node := range nodes {
-		assert.Len(t, node.GetAvailableRoutes(), 1)
-		assert.Len(t, node.GetApprovedRoutes(), 1)
-		assert.Len(t, node.GetSubnetRoutes(), 1)
-	}
+		for _, node := range nodes {
+			assert.Len(ct, node.GetAvailableRoutes(), 1)
+			assert.Len(ct, node.GetApprovedRoutes(), 1)
+			assert.Len(ct, node.GetSubnetRoutes(), 1)
+		}
+	}, 10*time.Second, 100*time.Millisecond, "route approvals should propagate to all nodes")
 
 	// Wait for route state changes to propagate to clients
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -153,6 +162,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 	// Wait for route state changes to propagate to nodes
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 
@@ -2217,23 +2227,22 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
-	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
-
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
 	assertNoErrGetHeadscale(t, err)
 
-	// Sort clients by ID for consistent order
-	slices.SortFunc(allClients, func(a, b TailscaleClient) int {
-		return b.MustIPv4().Compare(a.MustIPv4())
-	})
+	// Get the router and node clients by user
+	routerClients, err := scenario.ListTailscaleClients(routerUser)
+	require.NoError(t, err)
+	require.Len(t, routerClients, 1)
+	routerClient := routerClients[0]
 
-	// Get the router and node clients
-	routerClient := allClients[0]
-	nodeClient := allClients[1]
+	nodeClients, err := scenario.ListTailscaleClients(nodeUser)
+	require.NoError(t, err)
+	require.Len(t, nodeClients, 1)
+	nodeClient := nodeClients[0]
 
 	aclPolicy.Hosts = policyv2.Hosts{
 		policyv2.Host(routerUser): policyv2.Prefix(must.Get(routerClient.MustIPv4().Prefix(32))),
@@ -2264,21 +2273,25 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	// List nodes and verify the router has 3 available routes
-	nodes, err := headscale.NodesByUser()
-	require.NoError(t, err)
-	require.Len(t, nodes, 2)
+	var routerNode, nodeNode *v1.Node
+	// Wait for route advertisements to propagate to NodeStore
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// List nodes and verify the router has 3 available routes
+		nodes, err := headscale.NodesByUser()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 2)
 
-	// Find the router node
-	routerNode := nodes[routerUser][0]
-	nodeNode := nodes[nodeUser][0]
+		// Find the router node
+		routerNode = nodes[routerUser][0]
+		nodeNode = nodes[nodeUser][0]
 
-	require.NotNil(t, routerNode, "Router node not found")
-	require.NotNil(t, nodeNode, "Client node not found")
+		assert.NotNil(ct, routerNode, "Router node not found")
+		assert.NotNil(ct, nodeNode, "Client node not found")
 
-	// Check that the router has 3 routes available but not approved yet
-	requireNodeRouteCount(t, routerNode, 3, 0, 0)
-	requireNodeRouteCount(t, nodeNode, 0, 0, 0)
+		// Check that the router has 3 routes available but not approved yet
+		requireNodeRouteCountWithCollect(ct, routerNode, 3, 0, 0)
+		requireNodeRouteCountWithCollect(ct, nodeNode, 0, 0, 0)
+	}, 10*time.Second, 100*time.Millisecond, "route advertisements should propagate to router node")
 
 	// Approve all routes for the router
 	_, err = headscale.ApproveRoutes(
@@ -2290,7 +2303,8 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	// Wait for route state changes to propagate
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		// List nodes and verify the router has 3 available routes
-		nodes, err = headscale.NodesByUser()
+		var err error
+		nodes, err := headscale.NodesByUser()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 2)
 

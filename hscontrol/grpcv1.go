@@ -288,9 +288,9 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node, ok := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	resp := node.Proto()
@@ -334,6 +334,11 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	ctx context.Context,
 	request *v1.SetApprovedRoutesRequest,
 ) (*v1.SetApprovedRoutesResponse, error) {
+	log.Debug().
+		Uint64("node.id", request.GetNodeId()).
+		Strs("requestedRoutes", request.GetRoutes()).
+		Msg("gRPC SetApprovedRoutes called")
+
 	var routes []netip.Prefix
 	for _, route := range request.GetRoutes() {
 		prefix, err := netip.ParsePrefix(route)
@@ -365,10 +370,21 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	// If routes changed, propagate those changes too
 	if !routeChange.Empty() {
 		api.h.Change(routeChange)
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("routeChangeType", routeChange.Change.String()).
+			Msg("Propagating route change")
 	}
 
 	proto := node.Proto()
-	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID()))
+	primaryRoutes := api.h.state.GetNodePrimaryRoutes(node.ID())
+	proto.SubnetRoutes = util.PrefixesToString(primaryRoutes)
+
+	log.Debug().
+		Uint64("node.id", node.ID().Uint64()).
+		Strs("finalPrimaryRoutes", util.PrefixesToString(primaryRoutes)).
+		Strs("finalSubnetRoutes", proto.SubnetRoutes).
+		Msg("gRPC SetApprovedRoutes completed")
 
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
@@ -390,9 +406,9 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node, ok := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	nodeChange, err := api.h.state.DeleteNode(node)

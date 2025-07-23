@@ -172,8 +172,8 @@ func setupBatcherWithTestData(t *testing.T, bf batcherFunc, userCount, nodesPerU
 		"acls": [
 			{
 				"action": "accept",
-				"users": ["*"],
-				"ports": ["*:*"]
+				"src": ["*"],
+				"dst": ["*:*"]
 			}
 		]
 	}`

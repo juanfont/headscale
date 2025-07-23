@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"fmt"
 	"net/netip"
 	"sort"
 	"time"
@@ -55,9 +56,9 @@ func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVers
 
 // WithSelfNode adds the requesting node to the response
 func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		b.addError(err)
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
@@ -106,9 +107,9 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 
 // WithSSHPolicy adds SSH policy configuration for the requesting node
 func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		b.addError(err)
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
@@ -124,9 +125,9 @@ func (b *MapResponseBuilder) WithSSHPolicy() *MapResponseBuilder {
 
 // WithDNSConfig adds DNS configuration for the requesting node
 func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		b.addError(err)
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
@@ -136,9 +137,9 @@ func (b *MapResponseBuilder) WithDNSConfig() *MapResponseBuilder {
 
 // WithUserProfiles adds user profiles for the requesting node and given peers
 func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView]) *MapResponseBuilder {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		b.addError(err)
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
@@ -148,9 +149,9 @@ func (b *MapResponseBuilder) WithUserProfiles(peers views.Slice[types.NodeView])
 
 // WithPacketFilters adds packet filter rules based on policy
 func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		b.addError(err)
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
@@ -195,9 +196,9 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) 
 
 // buildTailPeers converts views.Slice[types.NodeView] to []tailcfg.Node with policy filtering and sorting
 func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) ([]*tailcfg.Node, error) {
-	node, err := b.mapper.state.GetNodeByID(b.nodeID)
-	if err != nil {
-		return nil, err
+	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	if !ok {
+		return nil, fmt.Errorf("node not found")
 	}
 
 	filter, matchers := b.mapper.state.Filter()

@@ -28,12 +28,9 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("looking up node in database: %w", err)
-	}
+	node, ok := h.state.GetNodeByNodeKey(regReq.NodeKey)
 
-	if node.Valid() {
+	if ok {
 		// If an existing node is trying to register with an auth key,
 		// we need to validate the auth key even for existing nodes
 		if regReq.Auth != nil && regReq.Auth.AuthKey != "" {

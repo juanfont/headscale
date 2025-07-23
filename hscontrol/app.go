@@ -136,9 +136,9 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
-		node, err := app.state.GetNodeByID(ni)
-		if err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to get ephemeral node for deletion")
+		node, ok := app.state.GetNodeByID(ni)
+		if !ok {
+			log.Warn().Uint64("node.id", ni.Uint64()).Msgf("ephemeral node not found for deletion")
 			return
 		}
 

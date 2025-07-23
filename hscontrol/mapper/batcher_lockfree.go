@@ -21,7 +21,6 @@ type LockFreeBatcher struct {
 	mapper  *mapper
 	workers int
 
-	// Lock-free concurrent maps
 	nodes     *xsync.Map[types.NodeID, *nodeConn]
 	connected *xsync.Map[types.NodeID, *time.Time]
 
@@ -47,15 +46,12 @@ type LockFreeBatcher struct {
 // and notifies other nodes that this node has come online.
 // TODO(kradalby): See if we can move the isRouter argument somewhere else.
 func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, version tailcfg.CapabilityVersion) error {
-	// First validate that we can generate initial map before doing anything else
-	fullSelfChange := change.FullSelf(id)
-
 	// TODO(kradalby): This should not be generated here, but rather in MapResponseFromChange.
 	// This currently means that the goroutine for the node connection will do the processing
 	// which means that we might have uncontrolled concurrency.
 	// When we use MapResponseFromChange, it will be processed by the same worker pool, causing
 	// it to be processed in a more controlled manner.
-	initialMap, err := generateMapResponse(id, version, b.mapper, fullSelfChange)
+	initialMap, err := generateMapResponse(id, version, b.mapper, change.FullSelf(id))
 	if err != nil {
 		return fmt.Errorf("failed to generate initial map for node %d: %w", id, err)
 	}
@@ -98,10 +94,21 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 // It validates the connection channel matches the current one, closes the connection,
 // and notifies other nodes that this node has gone offline.
 func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool) {
+	b.markDisconnectedInternal(id, c, isRouter, true)
+}
+
+// MarkDisconnected marks a node as disconnected without sending notifications.
+// This is used when the disconnect notifications will be handled elsewhere to avoid duplicates.
+func (b *LockFreeBatcher) MarkDisconnected(id types.NodeID, c chan<- *tailcfg.MapResponse) {
+	b.markDisconnectedInternal(id, c, false, false)
+}
+
+// markDisconnectedInternal is the internal implementation for marking nodes as disconnected.
+func (b *LockFreeBatcher) markDisconnectedInternal(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, sendNotifications bool) {
 	// Check if this is the current connection and mark it as closed
 	if existing, ok := b.nodes.Load(id); ok {
 		if !existing.matchesChannel(c) {
-			log.Debug().Uint64("node.id", id.Uint64()).Msg("RemoveNode called for non-current connection, ignoring")
+			log.Debug().Uint64("node.id", id.Uint64()).Msg("MarkDisconnected called for non-current connection, ignoring")
 			return // Not the current connection, not an error
 		}
 
@@ -111,15 +118,17 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 		}
 	}
 
-	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Msg("Node disconnected from batcher, marking as offline")
+	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Bool("sendNotifications", sendNotifications).Msg("Node disconnected from batcher, marking as offline")
 
 	// Remove node and mark disconnected atomically
 	b.nodes.Delete(id)
 	b.connected.Store(id, ptr.To(time.Now()))
 	b.totalNodes.Add(-1)
 
-	// Notify other nodes that this node went offline
-	b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeWentOffline, IsSubnetRouter: isRouter})
+	// Notify other nodes that this node went offline (only if requested)
+	if sendNotifications {
+		b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeWentOffline, IsSubnetRouter: isRouter})
+	}
 }
 
 // AddWork queues a change to be processed by the batcher.
