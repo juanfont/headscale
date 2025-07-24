@@ -3,18 +3,17 @@ package hscontrol
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
-	"gorm.io/gorm"
 	"tailscale.com/types/key"
-	zcache "zgo.at/zcache/v2"
 )
 
 func TestDoOIDCAuthorization(t *testing.T) {
@@ -178,13 +177,12 @@ func TestDoOIDCAuthorization(t *testing.T) {
 			err := doOIDCAuthorization(tC.cfg, tC.claims)
 			if ((err != nil) && !tC.wantErr) || ((err == nil) && tC.wantErr) {
 				t.Errorf("bad authorization: %s > want=%v | got=%v", tC.name, tC.wantErr, err)
-
-func emptyCache() *zcache.Cache[types.RegistrationID, types.RegisterNode] {
-	return zcache.New[types.RegistrationID, types.RegisterNode](time.Minute, time.Hour)
+			}
+		})
+	}
 }
-
 // createTestNode creates a test node for testing
-func createTestNode(t *testing.T, hsdb *db.HSDatabase, user *types.User, hostname string) *types.Node {
+func createTestNode(t *testing.T, st *state.State, user *types.User, hostname string) *types.Node {
 	t.Helper()
 
 	nodeKey := key.NewNode()
@@ -203,47 +201,57 @@ func createTestNode(t *testing.T, hsdb *db.HSDatabase, user *types.User, hostnam
 		Expiry:         &nodeExpiry,
 	}
 
-	err := hsdb.DB.Create(node).Error
+	createdNode, _, err := st.CreateNode(node)
 	require.NoError(t, err)
 
-	return node
+	return createdNode
 }
 
-// setupTestDB creates a test database
-func setupTestDB(t *testing.T) *db.HSDatabase {
+// setupTestState creates a test state with database
+func setupTestState(t *testing.T) *state.State {
 	t.Helper()
 
 	tmpDir := t.TempDir()
 
-	hsdb, err := db.NewHeadscaleDatabase(
-		types.DatabaseConfig{
+	prefixV4, _ := netip.ParsePrefix("100.64.0.0/10")
+	prefixV6, _ := netip.ParsePrefix("fd7a:115c:a1e0::/48")
+
+	cfg := &types.Config{
+		Database: types.DatabaseConfig{
 			Type: types.DatabaseSqlite,
 			Sqlite: types.SqliteConfig{
 				Path: tmpDir + "/test.db",
 			},
 		},
-		"",
-		emptyCache(),
-	)
+		Policy: types.PolicyConfig{
+			Mode: types.PolicyModeDB,
+		},
+		BaseDomain:   "test.local",
+		PrefixV4:     &prefixV4,
+		PrefixV6:     &prefixV6,
+		IPAllocation: types.IPAllocationStrategySequential,
+	}
+
+	st, err := state.NewState(cfg)
 	require.NoError(t, err)
 
-	return hsdb
+	return st
 }
 
 func TestCreateOrUpdateOIDCSession(t *testing.T) {
-	hsdb := setupTestDB(t)
+	st := setupTestState(t)
+	defer st.Close()
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		db: hsdb,
+		state: st,
 	}
 
 	// Create test user
 	user := &types.User{
-		Model: gorm.Model{ID: 1},
-		Name:  "testuser",
+		Name: "testuser",
 	}
-	err := hsdb.DB.Create(user).Error
+	createdUser, _, err := st.CreateUser(*user)
 	require.NoError(t, err)
 
 	// Create test node
@@ -257,11 +265,11 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 		DiscoKey:       discoKey.Public(),
 		Hostname:       "test-node",
 		GivenName:      "test-node",
-		UserID:         user.ID,
+		UserID:         createdUser.ID,
 		RegisterMethod: util.RegisterMethodOIDC,
 		Expiry:         &nodeExpiry,
 	}
-	err = hsdb.DB.Create(node).Error
+	createdNode, _, err := st.CreateNode(node)
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -315,7 +323,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := oidcProvider.createOrUpdateOIDCSession(tt.registrationID, tt.token, node.ID)
+			err := oidcProvider.createOrUpdateOIDCSession(tt.registrationID, tt.token, createdNode.ID)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -325,8 +333,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 
 			if tt.expectSession && tt.token.RefreshToken != "" {
 				// Verify session was created/updated
-				var session types.OIDCSession
-				err = hsdb.DB.Where("node_id = ?", node.ID).First(&session).Error
+				session, err := st.GetOIDCSessionByNodeID(createdNode.ID)
 				assert.NoError(t, err)
 				assert.Equal(t, tt.token.RefreshToken, session.RefreshToken)
 				assert.True(t, session.IsActive)
@@ -496,23 +503,26 @@ func TestDetermineNodeExpiry(t *testing.T) {
 }
 
 func TestRefreshExpiredTokens(t *testing.T) {
-	hsdb := setupTestDB(t)
+	st := setupTestState(t)
+	defer st.Close()
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		db: hsdb,
+		state: st,
 		cfg: &types.OIDCConfig{
 			Issuer:   "https://test.example.com",
 			ClientID: "test-client-id",
+			TokenRefresh: types.TokenRefreshConfig{
+				ExpiryThreshold: 5 * time.Minute,
+			},
 		},
 	}
 
 	// Create test user
 	user := &types.User{
-		Model: gorm.Model{ID: 1},
-		Name:  "testuser",
+		Name: "testuser",
 	}
-	err := hsdb.DB.Create(user).Error
+	createdUser, _, err := st.CreateUser(*user)
 	require.NoError(t, err)
 
 	now := time.Now().UTC()
@@ -526,9 +536,9 @@ func TestRefreshExpiredTokens(t *testing.T) {
 		{
 			name: "no sessions need refresh",
 			setupSession: func() *types.OIDCSession {
-				node := createTestNode(t, hsdb, user, "test-node-1")
+				node := createTestNode(t, st, createdUser, "test-node-1")
 				return &types.OIDCSession{
-					NodeID:         types.NodeID(node.ID),
+					NodeID:         node.ID,
 					SessionID:      "valid-session",
 					RegistrationID: types.RegistrationID("reg-123"),
 					RefreshToken:   "refresh-token",
@@ -542,9 +552,9 @@ func TestRefreshExpiredTokens(t *testing.T) {
 		{
 			name: "session needs refresh but no refresh token",
 			setupSession: func() *types.OIDCSession {
-				node := createTestNode(t, hsdb, user, "test-node-2")
+				node := createTestNode(t, st, createdUser, "test-node-2")
 				return &types.OIDCSession{
-					NodeID:         types.NodeID(node.ID),
+					NodeID:         node.ID,
 					SessionID:      "no-token-session",
 					RegistrationID: types.RegistrationID("reg-456"),
 					RefreshToken:   "",                                         // No refresh token
@@ -558,9 +568,9 @@ func TestRefreshExpiredTokens(t *testing.T) {
 		{
 			name: "valid token should be ignored",
 			setupSession: func() *types.OIDCSession {
-				node := createTestNode(t, hsdb, user, "test-node-3")
+				node := createTestNode(t, st, createdUser, "test-node-3")
 				return &types.OIDCSession{
-					NodeID:         types.NodeID(node.ID),
+					NodeID:         node.ID,
 					SessionID:      "valid-token-session",
 					RegistrationID: types.RegistrationID("reg-789"),
 					RefreshToken:   "refresh-token",
@@ -583,15 +593,11 @@ func TestRefreshExpiredTokens(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Clean up sessions from previous tests
-			err := hsdb.DB.Where("1 = 1").Delete(&types.OIDCSession{}).Error
-			require.NoError(t, err)
-
 			// Setup test session if needed
 			if tt.setupSession != nil {
 				session := tt.setupSession()
 				if session != nil {
-					err := hsdb.DB.Create(session).Error
+					err := st.CreateOIDCSession(session)
 					require.NoError(t, err)
 				}
 			}
@@ -618,11 +624,12 @@ func TestRefreshExpiredTokens(t *testing.T) {
 }
 
 func TestRefreshOIDCSessionValidation(t *testing.T) {
-	hsdb := setupTestDB(t)
+	st := setupTestState(t)
+	defer st.Close()
 
 	// Create test OIDC provider
 	oidcProvider := &AuthProviderOIDC{
-		db: hsdb,
+		state: st,
 		cfg: &types.OIDCConfig{
 			Issuer:   "https://test.example.com",
 			ClientID: "test-client-id",
