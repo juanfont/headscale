@@ -30,6 +30,7 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"gopkg.in/yaml.v3"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/mak"
 )
@@ -66,6 +67,7 @@ type HeadscaleInContainer struct {
 	// optional config
 	port             int
 	extraPorts       []string
+	debugPort        int
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
@@ -268,6 +270,22 @@ func WithTimezone(timezone string) Option {
 	}
 }
 
+// WithDebugPort sets the debug port for delve debugging.
+func WithDebugPort(port int) Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.debugPort = port
+	}
+}
+
+// buildEntrypoint builds the container entrypoint command based on configuration.
+func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
+	debugCmd := fmt.Sprintf("/go/bin/dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /go/bin/headscale --continue -- serve", hsic.debugPort)
+	
+	entrypoint := fmt.Sprintf("/bin/sleep 3 ; update-ca-certificates ; %s ; /bin/sleep 30", debugCmd)
+	
+	return []string{"/bin/bash", "-c", entrypoint}
+}
+
 // New returns a new HeadscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -281,9 +299,18 @@ func New(
 
 	hostname := "hs-" + hash
 
+	// Get debug port from environment or use default
+	debugPort := 40000
+	if envDebugPort := envknob.String("HEADSCALE_DEBUG_PORT"); envDebugPort != "" {
+		if port, err := strconv.Atoi(envDebugPort); err == nil {
+			debugPort = port
+		}
+	}
+
 	hsic := &HeadscaleInContainer{
-		hostname: hostname,
-		port:     headscaleDefaultPort,
+		hostname:  hostname,
+		port:      headscaleDefaultPort,
+		debugPort: debugPort,
 
 		pool:     pool,
 		networks: networks,
@@ -300,6 +327,7 @@ func New(
 	log.Println("NAME: ", hsic.hostname)
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
+	debugPortProto := fmt.Sprintf("%d/tcp", hsic.debugPort)
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: IntegrationTestDockerFileName,
@@ -364,17 +392,27 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
-		ExposedPorts: append([]string{portProto, "9090/tcp"}, hsic.extraPorts...),
+		ExposedPorts: append([]string{portProto, debugPortProto, "9090/tcp"}, hsic.extraPorts...),
 		Networks:     networks,
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
 		// to inject the headscale configuration further down.
-		Entrypoint: []string{"/bin/bash", "-c", "/bin/sleep 3 ; update-ca-certificates ; headscale serve ; /bin/sleep 30"},
+		Entrypoint: hsic.buildEntrypoint(),
 		Env:        env,
 	}
 
-	if len(hsic.hostPortBindings) > 0 {
+	// Always bind debug port and metrics port to predictable host ports
+	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
+	}
+	runOptions.PortBindings[docker.Port(debugPortProto)] = []docker.PortBinding{
+		{HostPort: strconv.Itoa(hsic.debugPort)},
+	}
+	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
+		{HostPort: "49090"},
+	}
+
+	if len(hsic.hostPortBindings) > 0 {
 		for port, hostPorts := range hsic.hostPortBindings {
 			runOptions.PortBindings[docker.Port(port)] = []docker.PortBinding{}
 			for _, hostPort := range hostPorts {
@@ -409,6 +447,8 @@ func New(
 	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
+	
+	log.Printf("Debug ports for %s: delve=%s, metrics/pprof=49090\n", hsic.hostname, hsic.GetHostDebugPort())
 
 	// Write the CA certificates to the container
 	for i, cert := range hsic.caCerts {
@@ -757,6 +797,16 @@ func (t *HeadscaleInContainer) Execute(
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return strconv.Itoa(t.port)
+}
+
+// GetDebugPort returns the debug port as a string.
+func (t *HeadscaleInContainer) GetDebugPort() string {
+	return strconv.Itoa(t.debugPort)
+}
+
+// GetHostDebugPort returns the host port mapped to the debug port.
+func (t *HeadscaleInContainer) GetHostDebugPort() string {
+	return strconv.Itoa(t.debugPort)
 }
 
 // GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
