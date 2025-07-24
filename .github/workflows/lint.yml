@@ -38,7 +38,10 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: nix develop --command -- golangci-lint run
           --new-from-rev=${{github.event.pull_request.base.sha}}
-          --format=colored-line-number
+          --output.text.path=stdout
+          --output.text.print-linter-name
+          --output.text.print-issued-lines
+          --output.text.colors
 
   prettier-lint:
     runs-on: ubuntu-latest
