@@ -331,7 +331,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Register the node if it does not exist.
 	if registrationId != nil {
 		verb := "Reauthenticated"
-		newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
+		nodeID, newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
 		if err != nil {
 			httpError(writer, err)
 			return
@@ -339,6 +339,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		if newNode {
 			verb = "Authenticated"
+		}
+
+		// Create or update OIDC session for this node
+		if err := a.createOrUpdateOIDCSession(*registrationId, oauth2Token, *nodeID); err != nil {
+			log.Error().Err(err).Msg("Failed to create OIDC session")
+			// Don't fail the auth flow, just log the error
 		}
 
 		// TODO(kradalby): replace with go-elem
@@ -360,8 +366,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
 	httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
-
-	return
 }
 
 func extractCodeAndStateParamFromRequest(
@@ -401,6 +405,165 @@ func (a *AuthProviderOIDC) getOauth2Token(
 	}
 
 	return oauth2Token, err
+}
+
+// createOrUpdateOIDCSession creates or updates an OIDC session for a node
+func (a *AuthProviderOIDC) createOrUpdateOIDCSession(registrationID types.RegistrationID, token *oauth2.Token, nodeID types.NodeID) error {
+	if token.RefreshToken == "" {
+		log.Warn().
+			Str("node_id", nodeID.String()).
+			Str("registration_id", registrationID.String()).
+			Msg("OIDC: No refresh token in OAuth2 token, skipping session creation (check offline_access scope)")
+		return nil
+	}
+
+	// Generate session ID
+	sessionID, err := util.GenerateRandomStringURLSafe(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate session ID: %w", err)
+	}
+
+	// Create or update session
+	tokenExpiryUTC := token.Expiry.UTC()
+	session := &types.OIDCSession{
+		NodeID:         nodeID,
+		SessionID:      sessionID,
+		RegistrationID: registrationID,
+		RefreshToken:   token.RefreshToken,
+		TokenExpiry:    &tokenExpiryUTC,
+		IsActive:       true,
+	}
+
+	now := time.Now().UTC()
+	session.LastRefreshedAt = &now
+	session.LastSeenAt = &now
+
+	// Try to update existing session first
+	existingSession, err := a.state.GetOIDCSessionByNodeID(nodeID)
+	if err == nil {
+		// Update existing session
+		existingSession.RefreshToken = token.RefreshToken
+		tokenExpiryUTC := token.Expiry.UTC()
+		existingSession.TokenExpiry = &tokenExpiryUTC
+		existingSession.LastRefreshedAt = &now
+		existingSession.LastSeenAt = &now
+		existingSession.IsActive = true
+
+		err = a.state.SaveOIDCSession(existingSession)
+		if err != nil {
+			return fmt.Errorf("failed to update OIDC session: %w", err)
+		}
+
+	} else {
+		// Create new session
+		err = a.state.CreateOIDCSession(session)
+		if err != nil {
+			return fmt.Errorf("failed to create OIDC session: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// RefreshOIDCSession refreshes an expired OIDC session using the stored refresh token
+// and updates the node expiry using the existing HandleNodeFromAuthPath flow
+func (a *AuthProviderOIDC) RefreshOIDCSession(ctx context.Context, session *types.OIDCSession) error {
+	if session.RefreshToken == "" {
+		return fmt.Errorf("no refresh token available for session %s", session.SessionID)
+	}
+
+	tokenSource := a.oauth2Config.TokenSource(ctx, &oauth2.Token{
+		RefreshToken: session.RefreshToken,
+	})
+
+	newToken, err := tokenSource.Token()
+	if err != nil {
+		return fmt.Errorf("failed to refresh OIDC token: %w", err)
+	}
+
+	// Calculate new node expiry based on the access token expiry (not ID token)
+	// Access tokens determine when we need to refresh, so node should live as long as access token
+	nodeExpiry := a.determineNodeExpiry(newToken.Expiry)
+
+	// Load the node for logging
+	node, err := a.state.GetNodeWithUser(session.NodeID)
+	if err != nil {
+		return fmt.Errorf("failed to load node: %w", err)
+	}
+
+	// Update the node expiry directly for token refresh
+	// We don't use HandleNodeFromAuthPath for refresh as the node is already registered
+	err = a.state.UpdateNodeExpiry(session.NodeID, nodeExpiry)
+	if err != nil {
+		return fmt.Errorf("failed to update node expiry: %w", err)
+	}
+
+	// Update the local node object for consistency
+	node.Expiry = &nodeExpiry
+
+	// Update the session with new token information
+	now := time.Now().UTC()
+
+	if newToken.RefreshToken != "" {
+		session.RefreshToken = newToken.RefreshToken
+	} else {
+		log.Debug().
+			Str("session_id", session.SessionID).
+			Msg("OIDC: No new refresh token received, keeping existing one")
+	}
+
+	// Store token expiry in UTC to avoid timezone issues
+	utcExpiry := newToken.Expiry.UTC()
+	session.TokenExpiry = &utcExpiry
+	session.LastRefreshedAt = &now
+
+	// Save the updated session
+	err = a.state.SaveOIDCSession(session)
+	if err != nil {
+		log.Error().Err(err).
+			Str("session_id", session.SessionID).
+			Msg("OIDC: Failed to save updated session to database")
+		return fmt.Errorf("failed to save updated session: %w", err)
+	}
+
+	return nil
+}
+
+// RefreshExpiredTokens checks for and refreshes OIDC sessions that will expire soon
+func (a *AuthProviderOIDC) RefreshExpiredTokens(ctx context.Context) error {
+	var sessions []types.OIDCSession
+
+	// Find active sessions with tokens expiring in the configured threshold time
+	currentTime := time.Now().UTC()
+	threshold := currentTime.Add(a.cfg.TokenRefresh.ExpiryThreshold)
+
+	// Only refresh tokens for sessions linked to OIDC-registered nodes
+	sessions, err := a.state.GetOIDCSessionsNeedingRefresh(threshold, "oidc")
+	if err != nil {
+		return fmt.Errorf("failed to query sessions with expiring tokens: %w", err)
+	}
+
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	log.Debug().Msgf("OIDC: Found %d sessions with tokens expiring soon, refreshing...", len(sessions))
+
+	for _, session := range sessions {
+		if err := a.RefreshOIDCSession(ctx, &session); err != nil {
+			log.Error().Err(err).
+				Str("session_id", session.SessionID).
+				Uint("user_id", session.Node.UserID).
+				Uint64("node_id", uint64(session.NodeID)).
+				Msg("OIDC: Failed to refresh session, deactivating")
+			// Deactivate the session if refresh fails
+			session.Deactivate()
+			a.state.SaveOIDCSession(&session)
+			continue
+		}
+	}
+
+	return nil
 }
 
 // extractIDToken extracts the ID token from the oauth2 token.
@@ -525,7 +688,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	user *types.User,
 	registrationID types.RegistrationID,
 	expiry time.Time,
-) (bool, error) {
+) (*types.NodeID, bool, error) {
 	node, newNode, err := a.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
@@ -533,7 +696,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
-		return false, fmt.Errorf("could not register node: %w", err)
+		return nil, false, fmt.Errorf("could not register node: %w", err)
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
@@ -550,7 +713,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	routesChanged := a.state.AutoApproveRoutes(node)
 	_, policyChanged, err := a.state.SaveNode(node)
 	if err != nil {
-		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
+		return nil, false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
 	// Send policy update notifications if needed (from SaveNode or route changes)
@@ -571,7 +734,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		a.notifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
 	}
 
-	return newNode, nil
+	return &node.ID, newNode, nil
 }
 
 // TODO(kradalby):

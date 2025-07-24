@@ -19,7 +19,13 @@ OpenID requires configuration in Headscale and your identity provider:
   Additionally, there might be some useful hints in the [Identity provider specific
   configuration](#identity-provider-specific-configuration) section below.
 
-### Basic configuration
+  # Customize the scopes used in the OIDC flow, defaults to "openid", "profile" and "email" and add custom query
+  # parameters to the Authorize Endpoint request. Scopes default to "openid", "profile" and "email".
+  # To enable automatic token refresh, add "offline_access" to the scope list.
+  scope: ["openid", "profile", "email", "custom"]
+  # Optional: Passed on to the browser login request – used to tweak behaviour for the OIDC provider
+  extra_params:
+    domain_hint: example.com
 
 A basic configuration connects Headscale to an identity provider and typically requires:
 

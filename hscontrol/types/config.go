@@ -172,6 +172,12 @@ type PKCEConfig struct {
 	Method  string
 }
 
+type TokenRefreshConfig struct {
+	CheckInterval                  time.Duration
+	ExpiryThreshold                time.Duration
+	SessionInvalidationGracePeriod time.Duration
+}
+
 type OIDCConfig struct {
 	OnlyStartIfOIDCIsAvailable bool
 	Issuer                     string
@@ -184,6 +190,7 @@ type OIDCConfig struct {
 	AllowedGroups              []string
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
+	TokenRefresh               TokenRefreshConfig
 	PKCE                       PKCEConfig
 }
 
@@ -320,6 +327,9 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
 	viper.SetDefault("oidc.expiry", "180d")
 	viper.SetDefault("oidc.use_expiry_from_token", false)
+	viper.SetDefault("oidc.token_refresh.check_interval", "15m")
+	viper.SetDefault("oidc.token_refresh.expiry_threshold", "30m")
+	viper.SetDefault("oidc.token_refresh.session_invalidation_grace_period", "30m")
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 
@@ -964,6 +974,11 @@ func LoadServerConfig() (*Config, error) {
 				}
 			}(),
 			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			TokenRefresh: TokenRefreshConfig{
+				CheckInterval:                  viper.GetDuration("oidc.token_refresh.check_interval"),
+				ExpiryThreshold:                viper.GetDuration("oidc.token_refresh.expiry_threshold"),
+				SessionInvalidationGracePeriod: viper.GetDuration("oidc.token_refresh.session_invalidation_grace_period"),
+			},
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),

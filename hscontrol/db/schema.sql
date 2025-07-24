@@ -108,3 +108,24 @@ CREATE TABLE policies(
   deleted_at datetime
 );
 CREATE INDEX idx_policies_deleted_at ON policies(deleted_at);
+
+CREATE TABLE oidc_sessions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_id INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  registration_id INTEGER NOT NULL,
+  refresh_token TEXT,
+  token_expiry DATETIME,
+  last_refreshed_at DATETIME,
+  is_active NUMERIC DEFAULT true,
+  last_seen_at DATETIME,
+  created_at DATETIME,
+  updated_at DATETIME,
+  deleted_at DATETIME,
+  CONSTRAINT fk_oidc_sessions_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX idx_oidc_sessions_node_id ON oidc_sessions(node_id);
+CREATE UNIQUE INDEX idx_oidc_sessions_session_id ON oidc_sessions(session_id);
+CREATE INDEX idx_oidc_sessions_token_expiry ON oidc_sessions(token_expiry);
+CREATE INDEX idx_oidc_sessions_is_active ON oidc_sessions(is_active);
+CREATE INDEX idx_oidc_sessions_deleted_at ON oidc_sessions(deleted_at);
