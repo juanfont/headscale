@@ -62,24 +62,10 @@ jobs:
             '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
       - name: Run Integration Test
-        uses: Wandalen/wretry.action@e68c23e6309f2871ca8ae4763e7629b9c258e1ea # v3.8.0
-        if: steps.changed-files.outputs.files == 'true'
-        with:
-          # Our integration tests are started like a thundering herd, often
-          # hitting limits of the various external repositories we depend on
-          # like docker hub. This will retry jobs every 5 min, 10 times,
-          # hopefully letting us avoid manual intervention and restarting jobs.
-          # One could of course argue that we should invest in trying to avoid
-          # this, but currently it seems like a larger investment to be cleverer
-          # about this.
-          # Some of the jobs might still require manual restart as they are really
-          # slow and this will cause them to eventually be killed by Github actions.
-          attempt_delay: 300000 # 5 min
-          attempt_limit: 2
-          command: |
-            nix develop --command -- hi run --stats --ts-memory-limit=300 --hs-memory-limit=500 "^${{ inputs.test }}$" \
-              --timeout=120m \
-              ${{ inputs.postgres_flag }}
+        run:
+          nix develop --command -- hi run --stats --ts-memory-limit=300 --hs-memory-limit=500 "^${{ inputs.test }}$" \
+          --timeout=120m \
+          ${{ inputs.postgres_flag }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
