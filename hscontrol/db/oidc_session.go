@@ -67,7 +67,6 @@ func InvalidateExpiredOIDCSessions(tx *gorm.DB, offlineGracePeriod time.Duration
 	err := tx.Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
 		Where("oidc_sessions.is_active = ? AND nodes.last_seen IS NOT NULL AND nodes.last_seen < ?", true, cutoff).
 		Find(&sessions).Error
-
 	if err != nil {
 		return fmt.Errorf("failed to find expired OIDC sessions: %w", err)
 	}
