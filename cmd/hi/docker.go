@@ -90,6 +90,32 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	log.Printf("Starting test: %s", config.TestPattern)
 
+	// Start stats collection for container resource monitoring (if enabled)
+	var statsCollector *StatsCollector
+	if config.Stats {
+		var err error
+		statsCollector, err = NewStatsCollector()
+		if err != nil {
+			if config.Verbose {
+				log.Printf("Warning: failed to create stats collector: %v", err)
+			}
+			statsCollector = nil
+		}
+
+		if statsCollector != nil {
+			defer statsCollector.Close()
+			
+			// Start stats collection immediately - no need for complex retry logic
+			// The new implementation monitors Docker events and will catch containers as they start
+			if err := statsCollector.StartCollection(ctx, runID, config.Verbose); err != nil {
+				if config.Verbose {
+					log.Printf("Warning: failed to start stats collection: %v", err)
+				}
+			}
+			defer statsCollector.StopCollection()
+		}
+	}
+
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
 	// Ensure all containers have finished and logs are flushed before extracting artifacts
@@ -104,6 +130,20 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	// Always list control files regardless of test outcome
 	listControlFiles(logsDir)
+
+	// Print stats summary and check memory limits if enabled
+	if config.Stats && statsCollector != nil {
+		violations := statsCollector.PrintSummaryAndCheckLimits(config.HSMemoryLimit, config.TSMemoryLimit)
+		if len(violations) > 0 {
+			log.Printf("MEMORY LIMIT VIOLATIONS DETECTED:")
+			log.Printf("=================================")
+			for _, violation := range violations {
+				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB", 
+					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
+			}
+			return fmt.Errorf("test failed: %d container(s) exceeded memory limits", len(violations))
+		}
+	}
 
 	shouldCleanup := config.CleanAfter && (!config.KeepOnFailure || exitCode == 0)
 	if shouldCleanup {
@@ -379,10 +419,37 @@ func getDockerSocketPath() string {
 	return "/var/run/docker.sock"
 }
 
-// ensureImageAvailable pulls the specified Docker image to ensure it's available.
+// checkImageAvailableLocally checks if the specified Docker image is available locally.
+func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
+	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	if err != nil {
+		if client.IsErrNotFound(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
+	}
+
+	return true, nil
+}
+
+// ensureImageAvailable checks if the image is available locally first, then pulls if needed.
 func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName string, verbose bool) error {
+	// First check if image is available locally
+	available, err := checkImageAvailableLocally(ctx, cli, imageName)
+	if err != nil {
+		return fmt.Errorf("failed to check local image availability: %w", err)
+	}
+
+	if available {
+		if verbose {
+			log.Printf("Image %s is available locally", imageName)
+		}
+		return nil
+	}
+
+	// Image not available locally, try to pull it
 	if verbose {
-		log.Printf("Pulling image %s...", imageName)
+		log.Printf("Image %s not found locally, pulling...", imageName)
 	}
 
 	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})

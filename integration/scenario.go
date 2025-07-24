@@ -223,7 +223,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 	s.userToNetwork = userToNetwork
 
-	if spec.OIDCUsers != nil && len(spec.OIDCUsers) != 0 {
+	if len(spec.OIDCUsers) != 0 {
 		ttl := defaultAccessTTL
 		if spec.OIDCAccessTTL != 0 {
 			ttl = spec.OIDCAccessTTL

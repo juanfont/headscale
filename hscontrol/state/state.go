@@ -17,10 +17,13 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
+	xslices "golang.org/x/exp/slices"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
@@ -45,12 +48,6 @@ type State struct {
 	mu deadlock.RWMutex
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
-
-	// in-memory data, protected by mu
-	// nodes contains the current set of registered nodes
-	nodes types.Nodes
-	// users contains the current set of users/namespaces
-	users types.Users
 
 	// subsystem keeping state
 	// db provides persistent storage and database operations
@@ -112,9 +109,6 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	return &State{
 		cfg: cfg,
-
-		nodes: nodes,
-		users: users,
 
 		db:      db,
 		ipAlloc: ipAlloc,
@@ -215,6 +209,7 @@ func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, false, fmt.Errorf("creating user: %w", err)
 	}
@@ -225,6 +220,18 @@ func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 		// Log the error but don't fail the user creation
 		return &user, false, fmt.Errorf("failed to update policy manager after user creation: %w", err)
 	}
+
+	// Even if the policy manager doesn't detect a filter change, SSH policies
+	// might now be resolvable when they weren't before. If there are existing
+	// nodes, we should send a policy change to ensure they get updated SSH policies.
+	if !policyChanged {
+		nodes, err := s.ListNodes()
+		if err == nil && len(nodes) > 0 {
+			policyChanged = true
+		}
+	}
+
+	log.Info().Str("user", user.Name).Bool("policyChanged", policyChanged).Msg("User created, policy manager updated")
 
 	// TODO(kradalby): implement the user in-memory cache
 
@@ -329,7 +336,7 @@ func (s *State) CreateNode(node *types.Node) (*types.Node, bool, error) {
 }
 
 // updateNodeTx performs a database transaction to update a node and refresh the policy manager.
-func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, bool, error) {
+func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (*types.Node, change.ChangeSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -350,72 +357,100 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, change.EmptySet, err
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node update: %w", err)
+		return node, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	var c change.ChangeSet
+	if policyChanged {
+		c = change.PolicyChange()
+	} else {
+		// Basic node change without specific details since this is a generic update
+		c = change.NodeAdded(node.ID)
+	}
+
+	return node, c, nil
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
-func (s *State) SaveNode(node *types.Node) (*types.Node, bool, error) {
+func (s *State) SaveNode(node *types.Node) (*types.Node, change.ChangeSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if err := s.db.DB.Save(node).Error; err != nil {
-		return nil, false, fmt.Errorf("saving node: %w", err)
+		return nil, change.EmptySet, fmt.Errorf("saving node: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return node, false, fmt.Errorf("failed to update policy manager after node save: %w", err)
+		return node, change.EmptySet, fmt.Errorf("failed to update policy manager after node save: %w", err)
 	}
 
 	// TODO(kradalby): implement the node in-memory cache
 
-	return node, policyChanged, nil
+	if policyChanged {
+		return node, change.PolicyChange(), nil
+	}
+
+	return node, change.EmptySet, nil
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
 // Returns whether policies changed and any error. This operation is irreversible.
-func (s *State) DeleteNode(node *types.Node) (bool, error) {
+func (s *State) DeleteNode(node *types.Node) (change.ChangeSet, error) {
 	err := s.db.DeleteNode(node)
 	if err != nil {
-		return false, err
+		return change.EmptySet, err
 	}
+
+	c := change.NodeRemoved(node.ID)
 
 	// Check if policy manager needs updating after node deletion
 	policyChanged, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return false, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+		return change.EmptySet, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
 	}
 
-	return policyChanged, nil
+	if policyChanged {
+		c = change.PolicyChange()
+	}
+
+	return c, nil
 }
 
-func (s *State) Connect(id types.NodeID) {
+func (s *State) Connect(node *types.Node) change.ChangeSet {
+	c := change.NodeOnline(node.ID)
+	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+
+	if routeChange {
+		c = change.NodeAdded(node.ID)
+	}
+
+	return c
 }
 
-func (s *State) Disconnect(id types.NodeID) (bool, error) {
-	// TODO(kradalby): This node should update the in memory state
-	_, polChanged, err := s.SetLastSeen(id, time.Now())
+func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
+	c := change.NodeOffline(node.ID)
+
+	_, _, err := s.SetLastSeen(node.ID, time.Now())
 	if err != nil {
-		return false, fmt.Errorf("disconnecting node: %w", err)
+		return c, fmt.Errorf("disconnecting node: %w", err)
 	}
 
-	changed := s.primaryRoutes.SetRoutes(id)
+	if routeChange := s.primaryRoutes.SetRoutes(node.ID); routeChange {
+		c = change.PolicyChange()
+	}
 
-	// TODO(kradalby): the returned change should be more nuanced allowing us to
-	// send more directed updates.
-	return changed || polChanged, nil
+	// TODO(kradalby): This node should update the in memory state
+	return c, nil
 }
 
 // GetNodeByID retrieves a node by ID.
@@ -475,45 +510,93 @@ func (s *State) ListEphemeralNodes() (types.Nodes, error) {
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (*types.Node, change.ChangeSet, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("setting node expiry: %w", err)
+	}
+
+	if !c.IsFull() {
+		c = change.KeyExpiry(nodeID)
+	}
+
+	return n, c, nil
 }
 
 // SetNodeTags assigns tags to a node for use in access control policies.
-func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (*types.Node, change.ChangeSet, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("setting node tags: %w", err)
+	}
+
+	if !c.IsFull() {
+		c = change.NodeAdded(nodeID)
+	}
+
+	return n, c, nil
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
-func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (*types.Node, change.ChangeSet, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("setting approved routes: %w", err)
+	}
+
+	// Update primary routes after changing approved routes
+	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.SubnetRoutes()...)
+
+	if routeChange || !c.IsFull() {
+		c = change.PolicyChange()
+	}
+
+	return n, c, nil
 }
 
 // RenameNode changes the display name of a node.
-func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) RenameNode(nodeID types.NodeID, newName string) (*types.Node, change.ChangeSet, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("renaming node: %w", err)
+	}
+
+	if !c.IsFull() {
+		c = change.NodeAdded(nodeID)
+	}
+
+	return n, c, nil
 }
 
 // SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, bool, error) {
+func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (*types.Node, change.ChangeSet, error) {
 	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
 }
 
 // AssignNodeToUser transfers a node to a different user.
-func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, bool, error) {
-	return s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (*types.Node, change.ChangeSet, error) {
+	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
+	if err != nil {
+		return nil, change.EmptySet, fmt.Errorf("assigning node to user: %w", err)
+	}
+
+	if !c.IsFull() {
+		c = change.NodeAdded(nodeID)
+	}
+
+	return n, c, nil
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -523,7 +606,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
-func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, types.StateUpdate, bool) {
+func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.ChangeSet, bool) {
 	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
 
@@ -568,8 +651,14 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 }
 
 // SetNodeRoutes sets the primary routes for a node.
-func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) bool {
-	return s.primaryRoutes.SetRoutes(nodeID, routes...)
+func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) change.ChangeSet {
+	if s.primaryRoutes.SetRoutes(nodeID, routes...) {
+		// Route changes affect packet filters for all nodes, so trigger a policy change
+		// to ensure filters are regenerated across the entire network
+		return change.PolicyChange()
+	}
+
+	return change.EmptySet
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
@@ -653,10 +742,10 @@ func (s *State) HandleNodeFromAuthPath(
 	userID types.UserID,
 	expiry *time.Time,
 	registrationMethod string,
-) (*types.Node, bool, error) {
+) (*types.Node, change.ChangeSet, error) {
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, err
+		return nil, change.EmptySet, err
 	}
 
 	return s.db.HandleNodeFromAuthPath(
@@ -672,12 +761,15 @@ func (s *State) HandleNodeFromAuthPath(
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-) (*types.Node, bool, error) {
+) (*types.Node, change.ChangeSet, bool, error) {
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
+	if err != nil {
+		return nil, change.EmptySet, false, err
+	}
 
 	err = pak.Validate()
 	if err != nil {
-		return nil, false, err
+		return nil, change.EmptySet, false, err
 	}
 
 	nodeToRegister := types.Node{
@@ -698,22 +790,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 		AuthKeyID:  &pak.ID,
 	}
 
-	// For auth key registration, ensure we don't keep an expired node
-	// This is especially important for re-registration after logout
-	if !regReq.Expiry.IsZero() && regReq.Expiry.After(time.Now()) {
+	if !regReq.Expiry.IsZero() {
 		nodeToRegister.Expiry = &regReq.Expiry
-	} else if !regReq.Expiry.IsZero() {
-		// If client is sending an expired time (e.g., after logout),
-		// don't set expiry so the node won't be considered expired
-		log.Debug().
-			Time("requested_expiry", regReq.Expiry).
-			Str("node", regReq.Hostinfo.Hostname).
-			Msg("Ignoring expired expiry time from auth key registration")
 	}
 
 	ipv4, ipv6, err := s.ipAlloc.Next()
 	if err != nil {
-		return nil, false, fmt.Errorf("allocating IPs: %w", err)
+		return nil, change.EmptySet, false, fmt.Errorf("allocating IPs: %w", err)
 	}
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -735,18 +818,38 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return node, nil
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("writing node to database: %w", err)
+		return nil, change.EmptySet, false, fmt.Errorf("writing node to database: %w", err)
+	}
+
+	// Check if this is a logout request for an ephemeral node
+	if !regReq.Expiry.IsZero() && regReq.Expiry.Before(time.Now()) && pak.Ephemeral {
+		// This is a logout request for an ephemeral node, delete it immediately
+		c, err := s.DeleteNode(node)
+		if err != nil {
+			return nil, change.EmptySet, false, fmt.Errorf("deleting ephemeral node during logout: %w", err)
+		}
+		return nil, c, false, nil
 	}
 
 	// Check if policy manager needs updating
 	// This is necessary because we just created a new node.
 	// We need to ensure that the policy manager is aware of this new node.
-	policyChanged, err := s.updatePolicyManagerNodes()
+	// Also update users to ensure all users are known when evaluating policies.
+	usersChanged, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to update policy manager after node registration: %w", err)
+		return nil, change.EmptySet, false, fmt.Errorf("failed to update policy manager users after node registration: %w", err)
 	}
 
-	return node, policyChanged, nil
+	nodesChanged, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return nil, change.EmptySet, false, fmt.Errorf("failed to update policy manager nodes after node registration: %w", err)
+	}
+
+	policyChanged := usersChanged || nodesChanged
+
+	c := change.NodeAdded(node.ID)
+
+	return node, c, policyChanged, nil
 }
 
 // AllocateNextIPs allocates the next available IPv4 and IPv6 addresses.
@@ -766,10 +869,14 @@ func (s *State) updatePolicyManagerUsers() (bool, error) {
 		return false, fmt.Errorf("listing users for policy update: %w", err)
 	}
 
+	log.Debug().Int("userCount", len(users)).Msg("Updating policy manager with users")
+
 	changed, err := s.polMan.SetUsers(users)
 	if err != nil {
 		return false, fmt.Errorf("updating policy manager users: %w", err)
 	}
+
+	log.Debug().Bool("changed", changed).Msg("Policy manager users updated")
 
 	return changed, nil
 }
@@ -834,4 +941,126 @@ func (s *State) autoApproveNodes() error {
 	}
 
 	return nil
+}
+
+// TODO(kradalby): This should just take the node ID?
+func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapRequest) (change.ChangeSet, error) {
+	// TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
+	// which means we could shortcut the whole change thing if there are no other important updates.
+	peerChange := node.PeerChangeFromMapRequest(req)
+
+	node.ApplyPeerChange(&peerChange)
+
+	sendUpdate, routesChanged := hostInfoChanged(node.Hostinfo, req.Hostinfo)
+
+	// The node might not set NetInfo if it has not changed and if
+	// the full HostInfo object is overwritten, the information is lost.
+	// If there is no NetInfo, keep the previous one.
+	// From 1.66 the client only sends it if changed:
+	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
+	// TODO(kradalby): evaluate if we need better comparing of hostinfo
+	// before we take the changes.
+	if req.Hostinfo.NetInfo == nil && node.Hostinfo != nil {
+		req.Hostinfo.NetInfo = node.Hostinfo.NetInfo
+	}
+	node.Hostinfo = req.Hostinfo
+
+	// If there is no changes and nothing to save,
+	// return early.
+	if peerChangeEmpty(peerChange) && !sendUpdate {
+		// mapResponseEndpointUpdates.WithLabelValues("noop").Inc()
+		return change.EmptySet, nil
+	}
+
+	c := change.EmptySet
+
+	// Check if the Hostinfo of the node has changed.
+	// If it has changed, check if there has been a change to
+	// the routable IPs of the host and update them in
+	// the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the route change.
+	// If the hostinfo has changed, but not the routes, just update
+	// hostinfo and let the function continue.
+	if routesChanged {
+		// Auto approve any routes that have been defined in policy as
+		// auto approved. Check if this actually changed the node.
+		_ = s.AutoApproveRoutes(node)
+
+		// Update the routes of the given node in the route manager to
+		// see if an update needs to be sent.
+		c = s.SetNodeRoutes(node.ID, node.SubnetRoutes()...)
+	}
+
+	// Check if there has been a change to Hostname and update them
+	// in the database. Then send a Changed update
+	// (containing the whole node object) to peers to inform about
+	// the hostname change.
+	node.ApplyHostnameFromHostInfo(req.Hostinfo)
+
+	_, policyChange, err := s.SaveNode(node)
+	if err != nil {
+		return change.EmptySet, err
+	}
+
+	if policyChange.IsFull() {
+		c = policyChange
+	}
+
+	if c.Empty() {
+		c = change.NodeAdded(node.ID)
+	}
+
+	return c, nil
+}
+
+// hostInfoChanged reports if hostInfo has changed in two ways,
+// - first bool reports if an update needs to be sent to nodes
+// - second reports if there has been changes to routes
+// the caller can then use this info to save and update nodes
+// and routes as needed.
+func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
+	if old.Equal(new) {
+		return false, false
+	}
+
+	if old == nil && new != nil {
+		return true, true
+	}
+
+	// Routes
+	oldRoutes := make([]netip.Prefix, 0)
+	if old != nil {
+		oldRoutes = old.RoutableIPs
+	}
+	newRoutes := new.RoutableIPs
+
+	tsaddr.SortPrefixes(oldRoutes)
+	tsaddr.SortPrefixes(newRoutes)
+
+	if !xslices.Equal(oldRoutes, newRoutes) {
+		return true, true
+	}
+
+	// Services is mostly useful for discovery and not critical,
+	// except for peerapi, which is how nodes talk to each other.
+	// If peerapi was not part of the initial mapresponse, we
+	// need to make sure its sent out later as it is needed for
+	// Taildrop.
+	// TODO(kradalby): Length comparison is a bit naive, replace.
+	if len(old.Services) != len(new.Services) {
+		return true, false
+	}
+
+	return false, false
+}
+
+func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
+	return peerChange.Key == nil &&
+		peerChange.DiscoKey == nil &&
+		peerChange.Online == nil &&
+		peerChange.Endpoints == nil &&
+		peerChange.DERPRegion == 0 &&
+		peerChange.LastSeen == nil &&
+		peerChange.KeyExpiry == nil
 }

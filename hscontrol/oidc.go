@@ -16,9 +16,8 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/notifier"
-	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
@@ -56,11 +55,10 @@ type RegistrationInfo struct {
 }
 
 type AuthProviderOIDC struct {
+	h                 *Headscale
 	serverURL         string
 	cfg               *types.OIDCConfig
-	state             *state.State
 	registrationCache *zcache.Cache[string, RegistrationInfo]
-	notifier          *notifier.Notifier
 
 	oidcProvider *oidc.Provider
 	oauth2Config *oauth2.Config
@@ -68,10 +66,9 @@ type AuthProviderOIDC struct {
 
 func NewAuthProviderOIDC(
 	ctx context.Context,
+	h *Headscale,
 	serverURL string,
 	cfg *types.OIDCConfig,
-	state *state.State,
-	notif *notifier.Notifier,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -94,11 +91,10 @@ func NewAuthProviderOIDC(
 	)
 
 	return &AuthProviderOIDC{
+		h:                 h,
 		serverURL:         serverURL,
 		cfg:               cfg,
-		state:             state,
 		registrationCache: registrationCache,
-		notifier:          notif,
 
 		oidcProvider: oidcProvider,
 		oauth2Config: oauth2Config,
@@ -318,8 +314,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// Send policy update notifications if needed
 	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "oidc-user-created", user.Name)
-		a.notifier.NotifyAll(ctx, types.UpdateFull())
+		a.h.Change(change.PolicyChange())
 	}
 
 	// TODO(kradalby): Is this comment right?
@@ -360,8 +355,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
 	httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
-
-	return
 }
 
 func extractCodeAndStateParamFromRequest(
@@ -490,12 +483,14 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	var err error
 	var newUser bool
 	var policyChanged bool
-	user, err = a.state.GetUserByOIDCIdentifier(claims.Identifier())
+	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 		return nil, false, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
+	// TODO(kradalby): This might cause us to not have an ID below which
+	// is a problem.
 	if user == nil {
 		newUser = true
 		user = &types.User{}
@@ -504,12 +499,12 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	user.FromClaim(claims)
 
 	if newUser {
-		user, policyChanged, err = a.state.CreateUser(*user)
+		user, policyChanged, err = a.h.state.CreateUser(*user)
 		if err != nil {
 			return nil, false, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
-		_, policyChanged, err = a.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
+		_, policyChanged, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
 			*u = *user
 			return nil
 		})
@@ -526,7 +521,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	registrationID types.RegistrationID,
 	expiry time.Time,
 ) (bool, error) {
-	node, newNode, err := a.state.HandleNodeFromAuthPath(
+	node, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
 		&expiry,
@@ -547,31 +542,20 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := a.state.AutoApproveRoutes(node)
-	_, policyChanged, err := a.state.SaveNode(node)
+	_ = a.h.state.AutoApproveRoutes(node)
+	_, policyChange, err := a.h.state.SaveNode(node)
 	if err != nil {
 		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	// Send policy update notifications if needed (from SaveNode or route changes)
-	if policyChanged {
-		ctx := types.NotifyCtx(context.Background(), "oidc-nodes-change", "all")
-		a.notifier.NotifyAll(ctx, types.UpdateFull())
+	// Policy updates are full and take precedence over node changes.
+	if !policyChange.Empty() {
+		a.h.Change(policyChange)
+	} else {
+		a.h.Change(nodeChange)
 	}
 
-	if routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "oidc-expiry-self", node.Hostname)
-		a.notifier.NotifyByNodeID(
-			ctx,
-			types.UpdateSelf(node.ID),
-			node.ID,
-		)
-
-		ctx = types.NotifyCtx(context.Background(), "oidc-expiry-peers", node.Hostname)
-		a.notifier.NotifyWithIgnore(ctx, types.UpdatePeerChanged(node.ID), node.ID)
-	}
-
-	return newNode, nil
+	return !nodeChange.Empty(), nil
 }
 
 // TODO(kradalby):
