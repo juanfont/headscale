@@ -941,10 +941,66 @@ AND auth_key_id NOT IN (
 					// Create OIDC sessions table for managing OIDC refresh tokens
 					// This replaces the old OIDC token columns in the users table
 					if !tx.Migrator().HasTable(&types.OIDCSession{}) {
-						err := tx.AutoMigrate(&types.OIDCSession{})
-						if err != nil {
+						// Create the table with database-specific SQL
+						var sql string
+						if cfg.Type == types.DatabasePostgres {
+							sql = `
+								CREATE TABLE oidc_sessions (
+									id SERIAL PRIMARY KEY,
+									node_id INTEGER NOT NULL,
+									session_id TEXT NOT NULL,
+									registration_id INTEGER NOT NULL,
+									refresh_token TEXT,
+									token_expiry TIMESTAMP,
+									last_refreshed_at TIMESTAMP,
+									is_active BOOLEAN DEFAULT true,
+									last_seen_at TIMESTAMP,
+									created_at TIMESTAMP,
+									updated_at TIMESTAMP,
+									deleted_at TIMESTAMP,
+									CONSTRAINT fk_oidc_sessions_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+								)
+							`
+						} else {
+							sql = `
+								CREATE TABLE oidc_sessions (
+									id INTEGER PRIMARY KEY AUTOINCREMENT,
+									node_id INTEGER NOT NULL,
+									session_id TEXT NOT NULL,
+									registration_id INTEGER NOT NULL,
+									refresh_token TEXT,
+									token_expiry DATETIME,
+									last_refreshed_at DATETIME,
+									is_active NUMERIC DEFAULT true,
+									last_seen_at DATETIME,
+									created_at DATETIME,
+									updated_at DATETIME,
+									deleted_at DATETIME,
+									CONSTRAINT fk_oidc_sessions_node FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+								)
+							`
+						}
+						if err := tx.Exec(sql).Error; err != nil {
 							return fmt.Errorf("creating OIDC sessions table: %w", err)
 						}
+
+						// Create indexes matching the struct tags
+						if err := tx.Exec("CREATE UNIQUE INDEX idx_oidc_sessions_node_id ON oidc_sessions(node_id)").Error; err != nil {
+							return fmt.Errorf("creating node_id unique index: %w", err)
+						}
+						if err := tx.Exec("CREATE UNIQUE INDEX idx_oidc_sessions_session_id ON oidc_sessions(session_id)").Error; err != nil {
+							return fmt.Errorf("creating session_id unique index: %w", err)
+						}
+						if err := tx.Exec("CREATE INDEX idx_oidc_sessions_token_expiry ON oidc_sessions(token_expiry)").Error; err != nil {
+							return fmt.Errorf("creating token_expiry index: %w", err)
+						}
+						if err := tx.Exec("CREATE INDEX idx_oidc_sessions_is_active ON oidc_sessions(is_active)").Error; err != nil {
+							return fmt.Errorf("creating is_active index: %w", err)
+						}
+						if err := tx.Exec("CREATE INDEX idx_oidc_sessions_deleted_at ON oidc_sessions(deleted_at)").Error; err != nil {
+							return fmt.Errorf("creating deleted_at index: %w", err)
+						}
+
 						log.Debug().Msg("Created OIDC sessions table")
 					}
 

@@ -24,7 +24,6 @@ type OIDCSession struct {
 	// Token lifecycle
 	TokenExpiry     *time.Time `gorm:"index"`
 	LastRefreshedAt *time.Time
-	RefreshCount    int `gorm:"default:0"`
 
 	// Session state
 	IsActive   bool `gorm:"default:true;index"`

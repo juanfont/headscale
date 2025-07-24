@@ -330,7 +330,7 @@ func (h *Headscale) oidcTokenRefreshJob(ctx context.Context, oidcProvider *AuthP
 		case <-gracePeriodTicker.C:
 			log.Debug().Msg("OIDC: Checking for nodes offline beyond grace period")
 			gracePeriod := oidcProvider.cfg.TokenRefresh.SessionInvalidationGracePeriod
-			if err := h.db.InvalidateExpiredOIDCSessions(gracePeriod); err != nil {
+			if err := h.state.InvalidateExpiredOIDCSessions(gracePeriod); err != nil {
 				log.Error().Err(err).Msg("OIDC: Failed to invalidate sessions for offline nodes")
 			}
 		}

@@ -835,3 +835,86 @@ func (s *State) autoApproveNodes() error {
 
 	return nil
 }
+
+// InvalidateExpiredOIDCSessions invalidates sessions for nodes that have been offline
+// for longer than the configured grace period.
+func (s *State) InvalidateExpiredOIDCSessions(offlineGracePeriod time.Duration) error {
+	return s.db.InvalidateExpiredOIDCSessions(offlineGracePeriod)
+}
+
+// GetOIDCSessionByNodeID retrieves an OIDC session by node ID.
+func (s *State) GetOIDCSessionByNodeID(nodeID types.NodeID) (*types.OIDCSession, error) {
+	var session types.OIDCSession
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Where("node_id = ?", nodeID).First(&session).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &session, nil
+}
+
+// SaveOIDCSession saves or updates an OIDC session.
+func (s *State) SaveOIDCSession(session *types.OIDCSession) error {
+	return s.db.Write(func(tx *gorm.DB) error {
+		return tx.Save(session).Error
+	})
+}
+
+// CreateOIDCSession creates a new OIDC session.
+func (s *State) CreateOIDCSession(session *types.OIDCSession) error {
+	return s.db.Write(func(tx *gorm.DB) error {
+		return tx.Create(session).Error
+	})
+}
+
+// UpdateNodeExpiry updates a node's expiry time.
+func (s *State) UpdateNodeExpiry(nodeID types.NodeID, expiry time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	return s.db.Write(func(tx *gorm.DB) error {
+		result := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry)
+		if result.Error != nil {
+			return result.Error
+		}
+		
+		// Update in-memory state
+		for i := range s.nodes {
+			if s.nodes[i].ID == nodeID {
+				s.nodes[i].Expiry = &expiry
+				break
+			}
+		}
+		
+		return nil
+	})
+}
+
+// GetNodeWithUser retrieves a node with its associated user.
+func (s *State) GetNodeWithUser(nodeID types.NodeID) (*types.Node, error) {
+	var node types.Node
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Preload("User").First(&node, nodeID).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &node, nil
+}
+
+// GetOIDCSessionsNeedingRefresh retrieves OIDC sessions that need token refresh.
+func (s *State) GetOIDCSessionsNeedingRefresh(threshold time.Time, registerMethod string) ([]types.OIDCSession, error) {
+	var sessions []types.OIDCSession
+	err := s.db.Read(func(tx *gorm.DB) error {
+		return tx.Preload("Node").Preload("Node.User").
+			Joins("JOIN nodes ON nodes.id = oidc_sessions.node_id").
+			Where("oidc_sessions.is_active = ? AND oidc_sessions.token_expiry IS NOT NULL AND oidc_sessions.token_expiry < ? AND oidc_sessions.refresh_token != '' AND nodes.register_method = ?",
+				true, threshold, registerMethod).
+			Find(&sessions).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
