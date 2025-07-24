@@ -19,7 +19,7 @@ type OIDCSession struct {
 	RegistrationID RegistrationID `gorm:"not null"` // For reusing HandleNodeFromAuthPath
 
 	// Token data
-	RefreshToken string `gorm:"type:text"` //TODO: Encrypt?
+	RefreshToken string `gorm:"type:text"` // TODO: Encrypt?
 
 	// Token lifecycle
 	TokenExpiry     *time.Time `gorm:"index"`

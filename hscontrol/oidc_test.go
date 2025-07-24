@@ -153,7 +153,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := oidcProvider.createOrUpdateOIDCSession(tt.user, tt.registrationID, tt.token, node.ID)
+			err := oidcProvider.createOrUpdateOIDCSession(tt.registrationID, tt.token, node.ID)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -164,7 +164,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 			if tt.expectSession && tt.token.RefreshToken != "" {
 				// Verify session was created/updated
 				var session types.OIDCSession
-				err = hsdb.DB.Where("user_id = ? AND node_id = ?", tt.user.ID, node.ID).First(&session).Error
+				err = hsdb.DB.Where("node_id = ?", node.ID).First(&session).Error
 				assert.NoError(t, err)
 				assert.Equal(t, tt.token.RefreshToken, session.RefreshToken)
 				assert.True(t, session.IsActive)
@@ -516,7 +516,6 @@ func TestRefreshOIDCSessionValidation(t *testing.T) {
 			}()
 
 			err := oidcProvider.RefreshOIDCSession(ctx, tt.session)
-
 			// If we get here, it means no panic occurred (good for empty refresh token test)
 			if err != nil {
 				assert.Contains(t, err.Error(), tt.errorMsg)

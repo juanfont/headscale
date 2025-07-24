@@ -309,7 +309,7 @@ func (h *Headscale) oidcTokenRefreshJob(ctx context.Context, oidcProvider *AuthP
 	defer refreshTicker.Stop()
 	defer gracePeriodTicker.Stop()
 
-	log.Info().Msgf("OIDC: Background token refresh job started (checking every %v for tokens expiring within %v)", 
+	log.Info().Msgf("OIDC: Background token refresh job started (checking every %v for tokens expiring within %v)",
 		checkInterval, oidcProvider.cfg.TokenRefresh.ExpiryThreshold)
 
 	for {
