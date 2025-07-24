@@ -315,7 +315,7 @@ func TestCreateOrUpdateOIDCSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := oidcProvider.createOrUpdateOIDCSession(tt.user, tt.registrationID, tt.token, tt.nodeExpiry)
+			err := oidcProvider.createOrUpdateOIDCSession(tt.user, tt.registrationID, tt.token, node.ID)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -528,7 +528,6 @@ func TestRefreshExpiredTokens(t *testing.T) {
 			setupSession: func() *types.OIDCSession {
 				node := createTestNode(t, hsdb, user, "test-node-1")
 				return &types.OIDCSession{
-					UserID:         user.ID,
 					NodeID:         types.NodeID(node.ID),
 					SessionID:      "valid-session",
 					RegistrationID: types.RegistrationID("reg-123"),
@@ -545,7 +544,6 @@ func TestRefreshExpiredTokens(t *testing.T) {
 			setupSession: func() *types.OIDCSession {
 				node := createTestNode(t, hsdb, user, "test-node-2")
 				return &types.OIDCSession{
-					UserID:         user.ID,
 					NodeID:         types.NodeID(node.ID),
 					SessionID:      "no-token-session",
 					RegistrationID: types.RegistrationID("reg-456"),
@@ -562,7 +560,6 @@ func TestRefreshExpiredTokens(t *testing.T) {
 			setupSession: func() *types.OIDCSession {
 				node := createTestNode(t, hsdb, user, "test-node-3")
 				return &types.OIDCSession{
-					UserID:         user.ID,
 					NodeID:         types.NodeID(node.ID),
 					SessionID:      "valid-token-session",
 					RegistrationID: types.RegistrationID("reg-789"),

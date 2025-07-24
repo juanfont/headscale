@@ -11,8 +11,6 @@ type OIDCSession struct {
 	gorm.Model
 
 	// Core relationships
-	UserID uint   `gorm:"not null;index"`
-	User   User   `gorm:"constraint:OnDelete:CASCADE;"`
 	NodeID NodeID `gorm:"not null;uniqueIndex"`
 	Node   Node   `gorm:"constraint:OnDelete:CASCADE;"`
 
