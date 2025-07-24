@@ -38,7 +38,6 @@ func (*Suite) TestInvalidateOIDCSessionsForNode(c *check.C) {
 	registrationID := types.RegistrationID("test-reg-id-1")
 	tokenExpiry := time.Now().Add(1 * time.Hour)
 	session := &types.OIDCSession{
-		UserID:         user.ID,
 		NodeID:         types.NodeID(node.ID),
 		SessionID:      sessionID,
 		RegistrationID: registrationID,
@@ -113,7 +112,6 @@ func (*Suite) TestInvalidateExpiredOIDCSessions(c *check.C) {
 	node1.LastSeen = &lastSeen1
 	db.DB.Save(node1)
 	session1 := &types.OIDCSession{
-		UserID:         user.ID,
 		NodeID:         types.NodeID(node1.ID),
 		SessionID:      "expired-session-1",
 		RegistrationID: types.RegistrationID("reg-1"),
@@ -129,7 +127,6 @@ func (*Suite) TestInvalidateExpiredOIDCSessions(c *check.C) {
 	node2.LastSeen = &lastSeen2
 	db.DB.Save(node2)
 	session2 := &types.OIDCSession{
-		UserID:         user.ID,
 		NodeID:         types.NodeID(node2.ID),
 		SessionID:      "expired-session-2",
 		RegistrationID: types.RegistrationID("reg-2"),
@@ -160,7 +157,6 @@ func (*Suite) TestInvalidateExpiredOIDCSessions(c *check.C) {
 	// Session 3: Valid token
 	validTime := now.Add(1 * time.Hour)
 	session3 := &types.OIDCSession{
-		UserID:         user.ID,
 		NodeID:         types.NodeID(node3.ID),
 		SessionID:      "valid-session",
 		RegistrationID: types.RegistrationID("reg-3"),
@@ -224,7 +220,6 @@ func (*Suite) TestInvalidateExpiredOIDCSessionsWithNoExpired(c *check.C) {
 	// Create only valid sessions
 	validTime := time.Now().Add(24 * time.Hour)
 	session := &types.OIDCSession{
-		UserID:         user.ID,
 		NodeID:         types.NodeID(node.ID),
 		SessionID:      "valid-only-session",
 		RegistrationID: types.RegistrationID("reg-valid"),
@@ -275,7 +270,6 @@ func (*Suite) TestInvalidateOIDCSessionsTransaction(c *check.C) {
 		tokenExpiry := time.Now().Add(1 * time.Hour)
 		sessionID := fmt.Sprintf("session-%d", i)
 		session := &types.OIDCSession{
-			UserID:         user.ID,
 			NodeID:         types.NodeID(node.ID),
 			SessionID:      sessionID,
 			RegistrationID: types.RegistrationID(fmt.Sprintf("reg-%d", i)),

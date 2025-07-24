@@ -303,12 +303,14 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 }
 
 func (h *Headscale) oidcTokenRefreshJob(ctx context.Context, oidcProvider *AuthProviderOIDC) {
-	refreshTicker := time.NewTicker(15 * time.Minute)
-	gracePeriodTicker := time.NewTicker(15 * time.Minute)
+	checkInterval := oidcProvider.cfg.TokenRefresh.CheckInterval
+	refreshTicker := time.NewTicker(checkInterval)
+	gracePeriodTicker := time.NewTicker(checkInterval)
 	defer refreshTicker.Stop()
 	defer gracePeriodTicker.Stop()
 
-	log.Info().Msg("OIDC: Background token refresh job started (checking every 15 minute for tokens expiring within 30 minutes)")
+	log.Info().Msgf("OIDC: Background token refresh job started (checking every %v for tokens expiring within %v)", 
+		checkInterval, oidcProvider.cfg.TokenRefresh.ExpiryThreshold)
 
 	for {
 		select {
@@ -327,7 +329,7 @@ func (h *Headscale) oidcTokenRefreshJob(ctx context.Context, oidcProvider *AuthP
 		// Invalidate sessions for nodes that have been offline for longer than the configured grace period
 		case <-gracePeriodTicker.C:
 			log.Debug().Msg("OIDC: Checking for nodes offline beyond grace period")
-			gracePeriod := oidcProvider.cfg.SessionInvalidationGracePeriod
+			gracePeriod := oidcProvider.cfg.TokenRefresh.SessionInvalidationGracePeriod
 			if err := h.db.InvalidateExpiredOIDCSessions(gracePeriod); err != nil {
 				log.Error().Err(err).Msg("OIDC: Failed to invalidate sessions for offline nodes")
 			}
