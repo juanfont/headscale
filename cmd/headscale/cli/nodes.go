@@ -539,19 +539,25 @@ be assigned to nodes.`,
 		output, _ := cmd.Flags().GetString("output")
 
 		confirm := false
-		prompt := &survey.Confirm{
-			Message: "Are you sure that you want to assign/remove IPs to/from nodes?",
+
+		force, _ := cmd.Flags().GetBool("force")
+		if !force {
+			prompt := &survey.Confirm{
+				Message: "Are you sure that you want to assign/remove IPs to/from nodes?",
+			}
+			err = survey.AskOne(prompt, &confirm)
+			if err != nil {
+				return
+			}
 		}
-		err = survey.AskOne(prompt, &confirm)
-		if err != nil {
-			return
-		}
-		if confirm {
+
+
+		if confirm || force {
 			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 			defer cancel()
 			defer conn.Close()
 
-			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm})
+			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm || force })
 			if err != nil {
 				ErrorOutput(
 					err,
