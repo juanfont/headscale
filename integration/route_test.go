@@ -1196,10 +1196,15 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	_, _, err = user1c.Execute(command)
 	require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
-	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
+	var nodes []*v1.Node
+	// Wait for route advertisements to propagate to NodeStore
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 2)
+		requireNodeRouteCountWithCollect(ct, nodes[0], 1, 0, 0)
+	}, 10*time.Second, 100*time.Millisecond, "route advertisements should propagate")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1222,6 +1227,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 
 	// Wait for route state changes to propagate to nodes and clients
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 2)
@@ -1320,10 +1326,15 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	_, _, err = user1c.Execute(command)
 	require.NoErrorf(t, err, "failed to advertise route: %s", err)
 
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, nodes, 2)
-	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
+	var nodes []*v1.Node
+	// Wait for route advertisements to propagate to NodeStore
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 2)
+		requireNodeRouteCountWithCollect(ct, nodes[0], 2, 0, 0)
+	}, 10*time.Second, 100*time.Millisecond, "route advertisements should propagate")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
@@ -1971,8 +1982,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
+						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 1)
 					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
-					requireNodeRouteCount(t, nodes[1], 1, 1, 1)
 
 					// Verify that the routes have been sent to the client.
 					status, err = client.Status()
@@ -2008,9 +2019,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
+						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
+						requireNodeRouteCountWithCollect(c, nodes[2], 0, 0, 0)
 					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
-					requireNodeRouteCount(t, nodes[1], 1, 1, 0)
-					requireNodeRouteCount(t, nodes[2], 0, 0, 0)
 
 					// Verify that the routes have been sent to the client.
 					status, err = client.Status()
