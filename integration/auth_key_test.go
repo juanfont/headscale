@@ -30,7 +30,10 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			opts := []hsic.Option{
+				hsic.WithTestName("pingallbyip"),
+				hsic.WithEmbeddedDERPServerOnly(),
+			}
 			if https {
 				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
@@ -129,6 +132,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
 
 			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 				return x.String()
