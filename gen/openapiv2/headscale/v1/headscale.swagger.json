@@ -390,6 +390,45 @@
         ]
       }
     },
+    "/api/v1/node/{nodeId}/extend_expiration": {
+      "post": {
+        "operationId": "HeadscaleService_ExtendNodeExpiration",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ExtendNodeExpirationResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/HeadscaleServiceExtendNodeExpirationBody"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/{nodeId}/rename/{newName}": {
       "post": {
         "operationId": "HeadscaleService_RenameNode",
@@ -796,6 +835,15 @@
     }
   },
   "definitions": {
+    "HeadscaleServiceExtendNodeExpirationBody": {
+      "type": "object",
+      "properties": {
+        "newExpiration": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
     "HeadscaleServiceMoveNodeBody": {
       "type": "object",
       "properties": {
@@ -1035,6 +1083,14 @@
     },
     "v1ExpirePreAuthKeyResponse": {
       "type": "object"
+    },
+    "v1ExtendNodeExpirationResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
     },
     "v1GetNodeResponse": {
       "type": "object",
