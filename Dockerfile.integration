@@ -13,14 +13,18 @@ RUN apt-get update \
   && apt-get clean
 RUN mkdir -p /var/run/headscale
 
+# Install delve debugger
+RUN go install github.com/go-delve/delve/cmd/dlv@latest
+
 COPY go.mod go.sum /go/src/headscale/
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go install -a ./cmd/headscale && test -e /go/bin/headscale
+# Build debug binary with debug symbols for delve
+RUN CGO_ENABLED=0 GOOS=linux go build -gcflags="all=-N -l" -o /go/bin/headscale ./cmd/headscale
 
 # Need to reset the entrypoint or everything will run as a busybox script
 ENTRYPOINT []
-EXPOSE 8080/tcp
-CMD ["headscale"]
+EXPOSE 8080/tcp 40000/tcp
+CMD ["/go/bin/dlv", "--listen=0.0.0.0:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/go/bin/headscale", "--"]

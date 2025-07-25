@@ -112,11 +112,11 @@ docker exec -it headscale \
 
 ### Register a machine using a pre authenticated key
 
-Generate a key using the command line:
+Generate a key using the command line for the user with ID 1:
 
 ```shell
 docker exec -it headscale \
-  headscale preauthkeys create --user myfirstuser --reusable --expiration 24h
+  headscale preauthkeys create --user 1 --reusable --expiration 24h
 ```
 
 This will return a pre-authenticated key that can be used to connect a node to headscale with the `tailscale up` command:

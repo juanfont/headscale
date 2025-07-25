@@ -79,11 +79,7 @@ jobs:
     strategy:
       matrix:
         env:
-          - "GOARCH=arm   GOOS=linux GOARM=5"
-          - "GOARCH=arm   GOOS=linux GOARM=6"
-          - "GOARCH=arm   GOOS=linux GOARM=7"
           - "GOARCH=arm64 GOOS=linux"
-          - "GOARCH=386   GOOS=linux"
           - "GOARCH=amd64 GOOS=linux"
           - "GOARCH=arm64 GOOS=darwin"
           - "GOARCH=amd64 GOOS=darwin"
