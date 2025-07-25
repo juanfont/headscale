@@ -35,6 +35,7 @@ theme:
     # - navigation.tabs.sticky
     - navigation.top
     - navigation.tracking
+    - pymdownx.blocks.details
     - search.highlight
     - search.share
     - search.suggest
@@ -120,6 +121,7 @@ markdown_extensions:
       generic: true
   - pymdownx.betterem:
       smart_enable: all
+  - pymdownx.blocks.details
   - pymdownx.caret
   - pymdownx.details
   - pymdownx.emoji:
