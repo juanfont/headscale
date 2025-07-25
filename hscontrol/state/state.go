@@ -369,8 +369,8 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
-// saveNodeToDB saves a node to the database only, without updating NodeStore
-func (s *State) saveNodeToDB(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
+// saveNodeToDBOnly saves a node to the database only, without updating NodeStore
+func (s *State) saveNodeToDBOnly(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -400,7 +400,7 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.ChangeSet,
 	s.nodeStore.PutNode(*nodePtr)
 
 	// Then save to database
-	return s.saveNodeToDB(node)
+	return s.saveNodeToDBOnly(node)
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
@@ -542,18 +542,19 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 
 // SetNodeExpiry updates the expiration time for a node.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.ChangeSet, error) {
+	// Update NodeStore first
+	expiryPtr := expiry
+	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		node.Expiry = &expiryPtr
+	})
+
+	// Then update database
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node expiry: %w", err)
 	}
-
-	// Update NodeStore with the same Expiry data that was just written to database
-	expiryPtr := expiry
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.Expiry = &expiryPtr
-	})
 
 	if !c.IsFull() {
 		c = change.KeyExpiry(nodeID)
@@ -564,17 +565,18 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 
 // SetNodeTags assigns tags to a node for use in access control policies.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.ChangeSet, error) {
+	// Update NodeStore first
+	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		node.ForcedTags = tags
+	})
+
+	// Then update database
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node tags: %w", err)
 	}
-
-	// Update NodeStore with the same ForcedTags data that was just written to database
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.ForcedTags = tags
-	})
 
 	if !c.IsFull() {
 		c = change.NodeAdded(nodeID)
@@ -585,6 +587,10 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.ChangeSet, error) {
+	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		node.ApprovedRoutes = routes
+	})
+
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
@@ -592,12 +598,6 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting approved routes: %w", err)
 	}
 
-	// Update NodeStore with the same ApprovedRoutes data that was just written to database
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.ApprovedRoutes = routes
-	})
-
-	// Update primary routes after NodeStore has been updated with fresh data
 	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.AsStruct().SubnetRoutes()...)
 
 	if routeChange || !c.IsFull() {
@@ -609,17 +609,16 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
+	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		node.GivenName = newName
+	})
+
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
 	}
-
-	// Update NodeStore with the same GivenName data that was just written to database
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.GivenName = newName
-	})
 
 	if !c.IsFull() {
 		c = change.NodeAdded(nodeID)
@@ -630,18 +629,17 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 
 // SetLastSeen updates when a node was last seen, used for connectivity monitoring.
 func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, change.ChangeSet, error) {
+	lastSeenPtr := lastSeen
+	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		node.LastSeen = &lastSeenPtr
+	})
+
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting last seen: %w", err)
 	}
-
-	// Update NodeStore with the same LastSeen data that was just written to database
-	lastSeenPtr := lastSeen
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.LastSeen = &lastSeenPtr
-	})
 
 	if !c.IsFull() {
 		c = change.NodeAdded(nodeID)
@@ -652,20 +650,20 @@ func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.Node
 
 // AssignNodeToUser transfers a node to a different user.
 func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, change.ChangeSet, error) {
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return types.NodeView{}, change.EmptySet, err
+	}
+
+	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.User = *user
+	})
+
 	node, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, err
-	}
-
-	// Update NodeStore with the same User data that was just written to database
-	// Get the fresh user data that corresponds to the userID we just assigned
-	user, err := s.GetUserByID(userID)
-	if err == nil {
-		s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
-			n.User = *user
-		})
 	}
 
 	if !c.IsFull() {
@@ -677,7 +675,24 @@ func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (type
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
 func (s *State) BackfillNodeIPs() ([]string, error) {
-	return s.db.BackfillNodeIPs(s.ipAlloc)
+	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
+	if err != nil {
+		return nil, err
+	}
+
+	// Refresh NodeStore after IP changes to ensure consistency
+	if len(changes) > 0 {
+		nodes, err := s.db.ListNodes()
+		if err != nil {
+			return changes, fmt.Errorf("failed to refresh NodeStore after IP backfill: %w", err)
+		}
+
+		for _, node := range nodes {
+			s.nodeStore.PutNode(*node)
+		}
+	}
+
+	return changes, nil
 }
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
@@ -849,7 +864,6 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
-	// Update nodestore with the newly registered/updated node
 	s.nodeStore.PutNode(*node)
 
 	return node.View(), nodeChange, nil
@@ -950,7 +964,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 		c = change.NodeAdded(node.ID)
 	}
 
-	// Update nodestore with the newly registered node
 	s.nodeStore.PutNode(*node)
 
 	return node.View(), c, nil
@@ -1121,7 +1134,7 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 		routeChange = s.SetNodeRoutes(node.ID, updatedNode.SubnetRoutes()...)
 	}
 
-	_, policyChange, err := s.saveNodeToDB(updatedNode)
+	_, policyChange, err := s.saveNodeToDBOnly(updatedNode)
 	if err != nil {
 		return change.EmptySet, fmt.Errorf("saving to database: %w", err)
 	}
