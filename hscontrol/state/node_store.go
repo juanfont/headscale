@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 )
@@ -19,6 +21,56 @@ const (
 	put    = 1
 	del    = 2
 	update = 3
+)
+
+const prometheusNamespace = "headscale"
+
+var (
+	nodeStoreOperations = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_operations_total",
+		Help:      "Total number of NodeStore operations",
+	}, []string{"operation"})
+	nodeStoreOperationDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_operation_duration_seconds",
+		Help:      "Duration of NodeStore operations",
+		Buckets:   prometheus.DefBuckets,
+	}, []string{"operation"})
+	nodeStoreBatchSize = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_batch_size",
+		Help:      "Size of NodeStore write batches",
+		Buckets:   []float64{1, 2, 5, 10, 20, 50, 100},
+	})
+	nodeStoreBatchDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_batch_duration_seconds",
+		Help:      "Duration of NodeStore batch processing",
+		Buckets:   prometheus.DefBuckets,
+	})
+	nodeStoreSnapshotBuildDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_snapshot_build_duration_seconds",
+		Help:      "Duration of NodeStore snapshot building from nodes",
+		Buckets:   prometheus.DefBuckets,
+	})
+	nodeStoreNodesCount = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_nodes_total",
+		Help:      "Total number of nodes in the NodeStore",
+	})
+	nodeStorePeersCalculationDuration = promauto.NewHistogram(prometheus.HistogramOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_peers_calculation_duration_seconds",
+		Help:      "Duration of peers calculation in NodeStore",
+		Buckets:   prometheus.DefBuckets,
+	})
+	nodeStoreQueueDepth = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: prometheusNamespace,
+		Name:      "nodestore_queue_depth",
+		Help:      "Current depth of NodeStore write queue",
+	})
 )
 
 // NodeStore is a thread-safe store for nodes.
@@ -37,7 +89,6 @@ type NodeStore struct {
 
 	peersFunc  PeersFunc
 	writeQueue chan work
-	// TODO: metrics
 }
 
 func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc) *NodeStore {
@@ -51,6 +102,9 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc) *NodeStore {
 		peersFunc: peersFunc,
 	}
 	store.data.Store(&snap)
+
+	// Initialize node count gauge
+	nodeStoreNodesCount.Set(float64(len(nodes)))
 
 	return store
 }
@@ -91,6 +145,9 @@ type work struct {
 // If the node does not exist, it will be added.
 // This is a blocking operation that waits for the write to complete.
 func (s *NodeStore) PutNode(n types.Node) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("put"))
+	defer timer.ObserveDuration()
+
 	work := work{
 		op:     put,
 		nodeID: n.ID,
@@ -98,8 +155,12 @@ func (s *NodeStore) PutNode(n types.Node) {
 		result: make(chan struct{}),
 	}
 
+	nodeStoreQueueDepth.Inc()
 	s.writeQueue <- work
 	<-work.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("put").Inc()
 }
 
 // UpdateNodeFunc is a function type that takes a pointer to a Node and modifies it.
@@ -119,6 +180,9 @@ type UpdateNodeFunc func(n *types.Node)
 // while we are modifying the node. Which mean we would need to implement read-write locks
 // on all read operations.
 func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("update"))
+	defer timer.ObserveDuration()
+
 	work := work{
 		op:       update,
 		nodeID:   nodeID,
@@ -126,21 +190,32 @@ func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)
 		result:   make(chan struct{}),
 	}
 
+	nodeStoreQueueDepth.Inc()
 	s.writeQueue <- work
 	<-work.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("update").Inc()
 }
 
 // DeleteNode removes a node from the store by its ID.
 // This is a blocking operation that waits for the write to complete.
 func (s *NodeStore) DeleteNode(id types.NodeID) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("delete"))
+	defer timer.ObserveDuration()
+
 	work := work{
 		op:     del,
 		nodeID: id,
 		result: make(chan struct{}),
 	}
 
+	nodeStoreQueueDepth.Inc()
 	s.writeQueue <- work
 	<-work.result
+	nodeStoreQueueDepth.Dec()
+
+	nodeStoreOperations.WithLabelValues("delete").Inc()
 }
 
 // Start initializes the NodeStore and starts processing the write queue.
@@ -196,6 +271,11 @@ func (s *NodeStore) processWrite() {
 // the caller knows the operation is complete and do not send any
 // updates that are dependent on a read that is yet to be written.
 func (s *NodeStore) applyBatch(batch []work) {
+	timer := prometheus.NewTimer(nodeStoreBatchDuration)
+	defer timer.ObserveDuration()
+
+	nodeStoreBatchSize.Observe(float64(len(batch)))
+
 	nodes := make(map[types.NodeID]types.Node)
 	maps.Copy(nodes, s.data.Load().nodesByID)
 
@@ -217,6 +297,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 	newSnap := snapshotFromNodes(nodes, s.peersFunc)
 	s.data.Store(&newSnap)
 
+	// Update node count gauge
+	nodeStoreNodesCount.Set(float64(len(nodes)))
+
 	for _, w := range batch {
 		close(w.result)
 	}
@@ -228,7 +311,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 // This is not a fast operation, it is the "slow" part of our copy-on-write
 // structure, but it allows us to have fast reads and efficient lookups.
 func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) Snapshot {
-	// TODO(kradalby): Add prometheus histograms for this operation.
+	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
+	defer timer.ObserveDuration()
+
 	allNodes := make([]types.NodeView, 0, len(nodes))
 	for _, n := range nodes {
 		allNodes = append(allNodes, n.View())
@@ -243,7 +328,11 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		// it will use the list of all nodes, combined with the
 		// current policy to precalculate which nodes are peers and
 		// can see each other.
-		peersByNode: peersFunc(allNodes),
+		peersByNode: func() map[types.NodeID][]types.NodeView {
+			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
+			defer peersTimer.ObserveDuration()
+			return peersFunc(allNodes)
+		}(),
 		nodesByUser: make(map[types.UserID][]types.NodeView),
 	}
 
@@ -262,6 +351,11 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 // The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
 // it isn't an invalid node (this is more of a node error or node is broken).
 func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get").Inc()
+
 	n, exists := s.data.Load().nodesByID[id]
 	if !exists {
 		return types.NodeView{}, false
@@ -274,21 +368,41 @@ func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
 // The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
 // it isn't an invalid node (this is more of a node error or node is broken).
 func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_key"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_key").Inc()
+
 	nodeView, exists := s.data.Load().nodesByNodeKey[nodeKey]
 	return nodeView, exists
 }
 
 // ListNodes returns a slice of all nodes in the store.
 func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("list").Inc()
+
 	return views.SliceOf(s.data.Load().allNodes)
 }
 
 // ListPeers returns a slice of all peers for a given node ID.
 func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list_peers"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("list_peers").Inc()
+
 	return views.SliceOf(s.data.Load().peersByNode[id])
 }
 
 // ListNodesByUser returns a slice of all nodes for a given user ID.
 func (s *NodeStore) ListNodesByUser(uid types.UserID) views.Slice[types.NodeView] {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list_by_user"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("list_by_user").Inc()
+
 	return views.SliceOf(s.data.Load().nodesByUser[uid])
 }
