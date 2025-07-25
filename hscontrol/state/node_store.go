@@ -107,6 +107,9 @@ type UpdateNodeFunc func(n *types.Node)
 
 // UpdateNode applies a function to modify a specific node in the store.
 // This is a blocking operation that waits for the write to complete.
+// This is analogous to a database "transaction", or, the caller should
+// rather collect all data they want to change, and then call this function.
+// Fewer calls are better.
 //
 // TODO(kradalby): Technically we could have a version of this that modifies the node
 // in the current snapshot if _we know_ that the change will not affect the peer relationships.

@@ -1048,125 +1048,119 @@ func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
 	return cs, nil
 }
 
-// TODO(kradalby): This should just take the node ID?
+// UpdateNodeFromMapRequest processes a MapRequest and updates the node.
+// TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
+// which means we could shortcut the whole change thing if there are no other important updates.
+// When a field is added to this function, remember to also add it to:
+// - node.PeerChangeFromMapRequest
+// - node.ApplyPeerChange
+// - logTracePeerChange in poll.go.
 func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapRequest) (change.ChangeSet, error) {
-	// TODO(kradalby): This is essentially a patch update that could be sent directly to nodes,
-	// which means we could shortcut the whole change thing if there are no other important updates.
-
-	// Get fresh node from NodeStore to ensure we have latest data
-	freshNodeView, exists := s.nodeStore.GetNode(node.ID)
+	currentNode, exists := s.nodeStore.GetNode(node.ID)
 	if !exists {
-		return change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", node.ID)
+		return change.EmptySet, fmt.Errorf("node not found: %d", node.ID)
 	}
 
-	// Use fresh node for all operations
-	workingNode := freshNodeView.AsStruct()
-	peerChange := workingNode.PeerChangeFromMapRequest(req)
-	workingNode.ApplyPeerChange(&peerChange)
-
-	sendUpdate, routesChanged := hostInfoChanged(workingNode.Hostinfo, req.Hostinfo)
-
-	// The node might not set NetInfo if it has not changed and if
-	// the full HostInfo object is overwritten, the information is lost.
-	// If there is no NetInfo, keep the previous one.
-	// From 1.66 the client only sends it if changed:
-	// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
-	// TODO(kradalby): evaluate if we need better comparing of hostinfo
-	// before we take the changes.
-	if req.Hostinfo.NetInfo == nil && workingNode.Hostinfo != nil {
-		req.Hostinfo.NetInfo = workingNode.Hostinfo.NetInfo
-	}
-
-	workingNode.Hostinfo = req.Hostinfo
+	peerChange := currentNode.PeerChangeFromMapRequest(req)
+	hostinfoChanged := !hostinfoEqual(currentNode, req.Hostinfo)
 
 	// If there is no changes and nothing to save,
 	// return early.
-	if peerChangeEmpty(peerChange) && !sendUpdate {
-		// mapResponseEndpointUpdates.WithLabelValues("noop").Inc()
+	if peerChangeEmpty(peerChange) && !hostinfoChanged {
 		return change.EmptySet, nil
 	}
 
-	c := change.EmptySet
+	// Calculate route approval before NodeStore update to avoid calling View() inside callback
+	var routeApproval []netip.Prefix
+	var routeApprovalChanged bool
 
-	// Check if the Hostinfo of the node has changed.
-	// If it has changed, check if there has been a change to
-	// the routable IPs of the host and update them in
-	// the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the route change.
-	// If the hostinfo has changed, but not the routes, just update
-	// hostinfo and let the function continue.
-	if routesChanged {
-		// Auto approve any routes that have been defined in policy as
-		// auto approved. Check if this actually changed the node.
-		_ = s.AutoApproveRoutes(workingNode.View())
+	// Single NodeStore write to avoid multiple recalculations
+	var routeChange change.ChangeSet = change.EmptySet
 
-		// Update the routes of the given node in the route manager to
-		// see if an update needs to be sent.
-		c = s.SetNodeRoutes(workingNode.ID, workingNode.SubnetRoutes()...)
+	// Pre-calculate route approval if routes will change
+	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
+		// Create a temporary node with the new hostinfo to check policy
+		tempNode := currentNode.AsStruct()
+		tempNode.Hostinfo = req.Hostinfo
+		routeApproval, routeApprovalChanged = policy.ApproveRoutesWithPolicy(s.polMan, tempNode.View())
 	}
 
-	// Check if there has been a change to Hostname and update them
-	// in the database. Then send a Changed update
-	// (containing the whole node object) to peers to inform about
-	// the hostname change.
-	workingNode.ApplyHostnameFromHostInfo(req.Hostinfo)
+	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+		n.ApplyPeerChange(&peerChange)
 
-	_, policyChange, err := s.SaveNode(workingNode.View())
+		if hostinfoChanged {
+			// The node might not set NetInfo if it has not changed and if
+			// the full HostInfo object is overwritten, the information is lost.
+			// If there is no NetInfo, keep the previous one.
+			// From 1.66 the client only sends it if changed:
+			// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
+			// TODO(kradalby): evaluate if we need better comparing of hostinfo
+			// before we take the changes.
+			if req.Hostinfo.NetInfo == nil && n.Hostinfo != nil {
+				req.Hostinfo.NetInfo = n.Hostinfo.NetInfo
+			}
+			n.Hostinfo = req.Hostinfo
+			n.ApplyHostnameFromHostInfo(req.Hostinfo)
+
+			// Apply pre-calculated route approval
+			if routeApprovalChanged {
+				n.ApprovedRoutes = routeApproval
+			}
+		}
+	})
+
+	updatedNode, exists := s.nodeStore.GetNode(node.ID)
+	if !exists {
+		return change.EmptySet, fmt.Errorf("node disappeared during update: %d", node.ID)
+	}
+
+	// Handle route changes after NodeStore update
+	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
+		// Update the routes of the given node in the route manager to
+		// see if an update needs to be sent.
+		routeChange = s.SetNodeRoutes(node.ID, updatedNode.SubnetRoutes()...)
+	}
+
+	_, policyChange, err := s.saveNodeToDB(updatedNode)
 	if err != nil {
-		return change.EmptySet, err
+		return change.EmptySet, fmt.Errorf("saving to database: %w", err)
 	}
 
 	if policyChange.IsFull() {
-		c = policyChange
+		return policyChange, nil
 	}
-
-	if c.Empty() {
-		c = change.NodeAdded(workingNode.ID)
+	if !routeChange.Empty() {
+		return routeChange, nil
 	}
-
-	return c, nil
+	return change.NodeAdded(node.ID), nil
 }
 
-// hostInfoChanged reports if hostInfo has changed in two ways,
-// - first bool reports if an update needs to be sent to nodes
-// - second reports if there has been changes to routes
-// the caller can then use this info to save and update nodes
-// and routes as needed.
-func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
-	if old.Equal(new) {
-		return false, false
+func hostinfoEqual(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {
+	if !oldNode.Valid() && new == nil {
+		return true
+	}
+	if !oldNode.Valid() || new == nil {
+		return false
+	}
+	old := oldNode.AsStruct().Hostinfo
+	return old.Equal(new)
+}
+
+func routesChanged(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {
+	var oldRoutes []netip.Prefix
+	if oldNode.Valid() && oldNode.AsStruct().Hostinfo != nil {
+		oldRoutes = oldNode.AsStruct().Hostinfo.RoutableIPs
 	}
 
-	if old == nil && new != nil {
-		return true, true
-	}
-
-	// Routes
-	oldRoutes := make([]netip.Prefix, 0)
-	if old != nil {
-		oldRoutes = old.RoutableIPs
-	}
 	newRoutes := new.RoutableIPs
+	if newRoutes == nil {
+		newRoutes = []netip.Prefix{}
+	}
 
 	tsaddr.SortPrefixes(oldRoutes)
 	tsaddr.SortPrefixes(newRoutes)
 
-	if !slices.Equal(oldRoutes, newRoutes) {
-		return true, true
-	}
-
-	// Services is mostly useful for discovery and not critical,
-	// except for peerapi, which is how nodes talk to each other.
-	// If peerapi was not part of the initial mapresponse, we
-	// need to make sure its sent out later as it is needed for
-	// Taildrop.
-	// TODO(kradalby): Length comparison is a bit naive, replace.
-	if len(old.Services) != len(new.Services) {
-		return true, false
-	}
-
-	return false, false
+	return !slices.Equal(oldRoutes, newRoutes)
 }
 
 func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
