@@ -487,11 +487,12 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
+	var err error
 	capver.CanOldCodeBeCleanedUp()
 
 	if profilingEnabled {
 		if profilingPath != "" {
-			err := os.MkdirAll(profilingPath, os.ModePerm)
+			err = os.MkdirAll(profilingPath, os.ModePerm)
 			if err != nil {
 				log.Fatal().Err(err).Msg("failed to create profiling directory")
 			}
@@ -543,10 +544,7 @@ func (h *Headscale) Serve() error {
 	// around between restarts, they will reconnect and the GC will
 	// be cancelled.
 	go h.ephemeralGC.Start()
-	ephmNodes, err := h.state.ListEphemeralNodes()
-	if err != nil {
-		return fmt.Errorf("failed to list ephemeral nodes: %w", err)
-	}
+	ephmNodes := h.state.ListEphemeralNodes()
 	for _, node := range ephmNodes.All() {
 		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
@@ -778,23 +776,14 @@ func (h *Headscale) Serve() error {
 					continue
 				}
 
-				changed, err := h.state.ReloadPolicy()
+				changes, err := h.state.ReloadPolicy()
 				if err != nil {
 					log.Error().Err(err).Msgf("reloading policy")
 					continue
 				}
 
-				if changed {
-					log.Info().
-						Msg("ACL policy successfully reloaded, notifying nodes of change")
+				h.Change(changes...)
 
-					err = h.state.AutoApproveNodes()
-					if err != nil {
-						log.Error().Err(err).Msg("failed to approve routes after new policy")
-					}
-
-					h.Change(change.PolicySet)
-				}
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
 				log.Info().
@@ -1004,6 +993,8 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // Change is used to send changes to nodes.
 // All change should be enqueued here and empty will be automatically
 // ignored.
-func (h *Headscale) Change(c change.ChangeSet) {
-	h.mapBatcher.AddWork(c)
+func (h *Headscale) Change(cs ...change.ChangeSet) {
+	for _, c := range cs {
+		h.mapBatcher.AddWork(c)
+	}
 }

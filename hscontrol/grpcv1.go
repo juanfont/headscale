@@ -479,19 +479,13 @@ func (api headscaleV1APIServer) ListNodes(
 			return nil, err
 		}
 
-		nodes, err := api.h.state.ListNodesByUser(types.UserID(user.ID))
-		if err != nil {
-			return nil, err
-		}
+		nodes := api.h.state.ListNodesByUser(types.UserID(user.ID))
 
 		response := nodesToProto(api.h.state, IsConnected, nodes)
 		return &v1.ListNodesResponse{Nodes: response}, nil
 	}
 
-	nodes, err := api.h.state.ListNodes()
-	if err != nil {
-		return nil, err
-	}
+	nodes := api.h.state.ListNodes()
 
 	response := nodesToProto(api.h.state, IsConnected, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
@@ -690,10 +684,7 @@ func (api headscaleV1APIServer) SetPolicy(
 	// a scenario where they might be allowed if the server has no nodes
 	// yet, but it should help for the general case and for hot reloading
 	// configurations.
-	nodes, err := api.h.state.ListNodes()
-	if err != nil {
-		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
-	}
+	nodes := api.h.state.ListNodes()
 	changed, err := api.h.state.SetPolicy([]byte(p))
 	if err != nil {
 		return nil, fmt.Errorf("setting policy: %w", err)
@@ -713,12 +704,12 @@ func (api headscaleV1APIServer) SetPolicy(
 
 	// Only send update if the packet filter has changed.
 	if changed {
-		err = api.h.state.AutoApproveNodes()
+		cs, err := api.h.state.ReloadPolicy()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reloading policy: %w", err)
 		}
 
-		api.h.Change(change.PolicyChange())
+		api.h.Change(cs...)
 	}
 
 	response := &v1.SetPolicyResponse{

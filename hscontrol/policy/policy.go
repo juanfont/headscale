@@ -138,18 +138,16 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	return ret
 }
 
-// AutoApproveRoutes approves any route that can be autoapproved from
+// ApproveRoutesWithPolicy approves any route that can be autoapproved from
 // the nodes perspective according to the given policy.
-// It reports true if any routes were approved.
-// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes.
-func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
+// If the node's approved routes change, it returns the new list and true.
+func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefix, bool) {
 	if pm == nil {
-		return false
+		return nil, false
 	}
-	nodeView := node.View()
 	var newApproved []netip.Prefix
-	for _, route := range nodeView.AnnouncedRoutes() {
-		if pm.NodeCanApproveRoute(nodeView, route) {
+	for _, route := range nv.AnnouncedRoutes() {
+		if pm.NodeCanApproveRoute(nv, route) {
 			newApproved = append(newApproved, route)
 		}
 	}
@@ -158,7 +156,7 @@ func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 	// This prevents clearing existing approved routes when nodes
 	// temporarily don't have announced routes during policy changes.
 	if len(newApproved) > 0 {
-		combined := append(newApproved, node.ApprovedRoutes...)
+		combined := nv.ApprovedRoutes().AppendTo(newApproved)
 		tsaddr.SortPrefixes(combined)
 		combined = slices.Compact(combined)
 		combined = lo.Filter(combined, func(route netip.Prefix, index int) bool {
@@ -166,11 +164,10 @@ func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 		})
 
 		// Only update if the routes actually changed
-		if !slices.Equal(node.ApprovedRoutes, combined) {
-			node.ApprovedRoutes = combined
-			return true
+		if !slices.Equal(nv.ApprovedRoutes().AsSlice(), combined) {
+			return combined, true
 		}
 	}
 
-	return false
+	return nil, false
 }

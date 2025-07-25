@@ -421,16 +421,19 @@ func TestAutoApproveRoutes(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, pm)
 
-				changed1 := policy.AutoApproveRoutes(pm, &node)
+				newRoutes1, changed1 := policy.ApproveRoutesWithPolicy(pm, node.View())
 				assert.True(t, changed1)
 
-				err = adb.DB.Save(&node).Error
-				require.NoError(t, err)
+				if changed1 {
+					err = SetApprovedRoutes(adb.DB, node.ID, newRoutes1)
+					require.NoError(t, err)
+				}
 
-				_ = policy.AutoApproveRoutes(pm, &nodeTagged)
-
-				err = adb.DB.Save(&nodeTagged).Error
-				require.NoError(t, err)
+				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View())
+				if changed2 {
+					err = SetApprovedRoutes(adb.DB, nodeTagged.ID, newRoutes2)
+					require.NoError(t, err)
+				}
 
 				node1ByID, err := adb.GetNodeByID(1)
 				require.NoError(t, err)

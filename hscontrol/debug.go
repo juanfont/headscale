@@ -66,11 +66,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(filterJSON)
 	}))
 	debug.Handle("ssh", "SSH Policy per node", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nodes, err := h.state.ListNodes()
-		if err != nil {
-			httpError(w, err)
-			return
-		}
+		nodes := h.state.ListNodes()
 
 		sshPol := make(map[string]*tailcfg.SSHPolicy)
 		for _, node := range nodes.All() {

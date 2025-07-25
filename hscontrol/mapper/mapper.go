@@ -169,10 +169,7 @@ func (m *mapper) fullMapResponse(
 	capVer tailcfg.CapabilityVersion,
 	messages ...string,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.state.ListPeers(nodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID)
 
 	// Add fresh online status to peers from batcher connection state
 	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
@@ -217,10 +214,7 @@ func (m *mapper) peerChangeResponse(
 	capVer tailcfg.CapabilityVersion,
 	changedNodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.state.ListPeers(nodeID, changedNodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID, changedNodeID)
 
 	// Add fresh online status to peers from batcher connection state
 	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)

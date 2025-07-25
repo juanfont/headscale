@@ -94,10 +94,7 @@ func (h *Headscale) handleVerifyRequest(
 		return fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
 	}
 
-	nodes, err := h.state.ListNodes()
-	if err != nil {
-		return fmt.Errorf("cannot list nodes: %w", err)
-	}
+	nodes := h.state.ListNodes()
 
 	// Check if any node has the requested NodeKey
 	var nodeKeyFound bool
