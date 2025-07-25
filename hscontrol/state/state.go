@@ -740,11 +740,6 @@ func (s *State) AutoApproveRoutes(node types.NodeView) bool {
 	return changed
 }
 
-// PolicyDebugString returns a debug representation of the current policy.
-func (s *State) PolicyDebugString() string {
-	return s.polMan.DebugString()
-}
-
 // GetPolicy retrieves the current policy from the database.
 func (s *State) GetPolicy() (*types.Policy, error) {
 	return s.db.GetPolicy()
