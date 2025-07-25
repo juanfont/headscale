@@ -1808,12 +1808,8 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 
 			// Check how many peers each node should see
 			for i, node := range allNodes {
-				peers, err := testData.State.ListPeers(node.n.ID)
-				if err != nil {
-					t.Errorf("Error listing peers for node %d: %v", i, err)
-				} else {
-					t.Logf("Node %d should see %d peers from state", i, peers.Len())
-				}
+				peers := testData.State.ListPeers(node.n.ID)
+				t.Logf("Node %d should see %d peers from state", i, peers.Len())
 			}
 
 			// Send a full update - this should generate full peer lists
@@ -1956,14 +1952,10 @@ func TestBatcherWorkQueueTracing(t *testing.T) {
 					}
 
 					// Check if there should be peers available
-					peers, err := testData.State.ListPeers(nodes[0].n.ID)
-					if err != nil {
-						t.Errorf("Error getting peers from state: %v", err)
-					} else {
-						t.Logf("State shows %d peers available for this node", peers.Len())
-						if peers.Len() > 0 && len(data.Peers) == 0 {
-							t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", peers.Len())
-						}
+					peers := testData.State.ListPeers(nodes[0].n.ID)
+					t.Logf("State shows %d peers available for this node", peers.Len())
+					if peers.Len() > 0 && len(data.Peers) == 0 {
+						t.Errorf("CRITICAL: State has %d peers but response has 0 peers!", peers.Len())
 					}
 				} else {
 					t.Errorf("Response data is nil")

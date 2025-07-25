@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"slices"
+	"sync"
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
@@ -22,7 +24,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
-	xslices "golang.org/x/exp/slices"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -191,30 +193,32 @@ func (s *State) DERPMap() *tailcfg.DERPMap {
 
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
-func (s *State) ReloadPolicy() (bool, error) {
+func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
 	pol, err := policyBytes(s.db, s.cfg)
 	if err != nil {
-		return false, fmt.Errorf("loading policy: %w", err)
+		return nil, fmt.Errorf("loading policy: %w", err)
 	}
 
 	changed, err := s.polMan.SetPolicy(pol)
 	if err != nil {
-		return false, fmt.Errorf("setting policy: %w", err)
+		return nil, fmt.Errorf("setting policy: %w", err)
 	}
+
+	cs := []change.ChangeSet{change.PolicyChange()}
 
 	if changed {
-		err := s.autoApproveNodes()
+		rcs, err := s.autoApproveNodes()
 		if err != nil {
-			return false, fmt.Errorf("auto approving nodes: %w", err)
+			return nil, fmt.Errorf("auto approving nodes: %w", err)
 		}
+
+		// TODO(kradalby): These changes can probably be safely ignored.
+		// If the PolicyChange is happening, that will lead to a full update
+		// meaning that we do not need to send individual route changes.
+		cs = append(cs, rcs...)
 	}
 
-	return changed, nil
-}
-
-// AutoApproveNodes processes pending nodes and auto-approves those meeting policy criteria.
-func (s *State) AutoApproveNodes() error {
-	return s.autoApproveNodes()
+	return cs, nil
 }
 
 // CreateUser creates a new user and updates the policy manager.
@@ -238,8 +242,8 @@ func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, erro
 	// might now be resolvable when they weren't before. If there are existing
 	// nodes, we should send a policy change to ensure they get updated SSH policies.
 	if c.Empty() {
-		nodes, err := s.ListNodes()
-		if err == nil && nodes.Len() > 0 {
+		nodes := s.ListNodes()
+		if nodes.Len() > 0 {
 			c = change.PolicyChange()
 		}
 	}
@@ -280,6 +284,8 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 	if err != nil {
 		return user, change.EmptySet, fmt.Errorf("failed to update policy manager after user update: %w", err)
 	}
+
+	// TODO(kradalby): We might want to update nodestore with the user data
 
 	return user, c, nil
 }
@@ -469,9 +475,9 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
-func (s *State) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
+func (s *State) ListNodes(nodeIDs ...types.NodeID) views.Slice[types.NodeView] {
 	if len(nodeIDs) == 0 {
-		return s.nodeStore.ListNodes(), nil
+		return s.nodeStore.ListNodes()
 	}
 
 	// Filter nodes by the requested IDs
@@ -488,18 +494,18 @@ func (s *State) ListNodes(nodeIDs ...types.NodeID) (views.Slice[types.NodeView],
 		}
 	}
 
-	return views.SliceOf(filteredNodes), nil
+	return views.SliceOf(filteredNodes)
 }
 
 // ListNodesByUser retrieves all nodes belonging to a specific user.
-func (s *State) ListNodesByUser(userID types.UserID) (views.Slice[types.NodeView], error) {
-	return s.nodeStore.ListNodesByUser(userID), nil
+func (s *State) ListNodesByUser(userID types.UserID) views.Slice[types.NodeView] {
+	return s.nodeStore.ListNodesByUser(userID)
 }
 
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
-func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (views.Slice[types.NodeView], error) {
+func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Slice[types.NodeView] {
 	if len(peerIDs) == 0 {
-		return s.nodeStore.ListPeers(nodeID), nil
+		return s.nodeStore.ListPeers(nodeID)
 	}
 
 	// For specific peerIDs, filter from all nodes
@@ -516,11 +522,11 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (views.S
 		}
 	}
 
-	return views.SliceOf(filteredNodes), nil
+	return views.SliceOf(filteredNodes)
 }
 
 // ListEphemeralNodes retrieves all ephemeral (temporary) nodes in the system.
-func (s *State) ListEphemeralNodes() (views.Slice[types.NodeView], error) {
+func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 	allNodes := s.nodeStore.ListNodes()
 	var ephemeralNodes []types.NodeView
 
@@ -531,7 +537,7 @@ func (s *State) ListEphemeralNodes() (views.Slice[types.NodeView], error) {
 		}
 	}
 
-	return views.SliceOf(ephemeralNodes), nil
+	return views.SliceOf(ephemeralNodes)
 }
 
 // SetNodeExpiry updates the expiration time for a node.
@@ -703,15 +709,14 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
 // AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
 func (s *State) AutoApproveRoutes(node types.NodeView) bool {
-	nodePtr := node.AsStruct()
-	changed := policy.AutoApproveRoutes(s.polMan, nodePtr)
+	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, node)
 	if changed {
 		// Persist the auto-approved routes to database and NodeStore via SetApprovedRoutes
 		// This ensures consistency between database and NodeStore
-		_, _, err := s.SetApprovedRoutes(nodePtr.ID, nodePtr.ApprovedRoutes)
+		_, _, err := s.SetApprovedRoutes(node.ID(), approved)
 		if err != nil {
 			log.Error().
-				Uint64("node.id", nodePtr.ID.Uint64()).
+				Uint64("node.id", node.ID().Uint64()).
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
 			return false
@@ -985,10 +990,7 @@ func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
 // the policy manager could have a remove or add list for nodes.
 // updatePolicyManagerNodes refreshes the policy manager with current node data.
 func (s *State) updatePolicyManagerNodes() (change.ChangeSet, error) {
-	nodes, err := s.ListNodes()
-	if err != nil {
-		return change.EmptySet, fmt.Errorf("listing nodes for policy update: %w", err)
-	}
+	nodes := s.ListNodes()
 
 	changed, err := s.polMan.SetNodes(nodes)
 	if err != nil {
@@ -1012,38 +1014,38 @@ func (s *State) PingDB(ctx context.Context) error {
 // TODO(kradalby): This is kind of messy, maybe this is another +1
 // for an event bus. See example comments here.
 // autoApproveNodes automatically approves nodes based on policy rules.
-func (s *State) autoApproveNodes() error {
-	err := s.db.Write(func(tx *gorm.DB) error {
-		nodes, err := hsdb.ListNodes(tx)
-		if err != nil {
-			return err
-		}
+func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
+	nodes := s.ListNodes()
 
-		for _, node := range nodes {
-			// TODO(kradalby): This change should probably be sent to the rest of the system.
-			changed := policy.AutoApproveRoutes(s.polMan, node)
+	// Approve routes concurrently, this should make it likely
+	// that the writes end in the same batch in the nodestore write.
+	var errg errgroup.Group
+	var cs []change.ChangeSet
+	var mu sync.Mutex
+	for _, nv := range nodes.All() {
+		errg.Go(func() error {
+			approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv)
 			if changed {
-				// Update nodestore first if available
-				s.nodeStore.PutNode(*node)
-
-				err = tx.Save(node).Error
+				_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
 				if err != nil {
 					return err
 				}
 
-				// TODO(kradalby): This should probably be done outside of the transaction,
-				// and the result of this should be propagated to the system.
-				s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+				mu.Lock()
+				cs = append(cs, c)
+				mu.Unlock()
 			}
-		}
 
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("auto approving routes for nodes: %w", err)
+			return nil
+		})
 	}
 
-	return nil
+	err := errg.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	return cs, nil
 }
 
 // TODO(kradalby): This should just take the node ID?
@@ -1073,28 +1075,6 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 	// before we take the changes.
 	if req.Hostinfo.NetInfo == nil && workingNode.Hostinfo != nil {
 		req.Hostinfo.NetInfo = workingNode.Hostinfo.NetInfo
-	}
-
-	// Similarly, preserve RoutableIPs if the new MapRequest doesn't include them.
-	// This prevents race conditions where route advertisements are immediately
-	// overwritten by subsequent MapRequests with empty route data.
-	// Re-fetch fresh node data immediately before preservation to handle concurrent updates.
-
-	if req.Hostinfo.RoutableIPs == nil {
-		currentNodeView, exists := s.nodeStore.GetNode(workingNode.ID)
-		if exists {
-			currentNode := currentNodeView.AsStruct()
-			if currentNode.Hostinfo != nil && len(currentNode.Hostinfo.RoutableIPs) > 0 {
-
-				req.Hostinfo.RoutableIPs = currentNode.Hostinfo.RoutableIPs
-			} else {
-
-			}
-		} else {
-
-		}
-	} else {
-
 	}
 
 	workingNode.Hostinfo = req.Hostinfo
@@ -1172,7 +1152,7 @@ func hostInfoChanged(old, new *tailcfg.Hostinfo) (bool, bool) {
 	tsaddr.SortPrefixes(oldRoutes)
 	tsaddr.SortPrefixes(newRoutes)
 
-	if !xslices.Equal(oldRoutes, newRoutes) {
+	if !slices.Equal(oldRoutes, newRoutes) {
 		return true, true
 	}
 
