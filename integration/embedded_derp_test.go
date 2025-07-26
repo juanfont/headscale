@@ -16,6 +16,14 @@ type ClientsSpec struct {
 	WebsocketDERP int
 }
 
+// TestDERPServerScenario tests the functionality of the embedded DERP server with
+// plain connections.
+//
+// This test sets up a scenario with multiple users and their nodes, and an
+// embedded DERP server. It verifies that all clients can connect to the DERP
+// server and communicate with each other. It also checks that the clients are
+// not using WebSocket connections for DERP, as this is not expected in this
+// scenario.
 func TestDERPServerScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
@@ -66,6 +74,14 @@ func TestDERPServerScenario(t *testing.T) {
 	})
 }
 
+// TestDERPServerWebsocketScenario tests the functionality of the embedded DERP
+// server with WebSocket connections.
+//
+// This test sets up a scenario with multiple users and their nodes, and an
+// embedded DERP server configured to use WebSockets. It verifies that all
+// clients can connect to the DERP server and communicate with each other. It
+// also checks that the clients are indeed using WebSocket connections for DERP,
+// as expected in this scenario.
 func TestDERPServerWebsocketScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,

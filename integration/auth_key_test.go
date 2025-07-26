@@ -16,6 +16,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestAuthKeyLogoutAndReloginSameUser tests the scenario where a set of nodes
+// are logged out and then logged back in as the same user. This test ensures
+// that the nodes can successfully re-authenticate and that their IP addresses
+// remain the same after re-login.
+//
+// The test sets up a scenario with two users, each with a set of nodes. It
+// then logs out all nodes, and then logs them back in using a new pre-
+// authenticated key for the same user. The test verifies that the node count
+// remains the same and that the nodes can still ping each other after re-
+// login.
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -174,10 +184,15 @@ func assertLastSeenSet(t *testing.T, node *v1.Node) {
 	assert.NotNil(t, node.GetLastSeen())
 }
 
-// This test will first log in two sets of nodes to two sets of users, then
-// it will log out all users from user2 and log them in as user1.
-// This should leave us with all nodes connected to user1, while user2
-// still has nodes, but they are not connected.
+// TestAuthKeyLogoutAndReloginNewUser tests the scenario where a set of nodes
+// are logged out from one user and then logged back in as a different user.
+// This test ensures that the nodes are correctly associated with the new user
+// and that the old user's nodes are no longer connected.
+//
+// The test sets up a scenario with two users, each with a set of nodes. It
+// then logs out all nodes and logs them all back in as user1. The test
+// verifies that all nodes are now associated with user1, and that user2 has
+// no connected nodes.
 func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -268,6 +283,14 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	}
 }
 
+// TestAuthKeyLogoutAndReloginSameUserExpiredKey tests that a node cannot log
+// back in with an expired pre-authenticated key.
+//
+// The test sets up a scenario with two users and their nodes. It then logs
+// out all nodes, creates a new pre-authenticated key for each user, and then
+// expires the key. The test then attempts to log the nodes back in with the
+// expired key and verifies that the authentication fails with the expected
+// error message.
 func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 	IntegrationSkip(t)
 
