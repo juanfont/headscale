@@ -1090,7 +1090,31 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 		// Create a temporary node with the new hostinfo to check policy
 		tempNode := currentNode.AsStruct()
 		tempNode.Hostinfo = req.Hostinfo
+
+		// Get old and new routes for detailed debugging
+		var oldRoutes []netip.Prefix
+		if currentNode.Valid() && currentNode.AsStruct().Hostinfo != nil {
+			oldRoutes = currentNode.AsStruct().Hostinfo.RoutableIPs
+		}
+		newRoutes := req.Hostinfo.RoutableIPs
+		if newRoutes == nil {
+			newRoutes = []netip.Prefix{}
+		}
+
+		log.Debug().
+			Uint64("node.id", node.ID.Uint64()).
+			Strs("oldRoutableIPs", util.PrefixesToString(oldRoutes)).
+			Strs("newRoutableIPs", util.PrefixesToString(newRoutes)).
+			Bool("isFirstRouteAdvertisement", len(oldRoutes) == 0 && len(newRoutes) > 0).
+			Msg("evaluating route changes for auto-approval")
+
 		routeApproval, routeApprovalChanged = policy.ApproveRoutesWithPolicy(s.polMan, tempNode.View())
+
+		log.Debug().
+			Uint64("node.id", node.ID.Uint64()).
+			Strs("routeApproval", util.PrefixesToString(routeApproval)).
+			Bool("routeApprovalChanged", routeApprovalChanged).
+			Msg("route approval evaluation completed")
 	}
 
 	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
@@ -1111,9 +1135,17 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 			n.ApplyHostnameFromHostInfo(req.Hostinfo)
 
 			// Apply pre-calculated route approval
-			if routeApprovalChanged {
-				n.ApprovedRoutes = routeApproval
-			}
+			// Always apply the route approval result to ensure consistency,
+			// regardless of whether the policy evaluation detected changes.
+			// This fixes the bug where routes weren't properly cleared when
+			// auto-approvers were removed from the policy.
+			log.Info().
+				Uint64("node.id", node.ID.Uint64()).
+				Strs("oldApprovedRoutes", util.PrefixesToString(n.ApprovedRoutes)).
+				Strs("newApprovedRoutes", util.PrefixesToString(routeApproval)).
+				Bool("routeApprovalChanged", routeApprovalChanged).
+				Msg("applying route approval results")
+			n.ApprovedRoutes = routeApproval
 		}
 	})
 
@@ -1124,8 +1156,15 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 
 	// Handle route changes after NodeStore update
 	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
-		// Update the routes of the given node in the route manager to
-		// see if an update needs to be sent.
+		// SetNodeRoutes sets the active/distributed routes, so we must use SubnetRoutes()
+		// which returns only the intersection of announced AND approved routes.
+		// Using AnnouncedRoutes() would bypass the security model and auto-approve everything.
+		log.Debug().
+			Uint64("node.id", node.ID.Uint64()).
+			Strs("announcedRoutes", util.PrefixesToString(updatedNode.AnnouncedRoutes())).
+			Strs("approvedRoutes", util.PrefixesToString(updatedNode.ApprovedRoutes().AsSlice())).
+			Strs("subnetRoutes", util.PrefixesToString(updatedNode.SubnetRoutes())).
+			Msg("updating node routes for distribution")
 		routeChange = s.SetNodeRoutes(node.ID, updatedNode.SubnetRoutes()...)
 	}
 

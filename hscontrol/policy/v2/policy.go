@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -213,6 +214,7 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 
 func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool {
 	if pm == nil {
+		log.Debug().Msg("POLICY DEBUG: PolicyManager is nil in NodeCanApproveRoute")
 		return false
 	}
 
@@ -223,6 +225,12 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	// However, an auto approver might be /0, meaning that they can approve
 	// all routes available, just not exit nodes.
 	if tsaddr.IsExitRoute(route) {
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("route", route.String()).
+			Bool("isExitRoute", true).
+			Bool("exitSetNil", pm.exitSet == nil).
+			Msg("POLICY DEBUG: checking exit route approval")
 		if pm.exitSet == nil {
 			return false
 		}
@@ -230,17 +238,35 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 			return true
 		}
 
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("route", route.String()).
+			Msg("POLICY DEBUG: no auto-approval found, rejecting")
 		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	log.Debug().
+		Uint64("node.id", node.ID().Uint64()).
+		Str("route", route.String()).
+		Int("autoApproveMapSize", len(pm.autoApproveMap)).
+		Msg("POLICY DEBUG: checking auto-approve map")
+
 	// The fast path is that a node requests to approve a prefix
 	// where there is an exact entry, e.g. 10.0.0.0/8, then
 	// check and return quickly
 	if _, ok := pm.autoApproveMap[route]; ok {
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("route", route.String()).
+			Msg("POLICY DEBUG: found exact match in autoApproveMap")
 		if slices.ContainsFunc(node.IPs(), pm.autoApproveMap[route].Contains) {
+			log.Debug().
+				Uint64("node.id", node.ID().Uint64()).
+				Str("route", route.String()).
+				Msg("POLICY DEBUG: node IP matches auto-approver, approving")
 			return true
 		}
 	}
@@ -253,7 +279,17 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 		// Check if prefix is larger (so containing) and then overlaps
 		// the route to see if the node can approve a subset of an autoapprover
 		if prefix.Bits() <= route.Bits() && prefix.Overlaps(route) {
+			log.Debug().
+				Uint64("node.id", node.ID().Uint64()).
+				Str("route", route.String()).
+				Str("parentPrefix", prefix.String()).
+				Msg("POLICY DEBUG: found overlapping parent prefix")
 			if slices.ContainsFunc(node.IPs(), approveAddrs.Contains) {
+				log.Debug().
+					Uint64("node.id", node.ID().Uint64()).
+					Str("route", route.String()).
+					Str("parentPrefix", prefix.String()).
+					Msg("POLICY DEBUG: node IP matches parent auto-approver, approving")
 				return true
 			}
 		}

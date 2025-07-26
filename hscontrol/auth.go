@@ -209,6 +209,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
 	// now since we dont update the node/pol here anymore
 	routeChange := h.state.AutoApproveRoutes(node)
+
 	if _, _, err := h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}

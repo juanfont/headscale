@@ -907,12 +907,35 @@ func TestSubnetRouteACL(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	require.Len(t, nodes, 2)
+	// Wait for route advertisements to propagate to the server
+	var nodes []*v1.Node
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
 
-	requireNodeRouteCount(t, nodes[0], 1, 0, 0)
-	requireNodeRouteCount(t, nodes[1], 0, 0, 0)
+		// Find the node that should have the route by checking node IDs
+		var routeNode *v1.Node
+		var otherNode *v1.Node
+		for _, node := range nodes {
+			nodeIDStr := fmt.Sprintf("%d", node.GetId())
+			if _, shouldHaveRoute := expectedRoutes[nodeIDStr]; shouldHaveRoute {
+				routeNode = node
+			} else {
+				otherNode = node
+			}
+		}
+
+		assert.NotNil(c, routeNode, "could not find node that should have route")
+		assert.NotNil(c, otherNode, "could not find node that should not have route")
+
+		// After NodeStore fix: routes are properly tracked in route manager
+		// This test uses a policy with NO auto-approvers, so routes should be:
+		// announced=1, approved=0, subnet=0 (routes announced but not approved)
+		requireNodeRouteCountWithCollect(c, routeNode, 1, 0, 0)
+		requireNodeRouteCountWithCollect(c, otherNode, 0, 0, 0)
+	}, 10*time.Second, 100*time.Millisecond, "route advertisements should propagate to server")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.
