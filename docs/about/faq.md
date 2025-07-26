@@ -51,11 +51,11 @@ is homelabbers and self-hosters. Of course, we do not prevent people from using
 it in a commercial/professional setting and often get questions about scaling.
 
 Please note that when Headscale is developed, performance is not part of the
-consideration as the main audience is considered to be users with a moddest
+consideration as the main audience is considered to be users with a modest
 amount of devices. We focus on correctness and feature parity with Tailscale
 SaaS over time.
 
-To understand if you might be able to use Headscale for your usecase, I will
+To understand if you might be able to use Headscale for your use case, I will
 describe two scenarios in an effort to explain what is the central bottleneck
 of Headscale:
 
@@ -94,14 +94,14 @@ learn about the current state of the world.
 We expect that the performance will improve over time as we improve the code
 base, but it is not a focus. In general, we will never make the tradeoff to make
 things faster on the cost of less maintainable or readable code. We are a small
-team and have to optimise for maintainabillity.
+team and have to optimise for maintainability.
 
 ## Which database should I use?
 
 We recommend the use of SQLite as database for headscale:
 
 - SQLite is simple to setup and easy to use
-- It scales well for all of headscale's usecases
+- It scales well for all of headscale's use cases
 - Development and testing happens primarily on SQLite
 - PostgreSQL is still supported, but is considered to be in "maintenance mode"
 
