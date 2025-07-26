@@ -30,7 +30,10 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			opts := []hsic.Option{
+				hsic.WithTestName("pingallbyip"),
+				hsic.WithEmbeddedDERPServerOnly(),
+			}
 			if https {
 				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
@@ -88,7 +91,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				var err error
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err)
-				assert.Equal(ct, nodeCountBeforeLogout, len(listNodes), "Node count should match before logout count")
+				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count")
 			}, 20*time.Second, 1*time.Second)
 
 			for _, node := range listNodes {
@@ -123,12 +126,15 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				var err error
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err)
-				assert.Equal(ct, nodeCountBeforeLogout, len(listNodes), "Node count should match after HTTPS reconnection")
+				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match after HTTPS reconnection")
 			}, 30*time.Second, 2*time.Second)
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
 
 			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 				return x.String()
@@ -161,7 +167,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			listNodes, err = headscale.ListNodes()
-			require.Equal(t, nodeCountBeforeLogout, len(listNodes))
+			require.Len(t, listNodes, nodeCountBeforeLogout)
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
 			}
@@ -355,7 +361,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 						"--user",
 						strconv.FormatUint(userMap[userName].GetId(), 10),
 						"expire",
-						key.Key,
+						key.GetKey(),
 					})
 				assertNoErr(t, err)
 

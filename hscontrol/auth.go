@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
+
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -26,13 +28,25 @@ func (h *Headscale) handleRegister(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	node, err := h.state.GetNodeByNodeKey(regReq.NodeKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("looking up node in database: %w", err)
-	}
+	node, ok := h.state.GetNodeByNodeKey(regReq.NodeKey)
 
-	if node != nil {
-		resp, err := h.handleExistingNode(node, regReq, machineKey)
+	if ok {
+		// If an existing node is trying to register with an auth key,
+		// we need to validate the auth key even for existing nodes
+		if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
+			resp, err := h.handleRegisterWithAuthKey(regReq, machineKey)
+			if err != nil {
+				// Preserve HTTPError types so they can be handled properly by the HTTP layer
+				var httpErr HTTPError
+				if errors.As(err, &httpErr) {
+					return nil, httpErr
+				}
+				return nil, fmt.Errorf("handling register with auth key for existing node: %w", err)
+			}
+			return resp, nil
+		}
+
+		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling existing node: %w", err)
 		}
@@ -47,6 +61,11 @@ func (h *Headscale) handleRegister(
 	if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
 		resp, err := h.handleRegisterWithAuthKey(regReq, machineKey)
 		if err != nil {
+			// Preserve HTTPError types so they can be handled properly by the HTTP layer
+			var httpErr HTTPError
+			if errors.As(err, &httpErr) {
+				return nil, httpErr
+			}
 			return nil, fmt.Errorf("handling register with auth key: %w", err)
 		}
 
@@ -66,11 +85,13 @@ func (h *Headscale) handleExistingNode(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
+
 	if node.MachineKey != machineKey {
 		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
 	}
 
 	expired := node.IsExpired()
+
 	if !expired && !regReq.Expiry.IsZero() {
 		requestExpiry := regReq.Expiry
 
@@ -82,39 +103,23 @@ func (h *Headscale) handleExistingNode(
 		// If the request expiry is in the past, we consider it a logout.
 		if requestExpiry.Before(time.Now()) {
 			if node.IsEphemeral() {
-				policyChanged, err := h.state.DeleteNode(node)
+				c, err := h.state.DeleteNode(node.View())
 				if err != nil {
 					return nil, fmt.Errorf("deleting ephemeral node: %w", err)
 				}
 
-				// Send policy update notifications if needed
-				if policyChanged {
-					ctx := types.NotifyCtx(context.Background(), "auth-logout-ephemeral-policy", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-				} else {
-					ctx := types.NotifyCtx(context.Background(), "logout-ephemeral", "na")
-					h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerRemoved(node.ID))
-				}
+				h.Change(c)
 
 				return nil, nil
 			}
 		}
 
-		n, policyChanged, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
+		_, c, err := h.state.SetNodeExpiry(node.ID, requestExpiry)
 		if err != nil {
 			return nil, fmt.Errorf("setting node expiry: %w", err)
 		}
 
-		// Send policy update notifications if needed
-		if policyChanged {
-			ctx := types.NotifyCtx(context.Background(), "auth-expiry-policy", "na")
-			h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-		} else {
-			ctx := types.NotifyCtx(context.Background(), "logout-expiry", "na")
-			h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, requestExpiry), node.ID)
-		}
-
-		return nodeToRegisterResponse(n), nil
+		h.Change(c)
 	}
 
 	return nodeToRegisterResponse(node), nil
@@ -184,6 +189,12 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		return nil, err
 	}
 
+	// If node is nil, it means an ephemeral node was deleted during logout
+	if node.Valid() {
+		h.Change(changed)
+		return nil, nil
+	}
+
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
 	// Because the way the policy manager works, we need to have the node
@@ -195,30 +206,32 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	routesChanged := h.state.AutoApproveRoutes(node)
+	// TODO(kradalby): This needs to be ran as part of the batcher maybe?
+	// now since we dont update the node/pol here anymore
+	routeChange := h.state.AutoApproveRoutes(node)
+
 	if _, _, err := h.state.SaveNode(node); err != nil {
 		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
 	}
 
-	if routesChanged {
-		ctx := types.NotifyCtx(context.Background(), "node updated", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdatePeerChanged(node.ID))
-	} else if changed {
-		ctx := types.NotifyCtx(context.Background(), "node created", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
-	} else {
-		// Existing node re-registering without route changes
-		// Still need to notify peers about the node being active again
-		// Use UpdateFull to ensure all peers get complete peer maps
-		ctx := types.NotifyCtx(context.Background(), "node re-registered", node.Hostname)
-		h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	if routeChange && changed.Empty() {
+		changed = change.NodeAdded(node.ID())
 	}
+	h.Change(changed)
 
+	// TODO(kradalby): I think this is covered above, but we need to validate that.
+	// // If policy changed due to node registration, send a separate policy change
+	// if policyChanged {
+	// 	policyChange := change.PolicyChange()
+	// 	h.Change(policyChange)
+	// }
+
+	user := node.User()
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              *node.User.TailscaleUser(),
-		Login:             *node.User.TailscaleLogin(),
+		User:              *user.TailscaleUser(),
+		Login:             *user.TailscaleLogin(),
 	}, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -113,6 +114,17 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 					}
 				}
 			}
+
+			// Also check approved subnet routes - nodes should have access
+			// to subnets they're approved to route traffic for.
+			subnetRoutes := node.SubnetRoutes()
+
+			for _, subnetRoute := range subnetRoutes {
+				if expanded.OverlapsPrefix(subnetRoute) {
+					dests = append(dests, dest)
+					continue DEST_LOOP
+				}
+			}
 		}
 
 		if len(dests) > 0 {
@@ -127,32 +139,72 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	return ret
 }
 
-// AutoApproveRoutes approves any route that can be autoapproved from
+// ApproveRoutesWithPolicy approves any route that can be autoapproved from
 // the nodes perspective according to the given policy.
-// It reports true if any routes were approved.
-// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes.
-func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
+// If the node's approved routes change, it returns the new list and true.
+func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefix, bool) {
 	if pm == nil {
-		return false
+		log.Debug().Msg("PolicyManager is nil, no approval")
+		return nil, false
 	}
-	nodeView := node.View()
 	var newApproved []netip.Prefix
-	for _, route := range nodeView.AnnouncedRoutes() {
-		if pm.NodeCanApproveRoute(nodeView, route) {
+	announcedRoutes := nv.AnnouncedRoutes()
+	currentApproved := nv.ApprovedRoutes().AsSlice()
+
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Strs("announcedRoutes", util.PrefixesToString(announcedRoutes)).
+		Strs("currentApprovedRoutes", util.PrefixesToString(currentApproved)).
+		Msg("evaluating route approval")
+
+	for _, route := range announcedRoutes {
+		canApprove := pm.NodeCanApproveRoute(nv, route)
+		log.Debug().
+			Uint64("node.id", nv.ID().Uint64()).
+			Str("route", route.String()).
+			Bool("canApprove", canApprove).
+			Msg("checking individual route approval")
+		if canApprove {
 			newApproved = append(newApproved, route)
 		}
 	}
-	if newApproved != nil {
-		newApproved = append(newApproved, node.ApprovedRoutes...)
-		tsaddr.SortPrefixes(newApproved)
-		newApproved = slices.Compact(newApproved)
-		newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
+
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Strs("newApproved", util.PrefixesToString(newApproved)).
+		Int("newApprovedCount", len(newApproved)).
+		Msg("auto-approval results")
+
+	// Only modify ApprovedRoutes if we have new routes to approve.
+	// This prevents clearing existing approved routes when nodes
+	// temporarily don't have announced routes during policy changes.
+	if len(newApproved) > 0 {
+		combined := nv.ApprovedRoutes().AppendTo(newApproved)
+		tsaddr.SortPrefixes(combined)
+		combined = slices.Compact(combined)
+		combined = lo.Filter(combined, func(route netip.Prefix, index int) bool {
 			return route.IsValid()
 		})
-		node.ApprovedRoutes = newApproved
 
-		return true
+		log.Debug().
+			Uint64("node.id", nv.ID().Uint64()).
+			Strs("combinedRoutes", util.PrefixesToString(combined)).
+			Strs("oldApprovedRoutes", util.PrefixesToString(currentApproved)).
+			Bool("routesChanged", !slices.Equal(currentApproved, combined)).
+			Msg("final route approval calculation")
+
+		// Only update if the routes actually changed
+		if !slices.Equal(currentApproved, combined) {
+			log.Info().
+				Uint64("node.id", nv.ID().Uint64()).
+				Strs("finalApprovedRoutes", util.PrefixesToString(combined)).
+				Msg("auto-approving routes based on policy")
+			return combined, true
+		}
 	}
 
-	return false
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Msg("no route changes needed")
+	return currentApproved, false
 }

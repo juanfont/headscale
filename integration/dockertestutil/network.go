@@ -96,7 +96,7 @@ func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 	}
 
 	for _, network := range networks {
-		if network.Network.Containers == nil || len(network.Network.Containers) == 0 {
+		if len(network.Network.Containers) == 0 {
 			err := pool.RemoveNetwork(&network)
 			if err != nil {
 				log.Printf("removing network %s: %s", network.Network.Name, err)
@@ -146,4 +146,10 @@ func DockerAllowLocalIPv6(config *docker.HostConfig) {
 func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 	config.CapAdd = append(config.CapAdd, "NET_ADMIN")
 	config.Privileged = true
+}
+
+// DockerMemoryLimit sets memory limit and disables OOM kill for containers.
+func DockerMemoryLimit(config *docker.HostConfig) {
+	config.Memory = 2 * 1024 * 1024 * 1024 // 2GB in bytes
+	config.OOMKillDisable = true
 }

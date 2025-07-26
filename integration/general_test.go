@@ -535,6 +535,8 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
+	// Wait for nodestore batch processing to complete
+	// NodeStore batching timeout is 500ms, so we wait up to 1 second
 	var nodes []*v1.Node
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		err := executeAndUnmarshal(
@@ -630,27 +632,34 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
 
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"node",
-			"list",
-			"--output",
-			"json",
-		},
-		&nodes,
-	)
+	// Wait for nodestore batch processing to complete
+	// NodeStore batching timeout is 500ms, so we wait up to 1 second
+	assert.Eventually(t, func() bool {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"node",
+				"list",
+				"--output",
+				"json",
+			},
+			&nodes,
+		)
 
-	assertNoErr(t, err)
-	assert.Len(t, nodes, 3)
+		if err != nil || len(nodes) != 3 {
+			return false
+		}
 
-	for _, node := range nodes {
-		hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
-		givenName := fmt.Sprintf("%d-givenname", node.GetId())
-		assert.Equal(t, hostname+"NEW", node.GetName())
-		assert.Equal(t, givenName, node.GetGivenName())
-	}
+		for _, node := range nodes {
+			hostname := hostnames[strconv.FormatUint(node.GetId(), 10)]
+			givenName := fmt.Sprintf("%d-givenname", node.GetId())
+			if node.GetName() != hostname+"NEW" || node.GetGivenName() != givenName {
+				return false
+			}
+		}
+		return true
+	}, time.Second, 50*time.Millisecond, "hostname updates should be reflected in node list with NEW suffix")
 }
 
 func TestExpireNode(t *testing.T) {
@@ -883,6 +892,10 @@ func TestNodeOnlineStatus(t *testing.T) {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				status, err := client.Status()
 				assert.NoError(ct, err)
+				if status == nil {
+					assert.Fail(ct, "status is nil")
+					return
+				}
 
 				for _, peerKey := range status.Peers() {
 					peerStatus := status.Peer[peerKey]
@@ -984,16 +997,11 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		}
 
 		// Wait for sync and successful pings after nodes come back up
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			err = scenario.WaitForTailscaleSync()
-			assert.NoError(ct, err)
-
-			success := pingAllHelper(t, allClients, allAddrs)
-			assert.Greater(ct, success, 0, "Nodes should be able to ping after coming back up")
-		}, 30*time.Second, 2*time.Second)
+		err = scenario.WaitForTailscaleSync()
+		assert.NoError(t, err)
 
 		success := pingAllHelper(t, allClients, allAddrs)
-		t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
 	}
 }
 

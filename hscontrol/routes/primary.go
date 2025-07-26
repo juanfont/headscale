@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
@@ -45,6 +46,8 @@ func New() *PrimaryRoutes {
 // 4. If the primary routes have changed, update the internal state and return true.
 // 5. Otherwise, return false.
 func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
+	log.Debug().Msg("updatePrimaryLocked starting")
+
 	// reset the primaries map, as we are going to recalculate it.
 	allPrimaries := make(map[netip.Prefix][]types.NodeID)
 	pr.isPrimary = make(map[types.NodeID]bool)
@@ -74,21 +77,48 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// If the current primary is still available, continue.
 	// If the current primary is not available, select a new one.
 	for prefix, nodes := range allPrimaries {
+		log.Debug().
+			Str("prefix", prefix.String()).
+			Uints64("availableNodes", func() []uint64 {
+				ids := make([]uint64, len(nodes))
+				for i, id := range nodes {
+					ids[i] = id.Uint64()
+				}
+				return ids
+			}()).
+			Msg("Processing prefix for primary route selection")
+
 		if node, ok := pr.primaries[prefix]; ok {
 			// If the current primary is still available, continue.
 			if slices.Contains(nodes, node) {
+				log.Debug().
+					Str("prefix", prefix.String()).
+					Uint64("currentPrimary", node.Uint64()).
+					Msg("Current primary still available, keeping it")
 				continue
+			} else {
+				log.Debug().
+					Str("prefix", prefix.String()).
+					Uint64("oldPrimary", node.Uint64()).
+					Msg("Current primary no longer available")
 			}
 		}
 		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
+			log.Debug().
+				Str("prefix", prefix.String()).
+				Uint64("newPrimary", nodes[0].Uint64()).
+				Msg("Selected new primary for prefix")
 		}
 	}
 
 	// Clean up any remaining primaries that are no longer valid.
 	for prefix := range pr.primaries {
 		if _, ok := allPrimaries[prefix]; !ok {
+			log.Debug().
+				Str("prefix", prefix.String()).
+				Msg("Cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
 			changed = true
 		}
@@ -98,6 +128,11 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	for _, nodeID := range pr.primaries {
 		pr.isPrimary[nodeID] = true
 	}
+
+	log.Debug().
+		Bool("changed", changed).
+		Str("finalState", pr.stringLocked()).
+		Msg("updatePrimaryLocked completed")
 
 	return changed
 }
@@ -110,14 +145,29 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
+	log.Debug().
+		Uint64("node.id", node.Uint64()).
+		Strs("prefixes", util.PrefixesToString(prefixes)).
+		Msg("PrimaryRoutes.SetRoutes called")
+
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {
+		wasPresent := false
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
-			return pr.updatePrimaryLocked()
+			wasPresent = true
+			log.Debug().
+				Uint64("node.id", node.Uint64()).
+				Msg("Removed node from primary routes (no prefixes)")
 		}
-
-		return false
+		changed := pr.updatePrimaryLocked()
+		log.Debug().
+			Uint64("node.id", node.Uint64()).
+			Bool("wasPresent", wasPresent).
+			Bool("changed", changed).
+			Str("newState", pr.stringLocked()).
+			Msg("SetRoutes completed (remove)")
+		return changed
 	}
 
 	rs := make(set.Set[netip.Prefix], len(prefixes))
@@ -129,11 +179,24 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 
 	if rs.Len() != 0 {
 		pr.routes[node] = rs
+		log.Debug().
+			Uint64("node.id", node.Uint64()).
+			Strs("routes", util.PrefixesToString(rs.Slice())).
+			Msg("Updated node routes in primary route manager")
 	} else {
 		delete(pr.routes, node)
+		log.Debug().
+			Uint64("node.id", node.Uint64()).
+			Msg("Removed node from primary routes (only exit routes)")
 	}
 
-	return pr.updatePrimaryLocked()
+	changed := pr.updatePrimaryLocked()
+	log.Debug().
+		Uint64("node.id", node.Uint64()).
+		Bool("changed", changed).
+		Str("newState", pr.stringLocked()).
+		Msg("SetRoutes completed (update)")
+	return changed
 }
 
 func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
