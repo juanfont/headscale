@@ -56,17 +56,22 @@ func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVers
 
 // WithSelfNode adds the requesting node to the response
 func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
-	node, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	nodeView, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
 		b.addError(fmt.Errorf("node not found"))
 		return b
 	}
 
+	// Create a mutable copy and set online status from the batcher
+	node := nodeView.AsStruct()
+	isOnline := b.mapper.batcher.IsConnected(b.nodeID)
+	node.IsOnline = &isOnline
+
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(
-		node, b.capVer, b.mapper.state,
+		node.View(), b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(node.View(), b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		b.mapper.cfg)
 	if err != nil {

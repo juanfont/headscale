@@ -327,6 +327,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		return true
 	})
 
+	s.mu.Lock()
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
@@ -346,6 +347,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 			}
 		}
 	}
+	s.mu.Unlock()
 
 	for _, derp := range s.derpServers {
 		err := derp.Shutdown()
@@ -457,9 +459,11 @@ func (s *Scenario) CreateUser(user string) (*v1.User, error) {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
+		s.mu.Lock()
 		s.users[user] = &User{
 			Clients: make(map[string]TailscaleClient),
 		}
+		s.mu.Unlock()
 
 		return u, nil
 	}
