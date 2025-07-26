@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -143,14 +144,36 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 // If the node's approved routes change, it returns the new list and true.
 func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefix, bool) {
 	if pm == nil {
+		log.Debug().Msg("PolicyManager is nil, no approval")
 		return nil, false
 	}
 	var newApproved []netip.Prefix
-	for _, route := range nv.AnnouncedRoutes() {
-		if pm.NodeCanApproveRoute(nv, route) {
+	announcedRoutes := nv.AnnouncedRoutes()
+	currentApproved := nv.ApprovedRoutes().AsSlice()
+
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Strs("announcedRoutes", util.PrefixesToString(announcedRoutes)).
+		Strs("currentApprovedRoutes", util.PrefixesToString(currentApproved)).
+		Msg("evaluating route approval")
+
+	for _, route := range announcedRoutes {
+		canApprove := pm.NodeCanApproveRoute(nv, route)
+		log.Debug().
+			Uint64("node.id", nv.ID().Uint64()).
+			Str("route", route.String()).
+			Bool("canApprove", canApprove).
+			Msg("checking individual route approval")
+		if canApprove {
 			newApproved = append(newApproved, route)
 		}
 	}
+
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Strs("newApproved", util.PrefixesToString(newApproved)).
+		Int("newApprovedCount", len(newApproved)).
+		Msg("auto-approval results")
 
 	// Only modify ApprovedRoutes if we have new routes to approve.
 	// This prevents clearing existing approved routes when nodes
@@ -163,11 +186,25 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefi
 			return route.IsValid()
 		})
 
+		log.Debug().
+			Uint64("node.id", nv.ID().Uint64()).
+			Strs("combinedRoutes", util.PrefixesToString(combined)).
+			Strs("oldApprovedRoutes", util.PrefixesToString(currentApproved)).
+			Bool("routesChanged", !slices.Equal(currentApproved, combined)).
+			Msg("final route approval calculation")
+
 		// Only update if the routes actually changed
-		if !slices.Equal(nv.ApprovedRoutes().AsSlice(), combined) {
+		if !slices.Equal(currentApproved, combined) {
+			log.Info().
+				Uint64("node.id", nv.ID().Uint64()).
+				Strs("finalApprovedRoutes", util.PrefixesToString(combined)).
+				Msg("auto-approving routes based on policy")
 			return combined, true
 		}
 	}
 
-	return nil, false
+	log.Debug().
+		Uint64("node.id", nv.ID().Uint64()).
+		Msg("no route changes needed")
+	return currentApproved, false
 }

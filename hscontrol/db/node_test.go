@@ -292,12 +292,57 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 
 func TestAutoApproveRoutes(t *testing.T) {
 	tests := []struct {
-		name   string
-		acl    string
-		routes []netip.Prefix
-		want   []netip.Prefix
-		want2  []netip.Prefix
+		name         string
+		acl          string
+		routes       []netip.Prefix
+		want         []netip.Prefix
+		want2        []netip.Prefix
+		expectChange bool // whether to expect route changes
 	}{
+		{
+			name: "no-auto-approvers-empty-policy",
+			acl: `
+{
+	"groups": {
+		"group:admins": ["test@"]
+	},
+	"acls": [
+		{
+			"action": "accept",
+			"src": ["group:admins"],
+			"dst": ["group:admins:*"]
+		}
+	]
+}`,
+			routes:       []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
+			want:         []netip.Prefix{}, // Should be empty - no auto-approvers
+			want2:        []netip.Prefix{}, // Should be empty - no auto-approvers
+			expectChange: false,            // No changes expected
+		},
+		{
+			name: "no-auto-approvers-explicit-empty",
+			acl: `
+{
+	"groups": {
+		"group:admins": ["test@"]
+	},
+	"acls": [
+		{
+			"action": "accept",
+			"src": ["group:admins"],
+			"dst": ["group:admins:*"]
+		}
+	],
+	"autoApprovers": {
+		"routes": {},
+		"exitNode": []
+	}
+}`,
+			routes:       []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
+			want:         []netip.Prefix{}, // Should be empty - explicitly empty auto-approvers
+			want2:        []netip.Prefix{}, // Should be empty - explicitly empty auto-approvers
+			expectChange: false,            // No changes expected
+		},
 		{
 			name: "2068-approve-issue-sub-kube",
 			acl: `
@@ -316,8 +361,9 @@ func TestAutoApproveRoutes(t *testing.T) {
 		}
 	}
 }`,
-			routes: []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
-			want:   []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
+			routes:       []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
+			want:         []netip.Prefix{netip.MustParsePrefix("10.42.7.0/24")},
+			expectChange: true, // Routes should be approved
 		},
 		{
 			name: "2068-approve-issue-sub-exit-tag",
@@ -361,6 +407,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				tsaddr.AllIPv4(),
 				tsaddr.AllIPv6(),
 			},
+			expectChange: true, // Routes should be approved
 		},
 	}
 
@@ -422,7 +469,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				require.NotNil(t, pm)
 
 				newRoutes1, changed1 := policy.ApproveRoutesWithPolicy(pm, node.View())
-				assert.True(t, changed1)
+				assert.Equal(t, tt.expectChange, changed1)
 
 				if changed1 {
 					err = SetApprovedRoutes(adb.DB, node.ID, newRoutes1)
@@ -438,14 +485,23 @@ func TestAutoApproveRoutes(t *testing.T) {
 				node1ByID, err := adb.GetNodeByID(1)
 				require.NoError(t, err)
 
-				if diff := cmp.Diff(tt.want, node1ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+				// For empty auto-approvers tests, handle nil vs empty slice comparison
+				expectedRoutes1 := tt.want
+				if len(expectedRoutes1) == 0 {
+					expectedRoutes1 = nil
+				}
+				if diff := cmp.Diff(expectedRoutes1, node1ByID.SubnetRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
 
 				node2ByID, err := adb.GetNodeByID(2)
 				require.NoError(t, err)
 
-				if diff := cmp.Diff(tt.want2, node2ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+				expectedRoutes2 := tt.want2
+				if len(expectedRoutes2) == 0 {
+					expectedRoutes2 = nil
+				}
+				if diff := cmp.Diff(expectedRoutes2, node2ByID.SubnetRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
 			})
