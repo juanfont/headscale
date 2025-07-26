@@ -2,7 +2,7 @@
 
 Headscale supports authentication via external identity providers using OpenID Connect (OIDC). It features:
 
-- Autoconfiguration via OpenID Connect Discovery Protocol
+- Auto configuration via OpenID Connect Discovery Protocol
 - [Proof Key for Code Exchange (PKCE) code verification](#enable-pkce-recommended)
 - [Authorization based on a user's domain, email address or group membership](#authorize-users-with-filters)
 - Synchronization of [standard OIDC claims](#supported-oidc-claims)
@@ -142,7 +142,7 @@ Access Token.
 === "Use expiration from Access Token"
 
     Please keep in mind that the Access Token is typically a short-lived token that expires within a few minutes. You
-    will have to configure token expiration in your identity provider to avoid frequent reauthentication.
+    will have to configure token expiration in your identity provider to avoid frequent re-authentication.
 
 
     ```yaml hl_lines="5"
