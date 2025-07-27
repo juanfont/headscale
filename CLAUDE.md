@@ -205,139 +205,46 @@ The architecture supports incremental development:
 - **Policy Tests**: ACL rule evaluation and edge cases
 - **Performance Tests**: NodeStore and high-frequency operation validation
 
-## Integration Test System
+## Integration Testing System
 
 ### Overview
-Integration tests use Docker containers running real Tailscale clients against a Headscale server. Tests validate end-to-end functionality including routing, ACLs, node lifecycle, and network coordination.
+Headscale uses Docker-based integration tests with real Tailscale clients to validate end-to-end functionality. The integration test system is complex and requires specialized knowledge for effective execution and debugging.
 
-### Running Integration Tests
+### **MANDATORY: Use the headscale-integration-tester Agent**
 
-**System Requirements**
+**CRITICAL REQUIREMENT**: For ANY integration test execution, analysis, troubleshooting, or validation, you MUST use the `headscale-integration-tester` agent. This agent contains specialized knowledge about:
+
+- Test execution strategies and timing requirements  
+- Infrastructure vs code issue distinction (99% vs 1% failure patterns)
+- Security-critical debugging rules and forbidden practices
+- Comprehensive artifact analysis workflows
+- Real-world failure patterns from HA debugging experiences
+
+### Quick Reference Commands
+
 ```bash
-# Check if your system is ready
+# Check system requirements (always run first)
 go run ./cmd/hi doctor
-```
-This verifies Docker, Go, required images, and disk space.
 
-**Test Execution Patterns**
-```bash
-# Run a single test (recommended for development)
-go run ./cmd/hi run "TestSubnetRouterMultiNetwork"
+# Run single test (recommended for development)  
+go run ./cmd/hi run "TestName"
 
-# Run with PostgreSQL backend (for database-heavy tests)
-go run ./cmd/hi run "TestExpireNode" --postgres
+# Use PostgreSQL for database-heavy tests
+go run ./cmd/hi run "TestName" --postgres
 
-# Run multiple tests with pattern matching
-go run ./cmd/hi run "TestSubnet*"
-
-# Run all integration tests (CI/full validation)
-go test ./integration -timeout 30m
+# Pattern matching for related tests
+go run ./cmd/hi run "TestPattern*"
 ```
 
-**Test Categories & Timing**
-- **Fast tests** (< 2 min): Basic functionality, CLI operations
-- **Medium tests** (2-5 min): Route management, ACL validation  
-- **Slow tests** (5+ min): Node expiration, HA failover
-- **Long-running tests** (10+ min): `TestNodeOnlineStatus` (12 min duration)
+**Critical Notes**:
+- Only ONE test can run at a time (Docker port conflicts)
+- Tests generate ~100MB of logs per run in `control_logs/`
+- Clean environment before each test: `rm -rf control_logs/202507* && docker system prune -f`
 
-### Test Infrastructure
+### Test Artifacts Location
+All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-ID/` including server logs, client logs, database dumps, MapResponse protocol data, and Prometheus metrics.
 
-**Docker Setup**
-- Headscale server container with configurable database backend
-- Multiple Tailscale client containers with different versions
-- Isolated networks per test scenario
-- Automatic cleanup after test completion
-
-**Test Artifacts**
-All test runs save artifacts to `control_logs/TIMESTAMP-ID/`:
-```
-control_logs/20250713-213106-iajsux/
-├── hs-testname-abc123.stderr.log     # Headscale server logs
-├── hs-testname-abc123.stdout.log
-├── hs-testname-abc123.db             # Database snapshot
-├── hs-testname-abc123_metrics.txt    # Prometheus metrics
-├── hs-testname-abc123-mapresponses/  # Protocol debug data
-├── ts-client-xyz789.stderr.log       # Tailscale client logs
-├── ts-client-xyz789.stdout.log
-└── ts-client-xyz789_status.json      # Client status dump
-```
-
-### Test Development Guidelines
-
-**Timing Considerations**
-Integration tests involve real network operations and Docker container lifecycle:
-
-```go
-// ❌ Wrong: Immediate assertions after async operations
-client.Execute([]string{"tailscale", "set", "--advertise-routes=10.0.0.0/24"})
-nodes, _ := headscale.ListNodes()
-require.Len(t, nodes[0].GetAvailableRoutes(), 1) // May fail due to timing
-
-// ✅ Correct: Wait for async operations to complete
-client.Execute([]string{"tailscale", "set", "--advertise-routes=10.0.0.0/24"})
-require.EventuallyWithT(t, func(c *assert.CollectT) {
-    nodes, err := headscale.ListNodes()
-    assert.NoError(c, err)
-    assert.Len(c, nodes[0].GetAvailableRoutes(), 1)
-}, 10*time.Second, 100*time.Millisecond, "route should be advertised")
-```
-
-**Common Test Patterns**
-- **Route Advertisement**: Use `EventuallyWithT` for route propagation
-- **Node State Changes**: Wait for NodeStore synchronization  
-- **ACL Policy Changes**: Allow time for policy recalculation
-- **Network Connectivity**: Use ping tests with retries
-
-**Test Data Management**
-```go
-// Node identification: Don't assume array ordering
-expectedRoutes := map[string]string{"1": "10.33.0.0/16"}
-for _, node := range nodes {
-    nodeIDStr := fmt.Sprintf("%d", node.GetId())
-    if route, shouldHaveRoute := expectedRoutes[nodeIDStr]; shouldHaveRoute {
-        // Test the node that should have the route
-    }
-}
-```
-
-### Troubleshooting Integration Tests
-
-**Common Failure Patterns**
-1. **Timing Issues**: Test assertions run before async operations complete
-   - **Solution**: Use `EventuallyWithT` with appropriate timeouts
-   - **Timeout Guidelines**: 3-5s for route operations, 10s for complex scenarios
-
-2. **Infrastructure Problems**: Disk space, Docker issues, network conflicts
-   - **Check**: `go run ./cmd/hi doctor` for system health
-   - **Clean**: Remove old test containers and networks
-
-3. **NodeStore Synchronization**: Tests expecting immediate data availability
-   - **Key Points**: Route advertisements must propagate through poll requests
-   - **Fix**: Wait for NodeStore updates after Hostinfo changes
-
-4. **Database Backend Differences**: SQLite vs PostgreSQL behavior differences
-   - **Use**: `--postgres` flag for database-intensive tests
-   - **Note**: Some timing characteristics differ between backends
-
-**Debugging Failed Tests**
-1. **Check test artifacts** in `control_logs/` for detailed logs
-2. **Examine MapResponse JSON** files for protocol-level debugging
-3. **Review Headscale stderr logs** for server-side error messages
-4. **Check Tailscale client status** for network-level issues
-
-**Resource Management**
-- Tests require significant disk space (each run ~100MB of logs)
-- Docker containers are cleaned up automatically on success
-- Failed tests may leave containers running - clean manually if needed
-- Use `docker system prune` periodically to reclaim space
-
-### Best Practices for Test Modifications
-
-1. **Always test locally** before committing integration test changes
-2. **Use appropriate timeouts** - too short causes flaky tests, too long slows CI
-3. **Clean up properly** - ensure tests don't leave persistent state
-4. **Handle both success and failure paths** in test scenarios
-5. **Document timing requirements** for complex test scenarios
+**For all integration test work, use the headscale-integration-tester agent - it contains the complete knowledge needed for effective testing and debugging.**
 
 ## NodeStore Implementation Details
 
@@ -352,14 +259,108 @@ for _, node := range nodes {
 ## Testing Guidelines
 
 ### Integration Test Patterns
+
+#### **CRITICAL: EventuallyWithT Pattern for External Calls**
+
+**All external calls in integration tests MUST be wrapped in EventuallyWithT blocks** to handle eventual consistency in distributed systems. External calls include:
+- `client.Status()` - Getting Tailscale client status
+- `client.Curl()` - Making HTTP requests through clients
+- `client.Traceroute()` - Running network diagnostics
+- `headscale.ListNodes()` - Querying headscale server state
+- Any other calls that interact with external systems or network operations
+
+**Key Rules**:
+1. **Never use bare `require.NoError(t, err)` with external calls** - Always wrap in EventuallyWithT
+2. **Keep related assertions together** - If multiple assertions depend on the same external call, keep them in the same EventuallyWithT block
+3. **Split unrelated external calls** - Different external calls should be in separate EventuallyWithT blocks
+4. **Never nest EventuallyWithT calls** - Each EventuallyWithT should be at the same level
+5. **Declare shared variables at function scope** - Variables used across multiple EventuallyWithT blocks must be declared before first use
+
+**Examples**:
+
 ```go
-// Use EventuallyWithT for async operations
-require.EventuallyWithT(t, func(c *assert.CollectT) {
+// CORRECT: External call wrapped in EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    // Related assertions using the same status call
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        assert.NotNil(c, peerStatus.PrimaryRoutes)
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedRoutes)
+    }
+}, 5*time.Second, 200*time.Millisecond, "Verifying client status and routes")
+
+// INCORRECT: Bare external call without EventuallyWithT
+status, err := client.Status()  // ❌ Will fail intermittently
+require.NoError(t, err)
+
+// CORRECT: Separate EventuallyWithT for different external calls
+// First external call - headscale.ListNodes()
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
-    // Check expected state
-}, 10*time.Second, 100*time.Millisecond, "description")
+    assert.Len(c, nodes, 2)
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate to nodes")
 
+// Second external call - client.Status() 
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+    }
+}, 10*time.Second, 500*time.Millisecond, "routes should be visible to client")
+
+// INCORRECT: Multiple unrelated external calls in same EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()  // ❌ First external call
+    assert.NoError(c, err)
+    
+    status, err := client.Status()  // ❌ Different external call - should be separate
+    assert.NoError(c, err)
+}, 10*time.Second, 500*time.Millisecond, "mixed calls")
+
+// CORRECT: Variable scoping for shared data
+var (
+    srs1, srs2, srs3       *ipnstate.Status
+    clientStatus           *ipnstate.Status
+    srs1PeerStatus         *ipnstate.PeerStatus
+)
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    srs1 = subRouter1.MustStatus()  // = not :=
+    srs2 = subRouter2.MustStatus()
+    clientStatus = client.MustStatus()
+    
+    srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
+    // assertions...
+}, 5*time.Second, 200*time.Millisecond, "checking router status")
+
+// CORRECT: Wrapping client operations
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    result, err := client.Curl(weburl)
+    assert.NoError(c, err)
+    assert.Len(c, result, 13)
+}, 5*time.Second, 200*time.Millisecond, "Verifying HTTP connectivity")
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    tr, err := client.Traceroute(webip)
+    assert.NoError(c, err)
+    assertTracerouteViaIPWithCollect(c, tr, expectedRouter.MustIPv4())
+}, 5*time.Second, 200*time.Millisecond, "Verifying network path")
+```
+
+**Helper Functions**:
+- Use `requirePeerSubnetRoutesWithCollect` instead of `requirePeerSubnetRoutes` inside EventuallyWithT
+- Use `requireNodeRouteCountWithCollect` instead of `requireNodeRouteCount` inside EventuallyWithT
+- Use `assertTracerouteViaIPWithCollect` instead of `assertTracerouteViaIP` inside EventuallyWithT
+
+```go
 // Node route checking by actual node properties, not array position
 var routeNode *v1.Node
 for _, node := range nodes {
@@ -375,21 +376,155 @@ for _, node := range nodes {
 - Infrastructure issues like disk space can cause test failures unrelated to code changes  
 - Use `--postgres` flag when testing database-heavy scenarios
 
+## Quality Assurance and Testing Requirements
+
+### **MANDATORY: Always Use Specialized Testing Agents**
+
+**CRITICAL REQUIREMENT**: For ANY task involving testing, quality assurance, review, or validation, you MUST use the appropriate specialized agent at the END of your task list. This ensures comprehensive quality validation and prevents regressions.
+
+**Required Agents for Different Task Types**:
+
+1. **Integration Testing**: Use `headscale-integration-tester` agent for:
+   - Running integration tests with `cmd/hi`
+   - Analyzing test failures and artifacts
+   - Troubleshooting Docker-based test infrastructure
+   - Validating end-to-end functionality changes
+
+2. **Quality Control**: Use `quality-control-enforcer` agent for:
+   - Code review and validation
+   - Ensuring best practices compliance  
+   - Preventing common pitfalls and anti-patterns
+   - Validating architectural decisions
+
+**Agent Usage Pattern**: Always add the appropriate agent as the FINAL step in any task list to ensure quality validation occurs after all work is complete.
+
+### Integration Test Debugging Reference
+
+Test artifacts are preserved in `control_logs/TIMESTAMP-ID/` including:
+- Headscale server logs (stderr/stdout)
+- Tailscale client logs and status  
+- Database dumps and network captures
+- MapResponse JSON files for protocol debugging
+
+**For integration test issues, ALWAYS use the headscale-integration-tester agent - do not attempt manual debugging.**
+
+## EventuallyWithT Pattern for Integration Tests
+
+### Overview
+EventuallyWithT is a testing pattern used to handle eventual consistency in distributed systems. In Headscale integration tests, many operations are asynchronous - clients advertise routes, the server processes them, updates propagate through the network. EventuallyWithT allows tests to wait for these operations to complete while making assertions.
+
+### External Calls That Must Be Wrapped
+The following operations are **external calls** that interact with the headscale server or tailscale clients and MUST be wrapped in EventuallyWithT:
+- `headscale.ListNodes()` - Queries server state
+- `client.Status()` - Gets client network status
+- `client.Curl()` - Makes HTTP requests through the network
+- `client.Traceroute()` - Performs network diagnostics
+- `client.Execute()` when running commands that query state
+- Any operation that reads from the headscale server or tailscale client
+
+### Operations That Must NOT Be Wrapped
+The following are **blocking operations** that modify state and should NOT be wrapped in EventuallyWithT:
+- `tailscale set` commands (e.g., `--advertise-routes`, `--exit-node`)
+- Any command that changes configuration or state
+- Use `client.MustStatus()` instead of `client.Status()` when you just need the ID for a blocking operation
+
+### Five Key Rules for EventuallyWithT
+
+1. **One External Call Per EventuallyWithT Block**
+   - Each EventuallyWithT should make ONE external call (e.g., ListNodes OR Status)
+   - Related assertions based on that single call can be grouped together
+   - Unrelated external calls must be in separate EventuallyWithT blocks
+
+2. **Variable Scoping**
+   - Declare variables that need to be shared across EventuallyWithT blocks at function scope
+   - Use `=` for assignment inside EventuallyWithT, not `:=` (unless the variable is only used within that block)
+   - Variables declared with `:=` inside EventuallyWithT are not accessible outside
+
+3. **No Nested EventuallyWithT**
+   - NEVER put an EventuallyWithT inside another EventuallyWithT
+   - This is a critical anti-pattern that must be avoided
+
+4. **Use CollectT for Assertions**
+   - Inside EventuallyWithT, use `assert` methods with the CollectT parameter
+   - Helper functions called within EventuallyWithT must accept `*assert.CollectT`
+
+5. **Descriptive Messages**
+   - Always provide a descriptive message as the last parameter
+   - Message should explain what condition is being waited for
+
+### Correct Pattern Examples
+
+```go
+// CORRECT: Blocking operation NOT wrapped
+for _, client := range allClients {
+    status := client.MustStatus()
+    command := []string{
+        "tailscale",
+        "set",
+        "--advertise-routes=" + expectedRoutes[string(status.Self.ID)],
+    }
+    _, _, err = client.Execute(command)
+    require.NoErrorf(t, err, "failed to advertise route: %s", err)
+}
+
+// CORRECT: Single external call with related assertions
+var nodes []*v1.Node
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err = headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+}, 10*time.Second, 500*time.Millisecond, "nodes should have expected route counts")
+
+// CORRECT: Separate EventuallyWithT for different external call
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
+    }
+}, 10*time.Second, 500*time.Millisecond, "client should see expected routes")
+```
+
+### Incorrect Patterns to Avoid
+
+```go
+// INCORRECT: Blocking operation wrapped in EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    // This is a blocking operation - should NOT be in EventuallyWithT!
+    command := []string{
+        "tailscale",
+        "set",
+        "--advertise-routes=" + expectedRoutes[string(status.Self.ID)],
+    }
+    _, _, err = client.Execute(command)
+    assert.NoError(c, err)
+}, 5*time.Second, 200*time.Millisecond, "wrong pattern")
+
+// INCORRECT: Multiple unrelated external calls in same EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    // First external call
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    
+    // Second unrelated external call - WRONG!
+    status, err := client.Status()
+    assert.NoError(c, err)
+    assert.NotNil(c, status)
+}, 10*time.Second, 500*time.Millisecond, "mixed operations")
+```
+
 ## Important Notes
 
 - **Dependencies**: Use `nix develop` for consistent toolchain (Go, buf, protobuf tools, linting)
 - **Protocol Buffers**: Changes to `proto/` require `make generate` and should be committed separately
 - **Code Style**: Enforced via golangci-lint with golines (width 88) and gofumpt formatting
 - **Database**: Supports both SQLite (development) and PostgreSQL (production/testing)
-- **Integration Tests**: Require Docker and can consume significant disk space
+- **Integration Tests**: Require Docker and can consume significant disk space - use headscale-integration-tester agent
 - **Performance**: NodeStore optimizations are critical for scale - be careful with changes to state management
-
-## Debugging Integration Tests
-
-Test artifacts are preserved in `control_logs/TIMESTAMP-ID/` including:
-- Headscale server logs (stderr/stdout)
-- Tailscale client logs and status
-- Database dumps and network captures
-- MapResponse JSON files for protocol debugging
-
-When tests fail, check these artifacts first before assuming code issues.
+- **Quality Assurance**: Always use appropriate specialized agents for testing and validation tasks
