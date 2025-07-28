@@ -859,7 +859,19 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
+	// Update NodeStore to ensure it has the latest node data
 	s.nodeStore.PutNode(*node)
+
+	// Update policy manager with the new node if needed
+	nodesChange, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return node.View(), nodeChange, fmt.Errorf("failed to update policy manager nodes after node registration: %w", err)
+	}
+
+	// If policy manager detected changes, use that instead
+	if !nodesChange.Empty() {
+		nodeChange = nodesChange
+	}
 
 	return node.View(), nodeChange, nil
 }
@@ -938,6 +950,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, c, nil
 	}
 
+	// Update NodeStore BEFORE updating policy manager so it has the latest node data
+	s.nodeStore.PutNode(*node)
+
 	// Check if policy manager needs updating
 	// This is necessary because we just created a new node.
 	// We need to ensure that the policy manager is aware of this new node.
@@ -958,8 +973,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 	} else {
 		c = change.NodeAdded(node.ID)
 	}
-
-	s.nodeStore.PutNode(*node)
 
 	return node.View(), c, nil
 }
