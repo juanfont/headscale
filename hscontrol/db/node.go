@@ -7,15 +7,19 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 const (
@@ -39,9 +43,7 @@ var (
 // If no peer IDs are given, all peers are returned.
 // If at least one peer ID is given, only these peer nodes will be returned.
 func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListPeers(rx, nodeID, peerIDs...)
-	})
+	return ListPeers(hsdb.DB, nodeID, peerIDs...)
 }
 
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.
@@ -66,9 +68,7 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types
 // ListNodes queries the database for either all nodes if no parameters are given
 // or for the given nodes if at least one node ID is given as parameter.
 func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
-		return ListNodes(rx, nodeIDs...)
-	})
+	return ListNodes(hsdb.DB, nodeIDs...)
 }
 
 // ListNodes queries the database for either all nodes if no parameters are given
@@ -120,9 +120,7 @@ func getNode(tx *gorm.DB, uid types.UserID, name string) (*types.Node, error) {
 }
 
 func (hsdb *HSDatabase) GetNodeByID(id types.NodeID) (*types.Node, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return GetNodeByID(rx, id)
-	})
+	return GetNodeByID(hsdb.DB, id)
 }
 
 // GetNodeByID finds a Node by ID and returns the Node struct.
@@ -140,9 +138,7 @@ func GetNodeByID(tx *gorm.DB, id types.NodeID) (*types.Node, error) {
 }
 
 func (hsdb *HSDatabase) GetNodeByMachineKey(machineKey key.MachinePublic) (*types.Node, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return GetNodeByMachineKey(rx, machineKey)
-	})
+	return GetNodeByMachineKey(hsdb.DB, machineKey)
 }
 
 // GetNodeByMachineKey finds a Node by its MachineKey and returns the Node struct.
@@ -163,9 +159,7 @@ func GetNodeByMachineKey(
 }
 
 func (hsdb *HSDatabase) GetNodeByNodeKey(nodeKey key.NodePublic) (*types.Node, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.Node, error) {
-		return GetNodeByNodeKey(rx, nodeKey)
-	})
+	return GetNodeByNodeKey(hsdb.DB, nodeKey)
 }
 
 // GetNodeByNodeKey finds a Node by its NodeKey and returns the Node struct.
@@ -352,8 +346,8 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 	registrationMethod string,
 	ipv4 *netip.Addr,
 	ipv6 *netip.Addr,
-) (*types.Node, bool, error) {
-	var newNode bool
+) (*types.Node, change.ChangeSet, error) {
+	var nodeChange change.ChangeSet
 	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
 		if reg, ok := hsdb.regCache.Get(registrationID); ok {
 			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
@@ -405,7 +399,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 				}
 				close(reg.Registered)
 
-				newNode = true
+				nodeChange = change.NodeAdded(node.ID)
 
 				return node, err
 			} else {
@@ -415,6 +409,8 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 					return nil, err
 				}
 
+				nodeChange = change.KeyExpiry(node.ID)
+
 				return node, nil
 			}
 		}
@@ -422,7 +418,7 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 		return nil, ErrNodeNotFoundRegistrationCache
 	})
 
-	return node, newNode, err
+	return node, nodeChange, err
 }
 
 func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
@@ -448,6 +444,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	if oldNode != nil && oldNode.UserID == node.UserID {
 		node.ID = oldNode.ID
 		node.GivenName = oldNode.GivenName
+		node.ApprovedRoutes = oldNode.ApprovedRoutes
 		ipv4 = oldNode.IPv4
 		ipv6 = oldNode.IPv6
 	}
@@ -594,17 +591,18 @@ func ensureUniqueGivenName(
 // containing the expired nodes, and a boolean indicating if any nodes were found.
 func ExpireExpiredNodes(tx *gorm.DB,
 	lastCheck time.Time,
-) (time.Time, types.StateUpdate, bool) {
+) (time.Time, []change.ChangeSet, bool) {
 	// use the time of the start of the function to ensure we
 	// dont miss some nodes by returning it _after_ we have
 	// checked everything.
 	started := time.Now()
 
 	expired := make([]*tailcfg.PeerChange, 0)
+	var updates []change.ChangeSet
 
 	nodes, err := ListNodes(tx)
 	if err != nil {
-		return time.Unix(0, 0), types.StateUpdate{}, false
+		return time.Unix(0, 0), nil, false
 	}
 	for _, node := range nodes {
 		if node.IsExpired() && node.Expiry.After(lastCheck) {
@@ -612,14 +610,15 @@ func ExpireExpiredNodes(tx *gorm.DB,
 				NodeID:    tailcfg.NodeID(node.ID),
 				KeyExpiry: node.Expiry,
 			})
+			updates = append(updates, change.KeyExpiry(node.ID))
 		}
 	}
 
 	if len(expired) > 0 {
-		return started, types.UpdatePeerPatch(expired...), true
+		return started, updates, true
 	}
 
-	return started, types.StateUpdate{}, false
+	return started, nil, false
 }
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after
@@ -731,4 +730,115 @@ func (e *EphemeralGarbageCollector) Start() {
 			go e.deleteFunc(nodeID)
 		}
 	}
+}
+
+func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) *types.Node {
+	if !testing.Testing() {
+		panic("CreateNodeForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateNodeForTest requires a valid user")
+	}
+
+	nodeName := "testnode"
+	if len(hostname) > 0 && hostname[0] != "" {
+		nodeName = hostname[0]
+	}
+
+	// Create a preauth key for the node
+	pak, err := hsdb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create preauth key for test node: %v", err))
+	}
+
+	nodeKey := key.NewNode()
+	machineKey := key.NewMachine()
+	discoKey := key.NewDisco()
+
+	node := &types.Node{
+		MachineKey:     machineKey.Public(),
+		NodeKey:        nodeKey.Public(),
+		DiscoKey:       discoKey.Public(),
+		Hostname:       nodeName,
+		UserID:         user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      ptr.To(pak.ID),
+	}
+
+	err = hsdb.DB.Save(node).Error
+	if err != nil {
+		panic(fmt.Sprintf("failed to create test node: %v", err))
+	}
+
+	return node
+}
+
+func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
+	if !testing.Testing() {
+		panic("CreateRegisteredNodeForTest can only be called during tests")
+	}
+
+	node := hsdb.CreateNodeForTest(user, hostname...)
+
+	err := hsdb.DB.Transaction(func(tx *gorm.DB) error {
+		_, err := RegisterNode(tx, *node, nil, nil)
+		return err
+	})
+	if err != nil {
+		panic(fmt.Sprintf("failed to register test node: %v", err))
+	}
+
+	registeredNode, err := hsdb.GetNodeByID(node.ID)
+	if err != nil {
+		panic(fmt.Sprintf("failed to get registered test node: %v", err))
+	}
+
+	return registeredNode
+}
+
+func (hsdb *HSDatabase) CreateNodesForTest(user *types.User, count int, hostnamePrefix ...string) []*types.Node {
+	if !testing.Testing() {
+		panic("CreateNodesForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateNodesForTest requires a valid user")
+	}
+
+	prefix := "testnode"
+	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
+		prefix = hostnamePrefix[0]
+	}
+
+	nodes := make([]*types.Node, count)
+	for i := range count {
+		hostname := prefix + "-" + strconv.Itoa(i)
+		nodes[i] = hsdb.CreateNodeForTest(user, hostname)
+	}
+
+	return nodes
+}
+
+func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int, hostnamePrefix ...string) []*types.Node {
+	if !testing.Testing() {
+		panic("CreateRegisteredNodesForTest can only be called during tests")
+	}
+
+	if user == nil {
+		panic("CreateRegisteredNodesForTest requires a valid user")
+	}
+
+	prefix := "testnode"
+	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
+		prefix = hostnamePrefix[0]
+	}
+
+	nodes := make([]*types.Node, count)
+	for i := range count {
+		hostname := prefix + "-" + strconv.Itoa(i)
+		nodes[i] = hsdb.CreateRegisteredNodeForTest(user, hostname)
+	}
+
+	return nodes
 }

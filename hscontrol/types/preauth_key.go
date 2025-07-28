@@ -1,17 +1,16 @@
 package types
 
 import (
-	"fmt"
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type PAKError string
 
 func (e PAKError) Error() string { return string(e) }
-func (e PAKError) Unwrap() error { return fmt.Errorf("preauth key error: %w", e) }
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
@@ -60,6 +59,21 @@ func (pak *PreAuthKey) Validate() error {
 	if pak == nil {
 		return PAKError("invalid authkey")
 	}
+
+	log.Debug().
+		Str("key", pak.Key).
+		Bool("hasExpiration", pak.Expiration != nil).
+		Time("expiration", func() time.Time {
+			if pak.Expiration != nil {
+				return *pak.Expiration
+			}
+			return time.Time{}
+		}()).
+		Time("now", time.Now()).
+		Bool("reusable", pak.Reusable).
+		Bool("used", pak.Used).
+		Msg("PreAuthKey.Validate: checking key")
+
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
 		return PAKError("authkey expired")
 	}

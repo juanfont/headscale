@@ -260,7 +260,9 @@ func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_TUNING_BATCH_CHANGE_DELAY"] = batchTimeout.String()
-		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(mapSessionChanSize)
+		hsic.env["HEADSCALE_TUNING_NODE_MAPSESSION_BUFFERED_CHAN_SIZE"] = strconv.Itoa(
+			mapSessionChanSize,
+		)
 	}
 }
 
@@ -279,10 +281,16 @@ func WithDebugPort(port int) Option {
 
 // buildEntrypoint builds the container entrypoint command based on configuration.
 func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
-	debugCmd := fmt.Sprintf("/go/bin/dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /go/bin/headscale --continue -- serve", hsic.debugPort)
-	
-	entrypoint := fmt.Sprintf("/bin/sleep 3 ; update-ca-certificates ; %s ; /bin/sleep 30", debugCmd)
-	
+	debugCmd := fmt.Sprintf(
+		"/go/bin/dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /go/bin/headscale --continue -- serve",
+		hsic.debugPort,
+	)
+
+	entrypoint := fmt.Sprintf(
+		"/bin/sleep 3 ; update-ca-certificates ; %s ; /bin/sleep 30",
+		debugCmd,
+	)
+
 	return []string{"/bin/bash", "-c", entrypoint}
 }
 
@@ -447,8 +455,12 @@ func New(
 	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
-	
-	log.Printf("Debug ports for %s: delve=%s, metrics/pprof=49090\n", hsic.hostname, hsic.GetHostDebugPort())
+
+	log.Printf(
+		"Debug ports for %s: delve=%s, metrics/pprof=49090\n",
+		hsic.hostname,
+		hsic.GetHostDebugPort(),
+	)
 
 	// Write the CA certificates to the container
 	for i, cert := range hsic.caCerts {
@@ -684,14 +696,6 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return nil
 	}
 
-	// First, let's see what files are actually in /tmp
-	tmpListing, err := t.Execute([]string{"ls", "-la", "/tmp/"})
-	if err != nil {
-		log.Printf("Warning: could not list /tmp directory: %v", err)
-	} else {
-		log.Printf("Contents of /tmp in container %s:\n%s", t.hostname, tmpListing)
-	}
-
 	// Also check for any .sqlite files
 	sqliteFiles, err := t.Execute([]string{"find", "/tmp", "-name", "*.sqlite*", "-type", "f"})
 	if err != nil {
@@ -718,12 +722,6 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		return errors.New("database file exists but has no schema (empty database)")
 	}
 
-	// Show a preview of the schema (first 500 chars)
-	schemaPreview := schemaCheck
-	if len(schemaPreview) > 500 {
-		schemaPreview = schemaPreview[:500] + "..."
-	}
-
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
 		return fmt.Errorf("failed to fetch database file: %w", err)
@@ -740,7 +738,12 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
 
-		log.Printf("Found file in tar: %s (type: %d, size: %d)", header.Name, header.Typeflag, header.Size)
+		log.Printf(
+			"Found file in tar: %s (type: %d, size: %d)",
+			header.Name,
+			header.Typeflag,
+			header.Size,
+		)
 
 		// Extract the first regular file we find
 		if header.Typeflag == tar.TypeReg {
@@ -756,11 +759,20 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 				return fmt.Errorf("failed to copy database file: %w", err)
 			}
 
-			log.Printf("Extracted database file: %s (%d bytes written, header claimed %d bytes)", dbPath, written, header.Size)
+			log.Printf(
+				"Extracted database file: %s (%d bytes written, header claimed %d bytes)",
+				dbPath,
+				written,
+				header.Size,
+			)
 
 			// Check if we actually wrote something
 			if written == 0 {
-				return fmt.Errorf("database file is empty (size: %d, header size: %d)", written, header.Size)
+				return fmt.Errorf(
+					"database file is empty (size: %d, header size: %d)",
+					written,
+					header.Size,
+				)
 			}
 
 			return nil
@@ -871,7 +883,15 @@ func (t *HeadscaleInContainer) WaitForRunning() error {
 func (t *HeadscaleInContainer) CreateUser(
 	user string,
 ) (*v1.User, error) {
-	command := []string{"headscale", "users", "create", user, fmt.Sprintf("--email=%s@test.no", user), "--output", "json"}
+	command := []string{
+		"headscale",
+		"users",
+		"create",
+		user,
+		fmt.Sprintf("--email=%s@test.no", user),
+		"--output",
+		"json",
+	}
 
 	result, _, err := dockertestutil.ExecuteCommand(
 		t.container,
@@ -1182,13 +1202,18 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 		[]string{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute list node command: %w", err)
+		return nil, fmt.Errorf(
+			"failed to execute approve routes command (node %d, routes %v): %w",
+			id,
+			routes,
+			err,
+		)
 	}
 
 	var node *v1.Node
 	err = json.Unmarshal([]byte(result), &node)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+		return nil, fmt.Errorf("failed to unmarshal node response: %q, error: %w", result, err)
 	}
 
 	return node, nil

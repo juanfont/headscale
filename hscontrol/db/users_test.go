@@ -11,8 +11,7 @@ import (
 )
 
 func (s *Suite) TestCreateAndDestroyUser(c *check.C) {
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
 	c.Assert(user.Name, check.Equals, "test")
 
 	users, err := db.ListUsers()
@@ -30,8 +29,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 	err := db.DestroyUser(9998)
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	user := db.CreateUserForTest("test")
 
 	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
@@ -64,8 +62,7 @@ func (s *Suite) TestDestroyUserErrors(c *check.C) {
 }
 
 func (s *Suite) TestRenameUser(c *check.C) {
-	userTest, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	userTest := db.CreateUserForTest("test")
 	c.Assert(userTest.Name, check.Equals, "test")
 
 	users, err := db.ListUsers()
@@ -86,8 +83,7 @@ func (s *Suite) TestRenameUser(c *check.C) {
 	err = db.RenameUser(99988, "test")
 	c.Assert(err, check.Equals, ErrUserNotFound)
 
-	userTest2, err := db.CreateUser(types.User{Name: "test2"})
-	c.Assert(err, check.IsNil)
+	userTest2 := db.CreateUserForTest("test2")
 	c.Assert(userTest2.Name, check.Equals, "test2")
 
 	want := "UNIQUE constraint failed"
@@ -98,11 +94,8 @@ func (s *Suite) TestRenameUser(c *check.C) {
 }
 
 func (s *Suite) TestSetMachineUser(c *check.C) {
-	oldUser, err := db.CreateUser(types.User{Name: "old"})
-	c.Assert(err, check.IsNil)
-
-	newUser, err := db.CreateUser(types.User{Name: "new"})
-	c.Assert(err, check.IsNil)
+	oldUser := db.CreateUserForTest("old")
+	newUser := db.CreateUserForTest("new")
 
 	pak, err := db.CreatePreAuthKey(types.UserID(oldUser.ID), false, false, nil, nil)
 	c.Assert(err, check.IsNil)

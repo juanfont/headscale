@@ -145,9 +145,9 @@ func derpServerScenario(
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 
 			for _, health := range status.Health {
-				assert.NotContains(ct, health, "could not connect to any relay server", 
+				assert.NotContains(ct, health, "could not connect to any relay server",
 					"Client %s should be connected to DERP relay", client.Hostname())
-				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.", 
+				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP", client.Hostname())
 			}
 		}, 30*time.Second, 2*time.Second)
@@ -166,9 +166,9 @@ func derpServerScenario(
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 
 			for _, health := range status.Health {
-				assert.NotContains(ct, health, "could not connect to any relay server", 
+				assert.NotContains(ct, health, "could not connect to any relay server",
 					"Client %s should be connected to DERP relay after first run", client.Hostname())
-				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.", 
+				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after first run", client.Hostname())
 			}
 		}, 30*time.Second, 2*time.Second)
@@ -191,9 +191,9 @@ func derpServerScenario(
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 
 			for _, health := range status.Health {
-				assert.NotContains(ct, health, "could not connect to any relay server", 
+				assert.NotContains(ct, health, "could not connect to any relay server",
 					"Client %s should be connected to DERP relay after second run", client.Hostname())
-				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.", 
+				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after second run", client.Hostname())
 			}
 		}, 30*time.Second, 2*time.Second)

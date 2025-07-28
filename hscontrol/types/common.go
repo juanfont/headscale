@@ -1,16 +1,16 @@
-//go:generate go run tailscale.com/cmd/viewer --type=User,Node,PreAuthKey
-
+//go:generate go tool viewer --type=User,Node,PreAuthKey
 package types
 
+//go:generate go run tailscale.com/cmd/viewer --type=User,Node,PreAuthKey
+
 import (
-	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
-	"tailscale.com/util/ctxkey"
 )
 
 const (
@@ -150,18 +150,6 @@ func UpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	}
 }
 
-var (
-	NotifyOriginKey   = ctxkey.New("notify.origin", "")
-	NotifyHostnameKey = ctxkey.New("notify.hostname", "")
-)
-
-func NotifyCtx(ctx context.Context, origin, hostname string) context.Context {
-	ctx2, _ := context.WithTimeout(ctx, 3*time.Second)
-	ctx2 = NotifyOriginKey.WithValue(ctx2, origin)
-	ctx2 = NotifyHostnameKey.WithValue(ctx2, hostname)
-	return ctx2
-}
-
 const RegistrationIDLength = 24
 
 type RegistrationID string
@@ -198,4 +186,21 @@ func (r RegistrationID) String() string {
 type RegisterNode struct {
 	Node       Node
 	Registered chan *Node
+}
+
+// DefaultBatcherWorkers returns the default number of batcher workers.
+// Default to 3/4 of CPU cores, minimum 1, no maximum.
+func DefaultBatcherWorkers() int {
+	return DefaultBatcherWorkersFor(runtime.NumCPU())
+}
+
+// DefaultBatcherWorkersFor returns the default number of batcher workers for a given CPU count.
+// Default to 3/4 of CPU cores, minimum 1, no maximum.
+func DefaultBatcherWorkersFor(cpuCount int) int {
+	defaultWorkers := (cpuCount * 3) / 4
+	if defaultWorkers < 1 {
+		defaultWorkers = 1
+	}
+
+	return defaultWorkers
 }

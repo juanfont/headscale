@@ -109,9 +109,7 @@ func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, e
 }
 
 func (hsdb *HSDatabase) GetPreAuthKey(key string) (*types.PreAuthKey, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (*types.PreAuthKey, error) {
-		return GetPreAuthKey(rx, key)
-	})
+	return GetPreAuthKey(hsdb.DB, key)
 }
 
 // GetPreAuthKey returns a PreAuthKey for a given key. The caller is responsible
@@ -155,11 +153,8 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 
 // MarkExpirePreAuthKey marks a PreAuthKey as expired.
 func ExpirePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	if err := tx.Model(&k).Update("Expiration", time.Now()).Error; err != nil {
-		return err
-	}
-
-	return nil
+	now := time.Now()
+	return tx.Model(&types.PreAuthKey{}).Where("id = ?", k.ID).Update("expiration", now).Error
 }
 
 func generateKey() (string, error) {

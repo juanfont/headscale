@@ -1,7 +1,7 @@
 package db
 
 import (
-	"sort"
+	"slices"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -57,7 +57,7 @@ func (*Suite) TestPreAuthKeyACLTags(c *check.C) {
 	listedPaks, err := db.ListPreAuthKeys(types.UserID(user.ID))
 	c.Assert(err, check.IsNil)
 	gotTags := listedPaks[0].Proto().GetAclTags()
-	sort.Sort(sort.StringSlice(gotTags))
+	slices.Sort(gotTags)
 	c.Assert(gotTags, check.DeepEquals, tags)
 }
 
