@@ -432,6 +432,11 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 func (s *State) Connect(node *types.Node) change.ChangeSet {
 	c := change.NodeOnline(node.ID)
 
+	// Update the online status in NodeStore
+	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+		n.IsOnline = ptr.To(true)
+	})
+
 	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
 
 	if routeChange {
@@ -445,8 +450,24 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 	c := change.NodeOffline(node.ID)
 
+	// Check if the node still exists - it might have been deleted already (e.g., ephemeral nodes)
+	if _, exists := s.GetNodeByID(node.ID); !exists {
+		// Node has already been deleted, skip all updates
+		return c, nil
+	}
+
+	// Update the online status in NodeStore before updating last seen
+	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+		n.IsOnline = ptr.To(false)
+	})
+
 	_, _, err := s.SetLastSeen(node.ID, time.Now())
 	if err != nil {
+		if _, exists := s.GetNodeByID(node.ID); !exists {
+			// Node was deleted, this is expected for ephemeral nodes
+			return c, nil
+		}
+
 		return c, fmt.Errorf("disconnecting node: %w", err)
 	}
 
