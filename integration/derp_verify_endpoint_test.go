@@ -18,6 +18,14 @@ import (
 	"tailscale.com/types/key"
 )
 
+// TestDERPVerifyEndpoint tests that the DERP server can successfully verify the
+// client's identity with the Headscale server.
+//
+// This test sets up a scenario with a Headscale server and a DERP server. The
+// DERP server is configured to verify clients with the Headscale server. The
+// test then creates a set of Tailscale clients and verifies that they can
+// successfully connect to the DERP server. It also tests that a client with a
+// fake key cannot connect, ensuring that the verification is working correctly.
 func TestDERPVerifyEndpoint(t *testing.T) {
 	IntegrationSkip(t)
 
