@@ -9,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
@@ -64,8 +65,7 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 
 	// Create a mutable copy and set online status from the batcher
 	node := nodeView.AsStruct()
-	isOnline := b.mapper.batcher.IsConnected(b.nodeID)
-	node.IsOnline = &isOnline
+	node.IsOnline = ptr.To(b.mapper.batcher.IsConnected(b.nodeID))
 
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(

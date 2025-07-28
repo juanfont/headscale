@@ -18,6 +18,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 )
 
@@ -72,7 +73,7 @@ func (m *mapper) addOnlineStatusToPeers(peers views.Slice[types.NodeView]) views
 
 		// Create a mutable copy and set online status
 		peerCopy := peer.AsStruct()
-		peerCopy.IsOnline = &isOnline
+		peerCopy.IsOnline = ptr.To(isOnline)
 		result = append(result, peerCopy.View())
 	}
 	return views.SliceOf(result)
