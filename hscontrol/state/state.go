@@ -369,7 +369,7 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
-// saveNodeToDBOnly saves a node to the database only, without updating NodeStore
+// saveNodeToDBOnly saves a node to the database only, without updating NodeStore.
 func (s *State) saveNodeToDBOnly(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -437,7 +437,15 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 		n.IsOnline = ptr.To(true)
 	})
 
-	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+	// Get the updated node from NodeStore to ensure we have the latest data
+	// including any route updates that may have happened
+	updatedNode, exists := s.GetNodeByID(node.ID)
+	if !exists || !updatedNode.Valid() {
+		// If node doesn't exist or is invalid, skip route update
+		return c
+	}
+
+	routeChange := s.primaryRoutes.SetRoutes(node.ID, updatedNode.SubnetRoutes()...)
 
 	if routeChange {
 		c = change.NodeAdded(node.ID)
@@ -755,9 +763,11 @@ func (s *State) AutoApproveRoutes(node types.NodeView) bool {
 				Uint64("node.id", node.ID().Uint64()).
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
+
 			return false
 		}
 	}
+
 	return changed
 }
 
@@ -864,16 +874,39 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, change.ChangeSet, error) {
-	ipv4, ipv6, err := s.ipAlloc.Next()
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+	// Get the registration entry to check the machine key
+	var ipv4, ipv6 *netip.Addr
+	var err error
+
+	// Check if we have the registration entry to determine if we should reuse IPs
+	if regEntry, ok := s.GetRegistrationCacheEntry(registrationID); ok {
+		// Check if node already exists with same machine key and user
+		// to avoid allocating new IPs unnecessarily
+		existingNode, _ := s.db.GetNodeByMachineKey(regEntry.Node.MachineKey)
+
+		// Only allocate new IPs if:
+		// 1. No existing node found, OR
+		// 2. Existing node belongs to a different user
+		if existingNode == nil || existingNode.UserID != uint(userID) {
+			ipv4, ipv6, err = s.ipAlloc.Next()
+			if err != nil {
+				return types.NodeView{}, change.EmptySet, err
+			}
+		}
+		// If existing node found for same user, HandleNodeFromAuthPath will reuse its IPs
+	} else {
+		// If no registration entry found, allocate new IPs (shouldn't happen in normal flow)
+		ipv4, ipv6, err = s.ipAlloc.Next()
+		if err != nil {
+			return types.NodeView{}, change.EmptySet, err
+		}
 	}
 
 	node, nodeChange, err := s.db.HandleNodeFromAuthPath(
 		registrationID,
 		userID,
 		expiry,
-		util.RegisterMethodOIDC,
+		registrationMethod,
 		ipv4, ipv6,
 	)
 	if err != nil {
@@ -934,10 +967,21 @@ func (s *State) HandleNodeFromPreAuthKey(
 		nodeToRegister.Expiry = &regReq.Expiry
 	}
 
-	ipv4, ipv6, err := s.ipAlloc.Next()
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("allocating IPs: %w", err)
+	// Check if node already exists with same machine key and user
+	// to avoid allocating new IPs unnecessarily
+	existingNode, _ := s.db.GetNodeByMachineKey(machineKey)
+	var ipv4, ipv6 *netip.Addr
+
+	// Only allocate new IPs if:
+	// 1. No existing node found, OR
+	// 2. Existing node belongs to a different user
+	if existingNode == nil || existingNode.UserID != pak.User.ID {
+		ipv4, ipv6, err = s.ipAlloc.Next()
+		if err != nil {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("allocating IPs: %w", err)
+		}
 	}
+	// If existing node found for same user, RegisterNode will reuse its IPs
 
 	node, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		node, err := hsdb.RegisterNode(tx,
@@ -968,6 +1012,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		if err != nil {
 			return types.NodeView{}, change.EmptySet, fmt.Errorf("deleting ephemeral node during logout: %w", err)
 		}
+
 		return types.NodeView{}, c, nil
 	}
 
@@ -1022,6 +1067,7 @@ func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
 	if changed {
 		return change.PolicyChange(), nil
 	}
+
 	return change.EmptySet, nil
 }
 
@@ -1042,6 +1088,7 @@ func (s *State) updatePolicyManagerNodes() (change.ChangeSet, error) {
 	if changed {
 		return change.PolicyChange(), nil
 	}
+
 	return change.EmptySet, nil
 }
 
@@ -1117,7 +1164,7 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 	var routeApprovalChanged bool
 
 	// Single NodeStore write to avoid multiple recalculations
-	var routeChange change.ChangeSet = change.EmptySet
+	routeChange := change.EmptySet
 
 	// Pre-calculate route approval if routes will change
 	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
@@ -1213,6 +1260,7 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 	if !routeChange.Empty() {
 		return routeChange, nil
 	}
+
 	return change.NodeAdded(node.ID), nil
 }
 
@@ -1224,6 +1272,7 @@ func hostinfoEqual(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {
 		return false
 	}
 	old := oldNode.AsStruct().Hostinfo
+
 	return old.Equal(new)
 }
 
