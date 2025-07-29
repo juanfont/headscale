@@ -192,6 +192,7 @@ func (m *mapSession) serveLongPoll() {
 		default:
 			// Channel might be closed
 		}
+
 		return
 	}
 

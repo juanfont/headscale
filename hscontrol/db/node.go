@@ -442,7 +442,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	// a new node.
 	oldNode, _ := GetNodeByMachineKey(tx, node.MachineKey)
 	if oldNode != nil && oldNode.UserID == node.UserID {
-
 		node.ID = oldNode.ID
 		node.GivenName = oldNode.GivenName
 		node.ApprovedRoutes = oldNode.ApprovedRoutes
@@ -459,7 +458,6 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
 	if node.IPv4 != nil || node.IPv6 != nil {
-
 		if err := tx.Save(&node).Error; err != nil {
 			return nil, fmt.Errorf("failed register existing node in the database: %w", err)
 		}
@@ -854,7 +852,7 @@ func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int
 	return nodes
 }
 
-// allocateTestIPs allocates sequential test IPs for nodes during testing
+// allocateTestIPs allocates sequential test IPs for nodes during testing.
 func (hsdb *HSDatabase) allocateTestIPs(nodeID types.NodeID) (*netip.Addr, *netip.Addr, error) {
 	if !testing.Testing() {
 		panic("allocateTestIPs can only be called during tests")

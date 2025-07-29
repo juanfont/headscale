@@ -11,7 +11,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
-
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -41,8 +40,10 @@ func (h *Headscale) handleRegister(
 				if errors.As(err, &httpErr) {
 					return nil, httpErr
 				}
+
 				return nil, fmt.Errorf("handling register with auth key for existing node: %w", err)
 			}
+
 			return resp, nil
 		}
 
@@ -66,6 +67,7 @@ func (h *Headscale) handleRegister(
 			if errors.As(err, &httpErr) {
 				return nil, httpErr
 			}
+
 			return nil, fmt.Errorf("handling register with auth key: %w", err)
 		}
 
@@ -85,7 +87,6 @@ func (h *Headscale) handleExistingNode(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-
 	if node.MachineKey != machineKey {
 		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
 	}
@@ -227,6 +228,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// }
 
 	user := node.User()
+
 	return &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),

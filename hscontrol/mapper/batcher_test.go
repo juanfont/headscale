@@ -1953,7 +1953,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			foundFullUpdate := false
 
 			// Read all available updates for each node
-			for i := range len(allNodes) {
+			for i := range allNodes {
 				nodeUpdates := 0
 				t.Logf("Reading updates for node %d:", i)
 

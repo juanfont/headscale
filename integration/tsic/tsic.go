@@ -984,6 +984,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 					expected,
 					len(peers),
 				)}
+
 				continue
 			}
 

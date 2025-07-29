@@ -84,6 +84,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 				for i, id := range nodes {
 					ids[i] = id.Uint64()
 				}
+
 				return ids
 			}()).
 			Msg("Processing prefix for primary route selection")
@@ -95,6 +96,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 					Str("prefix", prefix.String()).
 					Uint64("currentPrimary", node.Uint64()).
 					Msg("Current primary still available, keeping it")
+
 				continue
 			} else {
 				log.Debug().
@@ -167,6 +169,7 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 			Bool("changed", changed).
 			Str("newState", pr.stringLocked()).
 			Msg("SetRoutes completed (remove)")
+
 		return changed
 	}
 
@@ -196,6 +199,7 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 		Bool("changed", changed).
 		Str("newState", pr.stringLocked()).
 		Msg("SetRoutes completed (update)")
+
 	return changed
 }
 

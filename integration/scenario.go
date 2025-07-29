@@ -677,6 +677,7 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, ret
 	if len(allErrors) > 0 {
 		return multierr.New(allErrors...)
 	}
+
 	return nil
 }
 

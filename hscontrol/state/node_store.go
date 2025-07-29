@@ -111,7 +111,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc) *NodeStore {
 	return store
 }
 
-// Snapshot is the represenation of the current state of the NodeStore.
+// Snapshot is the representation of the current state of the NodeStore.
 // It contains all nodes and their relationships.
 // It is a copy-on-write structure, meaning that when a write occurs,
 // a new Snapshot is created with the updated state,
@@ -362,6 +362,7 @@ func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
 	if !exists {
 		return types.NodeView{}, false
 	}
+
 	return n.View(), true
 }
 
@@ -376,6 +377,7 @@ func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bo
 	nodeStoreOperations.WithLabelValues("get_by_key").Inc()
 
 	nodeView, exists := s.data.Load().nodesByNodeKey[nodeKey]
+
 	return nodeView, exists
 }
 

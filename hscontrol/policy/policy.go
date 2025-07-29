@@ -199,6 +199,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefi
 				Uint64("node.id", nv.ID().Uint64()).
 				Strs("finalApprovedRoutes", util.PrefixesToString(combined)).
 				Msg("auto-approving routes based on policy")
+
 			return combined, true
 		}
 	}
@@ -206,5 +207,6 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefi
 	log.Debug().
 		Uint64("node.id", nv.ID().Uint64()).
 		Msg("no route changes needed")
+
 	return currentApproved, false
 }

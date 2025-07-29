@@ -76,6 +76,7 @@ func (m *mapper) addOnlineStatusToPeers(peers views.Slice[types.NodeView]) views
 		peerCopy.IsOnline = ptr.To(isOnline)
 		result = append(result, peerCopy.View())
 	}
+
 	return views.SliceOf(result)
 }
 

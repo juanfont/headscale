@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -120,7 +121,7 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.ChangeSet].
 func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) error {
 	if nc == nil {
-		return fmt.Errorf("nodeConnection is nil")
+		return errors.New("nodeConnection is nil")
 	}
 
 	nodeID := nc.nodeID()

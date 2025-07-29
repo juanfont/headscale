@@ -525,7 +525,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		}
 
 		node.Hostname = hostInfo.Hostname
-		
+
 		log.Trace().
 			Str("node_id", node.ID.String()).
 			Str("new_hostname", node.Hostname).

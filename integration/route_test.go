@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -919,7 +920,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		var routeNode *v1.Node
 		var otherNode *v1.Node
 		for _, node := range nodes {
-			nodeIDStr := fmt.Sprintf("%d", node.GetId())
+			nodeIDStr := strconv.FormatUint(node.GetId(), 10)
 			if _, shouldHaveRoute := expectedRoutes[nodeIDStr]; shouldHaveRoute {
 				routeNode = node
 			} else {
@@ -2111,7 +2112,7 @@ func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
 	require.Equal(t, tr.Route[0].IP, ip)
 }
 
-// assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT
+// assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT.
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
 	assert.True(c, tr.Success)

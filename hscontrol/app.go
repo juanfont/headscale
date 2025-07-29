@@ -371,7 +371,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			Str("client_address", req.RemoteAddr).
 			Msg("HTTP authentication invoked")
 
-		authHeader := req.Header.Get("authorization")
+		authHeader := req.Header.Get("Authorization")
 
 		if !strings.HasPrefix(authHeader, AuthPrefix) {
 			log.Error().

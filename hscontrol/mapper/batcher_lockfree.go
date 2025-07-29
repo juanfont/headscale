@@ -223,6 +223,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Dur("duration", duration).
 						Msg("slow synchronous work processing")
 				}
+
 				continue
 			}
 
@@ -237,6 +238,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Uint64("node.id", w.nodeID.Uint64()).
 						Str("change", w.c.Change.String()).
 						Msg("skipping work for closed connection")
+
 					continue
 				}
 
@@ -285,8 +287,10 @@ func (b *LockFreeBatcher) addWork(c change.ChangeSet) {
 				return true
 			}
 			b.queueWork(work{c: c, nodeID: nodeID, resultCh: nil})
+
 			return true
 		})
+
 		return
 	}
 
@@ -294,7 +298,7 @@ func (b *LockFreeBatcher) addWork(c change.ChangeSet) {
 	b.addToBatch(c)
 }
 
-// queueWork safely queues work
+// queueWork safely queues work.
 func (b *LockFreeBatcher) queueWork(w work) {
 	b.workQueuedCount.Add(1)
 
@@ -307,7 +311,7 @@ func (b *LockFreeBatcher) queueWork(w work) {
 	}
 }
 
-// shouldProcessImmediately determines if a change should bypass batching
+// shouldProcessImmediately determines if a change should bypass batching.
 func (b *LockFreeBatcher) shouldProcessImmediately(c change.ChangeSet) bool {
 	// Process these changes immediately to avoid delaying critical functionality
 	switch c.Change {
@@ -318,7 +322,7 @@ func (b *LockFreeBatcher) shouldProcessImmediately(c change.ChangeSet) bool {
 	}
 }
 
-// addToBatch adds a change to the pending batch
+// addToBatch adds a change to the pending batch.
 func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
 	b.batchMutex.Lock()
 	defer b.batchMutex.Unlock()
@@ -338,11 +342,12 @@ func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
 		changes, _ := b.pendingChanges.LoadOrStore(nodeID, []change.ChangeSet{})
 		changes = append(changes, c)
 		b.pendingChanges.Store(nodeID, changes)
+
 		return true
 	})
 }
 
-// processBatchedChanges processes all pending batched changes
+// processBatchedChanges processes all pending batched changes.
 func (b *LockFreeBatcher) processBatchedChanges() {
 	b.batchMutex.Lock()
 	defer b.batchMutex.Unlock()
@@ -364,6 +369,7 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 
 		// Clear the pending changes for this node
 		b.pendingChanges.Delete(nodeID)
+
 		return true
 	})
 }
@@ -374,6 +380,7 @@ func (b *LockFreeBatcher) IsConnected(id types.NodeID) bool {
 		// nil means connected
 		return val == nil
 	}
+
 	return false
 }
 
@@ -496,5 +503,6 @@ func (nc *nodeConn) send(data *tailcfg.MapResponse) error {
 	// the channel is still open.
 	connData.c <- data
 	nc.updateCount.Add(1)
+
 	return nil
 }

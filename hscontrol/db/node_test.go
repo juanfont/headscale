@@ -798,13 +798,13 @@ func TestListPeers(t *testing.T) {
 	// No parameter means no filter, should return all peers
 	nodes, err = db.ListPeers(1)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Empty node list should return all peers
 	nodes, err = db.ListPeers(1, types.NodeIDs{}...)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// No match in IDs should return empty list and no error
@@ -815,13 +815,13 @@ func TestListPeers(t *testing.T) {
 	// Partial match in IDs
 	nodes, err = db.ListPeers(1, types.NodeIDs{2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Several matched IDs, but node ID is still filtered out
 	nodes, err = db.ListPeers(1, types.NodeIDs{1, 2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 }
 
@@ -883,14 +883,14 @@ func TestListNodes(t *testing.T) {
 	// No parameter means no filter, should return all nodes
 	nodes, err = db.ListNodes()
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(nodes))
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 
 	// Empty node list should return all nodes
 	nodes, err = db.ListNodes(types.NodeIDs{}...)
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(nodes))
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 
@@ -902,13 +902,13 @@ func TestListNodes(t *testing.T) {
 	// Partial match in IDs
 	nodes, err = db.ListNodes(types.NodeIDs{2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, 1, len(nodes))
+	assert.Len(t, nodes, 1)
 	assert.Equal(t, "test2", nodes[0].Hostname)
 
 	// Several matched IDs
 	nodes, err = db.ListNodes(types.NodeIDs{1, 2, 3}...)
 	require.NoError(t, err)
-	assert.Equal(t, 2, len(nodes))
+	assert.Len(t, nodes, 2)
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 }

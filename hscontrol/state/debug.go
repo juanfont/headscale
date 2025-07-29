@@ -177,12 +177,14 @@ func (s *State) DebugPolicy() (string, error) {
 		if err != nil {
 			return "", err
 		}
+
 		return p.Data, nil
 	case types.PolicyModeFile:
 		pol, err := policyBytes(s.db, s.cfg)
 		if err != nil {
 			return "", err
 		}
+
 		return string(pol), nil
 	default:
 		return "", fmt.Errorf("unsupported policy mode: %s", s.cfg.Policy.Mode)

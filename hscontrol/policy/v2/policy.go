@@ -242,6 +242,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 			Uint64("node.id", node.ID().Uint64()).
 			Str("route", route.String()).
 			Msg("POLICY DEBUG: no auto-approval found, rejecting")
+
 		return false
 	}
 
@@ -267,6 +268,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 				Uint64("node.id", node.ID().Uint64()).
 				Str("route", route.String()).
 				Msg("POLICY DEBUG: node IP matches auto-approver, approving")
+
 			return true
 		}
 	}
@@ -290,6 +292,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 					Str("route", route.String()).
 					Str("parentPrefix", prefix.String()).
 					Msg("POLICY DEBUG: node IP matches parent auto-approver, approving")
+
 				return true
 			}
 		}
