@@ -330,6 +330,9 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 }
 
 // updateNodeTx performs a database transaction to update a node and refresh the policy manager.
+// IMPORTANT: This function does NOT update the NodeStore. The caller MUST update the NodeStore
+// BEFORE calling this function with the EXACT same changes that the database update will make.
+// This ensures the NodeStore is the source of truth for the batcher and maintains consistency.
 func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (types.NodeView, change.ChangeSet, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -571,13 +574,16 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 
 // SetNodeExpiry updates the expiration time for a node.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.ChangeSet, error) {
-	// Update NodeStore first
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
+	// If the database update fails, the NodeStore change will remain, but since we return
+	// an error, no change notification will be sent to the batcher.
 	expiryPtr := expiry
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.Expiry = &expiryPtr
 	})
 
-	// Then update database
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
@@ -594,12 +600,13 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 
 // SetNodeTags assigns tags to a node for use in access control policies.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.ChangeSet, error) {
-	// Update NodeStore first
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ForcedTags = tags
 	})
 
-	// Then update database
 	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
@@ -616,6 +623,9 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.ChangeSet, error) {
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ApprovedRoutes = routes
 	})
@@ -638,6 +648,9 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.GivenName = newName
 	})
@@ -658,6 +671,9 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 
 // SetLastSeen updates when a node was last seen, used for connectivity monitoring.
 func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, change.ChangeSet, error) {
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
 	lastSeenPtr := lastSeen
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.LastSeen = &lastSeenPtr
@@ -679,13 +695,18 @@ func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.Node
 
 // AssignNodeToUser transfers a node to a different user.
 func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, change.ChangeSet, error) {
+	// CRITICAL: Fetch the user first for NodeStore update
 	user, err := s.GetUserByID(userID)
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, err
 	}
 
+	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
+	// The NodeStore update is blocking and will be the source of truth for the batcher.
+	// The database update MUST make the EXACT same change.
 	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
 		n.User = *user
+		n.UserID = uint(userID)
 	})
 
 	node, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {

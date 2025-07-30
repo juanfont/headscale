@@ -148,18 +148,20 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// Mark node as disconnected in batcher FIRST so that when map responses
-		// are generated for the disconnect notification, the online status will be correct.
-		// We use MarkDisconnected instead of RemoveNode to avoid duplicate notifications
-		// since the Change() call below will handle sending the disconnect notifications.
-		m.h.mapBatcher.MarkDisconnected(m.node.ID, m.ch)
-
-		// TODO(kradalby): This can likely be made more effective, but likely most
-		// nodes has access to the same routes, so it might not be a big deal.
+		// First update NodeStore to mark the node as offline
+		// This ensures the state is consistent before notifying the batcher
 		disconnectChange, err := m.h.state.Disconnect(m.node)
 		if err != nil {
 			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
+
+		// Mark node as disconnected in batcher AFTER NodeStore update
+		// to ensure consistent state when map responses are generated.
+		// We use MarkDisconnected instead of RemoveNode to avoid duplicate notifications
+		// since the Change() call below will handle sending the disconnect notifications.
+		m.h.mapBatcher.MarkDisconnected(m.node.ID, m.ch)
+
+		// Send the disconnect change notification
 		m.h.Change(disconnectChange)
 
 		m.afterServeLongPoll()
@@ -179,6 +181,11 @@ func (m *mapSession) serveLongPoll() {
 	// generation includes correct online status for all peers
 	connectChange := m.h.state.Connect(m.node)
 
+	// Send the connect change immediately to ensure NodeStore batch completes
+	// before we add the node to the batcher. This ensures the initial map
+	// generation will see the updated online status.
+	m.h.Change(connectChange)
+
 	// Add node to batcher AFTER updating NodeStore so initial map has correct online status
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.node.IsSubnetRouter(), m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
@@ -195,9 +202,6 @@ func (m *mapSession) serveLongPoll() {
 
 		return
 	}
-
-	// Send the Connect change for route updates and peer notifications
-	m.h.Change(connectChange)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
