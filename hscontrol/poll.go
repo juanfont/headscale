@@ -181,12 +181,7 @@ func (m *mapSession) serveLongPoll() {
 	// generation includes correct online status for all peers
 	connectChange := m.h.state.Connect(m.node)
 
-	// Send the connect change immediately to ensure NodeStore batch completes
-	// before we add the node to the batcher. This ensures the initial map
-	// generation will see the updated online status.
-	m.h.Change(connectChange)
-
-	// Add node to batcher AFTER updating NodeStore so initial map has correct online status
+	// Add node to batcher so it can receive updates
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.node.IsSubnetRouter(), m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 
@@ -202,6 +197,10 @@ func (m *mapSession) serveLongPoll() {
 
 		return
 	}
+
+	// Send the connect change AFTER adding node to batcher to ensure it can receive updates
+	// from other nodes that get notified about this node coming online
+	m.h.Change(connectChange)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 

@@ -440,15 +440,8 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 		n.IsOnline = ptr.To(true)
 	})
 
-	// Get the updated node from NodeStore to ensure we have the latest data
-	// including any route updates that may have happened
-	updatedNode, exists := s.GetNodeByID(node.ID)
-	if !exists || !updatedNode.Valid() {
-		// If node doesn't exist or is invalid, skip route update
-		return c
-	}
-
-	routeChange := s.primaryRoutes.SetRoutes(node.ID, updatedNode.SubnetRoutes()...)
+	// Use the node's current routes for primary route update
+	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
 
 	if routeChange {
 		c = change.NodeAdded(node.ID)
@@ -461,12 +454,6 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 	c := change.NodeOffline(node.ID)
 
-	// Check if the node still exists - it might have been deleted already (e.g., ephemeral nodes)
-	if _, exists := s.GetNodeByID(node.ID); !exists {
-		// Node has already been deleted, skip all updates
-		return c, nil
-	}
-
 	// Update the online status in NodeStore before updating last seen
 	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
 		n.IsOnline = ptr.To(false)
@@ -474,11 +461,6 @@ func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 
 	_, _, err := s.SetLastSeen(node.ID, time.Now())
 	if err != nil {
-		if _, exists := s.GetNodeByID(node.ID); !exists {
-			// Node was deleted, this is expected for ephemeral nodes
-			return c, nil
-		}
-
 		return c, fmt.Errorf("disconnecting node: %w", err)
 	}
 
@@ -1038,6 +1020,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 	}
 
 	// Update NodeStore BEFORE updating policy manager so it has the latest node data
+	// CRITICAL: For re-registration of existing nodes, we must update NodeStore
+	// to ensure it has the latest state from the database transaction
 	s.nodeStore.PutNode(*node)
 
 	// Check if policy manager needs updating
