@@ -259,14 +259,108 @@ All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-
 ## Testing Guidelines
 
 ### Integration Test Patterns
+
+#### **CRITICAL: EventuallyWithT Pattern for External Calls**
+
+**All external calls in integration tests MUST be wrapped in EventuallyWithT blocks** to handle eventual consistency in distributed systems. External calls include:
+- `client.Status()` - Getting Tailscale client status
+- `client.Curl()` - Making HTTP requests through clients
+- `client.Traceroute()` - Running network diagnostics
+- `headscale.ListNodes()` - Querying headscale server state
+- Any other calls that interact with external systems or network operations
+
+**Key Rules**:
+1. **Never use bare `require.NoError(t, err)` with external calls** - Always wrap in EventuallyWithT
+2. **Keep related assertions together** - If multiple assertions depend on the same external call, keep them in the same EventuallyWithT block
+3. **Split unrelated external calls** - Different external calls should be in separate EventuallyWithT blocks
+4. **Never nest EventuallyWithT calls** - Each EventuallyWithT should be at the same level
+5. **Declare shared variables at function scope** - Variables used across multiple EventuallyWithT blocks must be declared before first use
+
+**Examples**:
+
 ```go
-// Use EventuallyWithT for async operations
-require.EventuallyWithT(t, func(c *assert.CollectT) {
+// CORRECT: External call wrapped in EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    // Related assertions using the same status call
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        assert.NotNil(c, peerStatus.PrimaryRoutes)
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedRoutes)
+    }
+}, 5*time.Second, 200*time.Millisecond, "Verifying client status and routes")
+
+// INCORRECT: Bare external call without EventuallyWithT
+status, err := client.Status()  // ❌ Will fail intermittently
+require.NoError(t, err)
+
+// CORRECT: Separate EventuallyWithT for different external calls
+// First external call - headscale.ListNodes()
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
-    // Check expected state
-}, 10*time.Second, 100*time.Millisecond, "description")
+    assert.Len(c, nodes, 2)
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate to nodes")
 
+// Second external call - client.Status() 
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+    }
+}, 10*time.Second, 500*time.Millisecond, "routes should be visible to client")
+
+// INCORRECT: Multiple unrelated external calls in same EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()  // ❌ First external call
+    assert.NoError(c, err)
+    
+    status, err := client.Status()  // ❌ Different external call - should be separate
+    assert.NoError(c, err)
+}, 10*time.Second, 500*time.Millisecond, "mixed calls")
+
+// CORRECT: Variable scoping for shared data
+var (
+    srs1, srs2, srs3       *ipnstate.Status
+    clientStatus           *ipnstate.Status
+    srs1PeerStatus         *ipnstate.PeerStatus
+)
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    srs1 = subRouter1.MustStatus()  // = not :=
+    srs2 = subRouter2.MustStatus()
+    clientStatus = client.MustStatus()
+    
+    srs1PeerStatus = clientStatus.Peer[srs1.Self.PublicKey]
+    // assertions...
+}, 5*time.Second, 200*time.Millisecond, "checking router status")
+
+// CORRECT: Wrapping client operations
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    result, err := client.Curl(weburl)
+    assert.NoError(c, err)
+    assert.Len(c, result, 13)
+}, 5*time.Second, 200*time.Millisecond, "Verifying HTTP connectivity")
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    tr, err := client.Traceroute(webip)
+    assert.NoError(c, err)
+    assertTracerouteViaIPWithCollect(c, tr, expectedRouter.MustIPv4())
+}, 5*time.Second, 200*time.Millisecond, "Verifying network path")
+```
+
+**Helper Functions**:
+- Use `requirePeerSubnetRoutesWithCollect` instead of `requirePeerSubnetRoutes` inside EventuallyWithT
+- Use `requireNodeRouteCountWithCollect` instead of `requireNodeRouteCount` inside EventuallyWithT
+- Use `assertTracerouteViaIPWithCollect` instead of `assertTracerouteViaIP` inside EventuallyWithT
+
+```go
 // Node route checking by actual node properties, not array position
 var routeNode *v1.Node
 for _, node := range nodes {
@@ -313,6 +407,117 @@ Test artifacts are preserved in `control_logs/TIMESTAMP-ID/` including:
 - MapResponse JSON files for protocol debugging
 
 **For integration test issues, ALWAYS use the headscale-integration-tester agent - do not attempt manual debugging.**
+
+## EventuallyWithT Pattern for Integration Tests
+
+### Overview
+EventuallyWithT is a testing pattern used to handle eventual consistency in distributed systems. In Headscale integration tests, many operations are asynchronous - clients advertise routes, the server processes them, updates propagate through the network. EventuallyWithT allows tests to wait for these operations to complete while making assertions.
+
+### External Calls That Must Be Wrapped
+The following operations are **external calls** that interact with the headscale server or tailscale clients and MUST be wrapped in EventuallyWithT:
+- `headscale.ListNodes()` - Queries server state
+- `client.Status()` - Gets client network status
+- `client.Curl()` - Makes HTTP requests through the network
+- `client.Traceroute()` - Performs network diagnostics
+- `client.Execute()` when running commands that query state
+- Any operation that reads from the headscale server or tailscale client
+
+### Operations That Must NOT Be Wrapped
+The following are **blocking operations** that modify state and should NOT be wrapped in EventuallyWithT:
+- `tailscale set` commands (e.g., `--advertise-routes`, `--exit-node`)
+- Any command that changes configuration or state
+- Use `client.MustStatus()` instead of `client.Status()` when you just need the ID for a blocking operation
+
+### Five Key Rules for EventuallyWithT
+
+1. **One External Call Per EventuallyWithT Block**
+   - Each EventuallyWithT should make ONE external call (e.g., ListNodes OR Status)
+   - Related assertions based on that single call can be grouped together
+   - Unrelated external calls must be in separate EventuallyWithT blocks
+
+2. **Variable Scoping**
+   - Declare variables that need to be shared across EventuallyWithT blocks at function scope
+   - Use `=` for assignment inside EventuallyWithT, not `:=` (unless the variable is only used within that block)
+   - Variables declared with `:=` inside EventuallyWithT are not accessible outside
+
+3. **No Nested EventuallyWithT**
+   - NEVER put an EventuallyWithT inside another EventuallyWithT
+   - This is a critical anti-pattern that must be avoided
+
+4. **Use CollectT for Assertions**
+   - Inside EventuallyWithT, use `assert` methods with the CollectT parameter
+   - Helper functions called within EventuallyWithT must accept `*assert.CollectT`
+
+5. **Descriptive Messages**
+   - Always provide a descriptive message as the last parameter
+   - Message should explain what condition is being waited for
+
+### Correct Pattern Examples
+
+```go
+// CORRECT: Blocking operation NOT wrapped
+for _, client := range allClients {
+    status := client.MustStatus()
+    command := []string{
+        "tailscale",
+        "set",
+        "--advertise-routes=" + expectedRoutes[string(status.Self.ID)],
+    }
+    _, _, err = client.Execute(command)
+    require.NoErrorf(t, err, "failed to advertise route: %s", err)
+}
+
+// CORRECT: Single external call with related assertions
+var nodes []*v1.Node
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err = headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+}, 10*time.Second, 500*time.Millisecond, "nodes should have expected route counts")
+
+// CORRECT: Separate EventuallyWithT for different external call
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
+    }
+}, 10*time.Second, 500*time.Millisecond, "client should see expected routes")
+```
+
+### Incorrect Patterns to Avoid
+
+```go
+// INCORRECT: Blocking operation wrapped in EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    // This is a blocking operation - should NOT be in EventuallyWithT!
+    command := []string{
+        "tailscale",
+        "set",
+        "--advertise-routes=" + expectedRoutes[string(status.Self.ID)],
+    }
+    _, _, err = client.Execute(command)
+    assert.NoError(c, err)
+}, 5*time.Second, 200*time.Millisecond, "wrong pattern")
+
+// INCORRECT: Multiple unrelated external calls in same EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    // First external call
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    
+    // Second unrelated external call - WRONG!
+    status, err := client.Status()
+    assert.NoError(c, err)
+    assert.NotNil(c, status)
+}, 10*time.Second, 500*time.Millisecond, "mixed operations")
+```
 
 ## Important Notes
 

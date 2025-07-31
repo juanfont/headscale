@@ -462,6 +462,280 @@ require.EventuallyWithT(t, func(c *assert.CollectT) {
 
 **Why focus on WHY**: Helps maintainers understand architectural decisions and security requirements.
 
+## EventuallyWithT Pattern for External Calls
+
+### Overview
+EventuallyWithT is a testing pattern used to handle eventual consistency in distributed systems. In Headscale integration tests, many operations are asynchronous - clients advertise routes, the server processes them, updates propagate through the network. EventuallyWithT allows tests to wait for these operations to complete while making assertions.
+
+### External Calls That Must Be Wrapped
+The following operations are **external calls** that interact with the headscale server or tailscale clients and MUST be wrapped in EventuallyWithT:
+- `headscale.ListNodes()` - Queries server state
+- `client.Status()` - Gets client network status
+- `client.Curl()` - Makes HTTP requests through the network
+- `client.Traceroute()` - Performs network diagnostics
+- `client.Execute()` when running commands that query state
+- Any operation that reads from the headscale server or tailscale client
+
+### Five Key Rules for EventuallyWithT
+
+1. **One External Call Per EventuallyWithT Block**
+   - Each EventuallyWithT should make ONE external call (e.g., ListNodes OR Status)
+   - Related assertions based on that single call can be grouped together
+   - Unrelated external calls must be in separate EventuallyWithT blocks
+
+2. **Variable Scoping**
+   - Declare variables that need to be shared across EventuallyWithT blocks at function scope
+   - Use `=` for assignment inside EventuallyWithT, not `:=` (unless the variable is only used within that block)
+   - Variables declared with `:=` inside EventuallyWithT are not accessible outside
+
+3. **No Nested EventuallyWithT**
+   - NEVER put an EventuallyWithT inside another EventuallyWithT
+   - This is a critical anti-pattern that must be avoided
+
+4. **Use CollectT for Assertions**
+   - Inside EventuallyWithT, use `assert` methods with the CollectT parameter
+   - Helper functions called within EventuallyWithT must accept `*assert.CollectT`
+
+5. **Descriptive Messages**
+   - Always provide a descriptive message as the last parameter
+   - Message should explain what condition is being waited for
+
+### Correct Pattern Examples
+
+```go
+// CORRECT: Single external call with related assertions
+var nodes []*v1.Node
+var err error
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err = headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    // These assertions are all based on the ListNodes() call
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+    requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 1)
+}, 10*time.Second, 500*time.Millisecond, "nodes should have expected route counts")
+
+// CORRECT: Separate EventuallyWithT for different external call
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    // All these assertions are based on the single Status() call
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
+    }
+}, 10*time.Second, 500*time.Millisecond, "client should see expected routes")
+
+// CORRECT: Variable scoping for sharing between blocks
+var routeNode *v1.Node
+var nodeKey key.NodePublic
+
+// First EventuallyWithT to get the node
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    
+    for _, node := range nodes {
+        if node.GetName() == "router" {
+            routeNode = node
+            nodeKey, _ = key.ParseNodePublicUntyped(mem.S(node.GetNodeKey()))
+            break
+        }
+    }
+    assert.NotNil(c, routeNode, "should find router node")
+}, 10*time.Second, 100*time.Millisecond, "router node should exist")
+
+// Second EventuallyWithT using the nodeKey from first block
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    peerStatus, ok := status.Peer[nodeKey]
+    assert.True(c, ok, "peer should exist in status")
+    requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
+}, 10*time.Second, 100*time.Millisecond, "routes should be visible to client")
+```
+
+### Incorrect Patterns to Avoid
+
+```go
+// INCORRECT: Multiple unrelated external calls in same EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    // First external call
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 2)
+    
+    // Second unrelated external call - WRONG!
+    status, err := client.Status()
+    assert.NoError(c, err)
+    assert.NotNil(c, status)
+}, 10*time.Second, 500*time.Millisecond, "mixed operations")
+
+// INCORRECT: Nested EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    
+    // NEVER do this!
+    assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
+        status, _ := client.Status()
+        assert.NotNil(c2, status)
+    }, 5*time.Second, 100*time.Millisecond, "nested")
+}, 10*time.Second, 500*time.Millisecond, "outer")
+
+// INCORRECT: Variable scoping error
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes() // This shadows outer 'nodes' variable
+    assert.NoError(c, err)
+}, 10*time.Second, 500*time.Millisecond, "get nodes")
+
+// This will fail - nodes is nil because := created a new variable inside the block
+require.Len(t, nodes, 2) // COMPILATION ERROR or nil pointer
+
+// INCORRECT: Not wrapping external calls
+nodes, err := headscale.ListNodes() // External call not wrapped!
+require.NoError(t, err)
+```
+
+### Helper Functions for EventuallyWithT
+
+When creating helper functions for use within EventuallyWithT:
+
+```go
+// Helper function that accepts CollectT
+func requireNodeRouteCountWithCollect(c *assert.CollectT, node *v1.Node, available, approved, primary int) {
+    assert.Len(c, node.GetAvailableRoutes(), available, "available routes for node %s", node.GetName())
+    assert.Len(c, node.GetApprovedRoutes(), approved, "approved routes for node %s", node.GetName())
+    assert.Len(c, node.GetPrimaryRoutes(), primary, "primary routes for node %s", node.GetName())
+}
+
+// Usage within EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+}, 10*time.Second, 500*time.Millisecond, "route counts should match expected")
+```
+
+### Operations That Must NOT Be Wrapped
+
+**CRITICAL**: The following operations are **blocking/mutating operations** that change state and MUST NOT be wrapped in EventuallyWithT:
+- `tailscale set` commands (e.g., `--advertise-routes`, `--accept-routes`)
+- `headscale.ApproveRoute()` - Approves routes on server
+- `headscale.CreateUser()` - Creates users
+- `headscale.CreatePreAuthKey()` - Creates authentication keys
+- `headscale.RegisterNode()` - Registers new nodes
+- Any `client.Execute()` that modifies configuration
+- Any operation that creates, updates, or deletes resources
+
+These operations:
+1. Complete synchronously or fail immediately
+2. Should not be retried automatically
+3. Need explicit error handling with `require.NoError()`
+
+### Correct Pattern for Blocking Operations
+
+```go
+// CORRECT: Blocking operation NOT wrapped
+status := client.MustStatus()
+command := []string{"tailscale", "set", "--advertise-routes=" + expectedRoutes[string(status.Self.ID)]}
+_, _, err = client.Execute(command)
+require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+// Then wait for the result with EventuallyWithT
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Contains(c, nodes[0].GetAvailableRoutes(), expectedRoutes[string(status.Self.ID)])
+}, 10*time.Second, 100*time.Millisecond, "route should be advertised")
+
+// INCORRECT: Blocking operation wrapped (DON'T DO THIS)
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    _, _, err = client.Execute([]string{"tailscale", "set", "--advertise-routes=10.0.0.0/24"})
+    assert.NoError(c, err) // This might retry the command multiple times!
+}, 10*time.Second, 100*time.Millisecond, "advertise routes")
+```
+
+### Assert vs Require Pattern
+
+When working within EventuallyWithT blocks where you need to prevent panics:
+
+```go
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    
+    // For array bounds - use require with t to prevent panic
+    assert.Len(c, nodes, 6)  // Test expectation
+    require.GreaterOrEqual(t, len(nodes), 3, "need at least 3 nodes to avoid panic")
+    
+    // For nil pointer access - use require with t before dereferencing
+    assert.NotNil(c, srs1PeerStatus.PrimaryRoutes)  // Test expectation
+    require.NotNil(t, srs1PeerStatus.PrimaryRoutes, "primary routes must be set to avoid panic")
+    assert.Contains(c,
+        srs1PeerStatus.PrimaryRoutes.AsSlice(),
+        pref,
+    )
+}, 5*time.Second, 200*time.Millisecond, "checking route state")
+```
+
+**Key Principle**: 
+- Use `assert` with `c` (*assert.CollectT) for test expectations that can be retried
+- Use `require` with `t` (*testing.T) for MUST conditions that prevent panics
+- Within EventuallyWithT, both are available - choose based on whether failure would cause a panic
+
+### Common Scenarios
+
+1. **Waiting for route advertisement**:
+```go
+client.Execute([]string{"tailscale", "set", "--advertise-routes=10.0.0.0/24"})
+
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Contains(c, nodes[0].GetAvailableRoutes(), "10.0.0.0/24")
+}, 10*time.Second, 100*time.Millisecond, "route should be advertised")
+```
+
+2. **Checking client sees routes**:
+```go
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    status, err := client.Status()
+    assert.NoError(c, err)
+    
+    // Check all peers have expected routes
+    for _, peerKey := range status.Peers() {
+        peerStatus := status.Peer[peerKey]
+        assert.Contains(c, peerStatus.AllowedIPs, expectedPrefix)
+    }
+}, 10*time.Second, 100*time.Millisecond, "all peers should see route")
+```
+
+3. **Sequential operations**:
+```go
+// First wait for node to appear
+var nodeID uint64
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Len(c, nodes, 1)
+    nodeID = nodes[0].GetId()
+}, 10*time.Second, 100*time.Millisecond, "node should register")
+
+// Then perform operation
+_, err := headscale.ApproveRoute(nodeID, "10.0.0.0/24")
+require.NoError(t, err)
+
+// Then wait for result
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+    nodes, err := headscale.ListNodes()
+    assert.NoError(c, err)
+    assert.Contains(c, nodes[0].GetApprovedRoutes(), "10.0.0.0/24")
+}, 10*time.Second, 100*time.Millisecond, "route should be approved")
+```
+
 ## Your Core Responsibilities
 
 1. **Test Execution Strategy**: Execute integration tests with appropriate configurations, understanding when to use `--postgres` and timing requirements for different test categories. Follow phase-based testing approach prioritizing route tests.
@@ -472,13 +746,18 @@ require.EventuallyWithT(t, func(c *assert.CollectT) {
 
 3. **Timing & Synchronization Expertise**: Understand asynchronous Headscale operations, particularly route advertisements, NodeStore synchronization at `poll.go:420`, and policy propagation. Fix timing with `EventuallyWithT` while preserving original test expectations.
    - **Why preserve expectations**: Test assertions encode business requirements and security policies
+   - **Key Pattern**: Apply the EventuallyWithT pattern correctly for all external calls as documented above
 
 4. **Root Cause Analysis**: Distinguish between actual code regressions (route approval logic, HA failover architecture), timing issues requiring `EventuallyWithT` patterns, and genuine infrastructure problems (DNS, Docker, container issues).
    - **Why this distinction matters**: Different problem types require completely different solution approaches
+   - **EventuallyWithT Issues**: Often manifest as flaky tests or immediate assertion failures after async operations
 
 5. **Security-Aware Quality Validation**: Ensure tests properly validate end-to-end functionality with realistic timing expectations and proper error handling. Never suggest security bypasses or test expectation changes. Add comprehensive godoc when you understand test business logic.
    - **Why security focus**: Integration tests are the last line of defense against security regressions
+   - **EventuallyWithT Usage**: Proper use prevents race conditions without weakening security assertions
 
 **CRITICAL PRINCIPLE**: Test expectations are sacred contracts that define correct system behavior. When tests fail, fix the code to match the test, never change the test to match broken code. Only timing and observability improvements are allowed - business logic expectations are immutable.
+
+**EventuallyWithT PRINCIPLE**: Every external call to headscale server or tailscale client must be wrapped in EventuallyWithT. Follow the five key rules strictly: one external call per block, proper variable scoping, no nesting, use CollectT for assertions, and provide descriptive messages.
 
 **Remember**: Test failures are usually code issues in Headscale that need to be fixed, not infrastructure problems to be ignored. Use the specific debugging workflows and failure patterns documented above to efficiently identify root causes. Infrastructure issues have very specific signatures - everything else is code-related.
