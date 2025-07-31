@@ -93,6 +93,16 @@ func (h *Headscale) handleExistingNode(
 
 	expired := node.IsExpired()
 
+	// If the node is expired and this is not a re-authentication attempt,
+	// force the client to re-authenticate
+	if expired && regReq.Auth == nil {
+		return &tailcfg.RegisterResponse{
+			NodeKeyExpired:    true,
+			MachineAuthorized: false,
+			AuthURL:           "", // Client will need to re-authenticate
+		}, nil
+	}
+
 	if !expired && !regReq.Expiry.IsZero() {
 		requestExpiry := regReq.Expiry
 
