@@ -33,11 +33,6 @@ type LockFreeBatcher struct {
 	pendingChanges *xsync.Map[types.NodeID, []change.ChangeSet]
 	batchMutex     sync.RWMutex
 
-	// Pending changes for nodes that haven't connected yet
-	// This handles the race where nodes exist in NodeStore but haven't established polling connection
-	pendingDisconnectedChanges *xsync.Map[types.NodeID, []change.ChangeSet]
-	pendingMutex               sync.RWMutex
-
 	// Metrics
 	totalNodes      atomic.Int64
 	totalUpdates    atomic.Int64
@@ -89,10 +84,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		}
 	}
 
-	// CRITICAL: Flush any pending changes that arrived while the node was disconnected
-	// This handles the race where changes are sent before the node establishes its polling connection
-	b.flushPendingChangesForNode(id)
-
 	return nil
 }
 
@@ -119,9 +110,6 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	b.nodes.Delete(id)
 	b.connected.Store(id, ptr.To(time.Now()))
 	b.totalNodes.Add(-1)
-
-	// Clean up any pending changes for this node to avoid memory leaks
-	b.pendingDisconnectedChanges.Delete(id)
 }
 
 // AddWork queues a change to be processed by the batcher.
@@ -244,16 +232,6 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						Str("change", w.c.Change.String()).
 						Msg("failed to apply change")
 				}
-			} else {
-				// Node not connected yet - queue the change for when it connects
-				// This handles the race where nodes exist in NodeStore but haven't established polling
-				b.queueChangeForDisconnectedNode(w.nodeID, w.c)
-
-				log.Debug().
-					Int("workerID", workerID).
-					Uint64("node.id", w.nodeID.Uint64()).
-					Str("change", w.c.Change.String()).
-					Msg("node not connected - queuing change for when it establishes polling connection")
 			}
 
 			duration := time.Since(startTime)
@@ -502,37 +480,4 @@ func (nc *nodeConn) send(data *tailcfg.MapResponse) error {
 	nc.updateCount.Add(1)
 
 	return nil
-}
-
-// queueChangeForDisconnectedNode queues changes for nodes that haven't connected yet.
-// This handles the race where nodes exist in NodeStore but haven't established their polling connection.
-func (b *LockFreeBatcher) queueChangeForDisconnectedNode(nodeID types.NodeID, c change.ChangeSet) {
-	b.pendingMutex.Lock()
-	defer b.pendingMutex.Unlock()
-
-	changes, _ := b.pendingDisconnectedChanges.LoadOrStore(nodeID, []change.ChangeSet{})
-	changes = append(changes, c)
-	b.pendingDisconnectedChanges.Store(nodeID, changes)
-}
-
-// flushPendingChangesForNode processes any changes that were queued while the node was disconnected.
-// This is called when a node establishes its polling connection to ensure no changes are lost.
-func (b *LockFreeBatcher) flushPendingChangesForNode(nodeID types.NodeID) {
-	b.pendingMutex.Lock()
-	defer b.pendingMutex.Unlock()
-
-	if changes, ok := b.pendingDisconnectedChanges.Load(nodeID); ok && len(changes) > 0 {
-		log.Info().
-			Uint64("node.id", nodeID.Uint64()).
-			Int("count", len(changes)).
-			Msg("Flushing pending changes for newly connected node")
-
-		// Send all pending changes for this node
-		for _, c := range changes {
-			b.queueWork(work{c: c, nodeID: nodeID, resultCh: nil})
-		}
-
-		// Clear the pending changes
-		b.pendingDisconnectedChanges.Delete(nodeID)
-	}
 }

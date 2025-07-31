@@ -34,11 +34,10 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeB
 		tick:    time.NewTicker(batchTime),
 
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
-		workCh:                     make(chan work, workers*200),
-		nodes:                      xsync.NewMap[types.NodeID, *nodeConn](),
-		connected:                  xsync.NewMap[types.NodeID, *time.Time](),
-		pendingChanges:             xsync.NewMap[types.NodeID, []change.ChangeSet](),
-		pendingDisconnectedChanges: xsync.NewMap[types.NodeID, []change.ChangeSet](),
+		workCh:         make(chan work, workers*200),
+		nodes:          xsync.NewMap[types.NodeID, *nodeConn](),
+		connected:      xsync.NewMap[types.NodeID, *time.Time](),
+		pendingChanges: xsync.NewMap[types.NodeID, []change.ChangeSet](),
 	}
 }
 
