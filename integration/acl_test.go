@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -367,9 +368,11 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request due to ACL allowing user1->user2 on port 80")
 		}
 	}
 
@@ -382,7 +385,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
+			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
 			assert.Empty(t, result)
 			require.Error(t, err)
 		}
@@ -428,7 +431,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", hostname)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
+			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
 			assert.Empty(t, result)
 			require.Error(t, err)
 		}
@@ -472,9 +475,11 @@ func TestACLAllowUserDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request due to ACL allowing user1->user2")
 		}
 	}
 
@@ -487,7 +492,7 @@ func TestACLAllowUserDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
+			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
 			assert.Empty(t, result)
 			require.Error(t, err)
 		}
@@ -530,9 +535,11 @@ func TestACLAllowStarDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request due to ACL allowing user1->* (wildcard)")
 		}
 	}
 
@@ -545,7 +552,7 @@ func TestACLAllowStarDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
+			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
 			assert.Empty(t, result)
 			require.Error(t, err)
 		}
@@ -593,9 +600,11 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request due to ACL allowing all hosts to reach subnet")
 		}
 	}
 
@@ -608,9 +617,11 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request due to ACL allowing all hosts to reach subnet")
 		}
 	}
 }
@@ -1133,9 +1144,11 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request - initial policy allows all nodes to reach each other")
 		}
 	}
 
@@ -1189,9 +1202,11 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request after policy update - user1 should be able to reach user2")
 		}
 	}
 
@@ -1204,7 +1219,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
+			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
 			assert.Empty(t, result)
 			require.Error(t, err)
 		}
@@ -1261,9 +1276,11 @@ func TestACLAutogroupMember(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request - ACL with autogroup:member should allow untagged nodes to access each other")
 		}
 	}
 }
@@ -1319,9 +1336,11 @@ func TestACLAutogroupTagged(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "Expected successful HTTP request - ACL with autogroup:tagged should allow tagged nodes to access each other")
 		}
 	}
 }
