@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -21,6 +22,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -337,6 +339,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		srs3PeerStatus   *ipnstate.PeerStatus
 	)
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// Enable route on node 1
 	t.Logf("=== Approving route on router 1 (%s) - Single router mode (no HA yet) ===", subRouter1.Hostname())
 	t.Logf("  Expected: Router 1 becomes PRIMARY with route %s active", pref.String())
@@ -400,8 +406,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 	}, 5*time.Second, 200*time.Millisecond, "Verifying Router 1 is PRIMARY with routes after approval")
 
-	ip1, _ := subRouter1.IPv4()
-	t.Logf("=== Validating connectivity through PRIMARY router 1 (%s) to webservice at %s ===", ip1.String(), webip.String())
+	t.Logf("=== Validating connectivity through PRIMARY router 1 (%s) to webservice at %s ===", must.Get(subRouter1.IPv4()).String(), webip.String())
 	t.Logf("  Expected: Traffic flows through router 1 as it's the only approved route")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		result, err := client.Curl(weburl)
@@ -418,6 +423,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 1")
+
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
 
 	// Enable route on node 2, now we will have a HA subnet router
 	t.Logf("=== Enabling High Availability by approving route on router 2 (%s) ===", subRouter2.Hostname())
@@ -483,9 +492,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 	}, 5*time.Second, 200*time.Millisecond, "Verifying Router 1 remains PRIMARY after Router 2 approval")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	t.Logf("=== Validating HA configuration - Router 1 PRIMARY, Router 2 STANDBY ===")
-	ip1, _ = subRouter1.IPv4()
-	t.Logf("  Current routing: Traffic through router 1 (%s) to %s", ip1.String(), webip.String())
+	t.Logf("  Current routing: Traffic through router 1 (%s) to %s", must.Get(subRouter1.IPv4()), webip.String())
 	t.Logf("  Expected: Router 1 continues to handle all traffic (no change from before)")
 	t.Logf("  Expected: Router 2 is ready to take over if router 1 fails")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -503,6 +515,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router 1 in HA mode")
+
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
 
 	// Enable route on node 3, now we will have a second standby and all will
 	// be enabled.
@@ -596,6 +612,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, expectedIP)
 	}, 10*time.Second, 500*time.Millisecond, "Verifying traffic still flows through PRIMARY router 1 with full HA setup active")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// Take down the current primary
 	t.Logf("=== FAILOVER TEST: Taking down PRIMARY router 1 (%s) ===", subRouter1.Hostname())
 	t.Logf("  Current state: Router 1 PRIMARY (serving traffic), Router 2 & 3 STANDBY")
@@ -659,6 +679,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 2 after failover")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// Take down subnet router 2, leaving none available
 	t.Logf("=== FAILOVER TEST: Taking down NEW PRIMARY router 2 (%s) ===", subRouter2.Hostname())
 	t.Logf("  Current state: Router 1 OFFLINE, Router 2 PRIMARY (serving traffic), Router 3 STANDBY")
@@ -714,6 +738,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 3 after second failover")
+
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
 
 	// Bring up subnet router 1, making the route available from there.
 	t.Logf("=== RECOVERY TEST: Bringing router 1 (%s) back online ===", subRouter1.Hostname())
@@ -778,13 +806,17 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router 3 after router 1 recovery")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// Bring up subnet router 2, should result in no change.
 	t.Logf("=== FULL RECOVERY TEST: Bringing router 2 (%s) back online ===", subRouter2.Hostname())
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 OFFLINE, Router 3 PRIMARY")
 	t.Logf("  Action: Starting router 2 to restore full HA (3 routers)")
-	t.Logf("  Expected: Router 3 remains PRIMARY (stability - avoid unnecessary failovers)")
-	t.Logf("  Expected: Router 1 remains first STANDBY")
-	t.Logf("  Expected: Router 2 becomes second STANDBY")
+	t.Logf("  Expected: Router 3 (%s) remains PRIMARY (stability - avoid unnecessary failovers)", subRouter3.Hostname())
+	t.Logf("  Expected: Router 1 (%s) remains first STANDBY", subRouter1.Hostname())
+	t.Logf("  Expected: Router 2 (%s) becomes second STANDBY", subRouter2.Hostname())
 	t.Logf("  Expected: Full HA restored with all 3 routers online")
 	err = subRouter2.Up()
 	require.NoError(t, err)
@@ -843,12 +875,16 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 3 after full recovery")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	t.Logf("=== ROUTE DISABLE TEST: Removing approved route from PRIMARY router 3 (%s) ===", subRouter3.Hostname())
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 STANDBY, Router 3 PRIMARY")
 	t.Logf("  Action: Disabling route approval on router 3 (route still advertised but not approved)")
 	t.Logf("  Expected: Router 1 (%s) should become new PRIMARY (lowest ID with approved route)", subRouter1.Hostname())
-	t.Logf("  Expected: Router 2 remains STANDBY")
-	t.Logf("  Expected: Router 3 goes to advertised-only state (no longer serving)")
+	t.Logf("  Expected: Router 2 (%s) remains STANDBY", subRouter2.Hostname())
+	t.Logf("  Expected: Router 3 (%s) goes to advertised-only state (no longer serving)", subRouter3.Hostname())
 	_, err = headscale.ApproveRoutes(MustFindNode(subRouter3.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
@@ -913,13 +949,17 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 1 after route disable")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// Disable the route of subnet router 1, making it failover to 2
 	t.Logf("=== ROUTE DISABLE TEST: Removing approved route from NEW PRIMARY router 1 (%s) ===", subRouter1.Hostname())
 	t.Logf("  Current state: Router 1 PRIMARY, Router 2 STANDBY, Router 3 advertised-only")
 	t.Logf("  Action: Disabling route approval on router 1")
 	t.Logf("  Expected: Router 2 (%s) should become new PRIMARY (only remaining approved route)", subRouter2.Hostname())
-	t.Logf("  Expected: Router 1 goes to advertised-only state")
-	t.Logf("  Expected: Router 3 remains advertised-only")
+	t.Logf("  Expected: Router 1 (%s) goes to advertised-only state", subRouter1.Hostname())
+	t.Logf("  Expected: Router 3 (%s) remains advertised-only", subRouter3.Hostname())
 	_, err = headscale.ApproveRoutes(MustFindNode(subRouter1.Hostname(), nodes).GetId(), []netip.Prefix{})
 
 	// Wait for nodestore batch processing and route state changes to complete
@@ -984,12 +1024,16 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 2 after second route disable")
 
+	clientStatus, err = client.Status()
+	assert.NoError(t, err)
+	printCurrentRouteMap(t, xmaps.Values(clientStatus.Peer)...)
+
 	// enable the route of subnet router 1, no change expected
 	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 1 (%s) ===", subRouter1.Hostname())
 	t.Logf("  Current state: Router 1 advertised-only, Router 2 PRIMARY, Router 3 advertised-only")
 	t.Logf("  Action: Re-enabling route approval on router 1")
 	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability - no unnecessary flapping)", subRouter2.Hostname())
-	t.Logf("  Expected: Router 1 becomes STANDBY (approved but not primary)")
+	t.Logf("  Expected: Router 1 (%s) becomes STANDBY (approved but not primary)", subRouter1.Hostname())
 	t.Logf("  Expected: HA fully restored with Router 2 PRIMARY and Router 1 STANDBY")
 	r1Node := MustFindNode(subRouter1.Hostname(), nodes)
 	_, err = headscale.ApproveRoutes(
@@ -2454,7 +2498,7 @@ func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip
 	// Since we're inside EventuallyWithT, we can't use require.Greater with t
 	// but assert.NotEmpty above ensures len(tr.Route) > 0
 	if len(tr.Route) > 0 {
-		assert.Equal(c, tr.Route[0].IP, ip)
+		assert.Equal(c, tr.Route[0].IP.String(), ip.String())
 	}
 }
 
@@ -2482,6 +2526,33 @@ func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected
 	}
 }
 
+func SortPeerStatus(a, b *ipnstate.PeerStatus) int {
+	return cmp.Compare(a.ID, b.ID)
+}
+
+func printCurrentRouteMap(t *testing.T, routers ...*ipnstate.PeerStatus) {
+	t.Logf("== Current routing map ==")
+	slices.SortFunc(routers, SortPeerStatus)
+	for _, router := range routers {
+		got := filterNonRoutes(router)
+		t.Logf("  Router %s (%s) is serving:", router.HostName, router.ID)
+		t.Logf("    AllowedIPs: %v", got)
+		if router.PrimaryRoutes != nil {
+			t.Logf("    PrimaryRoutes: %v", router.PrimaryRoutes.AsSlice())
+		}
+	}
+}
+
+// filterNonRoutes returns the list of routes that a [ipnstate.PeerStatus] is serving.
+func filterNonRoutes(status *ipnstate.PeerStatus) []netip.Prefix {
+	return slicesx.Filter(nil, status.AllowedIPs.AsSlice(), func(p netip.Prefix) bool {
+		if tsaddr.IsExitRoute(p) {
+			return true
+		}
+		return !slices.ContainsFunc(status.TailscaleIPs, p.Contains)
+	})
+}
+
 func requirePeerSubnetRoutesWithCollect(c *assert.CollectT, status *ipnstate.PeerStatus, expected []netip.Prefix) {
 	if status.AllowedIPs.Len() <= 2 && len(expected) != 0 {
 		assert.Fail(c, fmt.Sprintf("peer %s (%s) has no subnet routes, expected %v", status.HostName, status.ID, expected))
@@ -2492,12 +2563,7 @@ func requirePeerSubnetRoutesWithCollect(c *assert.CollectT, status *ipnstate.Pee
 		expected = []netip.Prefix{}
 	}
 
-	got := slicesx.Filter(nil, status.AllowedIPs.AsSlice(), func(p netip.Prefix) bool {
-		if tsaddr.IsExitRoute(p) {
-			return true
-		}
-		return !slices.ContainsFunc(status.TailscaleIPs, p.Contains)
-	})
+	got := filterNonRoutes(status)
 
 	if diff := cmpdiff.Diff(expected, got, util.PrefixComparer, cmpopts.EquateEmpty()); diff != "" {
 		assert.Fail(c, fmt.Sprintf("peer %s (%s) subnet routes, unexpected result (-want +got):\n%s", status.HostName, status.ID, diff))
