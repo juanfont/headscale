@@ -741,27 +741,25 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 	// Why capture start time: We need to ensure we don't miss nodes that expire
 	// while this function is running by using a consistent timestamp for the next check
 	started := time.Now()
-	
-	allNodes := s.nodeStore.ListNodes()
-	
+
 	var updates []change.ChangeSet
-	
-	for _, node := range allNodes.All() {
+
+	for _, node := range s.nodeStore.ListNodes().All() {
 		if !node.Valid() {
 			continue
 		}
-		
+
 		// Why check After(lastCheck): We only want to notify about nodes that
 		// expired since the last check to avoid duplicate notifications
 		if node.IsExpired() && node.Expiry().Valid() && node.Expiry().Get().After(lastCheck) {
 			updates = append(updates, change.KeyExpiry(node.ID()))
 		}
 	}
-	
+
 	if len(updates) > 0 {
 		return started, updates, true
 	}
-	
+
 	return started, nil, false
 }
 
