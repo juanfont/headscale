@@ -738,8 +738,31 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
 func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.ChangeSet, bool) {
-	// TODO(kradalby): This needs to update NodeStore AND Database, it should likely be folded into the state.
-	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
+	// Why capture start time: We need to ensure we don't miss nodes that expire
+	// while this function is running by using a consistent timestamp for the next check
+	started := time.Now()
+	
+	allNodes := s.nodeStore.ListNodes()
+	
+	var updates []change.ChangeSet
+	
+	for _, node := range allNodes.All() {
+		if !node.Valid() {
+			continue
+		}
+		
+		// Why check After(lastCheck): We only want to notify about nodes that
+		// expired since the last check to avoid duplicate notifications
+		if node.IsExpired() && node.Expiry().Valid() && node.Expiry().Get().After(lastCheck) {
+			updates = append(updates, change.KeyExpiry(node.ID()))
+		}
+	}
+	
+	if len(updates) > 0 {
+		return started, updates, true
+	}
+	
+	return started, nil, false
 }
 
 // SSHPolicy returns the SSH access policy for a node.
