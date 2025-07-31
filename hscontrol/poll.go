@@ -155,11 +155,7 @@ func (m *mapSession) serveLongPoll() {
 			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
 
-		// Mark node as disconnected in batcher AFTER NodeStore update
-		// to ensure consistent state when map responses are generated.
-		// We use MarkDisconnected instead of RemoveNode to avoid duplicate notifications
-		// since the Change() call below will handle sending the disconnect notifications.
-		m.h.mapBatcher.MarkDisconnected(m.node.ID, m.ch)
+		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
 
 		// Send the disconnect change notification
 		m.h.Change(disconnectChange)
@@ -177,29 +173,14 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	// Update NodeStore BEFORE adding node to batcher to ensure initial map
-	// generation includes correct online status for all peers
-	connectChange := m.h.state.Connect(m.node)
-
 	// Add node to batcher so it can receive updates
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.node.IsSubnetRouter(), m.capVer); err != nil {
+	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
-
-		// TODO(kradalby): This looks meaningless, we should probably return
-		// an http error here instead of sending an empty response.
-		//
-		// Send empty response to client to fail fast for invalid/non-existent nodes
-		select {
-		case m.ch <- &tailcfg.MapResponse{}:
-		default:
-			// Channel might be closed
-		}
 
 		return
 	}
 
-	// Send the connect change AFTER adding node to batcher to ensure it can receive updates
-	// from other nodes that get notified about this node coming online
+	connectChange := m.h.state.Connect(m.node)
 	m.h.Change(connectChange)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)

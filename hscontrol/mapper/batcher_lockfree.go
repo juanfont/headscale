@@ -50,7 +50,7 @@ type LockFreeBatcher struct {
 // It creates or updates the node's connection data, validates the initial map generation,
 // and notifies other nodes that this node has come online.
 // TODO(kradalby): See if we can move the isRouter argument somewhere else.
-func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, version tailcfg.CapabilityVersion) error {
+func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error {
 	// TODO(kradalby): This should not be generated here, but rather in MapResponseFromChange.
 	// This currently means that the goroutine for the node connection will do the processing
 	// which means that we might have uncontrolled concurrency.
@@ -77,7 +77,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	// Mark as connected only after validation succeeds
 	b.connected.Store(id, nil) // nil = connected
 
-	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Msg("Node connected to batcher")
+	log.Info().Uint64("node.id", id.Uint64()).Msg("Node connected to batcher")
 
 	// Send the validated initial map
 	if initialMap != nil {
@@ -87,9 +87,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 			b.connected.Delete(id)
 			return fmt.Errorf("failed to send initial map to node %d: %w", id, err)
 		}
-
-		// Notify other nodes that this node came online
-		b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeCameOnline, IsSubnetRouter: isRouter})
 	}
 
 	// CRITICAL: Flush any pending changes that arrived while the node was disconnected
@@ -102,18 +99,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 // RemoveNode disconnects a node from the batcher, marking it as offline and cleaning up its state.
 // It validates the connection channel matches the current one, closes the connection,
 // and notifies other nodes that this node has gone offline.
-func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool) {
-	b.markDisconnectedInternal(id, c, isRouter, true)
-}
-
-// MarkDisconnected marks a node as disconnected without sending notifications.
-// This is used when the disconnect notifications will be handled elsewhere to avoid duplicates.
-func (b *LockFreeBatcher) MarkDisconnected(id types.NodeID, c chan<- *tailcfg.MapResponse) {
-	b.markDisconnectedInternal(id, c, false, false)
-}
-
-// markDisconnectedInternal is the internal implementation for marking nodes as disconnected.
-func (b *LockFreeBatcher) markDisconnectedInternal(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, sendNotifications bool) {
+func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) {
 	// Check if this is the current connection and mark it as closed
 	if existing, ok := b.nodes.Load(id); ok {
 		if !existing.matchesChannel(c) {
@@ -127,7 +113,7 @@ func (b *LockFreeBatcher) markDisconnectedInternal(id types.NodeID, c chan<- *ta
 		}
 	}
 
-	log.Info().Uint64("node.id", id.Uint64()).Bool("isRouter", isRouter).Bool("sendNotifications", sendNotifications).Msg("Node disconnected from batcher, marking as offline")
+	log.Info().Uint64("node.id", id.Uint64()).Msg("Node disconnected from batcher, marking as offline")
 
 	// Remove node and mark disconnected atomically
 	b.nodes.Delete(id)
@@ -136,11 +122,6 @@ func (b *LockFreeBatcher) markDisconnectedInternal(id types.NodeID, c chan<- *ta
 
 	// Clean up any pending changes for this node to avoid memory leaks
 	b.pendingDisconnectedChanges.Delete(id)
-
-	// Notify other nodes that this node went offline (only if requested)
-	if sendNotifications {
-		b.addWork(change.ChangeSet{NodeID: id, Change: change.NodeWentOffline, IsSubnetRouter: isRouter})
-	}
 }
 
 // AddWork queues a change to be processed by the batcher.
@@ -267,7 +248,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 				// Node not connected yet - queue the change for when it connects
 				// This handles the race where nodes exist in NodeStore but haven't established polling
 				b.queueChangeForDisconnectedNode(w.nodeID, w.c)
-				
+
 				log.Debug().
 					Int("workerID", workerID).
 					Uint64("node.id", w.nodeID.Uint64()).

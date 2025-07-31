@@ -333,7 +333,7 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // IMPORTANT: This function does NOT update the NodeStore. The caller MUST update the NodeStore
 // BEFORE calling this function with the EXACT same changes that the database update will make.
 // This ensures the NodeStore is the source of truth for the batcher and maintains consistency.
-func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (types.NodeView, change.ChangeSet, error) {
+func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) (types.NodeView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -354,21 +354,10 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 		return node, nil
 	})
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+		return types.NodeView{}, err
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		return node.View(), change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
-	}
-
-	if c.Empty() {
-		// Basic node change without specific details since this is a generic update
-		c = change.NodeAdded(node.ID)
-	}
-
-	return node.View(), c, nil
+	return node.View(), nil
 }
 
 // SaveNode persists an existing node to the database and updates the policy manager.
@@ -452,18 +441,31 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
-	c := change.NodeOffline(node.ID)
-
-	// Update the online status in NodeStore before updating last seen
+	now := time.Now()
 	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+		node.LastSeen = ptr.To(now)
 		n.IsOnline = ptr.To(false)
 	})
 
-	_, _, err := s.SetLastSeen(node.ID, time.Now())
+	_, err := s.updateNodeTx(node.ID, func(tx *gorm.DB) error {
+		return hsdb.SetLastSeen(tx, node.ID, now)
+	})
 	if err != nil {
-		return c, fmt.Errorf("disconnecting node: %w", err)
+		return change.EmptySet, fmt.Errorf("setting last seen: %w", err)
 	}
 
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
+	}
+
+	if !c.IsFull() {
+		c = change.NodeOffline(node.ID)
+	}
+
+	// The node is disconnecting so make sure that none of the routes it
+	// announced are served to any nodes.
 	if routeChange := s.primaryRoutes.SetRoutes(node.ID); routeChange {
 		c = change.PolicyChange()
 	}
@@ -566,11 +568,17 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 		node.Expiry = &expiryPtr
 	})
 
-	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+	n, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node expiry: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	if !c.IsFull() {
@@ -589,11 +597,17 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		node.ForcedTags = tags
 	})
 
-	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+	n, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetTags(tx, nodeID, tags)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node tags: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	if !c.IsFull() {
@@ -612,11 +626,17 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		node.ApprovedRoutes = routes
 	})
 
-	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+	n, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting approved routes: %w", err)
+	}
+
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.AsStruct().SubnetRoutes()...)
@@ -637,35 +657,17 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 		node.GivenName = newName
 	})
 
-	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+	n, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.RenameNode(tx, nodeID, newName)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
 	}
 
-	if !c.IsFull() {
-		c = change.NodeAdded(nodeID)
-	}
-
-	return n, c, nil
-}
-
-// SetLastSeen updates when a node was last seen, used for connectivity monitoring.
-func (s *State) SetLastSeen(nodeID types.NodeID, lastSeen time.Time) (types.NodeView, change.ChangeSet, error) {
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
-	lastSeenPtr := lastSeen
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.LastSeen = &lastSeenPtr
-	})
-
-	n, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.SetLastSeen(tx, nodeID, lastSeen)
-	})
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting last seen: %w", err)
+		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
 	if !c.IsFull() {
@@ -691,18 +693,24 @@ func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (type
 		n.UserID = uint(userID)
 	})
 
-	node, c, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
+	n, err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
 		return hsdb.AssignNodeToUser(tx, nodeID, userID)
 	})
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, err
 	}
 
+	// Check if policy manager needs updating
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
+	}
+
 	if !c.IsFull() {
 		c = change.NodeAdded(nodeID)
 	}
 
-	return node, c, nil
+	return n, c, nil
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -730,6 +738,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
 func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.ChangeSet, bool) {
+	// TODO(kradalby): This needs to update NodeStore AND Database, it should likely be folded into the state.
 	return hsdb.ExpireExpiredNodes(s.db.DB, lastCheck)
 }
 
