@@ -173,7 +173,10 @@ func (m *mapSession) serveLongPoll() {
 
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
-	// Add node to batcher so it can receive updates
+	// Add node to batcher so it can receive updates,
+	// adding this before connecting it to the state ensure that
+	// it does not miss any updates that might be sent in the split
+	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 
