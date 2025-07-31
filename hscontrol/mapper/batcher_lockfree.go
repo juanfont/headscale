@@ -3,7 +3,6 @@ package mapper
 import (
 	"context"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,7 +30,6 @@ type LockFreeBatcher struct {
 
 	// Batching state
 	pendingChanges *xsync.Map[types.NodeID, []change.ChangeSet]
-	batchMutex     sync.RWMutex
 
 	// Metrics
 	totalNodes      atomic.Int64
@@ -299,9 +297,6 @@ func (b *LockFreeBatcher) shouldProcessImmediately(c change.ChangeSet) bool {
 
 // addToBatch adds a change to the pending batch.
 func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
-	b.batchMutex.Lock()
-	defer b.batchMutex.Unlock()
-
 	if c.SelfUpdateOnly {
 		changes, _ := b.pendingChanges.LoadOrStore(c.NodeID, []change.ChangeSet{})
 		changes = append(changes, c)
@@ -324,9 +319,6 @@ func (b *LockFreeBatcher) addToBatch(c change.ChangeSet) {
 
 // processBatchedChanges processes all pending batched changes.
 func (b *LockFreeBatcher) processBatchedChanges() {
-	b.batchMutex.Lock()
-	defer b.batchMutex.Unlock()
-
 	if b.pendingChanges == nil {
 		return
 	}
