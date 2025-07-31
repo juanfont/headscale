@@ -32,6 +32,7 @@ type TailscaleClient interface {
 	Down() error
 	IPs() ([]netip.Addr, error)
 	MustIPs() []netip.Addr
+	IPv4() (netip.Addr, error)
 	MustIPv4() netip.Addr
 	MustIPv6() netip.Addr
 	FQDN() (string, error)

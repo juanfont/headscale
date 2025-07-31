@@ -374,7 +374,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -400,7 +400,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 	}, 5*time.Second, 200*time.Millisecond, "Verifying Router 1 is PRIMARY with routes after approval")
 
-	t.Logf("=== Validating connectivity through PRIMARY router 1 (%s) to webservice at %s ===", subRouter1.MustIPv4().String(), webip.String())
+	ip1, _ := subRouter1.IPv4()
+	t.Logf("=== Validating connectivity through PRIMARY router 1 (%s) to webservice at %s ===", ip1.String(), webip.String())
 	t.Logf("  Expected: Traffic flows through router 1 as it's the only approved route")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		result, err := client.Curl(weburl)
@@ -411,7 +412,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter1.MustIPv4())
+		ip, err := subRouter1.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter1") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 1")
 
 	// Enable route on node 2, now we will have a HA subnet router
@@ -452,7 +457,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -479,7 +484,8 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, 5*time.Second, 200*time.Millisecond, "Verifying Router 1 remains PRIMARY after Router 2 approval")
 
 	t.Logf("=== Validating HA configuration - Router 1 PRIMARY, Router 2 STANDBY ===")
-	t.Logf("  Current routing: Traffic through router 1 (%s) to %s", subRouter1.MustIPv4().String(), webip.String())
+	ip1, _ = subRouter1.IPv4()
+	t.Logf("  Current routing: Traffic through router 1 (%s) to %s", ip1.String(), webip.String())
 	t.Logf("  Expected: Router 1 continues to handle all traffic (no change from before)")
 	t.Logf("  Expected: Router 2 is ready to take over if router 1 fails")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -491,7 +497,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter1.MustIPv4())
+		ip, err := subRouter1.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter1") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router 1 in HA mode")
 
 	// Enable route on node 3, now we will have a second standby and all will
@@ -532,7 +542,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -608,7 +618,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -642,7 +652,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter2.MustIPv4())
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter2") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 2 after failover")
 
 	// Take down subnet router 2, leaving none available
@@ -667,7 +681,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -694,7 +708,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter3.MustIPv4())
+		ip, err := subRouter3.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter3") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 3 after second failover")
 
 	// Bring up subnet router 1, making the route available from there.
@@ -719,7 +737,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -753,7 +771,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter3.MustIPv4())
+		ip, err := subRouter3.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter3") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router 3 after router 1 recovery")
 
 	// Bring up subnet router 2, should result in no change.
@@ -780,7 +802,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -814,7 +836,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter3.MustIPv4())
+		ip, err := subRouter3.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter3") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 3 after full recovery")
 
 	t.Logf("=== ROUTE DISABLE TEST: Removing approved route from PRIMARY router 3 (%s) ===", subRouter3.Hostname())
@@ -850,7 +876,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -880,7 +906,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter1.MustIPv4())
+		ip, err := subRouter1.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter1") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 1 after route disable")
 
 	// Disable the route of subnet router 1, making it failover to 2
@@ -917,7 +947,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -947,7 +977,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter2.MustIPv4())
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter2") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router 2 after second route disable")
 
 	// enable the route of subnet router 1, no change expected
@@ -986,7 +1020,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		assert.NotNil(c, srs2PeerStatus, "Router 2 peer should exist")
 		assert.NotNil(c, srs3PeerStatus, "Router 3 peer should exist")
-		
+
 		if srs1PeerStatus == nil || srs2PeerStatus == nil || srs3PeerStatus == nil {
 			return
 		}
@@ -1012,7 +1046,11 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := client.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, subRouter2.MustIPv4())
+		ip, err := subRouter2.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for subRouter2") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router 2 after route re-enable")
 }
 
@@ -1184,7 +1222,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		assert.NoError(c, err)
 
 		srs1PeerStatus := clientStatus.Peer[srs1.Self.PublicKey]
-		
+
 		assert.NotNil(c, srs1PeerStatus, "Router 1 peer should exist")
 		if srs1PeerStatus == nil {
 			return
@@ -1519,7 +1557,11 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := user2c.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, user1c.MustIPv4())
+		ip, err := user1c.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for user1c") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through subnet router")
 }
 
@@ -2110,7 +2152,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
 						assert.NoError(c, err)
-						assertTracerouteViaIPWithCollect(c, tr, routerUsernet1.MustIPv4())
+						ip, err := routerUsernet1.IPv4()
+						if !assert.NoError(c, err, "failed to get IPv4 for routerUsernet1") {
+							return
+						}
+						assertTracerouteViaIPWithCollect(c, tr, ip)
 					}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through auto-approved router")
 
 					// Remove the auto approval from the policy, any routes already enabled should be allowed.
@@ -2160,7 +2206,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
 						assert.NoError(c, err)
-						assertTracerouteViaIPWithCollect(c, tr, routerUsernet1.MustIPv4())
+						ip, err := routerUsernet1.IPv4()
+						if !assert.NoError(c, err, "failed to get IPv4 for routerUsernet1") {
+							return
+						}
+						assertTracerouteViaIPWithCollect(c, tr, ip)
 					}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router after policy change")
 
 					// Disable the route, making it unavailable since it is no longer auto-approved
@@ -2250,7 +2300,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
 						assert.NoError(c, err)
-						assertTracerouteViaIPWithCollect(c, tr, routerUsernet1.MustIPv4())
+						ip, err := routerUsernet1.IPv4()
+						if !assert.NoError(c, err, "failed to get IPv4 for routerUsernet1") {
+							return
+						}
+						assertTracerouteViaIPWithCollect(c, tr, ip)
 					}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router after re-approval")
 
 					// Advertise and validate a subnet of an auto approved route, /24 inside the
@@ -2562,9 +2616,14 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	require.Len(t, nodeClients, 1)
 	nodeClient := nodeClients[0]
 
+	routerIP, err := routerClient.IPv4()
+	require.NoError(t, err, "failed to get router IPv4")
+	nodeIP, err := nodeClient.IPv4()
+	require.NoError(t, err, "failed to get node IPv4")
+
 	aclPolicy.Hosts = policyv2.Hosts{
-		policyv2.Host(routerUser): policyv2.Prefix(must.Get(routerClient.MustIPv4().Prefix(32))),
-		policyv2.Host(nodeUser):   policyv2.Prefix(must.Get(nodeClient.MustIPv4().Prefix(32))),
+		policyv2.Host(routerUser): policyv2.Prefix(must.Get(routerIP.Prefix(32))),
+		policyv2.Host(nodeUser):   policyv2.Prefix(must.Get(nodeIP.Prefix(32))),
 	}
 	aclPolicy.ACLs[1].Destinations = []policyv2.AliasWithPorts{
 		aliasWithPorts(prefixp(route.String()), tailcfg.PortRangeAny),
@@ -2657,6 +2716,10 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := nodeClient.Traceroute(webip)
 		assert.NoError(c, err)
-		assertTracerouteViaIPWithCollect(c, tr, routerClient.MustIPv4())
+		ip, err := routerClient.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for routerClient") {
+			return
+		}
+		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 5*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router")
 }

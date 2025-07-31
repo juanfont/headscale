@@ -613,6 +613,22 @@ func (t *TailscaleInContainer) MustIPs() []netip.Addr {
 	return ips
 }
 
+// IPv4 returns the IPv4 address of the Tailscale instance.
+func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
+	ips, err := t.IPs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	
+	for _, ip := range ips {
+		if ip.Is4() {
+			return ip, nil
+		}
+	}
+	
+	return netip.Addr{}, fmt.Errorf("no IPv4 address found")
+}
+
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
 	for _, ip := range t.MustIPs() {
 		if ip.Is4() {
