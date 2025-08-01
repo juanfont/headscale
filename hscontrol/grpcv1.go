@@ -339,7 +339,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		Strs("requestedRoutes", request.GetRoutes()).
 		Msg("gRPC SetApprovedRoutes called")
 
-	var routes []netip.Prefix
+	var newApproved []netip.Prefix
 	for _, route := range request.GetRoutes() {
 		prefix, err := netip.ParsePrefix(route)
 		if err != nil {
@@ -349,32 +349,21 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		// If the prefix is an exit route, add both. The client expect both
 		// to annotate the node as an exit node.
 		if prefix == tsaddr.AllIPv4() || prefix == tsaddr.AllIPv6() {
-			routes = append(routes, tsaddr.AllIPv4(), tsaddr.AllIPv6())
+			newApproved = append(newApproved, tsaddr.AllIPv4(), tsaddr.AllIPv6())
 		} else {
-			routes = append(routes, prefix)
+			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(routes)
-	routes = slices.Compact(routes)
+	tsaddr.SortPrefixes(newApproved)
+	newApproved = slices.Compact(newApproved)
 
-	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), routes)
+	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	routeChange := api.h.state.SetNodeRoutes(node.ID(), node.SubnetRoutes()...)
-
 	// Always propagate node changes from SetApprovedRoutes
 	api.h.Change(nodeChange)
-
-	// If routes changed, propagate those changes too
-	if !routeChange.Empty() {
-		api.h.Change(routeChange)
-		log.Debug().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("routeChangeType", routeChange.Change.String()).
-			Msg("Propagating route change")
-	}
 
 	proto := node.Proto()
 	primaryRoutes := api.h.state.GetNodePrimaryRoutes(node.ID())

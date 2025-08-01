@@ -421,34 +421,43 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 }
 
 // Connect marks a node as connected and updates its primary routes in the state.
-func (s *State) Connect(node *types.Node) change.ChangeSet {
-	c := change.NodeOnline(node.ID)
+func (s *State) Connect(id types.NodeID) change.ChangeSet {
+	c := change.NodeOnline(id)
 
 	// Update the online status in NodeStore
-	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.IsOnline = ptr.To(true)
 	})
 
+	node, found := s.GetNodeByID(id)
+	if !found {
+		return change.EmptySet
+	}
+
 	// Use the node's current routes for primary route update
-	routeChange := s.primaryRoutes.SetRoutes(node.ID, node.SubnetRoutes()...)
+	routeChange := s.primaryRoutes.SetRoutes(id, node.SubnetRoutes()...)
+
+	log.Trace().Msg("===============================================")
+	log.Trace().Bool("route-change", routeChange).Str("nid", id.String()).Msgf("NODE CONNECTING, SubR: %v, AnnoR: %v, ApprR: %v", node.SubnetRoutes(), node.AnnouncedRoutes(), node.ApprovedRoutes())
+	log.Trace().Msg("===============================================")
 
 	if routeChange {
-		c = change.NodeAdded(node.ID)
+		c = change.NodeAdded(id)
 	}
 
 	return c
 }
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
-func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
+func (s *State) Disconnect(id types.NodeID) (change.ChangeSet, error) {
 	now := time.Now()
-	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
+	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastSeen = ptr.To(now)
 		n.IsOnline = ptr.To(false)
 	})
 
-	_, err := s.updateNodeTx(node.ID, func(tx *gorm.DB) error {
-		return hsdb.SetLastSeen(tx, node.ID, now)
+	_, err := s.updateNodeTx(id, func(tx *gorm.DB) error {
+		return hsdb.SetLastSeen(tx, id, now)
 	})
 	if err != nil {
 		return change.EmptySet, fmt.Errorf("setting last seen: %w", err)
@@ -461,12 +470,12 @@ func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 	}
 
 	if !c.IsFull() {
-		c = change.NodeOffline(node.ID)
+		c = change.NodeOffline(id)
 	}
 
 	// The node is disconnecting so make sure that none of the routes it
 	// announced are served to any nodes.
-	if routeChange := s.primaryRoutes.SetRoutes(node.ID); routeChange {
+	if routeChange := s.primaryRoutes.SetRoutes(id); routeChange {
 		c = change.PolicyChange()
 	}
 
@@ -619,9 +628,9 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
 func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.ChangeSet, error) {
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
+	// TODO(kradalby): In principle we should call the AutoApprove logic here
+	// because even if the CLI removes an auto-approved route, it will be added
+	// back automatically.
 	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ApprovedRoutes = routes
 	})
@@ -639,7 +648,7 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
 	}
 
-	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.AsStruct().SubnetRoutes()...)
+	routeChange := s.primaryRoutes.SetRoutes(nodeID, n.SubnetRoutes()...)
 
 	if routeChange || !c.IsFull() {
 		c = change.PolicyChange()
@@ -700,7 +709,7 @@ func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (type
 	if !found {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found: %d", nodeID)
 	}
-	
+
 	user, err := s.GetUserByID(userID)
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("user not found: %w", err)

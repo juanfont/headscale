@@ -150,7 +150,7 @@ func (m *mapSession) serveLongPoll() {
 
 		// First update NodeStore to mark the node as offline
 		// This ensures the state is consistent before notifying the batcher
-		disconnectChange, err := m.h.state.Disconnect(m.node)
+		disconnectChange, err := m.h.state.Disconnect(m.node.ID)
 		if err != nil {
 			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 		}
@@ -183,7 +183,7 @@ func (m *mapSession) serveLongPoll() {
 		return
 	}
 
-	connectChange := m.h.state.Connect(m.node)
+	connectChange := m.h.state.Connect(m.node.ID)
 	m.h.Change(connectChange)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
