@@ -259,8 +259,12 @@ func (pr *PrimaryRoutes) stringLocked() string {
 // DebugRoutes represents the primary routes state in a structured format for JSON serialization.
 type DebugRoutes struct {
 	// AvailableRoutes maps node IDs to their advertised routes
+	// In the context of primary routes, this represents the routes that are available
+	// for each node. A route will only be available if it is advertised by the node
+	// AND approved.
+	// Only routes by nodes currently connected to the headscale server are included.
 	AvailableRoutes map[types.NodeID][]netip.Prefix `json:"available_routes"`
-	
+
 	// PrimaryRoutes maps route prefixes to the primary node serving them
 	PrimaryRoutes map[string]types.NodeID `json:"primary_routes"`
 }

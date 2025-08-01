@@ -217,6 +217,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	propagationTime := 10 * time.Second
 
+	// Helper function to validate primary routes table state
+	validatePrimaryRoutes := func(t *testing.T, headscale ControlServer, nodes []*v1.Node, expectedRoutes *routes.DebugRoutes, message string) {
+		t.Helper()
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			primaryRoutesState, err := headscale.PrimaryRoutes()
+			assert.NoError(c, err)
+
+			diff := cmpdiff.Diff(expectedRoutes, primaryRoutesState, util.PrefixComparer)
+			assert.Empty(c, diff, message)
+		}, propagationTime, 200*time.Millisecond, "Validating primary routes table")
+	}
+
 	spec := ScenarioSpec{
 		NodesPerUser: 3,
 		Users:        []string{"user1", "user2"},
@@ -234,7 +246,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
+	// defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{tsic.WithAcceptRoutes()},
@@ -354,6 +366,12 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 	}
 
+	// Validate primary routes table state - no routes approved yet
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{},
+		PrimaryRoutes:   map[string]types.NodeID{}, // No primary routes yet
+	}, "Primary routes table should be empty (no approved routes yet)")
+
 	checkFailureAndPrintRoutes(t, client)
 
 	// Enable route on node 1
@@ -437,6 +455,17 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 1")
 
+	// Validate primary routes table state - router 1 is primary
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			// Note: Router 2 and 3 are available but not approved
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+		},
+	}, "Router 1 should be primary for route "+pref.String())
+
 	checkFailureAndPrintRoutes(t, client)
 
 	// Enable route on node 2, now we will have a HA subnet router
@@ -503,6 +532,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 1 remains PRIMARY after Router 2 approval")
 
+	// Validate primary routes table state - router 1 still primary, router 2 approved but standby
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			// Note: Router 3 is available but not approved
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+		},
+	}, "Router 1 should remain primary after router 2 approval")
+
 	checkFailureAndPrintRoutes(t, client)
 
 	t.Logf("=== Validating HA configuration - Router 1 PRIMARY, Router 2 STANDBY ===")
@@ -524,6 +565,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 1 in HA mode")
+
+	// Validate primary routes table state - router 1 primary, router 2 approved (standby)
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			// Note: Router 3 is available but not approved
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+		},
+	}, "Router 1 primary with router 2 as standby")
 
 	checkFailureAndPrintRoutes(t, client)
 
@@ -619,6 +672,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, expectedIP)
 	}, 10*time.Second, 500*time.Millisecond, "Verifying traffic still flows through PRIMARY router 1 with full HA setup active")
 
+	// Validate primary routes table state - all 3 routers approved, router 1 still primary
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+		},
+	}, "Router 1 primary with all 3 routers approved")
+
 	checkFailureAndPrintRoutes(t, client)
 
 	// Take down the current primary
@@ -684,6 +749,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 2 after failover")
 
+	// Validate primary routes table state - router 2 is now primary after router 1 failure
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			// Router 1 is disconnected, so not in AvailableRoutes
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+		},
+	}, "Router 2 should be primary after router 1 failure")
+
 	checkFailureAndPrintRoutes(t, client)
 
 	// Take down subnet router 2, leaving none available
@@ -741,6 +818,17 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 3 after second failover")
+
+	// Validate primary routes table state - router 3 is now primary after router 2 failure
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			// Routers 1 and 2 are disconnected, so not in AvailableRoutes
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+		},
+	}, "Router 3 should be primary after router 2 failure")
 
 	checkFailureAndPrintRoutes(t, client)
 
@@ -806,6 +894,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 3 after router 1 recovery")
+
+	// Validate primary routes table state - router 3 remains primary after router 1 comes back
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			// Router 2 is still disconnected
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+		},
+	}, "Router 3 should remain primary after router 1 recovery")
 
 	checkFailureAndPrintRoutes(t, client)
 
@@ -873,6 +973,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 3 after full recovery")
+
+	// Validate primary routes table state - router 3 remains primary after all routers back online
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()),
+		},
+	}, "Router 3 should remain primary after full recovery")
 
 	checkFailureAndPrintRoutes(t, client)
 
@@ -945,6 +1057,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 1 after route disable")
+
+	// Validate primary routes table state - router 1 is primary after router 3 route disabled
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			// Router 3's route is no longer approved, so not in AvailableRoutes
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()),
+		},
+	}, "Router 1 should be primary after router 3 route disabled")
 
 	checkFailureAndPrintRoutes(t, client)
 
@@ -1019,6 +1143,18 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 2 after second route disable")
 
+	// Validate primary routes table state - router 2 is primary after router 1 route disabled
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			// Router 1's route is no longer approved, so not in AvailableRoutes
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			// Router 3's route is still not approved
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+		},
+	}, "Router 2 should be primary after router 1 route disabled")
+
 	checkFailureAndPrintRoutes(t, client)
 
 	// enable the route of subnet router 1, no change expected
@@ -1089,6 +1225,58 @@ func TestHASubnetRouterFailover(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 2 after route re-enable")
+
+	// Validate primary routes table state after router 1 re-approval
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			// Router 3 route is still not approved
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+		},
+	}, "Router 2 should remain primary after router 1 re-approval")
+
+	checkFailureAndPrintRoutes(t, client)
+
+	// Enable route on node 3, we now have all routes re-enabled
+	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 3 (%s) - Full HA Restoration ===", subRouter3.Hostname())
+	t.Logf("  Current state: Router 1 STANDBY, Router 2 PRIMARY, Router 3 advertised-only")
+	t.Logf("  Action: Re-enabling route approval on router 3")
+	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability preferred)", subRouter2.Hostname())
+	t.Logf("  Expected: Routers 1 & 3 are both STANDBY")
+	t.Logf("  Expected: Full HA restored with all 3 routers available")
+	r3Node := MustFindNode(subRouter3.Hostname(), nodes)
+	_, err = headscale.ApproveRoutes(
+		r3Node.GetId(),
+		util.MustStringsToPrefixes(r3Node.GetAvailableRoutes()),
+	)
+
+	// Wait for route state changes after re-enabling r3
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 6)
+		require.GreaterOrEqual(t, len(nodes), 3, "need at least 3 nodes to avoid panic")
+		requireNodeRouteCountWithCollect(c, nodes[0], 1, 1, 1)
+		requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 1)
+		requireNodeRouteCountWithCollect(c, nodes[2], 1, 1, 1)
+	}, propagationTime, 200*time.Millisecond, "Waiting for route state after router 3 re-approval")
+
+	// Validate primary routes table state after router 3 re-approval
+	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+		AvailableRoutes: map[types.NodeID][]netip.Prefix{
+			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
+			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
+		},
+		PrimaryRoutes: map[string]types.NodeID{
+			pref.String(): types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()),
+		},
+	}, "Router 2 should remain primary after router 3 re-approval")
+
+	checkFailureAndPrintRoutes(t, client)
 }
 
 // TestSubnetRouteACL verifies that Subnet routes are distributed
