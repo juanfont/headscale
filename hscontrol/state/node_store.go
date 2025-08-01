@@ -3,6 +3,7 @@ package state
 import (
 	"fmt"
 	"maps"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -149,6 +150,10 @@ type work struct {
 func (s *NodeStore) PutNode(n types.Node) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("put"))
 	defer timer.ObserveDuration()
+
+	fmt.Printf("\n\nPUT NODE: %s %d subn: %v appr: %v, anno: %v\n", n.Hostname, n.ID, n.SubnetRoutes(), n.ApprovedRoutes, n.AnnouncedRoutes())
+	temp := debug.Stack()
+	fmt.Printf("PUT NODE WAS CALLED STACKTRACE:\n%s\n\n", string(temp))
 
 	work := work{
 		op:     put,

@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
-	"github.com/rs/zerolog/log"
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
@@ -1182,25 +1181,11 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 // It is intended for internal use in a PolicyManager.
 func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[netip.Prefix]*netipx.IPSet, *netipx.IPSet, error) {
 	if p == nil {
-		log.Debug().Msg("AUTO-APPROVER DEBUG: Policy is nil, returning empty auto-approvers")
 		return nil, nil, nil
 	}
 	var err error
 
-	log.Debug().
-		Int("autoApproversRoutesCount", len(p.AutoApprovers.Routes)).
-		Int("autoApproversExitNodeCount", len(p.AutoApprovers.ExitNode)).
-		Msg("AUTO-APPROVER DEBUG: Starting resolveAutoApprovers")
-
 	routes := make(map[netip.Prefix]*netipx.IPSetBuilder)
-
-	if len(p.AutoApprovers.Routes) > 0 {
-		log.Debug().
-			Int("routeCount", len(p.AutoApprovers.Routes)).
-			Msg("AUTO-APPROVER DEBUG: Processing auto-approver routes")
-	} else {
-		log.Debug().Msg("AUTO-APPROVER DEBUG: No auto-approver routes to process")
-	}
 
 	for prefix, autoApprovers := range p.AutoApprovers.Routes {
 		if _, ok := routes[prefix]; !ok {

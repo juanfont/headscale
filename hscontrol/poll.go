@@ -121,7 +121,7 @@ func (m *mapSession) serve() {
 	// the response and just wants a 200.
 	// !req.stream && req.OmitPeers
 	if m.isEndpointUpdate() {
-		c, err := m.h.state.UpdateNodeFromMapRequest(m.node, m.req)
+		c, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 		if err != nil {
 			httpError(m.w, err)
 			return
@@ -148,20 +148,23 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		// First update NodeStore to mark the node as offline
-		// This ensures the state is consistent before notifying the batcher
-		disconnectChange, err := m.h.state.Disconnect(m.node.ID)
-		if err != nil {
-			m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+		// Validate if we are actually closing the current session or
+		// if the connection has been replaced. If the connection has been replaced,
+		// do not run the rest of the disconnect logic.
+		if m.h.mapBatcher.RemoveNode(m.node.ID, m.ch) {
+			// First update NodeStore to mark the node as offline
+			// This ensures the state is consistent before notifying the batcher
+			disconnectChange, err := m.h.state.Disconnect(m.node.ID)
+			if err != nil {
+				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+			}
+
+			// Send the disconnect change notification
+			m.h.Change(disconnectChange)
+
+			m.afterServeLongPoll()
+			m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
 		}
-
-		m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
-
-		// Send the disconnect change notification
-		m.h.Change(disconnectChange)
-
-		m.afterServeLongPoll()
-		m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
 	}()
 
 	// Set up the client stream

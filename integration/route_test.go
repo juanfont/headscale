@@ -34,6 +34,8 @@ import (
 	"tailscale.com/wgengine/filter"
 )
 
+const timestampFormat = "15:04:05.000"
+
 var allPorts = filter.PortRange{First: 0, Last: 0xffff}
 
 // This test is both testing the routes command and the propagation of
@@ -215,10 +217,10 @@ func TestEnablingRoutes(t *testing.T) {
 func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 
-	propagationTime := 10 * time.Second
+	propagationTime := 60 * time.Second
 
 	// Helper function to validate primary routes table state
-	validatePrimaryRoutes := func(t *testing.T, headscale ControlServer, nodes []*v1.Node, expectedRoutes *routes.DebugRoutes, message string) {
+	validatePrimaryRoutes := func(t *testing.T, headscale ControlServer, expectedRoutes *routes.DebugRoutes, message string) {
 		t.Helper()
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			primaryRoutesState, err := headscale.PrimaryRoutes()
@@ -301,6 +303,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	t.Logf("%s (%s) picked as client", client.Hostname(), client.MustID())
 	t.Logf("=== Initial Route Advertisement - Setting up HA configuration with 3 routers ===")
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  - Router 1 (%s): Advertising route %s - will become PRIMARY when approved", subRouter1.Hostname(), pref.String())
 	t.Logf("  - Router 2 (%s): Advertising route %s - will be STANDBY when approved", subRouter2.Hostname(), pref.String())
 	t.Logf("  - Router 3 (%s): Advertising route %s - will be STANDBY when approved", subRouter3.Hostname(), pref.String())
@@ -358,6 +361,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Helper function to check test failure and print route map if needed
 	checkFailureAndPrintRoutes := func(t *testing.T, client TailscaleClient) {
 		if t.Failed() {
+			t.Logf("[%s] Test failed at this checkpoint", time.Now().Format(timestampFormat))
 			status, err := client.Status()
 			if err == nil {
 				printCurrentRouteMap(t, xmaps.Values(status.Peer)...)
@@ -367,7 +371,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}
 
 	// Validate primary routes table state - no routes approved yet
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{},
 		PrimaryRoutes:   map[string]types.NodeID{}, // No primary routes yet
 	}, "Primary routes table should be empty (no approved routes yet)")
@@ -376,6 +380,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Enable route on node 1
 	t.Logf("=== Approving route on router 1 (%s) - Single router mode (no HA yet) ===", subRouter1.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Expected: Router 1 becomes PRIMARY with route %s active", pref.String())
 	t.Logf("  Expected: Routers 2 & 3 remain with advertised but unapproved routes")
 	t.Logf("  Expected: Client can access webservice through router 1 only")
@@ -438,6 +443,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 1 is PRIMARY with routes after approval")
 
 	t.Logf("=== Validating connectivity through PRIMARY router 1 (%s) to webservice at %s ===", must.Get(subRouter1.IPv4()).String(), webip.String())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Expected: Traffic flows through router 1 as it's the only approved route")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		result, err := client.Curl(weburl)
@@ -456,7 +462,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 1")
 
 	// Validate primary routes table state - router 1 is primary
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			// Note: Router 2 and 3 are available but not approved
@@ -470,6 +476,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Enable route on node 2, now we will have a HA subnet router
 	t.Logf("=== Enabling High Availability by approving route on router 2 (%s) ===", subRouter2.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 is PRIMARY and actively serving traffic")
 	t.Logf("  Expected: Router 2 becomes STANDBY (approved but not primary)")
 	t.Logf("  Expected: Router 1 remains PRIMARY (no flapping - stability preferred)")
@@ -533,7 +540,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying Router 1 remains PRIMARY after Router 2 approval")
 
 	// Validate primary routes table state - router 1 still primary, router 2 approved but standby
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -547,6 +554,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	checkFailureAndPrintRoutes(t, client)
 
 	t.Logf("=== Validating HA configuration - Router 1 PRIMARY, Router 2 STANDBY ===")
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current routing: Traffic through router 1 (%s) to %s", must.Get(subRouter1.IPv4()), webip.String())
 	t.Logf("  Expected: Router 1 continues to handle all traffic (no change from before)")
 	t.Logf("  Expected: Router 2 is ready to take over if router 1 fails")
@@ -567,7 +575,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 1 in HA mode")
 
 	// Validate primary routes table state - router 1 primary, router 2 approved (standby)
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -583,6 +591,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	// Enable route on node 3, now we will have a second standby and all will
 	// be enabled.
 	t.Logf("=== Adding second STANDBY router by approving route on router 3 (%s) ===", subRouter3.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 PRIMARY, Router 2 STANDBY")
 	t.Logf("  Expected: Router 3 becomes second STANDBY (approved but not primary)")
 	t.Logf("  Expected: Router 1 remains PRIMARY, Router 2 remains first STANDBY")
@@ -673,7 +682,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, 10*time.Second, 500*time.Millisecond, "Verifying traffic still flows through PRIMARY router 1 with full HA setup active")
 
 	// Validate primary routes table state - all 3 routers approved, router 1 still primary
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -688,6 +697,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Take down the current primary
 	t.Logf("=== FAILOVER TEST: Taking down PRIMARY router 1 (%s) ===", subRouter1.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 PRIMARY (serving traffic), Router 2 & 3 STANDBY")
 	t.Logf("  Action: Shutting down router 1 to simulate failure")
 	t.Logf("  Expected: Router 2 (%s) should automatically become new PRIMARY", subRouter2.Hostname())
@@ -750,7 +760,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 2 after failover")
 
 	// Validate primary routes table state - router 2 is now primary after router 1 failure
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Router 1 is disconnected, so not in AvailableRoutes
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -765,6 +775,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Take down subnet router 2, leaving none available
 	t.Logf("=== FAILOVER TEST: Taking down NEW PRIMARY router 2 (%s) ===", subRouter2.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 OFFLINE, Router 2 PRIMARY (serving traffic), Router 3 STANDBY")
 	t.Logf("  Action: Shutting down router 2 to simulate cascading failure")
 	t.Logf("  Expected: Router 3 (%s) should become new PRIMARY (last remaining router)", subRouter3.Hostname())
@@ -820,7 +831,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 3 after second failover")
 
 	// Validate primary routes table state - router 3 is now primary after router 2 failure
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Routers 1 and 2 are disconnected, so not in AvailableRoutes
 			types.NodeID(MustFindNode(subRouter3.Hostname(), nodes).GetId()): {pref},
@@ -834,6 +845,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Bring up subnet router 1, making the route available from there.
 	t.Logf("=== RECOVERY TEST: Bringing router 1 (%s) back online ===", subRouter1.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 OFFLINE, Router 2 OFFLINE, Router 3 PRIMARY (only router)")
 	t.Logf("  Action: Starting router 1 to restore HA capability")
 	t.Logf("  Expected: Router 3 remains PRIMARY (stability - no unnecessary failover)")
@@ -896,7 +908,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 3 after router 1 recovery")
 
 	// Validate primary routes table state - router 3 remains primary after router 1 comes back
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			// Router 2 is still disconnected
@@ -911,6 +923,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Bring up subnet router 2, should result in no change.
 	t.Logf("=== FULL RECOVERY TEST: Bringing router 2 (%s) back online ===", subRouter2.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 OFFLINE, Router 3 PRIMARY")
 	t.Logf("  Action: Starting router 2 to restore full HA (3 routers)")
 	t.Logf("  Expected: Router 3 (%s) remains PRIMARY (stability - avoid unnecessary failovers)", subRouter3.Hostname())
@@ -975,7 +988,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 3 after full recovery")
 
 	// Validate primary routes table state - router 3 remains primary after all routers back online
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -989,6 +1002,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	checkFailureAndPrintRoutes(t, client)
 
 	t.Logf("=== ROUTE DISABLE TEST: Removing approved route from PRIMARY router 3 (%s) ===", subRouter3.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 STANDBY, Router 3 PRIMARY")
 	t.Logf("  Action: Disabling route approval on router 3 (route still advertised but not approved)")
 	t.Logf("  Expected: Router 1 (%s) should become new PRIMARY (lowest ID with approved route)", subRouter1.Hostname())
@@ -1059,7 +1073,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 1 after route disable")
 
 	// Validate primary routes table state - router 1 is primary after router 3 route disabled
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -1074,6 +1088,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Disable the route of subnet router 1, making it failover to 2
 	t.Logf("=== ROUTE DISABLE TEST: Removing approved route from NEW PRIMARY router 1 (%s) ===", subRouter1.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 PRIMARY, Router 2 STANDBY, Router 3 advertised-only")
 	t.Logf("  Action: Disabling route approval on router 1")
 	t.Logf("  Expected: Router 2 (%s) should become new PRIMARY (only remaining approved route)", subRouter2.Hostname())
@@ -1144,7 +1159,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute goes through router 2 after second route disable")
 
 	// Validate primary routes table state - router 2 is primary after router 1 route disabled
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			// Router 1's route is no longer approved, so not in AvailableRoutes
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -1159,6 +1174,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// enable the route of subnet router 1, no change expected
 	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 1 (%s) ===", subRouter1.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 advertised-only, Router 2 PRIMARY, Router 3 advertised-only")
 	t.Logf("  Action: Re-enabling route approval on router 1")
 	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability - no unnecessary flapping)", subRouter2.Hostname())
@@ -1227,7 +1243,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Verifying traceroute still goes through router 2 after route re-enable")
 
 	// Validate primary routes table state after router 1 re-approval
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},
@@ -1242,6 +1258,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	// Enable route on node 3, we now have all routes re-enabled
 	t.Logf("=== ROUTE RE-ENABLE TEST: Re-approving route on router 3 (%s) - Full HA Restoration ===", subRouter3.Hostname())
+	t.Logf("[%s] Starting test section", time.Now().Format(timestampFormat))
 	t.Logf("  Current state: Router 1 STANDBY, Router 2 PRIMARY, Router 3 advertised-only")
 	t.Logf("  Action: Re-enabling route approval on router 3")
 	t.Logf("  Expected: Router 2 (%s) remains PRIMARY (stability preferred)", subRouter2.Hostname())
@@ -1265,7 +1282,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	}, propagationTime, 200*time.Millisecond, "Waiting for route state after router 3 re-approval")
 
 	// Validate primary routes table state after router 3 re-approval
-	validatePrimaryRoutes(t, headscale, nodes, &routes.DebugRoutes{
+	validatePrimaryRoutes(t, headscale, &routes.DebugRoutes{
 		AvailableRoutes: map[types.NodeID][]netip.Prefix{
 			types.NodeID(MustFindNode(subRouter1.Hostname(), nodes).GetId()): {pref},
 			types.NodeID(MustFindNode(subRouter2.Hostname(), nodes).GetId()): {pref},

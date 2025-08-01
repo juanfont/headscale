@@ -761,7 +761,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 			// Preserve online status when refreshing from database
 			existingNode, exists := s.nodeStore.GetNode(node.ID)
 			if exists && existingNode.Valid() {
-				node.IsOnline = existingNode.AsStruct().IsOnline
+				node.IsOnline = ptr.To(existingNode.IsOnline().Get())
 			}
 			s.nodeStore.PutNode(*node)
 		}
@@ -820,15 +820,15 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
 // AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
-func (s *State) AutoApproveRoutes(node types.NodeView) bool {
-	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, node)
+func (s *State) AutoApproveRoutes(nv types.NodeView) bool {
+	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
 	if changed {
 		// Persist the auto-approved routes to database and NodeStore via SetApprovedRoutes
 		// This ensures consistency between database and NodeStore
-		_, _, err := s.SetApprovedRoutes(node.ID(), approved)
+		_, _, err := s.SetApprovedRoutes(nv.ID(), approved)
 		if err != nil {
 			log.Error().
-				Uint64("node.id", node.ID().Uint64()).
+				Uint64("node.id", nv.ID().Uint64()).
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
 
@@ -1193,7 +1193,7 @@ func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
 	var mu sync.Mutex
 	for _, nv := range nodes.All() {
 		errg.Go(func() error {
-			approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv)
+			approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
 			if changed {
 				_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
 				if err != nil {
@@ -1224,62 +1224,36 @@ func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
 // - node.PeerChangeFromMapRequest
 // - node.ApplyPeerChange
 // - logTracePeerChange in poll.go.
-func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapRequest) (change.ChangeSet, error) {
-	currentNode, exists := s.nodeStore.GetNode(node.ID)
-	if !exists {
-		return change.EmptySet, fmt.Errorf("node not found: %d", node.ID)
-	}
+func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.ChangeSet, error) {
+	var routeChange bool
+	// We need to ensure we update the node as it is in the NodeStore at
+	// the time of the request.
+	s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
+		peerChange := currentNode.PeerChangeFromMapRequest(req)
+		hostinfoChanged := !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
-	peerChange := currentNode.PeerChangeFromMapRequest(req)
-	hostinfoChanged := !hostinfoEqual(currentNode, req.Hostinfo)
-
-	// If there is no changes and nothing to save,
-	// return early.
-	if peerChangeEmpty(peerChange) && !hostinfoChanged {
-		return change.EmptySet, nil
-	}
-
-	// Calculate route approval before NodeStore update to avoid calling View() inside callback
-	var routeApproval []netip.Prefix
-	var routeApprovalChanged bool
-
-	// Single NodeStore write to avoid multiple recalculations
-	routeChange := change.EmptySet
-
-	// Pre-calculate route approval if routes will change
-	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
-		// Create a temporary node with the new hostinfo to check policy
-		tempNode := currentNode.AsStruct()
-		tempNode.Hostinfo = req.Hostinfo
-
-		// Get old and new routes for detailed debugging
-		var oldRoutes []netip.Prefix
-		if currentNode.Valid() && currentNode.AsStruct().Hostinfo != nil {
-			oldRoutes = currentNode.AsStruct().Hostinfo.RoutableIPs
-		}
-		newRoutes := req.Hostinfo.RoutableIPs
-		if newRoutes == nil {
-			newRoutes = []netip.Prefix{}
+		// If there is no changes and nothing to save,
+		// return early.
+		if peerChangeEmpty(peerChange) && !hostinfoChanged {
+			return
 		}
 
-		log.Debug().
-			Uint64("node.id", node.ID.Uint64()).
-			Strs("oldRoutableIPs", util.PrefixesToString(oldRoutes)).
-			Strs("newRoutableIPs", util.PrefixesToString(newRoutes)).
-			Bool("isFirstRouteAdvertisement", len(oldRoutes) == 0 && len(newRoutes) > 0).
-			Msg("evaluating route changes for auto-approval")
+		// Calculate route approval before NodeStore update to avoid calling View() inside callback
+		var autoApprovedRoutes []netip.Prefix
+		if hostinfoChanged && routesChanged(currentNode.View(), req.Hostinfo) {
+			autoApprovedRoutes, routeChange = policy.ApproveRoutesWithPolicy(
+				s.polMan,
+				currentNode.View(),
+				// We need to preserve currently approved routes to ensure
+				// routes outside of the policy approver is persisted.
+				currentNode.AnnouncedRoutes(),
+				// However, the node has updated its routable IPs, so we
+				// need to approve them using that as a context.
+				req.Hostinfo.RoutableIPs,
+			)
+		}
 
-		routeApproval, routeApprovalChanged = policy.ApproveRoutesWithPolicy(s.polMan, tempNode.View())
-
-		log.Debug().
-			Uint64("node.id", node.ID.Uint64()).
-			Strs("routeApproval", util.PrefixesToString(routeApproval)).
-			Bool("routeApprovalChanged", routeApprovalChanged).
-			Msg("route approval evaluation completed")
-	}
-
-	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
-		n.ApplyPeerChange(&peerChange)
+		currentNode.ApplyPeerChange(&peerChange)
 
 		if hostinfoChanged {
 			// The node might not set NetInfo if it has not changed and if
@@ -1289,47 +1263,50 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 			// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
 			// TODO(kradalby): evaluate if we need better comparing of hostinfo
 			// before we take the changes.
-			if req.Hostinfo.NetInfo == nil && n.Hostinfo != nil {
-				req.Hostinfo.NetInfo = n.Hostinfo.NetInfo
+			if req.Hostinfo.NetInfo == nil && currentNode.Hostinfo != nil {
+				req.Hostinfo.NetInfo = currentNode.Hostinfo.NetInfo
 			}
-			n.Hostinfo = req.Hostinfo
-			n.ApplyHostnameFromHostInfo(req.Hostinfo)
+			currentNode.Hostinfo = req.Hostinfo
+			currentNode.ApplyHostnameFromHostInfo(req.Hostinfo)
 
-			// Apply pre-calculated route approval
-			// Always apply the route approval result to ensure consistency,
-			// regardless of whether the policy evaluation detected changes.
-			// This fixes the bug where routes weren't properly cleared when
-			// auto-approvers were removed from the policy.
-			log.Info().
-				Uint64("node.id", node.ID.Uint64()).
-				Strs("oldApprovedRoutes", util.PrefixesToString(n.ApprovedRoutes)).
-				Strs("newApprovedRoutes", util.PrefixesToString(routeApproval)).
-				Bool("routeApprovalChanged", routeApprovalChanged).
-				Msg("applying route approval results")
-			n.ApprovedRoutes = routeApproval
+			if routeChange {
+				// Apply pre-calculated route approval
+				// Always apply the route approval result to ensure consistency,
+				// regardless of whether the policy evaluation detected changes.
+				// This fixes the bug where routes weren't properly cleared when
+				// auto-approvers were removed from the policy.
+				log.Info().
+					Uint64("node.id", id.Uint64()).
+					Strs("oldApprovedRoutes", util.PrefixesToString(currentNode.ApprovedRoutes)).
+					Strs("newApprovedRoutes", util.PrefixesToString(autoApprovedRoutes)).
+					Bool("routeChanged", routeChange).
+					Msg("applying route approval results")
+				currentNode.ApprovedRoutes = autoApprovedRoutes
+			}
 		}
 	})
 
-	updatedNode, exists := s.nodeStore.GetNode(node.ID)
+	finalNode, exists := s.nodeStore.GetNode(id)
 	if !exists {
-		return change.EmptySet, fmt.Errorf("node disappeared during update: %d", node.ID)
+		return change.EmptySet, fmt.Errorf("node disappeared during update: %d", id)
 	}
 
+	nodeRouteChange := change.EmptySet
 	// Handle route changes after NodeStore update
-	if hostinfoChanged && routesChanged(currentNode, req.Hostinfo) {
+	if routeChange {
 		// SetNodeRoutes sets the active/distributed routes, so we must use SubnetRoutes()
 		// which returns only the intersection of announced AND approved routes.
 		// Using AnnouncedRoutes() would bypass the security model and auto-approve everything.
 		log.Debug().
-			Uint64("node.id", node.ID.Uint64()).
-			Strs("announcedRoutes", util.PrefixesToString(updatedNode.AnnouncedRoutes())).
-			Strs("approvedRoutes", util.PrefixesToString(updatedNode.ApprovedRoutes().AsSlice())).
-			Strs("subnetRoutes", util.PrefixesToString(updatedNode.SubnetRoutes())).
+			Uint64("node.id", id.Uint64()).
+			Strs("announcedRoutes", util.PrefixesToString(finalNode.AnnouncedRoutes())).
+			Strs("approvedRoutes", util.PrefixesToString(finalNode.ApprovedRoutes().AsSlice())).
+			Strs("subnetRoutes", util.PrefixesToString(finalNode.SubnetRoutes())).
 			Msg("updating node routes for distribution")
-		routeChange = s.SetNodeRoutes(node.ID, updatedNode.SubnetRoutes()...)
+		nodeRouteChange = s.SetNodeRoutes(id, finalNode.SubnetRoutes()...)
 	}
 
-	_, policyChange, err := s.saveNodeToDBOnly(updatedNode)
+	_, policyChange, err := s.saveNodeToDBOnly(finalNode)
 	if err != nil {
 		return change.EmptySet, fmt.Errorf("saving to database: %w", err)
 	}
@@ -1337,11 +1314,11 @@ func (s *State) UpdateNodeFromMapRequest(node *types.Node, req tailcfg.MapReques
 	if policyChange.IsFull() {
 		return policyChange, nil
 	}
-	if !routeChange.Empty() {
-		return routeChange, nil
+	if !nodeRouteChange.Empty() {
+		return nodeRouteChange, nil
 	}
 
-	return change.NodeAdded(node.ID), nil
+	return change.NodeAdded(id), nil
 }
 
 func hostinfoEqual(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {

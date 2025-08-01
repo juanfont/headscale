@@ -67,7 +67,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		conn = newConn
 	}
 
-	// Mark as connected only after validation succeeds
 	b.connected.Store(id, nil) // nil = connected
 
 	log.Info().Uint64("node.id", id.Uint64()).Msg("Node connected to batcher")
@@ -88,12 +87,14 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 // RemoveNode disconnects a node from the batcher, marking it as offline and cleaning up its state.
 // It validates the connection channel matches the current one, closes the connection,
 // and notifies other nodes that this node has gone offline.
-func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) {
+// It reports if the node was actually closed. Returns false if the channel does not match the current connection,
+// indicating that we are actually not disconnecting the node, but rather ignoring the request.
+func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool {
 	// Check if this is the current connection and mark it as closed
 	if existing, ok := b.nodes.Load(id); ok {
 		if !existing.matchesChannel(c) {
-			log.Debug().Uint64("node.id", id.Uint64()).Msg("MarkDisconnected called for non-current connection, ignoring")
-			return // Not the current connection, not an error
+			log.Debug().Uint64("node.id", id.Uint64()).Msg("RemoveNode called for non-current connection, ignoring")
+			return false // Not the current connection, not an error
 		}
 
 		// Mark the connection as closed to prevent further sends
@@ -108,6 +109,8 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	b.nodes.Delete(id)
 	b.connected.Store(id, ptr.To(time.Now()))
 	b.totalNodes.Add(-1)
+
+	return true
 }
 
 // AddWork queues a change to be processed by the batcher.

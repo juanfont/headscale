@@ -20,7 +20,7 @@ type Batcher interface {
 	Start()
 	Close()
 	AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error
-	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse)
+	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool
 	IsConnected(id types.NodeID) bool
 	ConnectedMap() *xsync.Map[types.NodeID, bool]
 	AddWork(c change.ChangeSet)

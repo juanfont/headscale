@@ -468,7 +468,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				require.NoError(t, err)
 				require.NotNil(t, pm)
 
-				newRoutes1, changed1 := policy.ApproveRoutesWithPolicy(pm, node.View())
+				newRoutes1, changed1 := policy.ApproveRoutesWithPolicy(pm, node.View(), node.ApprovedRoutes, tt.routes)
 				assert.Equal(t, tt.expectChange, changed1)
 
 				if changed1 {
@@ -476,7 +476,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View())
+				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View(), node.ApprovedRoutes, tt.routes)
 				if changed2 {
 					err = SetApprovedRoutes(adb.DB, nodeTagged.ID, newRoutes2)
 					require.NoError(t, err)

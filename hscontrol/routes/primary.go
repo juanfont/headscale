@@ -3,6 +3,7 @@ package routes
 import (
 	"fmt"
 	"net/netip"
+	"runtime/debug"
 	"slices"
 	"sort"
 	"strings"
@@ -151,6 +152,10 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 		Uint64("node.id", node.Uint64()).
 		Strs("prefixes", util.PrefixesToString(prefixes)).
 		Msg("PrimaryRoutes.SetRoutes called")
+
+	fmt.Printf("\n\nSET ROUTES: %s prefixes: %v\n", node, prefixes)
+	temp := debug.Stack()
+	fmt.Printf("SET ROUTES WAS CALLED STACKTRACE:\n%s\n\n", string(temp))
 
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {

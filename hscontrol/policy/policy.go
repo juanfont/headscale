@@ -7,7 +7,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -139,74 +138,40 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	return ret
 }
 
-// ApproveRoutesWithPolicy approves any route that can be autoapproved from
-// the nodes perspective according to the given policy.
-// If the node's approved routes change, it returns the new list and true.
-func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView) ([]netip.Prefix, bool) {
+// ApproveRoutesWithPolicy checks if the node can approve the announced routes
+// and returns the new list of approved routes.
+// If a route was already approved, it will not be removed.
+// The returning list contains _all_ the approved routes for the node, including
+// the ones that were already approved and the new ones that were announced.
+func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApproved, announcedRoutes []netip.Prefix) ([]netip.Prefix, bool) {
 	if pm == nil {
-		log.Debug().Msg("PolicyManager is nil, no approval")
-		return nil, false
+		return currentApproved, false
 	}
 	var newApproved []netip.Prefix
-	announcedRoutes := nv.AnnouncedRoutes()
-	currentApproved := nv.ApprovedRoutes().AsSlice()
-
-	log.Debug().
-		Uint64("node.id", nv.ID().Uint64()).
-		Strs("announcedRoutes", util.PrefixesToString(announcedRoutes)).
-		Strs("currentApprovedRoutes", util.PrefixesToString(currentApproved)).
-		Msg("evaluating route approval")
 
 	for _, route := range announcedRoutes {
 		canApprove := pm.NodeCanApproveRoute(nv, route)
-		log.Debug().
-			Uint64("node.id", nv.ID().Uint64()).
-			Str("route", route.String()).
-			Bool("canApprove", canApprove).
-			Msg("checking individual route approval")
 		if canApprove {
 			newApproved = append(newApproved, route)
 		}
 	}
 
-	log.Debug().
-		Uint64("node.id", nv.ID().Uint64()).
-		Strs("newApproved", util.PrefixesToString(newApproved)).
-		Int("newApprovedCount", len(newApproved)).
-		Msg("auto-approval results")
-
 	// Only modify ApprovedRoutes if we have new routes to approve.
 	// This prevents clearing existing approved routes when nodes
 	// temporarily don't have announced routes during policy changes.
 	if len(newApproved) > 0 {
-		combined := nv.ApprovedRoutes().AppendTo(newApproved)
-		tsaddr.SortPrefixes(combined)
-		combined = slices.Compact(combined)
-		combined = lo.Filter(combined, func(route netip.Prefix, index int) bool {
+		resultApproved := append(currentApproved, newApproved...)
+		tsaddr.SortPrefixes(resultApproved)
+		resultApproved = slices.Compact(resultApproved)
+		resultApproved = lo.Filter(resultApproved, func(route netip.Prefix, index int) bool {
 			return route.IsValid()
 		})
 
-		log.Debug().
-			Uint64("node.id", nv.ID().Uint64()).
-			Strs("combinedRoutes", util.PrefixesToString(combined)).
-			Strs("oldApprovedRoutes", util.PrefixesToString(currentApproved)).
-			Bool("routesChanged", !slices.Equal(currentApproved, combined)).
-			Msg("final route approval calculation")
-
 		// Only update if the routes actually changed
-		if !slices.Equal(currentApproved, combined) {
-			log.Info().
-				Uint64("node.id", nv.ID().Uint64()).
-				Strs("finalApprovedRoutes", util.PrefixesToString(combined)).
-				Msg("auto-approving routes based on policy")
-
-			return combined, true
+		if !slices.Equal(currentApproved, resultApproved) {
+			return resultApproved, true
 		}
 	}
-
-	log.Debug().
-		Uint64("node.id", nv.ID().Uint64()).
-		Msg("no route changes needed")
 
 	return currentApproved, false
 }
