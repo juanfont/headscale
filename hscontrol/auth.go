@@ -30,23 +30,6 @@ func (h *Headscale) handleRegister(
 	node, ok := h.state.GetNodeByNodeKey(regReq.NodeKey)
 
 	if ok {
-		// If an existing node is trying to register with an auth key,
-		// we need to validate the auth key even for existing nodes
-		if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
-			resp, err := h.handleRegisterWithAuthKey(regReq, machineKey)
-			if err != nil {
-				// Preserve HTTPError types so they can be handled properly by the HTTP layer
-				var httpErr HTTPError
-				if errors.As(err, &httpErr) {
-					return nil, httpErr
-				}
-
-				return nil, fmt.Errorf("handling register with auth key for existing node: %w", err)
-			}
-
-			return resp, nil
-		}
-
 		resp, err := h.handleExistingNode(node.AsStruct(), regReq, machineKey)
 		if err != nil {
 			return nil, fmt.Errorf("handling existing node: %w", err)
