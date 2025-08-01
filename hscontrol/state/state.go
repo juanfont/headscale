@@ -443,7 +443,7 @@ func (s *State) Connect(node *types.Node) change.ChangeSet {
 func (s *State) Disconnect(node *types.Node) (change.ChangeSet, error) {
 	now := time.Now()
 	s.nodeStore.UpdateNode(node.ID, func(n *types.Node) {
-		node.LastSeen = ptr.To(now)
+		n.LastSeen = ptr.To(now)
 		n.IsOnline = ptr.To(false)
 	})
 
@@ -749,6 +749,11 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 		}
 
 		for _, node := range nodes {
+			// Preserve online status when refreshing from database
+			existingNode, exists := s.nodeStore.GetNode(node.ID)
+			if exists && existingNode.Valid() {
+				node.IsOnline = existingNode.AsStruct().IsOnline
+			}
 			s.nodeStore.PutNode(*node)
 		}
 	}
@@ -968,6 +973,11 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	// Update NodeStore to ensure it has the latest node data
+	// Preserve online status when updating from database
+	existingNode, exists := s.nodeStore.GetNode(node.ID)
+	if exists && existingNode.Valid() {
+		node.IsOnline = existingNode.AsStruct().IsOnline
+	}
 	s.nodeStore.PutNode(*node)
 
 	// Update policy manager with the new node if needed
@@ -1073,6 +1083,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// Update NodeStore BEFORE updating policy manager so it has the latest node data
 	// CRITICAL: For re-registration of existing nodes, we must update NodeStore
 	// to ensure it has the latest state from the database transaction
+	// Preserve online status when updating from database
+	existingNodeView, exists := s.nodeStore.GetNode(node.ID)
+	if exists && existingNodeView.Valid() {
+		node.IsOnline = existingNodeView.AsStruct().IsOnline
+	}
 	s.nodeStore.PutNode(*node)
 
 	// Check if policy manager needs updating
