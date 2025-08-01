@@ -34,6 +34,7 @@ jobs:
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndRelogin
           - TestUserCommand
+          - TestUserCreateCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
@@ -47,6 +48,19 @@ jobs:
           - TestNodeMoveCommand
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
+          - TestNodeRoutesListCommand
+          - TestNodeRoutesApproveCommand
+          - TestPolicyCheckCommand
+          - TestConfigTestCommand
+          - TestGeneratePrivateKeyCommand
+          - TestVersionCommand
+          - TestNodesBackfillIPsCommand
+          - TestOutputFormatVariations
+          - TestCommandAliases
+          - TestCLIErrorHandling
+          - TestDumpConfigCommand
+          - TestCompletionCommands
+          - TestMissingFlagCombinations
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestResolveMagicDNSExtraRecordsPath
