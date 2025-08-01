@@ -260,26 +260,10 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 }
 
 // RenameNode takes a Node struct and a new GivenName for the nodes
-// and renames it. If the name is not unique, it will return an error.
+// and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.CheckForFQDNRules(
-		newName,
-	)
-	if err != nil {
-		return fmt.Errorf("renaming node: %w", err)
-	}
-
-	uniq, err := isUniqueName(tx, newName)
-	if err != nil {
-		return fmt.Errorf("checking if name is unique: %w", err)
-	}
-
-	if !uniq {
-		return fmt.Errorf("name is not unique: %s", newName)
-	}
-
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
 		return fmt.Errorf("failed to rename node in the database: %w", err)
 	}

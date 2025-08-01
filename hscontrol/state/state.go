@@ -650,6 +650,22 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
+	// Validate the new name before making any changes
+	if err := util.CheckForFQDNRules(newName); err != nil {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
+	}
+
+	// Check name uniqueness
+	nodes, err := s.db.ListNodes()
+	if err != nil {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("checking name uniqueness: %w", err)
+	}
+	for _, node := range nodes {
+		if node.ID != nodeID && node.GivenName == newName {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("name is not unique: %s", newName)
+		}
+	}
+
 	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
 	// The NodeStore update is blocking and will be the source of truth for the batcher.
 	// The database update MUST make the EXACT same change.
@@ -679,10 +695,15 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 
 // AssignNodeToUser transfers a node to a different user.
 func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, change.ChangeSet, error) {
-	// CRITICAL: Fetch the user first for NodeStore update
+	// Validate that both node and user exist
+	_, found := s.GetNodeByID(nodeID)
+	if !found {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found: %d", nodeID)
+	}
+	
 	user, err := s.GetUserByID(userID)
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("user not found: %w", err)
 	}
 
 	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
