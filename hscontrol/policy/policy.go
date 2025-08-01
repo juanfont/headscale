@@ -138,18 +138,20 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	return ret
 }
 
-// AutoApproveRoutes approves any route that can be autoapproved from
-// the nodes perspective according to the given policy.
-// It reports true if any routes were approved.
-// Note: This function now takes a pointer to the actual node to modify ApprovedRoutes.
-func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
+// ApproveRoutesWithPolicy checks if the node can approve the announced routes
+// and returns the new list of approved routes.
+// If a route was already approved, it will not be removed.
+// The returning list contains _all_ the approved routes for the node, including
+// the ones that were already approved and the new ones that were announced.
+func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApproved, announcedRoutes []netip.Prefix) ([]netip.Prefix, bool) {
 	if pm == nil {
-		return false
+		return currentApproved, false
 	}
-	nodeView := node.View()
 	var newApproved []netip.Prefix
-	for _, route := range nodeView.AnnouncedRoutes() {
-		if pm.NodeCanApproveRoute(nodeView, route) {
+
+	for _, route := range announcedRoutes {
+		canApprove := pm.NodeCanApproveRoute(nv, route)
+		if canApprove {
 			newApproved = append(newApproved, route)
 		}
 	}
@@ -158,19 +160,18 @@ func AutoApproveRoutes(pm PolicyManager, node *types.Node) bool {
 	// This prevents clearing existing approved routes when nodes
 	// temporarily don't have announced routes during policy changes.
 	if len(newApproved) > 0 {
-		combined := append(newApproved, node.ApprovedRoutes...)
-		tsaddr.SortPrefixes(combined)
-		combined = slices.Compact(combined)
-		combined = lo.Filter(combined, func(route netip.Prefix, index int) bool {
+		resultApproved := append(currentApproved, newApproved...)
+		tsaddr.SortPrefixes(resultApproved)
+		resultApproved = slices.Compact(resultApproved)
+		resultApproved = lo.Filter(resultApproved, func(route netip.Prefix, index int) bool {
 			return route.IsValid()
 		})
 
 		// Only update if the routes actually changed
-		if !slices.Equal(node.ApprovedRoutes, combined) {
-			node.ApprovedRoutes = combined
-			return true
+		if !slices.Equal(currentApproved, resultApproved) {
+			return resultApproved, true
 		}
 	}
 
-	return false
+	return currentApproved, false
 }

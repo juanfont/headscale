@@ -5,6 +5,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/ory/dockertest/v3"
 )
 
@@ -29,4 +30,5 @@ type ControlServer interface {
 	GetCert() []byte
 	GetHostname() string
 	SetPolicy(*policyv2.Policy) error
+	PrimaryRoutes() (*routes.DebugRoutes, error)
 }
