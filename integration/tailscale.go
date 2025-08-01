@@ -47,6 +47,7 @@ type TailscaleClient interface {
 	WaitForPeers(expected int, timeout, retryInterval time.Duration) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
+	CurlFailFast(url string) (string, error)
 	Traceroute(netip.Addr) (util.Traceroute, error)
 	ContainerID() string
 	MustID() types.NodeID

@@ -36,8 +36,8 @@ import (
 
 const (
 	tsicHashLength       = 6
-	defaultPingTimeout   = 300 * time.Millisecond
-	defaultPingCount     = 10
+	defaultPingTimeout   = 200 * time.Millisecond
+	defaultPingCount     = 5
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
@@ -1166,11 +1166,11 @@ func WithCurlRetry(ret int) CurlOption {
 }
 
 const (
-	defaultConnectionTimeout = 3 * time.Second
-	defaultMaxTime           = 10 * time.Second
-	defaultRetry             = 5
-	defaultRetryDelay        = 0 * time.Second
-	defaultRetryMaxTime      = 50 * time.Second
+	defaultConnectionTimeout = 1 * time.Second
+	defaultMaxTime           = 3 * time.Second
+	defaultRetry             = 3
+	defaultRetryDelay        = 200 * time.Millisecond
+	defaultRetryMaxTime      = 5 * time.Second
 )
 
 // Curl executes the Tailscale curl command and curls a hostname
@@ -1213,6 +1213,17 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	return result, nil
+}
+
+// CurlFailFast executes the Tailscale curl command with aggressive timeouts
+// optimized for testing expected connection failures. It uses minimal timeouts
+// to quickly detect blocked connections without waiting for multiple retries.
+func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
+	// Use aggressive timeouts for fast failure detection
+	return t.Curl(url,
+		WithCurlConnectionTimeout(1*time.Second),
+		WithCurlMaxTime(2*time.Second),
+		WithCurlRetry(1))
 }
 
 func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {

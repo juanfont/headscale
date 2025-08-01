@@ -385,9 +385,11 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "Expected connection failure - ACL blocks user2 from accessing user1")
 		}
 	}
 }
@@ -431,9 +433,11 @@ func TestACLDenyAllPort80(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", hostname)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "Expected connection failure - ACL denies access to port 80 for all clients")
 		}
 	}
 }
@@ -492,9 +496,11 @@ func TestACLAllowUserDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "Expected connection failure - ACL blocks user2 from accessing user1")
 		}
 	}
 }
@@ -552,9 +558,11 @@ func TestACLAllowStarDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "Expected connection failure - ACL blocks user2 from accessing user1")
 		}
 	}
 }
@@ -771,145 +779,181 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			test3fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test3fqdn)
 
 			// test1 can query test3
-			result, err := test1.Curl(test3ip4URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3ip4URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test3ip4URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3ip4URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test3 via IPv4")
 
-			result, err = test1.Curl(test3ip6URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3ip6URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test3ip6URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3ip6URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test3 via IPv6")
 
-			result, err = test1.Curl(test3fqdnURL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3fqdnURL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test3fqdnURL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3fqdnURL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test3 via FQDN")
 
 			// test2 can query test3
-			result, err = test2.Curl(test3ip4URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3ip4URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.Curl(test3ip4URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test2 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3ip4URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test2 should be able to query test3 via IPv4")
 
-			result, err = test2.Curl(test3ip6URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3ip6URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.Curl(test3ip6URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test2 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3ip6URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test2 should be able to query test3 via IPv6")
 
-			result, err = test2.Curl(test3fqdnURL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-				test3fqdnURL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.Curl(test3fqdnURL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test2 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3fqdnURL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test2 should be able to query test3 via FQDN")
 
 			// test3 cannot query test1
-			result, err = test3.Curl(test1ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test1ip4URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test1 via IPv4")
 
-			result, err = test3.Curl(test1ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test1ip6URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test1 via IPv6")
 
-			result, err = test3.Curl(test1fqdnURL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test1fqdnURL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test1 via FQDN")
 
 			// test3 cannot query test2
-			result, err = test3.Curl(test2ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test2ip4URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test2 via IPv4")
 
-			result, err = test3.Curl(test2ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test2ip6URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test2 via IPv6")
 
-			result, err = test3.Curl(test2fqdnURL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test3.CurlFailFast(test2fqdnURL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test3 should not be able to query test2 via FQDN")
 
 			// test1 can query test2
-			result, err = test1.Curl(test2ip4URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-				test2ip4URL,
-				result,
-			)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2ip4URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2ip4URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via IPv4")
 
-			require.NoError(t, err)
-			result, err = test1.Curl(test2ip6URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-				test2ip6URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2ip6URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2ip6URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via IPv6")
 
-			result, err = test1.Curl(test2fqdnURL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-				test2fqdnURL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2fqdnURL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2fqdnURL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via FQDN")
 
 			// test2 cannot query test1
-			result, err = test2.Curl(test1ip4URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1ip4URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via IPv4")
 
-			result, err = test2.Curl(test1ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1ip6URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via IPv6")
 
-			result, err = test2.Curl(test1fqdnURL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1fqdnURL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via FQDN")
 		})
 	}
 }
@@ -1039,50 +1083,62 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
 
 			// test1 can query test2
-			result, err := test1.Curl(test2ipURL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-				test2ipURL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2ipURL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2ipURL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via IPv4")
 
-			result, err = test1.Curl(test2ip6URL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-				test2ip6URL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2ip6URL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2ip6URL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via IPv6")
 
-			result, err = test1.Curl(test2fqdnURL)
-			assert.Lenf(
-				t,
-				result,
-				13,
-				"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-				test2fqdnURL,
-				result,
-			)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test1.Curl(test2fqdnURL)
+				assert.NoError(ct, err)
+				assert.Lenf(
+					ct,
+					result,
+					13,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2fqdnURL,
+					result,
+				)
+			}, 10*time.Second, 500*time.Millisecond, "test1 should be able to query test2 via FQDN")
 
-			result, err = test2.Curl(test1ipURL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1ipURL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via IPv4")
 
-			result, err = test2.Curl(test1ip6URL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1ip6URL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via IPv6")
 
-			result, err = test2.Curl(test1fqdnURL)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := test2.CurlFailFast(test1fqdnURL)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "test2 should not be able to query test1 via FQDN")
 		})
 	}
 }
@@ -1219,9 +1275,11 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url, tsic.WithCurlConnectionTimeout(2*time.Second), tsic.WithCurlMaxTime(5*time.Second), tsic.WithCurlRetry(1))
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "Expected connection failure - ACL blocks user2 from accessing user1")
 		}
 	}
 }
