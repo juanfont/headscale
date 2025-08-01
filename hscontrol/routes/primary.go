@@ -255,3 +255,37 @@ func (pr *PrimaryRoutes) stringLocked() string {
 
 	return sb.String()
 }
+
+// DebugRoutes represents the primary routes state in a structured format for JSON serialization.
+type DebugRoutes struct {
+	// AvailableRoutes maps node IDs to their advertised routes
+	AvailableRoutes map[types.NodeID][]netip.Prefix `json:"available_routes"`
+	
+	// PrimaryRoutes maps route prefixes to the primary node serving them
+	PrimaryRoutes map[string]types.NodeID `json:"primary_routes"`
+}
+
+// DebugJSON returns a structured representation of the primary routes state suitable for JSON serialization.
+func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	debug := DebugRoutes{
+		AvailableRoutes: make(map[types.NodeID][]netip.Prefix),
+		PrimaryRoutes:   make(map[string]types.NodeID),
+	}
+
+	// Populate available routes
+	for nodeID, routes := range pr.routes {
+		prefixes := routes.Slice()
+		tsaddr.SortPrefixes(prefixes)
+		debug.AvailableRoutes[nodeID] = prefixes
+	}
+
+	// Populate primary routes
+	for prefix, nodeID := range pr.primaries {
+		debug.PrimaryRoutes[prefix.String()] = nodeID
+	}
+
+	return debug
+}

@@ -5,9 +5,58 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
+
+// DebugOverviewInfo represents the state overview information in a structured format.
+type DebugOverviewInfo struct {
+	Nodes struct {
+		Total     int `json:"total"`
+		Online    int `json:"online"`
+		Expired   int `json:"expired"`
+		Ephemeral int `json:"ephemeral"`
+	} `json:"nodes"`
+	Users      map[string]int `json:"users"` // username -> node count
+	TotalUsers int            `json:"total_users"`
+	Policy     struct {
+		Mode string `json:"mode"`
+		Path string `json:"path,omitempty"`
+	} `json:"policy"`
+	DERP struct {
+		Configured bool `json:"configured"`
+		Regions    int  `json:"regions"`
+	} `json:"derp"`
+	PrimaryRoutes int `json:"primary_routes"`
+}
+
+// DebugDERPInfo represents DERP map information in a structured format.
+type DebugDERPInfo struct {
+	Configured   bool                              `json:"configured"`
+	TotalRegions int                               `json:"total_regions"`
+	Regions      map[int]*DebugDERPRegion         `json:"regions,omitempty"`
+}
+
+// DebugDERPRegion represents a single DERP region.
+type DebugDERPRegion struct {
+	RegionID   int                `json:"region_id"`
+	RegionName string             `json:"region_name"`
+	Nodes      []*DebugDERPNode   `json:"nodes"`
+}
+
+// DebugDERPNode represents a single DERP node.
+type DebugDERPNode struct {
+	Name     string `json:"name"`
+	HostName string `json:"hostname"`
+	DERPPort int    `json:"derp_port"`
+	STUNPort int    `json:"stun_port,omitempty"`
+}
+
+// DebugStringInfo wraps a debug string for JSON serialization.
+type DebugStringInfo struct {
+	Content string `json:"content"`
+}
 
 // DebugOverview returns a comprehensive overview of the current state for debugging.
 func (s *State) DebugOverview() string {
@@ -197,8 +246,13 @@ func (s *State) DebugFilter() ([]tailcfg.FilterRule, error) {
 	return filter, nil
 }
 
-// DebugRoutes returns the current primary routes information.
-func (s *State) DebugRoutes() string {
+// DebugRoutes returns the current primary routes information as a structured object.
+func (s *State) DebugRoutes() routes.DebugRoutes {
+	return s.primaryRoutes.DebugJSON()
+}
+
+// DebugRoutesString returns the current primary routes information as a string.
+func (s *State) DebugRoutesString() string {
 	return s.PrimaryRoutesString()
 }
 
@@ -210,4 +264,115 @@ func (s *State) DebugPolicyManager() string {
 // PolicyDebugString returns a debug representation of the current policy.
 func (s *State) PolicyDebugString() string {
 	return s.polMan.DebugString()
+}
+
+// DebugOverviewJSON returns a structured overview of the current state for debugging.
+func (s *State) DebugOverviewJSON() DebugOverviewInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	allNodes := s.nodeStore.ListNodes()
+	users, _ := s.ListAllUsers()
+
+	info := DebugOverviewInfo{
+		Users:      make(map[string]int),
+		TotalUsers: len(users),
+	}
+
+	// Node statistics
+	info.Nodes.Total = allNodes.Len()
+	now := time.Now()
+	
+	for _, node := range allNodes.All() {
+		if node.Valid() {
+			userName := node.User().Name
+			info.Users[userName]++
+
+			if node.IsOnline().Valid() && node.IsOnline().Get() {
+				info.Nodes.Online++
+			}
+
+			if node.Expiry().Valid() && node.Expiry().Get().Before(now) {
+				info.Nodes.Expired++
+			}
+
+			if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+				info.Nodes.Ephemeral++
+			}
+		}
+	}
+
+	// Policy information
+	info.Policy.Mode = string(s.cfg.Policy.Mode)
+	if s.cfg.Policy.Mode == types.PolicyModeFile {
+		info.Policy.Path = s.cfg.Policy.Path
+	}
+
+	// DERP information
+	if s.derpMap != nil {
+		info.DERP.Configured = true
+		info.DERP.Regions = len(s.derpMap.Regions)
+	} else {
+		info.DERP.Configured = false
+		info.DERP.Regions = 0
+	}
+
+	// Route information
+	routeCount := len(strings.Split(strings.TrimSpace(s.primaryRoutes.String()), "\n"))
+	if s.primaryRoutes.String() == "" {
+		routeCount = 0
+	}
+	info.PrimaryRoutes = routeCount
+
+	return info
+}
+
+// DebugDERPJSON returns structured debug information about the DERP map configuration.
+func (s *State) DebugDERPJSON() DebugDERPInfo {
+	info := DebugDERPInfo{
+		Configured: s.derpMap != nil,
+		Regions:    make(map[int]*DebugDERPRegion),
+	}
+
+	if s.derpMap == nil {
+		return info
+	}
+
+	info.TotalRegions = len(s.derpMap.Regions)
+
+	for regionID, region := range s.derpMap.Regions {
+		debugRegion := &DebugDERPRegion{
+			RegionID:   regionID,
+			RegionName: region.RegionName,
+			Nodes:      make([]*DebugDERPNode, 0, len(region.Nodes)),
+		}
+
+		for _, node := range region.Nodes {
+			debugNode := &DebugDERPNode{
+				Name:     node.Name,
+				HostName: node.HostName,
+				DERPPort: node.DERPPort,
+				STUNPort: node.STUNPort,
+			}
+			debugRegion.Nodes = append(debugRegion.Nodes, debugNode)
+		}
+
+		info.Regions[regionID] = debugRegion
+	}
+
+	return info
+}
+
+// DebugNodeStoreJSON returns structured debug information about the NodeStore.
+func (s *State) DebugNodeStoreJSON() DebugStringInfo {
+	return DebugStringInfo{
+		Content: s.nodeStore.DebugString(),
+	}
+}
+
+// DebugPolicyManagerJSON returns structured debug information about the policy manager.
+func (s *State) DebugPolicyManagerJSON() DebugStringInfo {
+	return DebugStringInfo{
+		Content: s.polMan.DebugString(),
+	}
 }

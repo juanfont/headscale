@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/arl/statsviz"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -16,10 +17,27 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// State overview endpoint
 	debug.Handle("overview", "State overview", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		overview := h.state.DebugOverview()
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(overview))
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+		
+		if wantsJSON {
+			overview := h.state.DebugOverviewJSON()
+			overviewJSON, err := json.MarshalIndent(overview, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(overviewJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			overview := h.state.DebugOverview()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(overview))
+		}
 	}))
 
 	// Configuration endpoint
@@ -42,7 +60,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		// Policy data is HuJSON, which is a superset of JSON
+		// Set content type based on Accept header preference
+		acceptHeader := r.Header.Get("Accept")
+		if strings.Contains(acceptHeader, "application/json") {
+			w.Header().Set("Content-Type", "application/json")
+		} else {
+			w.Header().Set("Content-Type", "text/plain")
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(policy))
 	}))
@@ -79,18 +104,52 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// DERP map endpoint
 	debug.Handle("derp", "DERP map configuration", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		derpInfo := h.state.DebugDERPMap()
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(derpInfo))
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+		
+		if wantsJSON {
+			derpInfo := h.state.DebugDERPJSON()
+			derpJSON, err := json.MarshalIndent(derpInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(derpJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			derpInfo := h.state.DebugDERPMap()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(derpInfo))
+		}
 	}))
 
 	// NodeStore endpoint
 	debug.Handle("nodestore", "NodeStore information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		nodeStoreInfo := h.state.DebugNodeStore()
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(nodeStoreInfo))
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+		
+		if wantsJSON {
+			nodeStoreInfo := h.state.DebugNodeStoreJSON()
+			nodeStoreJSON, err := json.MarshalIndent(nodeStoreInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(nodeStoreJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			nodeStoreInfo := h.state.DebugNodeStore()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(nodeStoreInfo))
+		}
 	}))
 
 	// Registration cache endpoint
@@ -108,18 +167,52 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// Routes endpoint
 	debug.Handle("routes", "Primary routes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		routes := h.state.DebugRoutes()
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(routes))
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+		
+		if wantsJSON {
+			routes := h.state.DebugRoutes()
+			routesJSON, err := json.MarshalIndent(routes, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(routesJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			routes := h.state.DebugRoutesString()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(routes))
+		}
 	}))
 
 	// Policy manager endpoint
 	debug.Handle("policy-manager", "Policy manager state", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		policyManagerInfo := h.state.DebugPolicyManager()
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(policyManagerInfo))
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+		
+		if wantsJSON {
+			policyManagerInfo := h.state.DebugPolicyManagerJSON()
+			policyManagerJSON, err := json.MarshalIndent(policyManagerInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(policyManagerJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			policyManagerInfo := h.state.DebugPolicyManager()
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(policyManagerInfo))
+		}
 	}))
 
 	err := statsviz.Register(debugMux)

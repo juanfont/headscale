@@ -23,6 +23,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -1242,4 +1243,24 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 	}
 
 	return nil
+}
+
+// PrimaryRoutes fetches the primary routes from the debug endpoint.
+func (t *HeadscaleInContainer) PrimaryRoutes() (*routes.DebugRoutes, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/routes",
+	}
+	
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching routes from debug endpoint: %w", err)
+	}
+	
+	var debugRoutes routes.DebugRoutes
+	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil {
+		return nil, fmt.Errorf("decoding routes response: %w", err)
+	}
+	
+	return &debugRoutes, nil
 }
