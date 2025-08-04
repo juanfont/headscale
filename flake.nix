@@ -19,7 +19,7 @@
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
         buildGo = pkgs.buildGo124Module;
-        vendorHash = "sha256-83L2NMyOwKCHWqcowStJ7Ze/U9CJYhzleDRLrJNhX2g=";
+        vendorHash = "sha256-o6SGQKWoE/YYRDiJXqSirzE+JUrQQ/YhKXEZooy1Dz4=";
       in {
         headscale = buildGo {
           pname = "headscale";
