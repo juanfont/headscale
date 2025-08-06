@@ -260,24 +260,18 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 }
 
 // RenameNode takes a Node struct and a new GivenName for the nodes
-// and renames it. If the name is not unique, it will return an error.
+// and renames it. Validation should be done in the state layer before calling this function.
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	err := util.CheckForFQDNRules(
-		newName,
-	)
-	if err != nil {
-		return fmt.Errorf("renaming node: %w", err)
+	// Check if the new name is unique
+	var count int64
+	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
-
-	uniq, err := isUniqueName(tx, newName)
-	if err != nil {
-		return fmt.Errorf("checking if name is unique: %w", err)
-	}
-
-	if !uniq {
-		return fmt.Errorf("name is not unique: %s", newName)
+	
+	if count > 0 {
+		return fmt.Errorf("name is not unique")
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -409,9 +403,16 @@ func (hsdb *HSDatabase) HandleNodeFromAuthPath(
 					return nil, err
 				}
 
+				// CRITICAL: Reload the node to get the updated expiry
+				// Without this, we return stale node data to NodeStore
+				updatedNode, err := GetNodeByID(tx, node.ID)
+				if err != nil {
+					return nil, fmt.Errorf("failed to reload node after expiry update: %w", err)
+				}
+
 				nodeChange = change.KeyExpiry(node.ID)
 
-				return node, nil
+				return updatedNode, nil
 			}
 		}
 
@@ -445,8 +446,13 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 		node.ID = oldNode.ID
 		node.GivenName = oldNode.GivenName
 		node.ApprovedRoutes = oldNode.ApprovedRoutes
-		ipv4 = oldNode.IPv4
-		ipv6 = oldNode.IPv6
+		// Don't overwrite the provided IPs with old ones when they exist
+		if ipv4 == nil {
+			ipv4 = oldNode.IPv4
+		}
+		if ipv6 == nil {
+			ipv6 = oldNode.IPv6
+		}
 	}
 
 	// If the node exists and it already has IP(s), we just save it
@@ -781,17 +787,21 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 
 	node := hsdb.CreateNodeForTest(user, hostname...)
 
-	err := hsdb.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNode(tx, *node, nil, nil)
+	// Allocate IPs for the test node using the database's IP allocator
+	// This is a simplified allocation for testing - in production this would use State.ipAlloc
+	ipv4, ipv6, err := hsdb.allocateTestIPs(node.ID)
+	if err != nil {
+		panic(fmt.Sprintf("failed to allocate IPs for test node: %v", err))
+	}
+
+	var registeredNode *types.Node
+	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		registeredNode, err = RegisterNode(tx, *node, ipv4, ipv6)
 		return err
 	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to register test node: %v", err))
-	}
-
-	registeredNode, err := hsdb.GetNodeByID(node.ID)
-	if err != nil {
-		panic(fmt.Sprintf("failed to get registered test node: %v", err))
 	}
 
 	return registeredNode
@@ -841,4 +851,24 @@ func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int
 	}
 
 	return nodes
+}
+
+// allocateTestIPs allocates sequential test IPs for nodes during testing.
+func (hsdb *HSDatabase) allocateTestIPs(nodeID types.NodeID) (*netip.Addr, *netip.Addr, error) {
+	if !testing.Testing() {
+		panic("allocateTestIPs can only be called during tests")
+	}
+
+	// Use simple sequential allocation for tests
+	// IPv4: 100.64.0.x (where x is nodeID)
+	// IPv6: fd7a:115c:a1e0::x (where x is nodeID)
+
+	if nodeID > 254 {
+		return nil, nil, fmt.Errorf("test node ID %d too large for simple IP allocation", nodeID)
+	}
+
+	ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(nodeID)})
+	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(nodeID)})
+
+	return &ipv4, &ipv6, nil
 }

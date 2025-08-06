@@ -18,6 +18,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 )
 
@@ -47,6 +48,37 @@ type mapper struct {
 	batcher Batcher
 
 	created time.Time
+}
+
+// addOnlineStatusToPeers adds fresh online status from batcher to peer nodes.
+//
+// We do a last-minute copy-and-write on the NodeView to inject current online status
+// from the batcher's connection map. Online status is not populated upstream in NodeStore
+// for consistency reasons - it's runtime connection state that should come from the
+// connection manager (batcher) to ensure map responses have the freshest data.
+func (m *mapper) addOnlineStatusToPeers(peers views.Slice[types.NodeView]) views.Slice[types.NodeView] {
+	if peers.Len() == 0 || m.batcher == nil {
+		return peers
+	}
+
+	result := make([]types.NodeView, 0, peers.Len())
+	for _, peer := range peers.All() {
+		if !peer.Valid() {
+			result = append(result, peer)
+			continue
+		}
+
+		// Get online status from batcher connection map
+		// The batcher respects grace periods for logout scenarios
+		isOnline := m.batcher.IsConnected(peer.ID())
+
+		// Create a mutable copy and set online status
+		peerCopy := peer.AsStruct()
+		peerCopy.IsOnline = ptr.To(isOnline)
+		result = append(result, peerCopy.View())
+	}
+
+	return views.SliceOf(result)
 }
 
 type patch struct {
@@ -140,10 +172,10 @@ func (m *mapper) fullMapResponse(
 	capVer tailcfg.CapabilityVersion,
 	messages ...string,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.state.ListPeers(nodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID)
+
+	// Add fresh online status to peers from batcher connection state
+	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
@@ -154,9 +186,9 @@ func (m *mapper) fullMapResponse(
 		WithDebugConfig().
 		WithSSHPolicy().
 		WithDNSConfig().
-		WithUserProfiles(peers).
+		WithUserProfiles(peersWithOnlineStatus).
 		WithPacketFilters().
-		WithPeers(peers).
+		WithPeers(peersWithOnlineStatus).
 		Build(messages...)
 }
 
@@ -185,16 +217,16 @@ func (m *mapper) peerChangeResponse(
 	capVer tailcfg.CapabilityVersion,
 	changedNodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
-	peers, err := m.state.ListPeers(nodeID, changedNodeID)
-	if err != nil {
-		return nil, err
-	}
+	peers := m.state.ListPeers(nodeID, changedNodeID)
+
+	// Add fresh online status to peers from batcher connection state
+	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
-		WithUserProfiles(peers).
-		WithPeerChanges(peers).
+		WithUserProfiles(peersWithOnlineStatus).
+		WithPeerChanges(peersWithOnlineStatus).
 		Build()
 }
 

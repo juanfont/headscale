@@ -288,9 +288,9 @@ func (api headscaleV1APIServer) GetNode(
 	ctx context.Context,
 	request *v1.GetNodeRequest,
 ) (*v1.GetNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node, ok := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	resp := node.Proto()
@@ -334,7 +334,12 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	ctx context.Context,
 	request *v1.SetApprovedRoutesRequest,
 ) (*v1.SetApprovedRoutesResponse, error) {
-	var routes []netip.Prefix
+	log.Debug().
+		Uint64("node.id", request.GetNodeId()).
+		Strs("requestedRoutes", request.GetRoutes()).
+		Msg("gRPC SetApprovedRoutes called")
+
+	var newApproved []netip.Prefix
 	for _, route := range request.GetRoutes() {
 		prefix, err := netip.ParsePrefix(route)
 		if err != nil {
@@ -344,31 +349,34 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 		// If the prefix is an exit route, add both. The client expect both
 		// to annotate the node as an exit node.
 		if prefix == tsaddr.AllIPv4() || prefix == tsaddr.AllIPv6() {
-			routes = append(routes, tsaddr.AllIPv4(), tsaddr.AllIPv6())
+			newApproved = append(newApproved, tsaddr.AllIPv4(), tsaddr.AllIPv6())
 		} else {
-			routes = append(routes, prefix)
+			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(routes)
-	routes = slices.Compact(routes)
+	tsaddr.SortPrefixes(newApproved)
+	newApproved = slices.Compact(newApproved)
 
-	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), routes)
+	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	routeChange := api.h.state.SetNodeRoutes(node.ID(), node.SubnetRoutes()...)
-
 	// Always propagate node changes from SetApprovedRoutes
 	api.h.Change(nodeChange)
 
-	// If routes changed, propagate those changes too
-	if !routeChange.Empty() {
-		api.h.Change(routeChange)
-	}
-
 	proto := node.Proto()
-	proto.SubnetRoutes = util.PrefixesToString(api.h.state.GetNodePrimaryRoutes(node.ID()))
+	// Populate SubnetRoutes with PrimaryRoutes to ensure it includes only the
+	// routes that are actively served from the node (per architectural requirement in types/node.go)
+	primaryRoutes := api.h.state.GetNodePrimaryRoutes(node.ID())
+	proto.SubnetRoutes = util.PrefixesToString(primaryRoutes)
+
+	log.Debug().
+		Uint64("node.id", node.ID().Uint64()).
+		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
+		Strs("primaryRoutes", util.PrefixesToString(primaryRoutes)).
+		Strs("finalSubnetRoutes", proto.SubnetRoutes).
+		Msg("gRPC SetApprovedRoutes completed")
 
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
@@ -390,9 +398,9 @@ func (api headscaleV1APIServer) DeleteNode(
 	ctx context.Context,
 	request *v1.DeleteNodeRequest,
 ) (*v1.DeleteNodeResponse, error) {
-	node, err := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
-	if err != nil {
-		return nil, err
+	node, ok := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
 	}
 
 	nodeChange, err := api.h.state.DeleteNode(node)
@@ -463,19 +471,13 @@ func (api headscaleV1APIServer) ListNodes(
 			return nil, err
 		}
 
-		nodes, err := api.h.state.ListNodesByUser(types.UserID(user.ID))
-		if err != nil {
-			return nil, err
-		}
+		nodes := api.h.state.ListNodesByUser(types.UserID(user.ID))
 
 		response := nodesToProto(api.h.state, IsConnected, nodes)
 		return &v1.ListNodesResponse{Nodes: response}, nil
 	}
 
-	nodes, err := api.h.state.ListNodes()
-	if err != nil {
-		return nil, err
-	}
+	nodes := api.h.state.ListNodes()
 
 	response := nodesToProto(api.h.state, IsConnected, nodes)
 	return &v1.ListNodesResponse{Nodes: response}, nil
@@ -499,6 +501,7 @@ func nodesToProto(state *state.State, isLikelyConnected *xsync.Map[types.NodeID,
 			}
 		}
 		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
+		
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
 	}
@@ -674,11 +677,8 @@ func (api headscaleV1APIServer) SetPolicy(
 	// a scenario where they might be allowed if the server has no nodes
 	// yet, but it should help for the general case and for hot reloading
 	// configurations.
-	nodes, err := api.h.state.ListNodes()
-	if err != nil {
-		return nil, fmt.Errorf("loading nodes from database to validate policy: %w", err)
-	}
-	changed, err := api.h.state.SetPolicy([]byte(p))
+	nodes := api.h.state.ListNodes()
+	_, err := api.h.state.SetPolicy([]byte(p))
 	if err != nil {
 		return nil, fmt.Errorf("setting policy: %w", err)
 	}
@@ -695,15 +695,15 @@ func (api headscaleV1APIServer) SetPolicy(
 		return nil, err
 	}
 
-	// Only send update if the packet filter has changed.
-	if changed {
-		err = api.h.state.AutoApproveNodes()
-		if err != nil {
-			return nil, err
-		}
-
-		api.h.Change(change.PolicyChange())
+	// Always reload policy to ensure route re-evaluation, even if policy content hasn't changed.
+	// This ensures that routes are re-evaluated for auto-approval in cases where routes
+	// were manually disabled but could now be auto-approved with the current policy.
+	cs, err := api.h.state.ReloadPolicy()
+	if err != nil {
+		return nil, fmt.Errorf("reloading policy: %w", err)
 	}
+
+	api.h.Change(cs...)
 
 	response := &v1.SetPolicyResponse{
 		Policy:    updated.Data,

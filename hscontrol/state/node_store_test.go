@@ -24,6 +24,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 				peersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
 					return make(map[types.NodeID][]types.NodeView)
 				}
+
 				return nodes, peersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
@@ -61,6 +62,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 					1: createTestNode(1, 1, "user1", "node1"),
 					2: createTestNode(2, 1, "user1", "node2"),
 				}
+
 				return nodes, allowAllPeersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
@@ -85,6 +87,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 					2: createTestNode(2, 2, "user2", "node2"),
 					3: createTestNode(3, 1, "user1", "node3"),
 				}
+
 				return nodes, allowAllPeersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
@@ -113,6 +116,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 					4: createTestNode(4, 4, "user4", "node4"),
 				}
 				peersFunc := oddEvenPeersFunc
+
 				return nodes, peersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
@@ -191,6 +195,7 @@ func allowAllPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView
 		}
 		ret[node.ID()] = peers
 	}
+
 	return ret
 }
 
@@ -214,6 +219,7 @@ func oddEvenPeersFunc(nodes []types.NodeView) map[types.NodeID][]types.NodeView 
 		}
 		ret[node.ID()] = peers
 	}
+
 	return ret
 }
 
@@ -329,6 +335,7 @@ func TestNodeStoreOperations(t *testing.T) {
 				node2 := createTestNode(2, 1, "user1", "node2")
 				node3 := createTestNode(3, 2, "user2", "node3")
 				initialNodes := types.Nodes{&node1, &node2, &node3}
+
 				return NewNodeStore(initialNodes, allowAllPeersFunc)
 			},
 			steps: []testStep{

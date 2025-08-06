@@ -936,7 +936,7 @@ AND auth_key_id NOT IN (
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
-		},
+	},
 	)
 
 	if err := runMigrations(cfg, dbConn, migrations); err != nil {

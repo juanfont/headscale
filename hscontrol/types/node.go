@@ -104,6 +104,7 @@ type Node struct {
 	// headscale. It is best effort and not persisted.
 	LastSeen *time.Time `gorm:"column:last_seen"`
 
+
 	// ApprovedRoutes is a list of routes that the node is allowed to announce
 	// as a subnet router. They are not necessarily the routes that the node
 	// announces at the moment.
@@ -420,6 +421,11 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 }
 
 // SubnetRoutes returns the list of routes that the node announces and are approved.
+//
+// IMPORTANT: This method is used for internal data structures and should NOT be used
+// for the gRPC Proto conversion. For Proto, SubnetRoutes must be populated manually 
+// with PrimaryRoutes to ensure it includes only routes actively served by the node.
+// See the comment in Proto() method and the implementation in grpcv1.go/nodesToProto.
 func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
 
@@ -525,7 +531,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		}
 
 		node.Hostname = hostInfo.Hostname
-		
+
 		log.Trace().
 			Str("node_id", node.ID.String()).
 			Str("new_hostname", node.Hostname).
