@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -17,7 +18,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// ContainerStats represents statistics for a single container
+// ContainerStats represents statistics for a single container.
 type ContainerStats struct {
 	ContainerID   string
 	ContainerName string
@@ -25,14 +26,14 @@ type ContainerStats struct {
 	mutex         sync.RWMutex
 }
 
-// StatsSample represents a single stats measurement
+// StatsSample represents a single stats measurement.
 type StatsSample struct {
 	Timestamp time.Time
 	CPUUsage  float64 // CPU usage percentage
 	MemoryMB  float64 // Memory usage in MB
 }
 
-// StatsCollector manages collection of container statistics
+// StatsCollector manages collection of container statistics.
 type StatsCollector struct {
 	client            *client.Client
 	containers        map[string]*ContainerStats
@@ -42,7 +43,7 @@ type StatsCollector struct {
 	collectionStarted bool
 }
 
-// NewStatsCollector creates a new stats collector instance
+// NewStatsCollector creates a new stats collector instance.
 func NewStatsCollector() (*StatsCollector, error) {
 	cli, err := createDockerClient()
 	if err != nil {
@@ -56,13 +57,13 @@ func NewStatsCollector() (*StatsCollector, error) {
 	}, nil
 }
 
-// StartCollection begins monitoring all containers and collecting stats for hs- and ts- containers with matching run ID
+// StartCollection begins monitoring all containers and collecting stats for hs- and ts- containers with matching run ID.
 func (sc *StatsCollector) StartCollection(ctx context.Context, runID string, verbose bool) error {
 	sc.mutex.Lock()
 	defer sc.mutex.Unlock()
 
 	if sc.collectionStarted {
-		return fmt.Errorf("stats collection already started")
+		return errors.New("stats collection already started")
 	}
 
 	sc.collectionStarted = true
@@ -82,7 +83,7 @@ func (sc *StatsCollector) StartCollection(ctx context.Context, runID string, ver
 	return nil
 }
 
-// StopCollection stops all stats collection
+// StopCollection stops all stats collection.
 func (sc *StatsCollector) StopCollection() {
 	// Check if already stopped without holding lock
 	sc.mutex.RLock()
@@ -94,17 +95,17 @@ func (sc *StatsCollector) StopCollection() {
 
 	// Signal stop to all goroutines
 	close(sc.stopChan)
-	
+
 	// Wait for all goroutines to finish
 	sc.wg.Wait()
-	
+
 	// Mark as stopped
 	sc.mutex.Lock()
 	sc.collectionStarted = false
 	sc.mutex.Unlock()
 }
 
-// monitorExistingContainers checks for existing containers that match our criteria
+// monitorExistingContainers checks for existing containers that match our criteria.
 func (sc *StatsCollector) monitorExistingContainers(ctx context.Context, runID string, verbose bool) {
 	defer sc.wg.Done()
 
@@ -123,14 +124,14 @@ func (sc *StatsCollector) monitorExistingContainers(ctx context.Context, runID s
 	}
 }
 
-// monitorDockerEvents listens for container start events and begins monitoring relevant containers
+// monitorDockerEvents listens for container start events and begins monitoring relevant containers.
 func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string, verbose bool) {
 	defer sc.wg.Done()
 
 	filter := filters.NewArgs()
 	filter.Add("type", "container")
 	filter.Add("event", "start")
-	
+
 	eventOptions := events.ListOptions{
 		Filters: filter,
 	}
@@ -171,7 +172,7 @@ func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string,
 	}
 }
 
-// shouldMonitorContainer determines if a container should be monitored
+// shouldMonitorContainer determines if a container should be monitored.
 func (sc *StatsCollector) shouldMonitorContainer(cont types.Container, runID string) bool {
 	// Check if it has the correct run ID label
 	if cont.Labels == nil || cont.Labels["hi.run-id"] != runID {
@@ -189,7 +190,7 @@ func (sc *StatsCollector) shouldMonitorContainer(cont types.Container, runID str
 	return false
 }
 
-// startStatsForContainer begins stats collection for a specific container
+// startStatsForContainer begins stats collection for a specific container.
 func (sc *StatsCollector) startStatsForContainer(ctx context.Context, containerID, containerName string, verbose bool) {
 	containerName = strings.TrimPrefix(containerName, "/")
 
@@ -215,7 +216,7 @@ func (sc *StatsCollector) startStatsForContainer(ctx context.Context, containerI
 	go sc.collectStatsForContainer(ctx, containerID, verbose)
 }
 
-// collectStatsForContainer collects stats for a specific container using Docker API streaming
+// collectStatsForContainer collects stats for a specific container using Docker API streaming.
 func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containerID string, verbose bool) {
 	defer sc.wg.Done()
 
@@ -262,7 +263,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 				// Get container stats reference without holding the main mutex
 				var containerStats *ContainerStats
 				var exists bool
-				
+
 				sc.mutex.RLock()
 				containerStats, exists = sc.containers[containerID]
 				sc.mutex.RUnlock()
@@ -284,12 +285,12 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 	}
 }
 
-// calculateCPUPercent calculates CPU usage percentage from Docker stats
+// calculateCPUPercent calculates CPU usage percentage from Docker stats.
 func calculateCPUPercent(prevStats, stats *container.Stats) float64 {
 	// CPU calculation based on Docker's implementation
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage) - float64(prevStats.CPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemUsage) - float64(prevStats.CPUStats.SystemUsage)
-	
+
 	if systemDelta > 0 && cpuDelta >= 0 {
 		// Calculate CPU percentage: (container CPU delta / system CPU delta) * number of CPUs * 100
 		numCPUs := float64(len(stats.CPUStats.CPUUsage.PercpuUsage))
@@ -297,12 +298,14 @@ func calculateCPUPercent(prevStats, stats *container.Stats) float64 {
 			// Fallback: if PercpuUsage is not available, assume 1 CPU
 			numCPUs = 1.0
 		}
+
 		return (cpuDelta / systemDelta) * numCPUs * 100.0
 	}
+
 	return 0.0
 }
 
-// ContainerStatsSummary represents summary statistics for a container
+// ContainerStatsSummary represents summary statistics for a container.
 type ContainerStatsSummary struct {
 	ContainerName string
 	SampleCount   int
@@ -310,21 +313,21 @@ type ContainerStatsSummary struct {
 	Memory        StatsSummary
 }
 
-// MemoryViolation represents a container that exceeded the memory limit
+// MemoryViolation represents a container that exceeded the memory limit.
 type MemoryViolation struct {
 	ContainerName string
 	MaxMemoryMB   float64
 	LimitMB       float64
 }
 
-// StatsSummary represents min, max, and average for a metric
+// StatsSummary represents min, max, and average for a metric.
 type StatsSummary struct {
 	Min     float64
 	Max     float64
 	Average float64
 }
 
-// GetSummary returns a summary of collected statistics
+// GetSummary returns a summary of collected statistics.
 func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 	// Take snapshot of container references without holding main lock long
 	sc.mutex.RLock()
@@ -355,7 +358,7 @@ func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 		// Calculate CPU stats
 		cpuValues := make([]float64, len(stats))
 		memoryValues := make([]float64, len(stats))
-		
+
 		for i, sample := range stats {
 			cpuValues[i] = sample.CPUUsage
 			memoryValues[i] = sample.MemoryMB
@@ -375,7 +378,7 @@ func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 	return summaries
 }
 
-// calculateStatsSummary calculates min, max, and average for a slice of values
+// calculateStatsSummary calculates min, max, and average for a slice of values.
 func calculateStatsSummary(values []float64) StatsSummary {
 	if len(values) == 0 {
 		return StatsSummary{}
@@ -402,10 +405,10 @@ func calculateStatsSummary(values []float64) StatsSummary {
 	}
 }
 
-// PrintSummary prints the statistics summary to the console
+// PrintSummary prints the statistics summary to the console.
 func (sc *StatsCollector) PrintSummary() {
 	summaries := sc.GetSummary()
-	
+
 	if len(summaries) == 0 {
 		log.Printf("No container statistics collected")
 		return
@@ -413,18 +416,18 @@ func (sc *StatsCollector) PrintSummary() {
 
 	log.Printf("Container Resource Usage Summary:")
 	log.Printf("================================")
-	
+
 	for _, summary := range summaries {
 		log.Printf("Container: %s (%d samples)", summary.ContainerName, summary.SampleCount)
-		log.Printf("  CPU Usage:    Min: %6.2f%%  Max: %6.2f%%  Avg: %6.2f%%", 
+		log.Printf("  CPU Usage:    Min: %6.2f%%  Max: %6.2f%%  Avg: %6.2f%%",
 			summary.CPU.Min, summary.CPU.Max, summary.CPU.Average)
-		log.Printf("  Memory Usage: Min: %6.1f MB Max: %6.1f MB Avg: %6.1f MB", 
+		log.Printf("  Memory Usage: Min: %6.1f MB Max: %6.1f MB Avg: %6.1f MB",
 			summary.Memory.Min, summary.Memory.Max, summary.Memory.Average)
 		log.Printf("")
 	}
 }
 
-// CheckMemoryLimits checks if any containers exceeded their memory limits
+// CheckMemoryLimits checks if any containers exceeded their memory limits.
 func (sc *StatsCollector) CheckMemoryLimits(hsLimitMB, tsLimitMB float64) []MemoryViolation {
 	if hsLimitMB <= 0 && tsLimitMB <= 0 {
 		return nil
@@ -455,13 +458,13 @@ func (sc *StatsCollector) CheckMemoryLimits(hsLimitMB, tsLimitMB float64) []Memo
 	return violations
 }
 
-// PrintSummaryAndCheckLimits prints the statistics summary and returns memory violations if any
+// PrintSummaryAndCheckLimits prints the statistics summary and returns memory violations if any.
 func (sc *StatsCollector) PrintSummaryAndCheckLimits(hsLimitMB, tsLimitMB float64) []MemoryViolation {
 	sc.PrintSummary()
 	return sc.CheckMemoryLimits(hsLimitMB, tsLimitMB)
 }
 
-// Close closes the stats collector and cleans up resources
+// Close closes the stats collector and cleans up resources.
 func (sc *StatsCollector) Close() error {
 	sc.StopCollection()
 	return sc.client.Close()
