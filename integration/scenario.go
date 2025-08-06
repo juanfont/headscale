@@ -327,6 +327,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		return true
 	})
 
+	s.mu.Lock()
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
@@ -346,6 +347,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 			}
 		}
 	}
+	s.mu.Unlock()
 
 	for _, derp := range s.derpServers {
 		err := derp.Shutdown()
@@ -429,6 +431,28 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
+// Pool returns the dockertest pool for the scenario.
+func (s *Scenario) Pool() *dockertest.Pool {
+	return s.pool
+}
+
+// GetOrCreateUser gets or creates a user in the scenario.
+func (s *Scenario) GetOrCreateUser(userStr string) *User {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if user, ok := s.users[userStr]; ok {
+		return user
+	}
+
+	user := &User{
+		Clients: make(map[string]TailscaleClient),
+	}
+	s.users[userStr] = user
+
+	return user
+}
+
 // CreatePreAuthKey creates a "pre authentorised key" to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreatePreAuthKey(
@@ -457,9 +481,11 @@ func (s *Scenario) CreateUser(user string) (*v1.User, error) {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
+		s.mu.Lock()
 		s.users[user] = &User{
 			Clients: make(map[string]TailscaleClient),
 		}
+		s.mu.Unlock()
 
 		return u, nil
 	}
@@ -541,11 +567,25 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			cert := headscale.GetCert()
 			hostname := headscale.GetHostname()
 
+			// Determine which network this tailscale client will be in
+			var network *dockertest.Network
+			if s.userToNetwork != nil && s.userToNetwork[userStr] != nil {
+				network = s.userToNetwork[userStr]
+			} else {
+				network = s.networks[s.testDefaultNetwork]
+			}
+
+			// Get headscale IP in this network for /etc/hosts fallback DNS
+			headscaleIP := headscale.GetIPInNetwork(network)
+			extraHosts := []string{hostname + ":" + headscaleIP}
+
 			s.mu.Lock()
 			opts = append(opts,
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
+				tsic.WithExtraHosts(extraHosts),
 			)
+
 			s.mu.Unlock()
 
 			user.createWaitGroup.Go(func() error {
@@ -673,6 +713,7 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, ret
 	if len(allErrors) > 0 {
 		return multierr.New(allErrors...)
 	}
+
 	return nil
 }
 

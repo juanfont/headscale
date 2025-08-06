@@ -23,6 +23,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -269,6 +270,14 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 func WithTimezone(timezone string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["TZ"] = timezone
+	}
+}
+
+// WithDERPAsIP enables using IP address instead of hostname for DERP server.
+// This is useful for integration tests where DNS resolution may be unreliable.
+func WithDERPAsIP() Option {
+	return func(hsic *HeadscaleInContainer) {
+		hsic.env["HEADSCALE_DEBUG_DERP_USE_IP"] = "1"
 	}
 }
 
@@ -867,9 +876,25 @@ func (t *HeadscaleInContainer) GetHealthEndpoint() string {
 
 // GetEndpoint returns the Headscale endpoint for the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetEndpoint() string {
-	hostEndpoint := fmt.Sprintf("%s:%d",
-		t.GetHostname(),
-		t.port)
+	return t.getEndpoint(false)
+}
+
+// GetIPEndpoint returns the Headscale endpoint using IP address instead of hostname.
+func (t *HeadscaleInContainer) GetIPEndpoint() string {
+	return t.getEndpoint(true)
+}
+
+// getEndpoint returns the Headscale endpoint, optionally using IP address instead of hostname.
+func (t *HeadscaleInContainer) getEndpoint(useIP bool) string {
+	var host string
+	if useIP && len(t.networks) > 0 {
+		// Use IP address from the first network
+		host = t.GetIPInNetwork(t.networks[0])
+	} else {
+		host = t.GetHostname()
+	}
+
+	hostEndpoint := fmt.Sprintf("%s:%d", host, t.port)
 
 	if t.hasTLS() {
 		return "https://" + hostEndpoint
@@ -886,6 +911,11 @@ func (t *HeadscaleInContainer) GetCert() []byte {
 // GetHostname returns the hostname of the HeadscaleInContainer.
 func (t *HeadscaleInContainer) GetHostname() string {
 	return t.hostname
+}
+
+// GetIPInNetwork returns the IP address of the HeadscaleInContainer in the given network.
+func (t *HeadscaleInContainer) GetIPInNetwork(network *dockertest.Network) string {
+	return t.container.GetIPInNetwork(network)
 }
 
 // WaitForRunning blocks until the Headscale instance is ready to
@@ -1299,4 +1329,64 @@ func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.M
 	}
 
 	return res, nil
+}
+
+// PrimaryRoutes fetches the primary routes from the debug endpoint.
+func (t *HeadscaleInContainer) PrimaryRoutes() (*routes.DebugRoutes, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/routes",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching routes from debug endpoint: %w", err)
+	}
+
+	var debugRoutes routes.DebugRoutes
+	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil {
+		return nil, fmt.Errorf("decoding routes response: %w", err)
+	}
+
+	return &debugRoutes, nil
+}
+
+// DebugBatcher fetches the batcher debug information from the debug endpoint.
+func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/batcher",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching batcher debug info: %w", err)
+	}
+
+	var debugInfo hscontrol.DebugBatcherInfo
+	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil {
+		return nil, fmt.Errorf("decoding batcher debug response: %w", err)
+	}
+
+	return &debugInfo, nil
+}
+
+// DebugNodeStore fetches the NodeStore data from the debug endpoint.
+func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/nodestore",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching nodestore debug info: %w", err)
+	}
+
+	var nodeStore map[types.NodeID]types.Node
+	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil {
+		return nil, fmt.Errorf("decoding nodestore debug response: %w", err)
+	}
+
+	return nodeStore, nil
 }
