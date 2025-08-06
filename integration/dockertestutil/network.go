@@ -96,7 +96,7 @@ func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 	}
 
 	for _, network := range networks {
-		if network.Network.Containers == nil || len(network.Network.Containers) == 0 {
+		if len(network.Network.Containers) == 0 {
 			err := pool.RemoveNetwork(&network)
 			if err != nil {
 				log.Printf("removing network %s: %s", network.Network.Name, err)
