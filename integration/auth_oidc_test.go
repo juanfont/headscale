@@ -113,7 +113,18 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 }
 
-// This test is really flaky.
+// TestOIDCExpireNodesBasedOnTokenExpiry validates that nodes correctly transition to NeedsLogin
+// state when their OIDC tokens expire. This test uses a short token TTL to validate the
+// expiration behavior without waiting for production-length timeouts.
+//
+// The test verifies:
+// - Nodes can successfully authenticate via OIDC and establish connectivity
+// - When OIDC tokens expire, nodes transition to NeedsLogin state
+// - The expiration is based on individual token issue times, not a global timer
+//
+// Known timing considerations:
+// - Nodes may expire at different times due to sequential login processing
+// - The test must account for login time spread between first and last node.
 func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -153,8 +164,12 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	allIps, err := scenario.ListTailscaleClientsIPs()
 	assertNoErrListClientIPs(t, err)
 
+	// Record when sync completes to better estimate token expiry timing
+	syncCompleteTime := time.Now()
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+	loginDuration := time.Since(syncCompleteTime)
+	t.Logf("Login and sync completed in %v", loginDuration)
 
 	// assertClientsState(t, allClients)
 
@@ -165,19 +180,49 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
 
-	// This is not great, but this sadly is a time dependent test, so the
-	// safe thing to do is wait out the whole TTL time (and a bit more out
-	// of safety reasons) before checking if the clients have logged out.
-	// The Wait function can't do it itself as it has an upper bound of 1
-	// min.
+	// Wait for OIDC token expiry and verify all nodes transition to NeedsLogin.
+	// We add extra time to account for:
+	// - Sequential login processing causing different token issue times
+	// - Network and processing delays
+	// - Safety margin for test reliability
+	loginTimeSpread := 1 * time.Minute // Account for sequential login delays
+	safetyBuffer := 30 * time.Second   // Additional safety margin
+	totalWaitTime := shortAccessTTL + loginTimeSpread + safetyBuffer
+
+	t.Logf("Waiting %v for OIDC tokens to expire (TTL: %v, spread: %v, buffer: %v)",
+		totalWaitTime, shortAccessTTL, loginTimeSpread, safetyBuffer)
+
+	// EventuallyWithT retries the test function until it passes or times out.
+	// IMPORTANT: Use 'ct' (CollectT) for all assertions inside the function, not 't'.
+	// Using 't' would cause immediate test failure without retries, defeating the purpose
+	// of EventuallyWithT which is designed to handle timing-dependent conditions.
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Check each client's status individually to provide better diagnostics
+		expiredCount := 0
 		for _, client := range allClients {
 			status, err := client.Status()
-			assert.NoError(ct, err)
-			assert.Equal(ct, "NeedsLogin", status.BackendState)
+			if assert.NoError(ct, err, "failed to get status for client %s", client.Hostname()) {
+				if status.BackendState == "NeedsLogin" {
+					expiredCount++
+				}
+			}
 		}
-		assertTailscaleNodesLogout(t, allClients)
-	}, shortAccessTTL+10*time.Second, 5*time.Second)
+
+		// Log progress for debugging
+		if expiredCount < len(allClients) {
+			t.Logf("Token expiry progress: %d/%d clients in NeedsLogin state", expiredCount, len(allClients))
+		}
+
+		// All clients must be in NeedsLogin state
+		assert.Equal(ct, len(allClients), expiredCount,
+			"expected all %d clients to be in NeedsLogin state, but only %d are",
+			len(allClients), expiredCount)
+
+		// Only check detailed logout state if all clients are expired
+		if expiredCount == len(allClients) {
+			assertTailscaleNodesLogout(ct, allClients)
+		}
+	}, totalWaitTime, 5*time.Second)
 }
 
 func TestOIDC024UserCreation(t *testing.T) {
@@ -429,6 +474,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithDERPAsIP(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -617,14 +663,18 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey())
 }
 
-func assertTailscaleNodesLogout(t *testing.T, clients []TailscaleClient) {
-	t.Helper()
+// assertTailscaleNodesLogout verifies that all provided Tailscale clients
+// are in the logged-out state (NeedsLogin).
+func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
+	if h, ok := t.(interface{ Helper() }); ok {
+		h.Helper()
+	}
 
 	for _, client := range clients {
 		status, err := client.Status()
-		assertNoErr(t, err)
-
-		assert.Equal(t, "NeedsLogin", status.BackendState)
+		assert.NoError(t, err, "failed to get status for client %s", client.Hostname())
+		assert.Equal(t, "NeedsLogin", status.BackendState,
+			"client %s should be logged out", client.Hostname())
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -13,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/ory/dockertest/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -1271,45 +1273,194 @@ func TestACLAutogroupMember(t *testing.T) {
 func TestACLAutogroupTagged(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := aclScenario(t,
-		&policyv2.Policy{
-			ACLs: []policyv2.ACL{
-				{
-					Action:  "accept",
-					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
-					Destinations: []policyv2.AliasWithPorts{
-						aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
-					},
+	// Create a custom scenario for testing autogroup:tagged
+	spec := ScenarioSpec{
+		NodesPerUser: 2, // 2 nodes per user - one tagged, one untagged
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	policy := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			"tag:test": policyv2.Owners{usernameOwner("user1@"), usernameOwner("user2@")},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
 				},
 			},
 		},
+	}
 
-		2,
+	// Create only the headscale server (not the full environment with users/nodes)
+	headscale, err := scenario.Headscale(
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("acl-autogroup-tagged"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
-	defer scenario.ShutdownAssertNoPanics(t)
+	require.NoError(t, err)
+
+	// Create users and nodes manually with specific tags
+	for _, userStr := range spec.Users {
+		user, err := scenario.CreateUser(userStr)
+		require.NoError(t, err)
+
+		// Create a single pre-auth key per user
+		authKey, err := scenario.CreatePreAuthKey(user.GetId(), true, false)
+		require.NoError(t, err)
+
+		// Create nodes with proper naming
+		for i := range spec.NodesPerUser {
+			var tags []string
+			var version string
+
+			if i == 0 {
+				// First node is tagged
+				tags = []string{"tag:test"}
+				version = "head"
+				t.Logf("Creating tagged node for %s", userStr)
+			} else {
+				// Second node is untagged
+				tags = nil
+				version = "unstable"
+				t.Logf("Creating untagged node for %s", userStr)
+			}
+
+			// Get the network for this scenario
+			networks := scenario.Networks()
+			var network *dockertest.Network
+			if len(networks) > 0 {
+				network = networks[0]
+			}
+
+			// Create the tailscale node with appropriate options
+			opts := []tsic.Option{
+				tsic.WithCACert(headscale.GetCert()),
+				tsic.WithHeadscaleName(headscale.GetHostname()),
+				tsic.WithNetwork(network),
+				tsic.WithNetfilter("off"),
+				tsic.WithDockerEntrypoint([]string{
+					"/bin/sh",
+					"-c",
+					"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+				}),
+				tsic.WithDockerWorkdir("/"),
+			}
+
+			// Add tags if this is a tagged node
+			if len(tags) > 0 {
+				opts = append(opts, tsic.WithTags(tags))
+			}
+
+			tsClient, err := tsic.New(
+				scenario.Pool(),
+				version,
+				opts...,
+			)
+			require.NoError(t, err)
+
+			err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
+			require.NoError(t, err)
+
+			// Login with the auth key
+			err = tsClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+			require.NoError(t, err)
+
+			err = tsClient.WaitForRunning(integrationutil.PeerSyncTimeout())
+			require.NoError(t, err)
+
+			// Add client to user
+			userObj := scenario.GetOrCreateUser(userStr)
+			userObj.Clients[tsClient.Hostname()] = tsClient
+		}
+	}
 
 	allClients, err := scenario.ListTailscaleClients()
 	require.NoError(t, err)
+	require.Len(t, allClients, 4) // 2 users * 2 nodes each
 
-	err = scenario.WaitForTailscaleSync()
-	require.NoError(t, err)
+	// Wait for nodes to see only their allowed peers
+	// Tagged nodes should see each other (2 tagged nodes total)
+	// Untagged nodes should see no one
+	var taggedClients []TailscaleClient
+	var untaggedClients []TailscaleClient
 
-	// Test that tagged nodes can access each other
+	// First, categorize nodes by checking their tags
 	for _, client := range allClients {
+		hostname := client.Hostname()
+
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			status, err := client.Status()
+			assert.NoError(ct, err)
+
+			if status.Self.Tags != nil && status.Self.Tags.Len() > 0 {
+				// This is a tagged node
+				assert.Len(ct, status.Peers(), 1, "tagged node %s should see exactly 1 peer", hostname)
+
+				// Add to tagged list only once we've verified it
+				found := false
+				for _, tc := range taggedClients {
+					if tc.Hostname() == hostname {
+						found = true
+						break
+					}
+				}
+				if !found {
+					taggedClients = append(taggedClients, client)
+				}
+			} else {
+				// This is an untagged node
+				assert.Empty(ct, status.Peers(), "untagged node %s should see 0 peers", hostname)
+
+				// Add to untagged list only once we've verified it
+				found := false
+				for _, uc := range untaggedClients {
+					if uc.Hostname() == hostname {
+						found = true
+						break
+					}
+				}
+				if !found {
+					untaggedClients = append(untaggedClients, client)
+				}
+			}
+		}, 30*time.Second, 1*time.Second, "verifying peer visibility for node %s", hostname)
+	}
+
+	// Verify we have the expected number of tagged and untagged nodes
+	require.Len(t, taggedClients, 2, "should have exactly 2 tagged nodes")
+	require.Len(t, untaggedClients, 2, "should have exactly 2 untagged nodes")
+
+	// Explicitly verify tags on tagged nodes
+	for _, client := range taggedClients {
 		status, err := client.Status()
 		require.NoError(t, err)
-		if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
-			continue
+		require.NotNil(t, status.Self.Tags, "tagged node %s should have tags", client.Hostname())
+		require.Positive(t, status.Self.Tags.Len(), "tagged node %s should have at least one tag", client.Hostname())
+		t.Logf("Tagged node %s has tags: %v", client.Hostname(), status.Self.Tags)
+	}
+
+	// Verify untagged nodes have no tags
+	for _, client := range untaggedClients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self.Tags != nil {
+			require.Equal(t, 0, status.Self.Tags.Len(), "untagged node %s should have no tags", client.Hostname())
 		}
+		t.Logf("Untagged node %s has no tags", client.Hostname())
+	}
 
-		for _, peer := range allClients {
+	// Test that tagged nodes can communicate with each other
+	for _, client := range taggedClients {
+		for _, peer := range taggedClients {
 			if client.Hostname() == peer.Hostname() {
-				continue
-			}
-
-			status, err := peer.Status()
-			require.NoError(t, err)
-			if status.Self.Tags == nil || status.Self.Tags.Len() == 0 {
 				continue
 			}
 
@@ -1317,11 +1468,67 @@ func TestACLAutogroupTagged(t *testing.T) {
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-			t.Logf("url from %s to %s", client.Hostname(), url)
+			t.Logf("Testing connection from tagged node %s to tagged node %s", client.Hostname(), peer.Hostname())
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(ct, err)
+				assert.Len(ct, result, 13)
+			}, 15*time.Second, 500*time.Millisecond, "tagged nodes should be able to communicate")
+		}
+	}
+
+	// Test that untagged nodes cannot communicate with anyone
+	for _, client := range untaggedClients {
+		// Try to reach tagged nodes (should fail)
+		for _, peer := range taggedClients {
+			fqdn, err := peer.FQDN()
 			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("Testing connection from untagged node %s to tagged node %s (should fail)", client.Hostname(), peer.Hostname())
+
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach tagged nodes")
+		}
+
+		// Try to reach other untagged nodes (should also fail)
+		for _, peer := range untaggedClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("Testing connection from untagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
+
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach other untagged nodes")
+		}
+	}
+
+	// Test that tagged nodes cannot reach untagged nodes
+	for _, client := range taggedClients {
+		for _, peer := range untaggedClients {
+			fqdn, err := peer.FQDN()
+			require.NoError(t, err)
+
+			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+			t.Logf("Testing connection from tagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
+
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				result, err := client.CurlFailFast(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}, 5*time.Second, 200*time.Millisecond, "tagged nodes should not be able to reach untagged nodes")
 		}
 	}
 }

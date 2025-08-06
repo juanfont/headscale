@@ -36,8 +36,8 @@ import (
 
 const (
 	tsicHashLength       = 6
-	defaultPingTimeout   = 300 * time.Millisecond
-	defaultPingCount     = 10
+	defaultPingTimeout   = 200 * time.Millisecond
+	defaultPingCount     = 5
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
@@ -573,7 +573,7 @@ func (t *TailscaleInContainer) Down() error {
 
 // IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
-	if t.ips != nil && len(t.ips) != 0 {
+	if len(t.ips) != 0 {
 		return t.ips, nil
 	}
 
@@ -589,7 +589,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		return []netip.Addr{}, fmt.Errorf("%s failed to join tailscale client: %w", t.hostname, err)
 	}
 
-	for _, address := range strings.Split(result, "\n") {
+	for address := range strings.SplitSeq(result, "\n") {
 		address = strings.TrimSuffix(address, "\n")
 		if len(address) < 1 {
 			continue
@@ -611,6 +611,22 @@ func (t *TailscaleInContainer) MustIPs() []netip.Addr {
 	}
 
 	return ips
+}
+
+// IPv4 returns the IPv4 address of the Tailscale instance.
+func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
+	ips, err := t.IPs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	for _, ip := range ips {
+		if ip.Is4() {
+			return ip, nil
+		}
+	}
+
+	return netip.Addr{}, errors.New("no IPv4 address found")
 }
 
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
@@ -984,6 +1000,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 					expected,
 					len(peers),
 				)}
+
 				continue
 			}
 
@@ -1149,11 +1166,11 @@ func WithCurlRetry(ret int) CurlOption {
 }
 
 const (
-	defaultConnectionTimeout = 3 * time.Second
-	defaultMaxTime           = 10 * time.Second
-	defaultRetry             = 5
-	defaultRetryDelay        = 0 * time.Second
-	defaultRetryMaxTime      = 50 * time.Second
+	defaultConnectionTimeout = 1 * time.Second
+	defaultMaxTime           = 3 * time.Second
+	defaultRetry             = 3
+	defaultRetryDelay        = 200 * time.Millisecond
+	defaultRetryMaxTime      = 5 * time.Second
 )
 
 // Curl executes the Tailscale curl command and curls a hostname
@@ -1196,6 +1213,17 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	return result, nil
+}
+
+// CurlFailFast executes the Tailscale curl command with aggressive timeouts
+// optimized for testing expected connection failures. It uses minimal timeouts
+// to quickly detect blocked connections without waiting for multiple retries.
+func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
+	// Use aggressive timeouts for fast failure detection
+	return t.Curl(url,
+		WithCurlConnectionTimeout(1*time.Second),
+		WithCurlMaxTime(2*time.Second),
+		WithCurlRetry(1))
 }
 
 func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {
