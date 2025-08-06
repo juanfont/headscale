@@ -439,9 +439,21 @@ func (s *State) Connect(id types.NodeID) change.ChangeSet {
 	c := change.NodeOnline(id)
 
 	// Update the online status in NodeStore
+	now := time.Now()
 	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.IsOnline = ptr.To(true)
+		n.LastSeen = ptr.To(now)
 	})
+	
+	// Also persist the last seen time to the database
+	// Note: IsOnline is managed only in NodeStore (marked with gorm:"-"), not persisted to database
+	_, err := s.updateNodeTx(id, func(tx *gorm.DB) error {
+		// Update last_seen in the database
+		return hsdb.SetLastSeen(tx, id, now)
+	})
+	if err != nil {
+		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msg("Failed to update last seen time in database")
+	}
 
 	// Get fresh node data from NodeStore after the online status update
 	node, found := s.GetNodeByID(id)
@@ -470,22 +482,28 @@ func (s *State) Disconnect(id types.NodeID) (change.ChangeSet, error) {
 	now := time.Now()
 	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastSeen = ptr.To(now)
-		// Mark as offline immediately in NodeStore - this is the source of truth
-		// The batcher's grace period will still apply when sending to clients
+		// CRITICAL: Mark as offline immediately in NodeStore.
+		// NodeStore is the source of truth for all node state including online status.
 		n.IsOnline = ptr.To(false)
 	})
 
 	_, err := s.updateNodeTx(id, func(tx *gorm.DB) error {
+		// Update last_seen in the database
+		// Note: IsOnline is managed only in NodeStore (marked with gorm:"-"), not persisted to database
 		return hsdb.SetLastSeen(tx, id, now)
 	})
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("setting last seen: %w", err)
+		// Log error but don't fail the disconnection - NodeStore is already updated
+		// and we need to send change notifications to peers
+		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msg("Failed to update last seen in database")
 	}
 
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
+		// Log error but continue - disconnection must proceed
+		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msg("Failed to update policy manager after node disconnect")
+		c = change.EmptySet
 	}
 
 	// The node is disconnecting so make sure that none of the routes it
