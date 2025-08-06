@@ -1069,7 +1069,25 @@ func (s *State) HandleNodeFromAuthPath(
 		node.NodeKey = nodeToRegister.NodeKey
 		node.DiscoKey = nodeToRegister.DiscoKey
 		node.Hostname = nodeToRegister.Hostname
-		node.Hostinfo = nodeToRegister.Hostinfo
+		
+		// Preserve NetInfo from existing node to maintain DERP connectivity during relogin
+		// Registration requests typically don't include NetInfo with PreferredDERP,
+		// but we need to preserve it to avoid nodes appearing as disconnected
+		if nodeToRegister.Hostinfo != nil && node.Hostinfo != nil && 
+		   nodeToRegister.Hostinfo.NetInfo == nil && node.Hostinfo.NetInfo != nil {
+			log.Debug().
+				Uint64("node.id", node.ID.Uint64()).
+				Int("preferredDERP", node.Hostinfo.NetInfo.PreferredDERP).
+				Msg("preserving NetInfo during node re-registration")
+			
+			// Create a copy of the new Hostinfo and preserve the existing NetInfo
+			newHostinfo := *nodeToRegister.Hostinfo
+			newHostinfo.NetInfo = node.Hostinfo.NetInfo
+			node.Hostinfo = &newHostinfo
+		} else {
+			node.Hostinfo = nodeToRegister.Hostinfo
+		}
+		
 		node.Endpoints = nodeToRegister.Endpoints
 		node.RegisterMethod = nodeToRegister.RegisterMethod
 	}
@@ -1159,8 +1177,25 @@ func (s *State) HandleNodeFromPreAuthKey(
 			}
 			// Update machine key if it changed
 			node.MachineKey = machineKey
-			// Update hostinfo
-			node.Hostinfo = regReq.Hostinfo
+			
+			// Preserve NetInfo from existing node to maintain DERP connectivity during relogin
+			// Registration requests typically don't include NetInfo with PreferredDERP,
+			// but we need to preserve it to avoid nodes appearing as disconnected
+			if regReq.Hostinfo != nil && node.Hostinfo != nil && 
+			   regReq.Hostinfo.NetInfo == nil && node.Hostinfo.NetInfo != nil {
+				log.Debug().
+					Uint64("node.id", node.ID.Uint64()).
+					Int("preferredDERP", node.Hostinfo.NetInfo.PreferredDERP).
+					Msg("preserving NetInfo during pre-auth key re-registration")
+				
+				// Create a copy of the new Hostinfo and preserve the existing NetInfo
+				newHostinfo := *regReq.Hostinfo
+				newHostinfo.NetInfo = node.Hostinfo.NetInfo
+				node.Hostinfo = &newHostinfo
+			} else {
+				node.Hostinfo = regReq.Hostinfo
+			}
+			
 			// Node is re-registering, so it's coming online
 			node.IsOnline = ptr.To(true)
 			node.LastSeen = ptr.To(time.Now())
@@ -1257,7 +1292,25 @@ func (s *State) HandleNodeFromPreAuthKey(
 	updateFunc := func(node *types.Node) {
 		node.NodeKey = nodeToRegister.NodeKey
 		node.Hostname = nodeToRegister.Hostname
-		node.Hostinfo = nodeToRegister.Hostinfo
+		
+		// Preserve NetInfo from existing node to maintain DERP connectivity during relogin
+		// Registration requests typically don't include NetInfo with PreferredDERP,
+		// but we need to preserve it to avoid nodes appearing as disconnected
+		if nodeToRegister.Hostinfo != nil && node.Hostinfo != nil && 
+		   nodeToRegister.Hostinfo.NetInfo == nil && node.Hostinfo.NetInfo != nil {
+			log.Debug().
+				Uint64("node.id", node.ID.Uint64()).
+				Int("preferredDERP", node.Hostinfo.NetInfo.PreferredDERP).
+				Msg("preserving NetInfo during pre-auth key node registration")
+			
+			// Create a copy of the new Hostinfo and preserve the existing NetInfo
+			newHostinfo := *nodeToRegister.Hostinfo
+			newHostinfo.NetInfo = node.Hostinfo.NetInfo
+			node.Hostinfo = &newHostinfo
+		} else {
+			node.Hostinfo = nodeToRegister.Hostinfo
+		}
+		
 		node.Endpoints = nodeToRegister.Endpoints
 		node.RegisterMethod = nodeToRegister.RegisterMethod
 		node.ForcedTags = nodeToRegister.ForcedTags
@@ -1468,12 +1521,22 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			// before we take the changes.
 			// Preserve NetInfo only if the existing node actually has valid NetInfo
 			// This prevents copying nil NetInfo which would lose DERP relay assignments
-			if req.Hostinfo.NetInfo == nil && currentNode.Hostinfo != nil && currentNode.Hostinfo.NetInfo != nil {
+			if req.Hostinfo != nil && req.Hostinfo.NetInfo == nil && currentNode.Hostinfo != nil && currentNode.Hostinfo.NetInfo != nil {
 				log.Debug().
 					Uint64("node.id", id.Uint64()).
 					Int("preferredDERP", currentNode.Hostinfo.NetInfo.PreferredDERP).
-					Msg("preserving NetInfo from previous Hostinfo")
+					Msg("preserving NetInfo from previous Hostinfo in MapRequest")
 				req.Hostinfo.NetInfo = currentNode.Hostinfo.NetInfo
+			} else if req.Hostinfo == nil && currentNode.Hostinfo != nil && currentNode.Hostinfo.NetInfo != nil {
+				// When MapRequest has no Hostinfo but we have existing NetInfo, create a minimal
+				// Hostinfo to preserve the NetInfo to maintain DERP connectivity
+				log.Debug().
+					Uint64("node.id", id.Uint64()).
+					Int("preferredDERP", currentNode.Hostinfo.NetInfo.PreferredDERP).
+					Msg("creating minimal Hostinfo to preserve NetInfo in MapRequest")
+				req.Hostinfo = &tailcfg.Hostinfo{
+					NetInfo: currentNode.Hostinfo.NetInfo,
+				}
 			}
 			currentNode.Hostinfo = req.Hostinfo
 			currentNode.ApplyHostnameFromHostInfo(req.Hostinfo)
@@ -1672,20 +1735,29 @@ func (s *State) registerOrUpdateNode(helper nodeRegistrationHelper) (*types.Node
 			}
 		})
 
+		// Get the updated node from NodeStore to save to database
+		// This ensures any changes made by updateExistingNode (like preserving NetInfo)
+		// are persisted to the database
+		updatedNodeView, exists := s.nodeStore.GetNode(existingNode.ID)
+		if !exists || !updatedNodeView.Valid() {
+			return nil, fmt.Errorf("failed to get updated node from NodeStore after update")
+		}
+		nodeToSave := updatedNodeView.AsStruct()
+
 		// Save to database
 		savedNode, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(helper.node).Error; err != nil {
+			if err := tx.Save(nodeToSave).Error; err != nil {
 				return nil, fmt.Errorf("failed to save node: %w", err)
 			}
 			
 			// Run post-save callback if provided
 			if helper.postSaveCallback != nil {
-				if err := helper.postSaveCallback(tx, helper.node); err != nil {
+				if err := helper.postSaveCallback(tx, nodeToSave); err != nil {
 					return nil, err
 				}
 			}
 			
-			return helper.node, nil
+			return nodeToSave, nil
 		})
 		if err != nil {
 			return nil, err
