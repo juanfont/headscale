@@ -327,115 +327,20 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	})
 }
 
-// HandleNodeFromAuthPath is called from the OIDC or CLI auth path
-// with a registrationID to register or reauthenticate a node.
-// If the node found in the registration cache is not already registered,
-// it will be registered with the user and the node will be removed from the cache.
-// If the node is already registered, the expiry will be updated.
-// The node, and a boolean indicating if it was a new node or not, will be returned.
-func (hsdb *HSDatabase) HandleNodeFromAuthPath(
-	registrationID types.RegistrationID,
-	userID types.UserID,
-	nodeExpiry *time.Time,
-	registrationMethod string,
-	ipv4 *netip.Addr,
-	ipv6 *netip.Addr,
-) (*types.Node, change.ChangeSet, error) {
-	var nodeChange change.ChangeSet
-	node, err := Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if reg, ok := hsdb.regCache.Get(registrationID); ok {
-			if node, _ := GetNodeByNodeKey(tx, reg.Node.NodeKey); node == nil {
-				user, err := GetUserByID(tx, userID)
-				if err != nil {
-					return nil, fmt.Errorf(
-						"failed to find user in register node from auth callback, %w",
-						err,
-					)
-				}
 
-				log.Debug().
-					Str("registration_id", registrationID.String()).
-					Str("username", user.Username()).
-					Str("registrationMethod", registrationMethod).
-					Str("expiresAt", fmt.Sprintf("%v", nodeExpiry)).
-					Msg("Registering node from API/CLI or auth callback")
+// RegisterNodeForTest is used only for testing purposes to register a node directly in the database.
+// Production code should use state.HandleNodeFromAuthPath or state.HandleNodeFromPreAuthKey.
+func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
+	if !testing.Testing() {
+		panic("RegisterNodeForTest can only be called during tests")
+	}
 
-				// TODO(kradalby): This looks quite wrong? why ID 0?
-				// Why not always?
-				// Registration of expired node with different user
-				if reg.Node.ID != 0 &&
-					reg.Node.UserID != user.ID {
-					return nil, ErrDifferentRegisteredUser
-				}
-
-				reg.Node.UserID = user.ID
-				reg.Node.User = *user
-				reg.Node.RegisterMethod = registrationMethod
-
-				if nodeExpiry != nil {
-					reg.Node.Expiry = nodeExpiry
-				}
-
-				node, err := RegisterNode(
-					tx,
-					reg.Node,
-					ipv4, ipv6,
-				)
-
-				if err == nil {
-					hsdb.regCache.Delete(registrationID)
-				}
-
-				// Signal to waiting clients that the machine has been registered.
-				select {
-				case reg.Registered <- node:
-				default:
-				}
-				close(reg.Registered)
-
-				nodeChange = change.NodeAdded(node.ID)
-
-				return node, err
-			} else {
-				// If the node is already registered, this is a refresh.
-				err := NodeSetExpiry(tx, node.ID, *nodeExpiry)
-				if err != nil {
-					return nil, err
-				}
-
-				// CRITICAL: Reload the node to get the updated expiry
-				// Without this, we return stale node data to NodeStore
-				updatedNode, err := GetNodeByID(tx, node.ID)
-				if err != nil {
-					return nil, fmt.Errorf("failed to reload node after expiry update: %w", err)
-				}
-
-				nodeChange = change.KeyExpiry(node.ID)
-
-				return updatedNode, nil
-			}
-		}
-
-		return nil, ErrNodeNotFoundRegistrationCache
-	})
-
-	return node, nodeChange, err
-}
-
-func (hsdb *HSDatabase) RegisterNode(node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
-	return Write(hsdb.DB, func(tx *gorm.DB) (*types.Node, error) {
-		return RegisterNode(tx, node, ipv4, ipv6)
-	})
-}
-
-// RegisterNode is executed from the CLI to register a new Node using its MachineKey.
-func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Addr) (*types.Node, error) {
 	log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
 		Str("node_key", node.NodeKey.ShortString()).
 		Str("user", node.User.Username()).
-		Msg("Registering node")
+		Msg("Registering test node")
 
 	// If the a new node is registered with the same machine key, to the same user,
 	// update the existing node.
@@ -469,7 +374,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 			Str("machine_key", node.MachineKey.ShortString()).
 			Str("node_key", node.NodeKey.ShortString()).
 			Str("user", node.User.Username()).
-			Msg("Node authorized again")
+			Msg("Test node authorized again")
 
 		return &node, nil
 	}
@@ -478,7 +383,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	node.IPv6 = ipv6
 
 	if node.GivenName == "" {
-		givenName, err := ensureUniqueGivenName(tx, node.Hostname)
+		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
 		if err != nil {
 			return nil, fmt.Errorf("failed to ensure unique given name: %w", err)
 		}
@@ -493,7 +398,7 @@ func RegisterNode(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *netip.Ad
 	log.Trace().
 		Caller().
 		Str("node", node.Hostname).
-		Msg("Node registered with the database")
+		Msg("Test node registered with the database")
 
 	return &node, nil
 }
@@ -566,7 +471,8 @@ func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	return len(nodes) == 0, nil
 }
 
-func ensureUniqueGivenName(
+// EnsureUniqueGivenName generates a unique given name for a node based on its hostname.
+func EnsureUniqueGivenName(
 	tx *gorm.DB,
 	name string,
 ) (string, error) {
@@ -797,7 +703,7 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 	var registeredNode *types.Node
 	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
-		registeredNode, err = RegisterNode(tx, *node, ipv4, ipv6)
+		registeredNode, err = RegisterNodeForTest(tx, *node, ipv4, ipv6)
 		return err
 	})
 	if err != nil {

@@ -175,7 +175,7 @@ func (m *mapper) fullMapResponse(
 	peers := m.state.ListPeers(nodeID)
 
 	// Add fresh online status to peers from batcher connection state
-	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
+	// peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
@@ -186,9 +186,9 @@ func (m *mapper) fullMapResponse(
 		WithDebugConfig().
 		WithSSHPolicy().
 		WithDNSConfig().
-		WithUserProfiles(peersWithOnlineStatus).
+		WithUserProfiles(peers).
 		WithPacketFilters().
-		WithPeers(peersWithOnlineStatus).
+		WithPeers(peers).
 		Build(messages...)
 }
 
@@ -220,13 +220,13 @@ func (m *mapper) peerChangeResponse(
 	peers := m.state.ListPeers(nodeID, changedNodeID)
 
 	// Add fresh online status to peers from batcher connection state
-	peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
+	// peersWithOnlineStatus := m.addOnlineStatusToPeers(peers)
 
 	return m.NewMapResponseBuilder(nodeID).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
-		WithUserProfiles(peersWithOnlineStatus).
-		WithPeerChanges(peersWithOnlineStatus).
+		WithUserProfiles(peers).
+		WithPeerChanges(peers).
 		Build()
 }
 

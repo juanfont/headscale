@@ -9,7 +9,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
@@ -66,9 +65,9 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	// Always use batcher's view of online status for self node
 	// The batcher respects grace periods for logout scenarios
 	node := nodeView.AsStruct()
-	if b.mapper.batcher != nil {
-		node.IsOnline = ptr.To(b.mapper.batcher.IsConnected(b.nodeID))
-	}
+	// if b.mapper.batcher != nil {
+	// 	node.IsOnline = ptr.To(b.mapper.batcher.IsConnected(b.nodeID))
+	// }
 
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(

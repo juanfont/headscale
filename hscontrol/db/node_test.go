@@ -679,11 +679,11 @@ func TestRenameNode(t *testing.T) {
 	require.NoError(t, err)
 
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNode(tx, node, nil, nil)
+		_, err := RegisterNodeForTest(tx, node, nil, nil)
 		if err != nil {
 			return err
 		}
-		_, err = RegisterNode(tx, node2, nil, nil)
+		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
 	})
@@ -780,11 +780,11 @@ func TestListPeers(t *testing.T) {
 	require.NoError(t, err)
 
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNode(tx, node1, nil, nil)
+		_, err := RegisterNodeForTest(tx, node1, nil, nil)
 		if err != nil {
 			return err
 		}
-		_, err = RegisterNode(tx, node2, nil, nil)
+		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
 	})
@@ -865,11 +865,11 @@ func TestListNodes(t *testing.T) {
 	require.NoError(t, err)
 
 	err = db.DB.Transaction(func(tx *gorm.DB) error {
-		_, err := RegisterNode(tx, node1, nil, nil)
+		_, err := RegisterNodeForTest(tx, node1, nil, nil)
 		if err != nil {
 			return err
 		}
-		_, err = RegisterNode(tx, node2, nil, nil)
+		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
 	})

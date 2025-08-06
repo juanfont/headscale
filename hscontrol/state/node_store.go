@@ -381,6 +381,25 @@ func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bo
 	return nodeView, exists
 }
 
+// GetNodeByMachineKey returns a node by its machine key. The bool indicates if the node exists.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_machine_key").Inc()
+
+	snapshot := s.data.Load()
+	// We don't have a byMachineKey map, so we need to iterate
+	// This could be optimized by adding a byMachineKey map if this becomes a hot path
+	for _, node := range snapshot.nodesByID {
+		if node.MachineKey == machineKey {
+			return node.View(), true
+		}
+	}
+
+	return types.NodeView{}, false
+}
+
 // DebugString returns debug information about the NodeStore.
 func (s *NodeStore) DebugString() string {
 	snapshot := s.data.Load()
