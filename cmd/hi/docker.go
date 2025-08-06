@@ -104,7 +104,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 		if statsCollector != nil {
 			defer statsCollector.Close()
-			
+
 			// Start stats collection immediately - no need for complex retry logic
 			// The new implementation monitors Docker events and will catch containers as they start
 			if err := statsCollector.StartCollection(ctx, runID, config.Verbose); err != nil {
@@ -138,9 +138,10 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 			log.Printf("MEMORY LIMIT VIOLATIONS DETECTED:")
 			log.Printf("=================================")
 			for _, violation := range violations {
-				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB", 
+				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB",
 					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
 			}
+
 			return fmt.Errorf("test failed: %d container(s) exceeded memory limits", len(violations))
 		}
 	}
