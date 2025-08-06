@@ -30,7 +30,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			opts := []hsic.Option{
+				hsic.WithTestName("pingallbyip"),
+				hsic.WithEmbeddedDERPServerOnly(),
+				hsic.WithDERPAsIP(),
+			}
 			if https {
 				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),
@@ -130,6 +134,11 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				assertLastSeenSet(t, node)
 			}
 
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 120*time.Second)
+
+			err = scenario.WaitForTailscaleSync()
+			assertNoErrSync(t, err)
+
 			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 				return x.String()
 			})
@@ -193,6 +202,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
 		hsic.WithTLS(),
+		hsic.WithDERPAsIP(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
@@ -282,7 +292,10 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			assertNoErr(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			opts := []hsic.Option{hsic.WithTestName("pingallbyip")}
+			opts := []hsic.Option{
+				hsic.WithTestName("pingallbyip"),
+				hsic.WithDERPAsIP(),
+			}
 			if https {
 				opts = append(opts, []hsic.Option{
 					hsic.WithTLS(),

@@ -957,6 +957,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyipmany"),
 		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithDERPAsIP(),
 		hsic.WithTLS(),
 	)
 	assertNoErrHeadscaleEnv(t, err)
