@@ -470,8 +470,9 @@ func (s *State) Disconnect(id types.NodeID) (change.ChangeSet, error) {
 	now := time.Now()
 	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastSeen = ptr.To(now)
-		// Do NOT mark as offline here - let the batcher's grace period handle it
-		// This ensures DNS continues to work during logout
+		// Mark as offline immediately in NodeStore - this is the source of truth
+		// The batcher's grace period will still apply when sending to clients
+		n.IsOnline = ptr.To(false)
 	})
 
 	_, err := s.updateNodeTx(id, func(tx *gorm.DB) error {

@@ -1,0 +1,34 @@
+2025/08/06 13:42:02 Running pre-flight system checks...
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/08/06 13:42:02 🔍 System Health Check Results
+2025/08/06 13:42:02 ================================
+2025/08/06 13:42:02 ✅ Docker Binary: Docker binary found
+2025/08/06 13:42:02 ✅ Docker Daemon: Docker daemon is running and accessible
+2025/08/06 13:42:02 ✅ Docker Context: Using Docker context: default
+2025/08/06 13:42:02 ✅ Docker Socket: Docker socket accessible (Server: 28.2.2)
+2025/08/06 13:42:02 ✅ Golang Image: Golang image golang:1.24.0 is available locally
+2025/08/06 13:42:02 ✅ Go Installation: go version go1.24.4 linux/amd64
+2025/08/06 13:42:02 ✅ Git Repository: Running in Git repository
+2025/08/06 13:42:02 ✅ Required Files: All required files found
+2025/08/06 13:42:02 ================================
+2025/08/06 13:42:02 ✅ All system checks passed - ready to run integration tests!
+2025/08/06 13:42:02 Running test: TestHASubnetRouterFailover
+2025/08/06 13:42:02 Go version: 1.24.0
+2025/08/06 13:42:02 Timeout: 30m0s
+2025/08/06 13:42:02 Use PostgreSQL: false
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+2025/08/06 13:42:02 Run ID: 20250806-134202-5uivan
+2025/08/06 13:42:02 Container name: headscale-test-suite-20250806-134202-5uivan
+2025/08/06 13:42:02 Logs directory: control_logs/20250806-134202-5uivan
+2025/08/06 13:42:02 Running pre-test cleanup...
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+Removed 2 test containers
+2025/08/06 13:42:02 Using Docker host from context 'default': unix:///var/run/docker.sock
+Removed 1 unused networks
+2025/08/06 13:42:03 Command: go test ./... -run TestHASubnetRouterFailover -failfast -timeout 30m0s -v
+2025/08/06 13:42:03 Image golang:1.24.0 is available locally
+2025/08/06 13:42:03 Using Docker socket: /var/run/docker.sock
+2025/08/06 13:42:03 Created container: 9e1c3ab2f9fad58d5056bae8d55f7c373653cb2b79590513fdd3e49efe4845f7
+2025/08/06 13:42:03 Starting test: TestHASubnetRouterFailover
