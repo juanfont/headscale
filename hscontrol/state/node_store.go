@@ -368,8 +368,87 @@ func (s *NodeStore) GetNode(id types.NodeID) (types.NodeView, bool) {
 }
 
 // GetNodeByNodeKey retrieves a node by its NodeKey.
-func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) types.NodeView {
-	return s.data.Load().nodesByNodeKey[nodeKey]
+// The bool indicates if the node exists or is available (like "err not found").
+// The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
+// it isn't an invalid node (this is more of a node error or node is broken).
+func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_key"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_key").Inc()
+
+	nodeView, exists := s.data.Load().nodesByNodeKey[nodeKey]
+
+	return nodeView, exists
+}
+
+// GetNodeByMachineKey returns a node by its machine key. The bool indicates if the node exists.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_machine_key").Inc()
+
+	snapshot := s.data.Load()
+	// We don't have a byMachineKey map, so we need to iterate
+	// This could be optimized by adding a byMachineKey map if this becomes a hot path
+	for _, node := range snapshot.nodesByID {
+		if node.MachineKey == machineKey {
+			return node.View(), true
+		}
+	}
+
+	return types.NodeView{}, false
+}
+
+// DebugString returns debug information about the NodeStore.
+func (s *NodeStore) DebugString() string {
+	snapshot := s.data.Load()
+
+	var sb strings.Builder
+
+	sb.WriteString("=== NodeStore Debug Information ===\n\n")
+
+	// Basic counts
+	sb.WriteString(fmt.Sprintf("Total Nodes: %d\n", len(snapshot.nodesByID)))
+	sb.WriteString(fmt.Sprintf("Users with Nodes: %d\n", len(snapshot.nodesByUser)))
+	sb.WriteString("\n")
+
+	// User distribution
+	sb.WriteString("Nodes by User:\n")
+	for userID, nodes := range snapshot.nodesByUser {
+		if len(nodes) > 0 {
+			userName := "unknown"
+			if len(nodes) > 0 && nodes[0].Valid() {
+				userName = nodes[0].User().Name
+			}
+			sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
+		}
+	}
+	sb.WriteString("\n")
+
+	// Peer relationships summary
+	sb.WriteString("Peer Relationships:\n")
+	totalPeers := 0
+	for nodeID, peers := range snapshot.peersByNode {
+		peerCount := len(peers)
+		totalPeers += peerCount
+		if node, exists := snapshot.nodesByID[nodeID]; exists {
+			sb.WriteString(fmt.Sprintf("  - Node %d (%s): %d peers\n",
+				nodeID, node.Hostname, peerCount))
+		}
+	}
+	if len(snapshot.peersByNode) > 0 {
+		avgPeers := float64(totalPeers) / float64(len(snapshot.peersByNode))
+		sb.WriteString(fmt.Sprintf("  - Average peers per node: %.1f\n", avgPeers))
+	}
+	sb.WriteString("\n")
+
+	// Node key index
+	sb.WriteString(fmt.Sprintf("NodeKey Index: %d entries\n", len(snapshot.nodesByNodeKey)))
+	sb.WriteString("\n")
+
+	return sb.String()
 }
 
 // ListNodes returns a slice of all nodes in the store.
