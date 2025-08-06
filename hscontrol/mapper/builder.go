@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
@@ -180,7 +181,11 @@ func (b *MapResponseBuilder) WithPacketFilters() *MapResponseBuilder {
 		return b
 	}
 
-	filter, _ := b.mapper.state.Filter()
+	filter, err := b.mapper.state.FilterForNode(node)
+	if err != nil {
+		b.addError(err)
+		return b
+	}
 
 	// CapVer 81: 2023-11-17: MapResponse.PacketFilters (incremental packet filter updates)
 	// Currently, we do not send incremental package filters, however using the
@@ -226,7 +231,13 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		return nil, errors.New("node not found")
 	}
 
-	filter, matchers := b.mapper.state.Filter()
+	// Use per-node filter to handle autogroup:self
+	filter, err := b.mapper.state.FilterForNode(node)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers := matcher.MatchesFromFilterRules(filter)
 
 	// If there are filter rules present, see if there are any nodes that cannot
 	// access each-other at all and remove them from the peers.

@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 func isSSHNoAccessStdError(stderr string) bool {
@@ -455,5 +456,86 @@ func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	assert.Error(t, err)
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
+	}
+}
+
+// TestSSHAutogroupSelf tests that SSH with autogroup:self works correctly:
+// - Users can SSH to their own devices
+// - Users cannot SSH to other users' devices
+func TestSSHAutogroupSelf(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := sshScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
+				},
+			},
+			SSHs: []policyv2.SSH{
+				{
+					Action: "accept",
+					Sources: policyv2.SSHSrcAliases{
+						ptr.To(policyv2.AutoGroupMember),
+					},
+					Destinations: policyv2.SSHDstAliases{
+						ptr.To(policyv2.AutoGroupSelf),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+				},
+			},
+		},
+		2, // 2 clients per user
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	assertNoErrListClients(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Test that user1's devices can SSH to each other
+	for _, client := range user1Clients {
+		for _, peer := range user1Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test that user2's devices can SSH to each other
+	for _, client := range user2Clients {
+		for _, peer := range user2Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test that user1 cannot SSH to user2's devices
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+
+	// Test that user2 cannot SSH to user1's devices
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
 	}
 }

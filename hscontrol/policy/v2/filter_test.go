@@ -3,6 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,14 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
+
+// aliasWithPorts creates an AliasWithPorts structure from an alias and ports.
+func aliasWithPorts(alias Alias, ports ...tailcfg.PortRange) AliasWithPorts {
+	return AliasWithPorts{
+		Alias: alias,
+		Ports: ports,
+	}
+}
 
 func TestParsing(t *testing.T) {
 	users := types.Users{
@@ -786,8 +795,548 @@ func TestSSHJSONSerialization(t *testing.T) {
 	assert.NotContains(t, string(jsonData), `"sshUsers": null`, "SSH users should not be null")
 }
 
+func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		{
+			User: users[0],
+			IPv4: ap("100.64.0.1"),
+		},
+		{
+			User: users[0],
+			IPv4: ap("100.64.0.2"),
+		},
+		{
+			User: users[1],
+			IPv4: ap("100.64.0.3"),
+		},
+		{
+			User: users[1],
+			IPv4: ap("100.64.0.4"),
+		},
+		// Tagged device for user1
+		{
+			User:       users[0],
+			IPv4:       ap("100.64.0.5"),
+			ForcedTags: []string{"tag:test"},
+		},
+		// Tagged device for user2
+		{
+			User:       users[1],
+			IPv4:       ap("100.64.0.6"),
+			ForcedTags: []string{"tag:test"},
+		},
+	}
+
+	// Test: Tailscale intended usage pattern (autogroup:member + autogroup:self)
+	policy2 := &Policy{
+		ACLs: []ACL{
+			{
+				Action:  "accept",
+				Sources: []Alias{agp("autogroup:member")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(agp("autogroup:self"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err := policy2.validate()
+	if err != nil {
+		t.Fatalf("policy validation failed: %v", err)
+	}
+
+	// Test compilation for user1's first node
+	node1 := nodes[0].View()
+
+	rules, err := policy2.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(rules))
+	}
+
+	// Check that the rule includes:
+	// - Sources: only user1's untagged devices (filtered by autogroup:self semantics)
+	// - Destinations: only user1's untagged devices (autogroup:self)
+	rule := rules[0]
+
+	// Sources should ONLY include user1's untagged devices (100.64.0.1, 100.64.0.2)
+	expectedSourceIPs := []string{"100.64.0.1", "100.64.0.2"}
+
+	for _, expectedIP := range expectedSourceIPs {
+		found := false
+
+		addr := netip.MustParseAddr(expectedIP)
+		for _, prefix := range rule.SrcIPs {
+			pref := netip.MustParsePrefix(prefix)
+			if pref.Contains(addr) {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("expected source IP %s to be covered by generated prefixes %v", expectedIP, rule.SrcIPs)
+		}
+	}
+
+	// Verify that other users' devices and tagged devices are not included in sources
+	excludedSourceIPs := []string{"100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6"}
+	for _, excludedIP := range excludedSourceIPs {
+		addr := netip.MustParseAddr(excludedIP)
+		for _, prefix := range rule.SrcIPs {
+			pref := netip.MustParsePrefix(prefix)
+			if pref.Contains(addr) {
+				t.Errorf("SECURITY VIOLATION: source IP %s should not be included but found in prefix %s", excludedIP, prefix)
+			}
+		}
+	}
+
+	expectedDestIPs := []string{"100.64.0.1", "100.64.0.2"}
+
+	actualDestIPs := make([]string, 0, len(rule.DstPorts))
+	for _, dst := range rule.DstPorts {
+		actualDestIPs = append(actualDestIPs, dst.IP)
+	}
+
+	for _, expectedIP := range expectedDestIPs {
+		found := false
+
+		for _, actualIP := range actualDestIPs {
+			if actualIP == expectedIP {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf("expected destination IP %s to be included, got: %v", expectedIP, actualDestIPs)
+		}
+	}
+
+	// Verify that other users' devices and tagged devices are not in destinations
+	excludedDestIPs := []string{"100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6"}
+	for _, excludedIP := range excludedDestIPs {
+		for _, actualIP := range actualDestIPs {
+			if actualIP == excludedIP {
+				t.Errorf("SECURITY: destination IP %s should not be included but found in destinations", excludedIP)
+			}
+		}
+	}
+}
+
+func TestAutogroupSelfInSourceIsRejected(t *testing.T) {
+	// Test that autogroup:self cannot be used in sources (per Tailscale spec)
+	policy := &Policy{
+		ACLs: []ACL{
+			{
+				Action:  "accept",
+				Sources: []Alias{agp("autogroup:self")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(agp("autogroup:member"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err := policy.validate()
+	if err == nil {
+		t.Error("expected validation error when using autogroup:self in sources")
+	}
+
+	if !strings.Contains(err.Error(), "autogroup:self") {
+		t.Errorf("expected error message to mention autogroup:self, got: %v", err)
+	}
+}
+
+// TestAutogroupSelfWithSpecificUserSource verifies that when autogroup:self is in
+// the destination and a specific user is in the source, only that user's devices
+// are allowed (and only if they match the target user).
+func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1")},
+		{User: users[0], IPv4: ap("100.64.0.2")},
+		{User: users[1], IPv4: ap("100.64.0.3")},
+		{User: users[1], IPv4: ap("100.64.0.4")},
+	}
+
+	policy := &Policy{
+		ACLs: []ACL{
+			{
+				Action:  "accept",
+				Sources: []Alias{up("user1@")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(agp("autogroup:self"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// For user1's node: sources should be user1's devices
+	node1 := nodes[0].View()
+	rules, err := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+
+	expectedSourceIPs := []string{"100.64.0.1", "100.64.0.2"}
+	for _, expectedIP := range expectedSourceIPs {
+		found := false
+		addr := netip.MustParseAddr(expectedIP)
+
+		for _, prefix := range rules[0].SrcIPs {
+			pref := netip.MustParsePrefix(prefix)
+			if pref.Contains(addr) {
+				found = true
+				break
+			}
+		}
+
+		assert.True(t, found, "expected source IP %s to be present", expectedIP)
+	}
+
+	actualDestIPs := make([]string, 0, len(rules[0].DstPorts))
+	for _, dst := range rules[0].DstPorts {
+		actualDestIPs = append(actualDestIPs, dst.IP)
+	}
+
+	assert.ElementsMatch(t, expectedSourceIPs, actualDestIPs)
+
+	node2 := nodes[2].View()
+	rules2, err := policy.compileFilterRulesForNode(users, node2, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.Empty(t, rules2, "user2's node should have no rules (user1@ devices can't match user2's self)")
+}
+
+// TestAutogroupSelfWithGroupSource verifies that when a group is used as source
+// and autogroup:self as destination, only group members who are the same user
+// as the target are allowed.
+func TestAutogroupSelfWithGroupSource(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1")},
+		{User: users[0], IPv4: ap("100.64.0.2")},
+		{User: users[1], IPv4: ap("100.64.0.3")},
+		{User: users[1], IPv4: ap("100.64.0.4")},
+		{User: users[2], IPv4: ap("100.64.0.5")},
+	}
+
+	policy := &Policy{
+		Groups: Groups{
+			Group("group:admins"): []Username{Username("user1@"), Username("user2@")},
+		},
+		ACLs: []ACL{
+			{
+				Action:  "accept",
+				Sources: []Alias{gp("group:admins")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(agp("autogroup:self"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// (group:admins has user1+user2, but autogroup:self filters to same user)
+	node1 := nodes[0].View()
+	rules, err := policy.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+
+	expectedSrcIPs := []string{"100.64.0.1", "100.64.0.2"}
+	for _, expectedIP := range expectedSrcIPs {
+		found := false
+		addr := netip.MustParseAddr(expectedIP)
+
+		for _, prefix := range rules[0].SrcIPs {
+			pref := netip.MustParsePrefix(prefix)
+			if pref.Contains(addr) {
+				found = true
+				break
+			}
+		}
+
+		assert.True(t, found, "expected source IP %s for user1", expectedIP)
+	}
+
+	node3 := nodes[4].View()
+	rules3, err := policy.compileFilterRulesForNode(users, node3, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.Empty(t, rules3, "user3 should have no rules")
+}
+
 // Helper function to create IP addresses for testing
 func createAddr(ip string) *netip.Addr {
 	addr, _ := netip.ParseAddr(ip)
 	return &addr
+}
+
+// TestSSHWithAutogroupSelfInDestination verifies that SSH policies work correctly
+// with autogroup:self in destinations
+func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		// User1's nodes
+		{User: users[0], IPv4: ap("100.64.0.1"), Hostname: "user1-node1"},
+		{User: users[0], IPv4: ap("100.64.0.2"), Hostname: "user1-node2"},
+		// User2's nodes
+		{User: users[1], IPv4: ap("100.64.0.3"), Hostname: "user2-node1"},
+		{User: users[1], IPv4: ap("100.64.0.4"), Hostname: "user2-node2"},
+		// Tagged node for user1 (should be excluded)
+		{User: users[0], IPv4: ap("100.64.0.5"), Hostname: "user1-tagged", ForcedTags: []string{"tag:server"}},
+	}
+
+	policy := &Policy{
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
+				Users:        []SSHUser{"autogroup:nonroot"},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// Test for user1's first node
+	node1 := nodes[0].View()
+	sshPolicy, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy)
+	require.Len(t, sshPolicy.Rules, 1)
+
+	rule := sshPolicy.Rules[0]
+
+	// Principals should only include user1's untagged devices
+	require.Len(t, rule.Principals, 2, "should have 2 principals (user1's 2 untagged nodes)")
+
+	principalIPs := make([]string, len(rule.Principals))
+	for i, p := range rule.Principals {
+		principalIPs[i] = p.NodeIP
+	}
+	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
+
+	// Test for user2's first node
+	node3 := nodes[2].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy2)
+	require.Len(t, sshPolicy2.Rules, 1)
+
+	rule2 := sshPolicy2.Rules[0]
+
+	// Principals should only include user2's untagged devices
+	require.Len(t, rule2.Principals, 2, "should have 2 principals (user2's 2 untagged nodes)")
+
+	principalIPs2 := make([]string, len(rule2.Principals))
+	for i, p := range rule2.Principals {
+		principalIPs2[i] = p.NodeIP
+	}
+	assert.ElementsMatch(t, []string{"100.64.0.3", "100.64.0.4"}, principalIPs2)
+
+	// Test for tagged node (should have no SSH rules)
+	node5 := nodes[4].View()
+	sshPolicy3, err := policy.compileSSHPolicy(users, node5, nodes.ViewSlice())
+	require.NoError(t, err)
+	if sshPolicy3 != nil {
+		assert.Empty(t, sshPolicy3.Rules, "tagged nodes should not get SSH rules with autogroup:self")
+	}
+}
+
+// TestSSHWithAutogroupSelfAndSpecificUser verifies that when a specific user
+// is in the source and autogroup:self in destination, only that user's devices
+// can SSH (and only if they match the target user)
+func TestSSHWithAutogroupSelfAndSpecificUser(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1")},
+		{User: users[0], IPv4: ap("100.64.0.2")},
+		{User: users[1], IPv4: ap("100.64.0.3")},
+		{User: users[1], IPv4: ap("100.64.0.4")},
+	}
+
+	policy := &Policy{
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{up("user1@")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
+				Users:        []SSHUser{"ubuntu"},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// For user1's node: should allow SSH from user1's devices
+	node1 := nodes[0].View()
+	sshPolicy, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy)
+	require.Len(t, sshPolicy.Rules, 1)
+
+	rule := sshPolicy.Rules[0]
+	require.Len(t, rule.Principals, 2, "user1 should have 2 principals")
+
+	principalIPs := make([]string, len(rule.Principals))
+	for i, p := range rule.Principals {
+		principalIPs[i] = p.NodeIP
+	}
+	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
+
+	// For user2's node: should have no rules (user1's devices can't match user2's self)
+	node3 := nodes[2].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
+	require.NoError(t, err)
+	if sshPolicy2 != nil {
+		assert.Empty(t, sshPolicy2.Rules, "user2 should have no SSH rules since source is user1")
+	}
+}
+
+// TestSSHWithAutogroupSelfAndGroup verifies SSH with group sources and autogroup:self destinations
+func TestSSHWithAutogroupSelfAndGroup(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1")},
+		{User: users[0], IPv4: ap("100.64.0.2")},
+		{User: users[1], IPv4: ap("100.64.0.3")},
+		{User: users[1], IPv4: ap("100.64.0.4")},
+		{User: users[2], IPv4: ap("100.64.0.5")},
+	}
+
+	policy := &Policy{
+		Groups: Groups{
+			Group("group:admins"): []Username{Username("user1@"), Username("user2@")},
+		},
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{gp("group:admins")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
+				Users:        []SSHUser{"root"},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// For user1's node: should allow SSH from user1's devices only (not user2's)
+	node1 := nodes[0].View()
+	sshPolicy, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy)
+	require.Len(t, sshPolicy.Rules, 1)
+
+	rule := sshPolicy.Rules[0]
+	require.Len(t, rule.Principals, 2, "user1 should have 2 principals (only user1's nodes)")
+
+	principalIPs := make([]string, len(rule.Principals))
+	for i, p := range rule.Principals {
+		principalIPs[i] = p.NodeIP
+	}
+	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
+
+	// For user3's node: should have no rules (not in group:admins)
+	node5 := nodes[4].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, node5, nodes.ViewSlice())
+	require.NoError(t, err)
+	if sshPolicy2 != nil {
+		assert.Empty(t, sshPolicy2.Rules, "user3 should have no SSH rules (not in group)")
+	}
+}
+
+// TestSSHWithAutogroupSelfExcludesTaggedDevices verifies that tagged devices
+// are excluded from both sources and destinations when autogroup:self is used
+func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1"), Hostname: "untagged1"},
+		{User: users[0], IPv4: ap("100.64.0.2"), Hostname: "untagged2"},
+		{User: users[0], IPv4: ap("100.64.0.3"), Hostname: "tagged1", ForcedTags: []string{"tag:server"}},
+		{User: users[0], IPv4: ap("100.64.0.4"), Hostname: "tagged2", ForcedTags: []string{"tag:web"}},
+	}
+
+	policy := &Policy{
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{up("user1@")},
+			Tag("tag:web"):    Owners{up("user1@")},
+		},
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self")},
+				Users:        []SSHUser{"admin"},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// For untagged node: should only get principals from other untagged nodes
+	node1 := nodes[0].View()
+	sshPolicy, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy)
+	require.Len(t, sshPolicy.Rules, 1)
+
+	rule := sshPolicy.Rules[0]
+	require.Len(t, rule.Principals, 2, "should only have 2 principals (untagged nodes)")
+
+	principalIPs := make([]string, len(rule.Principals))
+	for i, p := range rule.Principals {
+		principalIPs[i] = p.NodeIP
+	}
+	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs,
+		"should only include untagged devices")
+
+	// For tagged node: should get no SSH rules
+	node3 := nodes[2].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
+	require.NoError(t, err)
+	if sshPolicy2 != nil {
+		assert.Empty(t, sshPolicy2.Rules, "tagged node should get no SSH rules with autogroup:self")
+	}
 }

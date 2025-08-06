@@ -935,6 +935,11 @@ func (s *State) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	return s.polMan.Filter()
 }
 
+// FilterForNode returns filter rules for a specific node, handling autogroup:self per-node.
+func (s *State) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error) {
+	return s.polMan.FilterForNode(node)
+}
+
 // NodeCanHaveTag checks if a node is allowed to have a specific tag.
 func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
