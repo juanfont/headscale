@@ -3,12 +3,15 @@ package integration
 import (
 	"encoding/json"
 	"fmt"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/tailcfg"
 )
@@ -223,5 +226,70 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	for _, client := range allClients {
 		assertCommandOutputContains(t, client, []string{"dig", "copy.myvpn.example.com"}, "8.8.8.8")
+	}
+}
+
+func TestMagicDNSPeerAAAA(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+		MaxWait:      dockertestMaxWait(),
+	}
+
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/sh",
+				"-c",
+				"/bin/sleep 3 ; apk add python3 curl bind-tools ; update-ca-certificates ; tailscaled --tun=tsdev",
+			}),
+		},
+		hsic.WithTestName("magicdnspeeraaaa"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithConfigEnv(map[string]string{
+			// The feature under test
+			"HEADSCALE_MAGICDNS_PEER_AAAA": "true",
+		}),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Loop through all clients to perform the dig command.
+	for _, client := range allClients {
+		// Only run the test for Tailscale clients that support this feature (1.84+).
+		// The `tailscaled` container has no field or method GivenName().
+		// We obtain the name by splitting the FQDN and using the first part.
+		clientName := client.Hostname()
+		if util.TailscaleVersionNewerOrEqual("1.84", client.Version()) {
+			t.Logf("Running AAAA check for client: %s (version: %s)", clientName, client.Version())
+
+			ips, err := client.IPs()
+			assertNoErr(t, err)
+
+			targetIPv6 := lo.Filter(ips, func(ip netip.Addr, _ int) bool {
+				return ip.Is6()
+			})
+			assert.NotEmpty(t, targetIPv6, "expected client to have an IPv6 address")
+
+			// Construct the dig command as a string slice and assert the output.
+			fqdn := clientName + ".headscale.net"
+			digCmd := []string{"dig", "+short", "-t", "AAAA", fqdn}
+
+			assertCommandOutputContains(t, client, digCmd, targetIPv6[0].String())
+		} else {
+			t.Logf("Skipping AAAA check for client: %s (version: %s), requires at least 1.84", clientName, client.Version())
+		}
 	}
 }
