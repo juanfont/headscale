@@ -354,7 +354,11 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			continue
 		}
 
-		assert.Equal(t, []string{"tag:test1", "tag:test2"}, listedPreAuthKeys[index].GetAclTags())
+		assert.Equal(
+			t,
+			[]string{"tag:test1", "tag:test2"},
+			listedPreAuthKeys[index].GetAclTags(),
+		)
 	}
 
 	// Test key expiry
@@ -385,6 +389,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		&listedPreAuthKeysAfterExpire,
 	)
 	assertNoErr(t, err)
+
 
 	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
 	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
@@ -444,6 +449,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
+
 
 	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
 	assert.True(

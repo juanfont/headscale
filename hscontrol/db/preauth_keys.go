@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -47,8 +48,9 @@ func CreatePreAuthKey(
 		return nil, err
 	}
 
-	// Remove duplicates
+	// Remove duplicates and sort for consistency
 	aclTags = set.SetOf(aclTags).Slice()
+	slices.Sort(aclTags)
 
 	// TODO(kradalby): factor out and create a reusable tag validation,
 	// check if there is one in Tailscale's lib.
