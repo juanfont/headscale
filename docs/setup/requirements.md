@@ -22,10 +22,10 @@ The ports in use vary with the intended scenario and enabled features. Some of t
 - tcp/443
     - Expose publicly: yes
     - HTTPS, required to make Headscale available to Tailscale clients[^1]
-    - Required if the built-in DERP server is enabled
+    - Required if the [embedded DERP server](../ref/derp.md) is enabled
 - udp/3478
     - Expose publicly: yes
-    - STUN, required if the built-in DERP server is enabled
+    - STUN, required if the [embedded DERP server](../ref/derp.md) is enabled
 - tcp/50443
     - Expose publicly: yes
     - Only required if the gRPC interface is used to [remote-control Headscale](../ref/remote-cli.md).

@@ -19,7 +19,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] [Exit nodes](../ref/routes.md#exit-node)
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
-- [x] Embedded [DERP server](https://tailscale.com/kb/1232/derp-servers)
+- [x] Embedded [DERP server](../ref/derp.md)
 - [x] Access control lists ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
     - [x] ACL management via API
     - [x] Some [Autogroups](https://tailscale.com/kb/1396/targets#autogroups), currently: `autogroup:internet`,
