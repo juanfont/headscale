@@ -336,11 +336,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
 	if err := viper.ReadInConfig(); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			log.Warn().Msg("No config file found, using defaults")
-			return nil
-		}
-
+    	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+        	log.Warn().Msg("No config file found, using defaults")
+        	return nil
+    	}
+    	
 		return fmt.Errorf("fatal error reading config file: %w", err)
 	}
 
