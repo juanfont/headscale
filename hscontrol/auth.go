@@ -11,6 +11,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/rs/zerolog/log"
 
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -264,6 +265,7 @@ func (h *Headscale) handleRegisterInteractive(
 		nodeToRegister,
 	)
 
+	log.Info().Msgf("Starting node registration using key: %s", registrationId)
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.AuthURL(registrationId),
 	}, nil
