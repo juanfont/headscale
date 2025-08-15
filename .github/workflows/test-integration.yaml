@@ -50,6 +50,7 @@ jobs:
           - TestDERPVerifyEndpoint
           - TestResolveMagicDNS
           - TestResolveMagicDNSExtraRecordsPath
+          - TestMagicDNSPeerAAAA
           - TestDERPServerScenario
           - TestDERPServerWebsocketScenario
           - TestPingAllByIP

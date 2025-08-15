@@ -78,14 +78,17 @@ func tailNode(
 	}
 
 	var tags []string
+
 	for _, tag := range node.RequestTagsSlice().All() {
 		if checker.NodeCanHaveTag(node, tag) {
 			tags = append(tags, tag)
 		}
 	}
+
 	for _, tag := range node.ForcedTags().All() {
 		tags = append(tags, tag)
 	}
+
 	tags = lo.Uniq(tags)
 
 	routes := primaryRouteFunc(node.ID())
@@ -131,6 +134,12 @@ func tailNode(
 
 	if cfg.RandomizeClientPort {
 		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+	}
+
+	// Enable NodeAttrMagicDNSPeerAAAA only if requested in
+	// the config and for nodes with a valid v6 overlay address
+	if cfg.MagicDNSPeerAAAA && node.IPv6().Valid() {
+		tNode.CapMap[tailcfg.NodeAttrMagicDNSPeerAAAA] = []tailcfg.RawMessage{}
 	}
 
 	if !node.IsOnline().Valid() || !node.IsOnline().Get() {
