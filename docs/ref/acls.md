@@ -187,3 +187,29 @@ Here are the ACL's to implement the same permissions as above:
   ]
 }
 ```
+
+## Examples
+
+The following are examples of ready-to-use or -adapt snippets to use in your configuration.
+
+/// details | Full mesh
+
+This snippet allows all devices to access all other devices. It is the noop ACL.
+
+```json
+{
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "*"
+      ],
+      "dst": [
+        "*:*"
+      ]
+    }
+  ]
+}
+```
+
+///
