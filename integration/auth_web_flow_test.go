@@ -12,6 +12,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestAuthWebFlowAuthenticationPingAll tests the web authentication flow and
+// verifies that all nodes can ping each other after successful authentication.
+//
+// This test sets up a scenario with two users and their corresponding nodes.
+// It configures Headscale with a login URL and then simulates the web login
+// flow for each node. After the nodes are authenticated, it checks that they
+// can all ping each other, ensuring that the web authentication is working
+// correctly and that the nodes are properly connected to the network.
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -53,6 +61,15 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+// TestAuthWebFlowLogoutAndRelogin tests the scenario where a set of nodes are
+// logged out and then logged back in using the web authentication flow.
+//
+// This test sets up a scenario with two users and their nodes. It first logs
+// them in using the web flow and verifies that they can communicate. It then
+// logs out all nodes and logs them back in again using the same web flow. The
+// test verifies that the nodes can successfully re-authenticate, that their IP
+// addresses remain the same, and that they can still ping each other after
+// re-login.
 func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	IntegrationSkip(t)
 
