@@ -21,7 +21,7 @@ func (pol *Policy) compileFilterRules(
 	users types.Users,
 	nodes views.Slice[types.NodeView],
 ) ([]tailcfg.FilterRule, error) {
-	if pol == nil {
+	if pol == nil || pol.ACLs == nil {
 		return tailcfg.FilterAllowAll, nil
 	}
 
