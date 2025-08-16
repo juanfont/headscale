@@ -40,8 +40,8 @@ func TestPolicyManager(t *testing.T) {
 			name:         "empty-policy",
 			pol:          "{}",
 			nodes:        types.Nodes{},
-			wantFilter:   nil,
-			wantMatchers: []matcher.Match{},
+			wantFilter:   tailcfg.FilterAllowAll,
+			wantMatchers: matcher.MatchesFromFilterRules(tailcfg.FilterAllowAll),
 		},
 	}
 
