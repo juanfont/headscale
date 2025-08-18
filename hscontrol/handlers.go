@@ -91,7 +91,7 @@ func (h *Headscale) handleVerifyRequest(
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
-		return fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err)
+		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err))
 	}
 
 	nodes, err := h.state.ListNodes()
