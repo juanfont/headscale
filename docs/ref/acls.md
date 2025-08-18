@@ -9,9 +9,38 @@ When using ACL's the User borders are no longer applied. All machines
 whichever the User have the ability to communicate with other hosts as
 long as the ACL's permits this exchange.
 
-## ACLs use case example
+## ACL Setup
 
-Let's build an example use case for a small business (It may be the place where
+To enable and configure ACLs in Headscale, you need to specify the path to your ACL policy file in the `policy.path` key in `config.yaml`.
+
+Your ACL policy file must be formatted using [huJSON](https://github.com/tailscale/hujson).
+
+Info on how these policies are written can be found
+[here](https://tailscale.com/kb/1018/acls/).
+
+Please reload or restart Headscale after updating the ACL file. Headscale may be reloaded either via its systemd service
+(`sudo systemctl reload headscale`) or by sending a SIGHUP signal (`sudo kill -HUP $(pidof headscale)`) to the main
+process. Headscale logs the result of ACL policy processing after each reload.
+
+## Simple Examples
+
+- [**Allow All**](https://tailscale.com/kb/1192/acl-samples#allow-all-default-acl): If you define an ACL file but completely omit the `"acls"` field from its content, Headscale will default to an "allow all" policy. This means all devices connected to your tailnet will be able to communicate freely with each other.
+
+    ```json
+    {}
+    ```
+
+- [**Deny All**](https://tailscale.com/kb/1192/acl-samples#deny-all): To prevent all communication within your tailnet, you can include an empty array for the `"acls"` field in your policy file.
+
+    ```json
+    {
+      "acls": []
+    }
+    ```
+
+## Complex Example
+
+Let's build a more complex example use case for a small business (It may be the place where
 ACL's are the most useful).
 
 We have a small company with a boss, an admin, two developers and an intern.
@@ -38,24 +67,12 @@ servers.
 
 ![ACL implementation example](../images/headscale-acl-network.png)
 
-## ACL setup
-
-ACLs have to be written in [huJSON](https://github.com/tailscale/hujson).
-
 When [registering the servers](../usage/getting-started.md#register-a-node) we
 will need to add the flag `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user
 that is registering the server should be allowed to do it. Since anyone can add
 tags to a server they can register, the check of the tags is done on headscale
 server and only valid tags are applied. A tag is valid if the user that is
 registering it is allowed to do it.
-
-To use ACLs in headscale, you must edit your `config.yaml` file. In there you will find a `policy.path` parameter. This
-will need to point to your ACL file. More info on how these policies are written can be found
-[here](https://tailscale.com/kb/1018/acls/).
-
-Please reload or restart Headscale after updating the ACL file. Headscale may be reloaded either via its systemd service
-(`sudo systemctl reload headscale`) or by sending a SIGHUP signal (`sudo kill -HUP $(pidof headscale)`) to the main
-process. Headscale logs the result of ACL policy processing after each reload.
 
 Here are the ACL's to implement the same permissions as above:
 
