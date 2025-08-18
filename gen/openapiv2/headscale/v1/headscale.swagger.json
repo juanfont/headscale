@@ -1082,7 +1082,7 @@
     "v1HealthResponse": {
       "type": "object",
       "properties": {
-        "dbPing": {
+        "databaseConnectivity": {
           "type": "boolean"
         }
       }

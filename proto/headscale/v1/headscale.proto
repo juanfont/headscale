@@ -221,5 +221,5 @@ service HeadscaleService {
 message HealthRequest {}
 
 message HealthResponse {
-  bool db_ping = 1;
+  bool database_connectivity = 1;
 }

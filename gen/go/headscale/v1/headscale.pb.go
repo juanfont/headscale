@@ -59,10 +59,10 @@ func (*HealthRequest) Descriptor() ([]byte, []int) {
 }
 
 type HealthResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DbPing        bool                   `protobuf:"varint,1,opt,name=db_ping,json=dbPing,proto3" json:"db_ping,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	DatabaseConnectivity bool                   `protobuf:"varint,1,opt,name=database_connectivity,json=databaseConnectivity,proto3" json:"database_connectivity,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *HealthResponse) Reset() {
@@ -95,9 +95,9 @@ func (*HealthResponse) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_headscale_proto_rawDescGZIP(), []int{1}
 }
 
-func (x *HealthResponse) GetDbPing() bool {
+func (x *HealthResponse) GetDatabaseConnectivity() bool {
 	if x != nil {
-		return x.DbPing
+		return x.DatabaseConnectivity
 	}
 	return false
 }
@@ -107,9 +107,9 @@ var File_headscale_v1_headscale_proto protoreflect.FileDescriptor
 const file_headscale_v1_headscale_proto_rawDesc = "" +
 	"\n" +
 	"\x1cheadscale/v1/headscale.proto\x12\fheadscale.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x17headscale/v1/user.proto\x1a\x1dheadscale/v1/preauthkey.proto\x1a\x17headscale/v1/node.proto\x1a\x19headscale/v1/apikey.proto\x1a\x19headscale/v1/policy.proto\"\x0f\n" +
-	"\rHealthRequest\")\n" +
-	"\x0eHealthResponse\x12\x17\n" +
-	"\adb_ping\x18\x01 \x01(\bR\x06dbPing2\x80\x17\n" +
+	"\rHealthRequest\"E\n" +
+	"\x0eHealthResponse\x123\n" +
+	"\x15database_connectivity\x18\x01 \x01(\bR\x14databaseConnectivity2\x80\x17\n" +
 	"\x10HeadscaleService\x12h\n" +
 	"\n" +
 	"CreateUser\x12\x1f.headscale.v1.CreateUserRequest\x1a .headscale.v1.CreateUserResponse\"\x17\x82\xd3\xe4\x93\x02\x11:\x01*\"\f/api/v1/user\x12\x80\x01\n" +
