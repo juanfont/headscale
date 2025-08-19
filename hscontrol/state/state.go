@@ -14,6 +14,7 @@ import (
 	"slices"
 	"sync"
 	"sync/atomic"
+	"strings"
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
