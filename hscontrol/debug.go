@@ -105,10 +105,9 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(dmJSON)
 	}))
 	debug.Handle("registration-cache", "Pending registrations", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// TODO(kradalby): This should be replaced with a proper state method that returns registration info
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("{}")) // For now, return empty object
+		w.Write([]byte(h.state.GetRegistrationCacheDebug()))
 	}))
 	debug.Handle("routes", "Routes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")

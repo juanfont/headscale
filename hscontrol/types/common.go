@@ -188,6 +188,19 @@ type RegisterNode struct {
 	Registered chan *Node
 }
 
+// RegisterNodeDebug is a JSON-serializable version of RegisterNode
+// that excludes the channel field to prevent JSON marshaling errors
+type RegisterNodeDebug struct {
+	Node Node `json:"node"`
+}
+
+// ToDebug converts a RegisterNode to its JSON-serializable form
+func (rn *RegisterNode) ToDebug() RegisterNodeDebug {
+	return RegisterNodeDebug{
+		Node: rn.Node,
+	}
+}
+
 // DefaultBatcherWorkers returns the default number of batcher workers.
 // Default to 3/4 of CPU cores, minimum 1, no maximum.
 func DefaultBatcherWorkers() int {

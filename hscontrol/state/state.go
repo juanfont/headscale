@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/netip"
 	"os"
+	"strings"
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
@@ -734,6 +735,43 @@ func (s *State) GetRegistrationCacheEntry(id types.RegistrationID) (*types.Regis
 // SetRegistrationCacheEntry stores a node registration in cache.
 func (s *State) SetRegistrationCacheEntry(id types.RegistrationID, entry types.RegisterNode) {
 	s.registrationCache.Set(id, entry)
+}
+
+// GetRegistrationCacheDebug returns all registration cache entries as a formatted string
+func (s *State) GetRegistrationCacheDebug() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := s.registrationCache.Items()
+	if len(items) == 0 {
+		return "No pending registrations"
+	}
+
+	var result strings.Builder
+	result.WriteString(fmt.Sprintf("Registration Cache (%d entries):\n", len(items)))
+	result.WriteString("=====================================\n")
+	
+	for id, item := range items {
+		regNode := item.Object
+		result.WriteString(fmt.Sprintf("  ID: %s\n", id))
+		result.WriteString(fmt.Sprintf("  Node ID: %d\n", regNode.Node.ID))
+		result.WriteString(fmt.Sprintf("  Hostname: %s\n", regNode.Node.Hostname))
+		result.WriteString(fmt.Sprintf("  Given Name: %s\n", regNode.Node.GivenName))
+		result.WriteString(fmt.Sprintf("  User ID: %d\n", regNode.Node.UserID))
+		result.WriteString(fmt.Sprintf("  Register Method: %s\n", regNode.Node.RegisterMethod))
+		result.WriteString(fmt.Sprintf("  Expires: %v\n", item.Expiration))
+		result.WriteString(fmt.Sprintf("  Channel Status: %s\n", func() string {
+			select {
+			case <-regNode.Registered:
+				return "closed"
+			default:
+				return "open"
+			}
+		}()))
+		result.WriteString("-------------------------------------\n")
+	}
+	
+	return result.String()
 }
 
 // HandleNodeFromAuthPath handles node registration through authentication flow (like OIDC).
