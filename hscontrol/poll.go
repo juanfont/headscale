@@ -151,22 +151,21 @@ func (m *mapSession) serveLongPoll() {
 		close(m.cancelCh)
 		m.cancelChMu.Unlock()
 
-		log.Trace().Str("node", m.node.Hostname).Uint64("node.id", m.node.ID.Uint64()).Msgf("removing session from batcher chan(%p)", m.ch)
-
 		// Validate if we are actually closing the current session or
 		// if the connection has been replaced. If the connection has been replaced,
 		// do not run the rest of the disconnect logic.
-		if m.h.mapBatcher.RemoveNode(m.node.ID, m.ch) {
-			log.Trace().Str("node", m.node.Hostname).Uint64("node.id", m.node.ID.Uint64()).Msgf("removed from batcher chan(%p)", m.ch)
+		wasCurrentConnection := m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
+
+		if wasCurrentConnection {
 			// First update NodeStore to mark the node as offline
 			// This ensures the state is consistent before notifying the batcher
-			disconnectChange, err := m.h.state.Disconnect(m.node.ID)
+			disconnectChanges, err := m.h.state.Disconnect(m.node.ID)
 			if err != nil {
 				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
 			}
 
 			// Send the disconnect change notification
-			m.h.Change(disconnectChange)
+			m.h.Change(disconnectChanges...)
 
 			m.afterServeLongPoll()
 			m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
@@ -191,6 +190,7 @@ func (m *mapSession) serveLongPoll() {
 		log.Error().Uint64("node.id", m.node.ID.Uint64()).Err(err).Msg("AddNode failed in poll session")
 		return
 	}
+	log.Info().Uint64("node.id", m.node.ID.Uint64()).Msg("AddNode succeeded in poll session")
 
 	// Process the initial MapRequest to update node state (endpoints, hostinfo, etc.)
 	// CRITICAL: This must be done BEFORE calling Connect() to ensure routes are properly
@@ -211,8 +211,8 @@ func (m *mapSession) serveLongPoll() {
 	// 2. Connect: marks the node online and recalculates primary routes based on the updated state
 	// While this results in two notifications, it ensures route data is synchronized before
 	// primary route selection occurs, which is critical for proper HA subnet router failover.
-	connectChange := m.h.state.Connect(m.node.ID)
-	m.h.Change(connectChange)
+	connectChanges := m.h.state.Connect(m.node.ID)
+	m.h.Change(connectChanges...)
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 

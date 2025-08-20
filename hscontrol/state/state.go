@@ -431,30 +431,30 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 }
 
 // Connect marks a node as connected and updates its primary routes in the state.
-func (s *State) Connect(id types.NodeID) change.ChangeSet {
-	c := change.NodeOnline(id)
+func (s *State) Connect(id types.NodeID) []change.ChangeSet {
+	c := []change.ChangeSet{change.NodeOnline(id)}
 
 	// Update the online status in NodeStore
-	now := time.Now()
+	// now := time.Now()
 	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.IsOnline = ptr.To(true)
-		n.LastSeen = ptr.To(now)
+		// n.LastSeen = ptr.To(now)
 	})
 
-	// Also persist the last seen time to the database
-	// Note: IsOnline is managed only in NodeStore (marked with gorm:"-"), not persisted to database
-	err := s.updateNodeTx(id, func(tx *gorm.DB) error {
-		// Update last_seen in the database
-		return hsdb.SetLastSeen(tx, id, now)
-	})
-	if err != nil {
-		log.Error().Err(err).Uint64("node.id", id.Uint64()).Msg("Failed to update last seen time in database")
-	}
+	// // Also persist the last seen time to the database
+	// // Note: IsOnline is managed only in NodeStore (marked with gorm:"-"), not persisted to database
+	// err := s.updateNodeTx(id, func(tx *gorm.DB) error {
+	// 	// Update last_seen in the database
+	// 	return hsdb.SetLastSeen(tx, id, now)
+	// })
+	// if err != nil {
+	// 	log.Error().Err(err).Uint64("node.id", id.Uint64()).Msg("Failed to update last seen time in database")
+	// }
 
 	// Get fresh node data from NodeStore after the online status update
 	node, found := s.GetNodeByID(id)
 	if !found {
-		return change.EmptySet
+		return nil
 	}
 
 	// Use the node's current routes for primary route update
@@ -462,20 +462,17 @@ func (s *State) Connect(id types.NodeID) change.ChangeSet {
 	// We MUST use SubnetRoutes() to maintain the security model
 	routeChange := s.primaryRoutes.SetRoutes(id, node.SubnetRoutes()...)
 
-	log.Trace().Msg("===============================================")
-	log.Trace().Bool("route-change", routeChange).Str("nid", id.String()).Msgf("NODE CONNECTING, SubR: %v, AnnoR: %v, ApprR: %v", node.SubnetRoutes(), node.AnnouncedRoutes(), node.ApprovedRoutes())
-	log.Trace().Msg("===============================================")
-
 	if routeChange {
-		c = change.NodeAdded(id)
+		c = append(c, change.NodeAdded(id))
 	}
 
 	return c
 }
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
-func (s *State) Disconnect(id types.NodeID) (change.ChangeSet, error) {
+func (s *State) Disconnect(id types.NodeID) ([]change.ChangeSet, error) {
 	now := time.Now()
+
 	s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastSeen = ptr.To(now)
 		// CRITICAL: Mark as offline immediately in NodeStore.
@@ -506,15 +503,15 @@ func (s *State) Disconnect(id types.NodeID) (change.ChangeSet, error) {
 	// announced are served to any nodes.
 	routeChange := s.primaryRoutes.SetRoutes(id)
 
+	cs := []change.ChangeSet{change.NodeOffline(id), c}
+
 	// If we have a policy change or route change, return that as it's more comprehensive
 	// Otherwise, return the NodeOffline change to ensure nodes are notified
 	if c.IsFull() || routeChange {
-		c = change.PolicyChange()
-	} else {
-		c = change.NodeOffline(id)
+		cs = append(cs, change.PolicyChange())
 	}
 
-	return c, nil
+	return cs, nil
 }
 
 // GetNodeByID retrieves a node by ID.
