@@ -5,7 +5,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"go/format"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"regexp"
@@ -61,14 +63,14 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 		rawURL := fmt.Sprintf(rawFileURL, version)
 		resp, err := http.Get(rawURL)
 		if err != nil {
-			fmt.Printf("Error fetching raw file for version %s: %v\n", version, err)
+			log.Printf("Error fetching raw file for version %s: %v\n", version, err)
 			continue
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			fmt.Printf("Error reading raw file for version %s: %v\n", version, err)
+			log.Printf("Error reading raw file for version %s: %v\n", version, err)
 			continue
 		}
 
@@ -79,7 +81,7 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 			capabilityVersion, _ := strconv.Atoi(capabilityVersionStr)
 			versions[version] = tailcfg.CapabilityVersion(capabilityVersion)
 		} else {
-			fmt.Printf("Version: %s, CurrentCapabilityVersion not found\n", version)
+			log.Printf("Version: %s, CurrentCapabilityVersion not found\n", version)
 		}
 	}
 
@@ -87,29 +89,23 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 }
 
 func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion) error {
-	// Open the output file
-	file, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("error creating file: %w", err)
-	}
-	defer file.Close()
-
-	// Write the package declaration and variable
-	file.WriteString("package capver\n\n")
-	file.WriteString("//Generated DO NOT EDIT\n\n")
-	file.WriteString(`import "tailscale.com/tailcfg"`)
-	file.WriteString("\n\n")
-	file.WriteString("var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{\n")
+	// Generate the Go code as a string
+	var content strings.Builder
+	content.WriteString("package capver\n\n")
+	content.WriteString("// Generated DO NOT EDIT\n\n")
+	content.WriteString(`import "tailscale.com/tailcfg"`)
+	content.WriteString("\n\n")
+	content.WriteString("var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{\n")
 
 	sortedVersions := xmaps.Keys(versions)
 	sort.Strings(sortedVersions)
 	for _, version := range sortedVersions {
-		fmt.Fprintf(file, "\t\"%s\": %d,\n", version, versions[version])
+		fmt.Fprintf(&content, "\t\"%s\": %d,\n", version, versions[version])
 	}
-	file.WriteString("}\n")
+	content.WriteString("}\n")
 
-	file.WriteString("\n\n")
-	file.WriteString("var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{\n")
+	content.WriteString("\n\n")
+	content.WriteString("var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{\n")
 
 	capVarToTailscaleVer := make(map[tailcfg.CapabilityVersion]string)
 	for _, v := range sortedVersions {
@@ -129,9 +125,21 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 		return capsSorted[i] < capsSorted[j]
 	})
 	for _, capVer := range capsSorted {
-		fmt.Fprintf(file, "\t%d:\t\t\"%s\",\n", capVer, capVarToTailscaleVer[capVer])
+		fmt.Fprintf(&content, "\t%d:\t\t\"%s\",\n", capVer, capVarToTailscaleVer[capVer])
 	}
-	file.WriteString("}\n")
+	content.WriteString("}\n")
+
+	// Format the generated code
+	formatted, err := format.Source([]byte(content.String()))
+	if err != nil {
+		return fmt.Errorf("error formatting Go code: %w", err)
+	}
+
+	// Write to file
+	err = os.WriteFile(outputFile, formatted, 0644)
+	if err != nil {
+		return fmt.Errorf("error writing file: %w", err)
+	}
 
 	return nil
 }
@@ -139,15 +147,15 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 func main() {
 	versions, err := getCapabilityVersions()
 	if err != nil {
-		fmt.Println("Error:", err)
+		log.Println("Error:", err)
 		return
 	}
 
 	err = writeCapabilityVersionsToFile(versions)
 	if err != nil {
-		fmt.Println("Error writing to file:", err)
+		log.Println("Error writing to file:", err)
 		return
 	}
 
-	fmt.Println("Capability versions written to", outputFile)
+	log.Println("Capability versions written to", outputFile)
 }
