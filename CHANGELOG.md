@@ -26,6 +26,7 @@ Please read the [PR description](https://github.com/juanfont/headscale/pull/2617
 for more technical details about the issues and solutions.
 
 **SQLite Database Backup Example:**
+
 ```bash
 # Stop headscale
 systemctl stop headscale
@@ -41,6 +42,13 @@ cp /var/lib/headscale/db.sqlite-shm /var/lib/headscale/db.sqlite-shm.backup
 systemctl start headscale
 ```
 
+### DERPMap update frequency
+
+The default DERPMap update frequency has been changed from 24 hours to 3 hours.
+If you set the `derp.update_frequency` configuration option, it is recommended to change
+it to `3h` to ensure that the headscale instance gets the latest DERPMap updates when
+upstream is changed.
+
 ### BREAKING
 
 - Remove support for 32-bit binaries
@@ -55,6 +63,11 @@ systemctl start headscale
   - **IMPORTANT: Backup your SQLite database before upgrading**
   - Introduces safer table renaming migration strategy
   - Addresses longstanding database integrity issues
+- DERPmap update frequency default changed from 24h to 3h
+  [#2741](https://github.com/juanfont/headscale/pull/2741)
+- DERPmap update mechanism has been improved with retry,
+  and is now failing conservatively, preserving the old map upon failure.
+  [#2741](https://github.com/juanfont/headscale/pull/2741)
 - Add support for `autogroup:member`, `autogroup:tagged`
   [#2572](https://github.com/juanfont/headscale/pull/2572)
 - Remove policy v1 code [#2600](https://github.com/juanfont/headscale/pull/2600)
@@ -72,7 +85,7 @@ systemctl start headscale
   [#2643](https://github.com/juanfont/headscale/pull/2643)
 - OIDC: Use group claim from UserInfo
   [#2663](https://github.com/juanfont/headscale/pull/2663)
-- OIDC: Update user with claims from UserInfo *before* comparing with allowed
+- OIDC: Update user with claims from UserInfo _before_ comparing with allowed
   groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
 
 ## 0.26.1 (2025-06-06)
