@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -166,6 +167,12 @@ func setupBatcherWithTestData(t *testing.T, bf batcherFunc, userCount, nodesPerU
 	if err != nil {
 		t.Fatalf("Failed to create state: %v", err)
 	}
+
+	derpMap, err := derp.GetDERPMap(cfg.DERP)
+	assert.NoError(t, err)
+	assert.NotNil(t, derpMap)
+
+	state.SetDERPMap(derpMap)
 
 	// Set up a permissive policy that allows all communication for testing
 	allowAllPolicy := `{
