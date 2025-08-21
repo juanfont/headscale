@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -284,11 +285,23 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 		case <-derpTickerChan:
 			log.Info().Msg("Fetching DERPMap updates")
-			derpMap := derp.GetDERPMap(h.cfg.DERP)
-			if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-				region, _ := h.DERPServer.GenerateRegion()
-				derpMap.Regions[region.RegionID] = &region
+			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
+				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
+				if err != nil {
+					return nil, err
+				}
+				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
+					region, _ := h.DERPServer.GenerateRegion()
+					derpMap.Regions[region.RegionID] = &region
+				}
+
+				return derpMap, nil
+			}, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+			if err != nil {
+				log.Error().Err(err).Msg("failed to build new DERPMap, retrying later")
+				continue
 			}
+			h.state.SetDERPMap(derpMap)
 
 			h.Change(change.DERPSet)
 
@@ -516,28 +529,30 @@ func (h *Headscale) Serve() error {
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
 
-	// TODO(kradalby): fix state part.
 	if h.cfg.DERP.ServerEnabled {
 		// When embedded DERP is enabled we always need a STUN server
 		if h.cfg.DERP.STUNAddr == "" {
 			return errSTUNAddressNotSet
 		}
 
-		region, err := h.DERPServer.GenerateRegion()
-		if err != nil {
-			return fmt.Errorf("generating DERP region for embedded server: %w", err)
-		}
-
-		if h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
-			h.state.DERPMap().Regions[region.RegionID] = &region
-		}
-
 		go h.DERPServer.ServeSTUN()
 	}
 
-	if len(h.state.DERPMap().Regions) == 0 {
+	derpMap, err := derp.GetDERPMap(h.cfg.DERP)
+	if err != nil {
+		return fmt.Errorf("failed to get DERPMap: %w", err)
+	}
+
+	if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
+		region, _ := h.DERPServer.GenerateRegion()
+		derpMap.Regions[region.RegionID] = &region
+	}
+
+	if len(derpMap.Regions) == 0 {
 		return errEmptyInitialDERPMap
 	}
+
+	h.state.SetDERPMap(derpMap)
 
 	// Start ephemeral node garbage collector and schedule all nodes
 	// that are already in the database and ephemeral. If they are still

@@ -10,7 +10,7 @@ import (
 	"os"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
 )
@@ -79,26 +79,16 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	return &result
 }
 
-func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
+func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	var derpMaps []*tailcfg.DERPMap
 	if cfg.DERPMap != nil {
 		derpMaps = append(derpMaps, cfg.DERPMap)
 	}
 
 	for _, path := range cfg.Paths {
-		log.Debug().
-			Str("func", "GetDERPMap").
-			Str("path", path).
-			Msg("Loading DERPMap from path")
 		derpMap, err := loadDERPMapFromPath(path)
 		if err != nil {
-			log.Error().
-				Str("func", "GetDERPMap").
-				Str("path", path).
-				Err(err).
-				Msg("Could not load DERP map from path")
-
-			break
+			return nil, err
 		}
 
 		derpMaps = append(derpMaps, derpMap)
@@ -106,18 +96,8 @@ func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 
 	for _, addr := range cfg.URLs {
 		derpMap, err := loadDERPMapFromURL(addr)
-		log.Debug().
-			Str("func", "GetDERPMap").
-			Str("url", addr.String()).
-			Msg("Loading DERPMap from path")
 		if err != nil {
-			log.Error().
-				Str("func", "GetDERPMap").
-				Str("url", addr.String()).
-				Err(err).
-				Msg("Could not load DERP map from path")
-
-			break
+			return nil, err
 		}
 
 		derpMaps = append(derpMaps, derpMap)
@@ -125,7 +105,5 @@ func GetDERPMap(cfg types.DERPConfig) *tailcfg.DERPMap {
 
 	derpMap := mergeDERPMaps(derpMaps)
 
-	log.Trace().Interface("derpMap", derpMap).Msg("DERPMap loaded")
-
-	return derpMap
+	return derpMap, nil
 }

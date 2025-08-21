@@ -276,7 +276,7 @@ func DERPProbeHandler(
 // An example implementation is found here https://derp.tailscale.com/bootstrap-dns
 // Coordination server is included automatically, since local DERP is using the same DNS Name in d.serverURL.
 func DERPBootstrapDNSHandler(
-	derpMap *tailcfg.DERPMap,
+	derpMap tailcfg.DERPMapView,
 ) func(http.ResponseWriter, *http.Request) {
 	return func(
 		writer http.ResponseWriter,
@@ -287,18 +287,18 @@ func DERPBootstrapDNSHandler(
 		resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 		defer cancel()
 		var resolver net.Resolver
-		for _, region := range derpMap.Regions {
-			for _, node := range region.Nodes { // we don't care if we override some nodes
-				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName)
+		for _, region := range derpMap.Regions().All() {
+			for _, node := range region.Nodes().All() { // we don't care if we override some nodes
+				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
 				if err != nil {
 					log.Trace().
 						Caller().
 						Err(err).
-						Msgf("bootstrap DNS lookup failed %q", node.HostName)
+						Msgf("bootstrap DNS lookup failed %q", node.HostName())
 
 					continue
 				}
-				dnsEntries[node.HostName] = addrs
+				dnsEntries[node.HostName()] = addrs
 			}
 		}
 		writer.Header().Set("Content-Type", "application/json")
