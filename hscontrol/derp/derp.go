@@ -1,13 +1,19 @@
 package derp
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
+	"hash/crc64"
 	"io"
 	"maps"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
+	"sync"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/viper"
@@ -104,6 +110,51 @@ func GetDERPMap(cfg types.DERPConfig) (*tailcfg.DERPMap, error) {
 	}
 
 	derpMap := mergeDERPMaps(derpMaps)
+	shuffleDERPMap(derpMap)
 
 	return derpMap, nil
+}
+
+func shuffleDERPMap(dm *tailcfg.DERPMap) {
+	if dm == nil || len(dm.Regions) == 0 {
+		return
+	}
+
+	for id, region := range dm.Regions {
+		if len(region.Nodes) == 0 {
+			continue
+		}
+
+		dm.Regions[id] = shuffleRegionNoClone(region)
+	}
+}
+
+var crc64Table = crc64.MakeTable(crc64.ISO)
+
+var (
+	derpRandomOnce sync.Once
+	derpRandomInst *rand.Rand
+	derpRandomMu   sync.RWMutex
+)
+
+func derpRandom() *rand.Rand {
+	derpRandomOnce.Do(func() {
+		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
+		rnd := rand.New(rand.NewSource(0))
+		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table)))
+		derpRandomInst = rnd
+	})
+	return derpRandomInst
+}
+
+func resetDerpRandomForTesting() {
+	derpRandomMu.Lock()
+	defer derpRandomMu.Unlock()
+	derpRandomOnce = sync.Once{}
+	derpRandomInst = nil
+}
+
+func shuffleRegionNoClone(r *tailcfg.DERPRegion) *tailcfg.DERPRegion {
+	derpRandom().Shuffle(len(r.Nodes), reflect.Swapper(r.Nodes))
+	return r
 }
