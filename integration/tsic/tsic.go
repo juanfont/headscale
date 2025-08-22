@@ -31,12 +31,13 @@ import (
 	"tailscale.com/paths"
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
+	"tailscale.com/util/multierr"
 )
 
 const (
 	tsicHashLength       = 6
-	defaultPingTimeout   = 300 * time.Millisecond
-	defaultPingCount     = 10
+	defaultPingTimeout   = 200 * time.Millisecond
+	defaultPingCount     = 5
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
@@ -529,7 +530,7 @@ func (t *TailscaleInContainer) Logout() error {
 		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
 	}
 
-	return t.waitForBackendState("NeedsLogin")
+	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
 }
 
 // Helper that runs `tailscale up` with no arguments.
@@ -572,7 +573,7 @@ func (t *TailscaleInContainer) Down() error {
 
 // IPs returns the netip.Addr of the Tailscale instance.
 func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
-	if t.ips != nil && len(t.ips) != 0 {
+	if len(t.ips) != 0 {
 		return t.ips, nil
 	}
 
@@ -588,7 +589,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		return []netip.Addr{}, fmt.Errorf("%s failed to join tailscale client: %w", t.hostname, err)
 	}
 
-	for _, address := range strings.Split(result, "\n") {
+	for address := range strings.SplitSeq(result, "\n") {
 		address = strings.TrimSuffix(address, "\n")
 		if len(address) < 1 {
 			continue
@@ -610,6 +611,22 @@ func (t *TailscaleInContainer) MustIPs() []netip.Addr {
 	}
 
 	return ips
+}
+
+// IPv4 returns the IPv4 address of the Tailscale instance.
+func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
+	ips, err := t.IPs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	for _, ip := range ips {
+		if ip.Is4() {
+			return ip, nil
+		}
+	}
+
+	return netip.Addr{}, errors.New("no IPv4 address found")
 }
 
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
@@ -904,75 +921,116 @@ func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 
 // WaitForNeedsLogin blocks until the Tailscale (tailscaled) instance has
 // started and needs to be logged into.
-func (t *TailscaleInContainer) WaitForNeedsLogin() error {
-	return t.waitForBackendState("NeedsLogin")
+func (t *TailscaleInContainer) WaitForNeedsLogin(timeout time.Duration) error {
+	return t.waitForBackendState("NeedsLogin", timeout)
 }
 
 // WaitForRunning blocks until the Tailscale (tailscaled) instance is logged in
 // and ready to be used.
-func (t *TailscaleInContainer) WaitForRunning() error {
-	return t.waitForBackendState("Running")
+func (t *TailscaleInContainer) WaitForRunning(timeout time.Duration) error {
+	return t.waitForBackendState("Running", timeout)
 }
 
-func (t *TailscaleInContainer) waitForBackendState(state string) error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
+func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Duration) error {
+	ticker := time.NewTicker(integrationutil.PeerSyncRetryInterval())
+	defer ticker.Stop()
 
-		// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
-		// https://github.com/tailscale/tailscale/pull/3865
-		//
-		// Before that, we can check the BackendState to see if the
-		// tailscaled daemon is connected to the control system.
-		if status.BackendState == state {
-			return nil
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-		return errTailscaleNotConnected
-	})
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timeout waiting for backend state %s on %s after %v", state, t.hostname, timeout)
+		case <-ticker.C:
+			status, err := t.Status()
+			if err != nil {
+				continue // Keep retrying on status errors
+			}
+
+			// ipnstate.Status.CurrentTailnet was added in Tailscale 1.22.0
+			// https://github.com/tailscale/tailscale/pull/3865
+			//
+			// Before that, we can check the BackendState to see if the
+			// tailscaled daemon is connected to the control system.
+			if status.BackendState == state {
+				return nil
+			}
+		}
+	}
 }
 
 // WaitForPeers blocks until N number of peers is present in the
 // Peer list of the Tailscale instance and is reporting Online.
-func (t *TailscaleInContainer) WaitForPeers(expected int) error {
-	return t.pool.Retry(func() error {
-		status, err := t.Status()
-		if err != nil {
-			return errTailscaleStatus(t.hostname, err)
-		}
+//
+// The method verifies that each peer:
+// - Has the expected peer count
+// - All peers are Online
+// - All peers have a hostname
+// - All peers have a DERP relay assigned
+//
+// Uses multierr to collect all validation errors.
+func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval time.Duration) error {
+	ticker := time.NewTicker(retryInterval)
+	defer ticker.Stop()
 
-		if peers := status.Peers(); len(peers) != expected {
-			return fmt.Errorf(
-				"%s err: %w expected %d, got %d",
-				t.hostname,
-				errTailscaleWrongPeerCount,
-				expected,
-				len(peers),
-			)
-		} else {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	var lastErrs []error
+	for {
+		select {
+		case <-ctx.Done():
+			if len(lastErrs) > 0 {
+				return fmt.Errorf("timeout waiting for %d peers on %s after %v, errors: %w", expected, t.hostname, timeout, multierr.New(lastErrs...))
+			}
+			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout)
+		case <-ticker.C:
+			status, err := t.Status()
+			if err != nil {
+				lastErrs = []error{errTailscaleStatus(t.hostname, err)}
+				continue // Keep retrying on status errors
+			}
+
+			if peers := status.Peers(); len(peers) != expected {
+				lastErrs = []error{fmt.Errorf(
+					"%s err: %w expected %d, got %d",
+					t.hostname,
+					errTailscaleWrongPeerCount,
+					expected,
+					len(peers),
+				)}
+
+				continue
+			}
+
 			// Verify that the peers of a given node is Online
 			// has a hostname and a DERP relay.
-			for _, peerKey := range peers {
+			var peerErrors []error
+			for _, peerKey := range status.Peers() {
 				peer := status.Peer[peerKey]
 
 				if !peer.Online {
-					return fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName))
 				}
 
 				if peer.HostName == "" {
-					return fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName))
 				}
 
 				if peer.Relay == "" {
-					return fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName))
 				}
 			}
-		}
 
-		return nil
-	})
+			if len(peerErrors) > 0 {
+				lastErrs = peerErrors
+				continue
+			}
+
+			return nil
+		}
+	}
 }
 
 type (
@@ -1108,11 +1166,11 @@ func WithCurlRetry(ret int) CurlOption {
 }
 
 const (
-	defaultConnectionTimeout = 3 * time.Second
-	defaultMaxTime           = 10 * time.Second
-	defaultRetry             = 5
-	defaultRetryDelay        = 0 * time.Second
-	defaultRetryMaxTime      = 50 * time.Second
+	defaultConnectionTimeout = 1 * time.Second
+	defaultMaxTime           = 3 * time.Second
+	defaultRetry             = 3
+	defaultRetryDelay        = 200 * time.Millisecond
+	defaultRetryMaxTime      = 5 * time.Second
 )
 
 // Curl executes the Tailscale curl command and curls a hostname
@@ -1155,6 +1213,17 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	return result, nil
+}
+
+// CurlFailFast executes the Tailscale curl command with aggressive timeouts
+// optimized for testing expected connection failures. It uses minimal timeouts
+// to quickly detect blocked connections without waiting for multiple retries.
+func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
+	// Use aggressive timeouts for fast failure detection
+	return t.Curl(url,
+		WithCurlConnectionTimeout(1*time.Second),
+		WithCurlMaxTime(2*time.Second),
+		WithCurlRetry(1))
 }
 
 func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {

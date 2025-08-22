@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,8 +19,8 @@ type batcherFunc func(cfg *types.Config, state *state.State) Batcher
 type Batcher interface {
 	Start()
 	Close()
-	AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool, version tailcfg.CapabilityVersion) error
-	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse, isRouter bool)
+	AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error
+	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool
 	IsConnected(id types.NodeID) bool
 	ConnectedMap() *xsync.Map[types.NodeID, bool]
 	AddWork(c change.ChangeSet)
@@ -34,7 +35,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeB
 
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
 		workCh:         make(chan work, workers*200),
-		nodes:          xsync.NewMap[types.NodeID, *nodeConn](),
+		nodes:          xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 		connected:      xsync.NewMap[types.NodeID, *time.Time](),
 		pendingChanges: xsync.NewMap[types.NodeID, []change.ChangeSet](),
 	}
@@ -45,6 +46,7 @@ func NewBatcherAndMapper(cfg *types.Config, state *state.State) Batcher {
 	m := newMapper(cfg, state)
 	b := NewBatcher(cfg.Tuning.BatchChangeDelay, cfg.Tuning.BatcherWorkers, m)
 	m.batcher = b
+
 	return b
 }
 
@@ -70,8 +72,10 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		return nil, fmt.Errorf("mapper is nil for nodeID %d", nodeID)
 	}
 
-	var mapResp *tailcfg.MapResponse
-	var err error
+	var (
+		mapResp *tailcfg.MapResponse
+		err     error
+	)
 
 	switch c.Change {
 	case change.DERP:
@@ -119,11 +123,14 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.ChangeSet].
 func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) error {
 	if nc == nil {
-		return fmt.Errorf("nodeConnection is nil")
+		return errors.New("nodeConnection is nil")
 	}
 
 	nodeID := nc.nodeID()
-	data, err := generateMapResponse(nodeID, nc.version(), mapper, c)
+
+	var data *tailcfg.MapResponse
+	var err error
+	data, err = generateMapResponse(nodeID, nc.version(), mapper, c)
 	if err != nil {
 		return fmt.Errorf("generating map response for node %d: %w", nodeID, err)
 	}
@@ -134,7 +141,8 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) err
 	}
 
 	// Send the map response
-	if err := nc.send(data); err != nil {
+	err = nc.send(data)
+	if err != nil {
 		return fmt.Errorf("sending map response to node %d: %w", nodeID, err)
 	}
 

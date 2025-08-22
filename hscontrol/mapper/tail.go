@@ -133,11 +133,15 @@ func tailNode(
 		tNode.CapMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
 	}
 
-	if !node.IsOnline().Valid() || !node.IsOnline().Get() {
-		// LastSeen is only set when node is
-		// not connected to the control server.
-		if node.LastSeen().Valid() {
-			lastSeen := node.LastSeen().Get()
+	// Always set LastSeen if it's valid, regardless of online status
+	// This ensures that during logout grace periods (when IsOnline might be true
+	// for DNS preservation), other nodes can still see when this node disconnected
+	if node.LastSeen().Valid() {
+		lastSeen := node.LastSeen().Get()
+		// Only set LastSeen if the node is offline OR if LastSeen is recent
+		// (indicating it disconnected recently but might be in grace period)
+		if !node.IsOnline().Valid() || !node.IsOnline().Get() ||
+			time.Since(lastSeen) < 60*time.Second {
 			tNode.LastSeen = &lastSeen
 		}
 	}

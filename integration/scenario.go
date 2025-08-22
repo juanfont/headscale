@@ -14,7 +14,6 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +27,7 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/dsic"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/ory/dockertest/v3"
@@ -40,6 +40,7 @@ import (
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/envknob"
 	"tailscale.com/util/mak"
+	"tailscale.com/util/multierr"
 )
 
 const (
@@ -279,16 +280,16 @@ func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 		return nil, fmt.Errorf("no network named: %s", name)
 	}
 
-	for _, ipam := range net.Network.IPAM.Config {
-		pref, err := netip.ParsePrefix(ipam.Subnet)
-		if err != nil {
-			return nil, err
-		}
-
-		return &pref, nil
+	if len(net.Network.IPAM.Config) == 0 {
+		return nil, fmt.Errorf("no IPAM config found in network: %s", name)
 	}
 
-	return nil, fmt.Errorf("no prefix found in network: %s", name)
+	pref, err := netip.ParsePrefix(net.Network.IPAM.Config[0].Subnet)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pref, nil
 }
 
 func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
@@ -326,6 +327,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		return true
 	})
 
+	s.mu.Lock()
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
@@ -345,6 +347,7 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 			}
 		}
 	}
+	s.mu.Unlock()
 
 	for _, derp := range s.derpServers {
 		err := derp.Shutdown()
@@ -428,6 +431,28 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 	return headscale, nil
 }
 
+// Pool returns the dockertest pool for the scenario.
+func (s *Scenario) Pool() *dockertest.Pool {
+	return s.pool
+}
+
+// GetOrCreateUser gets or creates a user in the scenario.
+func (s *Scenario) GetOrCreateUser(userStr string) *User {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if user, ok := s.users[userStr]; ok {
+		return user
+	}
+
+	user := &User{
+		Clients: make(map[string]TailscaleClient),
+	}
+	s.users[userStr] = user
+
+	return user
+}
+
 // CreatePreAuthKey creates a "pre authentorised key" to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreatePreAuthKey(
@@ -456,9 +481,11 @@ func (s *Scenario) CreateUser(user string) (*v1.User, error) {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 
+		s.mu.Lock()
 		s.users[user] = &User{
 			Clients: make(map[string]TailscaleClient),
 		}
+		s.mu.Unlock()
 
 		return u, nil
 	}
@@ -499,7 +526,7 @@ func (s *Scenario) CreateTailscaleNode(
 		)
 	}
 
-	err = tsClient.WaitForNeedsLogin()
+	err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 	if err != nil {
 		return nil, fmt.Errorf(
 			"failed to wait for tailscaled (%s) to need login: %w",
@@ -540,11 +567,25 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			cert := headscale.GetCert()
 			hostname := headscale.GetHostname()
 
+			// Determine which network this tailscale client will be in
+			var network *dockertest.Network
+			if s.userToNetwork != nil && s.userToNetwork[userStr] != nil {
+				network = s.userToNetwork[userStr]
+			} else {
+				network = s.networks[s.testDefaultNetwork]
+			}
+
+			// Get headscale IP in this network for /etc/hosts fallback DNS
+			headscaleIP := headscale.GetIPInNetwork(network)
+			extraHosts := []string{hostname + ":" + headscaleIP}
+
 			s.mu.Lock()
 			opts = append(opts,
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
+				tsic.WithExtraHosts(extraHosts),
 			)
+
 			s.mu.Unlock()
 
 			user.createWaitGroup.Go(func() error {
@@ -562,7 +603,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					)
 				}
 
-				err = tsClient.WaitForNeedsLogin()
+				err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 				if err != nil {
 					return fmt.Errorf(
 						"failed to wait for tailscaled (%s) to need login: %w",
@@ -608,7 +649,7 @@ func (s *Scenario) RunTailscaleUp(
 		}
 
 		for _, client := range user.Clients {
-			err := client.WaitForRunning()
+			err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			if err != nil {
 				return fmt.Errorf("%s failed to up tailscale node: %w", client.Hostname(), err)
 			}
@@ -637,7 +678,7 @@ func (s *Scenario) CountTailscale() int {
 func (s *Scenario) WaitForTailscaleSync() error {
 	tsCount := s.CountTailscale()
 
-	err := s.WaitForTailscaleSyncWithPeerCount(tsCount - 1)
+	err := s.WaitForTailscaleSyncWithPeerCount(tsCount-1, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 	if err != nil {
 		for _, user := range s.users {
 			for _, client := range user.Clients {
@@ -654,17 +695,23 @@ func (s *Scenario) WaitForTailscaleSync() error {
 
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports
 // to have all other TailscaleClients present in their netmap.NetworkMap.
-func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int) error {
+func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, retryInterval time.Duration) error {
+	var allErrors []error
+
 	for _, user := range s.users {
 		for _, client := range user.Clients {
 			c := client
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForPeers(peerCount)
+				return c.WaitForPeers(peerCount, timeout, retryInterval)
 			})
 		}
 		if err := user.syncWaitGroup.Wait(); err != nil {
-			return err
+			allErrors = append(allErrors, err)
 		}
+	}
+
+	if len(allErrors) > 0 {
+		return multierr.New(allErrors...)
 	}
 
 	return nil
@@ -696,7 +743,6 @@ func (s *Scenario) createHeadscaleEnv(
 		return err
 	}
 
-	sort.Strings(s.spec.Users)
 	for _, user := range s.spec.Users {
 		u, err := s.CreateUser(user)
 		if err != nil {
@@ -769,7 +815,7 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 		}
 
 		for _, client := range user.Clients {
-			err := client.WaitForRunning()
+			err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			if err != nil {
 				return fmt.Errorf(
 					"%s tailscale node has not reached running: %w",
@@ -1003,7 +1049,7 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 		for _, client := range user.Clients {
 			c := client
 			user.syncWaitGroup.Go(func() error {
-				return c.WaitForNeedsLogin()
+				return c.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 			})
 		}
 		if err := user.syncWaitGroup.Wait(); err != nil {

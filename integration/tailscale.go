@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/netip"
 	"net/url"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -31,6 +32,7 @@ type TailscaleClient interface {
 	Down() error
 	IPs() ([]netip.Addr, error)
 	MustIPs() []netip.Addr
+	IPv4() (netip.Addr, error)
 	MustIPv4() netip.Addr
 	MustIPv6() netip.Addr
 	FQDN() (string, error)
@@ -40,11 +42,12 @@ type TailscaleClient interface {
 	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	GetNodePrivateKey() (*key.NodePrivate, error)
 	Netcheck() (*netcheck.Report, error)
-	WaitForNeedsLogin() error
-	WaitForRunning() error
-	WaitForPeers(expected int) error
+	WaitForNeedsLogin(timeout time.Duration) error
+	WaitForRunning(timeout time.Duration) error
+	WaitForPeers(expected int, timeout, retryInterval time.Duration) error
 	Ping(hostnameOrIP string, opts ...tsic.PingOption) error
 	Curl(url string, opts ...tsic.CurlOption) (string, error)
+	CurlFailFast(url string) (string, error)
 	Traceroute(netip.Addr) (util.Traceroute, error)
 	ContainerID() string
 	MustID() types.NodeID

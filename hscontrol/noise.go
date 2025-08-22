@@ -13,7 +13,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
-	"gorm.io/gorm"
 	"tailscale.com/control/controlbase"
 	"tailscale.com/control/controlhttp/controlhttpserver"
 	"tailscale.com/tailcfg"
@@ -296,15 +295,10 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
 func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	node, err := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
-		}
-		return types.NodeView{}, NewHTTPError(http.StatusInternalServerError, fmt.Sprintf("lookup node: %s", err), nil)
+	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	if !ok {
+		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}
-
-	nv := node.View()
 
 	// Validate that the MachineKey in the Noise session matches the one associated with the NodeKey.
 	if ns.machineKey != nv.MachineKey() {
