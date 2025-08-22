@@ -184,7 +184,7 @@ You may refer to users in the Headscale policy via:
 ## Supported OIDC claims
 
 Headscale uses [the standard OIDC claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) to
-populate and update its local user profile on each login. OIDC claims are read from the ID Token or from the UserInfo
+populate and update its local user profile on each login. OIDC claims are read from the ID Token and from the UserInfo
 endpoint.
 
 | Headscale profile   | OIDC claim           | Notes / examples                                                                                  |
@@ -229,19 +229,6 @@ are known to work:
 ### Authelia
 
 Authelia is fully supported by Headscale.
-
-#### Additional configuration to authorize users based on filters
-
-Authelia (4.39.0 or newer) no longer provides standard OIDC claims such as `email` or `groups` via the ID Token. The
-OIDC `email` and `groups` claims are used to [authorize users with filters](#authorize-users-with-filters). This extra
-configuration step is **only** needed if you need to authorize access based on one of the following user properties:
-
-- domain
-- email address
-- group membership
-
-Please follow the instructions from Authelia's documentation on how to [Restore Functionality Prior to Claims
-Parameter](https://www.authelia.com/integration/openid-connect/openid-connect-1.0-claims/#restore-functionality-prior-to-claims-parameter).
 
 ### Authentik
 
@@ -297,7 +284,7 @@ you need to [authorize access based on group membership](#authorize-users-with-f
 
 - Create a new client scope `groups` for OpenID Connect:
     - Configure a `Group Membership` mapper with name `groups` and the token claim name `groups`.
-    - Enable the mapper for the ID Token, Access Token and UserInfo endpoint.
+    - Add the mapper to at least the UserInfo endpoint.
 - Configure the new client scope for your Headscale client:
     - Edit the Headscale client.
     - Search for the client scope `group`.
