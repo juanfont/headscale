@@ -289,8 +289,10 @@ you need to [authorize access based on group membership](#authorize-users-with-f
     - Edit the Headscale client.
     - Search for the client scope `group`.
     - Add it with assigned type `Default`.
-- [Configure the allowed groups in Headscale](#authorize-users-with-filters). Keep in mind that groups in Keycloak start
-  with a leading `/`.
+- [Configure the allowed groups in Headscale](#authorize-users-with-filters). How groups need to be specified depends on
+  Keycloak's `Full group path` option:
+    - `Full group path` is enabled: groups contain their full path, e.g. `/top/group1`
+    - `Full group path` is disabled: only the name of the group is used, e.g. `group1`
 
 ### Microsoft Entra ID
 
