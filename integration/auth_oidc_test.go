@@ -17,6 +17,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TestOIDCAuthenticationPingAll tests the OIDC authentication flow and verifies
+// that all nodes can ping each other after successful authentication.
+//
+// This test sets up a scenario with two users and their corresponding nodes.
+// It configures Headscale with an OIDC provider and then simulates the OIDC
+// login flow for each node. After the nodes are authenticated, it checks that
+// they can all ping each other, ensuring that the OIDC authentication is
+// working correctly and that the nodes are properly connected to the network.
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -113,7 +121,14 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 }
 
-// This test is really flaky.
+// TestOIDCExpireNodesBasedOnTokenExpiry tests that nodes are automatically
+// expired when their OIDC token expires.
+//
+// This test sets up a scenario with a short OIDC token expiry time. It then
+// authenticates the nodes and verifies that they can communicate. After waiting
+// for the token to expire, it checks that the nodes are logged out and can no
+// longer communicate, ensuring that the token expiry mechanism is working as
+// expected.
 func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -179,6 +194,15 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	}, shortAccessTTL+10*time.Second, 5*time.Second)
 }
 
+// TestOIDC024UserCreation tests the user creation process when using OIDC
+// authentication, covering different scenarios of user migration and email
+// verification.
+//
+// This is a table-driven test that sets up various scenarios with different
+// OIDC configurations, such as whether the email is verified and whether the
+// domain is stripped from the username. It then verifies that the users are
+// created correctly in Headscale with the expected properties, ensuring that
+// the user creation and migration logic is working as intended.
 func TestOIDC024UserCreation(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -346,6 +370,13 @@ func TestOIDC024UserCreation(t *testing.T) {
 	}
 }
 
+// TestOIDCAuthenticationWithPKCE tests the OIDC authentication flow with PKCE
+// (Proof Key for Code Exchange) enabled.
+//
+// This test sets up a scenario with a single user and node. It configures
+// Headscale to use OIDC with PKCE enabled. It then simulates the OIDC login
+// flow and verifies that the node can successfully authenticate and connect to
+// the network. This ensures that the PKCE implementation is working correctly.
 func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -397,6 +428,15 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+// TestOIDCReloginSameNodeNewUser tests the scenario where a node is logged out
+// from one user and then logged back in as a different user.
+//
+// This test sets up a scenario with a single node and two OIDC users. It first
+// logs in the node as user1, then logs it out and logs it back in as user2.
+// Finally, it logs the node out again and logs it back in as user1. The test
+// verifies that the node is correctly associated with the new user after each
+// re-login, and that the node's machine key remains the same while the node
+// key changes.
 func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	IntegrationSkip(t)
 
