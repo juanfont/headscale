@@ -13,3 +13,4 @@ This page collects third-party tools, client libraries, and scripts related to h
 | headscalebacktosqlite | [Github](https://github.com/bigbozza/headscalebacktosqlite)     | Migrate headscale from PostgreSQL back to SQLite                     |
 | headscale-pf          | [Github](https://github.com/YouSysAdmin/headscale-pf)           | Populates user groups based on user groups in Jumpcloud or Authentik |
 | headscale-client-go   | [Github](https://github.com/hibare/headscale-client-go)         | A Go client implementation for the Headscale HTTP API.               |
+| headscale-zabbix      | [Github](https://github.com/dblanque/headscale-zabbix)          | A Zabbix Monitoring Template for the Headscale Service.              |
