@@ -98,6 +98,12 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	// Controls the automatic addition of the `magicdns-aaaa` node attribute
+	// If set to true, the attributes will be set for all nodes that have
+	// a valid Overlay IPv6 Address.
+	// This is separate from the real DNS
+	MagicDNSPeerAAAA bool
 }
 
 type DNSConfig struct {
@@ -336,6 +342,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
+
+	viper.SetDefault("magicdns_peer_aaaa", false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -874,6 +882,7 @@ func LoadServerConfig() (*Config, error) {
 	derpConfig := derpConfig()
 	logTailConfig := logtailConfig()
 	randomizeClientPort := viper.GetBool("randomize_client_port")
+	magicDNSPeerAAAA := viper.GetBool("magicdns_peer_aaaa")
 
 	oidcClientSecret := viper.GetString("oidc.client_secret")
 	oidcClientSecretPath := viper.GetString("oidc.client_secret_path")
@@ -1001,6 +1010,8 @@ func LoadServerConfig() (*Config, error) {
 				return DefaultBatcherWorkers()
 			}(),
 		},
+
+		MagicDNSPeerAAAA: magicDNSPeerAAAA,
 	}, nil
 }
 

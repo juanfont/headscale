@@ -403,3 +403,11 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+
+
+# Enables MagicDNS AAAA query resolution for tailnet nodes with IPv6.
+# When this option is enabled, devices that have a valid overlay IPv6 address will
+# automatically gain the `magicdns-aaaa` Node Attribute.
+# This attribute allows them to resolve AAAA (IPv6) DNS queries through MagicDNS for 
+# other nodes within the tailnet.
+magicdns_peer_aaaa: false
