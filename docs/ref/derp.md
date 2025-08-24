@@ -54,58 +54,80 @@ derp:
 ### Customize DERP map
 
 The DERP map offered to clients can be customized with a [dedicated YAML-configuration
-file](https://github.com/juanfont/headscale/blob/main/derp-example.yaml). Typical use-cases involve:
+file](https://github.com/juanfont/headscale/blob/main/derp-example.yaml). This allows to modify previously loaded DERP
+maps fetched via URL or to offer your own, custom DERP servers to nodes.
 
-- Running a fleet of [custom DERP servers](https://tailscale.com/kb/1118/custom-derp-servers)
-- Excluding or choosing specific regions from the Tailscale's list of free-to-use [DERP
-  servers](https://tailscale.com/kb/1232/derp-servers)
+=== "Remove specific DERP regions"
 
-The following sample `derp.yaml` references two custom regions (`custom-east` with ID 900 and `custom-west` with ID 901)
-with one custom DERP server in each region. Each DERP server offers DERP relay via HTTPS on tcp/443, support for captive
-portal checks via HTTP on tcp/80 and STUN on udp/3478. See the definitions of
-[DERPMap](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap),
-[DERPRegion](https://pkg.go.dev/tailscale.com/tailcfg#DERPRegion) and
-[DERPNode](https://pkg.go.dev/tailscale.com/tailcfg#DERPNode) for all available options.
+    The free-to-use [DERP servers](https://tailscale.com/kb/1232/derp-servers) are organized into regions via a region
+    ID. You can explicitly disable a specific region by setting its region ID to `null`. The following sample
+    `derp.yaml` disables the New York DERP region (which has the region ID 1):
 
-```yaml title="derp.yaml"
-regions:
-  900:
-    regionid: 900
-    regioncode: custom-east
-    regionname: My region (east)
-    nodes:
-      - name: 900a
+     ```yaml title="derp.yaml"
+     regions:
+       1: null
+     ```
+
+    Use the following configuration to serve the default DERP map (excluding New York) to nodes:
+
+    ```yaml title="config.yaml" hl_lines="6 7"
+    derp:
+      server:
+        enabled: false
+      urls:
+        - https://controlplane.tailscale.com/derpmap/default
+      paths:
+        - /etc/headscale/derp.yaml
+    ```
+
+=== "Provide custom DERP servers"
+
+    The following sample `derp.yaml` references two custom regions (`custom-east` with ID 900 and `custom-west` with ID 901)
+    with one custom DERP server in each region. Each DERP server offers DERP relay via HTTPS on tcp/443, support for captive
+    portal checks via HTTP on tcp/80 and STUN on udp/3478. See the definitions of
+    [DERPMap](https://pkg.go.dev/tailscale.com/tailcfg#DERPMap),
+    [DERPRegion](https://pkg.go.dev/tailscale.com/tailcfg#DERPRegion) and
+    [DERPNode](https://pkg.go.dev/tailscale.com/tailcfg#DERPNode) for all available options.
+
+    ```yaml title="derp.yaml"
+    regions:
+      900:
         regionid: 900
-        hostname: derp900a.example.com
-        ipv4: 198.51.100.1
-        ipv6: 2001:db8::1
-        canport80: true
-  901:
-    regionid: 901
-    regioncode: custom-west
-    regionname: My Region (west)
-    nodes:
-      - name: 901a
+        regioncode: custom-east
+        regionname: My region (east)
+        nodes:
+          - name: 900a
+            regionid: 900
+            hostname: derp900a.example.com
+            ipv4: 198.51.100.1
+            ipv6: 2001:db8::1
+            canport80: true
+      901:
         regionid: 901
-        hostname: derp901a.example.com
-        ipv4: 198.51.100.2
-        ipv6: 2001:db8::2
-        canport80: true
-```
+        regioncode: custom-west
+        regionname: My Region (west)
+        nodes:
+          - name: 901a
+            regionid: 901
+            hostname: derp901a.example.com
+            ipv4: 198.51.100.2
+            ipv6: 2001:db8::2
+            canport80: true
+    ```
 
-Use the following configuration to only serve the two DERP servers from the above `derp.yaml`:
+    Use the following configuration to only serve the two DERP servers from the above `derp.yaml`:
 
-```yaml title="config.yaml" hl_lines="5 6"
-derp:
-  server:
-    enabled: false
-  urls: []
-  paths:
-    - /etc/headscale/derp.yaml
-```
+    ```yaml title="config.yaml" hl_lines="5 6"
+    derp:
+      server:
+        enabled: false
+      urls: []
+      paths:
+        - /etc/headscale/derp.yaml
+    ```
 
-The embedded DERP server can also be enabled and is automatically added to the custom DERP map.
-
+Independent of the custom DERP map, you may choose to [enable the embedded DERP server and have it automatically added
+to the custom DERP map](#enable-embedded-derp).
 
 ### Verify clients
 
