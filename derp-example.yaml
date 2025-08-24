@@ -1,5 +1,6 @@
 # If you plan to somehow use headscale, please deploy your own DERP infra: https://tailscale.com/kb/1118/custom-derp-servers/
 regions:
+  1: null   # Disable DERP region with ID 1
   900:
     regionid: 900
     regioncode: custom
