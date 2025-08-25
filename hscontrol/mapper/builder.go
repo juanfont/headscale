@@ -79,7 +79,7 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 
 // WithDERPMap adds the DERP map to the response
 func (b *MapResponseBuilder) WithDERPMap() *MapResponseBuilder {
-	b.resp.DERPMap = b.mapper.state.DERPMap()
+	b.resp.DERPMap = b.mapper.state.DERPMap().AsStruct()
 	return b
 }
 

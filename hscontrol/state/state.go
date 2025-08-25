@@ -10,10 +10,10 @@ import (
 	"net/netip"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/derp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/routes"
@@ -56,7 +56,7 @@ type State struct {
 	// ipAlloc manages IP address allocation for nodes
 	ipAlloc *hsdb.IPAllocator
 	// derpMap contains the current DERP relay configuration
-	derpMap *tailcfg.DERPMap
+	derpMap atomic.Pointer[tailcfg.DERPMap]
 	// polMan handles policy evaluation and management
 	polMan policy.PolicyManager
 	// registrationCache caches node registration data to reduce database load
@@ -87,8 +87,6 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("init ip allocatior: %w", err)
 	}
 
-	derpMap := derp.GetDERPMap(cfg.DERP)
-
 	nodes, err := db.ListNodes()
 	if err != nil {
 		return nil, fmt.Errorf("loading nodes: %w", err)
@@ -108,17 +106,17 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("init policy manager: %w", err)
 	}
 
-	return &State{
+	s := &State{
 		cfg: cfg,
 
-		db:      db,
-		ipAlloc: ipAlloc,
-		// TODO(kradalby): Update DERPMap
-		derpMap:           derpMap,
+		db:                db,
+		ipAlloc:           ipAlloc,
 		polMan:            polMan,
 		registrationCache: registrationCache,
 		primaryRoutes:     routes.New(),
-	}, nil
+	}
+
+	return s, nil
 }
 
 // Close gracefully shuts down the State instance and releases all resources.
@@ -171,9 +169,14 @@ func policyBytes(db *hsdb.HSDatabase, cfg *types.Config) ([]byte, error) {
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, cfg.Policy.Mode)
 }
 
+// SetDERPMap updates the DERP relay configuration.
+func (s *State) SetDERPMap(dm *tailcfg.DERPMap) {
+	s.derpMap.Store(dm)
+}
+
 // DERPMap returns the current DERP relay configuration for peer-to-peer connectivity.
-func (s *State) DERPMap() *tailcfg.DERPMap {
-	return s.derpMap
+func (s *State) DERPMap() tailcfg.DERPMapView {
+	return s.derpMap.Load().View()
 }
 
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
@@ -209,7 +212,6 @@ func (s *State) AutoApproveNodes() error {
 func (s *State) CreateUser(user types.User) (*types.User, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, false, fmt.Errorf("creating user: %w", err)

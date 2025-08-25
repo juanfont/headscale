@@ -10,7 +10,7 @@ import (
 )
 
 // Got from https://github.com/xdg-go/strum/blob/main/types.go
-var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
+var textUnmarshalerType = reflect.TypeFor[encoding.TextUnmarshaler]()
 
 func isTextUnmarshaler(rv reflect.Value) bool {
 	return rv.Type().Implements(textUnmarshalerType)

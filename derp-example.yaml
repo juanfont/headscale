@@ -7,9 +7,9 @@ regions:
     nodes:
       - name: 900a
         regionid: 900
-        hostname: myderp.mydomain.no
-        ipv4: 123.123.123.123
-        ipv6: "2604:a880:400:d1::828:b001"
+        hostname: myderp.example.com
+        ipv4: 198.51.100.1
+        ipv6: 2001:db8::1
         stunport: 0
         stunonly: false
         derpport: 0
