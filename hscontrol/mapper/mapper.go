@@ -154,7 +154,7 @@ func (m *mapper) fullMapResponse(
 		WithUserProfiles(peers).
 		WithPacketFilters().
 		WithPeers(peers).
-		Build(messages...)
+		Build()
 }
 
 func (m *mapper) derpMapResponse(
@@ -207,36 +207,15 @@ func (m *mapper) peerRemovedResponse(
 
 func writeDebugMapResponse(
 	resp *tailcfg.MapResponse,
-	nodeID types.NodeID,
-	messages ...string,
+	node *types.Node,
 ) {
-	data := map[string]any{
-		"Messages":    messages,
-		"MapResponse": resp,
-	}
-
-	responseType := "keepalive"
-
-	switch {
-	case len(resp.Peers) > 0:
-		responseType = "full"
-	case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil && resp.DERPMap == nil && !resp.KeepAlive:
-		responseType = "self"
-	case len(resp.PeersChanged) > 0:
-		responseType = "changed"
-	case len(resp.PeersChangedPatch) > 0:
-		responseType = "patch"
-	case len(resp.PeersRemoved) > 0:
-		responseType = "removed"
-	}
-
-	body, err := json.MarshalIndent(data, "", "  ")
+	body, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		panic(err)
 	}
 
 	perms := fs.FileMode(debugMapResponsePerm)
-	mPath := path.Join(debugDumpMapResponsePath, nodeID.String())
+	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d-%s", node.ID, node.Hostname))
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -246,7 +225,7 @@ func writeDebugMapResponse(
 
 	mapResponsePath := path.Join(
 		mPath,
-		fmt.Sprintf("%s-%s.json", now, responseType),
+		fmt.Sprintf("%s.json", now),
 	)
 
 	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
