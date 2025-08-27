@@ -5,7 +5,9 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/ory/dockertest/v3"
+	"tailscale.com/tailcfg"
 )
 
 type ControlServer interface {
@@ -29,4 +31,5 @@ type ControlServer interface {
 	GetCert() []byte
 	GetHostname() string
 	SetPolicy(*policyv2.Policy) error
+	GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error)
 }

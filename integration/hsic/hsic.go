@@ -622,7 +622,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 	}
 
 	tarReader := tar.NewReader(bytes.NewReader(tarData))
-	
+
 	// Find the top-level directory to strip
 	var topLevelDir string
 	firstPass := tar.NewReader(bytes.NewReader(tarData))
@@ -634,13 +634,13 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		if err != nil {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
-		
+
 		if header.Typeflag == tar.TypeDir && topLevelDir == "" {
 			topLevelDir = strings.TrimSuffix(header.Name, "/")
 			break
 		}
 	}
-	
+
 	// Second pass: extract files, stripping the top-level directory
 	tarReader = tar.NewReader(bytes.NewReader(tarData))
 	for {
@@ -665,7 +665,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			// Skip the top-level directory itself
 			continue
 		}
-		
+
 		// Skip empty paths after stripping
 		if cleanName == "" {
 			continue
@@ -684,7 +684,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
 			}
-			
+
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
@@ -1281,4 +1281,23 @@ func (t *HeadscaleInContainer) SendInterrupt() error {
 	}
 
 	return nil
+}
+
+func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/mapresponses",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching mapresponses from debug endpoint: %w", err)
+	}
+
+	var res map[types.NodeID][]tailcfg.MapResponse
+	if err := json.Unmarshal([]byte(result), &res); err != nil {
+		return nil, fmt.Errorf("decoding routes response: %w", err)
+	}
+
+	return res, nil
 }
