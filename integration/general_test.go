@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
 
@@ -54,6 +55,17 @@ func TestPingAllByIP(t *testing.T) {
 
 	err = scenario.WaitForTailscaleSync()
 	assertNoErrSync(t, err)
+
+	hs, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		all, err := hs.GetAllMapReponses()
+		assert.NoError(ct, err)
+
+		onlineMap := buildExpectedOnlineMap(all)
+		assertExpectedOnlineMapAllOnline(ct, len(allClients)-1, onlineMap)
+	}, 30*time.Second, 2*time.Second)
 
 	// assertClientsState(t, allClients)
 
@@ -940,6 +952,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	)
 	assertNoErrHeadscaleEnv(t, err)
 
+	hs, err := scenario.Headscale()
+	require.NoError(t, err)
+
 	allClients, err := scenario.ListTailscaleClients()
 	assertNoErrListClients(t, err)
 
@@ -961,7 +976,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	wg, _ := errgroup.WithContext(context.Background())
 
 	for run := range 3 {
-		t.Logf("Starting DownUpPing run %d", run+1)
+		t.Logf("Starting DownUpPing run %d at %s", run+1, time.Now().Format("2006-01-02T15-04-05.999999999"))
 
 		for _, client := range allClients {
 			c := client
@@ -974,6 +989,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		if err := wg.Wait(); err != nil {
 			t.Fatalf("failed to take down all nodes: %s", err)
 		}
+		t.Logf("All nodes taken down at %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
 
 		for _, client := range allClients {
 			c := client
@@ -984,12 +1000,23 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		}
 
 		if err := wg.Wait(); err != nil {
-			t.Fatalf("failed to take down all nodes: %s", err)
+			t.Fatalf("failed to bring up all nodes: %s", err)
 		}
+		t.Logf("All nodes brought up at %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
 
 		// Wait for sync and successful pings after nodes come back up
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(t, err)
+
+		t.Logf("All nodes synced up %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
+
+		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+			all, err := hs.GetAllMapReponses()
+			assert.NoError(ct, err)
+
+			onlineMap := buildExpectedOnlineMap(all)
+			assertExpectedOnlineMapAllOnline(ct, len(allClients)-1, onlineMap)
+		}, 60*time.Second, 2*time.Second)
 
 		success := pingAllHelper(t, allClients, allAddrs)
 		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
@@ -1102,4 +1129,53 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	assert.Len(t, nodeListAfter, 1)
 	assert.True(t, nodeListAfter[0].GetOnline())
 	assert.Equal(t, nodeList[1].GetId(), nodeListAfter[0].GetId())
+}
+
+func buildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[types.NodeID]map[types.NodeID]bool {
+	res := make(map[types.NodeID]map[types.NodeID]bool)
+	for nid, mrs := range all {
+		res[nid] = make(map[types.NodeID]bool)
+		for _, mr := range mrs {
+			for _, peer := range mr.Peers {
+				if peer.Online != nil {
+					res[nid][types.NodeID(peer.ID)] = *peer.Online
+				}
+			}
+
+			for _, peer := range mr.PeersChanged {
+				if peer.Online != nil {
+					res[nid][types.NodeID(peer.ID)] = *peer.Online
+				}
+			}
+
+			for _, peer := range mr.PeersChangedPatch {
+				if peer.Online != nil {
+					res[nid][types.NodeID(peer.NodeID)] = *peer.Online
+				}
+			}
+		}
+	}
+	return res
+}
+
+func assertExpectedOnlineMapAllOnline(t *assert.CollectT, expectedPeerCount int, onlineMap map[types.NodeID]map[types.NodeID]bool) {
+	for nid, peers := range onlineMap {
+		onlineCount := 0
+		for _, online := range peers {
+			if online {
+				onlineCount++
+			}
+		}
+		assert.Equalf(t, expectedPeerCount, len(peers), "node:%d had an unexpected number of peers in online map", nid)
+		if expectedPeerCount != onlineCount {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("Not all of node:%d peers where online:\n", nid))
+			for pid, online := range peers {
+				sb.WriteString(fmt.Sprintf("\tPeer node:%d online: %t\n", pid, online))
+			}
+			sb.WriteString("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+			sb.WriteString("expected all peers to be online.")
+			t.Errorf("%s", sb.String())
+		}
+	}
 }

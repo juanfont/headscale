@@ -121,6 +121,29 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write([]byte(h.state.PolicyDebugString()))
 	}))
 
+	debug.Handle("mapresponses", "Map responses for all nodes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		res, err := h.mapBatcher.DebugMapResponses()
+		if err != nil {
+			httpError(w, err)
+			return
+		}
+
+		if res == nil {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH not set"))
+			return
+		}
+
+		resJSON, err := json.MarshalIndent(res, "", "  ")
+		if err != nil {
+			httpError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(resJSON)
+	}))
+
 	err := statsviz.Register(debugMux)
 	if err == nil {
 		debug.URL("/debug/statsviz", "Statsviz (visualise go metrics)")

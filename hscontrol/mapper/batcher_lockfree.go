@@ -489,3 +489,7 @@ func (nc *nodeConn) send(data *tailcfg.MapResponse) error {
 	nc.updateCount.Add(1)
 	return nil
 }
+
+func (b *LockFreeBatcher) DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
+	return b.mapper.debugMapResponses()
+}
