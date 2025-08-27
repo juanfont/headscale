@@ -641,7 +641,6 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		}
 	}
 
-	// Second pass: extract files, stripping the top-level directory
 	tarReader = tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := tarReader.Next()
@@ -665,7 +664,6 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			// Skip the top-level directory itself
 			continue
 		}
-
 		// Skip empty paths after stripping
 		if cleanName == "" {
 			continue
@@ -684,7 +682,6 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
 			}
-
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
