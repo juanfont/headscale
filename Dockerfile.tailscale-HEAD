@@ -4,7 +4,7 @@
 # This Dockerfile is more or less lifted from tailscale/tailscale
 # to ensure a similar build process when testing the HEAD of tailscale.
 
-FROM golang:1.24-alpine AS build-env
+FROM golang:1.25-alpine AS build-env
 
 WORKDIR /go/src
 
