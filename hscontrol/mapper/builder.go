@@ -237,7 +237,6 @@ func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange)
 
 // WithPeersRemoved adds removed peer IDs
 func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapResponseBuilder {
-
 	var tailscaleIDs []tailcfg.NodeID
 	for _, id := range removedIDs {
 		tailscaleIDs = append(tailscaleIDs, id.NodeID())
@@ -247,12 +246,16 @@ func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapRe
 }
 
 // Build finalizes the response and returns marshaled bytes
-func (b *MapResponseBuilder) Build(messages ...string) (*tailcfg.MapResponse, error) {
+func (b *MapResponseBuilder) Build() (*tailcfg.MapResponse, error) {
 	if len(b.errs) > 0 {
 		return nil, multierr.New(b.errs...)
 	}
 	if debugDumpMapResponsePath != "" {
-		writeDebugMapResponse(b.resp, b.nodeID)
+		node, err := b.mapper.state.GetNodeByID(b.nodeID)
+		if err != nil {
+			return nil, err
+		}
+		writeDebugMapResponse(b.resp, node)
 	}
 
 	return b.resp, nil

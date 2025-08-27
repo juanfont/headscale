@@ -24,6 +24,7 @@ type Batcher interface {
 	ConnectedMap() *xsync.Map[types.NodeID, bool]
 	AddWork(c change.ChangeSet)
 	MapResponseFromChange(id types.NodeID, c change.ChangeSet) (*tailcfg.MapResponse, error)
+	DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error)
 }
 
 func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeBatcher {

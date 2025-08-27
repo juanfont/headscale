@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,7 +155,7 @@ func (m *mapper) fullMapResponse(
 		WithUserProfiles(peers).
 		WithPacketFilters().
 		WithPeers(peers).
-		Build(messages...)
+		Build()
 }
 
 func (m *mapper) derpMapResponse(
@@ -207,36 +208,15 @@ func (m *mapper) peerRemovedResponse(
 
 func writeDebugMapResponse(
 	resp *tailcfg.MapResponse,
-	nodeID types.NodeID,
-	messages ...string,
+	node *types.Node,
 ) {
-	data := map[string]any{
-		"Messages":    messages,
-		"MapResponse": resp,
-	}
-
-	responseType := "keepalive"
-
-	switch {
-	case len(resp.Peers) > 0:
-		responseType = "full"
-	case resp.Peers == nil && resp.PeersChanged == nil && resp.PeersChangedPatch == nil && resp.DERPMap == nil && !resp.KeepAlive:
-		responseType = "self"
-	case len(resp.PeersChanged) > 0:
-		responseType = "changed"
-	case len(resp.PeersChangedPatch) > 0:
-		responseType = "patch"
-	case len(resp.PeersRemoved) > 0:
-		responseType = "removed"
-	}
-
-	body, err := json.MarshalIndent(data, "", "  ")
+	body, err := json.MarshalIndent(resp, "", "  ")
 	if err != nil {
 		panic(err)
 	}
 
 	perms := fs.FileMode(debugMapResponsePerm)
-	mPath := path.Join(debugDumpMapResponsePath, nodeID.String())
+	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", node.ID))
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -246,7 +226,7 @@ func writeDebugMapResponse(
 
 	mapResponsePath := path.Join(
 		mPath,
-		fmt.Sprintf("%s-%s.json", now, responseType),
+		fmt.Sprintf("%s.json", now),
 	)
 
 	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
@@ -279,3 +259,62 @@ func (m *mapper) listPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (types.
 // netip.Prefixes that are allowed for that node. It is used to filter routes
 // from the primary route manager to the node.
 type routeFilterFunc func(id types.NodeID) []netip.Prefix
+
+func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
+	if debugDumpMapResponsePath == "" {
+		return nil, nil
+	}
+
+	nodes, err := os.ReadDir(debugDumpMapResponsePath)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[types.NodeID][]tailcfg.MapResponse)
+	for _, node := range nodes {
+		if !node.IsDir() {
+			continue
+		}
+
+		nodeIDu, err := strconv.ParseUint(node.Name(), 10, 64)
+		if err != nil {
+			log.Error().Err(err).Msgf("Parsing node ID from dir %s", node.Name())
+			continue
+		}
+
+		nodeID := types.NodeID(nodeIDu)
+
+		files, err := os.ReadDir(path.Join(debugDumpMapResponsePath, node.Name()))
+		if err != nil {
+			log.Error().Err(err).Msgf("Reading dir %s", node.Name())
+			continue
+		}
+
+		slices.SortStableFunc(files, func(a, b fs.DirEntry) int {
+			return strings.Compare(a.Name(), b.Name())
+		})
+
+		for _, file := range files {
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".json") {
+				continue
+			}
+
+			body, err := os.ReadFile(path.Join(debugDumpMapResponsePath, node.Name(), file.Name()))
+			if err != nil {
+				log.Error().Err(err).Msgf("Reading file %s", file.Name())
+				continue
+			}
+
+			var resp tailcfg.MapResponse
+			err = json.Unmarshal(body, &resp)
+			if err != nil {
+				log.Error().Err(err).Msgf("Unmarshalling file %s", file.Name())
+				continue
+			}
+
+			result[nodeID] = append(result[nodeID], resp)
+		}
+	}
+
+	return result, nil
+}
