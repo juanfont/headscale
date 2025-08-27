@@ -622,6 +622,27 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 	}
 
 	tarReader := tar.NewReader(bytes.NewReader(tarData))
+	
+	// Find the top-level directory to strip
+	var topLevelDir string
+	firstPass := tar.NewReader(bytes.NewReader(tarData))
+	for {
+		header, err := firstPass.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to read tar header: %w", err)
+		}
+		
+		if header.Typeflag == tar.TypeDir && topLevelDir == "" {
+			topLevelDir = strings.TrimSuffix(header.Name, "/")
+			break
+		}
+	}
+	
+	// Second pass: extract files, stripping the top-level directory
+	tarReader = tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -637,7 +658,20 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			continue // Skip potentially dangerous paths
 		}
 
-		targetPath := filepath.Join(targetDir, filepath.Base(cleanName))
+		// Strip the top-level directory
+		if topLevelDir != "" && strings.HasPrefix(cleanName, topLevelDir+"/") {
+			cleanName = strings.TrimPrefix(cleanName, topLevelDir+"/")
+		} else if cleanName == topLevelDir {
+			// Skip the top-level directory itself
+			continue
+		}
+		
+		// Skip empty paths after stripping
+		if cleanName == "" {
+			continue
+		}
+
+		targetPath := filepath.Join(targetDir, cleanName)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -646,6 +680,11 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
+			// Ensure parent directories exist
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
+			}
+			
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
@@ -674,7 +713,7 @@ func (t *HeadscaleInContainer) SaveProfile(savePath string) error {
 		return err
 	}
 
-	targetDir := path.Join(savePath, t.hostname+"-pprof")
+	targetDir := path.Join(savePath, "pprof")
 
 	return extractTarToDirectory(tarFile, targetDir)
 }
@@ -685,7 +724,7 @@ func (t *HeadscaleInContainer) SaveMapResponses(savePath string) error {
 		return err
 	}
 
-	targetDir := path.Join(savePath, t.hostname+"-mapresponses")
+	targetDir := path.Join(savePath, "mapresponses")
 
 	return extractTarToDirectory(tarFile, targetDir)
 }

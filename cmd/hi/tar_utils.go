@@ -68,7 +68,7 @@ func extractDirectoryFromTar(tarReader io.Reader, targetDir string) error {
 			continue // Skip potentially dangerous paths
 		}
 
-		targetPath := filepath.Join(targetDir, filepath.Base(cleanName))
+		targetPath := filepath.Join(targetDir, cleanName)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -77,6 +77,11 @@ func extractDirectoryFromTar(tarReader io.Reader, targetDir string) error {
 				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
+			// Ensure parent directories exist
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
+			}
+			
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
