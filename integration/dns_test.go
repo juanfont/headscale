@@ -13,6 +13,14 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// TestResolveMagicDNS tests that MagicDNS is working correctly by resolving the
+// FQDNs of all nodes in the network.
+//
+// This test sets up a scenario with two users and their corresponding nodes.
+// It then iterates through all clients and attempts to resolve the FQDN of
+// every other client. It verifies that the resolved IP addresses match the
+// actual IP addresses of the peer, ensuring that MagicDNS is correctly
+// configured and functioning.
 func TestResolveMagicDNS(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -69,6 +77,15 @@ func TestResolveMagicDNS(t *testing.T) {
 	}
 }
 
+// TestResolveMagicDNSExtraRecordsPath tests the functionality of providing
+// extra DNS records to Headscale through a file.
+//
+// This test sets up a scenario with a Headscale instance configured to read
+// extra DNS records from a JSON file. It then verifies that the clients can
+// resolve the records defined in the file. The test also covers dynamic
+// updates to the file, including moving, copying, and deleting the file, to
+// ensure that Headscale correctly reloads the records and updates the DNS
+// configuration for the clients.
 func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	IntegrationSkip(t)
 
