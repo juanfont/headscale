@@ -20,6 +20,7 @@ import (
 func TestTailNode(t *testing.T) {
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -27,6 +28,7 @@ func TestTailNode(t *testing.T) {
 
 	mustDK := func(str string) key.DiscoPublic {
 		var k key.DiscoPublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -34,6 +36,7 @@ func TestTailNode(t *testing.T) {
 
 	mustMK := func(str string) key.MachinePublic {
 		var k key.MachinePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -204,6 +207,7 @@ func TestTailNode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			polMan, err := policy.NewPolicyManager(tt.pol, []types.User{}, types.Nodes{tt.node}.ViewSlice())
 			require.NoError(t, err)
+
 			primary := routes.New()
 			cfg := &types.Config{
 				BaseDomain:          tt.baseDomain,
@@ -215,6 +219,7 @@ func TestTailNode(t *testing.T) {
 			// This is a hack to avoid having a second node to test the primary route.
 			// This should be baked into the test case proper if it is extended in the future.
 			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
+
 			got, err := tailNode(
 				tt.node.View(),
 				0,
@@ -224,7 +229,6 @@ func TestTailNode(t *testing.T) {
 				},
 				cfg,
 			)
-
 			if (err != nil) != tt.wantErr {
 				t.Errorf("tailNode() error = %v, wantErr %v", err, tt.wantErr)
 
@@ -293,7 +297,9 @@ func TestNodeExpiry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
 			}
+
 			var deseri tailcfg.Node
+
 			err = json.Unmarshal(seri, &deseri)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
@@ -308,4 +314,114 @@ func TestNodeExpiry(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMagicDNSPeerAAAAEnabled(t *testing.T) {
+	// A node with both IPv4 and IPv6 addresses.
+	node := &types.Node{
+		GivenName: "ipv6node",
+		IPv4:      iap("100.64.0.1"),
+		IPv6:      iap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				tsaddr.AllIPv4(),
+				tsaddr.AllIPv6(),
+			},
+		},
+	}
+
+	// The key configuration setting is enabled.
+	cfg := &types.Config{
+		MagicDNSPeerAAAA: true,
+	}
+
+	polMan, err := policy.NewPolicyManager(nil, nil, types.Nodes{node}.ViewSlice())
+	require.NoError(t, err)
+
+	got, err := tailNode(
+		node.View(),
+		0,
+		polMan,
+		func(id types.NodeID) []netip.Prefix { return []netip.Prefix{} },
+		cfg,
+	)
+	require.NoError(t, err)
+
+	// Assert that the magicdns-aaaa capability is present.
+	_, hasAAAA := got.CapMap[tailcfg.NodeAttrMagicDNSPeerAAAA]
+	require.True(t, hasAAAA, "expected magicdns-aaaa capability to be present")
+}
+
+func TestMagicDNSPeerAAAADisabled(t *testing.T) {
+	// A node with both IPv4 and IPv6 addresses.
+	node := &types.Node{
+		GivenName: "ipv6node",
+		IPv4:      iap("100.64.0.1"),
+		IPv6:      iap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				tsaddr.AllIPv4(),
+				tsaddr.AllIPv6(),
+			},
+		},
+	}
+
+	// The key configuration setting is disabled.
+	cfg := &types.Config{
+		MagicDNSPeerAAAA: false,
+	}
+
+	polMan, err := policy.NewPolicyManager(nil, nil, types.Nodes{node}.ViewSlice())
+	require.NoError(t, err)
+
+	got, err := tailNode(
+		node.View(),
+		0,
+		polMan,
+		func(id types.NodeID) []netip.Prefix { return []netip.Prefix{} },
+		cfg,
+	)
+	require.NoError(t, err)
+
+	// Assert that the magicdns-aaaa capability is NOT present.
+	_, hasAAAA := got.CapMap[tailcfg.NodeAttrMagicDNSPeerAAAA]
+	require.False(t, hasAAAA, "expected magicdns-aaaa capability NOT to be present")
+}
+
+func TestMagicDNSPeerAAAAEnabledWithIPv4OnlyNode(t *testing.T) {
+	// A node with a valid IPv4 address and no IPv6 address
+	node := &types.Node{
+		ID:        0,
+		IPv4:      iap("100.64.0.1"),
+		GivenName: "ipv4only",
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				tsaddr.AllIPv4(),
+			},
+		},
+	}
+
+	// This is the configuration with the flag enabled
+	cfg := &types.Config{
+		MagicDNSPeerAAAA: true,
+	}
+
+	polMan, err := policy.NewPolicyManager(nil, nil, types.Nodes{node}.ViewSlice())
+	require.NoError(t, err)
+
+	got, err := tailNode(
+		node.View(),
+		0,
+		polMan,
+		func(id types.NodeID) []netip.Prefix {
+			return []netip.Prefix{}
+		},
+		cfg,
+	)
+	require.NoError(t, err)
+
+	// The feature is enabled but the node lacks a V6 address
+	// the node attribute should not be present
+	_, hasAAAA := got.CapMap[tailcfg.NodeAttrMagicDNSPeerAAAA]
+	require.False(t, hasAAAA, "expected magicdns-aaaa capability NOT to be present on IPv4 only node")
 }
