@@ -74,9 +74,19 @@ type State struct {
 // NewState creates and initializes a new State instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
+	cacheExpiration := registerCacheExpiration
+	if cfg.Tuning.RegisterCacheExpiration != 0 {
+		cacheExpiration = cfg.Tuning.RegisterCacheExpiration
+	}
+
+	cacheCleanup := registerCacheCleanup
+	if cfg.Tuning.RegisterCacheCleanup != 0 {
+		cacheCleanup = cfg.Tuning.RegisterCacheCleanup
+	}
+
 	registrationCache := zcache.New[types.RegistrationID, types.RegisterNode](
-		registerCacheExpiration,
-		registerCacheCleanup,
+		cacheExpiration,
+		cacheCleanup,
 	)
 
 	db, err := hsdb.NewHeadscaleDatabase(
