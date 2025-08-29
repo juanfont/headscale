@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -186,6 +187,28 @@ func (r RegistrationID) String() string {
 type RegisterNode struct {
 	Node       Node
 	Registered chan *Node
+	closed     *atomic.Bool
+}
+
+func NewRegisterNode(node Node) RegisterNode {
+	return RegisterNode{
+		Node:       node,
+		Registered: make(chan *Node),
+		closed:     &atomic.Bool{},
+	}
+}
+
+func (rn *RegisterNode) SendAndClose(node *Node) {
+	if rn.closed.Swap(true) {
+		return
+	}
+
+	select {
+	case rn.Registered <- node:
+	default:
+	}
+
+	close(rn.Registered)
 }
 
 // DefaultBatcherWorkers returns the default number of batcher workers.
