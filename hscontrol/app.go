@@ -164,6 +164,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			&app,
 			cfg.ServerURL,
 			&cfg.OIDC,
+			&cfg.Tuning,
 		)
 		if err != nil {
 			if cfg.OIDC.OnlyStartIfOIDCIsAvailable {

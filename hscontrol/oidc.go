@@ -69,6 +69,7 @@ func NewAuthProviderOIDC(
 	h *Headscale,
 	serverURL string,
 	cfg *types.OIDCConfig,
+	tuning *types.Tuning,
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
@@ -85,9 +86,19 @@ func NewAuthProviderOIDC(
 		Scopes:       cfg.Scope,
 	}
 
+	cacheExpiration := registerCacheExpiration
+	if tuning.RegisterCacheExpiration != 0 {
+		cacheExpiration = tuning.RegisterCacheExpiration
+	}
+
+	cacheCleanup := registerCacheCleanup
+	if tuning.RegisterCacheCleanup != 0 {
+		cacheCleanup = tuning.RegisterCacheCleanup
+	}
+
 	registrationCache := zcache.New[string, RegistrationInfo](
-		registerCacheExpiration,
-		registerCacheCleanup,
+		cacheExpiration,
+		cacheCleanup,
 	)
 
 	return &AuthProviderOIDC{
