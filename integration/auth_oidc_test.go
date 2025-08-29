@@ -3,6 +3,7 @@ package integration
 import (
 	"maps"
 	"net/netip"
+	"net/url"
 	"sort"
 	"strconv"
 	"testing"
@@ -830,6 +831,116 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			assert.Fail(c, "User1 node not found in nodestore after relogin")
 		}
 	}, 60*time.Second, 2*time.Second, "validating only user1 node is online after final relogin")
+}
+
+// TestOIDCFollowUpUrl validates the follow-up login flow
+// Prerequisites:
+// - short TTL for the registration cache via HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION
+// Scenario:
+// - client starts a login process and gets initial AuthURL
+// - time.sleep(HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION + 30 secs) waits for the cache to expire
+// - client checks its status to verify that AuthUrl has changed (by followup URL)
+// - client uses the new AuthURL to log in. It should complete successfully.
+func TestOIDCFollowUpUrl(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Create no nodes and no users
+	scenario, err := NewScenario(
+		ScenarioSpec{
+			OIDCUsers: []mockoidc.MockUser{
+				oidcMockUser("user1", true),
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		// smaller cache expiration time to quickly expire AuthURL
+		"HEADSCALE_TUNING_REGISTER_CACHE_CLEANUP":    "10s",
+		"HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION": "1m30s",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcauthrelog"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	listUsers, err := headscale.ListUsers()
+	require.NoError(t, err)
+	assert.Empty(t, listUsers)
+
+	ts, err := scenario.CreateTailscaleNode(
+		"unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	u, err := ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	// wait for the registration cache to expire
+	// a little bit more than HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION
+	time.Sleep(2 * time.Minute)
+
+	st, err := ts.Status()
+	require.NoError(t, err)
+	assert.Equal(t, "NeedsLogin", st.BackendState)
+
+	// get new AuthURL from daemon
+	newUrl, err := url.Parse(st.AuthURL)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, u.String(), st.AuthURL, "AuthURL should change")
+
+	_, err = doLoginURL(ts.Hostname(), newUrl)
+	require.NoError(t, err)
+
+	listUsers, err = headscale.ListUsers()
+	require.NoError(t, err)
+	assert.Len(t, listUsers, 1)
+
+	wantUsers := []*v1.User{
+		{
+			Id:         1,
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+		},
+	}
+
+	sort.Slice(
+		listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		},
+	)
+
+	if diff := cmp.Diff(
+		wantUsers,
+		listUsers,
+		cmpopts.IgnoreUnexported(v1.User{}),
+		cmpopts.IgnoreFields(v1.User{}, "CreatedAt"),
+	); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	listNodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, listNodes, 1)
 }
 
 // TestOIDCReloginSameNodeSameUser tests the scenario where a single Tailscale client

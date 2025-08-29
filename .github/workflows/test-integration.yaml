@@ -32,6 +32,7 @@ jobs:
           - TestOIDCAuthenticationWithPKCE
           - TestOIDCReloginSameNodeNewUser
           - TestOIDCReloginSameNodeSameUser
+          - TestOIDCFollowUpUrl
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser

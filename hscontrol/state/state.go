@@ -86,6 +86,12 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheCleanup,
 	)
 
+	registrationCache.OnEvicted(
+		func(id types.RegistrationID, rn types.RegisterNode) {
+			rn.SendAndClose(nil)
+		},
+	)
+
 	db, err := hsdb.NewHeadscaleDatabase(
 		cfg.Database,
 		cfg.BaseDomain,
@@ -1266,15 +1272,11 @@ func (s *State) HandleNodeFromAuthPath(
 
 	}
 
+	// Signal to waiting clients
+	regEntry.SendAndClose(finalNode.AsStruct())
+
 	// Delete from registration cache
 	s.registrationCache.Delete(registrationID)
-
-	// Signal to waiting clients
-	select {
-	case regEntry.Registered <- finalNode.AsStruct():
-	default:
-	}
-	close(regEntry.Registered)
 
 	// Update policy manager
 	nodesChange, err := s.updatePolicyManagerNodes()

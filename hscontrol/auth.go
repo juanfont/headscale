@@ -63,7 +63,7 @@ func (h *Headscale) handleRegister(
 	// node has already started the registration process and we should wait for
 	// it to finish the original registration.
 	if req.Followup != "" {
-		return h.waitForFollowup(ctx, req)
+		return h.waitForFollowup(ctx, req, machineKey)
 	}
 
 	// Pre authenticated keys are handled slightly different than interactive
@@ -191,9 +191,10 @@ func nodeToRegisterResponse(node types.NodeView) *tailcfg.RegisterResponse {
 
 func (h *Headscale) waitForFollowup(
 	ctx context.Context,
-	regReq tailcfg.RegisterRequest,
+	req tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	fu, err := url.Parse(regReq.Followup)
+	fu, err := url.Parse(req.Followup)
 	if err != nil {
 		return nil, NewHTTPError(http.StatusUnauthorized, "invalid followup URL", err)
 	}
@@ -209,13 +210,49 @@ func (h *Headscale) waitForFollowup(
 			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
 		case node := <-reg.Registered:
 			if node == nil {
-				return nil, NewHTTPError(http.StatusUnauthorized, "node not found", nil)
+				// registration is expired in the cache, instruct the client to try a new registration
+				return h.reqToNewRegisterResponse(req, machineKey)
 			}
 			return nodeToRegisterResponse(node.View()), nil
 		}
 	}
 
-	return nil, NewHTTPError(http.StatusNotFound, "followup registration not found", nil)
+	// if the follow-up registration isn't found anymore, instruct the client to try a new registration
+	return h.reqToNewRegisterResponse(req, machineKey)
+}
+
+// reqToNewRegisterResponse refreshes the registration flow by creating a new
+// registration ID and returning the corresponding AuthURL so the client can
+// restart the authentication process.
+func (h *Headscale) reqToNewRegisterResponse(
+	req tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
+) (*tailcfg.RegisterResponse, error) {
+	newRegID, err := types.NewRegistrationID()
+	if err != nil {
+		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
+	}
+
+	nodeToRegister := types.NewRegisterNode(
+		types.Node{
+			Hostname:   req.Hostinfo.Hostname,
+			MachineKey: machineKey,
+			NodeKey:    req.NodeKey,
+			Hostinfo:   req.Hostinfo,
+			LastSeen:   ptr.To(time.Now()),
+		},
+	)
+
+	if !req.Expiry.IsZero() {
+		nodeToRegister.Node.Expiry = &req.Expiry
+	}
+
+	log.Info().Msgf("New followup node registration using key: %s", newRegID)
+	h.state.SetRegistrationCacheEntry(newRegID, nodeToRegister)
+
+	return &tailcfg.RegisterResponse{
+		AuthURL: h.authProvider.AuthURL(newRegID),
+	}, nil
 }
 
 func (h *Headscale) handleRegisterWithAuthKey(
@@ -323,16 +360,18 @@ func (h *Headscale) handleRegisterInteractive(
 			Msg("Received registration request with empty hostname, generated default")
 	}
 
-	nodeToRegister := types.RegisterNode{
-		Node: types.Node{
+	nodeToRegister := types.NewRegisterNode(
+		types.Node{
 			Hostname:   hostname,
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   validHostinfo,
 			LastSeen:   ptr.To(time.Now()),
-			Expiry:     &req.Expiry,
 		},
-		Registered: make(chan *types.Node),
+	)
+
+	if !req.Expiry.IsZero() {
+		nodeToRegister.Node.Expiry = &req.Expiry
 	}
 
 	h.state.SetRegistrationCacheEntry(
