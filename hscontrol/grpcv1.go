@@ -749,8 +749,8 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	newNode := types.RegisterNode{
-		Node: types.Node{
+	newNode := types.NewRegisterNode(
+		types.Node{
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
@@ -761,8 +761,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 
 			Hostinfo: &hostinfo,
 		},
-		Registered: make(chan *types.Node),
-	}
+	)
 
 	log.Debug().
 		Caller().
