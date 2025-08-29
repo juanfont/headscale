@@ -59,7 +59,7 @@ func (h *Headscale) handleRegister(
 	}
 
 	if regReq.Followup != "" {
-		return h.waitForFollowup(ctx, regReq)
+		return h.waitForFollowup(ctx, regReq, machineKey)
 	}
 
 	if regReq.Auth != nil && regReq.Auth.AuthKey != "" {
@@ -124,9 +124,9 @@ func (h *Headscale) handleExistingNode(
 		}
 
 		h.Change(c)
-		}
+	}
 
-		return nodeToRegisterResponse(node), nil
+	return nodeToRegisterResponse(node), nil
 }
 
 func nodeToRegisterResponse(node *types.Node) *tailcfg.RegisterResponse {
@@ -147,6 +147,7 @@ func nodeToRegisterResponse(node *types.Node) *tailcfg.RegisterResponse {
 func (h *Headscale) waitForFollowup(
 	ctx context.Context,
 	regReq tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
 	fu, err := url.Parse(regReq.Followup)
 	if err != nil {
@@ -164,13 +165,45 @@ func (h *Headscale) waitForFollowup(
 			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
 		case node := <-reg.Registered:
 			if node == nil {
-				return nil, NewHTTPError(http.StatusUnauthorized, "node not found", nil)
+				// registration is expired in the cache, instruct the client to try a new registration
+				return h.reqToNewRegisterResponse(regReq, machineKey)
 			}
 			return nodeToRegisterResponse(node), nil
 		}
 	}
 
-	return nil, NewHTTPError(http.StatusNotFound, "followup registration not found", nil)
+	// if the follow-up registration isn't found anymore, instruct the client to try a new registration
+	return h.reqToNewRegisterResponse(regReq, machineKey)
+}
+
+func (h *Headscale) reqToNewRegisterResponse(
+	regReq tailcfg.RegisterRequest,
+	machineKey key.MachinePublic,
+) (*tailcfg.RegisterResponse, error) {
+	newRegID, err := types.NewRegistrationID()
+	if err != nil {
+		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
+	}
+
+	nodeToRegister := types.RegisterNode{
+		Node: types.Node{
+			Hostname:   regReq.Hostinfo.Hostname,
+			MachineKey: machineKey,
+			NodeKey:    regReq.NodeKey,
+			Hostinfo:   regReq.Hostinfo,
+			LastSeen:   ptr.To(time.Now()),
+		},
+		Registered: make(chan *types.Node),
+	}
+
+	if !regReq.Expiry.IsZero() {
+		nodeToRegister.Node.Expiry = &regReq.Expiry
+	}
+	h.state.SetRegistrationCacheEntry(newRegID, nodeToRegister)
+
+	return &tailcfg.RegisterResponse{
+		AuthURL: h.authProvider.AuthURL(newRegID),
+	}, nil
 }
 
 func (h *Headscale) handleRegisterWithAuthKey(

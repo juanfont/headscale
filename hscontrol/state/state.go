@@ -82,6 +82,16 @@ func NewState(cfg *types.Config) (*State, error) {
 		cacheCleanup,
 	)
 
+	registrationCache.OnEvicted(
+		func(id types.RegistrationID, node types.RegisterNode) {
+			select {
+			case node.Registered <- nil:
+				// notify the followup handler that registration is not valid anymore
+			default:
+			}
+		},
+	)
+
 	db, err := hsdb.NewHeadscaleDatabase(
 		cfg.Database,
 		cfg.BaseDomain,
