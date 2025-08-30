@@ -304,3 +304,6 @@ Entra ID is: `https://login.microsoftonline.com/<tenant-UUID>/v2.0`. The followi
 
 - `domain_hint: example.com` to use your own domain
 - `prompt: select_account` to force an account picker during login
+
+Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their group ID instead
+of the group name.
