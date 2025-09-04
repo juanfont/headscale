@@ -23,7 +23,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
 !!! warning "Limitations"
 
-    Currently, [only A and AAAA records are processed by Tailscale](https://github.com/tailscale/tailscale/blob/v1.78.3/ipn/ipnlocal/local.go#L4461-L4479).
+    Currently, [only A and AAAA records are processed by Tailscale](https://github.com/tailscale/tailscale/blob/v1.86.5/ipn/ipnlocal/node_backend.go#L662).
 
 1.  Configure extra DNS records using one of the available configuration options:
 
