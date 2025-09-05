@@ -733,9 +733,9 @@ func nodeRoutesToPtables(
 		nodeData := []string{
 			strconv.FormatUint(node.GetId(), util.Base10),
 			node.GetGivenName(),
-			strings.Join(node.GetApprovedRoutes(), ", "),
-			strings.Join(node.GetAvailableRoutes(), ", "),
-			strings.Join(node.GetSubnetRoutes(), ", "),
+			strings.Join(node.GetApprovedRoutes(), "\n"),
+			strings.Join(node.GetAvailableRoutes(), "\n"),
+			strings.Join(node.GetSubnetRoutes(), "\n"),
 		}
 		tableData = append(
 			tableData,
