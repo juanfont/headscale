@@ -451,3 +451,83 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 		})
 	}
 }
+
+func TestDuplicateNodeKeysSpoofing2731(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{},
+	}
+
+	scenario, err := NewScenario(spec)
+	assertNoErr(t, err)
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("weblogout"),
+		hsic.WithTLS(),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	hs, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	adminUser, err := scenario.CreateUser("admin")
+	require.NoError(t, err)
+
+	attackerUser, err := scenario.CreateUser("attacker")
+	require.NoError(t, err)
+
+	adminNode, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
+	require.NoError(t, err)
+
+	attackerNode, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
+	require.NoError(t, err)
+
+	adminPAK, err := scenario.CreatePreAuthKey(adminUser.Id, true, false)
+	require.NoError(t, err)
+
+	attackerPAK, err := scenario.CreatePreAuthKey(attackerUser.Id, true, false)
+	require.NoError(t, err)
+
+	err = adminNode.Login(hs.GetEndpoint(), adminPAK.GetKey())
+	require.NoError(t, err)
+
+	err = attackerNode.Login(hs.GetEndpoint(), attackerPAK.GetKey())
+	require.NoError(t, err)
+
+	require.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := hs.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 2, "there should be two nodes registered")
+
+		users, err := hs.ListUsers()
+		assert.NoError(ct, err)
+		assert.Len(ct, users, 2, "there should be two users created")
+	}, 30*time.Second, 1*time.Second, "ensuring nodes and users are created")
+
+	nodePriv, err := adminNode.GetNodePrivateKey()
+	require.NoError(t, err)
+
+	err = attackerNode.SetNodePrivateKey(*nodePriv)
+	require.NoError(t, err)
+
+	err = attackerNode.ReloadTailscaled()
+	require.NoError(t, err)
+
+	nodePriv2, err := attackerNode.GetNodePrivateKey()
+	require.NoError(t, err)
+
+	require.Equal(t, nodePriv.Public().String(), nodePriv2.Public().String(), "node private keys should be equal")
+
+	// require.NoError(t, attackerNode.Logout())
+	// require.NoError(t, attackerNode.WaitForNeedsLogin())
+
+	err = attackerNode.Login(hs.GetEndpoint(), attackerPAK.GetKey())
+	require.NoError(t, err)
+}
