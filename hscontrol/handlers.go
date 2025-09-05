@@ -197,7 +197,7 @@ func (h *Headscale) RobotsHandler(
 		log.Error().
 			Caller().
 			Err(err).
-			Msg("Failed to write response")
+			Msg("Failed to write HTTP response")
 	}
 }
 

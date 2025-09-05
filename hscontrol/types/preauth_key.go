@@ -61,6 +61,7 @@ func (pak *PreAuthKey) Validate() error {
 	}
 
 	log.Debug().
+		Caller().
 		Str("key", pak.Key).
 		Bool("hasExpiration", pak.Expiration != nil).
 		Time("expiration", func() time.Time {

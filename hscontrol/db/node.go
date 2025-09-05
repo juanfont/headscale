@@ -34,9 +34,6 @@ var (
 		"node not found in registration cache",
 	)
 	ErrCouldNotConvertNodeInterface = errors.New("failed to convert node interface")
-	ErrDifferentRegisteredUser      = errors.New(
-		"node was previously registered with a different user",
-	)
 )
 
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.

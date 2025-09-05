@@ -1160,57 +1160,61 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	err = headscale.SetPolicy(&p)
 	require.NoError(t, err)
 
-	// Get the current policy and check
-	// if it is the same as the one we set.
-	var output *policyv2.Policy
-	err = executeAndUnmarshal(
-		headscale,
-		[]string{
-			"headscale",
-			"policy",
-			"get",
-			"--output",
-			"json",
-		},
-		&output,
-	)
-	require.NoError(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Get the current policy and check
+		// if it is the same as the one we set.
+		var output *policyv2.Policy
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"policy",
+				"get",
+				"--output",
+				"json",
+			},
+			&output,
+		)
+		assert.NoError(ct, err)
 
-	assert.Len(t, output.ACLs, 1)
+		assert.Len(t, output.ACLs, 1)
 
-	if diff := cmp.Diff(p, *output, cmpopts.IgnoreUnexported(policyv2.Policy{}), cmpopts.EquateEmpty()); diff != "" {
-		t.Errorf("unexpected policy(-want +got):\n%s", diff)
-	}
-
-	// Test that user1 can visit all user2
-	for _, client := range user1Clients {
-		for _, peer := range user2Clients {
-			fqdn, err := peer.FQDN()
-			require.NoError(t, err)
-
-			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-			t.Logf("url from %s to %s", client.Hostname(), url)
-
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+		if diff := cmp.Diff(p, *output, cmpopts.IgnoreUnexported(policyv2.Policy{}), cmpopts.EquateEmpty()); diff != "" {
+			ct.Errorf("unexpected policy(-want +got):\n%s", diff)
 		}
-	}
+	}, 30*time.Second, 1*time.Second, "verifying that the new policy took place")
 
-	// Test that user2 _cannot_ visit user1
-	for _, client := range user2Clients {
-		for _, peer := range user1Clients {
-			fqdn, err := peer.FQDN()
-			require.NoError(t, err)
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Test that user1 can visit all user2
+		for _, client := range user1Clients {
+			for _, peer := range user2Clients {
+				fqdn, err := peer.FQDN()
+				assert.NoError(ct, err)
 
-			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-			t.Logf("url from %s to %s", client.Hostname(), url)
+				url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+				t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result)
-			require.Error(t, err)
+				result, err := client.Curl(url)
+				assert.Len(ct, result, 13)
+				assert.NoError(ct, err)
+			}
 		}
-	}
+
+		// Test that user2 _cannot_ visit user1
+		for _, client := range user2Clients {
+			for _, peer := range user1Clients {
+				fqdn, err := peer.FQDN()
+				assert.NoError(ct, err)
+
+				url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+				t.Logf("url from %s to %s", client.Hostname(), url)
+
+				result, err := client.Curl(url)
+				assert.Empty(ct, result)
+				assert.Error(ct, err)
+			}
+		}
+	}, 30*time.Second, 1*time.Second, "new policy did not get propagated to nodes")
 }
 
 func TestACLAutogroupMember(t *testing.T) {

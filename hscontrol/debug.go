@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/arl/statsviz"
+	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tsweb"
@@ -239,6 +240,34 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		w.Write(resJSON)
 	}))
 
+	// Batcher endpoint
+	debug.Handle("batcher", "Batcher connected nodes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+
+		if wantsJSON {
+			batcherInfo := h.debugBatcherJSON()
+
+			batcherJSON, err := json.MarshalIndent(batcherInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(batcherJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			batcherInfo := h.debugBatcher()
+
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(batcherInfo))
+		}
+	}))
+
 	err := statsviz.Register(debugMux)
 	if err == nil {
 		debug.URL("/debug/statsviz", "Statsviz (visualise go metrics)")
@@ -255,4 +284,125 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	}
 
 	return debugHTTPServer
+}
+
+// debugBatcher returns debug information about the batcher's connected nodes.
+func (h *Headscale) debugBatcher() string {
+	var sb strings.Builder
+	sb.WriteString("=== Batcher Connected Nodes ===\n\n")
+
+	totalNodes := 0
+	connectedCount := 0
+
+	// Collect nodes and sort them by ID
+	type nodeStatus struct {
+		id                types.NodeID
+		connected         bool
+		activeConnections int
+	}
+
+	var nodes []nodeStatus
+
+	// Try to get detailed debug info if we have a LockFreeBatcher
+	if batcher, ok := h.mapBatcher.(*mapper.LockFreeBatcher); ok {
+		debugInfo := batcher.Debug()
+		for nodeID, info := range debugInfo {
+			nodes = append(nodes, nodeStatus{
+				id:                nodeID,
+				connected:         info.Connected,
+				activeConnections: info.ActiveConnections,
+			})
+			totalNodes++
+			if info.Connected {
+				connectedCount++
+			}
+		}
+	} else {
+		// Fallback to basic connection info
+		connectedMap := h.mapBatcher.ConnectedMap()
+		connectedMap.Range(func(nodeID types.NodeID, connected bool) bool {
+			nodes = append(nodes, nodeStatus{
+				id:                nodeID,
+				connected:         connected,
+				activeConnections: 0,
+			})
+			totalNodes++
+			if connected {
+				connectedCount++
+			}
+			return true
+		})
+	}
+
+	// Sort by node ID
+	for i := 0; i < len(nodes); i++ {
+		for j := i + 1; j < len(nodes); j++ {
+			if nodes[i].id > nodes[j].id {
+				nodes[i], nodes[j] = nodes[j], nodes[i]
+			}
+		}
+	}
+
+	// Output sorted nodes
+	for _, node := range nodes {
+		status := "disconnected"
+		if node.connected {
+			status = "connected"
+		}
+
+		if node.activeConnections > 0 {
+			sb.WriteString(fmt.Sprintf("Node %d:\t%s (%d connections)\n", node.id, status, node.activeConnections))
+		} else {
+			sb.WriteString(fmt.Sprintf("Node %d:\t%s\n", node.id, status))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nSummary: %d connected, %d total\n", connectedCount, totalNodes))
+
+	return sb.String()
+}
+
+// DebugBatcherInfo represents batcher connection information in a structured format.
+type DebugBatcherInfo struct {
+	ConnectedNodes map[string]DebugBatcherNodeInfo `json:"connected_nodes"` // NodeID -> node connection info
+	TotalNodes     int                             `json:"total_nodes"`
+}
+
+// DebugBatcherNodeInfo represents connection information for a single node.
+type DebugBatcherNodeInfo struct {
+	Connected         bool `json:"connected"`
+	ActiveConnections int  `json:"active_connections"`
+}
+
+// debugBatcherJSON returns structured debug information about the batcher's connected nodes.
+func (h *Headscale) debugBatcherJSON() DebugBatcherInfo {
+	info := DebugBatcherInfo{
+		ConnectedNodes: make(map[string]DebugBatcherNodeInfo),
+		TotalNodes:     0,
+	}
+
+	// Try to get detailed debug info if we have a LockFreeBatcher
+	if batcher, ok := h.mapBatcher.(*mapper.LockFreeBatcher); ok {
+		debugInfo := batcher.Debug()
+		for nodeID, debugData := range debugInfo {
+			info.ConnectedNodes[fmt.Sprintf("%d", nodeID)] = DebugBatcherNodeInfo{
+				Connected:         debugData.Connected,
+				ActiveConnections: debugData.ActiveConnections,
+			}
+			info.TotalNodes++
+		}
+	} else {
+		// Fallback to basic connection info
+		connectedMap := h.mapBatcher.ConnectedMap()
+		connectedMap.Range(func(nodeID types.NodeID, connected bool) bool {
+			info.ConnectedNodes[fmt.Sprintf("%d", nodeID)] = DebugBatcherNodeInfo{
+				Connected:         connected,
+				ActiveConnections: 0,
+			}
+			info.TotalNodes++
+			return true
+		})
+	}
+
+	return info
 }

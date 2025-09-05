@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -79,6 +80,14 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	filterHash := deephash.Hash(&filter)
 	filterChanged := filterHash != pm.filterHash
+	if filterChanged {
+		log.Debug().
+			Str("filter.hash.old", pm.filterHash.String()[:8]).
+			Str("filter.hash.new", filterHash.String()[:8]).
+			Int("filter.rules", len(pm.filter)).
+			Int("filter.rules.new", len(filter)).
+			Msg("Policy filter hash changed")
+	}
 	pm.filter = filter
 	pm.filterHash = filterHash
 	if filterChanged {
@@ -95,6 +104,14 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	tagOwnerMapHash := deephash.Hash(&tagMap)
 	tagOwnerChanged := tagOwnerMapHash != pm.tagOwnerMapHash
+	if tagOwnerChanged {
+		log.Debug().
+			Str("tagOwner.hash.old", pm.tagOwnerMapHash.String()[:8]).
+			Str("tagOwner.hash.new", tagOwnerMapHash.String()[:8]).
+			Int("tagOwners.old", len(pm.tagOwnerMap)).
+			Int("tagOwners.new", len(tagMap)).
+			Msg("Tag owner hash changed")
+	}
 	pm.tagOwnerMap = tagMap
 	pm.tagOwnerMapHash = tagOwnerMapHash
 
@@ -105,18 +122,41 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 
 	autoApproveMapHash := deephash.Hash(&autoMap)
 	autoApproveChanged := autoApproveMapHash != pm.autoApproveMapHash
+	if autoApproveChanged {
+		log.Debug().
+			Str("autoApprove.hash.old", pm.autoApproveMapHash.String()[:8]).
+			Str("autoApprove.hash.new", autoApproveMapHash.String()[:8]).
+			Int("autoApprovers.old", len(pm.autoApproveMap)).
+			Int("autoApprovers.new", len(autoMap)).
+			Msg("Auto-approvers hash changed")
+	}
 	pm.autoApproveMap = autoMap
 	pm.autoApproveMapHash = autoApproveMapHash
 
-	exitSetHash := deephash.Hash(&autoMap)
+	exitSetHash := deephash.Hash(&exitSet)
 	exitSetChanged := exitSetHash != pm.exitSetHash
+	if exitSetChanged {
+		log.Debug().
+			Str("exitSet.hash.old", pm.exitSetHash.String()[:8]).
+			Str("exitSet.hash.new", exitSetHash.String()[:8]).
+			Msg("Exit node set hash changed")
+	}
 	pm.exitSet = exitSet
 	pm.exitSetHash = exitSetHash
 
 	// If neither of the calculated values changed, no need to update nodes
 	if !filterChanged && !tagOwnerChanged && !autoApproveChanged && !exitSetChanged {
+		log.Trace().
+			Msg("Policy evaluation detected no changes - all hashes match")
 		return false, nil
 	}
+
+	log.Debug().
+		Bool("filter.changed", filterChanged).
+		Bool("tagOwners.changed", tagOwnerChanged).
+		Bool("autoApprovers.changed", autoApproveChanged).
+		Bool("exitNodes.changed", exitSetChanged).
+		Msg("Policy changes require node updates")
 
 	return true, nil
 }
@@ -150,6 +190,16 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// Log policy metadata for debugging
+	log.Debug().
+		Int("policy.bytes", len(polB)).
+		Int("acls.count", len(pol.ACLs)).
+		Int("groups.count", len(pol.Groups)).
+		Int("hosts.count", len(pol.Hosts)).
+		Int("tagOwners.count", len(pol.TagOwners)).
+		Int("autoApprovers.routes.count", len(pol.AutoApprovers.Routes)).
+		Msg("Policy parsed successfully")
 
 	pm.pol = pol
 

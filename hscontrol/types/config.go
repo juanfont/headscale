@@ -489,6 +489,7 @@ func derpConfig() DERPConfig {
 		urlAddr, err := url.Parse(urlStr)
 		if err != nil {
 			log.Error().
+				Caller().
 				Str("url", urlStr).
 				Err(err).
 				Msg("Failed to parse url, ignoring...")
@@ -561,6 +562,7 @@ func logConfig() LogConfig {
 		logFormat = TextLogFormat
 	default:
 		log.Error().
+			Caller().
 			Str("func", "GetLogConfig").
 			Msgf("Could not parse log format: %s. Valid choices are 'json' or 'text'", logFormatOpt)
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
@@ -23,7 +24,7 @@ type Batcher interface {
 	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool
 	IsConnected(id types.NodeID) bool
 	ConnectedMap() *xsync.Map[types.NodeID, bool]
-	AddWork(c change.ChangeSet)
+	AddWork(c ...change.ChangeSet)
 	MapResponseFromChange(id types.NodeID, c change.ChangeSet) (*tailcfg.MapResponse, error)
 	DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error)
 }
@@ -36,7 +37,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeB
 
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
 		workCh:         make(chan work, workers*200),
-		nodes:          xsync.NewMap[types.NodeID, *nodeConn](),
+		nodes:          xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 		connected:      xsync.NewMap[types.NodeID, *time.Time](),
 		pendingChanges: xsync.NewMap[types.NodeID, []change.ChangeSet](),
 	}
@@ -47,6 +48,7 @@ func NewBatcherAndMapper(cfg *types.Config, state *state.State) Batcher {
 	m := newMapper(cfg, state)
 	b := NewBatcher(cfg.Tuning.BatchChangeDelay, cfg.Tuning.BatcherWorkers, m)
 	m.batcher = b
+
 	return b
 }
 
@@ -72,8 +74,10 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		return nil, fmt.Errorf("mapper is nil for nodeID %d", nodeID)
 	}
 
-	var mapResp *tailcfg.MapResponse
-	var err error
+	var (
+		mapResp *tailcfg.MapResponse
+		err     error
+	)
 
 	switch c.Change {
 	case change.DERP:
@@ -84,10 +88,21 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 			// TODO(kradalby): This can potentially be a peer update of the old and new subnet router.
 			mapResp, err = mapper.fullMapResponse(nodeID, version)
 		} else {
+			// CRITICAL FIX: Read actual online status from NodeStore when available,
+			// fall back to deriving from change type for unit tests or when NodeStore is empty
+			var onlineStatus bool
+			if node, found := mapper.state.GetNodeByID(c.NodeID); found && node.IsOnline().Valid() {
+				// Use actual NodeStore status when available (production case)
+				onlineStatus = node.IsOnline().Get()
+			} else {
+				// Fall back to deriving from change type (unit test case or initial setup)
+				onlineStatus = c.Change == change.NodeCameOnline
+			}
+
 			mapResp, err = mapper.peerChangedPatchResponse(nodeID, []*tailcfg.PeerChange{
 				{
 					NodeID: c.NodeID.NodeID(),
-					Online: ptr.To(c.Change == change.NodeCameOnline),
+					Online: ptr.To(onlineStatus),
 				},
 			})
 		}
@@ -125,7 +140,12 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) err
 	}
 
 	nodeID := nc.nodeID()
-	data, err := generateMapResponse(nodeID, nc.version(), mapper, c)
+
+	log.Debug().Caller().Uint64("node.id", nodeID.Uint64()).Str("change.type", c.Change.String()).Msg("Node change processing started because change notification received")
+
+	var data *tailcfg.MapResponse
+	var err error
+	data, err = generateMapResponse(nodeID, nc.version(), mapper, c)
 	if err != nil {
 		return fmt.Errorf("generating map response for node %d: %w", nodeID, err)
 	}
@@ -136,7 +156,8 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, c change.ChangeSet) err
 	}
 
 	// Send the map response
-	if err := nc.send(data); err != nil {
+	err = nc.send(data)
+	if err != nil {
 		return fmt.Errorf("sending map response to node %d: %w", nodeID, err)
 	}
 

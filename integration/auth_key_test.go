@@ -9,6 +9,7 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
@@ -53,6 +54,18 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			err = scenario.WaitForTailscaleSync()
 			assertNoErrSync(t, err)
 
+			headscale, err := scenario.Headscale()
+			assertNoErrGetHeadscale(t, err)
+
+			expectedNodes := make([]types.NodeID, 0, len(allClients))
+			for _, client := range allClients {
+				status := client.MustStatus()
+				nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+				assertNoErr(t, err)
+				expectedNodes = append(expectedNodes, types.NodeID(nodeID))
+			}
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", 30*time.Second)
+
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
@@ -63,9 +76,6 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}
 				clientIPs[client] = ips
 			}
-
-			headscale, err := scenario.Headscale()
-			assertNoErrGetHeadscale(t, err)
 
 			listNodes, err := headscale.ListNodes()
 			assert.Len(t, allClients, len(listNodes))
@@ -85,6 +95,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			err = scenario.WaitForTailscaleLogout()
 			assertNoErrLogout(t, err)
+
+			// After taking down all nodes, verify all systems show nodes offline
+			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", 120*time.Second)
 
 			t.Logf("all clients logged out")
 
