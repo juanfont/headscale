@@ -158,7 +158,6 @@ func TestTailNode(t *testing.T) {
 
 				Tags: []string{},
 
-				LastSeen:          &lastSeen,
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{

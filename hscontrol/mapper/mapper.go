@@ -139,11 +139,11 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 func (m *mapper) fullMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	messages ...string,
 ) (*tailcfg.MapResponse, error) {
 	peers := m.state.ListPeers(nodeID)
 
 	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(fullResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
 		WithDERPMap().
@@ -162,6 +162,7 @@ func (m *mapper) derpMapResponse(
 	nodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
 	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(derpResponseDebug).
 		WithDERPMap().
 		Build()
 }
@@ -173,6 +174,7 @@ func (m *mapper) peerChangedPatchResponse(
 	changed []*tailcfg.PeerChange,
 ) (*tailcfg.MapResponse, error) {
 	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(patchResponseDebug).
 		WithPeerChangedPatch(changed).
 		Build()
 }
@@ -186,6 +188,7 @@ func (m *mapper) peerChangeResponse(
 	peers := m.state.ListPeers(nodeID, changedNodeID)
 
 	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(changeResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithSelfNode().
 		WithUserProfiles(peers).
@@ -199,6 +202,7 @@ func (m *mapper) peerRemovedResponse(
 	removedNodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
 	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(removeResponseDebug).
 		WithPeersRemoved(removedNodeID).
 		Build()
 }
@@ -214,7 +218,7 @@ func writeDebugMapResponse(
 	}
 
 	perms := fs.FileMode(debugMapResponsePerm)
-	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", node.ID))
+	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", nodeID))
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -224,7 +228,7 @@ func writeDebugMapResponse(
 
 	mapResponsePath := path.Join(
 		mPath,
-		fmt.Sprintf("%s.json", now),
+		fmt.Sprintf("%s-%s.json", now, t),
 	)
 
 	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
@@ -244,7 +248,11 @@ func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, er
 		return nil, nil
 	}
 
-	nodes, err := os.ReadDir(debugDumpMapResponsePath)
+	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)
+}
+
+func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapResponse, error) {
+	nodes, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +271,7 @@ func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, er
 
 		nodeID := types.NodeID(nodeIDu)
 
-		files, err := os.ReadDir(path.Join(debugDumpMapResponsePath, node.Name()))
+		files, err := os.ReadDir(path.Join(dir, node.Name()))
 		if err != nil {
 			log.Error().Err(err).Msgf("Reading dir %s", node.Name())
 			continue
@@ -278,7 +286,7 @@ func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, er
 				continue
 			}
 
-			body, err := os.ReadFile(path.Join(debugDumpMapResponsePath, node.Name(), file.Name()))
+			body, err := os.ReadFile(path.Join(dir, node.Name(), file.Name()))
 			if err != nil {
 				log.Error().Err(err).Msgf("Reading file %s", file.Name())
 				continue

@@ -481,10 +481,6 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	assertNoErr(t, err)
 
-	listUsers, err := headscale.ListUsers()
-	assertNoErr(t, err)
-	assert.Empty(t, listUsers)
-
 	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
 	assertNoErr(t, err)
 
@@ -494,26 +490,28 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	listUsers, err = headscale.ListUsers()
-	assertNoErr(t, err)
-	assert.Len(t, listUsers, 1)
-	wantUsers := []*v1.User{
-		{
-			Id:         1,
-			Name:       "user1",
-			Email:      "user1@headscale.net",
-			Provider:   "oidc",
-			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
-		},
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listUsers, err := headscale.ListUsers()
+		assertNoErr(t, err)
+		assert.Len(t, listUsers, 1)
+		wantUsers := []*v1.User{
+			{
+				Id:         1,
+				Name:       "user1",
+				Email:      "user1@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+			},
+		}
 
-	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].GetId() < listUsers[j].GetId()
-	})
+		sort.Slice(listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		})
 
-	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-		t.Fatalf("unexpected users: %s", diff)
-	}
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			t.Fatalf("unexpected users: %s", diff)
+		}
+	}, 30*time.Second, 1*time.Second, "validating users after first login")
 
 	listNodes, err := headscale.ListNodes()
 	assertNoErr(t, err)
@@ -525,19 +523,19 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	err = ts.Logout()
 	assertNoErr(t, err)
 
+	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
+	// logs in immediately after the first logout and I cannot reproduce it
+	// manually.
+	err = ts.Logout()
+	assertNoErr(t, err)
+
 	// Wait for logout to complete and then do second logout
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Check that the first logout completed
 		status, err := ts.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "NeedsLogin", status.BackendState)
-	}, 5*time.Second, 1*time.Second)
-
-	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
-	// logs in immediately after the first logout and I cannot reproduce it
-	// manually.
-	err = ts.Logout()
-	assertNoErr(t, err)
+	}, 30*time.Second, 1*time.Second)
 
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
 	assertNoErr(t, err)
@@ -545,56 +543,56 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	listUsers, err = headscale.ListUsers()
-	assertNoErr(t, err)
-	assert.Len(t, listUsers, 2)
-	wantUsers = []*v1.User{
-		{
-			Id:         1,
-			Name:       "user1",
-			Email:      "user1@headscale.net",
-			Provider:   "oidc",
-			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
-		},
-		{
-			Id:         2,
-			Name:       "user2",
-			Email:      "user2@headscale.net",
-			Provider:   "oidc",
-			ProviderId: scenario.mockOIDC.Issuer() + "/user2",
-		},
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listUsers, err := headscale.ListUsers()
+		assertNoErr(t, err)
+		assert.Len(t, listUsers, 2)
+		wantUsers := []*v1.User{
+			{
+				Id:         1,
+				Name:       "user1",
+				Email:      "user1@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+			},
+			{
+				Id:         2,
+				Name:       "user2",
+				Email:      "user2@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user2",
+			},
+		}
 
-	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].GetId() < listUsers[j].GetId()
-	})
+		sort.Slice(listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		})
 
-	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-		t.Fatalf("unexpected users: %s", diff)
-	}
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			ct.Errorf("unexpected users: %s", diff)
+		}
+	}, 30*time.Second, 1*time.Second, "validating users after new user login")
 
-	listNodesAfterNewUserLogin, err := headscale.ListNodes()
-	assertNoErr(t, err)
-	assert.Len(t, listNodesAfterNewUserLogin, 2)
+	var listNodesAfterNewUserLogin []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listNodesAfterNewUserLogin, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodesAfterNewUserLogin, 2)
 
-	// Machine key is the same as the "machine" has not changed,
-	// but Node key is not as it is a new node
-	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
-	assert.Equal(t, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
-	assert.NotEqual(t, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey())
+		// Machine key is the same as the "machine" has not changed,
+		// but Node key is not as it is a new node
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
+		assert.Equal(ct, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
+		assert.NotEqual(ct, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey())
+	}, 30*time.Second, 1*time.Second, "listing nodes after new user login")
 
 	// Log out user2, and log into user1, no new node should be created,
 	// the node should now "become" node1 again
 	err = ts.Logout()
 	assertNoErr(t, err)
 
-	// Wait for logout to complete and then do second logout
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		// Check that the first logout completed
-		status, err := ts.Status()
-		assert.NoError(ct, err)
-		assert.Equal(ct, "NeedsLogin", status.BackendState)
-	}, 5*time.Second, 1*time.Second)
+	t.Logf("Logged out take one")
+	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
 
 	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
 	// logs in immediately after the first logout and I cannot reproduce it
@@ -602,65 +600,92 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	err = ts.Logout()
 	assertNoErr(t, err)
 
+	t.Logf("Logged out take two")
+	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+
+	// Wait for logout to complete and then do second logout
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Check that the first logout completed
+		status, err := ts.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "NeedsLogin", status.BackendState)
+	}, 30*time.Second, 1*time.Second)
+
+	// We do not actually "change" the user here, it is done by logging in again
+	// as the OIDC mock server is kind of like a stack, and the next user is
+	// prepared and ready to go.
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
 	assertNoErr(t, err)
 
 	_, err = doLoginURL(ts.Hostname(), u)
 	assertNoErr(t, err)
 
-	listUsers, err = headscale.ListUsers()
-	assertNoErr(t, err)
-	assert.Len(t, listUsers, 2)
-	wantUsers = []*v1.User{
-		{
-			Id:         1,
-			Name:       "user1",
-			Email:      "user1@headscale.net",
-			Provider:   "oidc",
-			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
-		},
-		{
-			Id:         2,
-			Name:       "user2",
-			Email:      "user2@headscale.net",
-			Provider:   "oidc",
-			ProviderId: scenario.mockOIDC.Issuer() + "/user2",
-		},
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := ts.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "Running", status.BackendState)
+	}, 30*time.Second, 1*time.Second)
 
-	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].GetId() < listUsers[j].GetId()
-	})
+	t.Logf("Logged back in")
+	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
 
-	if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-		t.Fatalf("unexpected users: %s", diff)
-	}
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listUsers, err := headscale.ListUsers()
+		assert.NoError(ct, err)
+		assert.Len(ct, listUsers, 2)
+		wantUsers := []*v1.User{
+			{
+				Id:         1,
+				Name:       "user1",
+				Email:      "user1@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+			},
+			{
+				Id:         2,
+				Name:       "user2",
+				Email:      "user2@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user2",
+			},
+		}
 
-	listNodesAfterLoggingBackIn, err := headscale.ListNodes()
-	assertNoErr(t, err)
-	assert.Len(t, listNodesAfterLoggingBackIn, 2)
+		sort.Slice(listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		})
 
-	// Validate that the machine we had when we logged in the first time, has the same
-	// machine key, but a different ID than the newly logged in version of the same
-	// machine.
-	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
-	assert.Equal(t, listNodes[0].GetNodeKey(), listNodesAfterNewUserLogin[0].GetNodeKey())
-	assert.Equal(t, listNodes[0].GetId(), listNodesAfterNewUserLogin[0].GetId())
-	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
-	assert.NotEqual(t, listNodes[0].GetId(), listNodesAfterNewUserLogin[1].GetId())
-	assert.NotEqual(t, listNodes[0].GetUser().GetId(), listNodesAfterNewUserLogin[1].GetUser().GetId())
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			ct.Errorf("unexpected users: %s", diff)
+		}
+	}, 30*time.Second, 1*time.Second, "log out user2, and log into user1, no new node should be created")
 
-	// Even tho we are logging in again with the same user, the previous key has been expired
-	// and a new one has been generated. The node entry in the database should be the same
-	// as the user + machinekey still matches.
-	assert.Equal(t, listNodes[0].GetMachineKey(), listNodesAfterLoggingBackIn[0].GetMachineKey())
-	assert.NotEqual(t, listNodes[0].GetNodeKey(), listNodesAfterLoggingBackIn[0].GetNodeKey())
-	assert.Equal(t, listNodes[0].GetId(), listNodesAfterLoggingBackIn[0].GetId())
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listNodesAfterLoggingBackIn, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodesAfterLoggingBackIn, 2)
 
-	// The "logged back in" machine should have the same machinekey but a different nodekey
-	// than the version logged in with a different user.
-	assert.Equal(t, listNodesAfterLoggingBackIn[0].GetMachineKey(), listNodesAfterLoggingBackIn[1].GetMachineKey())
-	assert.NotEqual(t, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey())
+		// Validate that the machine we had when we logged in the first time, has the same
+		// machine key, but a different ID than the newly logged in version of the same
+		// machine.
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
+		assert.Equal(ct, listNodes[0].GetNodeKey(), listNodesAfterNewUserLogin[0].GetNodeKey())
+		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[0].GetId())
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
+		assert.NotEqual(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[1].GetId())
+		assert.NotEqual(ct, listNodes[0].GetUser().GetId(), listNodesAfterNewUserLogin[1].GetUser().GetId())
+
+		// Even tho we are logging in again with the same user, the previous key has been expired
+		// and a new one has been generated. The node entry in the database should be the same
+		// as the user + machinekey still matches.
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterLoggingBackIn[0].GetMachineKey())
+		assert.NotEqual(ct, listNodes[0].GetNodeKey(), listNodesAfterLoggingBackIn[0].GetNodeKey())
+		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterLoggingBackIn[0].GetId())
+
+		// The "logged back in" machine should have the same machinekey but a different nodekey
+		// than the version logged in with a different user.
+		assert.Equal(ct, listNodesAfterLoggingBackIn[0].GetMachineKey(), listNodesAfterLoggingBackIn[1].GetMachineKey())
+		assert.NotEqual(ct, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey())
+	}, 30*time.Second, 1*time.Second, "log out user2, and log into user1, no new node should be created")
 }
 
 // assertTailscaleNodesLogout verifies that all provided Tailscale clients

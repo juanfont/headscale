@@ -54,6 +54,20 @@ func (id NodeID) String() string {
 	return strconv.FormatUint(id.Uint64(), util.Base10)
 }
 
+func ParseNodeID(s string) (NodeID, error) {
+	id, err := strconv.ParseUint(s, util.Base10, 64)
+	return NodeID(id), err
+}
+
+func MustParseNodeID(s string) NodeID {
+	id, err := ParseNodeID(s)
+	if err != nil {
+		panic(err)
+	}
+
+	return id
+}
+
 // Node is a Headscale client.
 type Node struct {
 	ID NodeID `gorm:"primary_key"`

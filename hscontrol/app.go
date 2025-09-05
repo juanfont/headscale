@@ -146,12 +146,12 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		policyChanged, err := app.state.DeleteNode(node)
 		if err != nil {
-			log.Err(err).Uint64("node.id", ni.Uint64()).Msgf("failed to delete ephemeral node")
+			log.Error().Err(err).Uint64("node.id", ni.Uint64()).Str("node.name", node.Hostname()).Msg("Ephemeral node deletion failed")
 			return
 		}
 
 		app.Change(policyChanged)
-		log.Debug().Uint64("node.id", ni.Uint64()).Msgf("deleted ephemeral node")
+		log.Debug().Caller().Uint64("node.id", ni.Uint64()).Str("node.name", node.Hostname()).Msg("Ephemeral node deleted because garbage collection timeout reached")
 	})
 	app.ephemeralGC = ephemeralGC
 
@@ -384,53 +384,49 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 			log.Trace().
 				Caller().
 				Str("client_address", req.RemoteAddr).
-				Msg(`missing "Bearer " prefix in "Authorization" header`)
-			writer.WriteHeader(http.StatusUnauthorized)
-			_, err := writer.Write([]byte("Unauthorized"))
+				Msg("HTTP authentication invoked")
+
+			authHeader := req.Header.Get("Authorization")
+
+			if !strings.HasPrefix(authHeader, AuthPrefix) {
+				log.Error().
+					Caller().
+					Str("client_address", req.RemoteAddr).
+					Msg(`missing "Bearer " prefix in "Authorization" header`)
+				writer.WriteHeader(http.StatusUnauthorized)
+				_, err := writer.Write([]byte("Unauthorized"))
+				return err
+			}
+
+			valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 			if err != nil {
 				log.Error().
 					Caller().
 					Err(err).
-					Msg("Failed to write response")
+					Str("client_address", req.RemoteAddr).
+					Msg("failed to validate token")
+
+				writer.WriteHeader(http.StatusInternalServerError)
+				_, err := writer.Write([]byte("Unauthorized"))
+				return err
 			}
 
-			return
-		}
+			if !valid {
+				log.Info().
+					Str("client_address", req.RemoteAddr).
+					Msg("invalid token")
 
-		valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
-		if err != nil {
+				writer.WriteHeader(http.StatusUnauthorized)
+				_, err := writer.Write([]byte("Unauthorized"))
+				return err
+			}
+
+			return nil
+		}(); err != nil {
 			log.Error().
 				Caller().
 				Err(err).
-				Str("client_address", req.RemoteAddr).
-				Msg("failed to validate token")
-
-			writer.WriteHeader(http.StatusInternalServerError)
-			_, err := writer.Write([]byte("Unauthorized"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
-			return
-		}
-
-		if !valid {
-			log.Info().
-				Str("client_address", req.RemoteAddr).
-				Msg("invalid token")
-
-			writer.WriteHeader(http.StatusUnauthorized)
-			_, err := writer.Write([]byte("Unauthorized"))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Msg("Failed to write response")
-			}
-
+				Msg("Failed to write HTTP response")
 			return
 		}
 

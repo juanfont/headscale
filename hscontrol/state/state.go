@@ -1468,7 +1468,7 @@ func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
 		return change.EmptySet, fmt.Errorf("listing users for policy update: %w", err)
 	}
 
-	log.Debug().Int("userCount", len(users)).Msg("Updating policy manager with users")
+	log.Debug().Caller().Int("user.count", len(users)).Msg("Policy manager user update initiated because user list modification detected")
 
 	changed, err := s.polMan.SetUsers(users)
 	if err != nil {

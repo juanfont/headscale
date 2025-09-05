@@ -97,6 +97,35 @@ func (c ChangeSet) IsFull() bool {
 	return c.Change == Full || c.Change == Policy
 }
 
+func HasFull(cs []ChangeSet) bool {
+	for _, c := range cs {
+		if c.IsFull() {
+			return true
+		}
+	}
+	return false
+}
+
+func SplitAllAndSelf(cs []ChangeSet) (all []ChangeSet, self []ChangeSet) {
+	for _, c := range cs {
+		if c.SelfUpdateOnly {
+			self = append(self, c)
+		} else {
+			all = append(all, c)
+		}
+	}
+	return all, self
+}
+
+func RemoveUpdatesForSelf(id types.NodeID, cs []ChangeSet) (ret []ChangeSet) {
+	for _, c := range cs {
+		if c.NodeID != id || c.Change.AlsoSelf() {
+			ret = append(ret, c)
+		}
+	}
+	return ret
+}
+
 func (c ChangeSet) AlsoSelf() bool {
 	// If NodeID is 0, it means this ChangeSet is not related to a specific node,
 	// so we consider it as a change that should be sent to all nodes.

@@ -260,7 +260,7 @@ func NewHeadscaleDatabase(
 									log.Error().Err(err).Msg("Error creating route")
 								} else {
 									log.Info().
-										Uint64("node_id", route.NodeID).
+										Uint64("node.id", route.NodeID).
 										Str("prefix", prefix.String()).
 										Msg("Route migrated")
 								}
@@ -870,23 +870,23 @@ AND auth_key_id NOT IN (
 					// Copy data directly using SQL
 					dataCopySQL := []string{
 						`INSERT INTO users (id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at)
-             SELECT id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at 
+             SELECT id, name, display_name, email, provider_identifier, provider, profile_pic_url, created_at, updated_at, deleted_at
              FROM users_old`,
 
 						`INSERT INTO pre_auth_keys (id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at)
-             SELECT id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at 
+             SELECT id, key, user_id, reusable, ephemeral, used, tags, expiration, created_at
              FROM pre_auth_keys_old`,
 
 						`INSERT INTO api_keys (id, prefix, hash, expiration, last_seen, created_at)
-             SELECT id, prefix, hash, expiration, last_seen, created_at 
+             SELECT id, prefix, hash, expiration, last_seen, created_at
              FROM api_keys_old`,
 
 						`INSERT INTO nodes (id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at)
-             SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at 
+             SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at
              FROM nodes_old`,
 
 						`INSERT INTO policies (id, data, created_at, updated_at, deleted_at)
-             SELECT id, data, created_at, updated_at, deleted_at 
+             SELECT id, data, created_at, updated_at, deleted_at
              FROM policies_old`,
 					}
 
@@ -1131,7 +1131,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		}
 
 		for _, migrationID := range migrationIDs {
-			log.Trace().Str("migration_id", migrationID).Msg("Running migration")
+			log.Trace().Caller().Str("migration_id", migrationID).Msg("Running migration")
 			needsFKDisabled := migrationsRequiringFKDisabled[migrationID]
 
 			if needsFKDisabled {
