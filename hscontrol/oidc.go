@@ -181,7 +181,7 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	a.registrationCache.Set(state, registrationInfo)
 
 	authURL := a.oauth2Config.AuthCodeURL(state, extras...)
-	log.Debug().Msgf("Redirecting to %s for authentication", authURL)
+	log.Debug().Caller().Msgf("Redirecting to %s for authentication", authURL)
 
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
@@ -311,7 +311,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			log.Error().
 				Caller().
 				Err(werr).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 
 		return
@@ -349,7 +349,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
 		if _, err := writer.Write(content.Bytes()); err != nil {
-			util.LogErr(err, "Failed to write response")
+			util.LogErr(err, "Failed to write HTTP response")
 		}
 
 		return

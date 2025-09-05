@@ -237,6 +237,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	request *v1.RegisterNodeRequest,
 ) (*v1.RegisterNodeResponse, error) {
 	log.Trace().
+		Caller().
 		Str("user", request.GetUser()).
 		Str("registration_id", request.GetKey()).
 		Msg("Registering node")
@@ -525,7 +526,7 @@ func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,
 ) (*v1.BackfillNodeIPsResponse, error) {
-	log.Trace().Msg("Backfill called")
+	log.Trace().Caller().Msg("Backfill called")
 
 	if !request.Confirmed {
 		return nil, errors.New("not confirmed, aborting")
@@ -709,6 +710,10 @@ func (api headscaleV1APIServer) SetPolicy(
 		UpdatedAt: timestamppb.New(updated.UpdatedAt),
 	}
 
+	log.Debug().
+		Caller().
+		Msg("gRPC SetPolicy completed successfully because response prepared")
+
 	return response, nil
 }
 
@@ -731,7 +736,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Caller().
 		Interface("route-prefix", routes).
 		Interface("route-str", request.GetRoutes()).
-		Msg("")
+		Msg("Creating routes for node")
 
 	hostinfo := tailcfg.Hostinfo{
 		RoutableIPs: routes,
@@ -760,6 +765,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	}
 
 	log.Debug().
+		Caller().
 		Str("registration_id", registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 

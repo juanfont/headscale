@@ -20,6 +20,8 @@ type MapResponseBuilder struct {
 	nodeID types.NodeID
 	capVer tailcfg.CapabilityVersion
 	errs   []error
+
+	debugType debugType
 }
 
 type debugType string

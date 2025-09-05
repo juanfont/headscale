@@ -34,7 +34,7 @@ func (pol *Policy) compileFilterRules(
 
 		srcIPs, err := acl.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Err(err).Msgf("resolving source ips")
+			log.Trace().Caller().Err(err).Msgf("resolving source ips")
 		}
 
 		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
@@ -52,11 +52,11 @@ func (pol *Policy) compileFilterRules(
 		for _, dest := range acl.Destinations {
 			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
-				log.Trace().Err(err).Msgf("resolving destination ips")
+				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 			}
 
 			if ips == nil {
-				log.Debug().Msgf("destination resolved to nil ips: %v", dest)
+				log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
 				continue
 			}
 
@@ -106,7 +106,7 @@ func (pol *Policy) compileSSHPolicy(
 		return nil, nil
 	}
 
-	log.Trace().Msgf("compiling SSH policy for node %q", node.Hostname())
+	log.Trace().Caller().Msgf("compiling SSH policy for node %q", node.Hostname())
 
 	var rules []*tailcfg.SSHRule
 
@@ -115,7 +115,7 @@ func (pol *Policy) compileSSHPolicy(
 		for _, src := range rule.Destinations {
 			ips, err := src.Resolve(pol, users, nodes)
 			if err != nil {
-				log.Trace().Err(err).Msgf("resolving destination ips")
+				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 			}
 			dest.AddSet(ips)
 		}
@@ -142,7 +142,7 @@ func (pol *Policy) compileSSHPolicy(
 		var principals []*tailcfg.SSHPrincipal
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
+			log.Trace().Caller().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
 			continue // Skip this rule if we can't resolve sources
 		}
 

@@ -16,15 +16,13 @@ body:
   - type: textarea
     attributes:
       label: Description
-      description:
-        A clear and precise description of what new or changed feature you want.
+      description: A clear and precise description of what new or changed feature you want.
     validations:
       required: true
   - type: checkboxes
     attributes:
       label: Contribution
-      description:
-        Are you willing to contribute to the implementation of this feature?
+      description: Are you willing to contribute to the implementation of this feature?
       options:
         - label: I can write the design doc for this feature
           required: false
@@ -33,7 +31,6 @@ body:
   - type: textarea
     attributes:
       label: How can it be implemented?
-      description:
-        Free text for your ideas on how this feature could be implemented.
+      description: Free text for your ideas on how this feature could be implemented.
     validations:
       required: false

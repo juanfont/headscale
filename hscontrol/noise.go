@@ -175,8 +175,8 @@ func rejectUnsupported(
 			Int("client_cap_ver", int(version)).
 			Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 			Str("client_version", capver.TailscaleVersion(version)).
-			Str("node_key", nkey.ShortString()).
-			Str("machine_key", mkey.ShortString()).
+			Str("node.key", nkey.ShortString()).
+			Str("machine.key", mkey.ShortString()).
 			Msg("unsupported client connected")
 		http.Error(writer, unsupportedClientError(version).Error(), http.StatusBadRequest)
 
@@ -282,7 +282,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(writer).Encode(registerResponse); err != nil {
-		log.Error().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
+		log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
 		return
 	}
 

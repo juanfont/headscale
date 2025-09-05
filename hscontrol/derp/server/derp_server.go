@@ -161,7 +161,7 @@ func (d *DERPServer) DERPHandler(
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 
 		return
@@ -199,7 +199,7 @@ func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Reques
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 
 		return
@@ -229,7 +229,7 @@ func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 
 		return
@@ -245,7 +245,7 @@ func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 
 		return
@@ -284,7 +284,7 @@ func DERPProbeHandler(
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 	}
 }
@@ -330,7 +330,7 @@ func DERPBootstrapDNSHandler(
 			log.Error().
 				Caller().
 				Err(err).
-				Msg("Failed to write response")
+				Msg("Failed to write HTTP response")
 		}
 	}
 }

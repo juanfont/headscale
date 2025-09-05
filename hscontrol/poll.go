@@ -216,6 +216,21 @@ func (m *mapSession) serveLongPoll() {
 
 	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
 
+	// TODO(kradalby): Redo the comments here
+	// Add node to batcher so it can receive updates,
+	// adding this before connecting it to the state ensure that
+	// it does not miss any updates that might be sent in the split
+	// time between the node connecting and the batcher being ready.
+	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
+		m.errf(err, "failed to add node to batcher")
+		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
+		return
+	}
+	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("AddNode succeeded in poll session because node added to batcher")
+
+	m.h.Change(mapReqChange)
+	m.h.Change(connectChanges...)
+
 	// Loop through updates and continuously send them to the
 	// client.
 	for {
@@ -227,7 +242,7 @@ func (m *mapSession) serveLongPoll() {
 			return
 
 		case <-ctx.Done():
-			m.tracef("poll context done")
+			m.tracef("poll context done chan:%p", m.ch)
 			mapResponseEnded.WithLabelValues("done").Inc()
 			return
 
@@ -295,7 +310,15 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		}
 	}
 
-	log.Trace().Str("node", m.node.Hostname).TimeDiff("timeSpent", time.Now(), startWrite).Str("mkey", m.node.MachineKey.String()).Msg("finished writing mapresp to node")
+	log.Trace().
+		Caller().
+		Str("node.name", m.node.Hostname).
+		Uint64("node.id", m.node.ID.Uint64()).
+		Str("chan", fmt.Sprintf("%p", m.ch)).
+		TimeDiff("timeSpent", time.Now(), startWrite).
+		Str("machine.key", m.node.MachineKey.String()).
+		Bool("keepalive", msg.KeepAlive).
+		Msgf("finished writing mapresp to node chan(%p)", m.ch)
 
 	return nil
 }
@@ -305,14 +328,14 @@ var keepAlive = tailcfg.MapResponse{
 }
 
 func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcfg.PeerChange) {
-	trace := log.Trace().Uint64("node.id", uint64(peerChange.NodeID)).Str("hostname", hostname)
+	trace := log.Trace().Caller().Uint64("node.id", uint64(peerChange.NodeID)).Str("hostname", hostname)
 
 	if peerChange.Key != nil {
-		trace = trace.Str("node_key", peerChange.Key.ShortString())
+		trace = trace.Str("node.key", peerChange.Key.ShortString())
 	}
 
 	if peerChange.DiscoKey != nil {
-		trace = trace.Str("disco_key", peerChange.DiscoKey.ShortString())
+		trace = trace.Str("disco.key", peerChange.DiscoKey.ShortString())
 	}
 
 	if peerChange.Online != nil {
@@ -349,7 +372,7 @@ func logPollFunc(
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
 				Uint64("node.id", node.ID.Uint64()).
-				Str("node", node.Hostname).
+				Str("node.name", node.Hostname).
 				Msgf(msg, a...)
 		},
 		func(msg string, a ...any) {
@@ -358,7 +381,7 @@ func logPollFunc(
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
 				Uint64("node.id", node.ID.Uint64()).
-				Str("node", node.Hostname).
+				Str("node.name", node.Hostname).
 				Msgf(msg, a...)
 		},
 		func(msg string, a ...any) {
@@ -367,7 +390,7 @@ func logPollFunc(
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
 				Uint64("node.id", node.ID.Uint64()).
-				Str("node", node.Hostname).
+				Str("node.name", node.Hostname).
 				Msgf(msg, a...)
 		},
 		func(err error, msg string, a ...any) {
@@ -376,7 +399,7 @@ func logPollFunc(
 				Bool("omitPeers", mapRequest.OmitPeers).
 				Bool("stream", mapRequest.Stream).
 				Uint64("node.id", node.ID.Uint64()).
-				Str("node", node.Hostname).
+				Str("node.name", node.Hostname).
 				Err(err).
 				Msgf(msg, a...)
 		}

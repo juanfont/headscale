@@ -275,7 +275,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			return errors.New("backfilling IPs: ip allocator was nil")
 		}
 
-		log.Trace().Msgf("starting to backfill IPs")
+		log.Trace().Caller().Msgf("starting to backfill IPs")
 
 		nodes, err := ListNodes(tx)
 		if err != nil {
@@ -283,7 +283,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 		}
 
 		for _, node := range nodes {
-			log.Trace().Uint64("node.id", node.ID.Uint64()).Msg("checking if need backfill")
+			log.Trace().Caller().Uint64("node.id", node.ID.Uint64()).Str("node.name", node.Hostname).Msg("IP backfill check started because node found in database")
 
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc
