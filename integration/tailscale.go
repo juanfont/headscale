@@ -39,6 +39,8 @@ type TailscaleClient interface {
 	Netmap() (*netmap.NetworkMap, error)
 	DebugDERPRegion(region string) (*ipnstate.DebugDERPRegionReport, error)
 	GetNodePrivateKey() (*key.NodePrivate, error)
+	SetNodePrivateKey(privateKey key.NodePrivate) error
+	ReloadTailscaled() error
 	Netcheck() (*netcheck.Report, error)
 	WaitForNeedsLogin() error
 	WaitForRunning() error
