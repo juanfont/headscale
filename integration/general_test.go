@@ -1009,7 +1009,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for run := range 3 {
-		t.Logf("Starting DownUpPing run %d at %s", run+1, time.Now().Format("2006-01-02T15-04-05.999999999"))
+		t.Logf("Starting DownUpPing run %d at %s", run+1, time.Now().Format(TimestampFormat))
 
 		// Create fresh errgroup with timeout for each run
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -1026,7 +1026,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		if err := wg.Wait(); err != nil {
 			t.Fatalf("failed to take down all nodes: %s", err)
 		}
-		t.Logf("All nodes taken down at %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
+		t.Logf("All nodes taken down at %s", time.Now().Format(TimestampFormat))
 
 		// After taking down all nodes, verify all systems show nodes offline
 		requireAllClientsOnline(t, headscale, expectedNodes, false, fmt.Sprintf("Run %d: all nodes should be offline after Down()", run+1), 120*time.Second)
@@ -1042,7 +1042,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		if err := wg.Wait(); err != nil {
 			t.Fatalf("failed to bring up all nodes: %s", err)
 		}
-		t.Logf("All nodes brought up at %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
+		t.Logf("All nodes brought up at %s", time.Now().Format(TimestampFormat))
 
 		// After bringing up all nodes, verify batcher shows all reconnected
 		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), 120*time.Second)
@@ -1051,7 +1051,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(t, err)
 
-		t.Logf("All nodes synced up %s", time.Now().Format("2006-01-02T15-04-05.999999999"))
+		t.Logf("All nodes synced up %s", time.Now().Format(TimestampFormat))
 
 		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), 60*time.Second)
 
@@ -1184,7 +1184,7 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 	t.Helper()
 
 	startTime := time.Now()
-	t.Logf("requireAllSystemsOnline: Starting validation at %s - %s", startTime.Format("2006-01-02T15:04:05.000"), message)
+	t.Logf("requireAllSystemsOnline: Starting validation at %s - %s", startTime.Format(TimestampFormat), message)
 
 	var prevReport string
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1306,11 +1306,11 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 				t.Log("Diff between reports:")
 				t.Logf("Prev report: \n%s\n", prevReport)
 				t.Logf("New report: \n%s\n", failureReport.String())
-				t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+				t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 				prevReport = failureReport.String()
 			}
 
-			failureReport.WriteString("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+			failureReport.WriteString("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
 			assert.Fail(c, failureReport.String())
 		}
@@ -1324,5 +1324,5 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
-	t.Logf("requireAllSystemsOnline: Completed validation at %s - Duration: %v - %s", endTime.Format("2006-01-02T15:04:05.000"), duration, message)
+	t.Logf("requireAllSystemsOnline: Completed validation at %s - Duration: %v - %s", endTime.Format(TimestampFormat), duration, message)
 }

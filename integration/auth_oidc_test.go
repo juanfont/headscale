@@ -592,7 +592,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assertNoErr(t, err)
 
 	t.Logf("Logged out take one")
-	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
 	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
 	// logs in immediately after the first logout and I cannot reproduce it
@@ -601,7 +601,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	assertNoErr(t, err)
 
 	t.Logf("Logged out take two")
-	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
 	// Wait for logout to complete and then do second logout
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -627,7 +627,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	}, 30*time.Second, 1*time.Second)
 
 	t.Logf("Logged back in")
-	t.Log("timestamp: " + time.Now().Format("2006-01-02T15-04-05.999999999") + "\n")
+	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		listUsers, err := headscale.ListUsers()
