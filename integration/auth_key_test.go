@@ -66,6 +66,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", 30*time.Second)
 
+			// Validate that all nodes have NetInfo and DERP servers before logout
+			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 1*time.Minute)
+
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
@@ -149,6 +152,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 120*time.Second)
 
+			// Validate that all nodes have NetInfo and DERP servers after reconnection
+			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection", 1*time.Minute)
+
 			err = scenario.WaitForTailscaleSync()
 			assertNoErrSync(t, err)
 
@@ -189,6 +195,60 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 		})
 	}
+}
+
+// requireAllClientsNetInfoAndDERP validates that all nodes have NetInfo in the database
+// and a valid DERP server based on the NetInfo. This function follows the pattern of
+// requireAllClientsOnline by using hsic.DebugNodeStore to get the database state.
+func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, timeout time.Duration) {
+	t.Helper()
+
+	startTime := time.Now()
+	t.Logf("requireAllClientsNetInfoAndDERP: Starting validation at %s - %s", startTime.Format(TimestampFormat), message)
+
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		// Get nodestore state
+		nodeStore, err := headscale.DebugNodeStore()
+		assert.NoError(c, err, "Failed to get nodestore debug info")
+		if err != nil {
+			return
+		}
+
+		// Validate node counts first
+		expectedCount := len(expectedNodes)
+		assert.Equal(c, expectedCount, len(nodeStore), "NodeStore total nodes mismatch")
+
+		// Check each expected node
+		for _, nodeID := range expectedNodes {
+			node, exists := nodeStore[nodeID]
+			assert.True(c, exists, "Node %d not found in nodestore", nodeID)
+			if !exists {
+				continue
+			}
+
+			// Validate that the node has Hostinfo
+			assert.NotNil(c, node.Hostinfo, "Node %d (%s) should have Hostinfo", nodeID, node.Hostname)
+			if node.Hostinfo == nil {
+				continue
+			}
+
+			// Validate that the node has NetInfo
+			assert.NotNil(c, node.Hostinfo.NetInfo, "Node %d (%s) should have NetInfo in Hostinfo", nodeID, node.Hostname)
+			if node.Hostinfo.NetInfo == nil {
+				continue
+			}
+
+			// Validate that the node has a valid DERP server (PreferredDERP should be > 0)
+			preferredDERP := node.Hostinfo.NetInfo.PreferredDERP
+			assert.Greater(c, preferredDERP, 0, "Node %d (%s) should have a valid DERP server (PreferredDERP > 0), got %d", nodeID, node.Hostname, preferredDERP)
+
+			t.Logf("Node %d (%s) has valid NetInfo with DERP server %d", nodeID, node.Hostname, preferredDERP)
+		}
+	}, timeout, 2*time.Second, message)
+
+	endTime := time.Now()
+	duration := endTime.Sub(startTime)
+	t.Logf("requireAllClientsNetInfoAndDERP: Completed validation at %s - Duration: %v - %s", endTime.Format(TimestampFormat), duration, message)
 }
 
 func assertLastSeenSet(t *testing.T, node *v1.Node) {
