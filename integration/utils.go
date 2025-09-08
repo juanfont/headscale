@@ -28,6 +28,15 @@ const (
 	// derpPingCount defines the number of ping attempts for DERP connectivity tests
 	// Higher count provides better reliability assessment of DERP connectivity.
 	derpPingCount = 10
+
+	// TimestampFormat is the standard timestamp format used across all integration tests
+	// Format: "2006-01-02T15-04-05.999999999" provides high precision timestamps
+	// suitable for debugging and log correlation in integration tests.
+	TimestampFormat = "2006-01-02T15-04-05.999999999"
+
+	// TimestampFormatRunID is used for generating unique run identifiers
+	// Format: "20060102-150405" provides compact date-time for file/directory names.
+	TimestampFormatRunID = "20060102-150405"
 )
 
 func assertNoErr(t *testing.T, err error) {

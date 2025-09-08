@@ -10,6 +10,12 @@ import (
 	"github.com/ory/dockertest/v3"
 )
 
+const (
+	// TimestampFormatRunID is used for generating unique run identifiers
+	// Format: "20060102-150405" provides compact date-time for file/directory names.
+	TimestampFormatRunID = "20060102-150405"
+)
+
 // GetIntegrationRunID returns the run ID for the current integration test session.
 // This is set by the hi tool and passed through environment variables.
 func GetIntegrationRunID() string {
@@ -36,7 +42,7 @@ func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 // Format: YYYYMMDD-HHMMSS-HASH (e.g., 20250619-143052-a1b2c3).
 func GenerateRunID() string {
 	now := time.Now()
-	timestamp := now.Format("20060102-150405")
+	timestamp := now.Format(TimestampFormatRunID)
 
 	// Add a short random hash to ensure uniqueness
 	randomHash := util.MustGenerateRandomStringDNSSafe(6)
