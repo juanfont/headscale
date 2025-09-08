@@ -853,10 +853,25 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 		}
 
 		for _, node := range nodes {
-			// Preserve online status when refreshing from database
+			// Preserve online status and NetInfo when refreshing from database
 			existingNode, exists := s.nodeStore.GetNode(node.ID)
 			if exists && existingNode.Valid() {
 				node.IsOnline = ptr.To(existingNode.IsOnline().Get())
+
+				// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
+				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
+
+				// Preserve NetInfo from existing node to prevent loss during backfill
+				netInfo := NetInfoFromMapRequest(node.ID, existingNode.AsStruct().Hostinfo, node.Hostinfo)
+				if netInfo != nil {
+					if node.Hostinfo != nil {
+						hostinfoCopy := *node.Hostinfo
+						hostinfoCopy.NetInfo = netInfo
+						node.Hostinfo = &hostinfoCopy
+					} else {
+						node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
+					}
+				}
 			}
 			// TODO(kradalby): This should just update the IP addresses, nothing else in the node store.
 			// We should avoid PutNode here.
@@ -1204,7 +1219,24 @@ func (s *State) HandleNodeFromAuthPath(
 			node.NodeKey = nodeToRegister.NodeKey
 			node.DiscoKey = nodeToRegister.DiscoKey
 			node.Hostname = nodeToRegister.Hostname
-			node.Hostinfo = nodeToRegister.Hostinfo
+
+			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
+			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
+
+			// Preserve NetInfo from existing node when re-registering
+			netInfo := NetInfoFromMapRequest(existingMachineNode.ID, existingMachineNode.Hostinfo, nodeToRegister.Hostinfo)
+			if netInfo != nil {
+				if nodeToRegister.Hostinfo != nil {
+					hostinfoCopy := *nodeToRegister.Hostinfo
+					hostinfoCopy.NetInfo = netInfo
+					node.Hostinfo = &hostinfoCopy
+				} else {
+					node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
+				}
+			} else {
+				node.Hostinfo = nodeToRegister.Hostinfo
+			}
+
 			node.Endpoints = nodeToRegister.Endpoints
 			node.RegisterMethod = nodeToRegister.RegisterMethod
 			if expiry != nil {
@@ -1371,7 +1403,24 @@ func (s *State) HandleNodeFromPreAuthKey(
 		s.nodeStore.UpdateNode(existingNode.ID, func(node *types.Node) {
 			node.NodeKey = nodeToRegister.NodeKey
 			node.Hostname = nodeToRegister.Hostname
-			node.Hostinfo = nodeToRegister.Hostinfo
+
+			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
+			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
+
+			// Preserve NetInfo from existing node when re-registering
+			netInfo := NetInfoFromMapRequest(existingNode.ID, existingNode.Hostinfo, nodeToRegister.Hostinfo)
+			if netInfo != nil {
+				if nodeToRegister.Hostinfo != nil {
+					hostinfoCopy := *nodeToRegister.Hostinfo
+					hostinfoCopy.NetInfo = netInfo
+					node.Hostinfo = &hostinfoCopy
+				} else {
+					node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
+				}
+			} else {
+				node.Hostinfo = nodeToRegister.Hostinfo
+			}
+
 			node.Endpoints = nodeToRegister.Endpoints
 			node.RegisterMethod = nodeToRegister.RegisterMethod
 			node.ForcedTags = nodeToRegister.ForcedTags
@@ -1565,6 +1614,12 @@ func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
 // - node.ApplyPeerChange
 // - logTracePeerChange in poll.go.
 func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.ChangeSet, error) {
+	log.Trace().
+		Caller().
+		Uint64("node.id", id.Uint64()).
+		Interface("request", req).
+		Msg("Processing MapRequest for node")
+
 	var routeChange bool
 	var hostinfoChanged bool
 	var needsRouteApproval bool
@@ -1572,6 +1627,27 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// the time of the request.
 	s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
 		peerChange := currentNode.PeerChangeFromMapRequest(req)
+		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
+
+		// Get the correct NetInfo to use
+		netInfo := NetInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
+
+		// Apply NetInfo to request Hostinfo
+		if req.Hostinfo != nil {
+			if netInfo != nil {
+				// Create a copy to avoid modifying the original
+				hostinfoCopy := *req.Hostinfo
+				hostinfoCopy.NetInfo = netInfo
+				req.Hostinfo = &hostinfoCopy
+			}
+		} else if netInfo != nil {
+			// Create minimal Hostinfo with NetInfo
+			req.Hostinfo = &tailcfg.Hostinfo{
+				NetInfo: netInfo,
+			}
+		}
+
+		// Re-check hostinfoChanged after potential NetInfo preservation
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
 		// If there is no changes and nothing to save,
@@ -1582,31 +1658,43 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 
 		// Calculate route approval before NodeStore update to avoid calling View() inside callback
 		var autoApprovedRoutes []netip.Prefix
-		hasNewRoutes := req.Hostinfo != nil && len(req.Hostinfo.RoutableIPs) > 0
+		var hasNewRoutes bool
+		if hi := req.Hostinfo; hi != nil {
+			hasNewRoutes = len(hi.RoutableIPs) > 0
+		}
 		needsRouteApproval = hostinfoChanged && (routesChanged(currentNode.View(), req.Hostinfo) || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
 		if needsRouteApproval {
-			autoApprovedRoutes, routeChange = policy.ApproveRoutesWithPolicy(
-				s.polMan,
-				currentNode.View(),
-				// We need to preserve currently approved routes to ensure
-				// routes outside of the policy approver is persisted.
-				currentNode.ApprovedRoutes,
-				// However, the node has updated its routable IPs, so we
-				// need to approve them using that as a context.
-				req.Hostinfo.RoutableIPs,
-			)
+			// Extract announced routes from request
+			var announcedRoutes []netip.Prefix
+			if req.Hostinfo != nil {
+				announcedRoutes = req.Hostinfo.RoutableIPs
+			}
+
+			// Apply policy-based auto-approval if routes are announced
+			if len(announcedRoutes) > 0 {
+				autoApprovedRoutes, routeChange = policy.ApproveRoutesWithPolicy(
+					s.polMan,
+					currentNode.View(),
+					currentNode.ApprovedRoutes,
+					announcedRoutes,
+				)
+			}
 		}
 
 		// Log when routes change but approval doesn't
-		if hostinfoChanged && req.Hostinfo != nil && routesChanged(currentNode.View(), req.Hostinfo) && !routeChange {
-			log.Debug().
-				Caller().
-				Uint64("node.id", id.Uint64()).
-				Strs("oldAnnouncedRoutes", util.PrefixesToString(currentNode.AnnouncedRoutes())).
-				Strs("newAnnouncedRoutes", util.PrefixesToString(req.Hostinfo.RoutableIPs)).
-				Strs("approvedRoutes", util.PrefixesToString(currentNode.ApprovedRoutes)).
-				Bool("routeChange", routeChange).
-				Msg("announced routes changed but approved routes did not")
+		if hostinfoChanged && !routeChange {
+			if hi := req.Hostinfo; hi != nil {
+				if routesChanged(currentNode.View(), hi) {
+					log.Debug().
+						Caller().
+						Uint64("node.id", id.Uint64()).
+						Strs("oldAnnouncedRoutes", util.PrefixesToString(currentNode.AnnouncedRoutes())).
+						Strs("newAnnouncedRoutes", util.PrefixesToString(hi.RoutableIPs)).
+						Strs("approvedRoutes", util.PrefixesToString(currentNode.ApprovedRoutes)).
+						Bool("routeChange", routeChange).
+						Msg("announced routes changed but approved routes did not")
+				}
+			}
 		}
 
 		currentNode.ApplyPeerChange(&peerChange)
@@ -1619,27 +1707,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			// https://github.com/tailscale/tailscale/commit/e1011f138737286ecf5123ff887a7a5800d129a2
 			// TODO(kradalby): evaluate if we need better comparing of hostinfo
 			// before we take the changes.
-			// Preserve NetInfo only if the existing node actually has valid NetInfo
-			// This prevents copying nil NetInfo which would lose DERP relay assignments
-			if req.Hostinfo != nil && req.Hostinfo.NetInfo == nil && currentNode.Hostinfo != nil && currentNode.Hostinfo.NetInfo != nil {
-				log.Debug().
-					Caller().
-					Uint64("node.id", id.Uint64()).
-					Int("preferredDERP", currentNode.Hostinfo.NetInfo.PreferredDERP).
-					Msg("preserving NetInfo from previous Hostinfo in MapRequest")
-				req.Hostinfo.NetInfo = currentNode.Hostinfo.NetInfo
-			} else if req.Hostinfo == nil && currentNode.Hostinfo != nil && currentNode.Hostinfo.NetInfo != nil {
-				// When MapRequest has no Hostinfo but we have existing NetInfo, create a minimal
-				// Hostinfo to preserve the NetInfo to maintain DERP connectivity
-				log.Debug().
-					Caller().
-					Uint64("node.id", id.Uint64()).
-					Int("preferredDERP", currentNode.Hostinfo.NetInfo.PreferredDERP).
-					Msg("creating minimal Hostinfo to preserve NetInfo in MapRequest")
-				req.Hostinfo = &tailcfg.Hostinfo{
-					NetInfo: currentNode.Hostinfo.NetInfo,
-				}
-			}
+			// NetInfo preservation has already been handled above before early return check
 			currentNode.Hostinfo = req.Hostinfo
 			currentNode.ApplyHostnameFromHostInfo(req.Hostinfo)
 
@@ -1668,7 +1736,12 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	// 2. The announced routes changed (even if approved routes stayed the same)
 	// This is because SubnetRoutes is the intersection of announced AND approved routes.
 	needsRouteUpdate := false
-	routesChangedButNotApproved := hostinfoChanged && req.Hostinfo != nil && needsRouteApproval && !routeChange
+	var routesChangedButNotApproved bool
+	if hostinfoChanged && needsRouteApproval && !routeChange {
+		if hi := req.Hostinfo; hi != nil {
+			routesChangedButNotApproved = true
+		}
+	}
 	if routeChange {
 		needsRouteUpdate = true
 		log.Debug().
