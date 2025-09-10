@@ -1361,7 +1361,11 @@ func TestBatcherConcurrentClients(t *testing.T) {
 				go func(nodeID types.NodeID, channel chan *tailcfg.MapResponse) {
 					for {
 						select {
-						case data := <-channel:
+						case data, ok := <-channel:
+							if !ok {
+								// Channel was closed, exit gracefully
+								return
+							}
 							if valid, reason := validateUpdateContent(data); valid {
 								tracker.recordUpdate(
 									nodeID,
@@ -1419,24 +1423,28 @@ func TestBatcherConcurrentClients(t *testing.T) {
 							ch := make(chan *tailcfg.MapResponse, SMALL_BUFFER_SIZE)
 
 							churningChannelsMutex.Lock()
-
 							churningChannels[nodeID] = ch
-
 							churningChannelsMutex.Unlock()
+
 							batcher.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100))
 
 							// Consume updates to prevent blocking
 							go func() {
 								for {
 									select {
-									case data := <-ch:
+									case data, ok := <-ch:
+										if !ok {
+											// Channel was closed, exit gracefully
+											return
+										}
 										if valid, _ := validateUpdateContent(data); valid {
 											tracker.recordUpdate(
 												nodeID,
 												1,
 											) // Use 1 as update size since we have MapResponse
 										}
-									case <-time.After(20 * time.Millisecond):
+									case <-time.After(500 * time.Millisecond):
+										// Longer timeout to prevent premature exit during heavy load
 										return
 									}
 								}

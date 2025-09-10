@@ -186,8 +186,8 @@ func (m *mapSession) serveLongPoll() {
 	}()
 
 	// Set up the client stream
-	m.h.pollNetMapStreamWG.Add(1)
-	defer m.h.pollNetMapStreamWG.Done()
+	m.h.clientStreamsOpen.Add(1)
+	defer m.h.clientStreamsOpen.Done()
 
 	ctx, cancel := context.WithCancel(context.WithValue(m.ctx, nodeNameContextKey, m.node.Hostname))
 	defer cancel()
