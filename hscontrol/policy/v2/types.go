@@ -1259,7 +1259,7 @@ type Policy struct {
 	Hosts         Hosts              `json:"hosts,omitempty"`
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
 	ACLs          []ACL              `json:"acls,omitempty"`
-	AutoApprovers AutoApproverPolicy `json:"autoApprovers,omitempty"`
+	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
 }
 
@@ -1756,6 +1756,25 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	return &policy, nil
 }
 
-const (
-	expectedTokenItems = 2
-)
+// validateProtocolPortCompatibility checks that only TCP, UDP, and SCTP protocols
+// can have specific ports. All other protocols should only use wildcard ports.
+func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts) error {
+	// Only TCP, UDP, and SCTP support specific ports
+	supportsSpecificPorts := protocol == ProtocolTCP || protocol == ProtocolUDP || protocol == ProtocolSCTP || protocol == ""
+
+	if supportsSpecificPorts {
+		return nil // No validation needed for these protocols
+	}
+
+	// For all other protocols, check that all destinations use wildcard ports
+	for _, dst := range destinations {
+		for _, portRange := range dst.Ports {
+			// Check if it's not a wildcard port (0-65535)
+			if !(portRange.First == 0 && portRange.Last == 65535) {
+				return fmt.Errorf("protocol %q does not support specific ports; only \"*\" is allowed", protocol)
+			}
+		}
+	}
+
+	return nil
+}
