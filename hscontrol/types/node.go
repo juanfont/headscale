@@ -317,11 +317,11 @@ func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) b
 	src := node.IPs()
 
 	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src...) {
-			continue
+		if matcher.SrcsContainsIPs(src...) && matcher.DestsOverlapsPrefixes(route) {
+			return true
 		}
 
-		if matcher.DestsOverlapsPrefixes(route) {
+		if matcher.SrcsOverlapsPrefixes(route) && matcher.DestsContainsIP(src...) {
 			return true
 		}
 	}
@@ -680,19 +680,8 @@ func (v NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) b
 	if !v.Valid() {
 		return false
 	}
-	src := v.IPs()
 
-	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src...) {
-			continue
-		}
-
-		if matcher.DestsOverlapsPrefixes(route) {
-			return true
-		}
-	}
-
-	return false
+	return v.ж.CanAccessRoute(matchers, route)
 }
 
 func (v NodeView) AnnouncedRoutes() []netip.Prefix {
