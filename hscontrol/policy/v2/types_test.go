@@ -349,6 +349,42 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 		},
 		{
+			name: "2652-asterix-error-better-explain",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"src": [
+				"*"
+			],
+			"dst": [
+				"*:*"
+			],
+			"proto": [
+				"*:*"
+			]
+		}
+	],
+	"ssh": [
+		{
+			"action": "accept",
+			"src": [
+				"*"
+			],
+			"dst": [
+				"*"
+			],
+			"proto": [
+				"*:*"
+			]
+		}
+	]
+}
+			`,
+			wantErr: "alias v2.Asterix is not supported for SSH source",
+		},
+		{
 			name: "invalid-username",
 			input: `
 {
