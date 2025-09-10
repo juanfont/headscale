@@ -1,14 +1,14 @@
 package v2
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -609,10 +609,8 @@ type AliasWithPorts struct {
 }
 
 func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
-	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
-	dec := json.NewDecoder(bytes.NewReader(b))
 	var v any
-	if err := dec.Decode(&v); err != nil {
+	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
 
@@ -1741,9 +1739,13 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	}
 
 	ast.Standardize()
-	acl := ast.Pack()
-
-	if err = json.Unmarshal(acl, &policy); err != nil {
+	if err = json.Unmarshal(ast.Pack(), &policy, json.MatchCaseInsensitiveNames(true), json.RejectUnknownMembers(true)); err != nil {
+		var serr *json.SemanticError
+		if errors.As(err, &serr) && serr.Err == json.ErrUnknownName {
+			ptr := serr.JSONPointer
+			name := ptr.LastToken()
+			return nil, fmt.Errorf("unknown field %q", name)
+		}
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
 	}
 
