@@ -2464,13 +2464,13 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 					"tags": ["web", "production"],
 					"created_by": "admin"
 				},
-				"action": "deny",
+				"action": "accept",
 				"proto": "udp",
 				"src": ["*"],
 				"dst": ["autogroup:internet:53"]
 			}`,
 			expected: ACL{
-				Action:   "deny",
+				Action:   ActionAccept,
 				Protocol: "udp",
 				Sources:  []Alias{Wildcard},
 				Destinations: []AliasWithPorts{
@@ -2483,6 +2483,16 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "invalid action should fail",
+			input: `{
+				"action": "deny",
+				"proto": "tcp",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}`,
+			wantErr: true,
+		},
+		{
 			name: "no comment fields",
 			input: `{
 				"action": "accept",
@@ -2491,13 +2501,13 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 				"dst": ["tag:server:*"]
 			}`,
 			expected: ACL{
-				Action:   "accept",
+				Action:   ActionAccept,
 				Protocol: "icmp",
 				Sources:  []Alias{mustParseAlias("tag:client")},
 				Destinations: []AliasWithPorts{
 					{
 						Alias: mustParseAlias("tag:server"),
-						Ports: []tailcfg.PortRange{{First: 0, Last: 65535}},
+						Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
 					},
 				},
 			},
@@ -2510,8 +2520,8 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 				"#reason": "Temporary disable for maintenance"
 			}`,
 			expected: ACL{
-				Action:       "",
-				Protocol:     "",
+				Action:       Action(""),
+				Protocol:     Protocol(""),
 				Sources:      nil,
 				Destinations: nil,
 			},
@@ -2623,9 +2633,9 @@ func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {
 				"dst": ["tag:server:22,80,443"]
 			},
 			{
-				"#note": "Deny all other traffic",
-				"action": "deny",
-				"proto": "*",
+				"#note": "Allow all other traffic",
+				"action": "accept",
+				"proto": "tcp",
 				"src": ["*"],
 				"dst": ["*:*"]
 			}
@@ -2641,17 +2651,35 @@ func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {
 
 	// First ACL
 	acl1 := policy.ACLs[0]
-	assert.Equal(t, "accept", acl1.Action)
-	assert.Equal(t, "tcp", acl1.Protocol)
+	assert.Equal(t, ActionAccept, acl1.Action)
+	assert.Equal(t, Protocol("tcp"), acl1.Protocol)
 	require.Len(t, acl1.Sources, 1)
 	require.Len(t, acl1.Destinations, 1)
 
 	// Second ACL
 	acl2 := policy.ACLs[1]
-	assert.Equal(t, "deny", acl2.Action)
-	assert.Equal(t, "*", acl2.Protocol)
+	assert.Equal(t, ActionAccept, acl2.Action)
+	assert.Equal(t, Protocol("tcp"), acl2.Protocol)
 	require.Len(t, acl2.Sources, 1)
 	require.Len(t, acl2.Destinations, 1)
+}
+
+func TestACL_UnmarshalJSON_InvalidAction(t *testing.T) {
+	// Test that invalid actions are rejected
+	policyJSON := `{
+		"acls": [
+			{
+				"action": "deny",
+				"proto": "tcp",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}
+		]
+	}`
+
+	_, err := unmarshalPolicy([]byte(policyJSON))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid action "deny"`)
 }
 
 // Helper function to parse aliases for testing

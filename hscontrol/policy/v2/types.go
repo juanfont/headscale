@@ -1242,9 +1242,214 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 	return ret, exitNodeSet, nil
 }
 
+// Action represents the action to take for an ACL rule.
+type Action string
+
+const (
+	ActionAccept Action = "accept"
+)
+
+// String returns the string representation of the Action.
+func (a Action) String() string {
+	return string(a)
+}
+
+// UnmarshalJSON implements JSON unmarshaling for Action.
+func (a *Action) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	switch str {
+	case "accept":
+		*a = ActionAccept
+	default:
+		return fmt.Errorf("invalid action %q, must be %q", str, ActionAccept)
+	}
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for Action.
+func (a Action) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(a))
+}
+
+// Protocol represents a network protocol with its IANA number and descriptions.
+type Protocol string
+
+const (
+	ProtocolICMP     Protocol = "icmp"
+	ProtocolIGMP     Protocol = "igmp"
+	ProtocolIPv4     Protocol = "ipv4"
+	ProtocolIPInIP   Protocol = "ip-in-ip"
+	ProtocolTCP      Protocol = "tcp"
+	ProtocolEGP      Protocol = "egp"
+	ProtocolIGP      Protocol = "igp"
+	ProtocolUDP      Protocol = "udp"
+	ProtocolGRE      Protocol = "gre"
+	ProtocolESP      Protocol = "esp"
+	ProtocolAH       Protocol = "ah"
+	ProtocolIPv6ICMP Protocol = "ipv6-icmp"
+	ProtocolSCTP     Protocol = "sctp"
+	ProtocolFC       Protocol = "fc"
+	ProtocolWildcard Protocol = "*"
+)
+
+// String returns the string representation of the Protocol.
+func (p Protocol) String() string {
+	return string(p)
+}
+
+// Description returns the human-readable description of the Protocol.
+func (p Protocol) Description() string {
+	switch p {
+	case ProtocolICMP:
+		return "Internet Control Message Protocol"
+	case ProtocolIGMP:
+		return "Internet Group Management Protocol"
+	case ProtocolIPv4:
+		return "IPv4 encapsulation"
+	case ProtocolTCP:
+		return "Transmission Control Protocol"
+	case ProtocolEGP:
+		return "Exterior Gateway Protocol"
+	case ProtocolIGP:
+		return "Interior Gateway Protocol"
+	case ProtocolUDP:
+		return "User Datagram Protocol"
+	case ProtocolGRE:
+		return "Generic Routing Encapsulation"
+	case ProtocolESP:
+		return "Encapsulating Security Payload"
+	case ProtocolAH:
+		return "Authentication Header"
+	case ProtocolIPv6ICMP:
+		return "Internet Control Message Protocol for IPv6"
+	case ProtocolSCTP:
+		return "Stream Control Transmission Protocol"
+	case ProtocolFC:
+		return "Fibre Channel"
+	case ProtocolWildcard:
+		return "Wildcard (all protocols)"
+	default:
+		return "Unknown Protocol"
+	}
+}
+
+// parseProtocol converts a Protocol to its IANA protocol numbers and wildcard requirement.
+// Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
+func (p Protocol) parseProtocol() ([]int, bool) {
+	switch p {
+	case "":
+		return nil, false
+	case ProtocolWildcard:
+		// Wildcard protocol - allows all protocols like empty string
+		return nil, false
+	case ProtocolIGMP:
+		return []int{protocolIGMP}, true
+	case ProtocolIPv4, ProtocolIPInIP:
+		return []int{protocolIPv4}, true
+	case ProtocolTCP:
+		return []int{protocolTCP}, false
+	case ProtocolEGP:
+		return []int{protocolEGP}, true
+	case ProtocolIGP:
+		return []int{protocolIGP}, true
+	case ProtocolUDP:
+		return []int{protocolUDP}, false
+	case ProtocolGRE:
+		return []int{protocolGRE}, true
+	case ProtocolESP:
+		return []int{protocolESP}, true
+	case ProtocolAH:
+		return []int{protocolAH}, true
+	case ProtocolSCTP:
+		return []int{protocolSCTP}, false
+	case ProtocolICMP:
+		return []int{protocolICMP, protocolIPv6ICMP}, true
+	default:
+		// Try to parse as a numeric protocol number
+		// This should not fail since validation happened during unmarshaling
+		protocolNumber, _ := strconv.Atoi(string(p))
+
+		// Determine if wildcard is needed based on protocol number
+		needsWildcard := protocolNumber != protocolTCP &&
+			protocolNumber != protocolUDP &&
+			protocolNumber != protocolSCTP
+
+		return []int{protocolNumber}, needsWildcard
+	}
+}
+
+// UnmarshalJSON implements JSON unmarshaling for Protocol.
+func (p *Protocol) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+
+	// Normalize to lowercase for case-insensitive matching
+	*p = Protocol(strings.ToLower(str))
+
+	// Validate the protocol
+	if err := p.validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validate checks if the Protocol is valid.
+func (p Protocol) validate() error {
+	switch p {
+	case "", ProtocolICMP, ProtocolIGMP, ProtocolIPv4, ProtocolIPInIP,
+		ProtocolTCP, ProtocolEGP, ProtocolIGP, ProtocolUDP, ProtocolGRE,
+		ProtocolESP, ProtocolAH, ProtocolSCTP:
+		return nil
+	case ProtocolWildcard:
+		// Wildcard "*" is not allowed - Tailscale rejects it
+		return fmt.Errorf("proto name \"*\" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)")
+	default:
+		// Try to parse as a numeric protocol number
+		str := string(p)
+
+		// Check for leading zeros (not allowed by Tailscale)
+		if str == "0" || (len(str) > 1 && str[0] == '0') {
+			return fmt.Errorf("leading 0 not permitted in protocol number \"%s\"", str)
+		}
+
+		protocolNumber, err := strconv.Atoi(str)
+		if err != nil {
+			return fmt.Errorf("invalid protocol %q: must be a known protocol name or valid protocol number 0-255", p)
+		}
+
+		if protocolNumber < 0 || protocolNumber > 255 {
+			return fmt.Errorf("protocol number %d out of range (0-255)", protocolNumber)
+		}
+
+		return nil
+	}
+}
+
+// MarshalJSON implements JSON marshaling for Protocol.
+func (p Protocol) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(p))
+}
+
+// Protocol constants matching the IANA numbers
+const (
+	protocolICMP     = 1   // Internet Control Message
+	protocolIGMP     = 2   // Internet Group Management
+	protocolIPv4     = 4   // IPv4 encapsulation
+	protocolTCP      = 6   // Transmission Control
+	protocolEGP      = 8   // Exterior Gateway Protocol
+	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
+	protocolUDP      = 17  // User Datagram
+	protocolGRE      = 47  // Generic Routing Encapsulation
+	protocolESP      = 50  // Encap Security Payload
+	protocolAH       = 51  // Authentication Header
+	protocolIPv6ICMP = 58  // ICMP for IPv6
+	protocolSCTP     = 132 // Stream Control Transmission Protocol
+	protocolFC       = 133 // Fibre Channel
+)
+
 type ACL struct {
-	Action       string           `json:"action"` // TODO(kradalby): add strict type
-	Protocol     string           `json:"proto"`  // TODO(kradalby): add strict type
+	Action       Action           `json:"action"`
+	Protocol     Protocol         `json:"proto"`
 	Sources      Aliases          `json:"src"`
 	Destinations []AliasWithPorts `json:"dst"`
 }
