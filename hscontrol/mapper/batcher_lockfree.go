@@ -153,7 +153,7 @@ func (b *LockFreeBatcher) Start() {
 func (b *LockFreeBatcher) Close() {
 	if b.cancel != nil {
 		b.cancel()
-		b.cancel = nil // Prevent multiple calls
+		b.cancel = nil
 	}
 
 	// Only close workCh once
@@ -163,10 +163,15 @@ func (b *LockFreeBatcher) Close() {
 	default:
 		close(b.workCh)
 	}
+
+	// Close the underlying channels supplying the data to the clients.
+	b.nodes.Range(func(nodeID types.NodeID, conn *multiChannelNodeConn) bool {
+		conn.close()
+		return true
+	})
 }
 
 func (b *LockFreeBatcher) doWork() {
-
 	for i := range b.workers {
 		go b.worker(i + 1)
 	}
@@ -184,17 +189,18 @@ func (b *LockFreeBatcher) doWork() {
 			// Clean up nodes that have been offline for too long
 			b.cleanupOfflineNodes()
 		case <-b.ctx.Done():
+			log.Info().Msg("batcher context done, stopping to feed workers")
 			return
 		}
 	}
 }
 
 func (b *LockFreeBatcher) worker(workerID int) {
-
 	for {
 		select {
 		case w, ok := <-b.workCh:
 			if !ok {
+				log.Debug().Int("worker.id", workerID).Msgf("worker channel closing, shutting down worker %d", workerID)
 				return
 			}
 
@@ -213,7 +219,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 					if result.err != nil {
 						b.workErrors.Add(1)
 						log.Error().Err(result.err).
-							Int("workerID", workerID).
+							Int("worker.id", workerID).
 							Uint64("node.id", w.nodeID.Uint64()).
 							Str("change", w.c.Change.String()).
 							Msg("failed to generate map response for synchronous work")
@@ -223,7 +229,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 
 					b.workErrors.Add(1)
 					log.Error().Err(result.err).
-						Int("workerID", workerID).
+						Int("worker.id", workerID).
 						Uint64("node.id", w.nodeID.Uint64()).
 						Msg("node not found for synchronous work")
 				}
@@ -248,13 +254,14 @@ func (b *LockFreeBatcher) worker(workerID int) {
 				if err != nil {
 					b.workErrors.Add(1)
 					log.Error().Err(err).
-						Int("workerID", workerID).
+						Int("worker.id", workerID).
 						Uint64("node.id", w.c.NodeID.Uint64()).
 						Str("change", w.c.Change.String()).
 						Msg("failed to apply change")
 				}
 			}
 		case <-b.ctx.Done():
+			log.Debug().Int("workder.id", workerID).Msg("batcher context is done, exiting worker")
 			return
 		}
 	}
@@ -336,6 +343,7 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 }
 
 // cleanupOfflineNodes removes nodes that have been offline for too long to prevent memory leaks.
+// TODO(kradalby): reevaluate if we want to keep this.
 func (b *LockFreeBatcher) cleanupOfflineNodes() {
 	cleanupThreshold := 15 * time.Minute
 	now := time.Now()
@@ -477,6 +485,15 @@ func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeC
 	}
 }
 
+func (mc *multiChannelNodeConn) close() {
+	mc.mutex.Lock()
+	defer mc.mutex.Unlock()
+
+	for _, conn := range mc.connections {
+		close(conn.c)
+	}
+}
+
 // addConnection adds a new connection.
 func (mc *multiChannelNodeConn) addConnection(entry *connectionEntry) {
 	mutexWaitStart := time.Now()
@@ -530,6 +547,10 @@ func (mc *multiChannelNodeConn) getActiveConnectionCount() int {
 
 // send broadcasts data to all active connections for the node.
 func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
+	if data == nil {
+		return nil
+	}
+
 	mc.mutex.Lock()
 	defer mc.mutex.Unlock()
 
@@ -597,6 +618,10 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 // send sends data to a single connection entry with timeout-based stale connection detection.
 func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
+	if data == nil {
+		return nil
+	}
+
 	// Use a short timeout to detect stale connections where the client isn't reading the channel.
 	// This is critical for detecting Docker containers that are forcefully terminated
 	// but still have channels that appear open.
