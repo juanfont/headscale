@@ -992,6 +992,343 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `first port must be >0, or use '*' for wildcard`,
 		},
+		{
+			name: "disallow-unsupported-fields",
+			input: `
+{
+  // rules doesnt exists, we have "acls"
+  "rules": [
+  ]
+}
+`,
+			wantErr: `unknown field "rules"`,
+		},
+		{
+			name: "disallow-unsupported-fields-nested",
+			input: `
+{
+    "acls": [
+        { "action": "accept", "BAD": ["FOO:BAR:FOO:BAR"], "NOT": ["BAD:BAD:BAD:BAD"] }
+      ]
+}
+`,
+			wantErr: `unknown field "BAD"`,
+		},
+		// headscale-admin uses # in some field names to add metadata, so we will ignore
+		// those to ensure it doesnt break.
+		// https://github.com/GoodiesHQ/headscale-admin/blob/214a44a9c15c92d2b42383f131b51df10c84017c/src/lib/common/acl.svelte.ts#L38
+		{
+			name: "hash-fields-are-allowed-but-ignored",
+			input: `
+{
+  "acls": [
+    {
+      "#ha-test": "SOME VALUE",
+      "action": "accept",
+      "src": [
+        "10.0.0.1"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							pp("10.0.0.1/32"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: ptr.To(AutoGroup("autogroup:internet")),
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-asterix-invalid-acl-input",
+			input: `
+{
+	"ssh": [
+		{
+			"action": "accept",
+			"src": [
+				"user@example.com"
+			],
+			"dst": [
+				"user@example.com"
+			],
+			"users": ["root"],
+			"proto": "tcp"
+		}
+	]
+}
+`,
+			wantErr: `unknown field "proto"`,
+		},
+		{
+			name: "protocol-wildcard-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "*",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			wantErr: `proto name "*" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)`,
+		},
+		{
+			name: "protocol-case-insensitive-uppercase",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "ICMP",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-case-insensitive-mixed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "IcmP",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-leading-zero-not-permitted",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "0",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			wantErr: `leading 0 not permitted in protocol number "0"`,
+		},
+		{
+			name: "protocol-icmp-with-specific-port-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "icmp",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			wantErr: `protocol "icmp" does not support specific ports; only "*" is allowed`,
+		},
+		{
+			name: "protocol-icmp-with-wildcard-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "icmp",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-gre-with-specific-port-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "gre",
+			"src": ["*"],
+			"dst": ["*:443"]
+		}
+	]
+}
+`,
+			wantErr: `protocol "gre" does not support specific ports; only "*" is allowed`,
+		},
+		{
+			name: "protocol-tcp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "tcp",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-udp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "udp",
+			"src": ["*"],
+			"dst": ["*:53"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "udp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 53, Last: 53}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-sctp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "sctp",
+			"src": ["*"],
+			"dst": ["*:9000"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "sctp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 9000, Last: 9000}},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	cmps := append(util.Comparers,
