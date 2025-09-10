@@ -1875,7 +1875,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `SSH action "invalid" is not valid, must be accept or check`,
+			errorMessage: `invalid SSH action "invalid", must be one of: accept, check`,
 		},
 		{
 			name:       "invalid-check-period",

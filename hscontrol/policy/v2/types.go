@@ -1249,6 +1249,14 @@ const (
 	ActionAccept Action = "accept"
 )
 
+// SSHAction represents the action to take for an SSH rule.
+type SSHAction string
+
+const (
+	SSHActionAccept SSHAction = "accept"
+	SSHActionCheck  SSHAction = "check"
+)
+
 // String returns the string representation of the Action.
 func (a Action) String() string {
 	return string(a)
@@ -1268,6 +1276,30 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 
 // MarshalJSON implements JSON marshaling for Action.
 func (a Action) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(a))
+}
+
+// String returns the string representation of the SSHAction.
+func (a SSHAction) String() string {
+	return string(a)
+}
+
+// UnmarshalJSON implements JSON unmarshaling for SSHAction.
+func (a *SSHAction) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	switch str {
+	case "accept":
+		*a = SSHActionAccept
+	case "check":
+		*a = SSHActionCheck
+	default:
+		return fmt.Errorf("invalid SSH action %q, must be one of: accept, check", str)
+	}
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for SSHAction.
+func (a SSHAction) MarshalJSON() ([]byte, error) {
 	return json.Marshal(string(a))
 }
 
@@ -1691,10 +1723,6 @@ func (p *Policy) validate() error {
 	}
 
 	for _, ssh := range p.SSHs {
-		if ssh.Action != "accept" && ssh.Action != "check" {
-			errs = append(errs, fmt.Errorf("SSH action %q is not valid, must be accept or check", ssh.Action))
-		}
-
 		for _, user := range ssh.Users {
 			if strings.HasPrefix(string(user), "autogroup:") {
 				maybeAuto := AutoGroup(user)
@@ -1808,7 +1836,7 @@ func (p *Policy) validate() error {
 
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       string         `json:"action"`
+	Action       SSHAction      `json:"action"`
 	Sources      SSHSrcAliases  `json:"src"`
 	Destinations SSHDstAliases  `json:"dst"`
 	Users        []SSHUser      `json:"users"`

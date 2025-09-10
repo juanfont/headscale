@@ -126,9 +126,9 @@ func (pol *Policy) compileSSHPolicy(
 
 		var action tailcfg.SSHAction
 		switch rule.Action {
-		case "accept":
+		case SSHActionAccept:
 			action = sshAction(true, 0)
-		case "check":
+		case SSHActionCheck:
 			action = sshAction(true, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
