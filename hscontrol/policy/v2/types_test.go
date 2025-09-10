@@ -1014,6 +1014,108 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			wantErr: `unknown field "BAD"`,
 		},
+		{
+			name: "disallow-unsupported-fields-groups-level",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "INVALID_GROUP_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `cannot unmarshal JSON string into Go []string`,
+		},
+		{
+			name: "disallow-unsupported-fields-hosts-level",
+			input: `
+{
+  "hosts": {
+    "host1": "10.0.0.1",
+    "INVALID_HOST_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `Hostname "INVALID_HOST_FIELD" contains an invalid IP address: "should fail"`,
+		},
+		{
+			name: "disallow-unsupported-fields-tagowners-level",
+			input: `
+{
+  "tagOwners": {
+    "tag:test": ["user@example.com"],
+    "INVALID_TAG_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `tag has to start with "tag:", got: "INVALID_TAG_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-acls-level",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "tcp",
+      "src": ["*"],
+      "dst": ["*:*"],
+      "INVALID_ACL_FIELD": "should fail"
+    }
+  ]
+}
+`,
+			wantErr: `unknown field "INVALID_ACL_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-ssh-level",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["user@example.com"],
+      "dst": ["user@example.com"],
+      "users": ["root"],
+      "INVALID_SSH_FIELD": "should fail"
+    }
+  ]
+}
+`,
+			wantErr: `unknown field "INVALID_SSH_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-policy-level",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "tcp",
+      "src": ["*"],
+      "dst": ["*:*"]
+    }
+  ],
+  "INVALID_POLICY_FIELD": "should fail at policy level"
+}
+`,
+			wantErr: `unknown field "INVALID_POLICY_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-autoapprovers-level",
+			input: `
+{
+  "autoApprovers": {
+    "routes": {
+      "10.0.0.0/8": ["user@example.com"]
+    },
+    "exitNode": ["user@example.com"],
+    "INVALID_AUTO_APPROVER_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `unknown field "INVALID_AUTO_APPROVER_FIELD"`,
+		},
 		// headscale-admin uses # in some field names to add metadata, so we will ignore
 		// those to ensure it doesnt break.
 		// https://github.com/GoodiesHQ/headscale-admin/blob/214a44a9c15c92d2b42383f131b51df10c84017c/src/lib/common/acl.svelte.ts#L38
