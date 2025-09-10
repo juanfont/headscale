@@ -1242,6 +1242,45 @@ type ACL struct {
 	Destinations []AliasWithPorts `json:"dst"`
 }
 
+// UnmarshalJSON implements custom unmarshalling for ACL that ignores fields starting with '#'.
+// headscale-admin uses # in some field names to add metadata, so we will ignore
+// those to ensure it doesnt break.
+// https://github.com/GoodiesHQ/headscale-admin/blob/214a44a9c15c92d2b42383f131b51df10c84017c/src/lib/common/acl.svelte.ts#L38
+func (a *ACL) UnmarshalJSON(b []byte) error {
+	// First unmarshal into a map to filter out comment fields
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw); err != nil {
+		return err
+	}
+
+	// Remove any fields that start with '#'
+	filtered := make(map[string]any)
+	for key, value := range raw {
+		if !strings.HasPrefix(key, "#") {
+			filtered[key] = value
+		}
+	}
+
+	// Marshal the filtered map back to JSON
+	filteredBytes, err := json.Marshal(filtered)
+	if err != nil {
+		return err
+	}
+
+	// Create a type alias to avoid infinite recursion
+	type aclAlias ACL
+	var temp aclAlias
+
+	// Unmarshal into the temporary struct using the v2 JSON options
+	if err := json.Unmarshal(filteredBytes, &temp, json.DefaultOptionsV2(), json.MatchCaseInsensitiveNames(true)); err != nil {
+		return err
+	}
+
+	// Copy the result back to the original struct
+	*a = ACL(temp)
+	return nil
+}
+
 // Policy represents a Tailscale Network Policy.
 // TODO(kradalby):
 // Add validation method checking:
