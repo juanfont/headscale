@@ -22,6 +22,13 @@ import (
 	"tailscale.com/util/multierr"
 )
 
+// Global JSON options for consistent parsing across all struct unmarshaling
+var policyJSONOpts = []json.Options{
+	json.DefaultOptionsV2(),
+	json.MatchCaseInsensitiveNames(true),
+	json.RejectUnknownMembers(true),
+}
+
 const Wildcard = Asterix(0)
 
 type Asterix int
@@ -728,7 +735,7 @@ type Aliases []Alias
 
 func (a *Aliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -818,7 +825,7 @@ type AutoApprovers []AutoApprover
 
 func (aa *AutoApprovers) UnmarshalJSON(b []byte) error {
 	var autoApprovers []AutoApproverEnc
-	err := json.Unmarshal(b, &autoApprovers)
+	err := json.Unmarshal(b, &autoApprovers, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -913,7 +920,7 @@ type Owners []Owner
 
 func (o *Owners) UnmarshalJSON(b []byte) error {
 	var owners []OwnerEnc
-	err := json.Unmarshal(b, &owners)
+	err := json.Unmarshal(b, &owners, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -988,7 +995,7 @@ func (g Groups) Contains(group *Group) error {
 // with "group:". If any group name is invalid, an error is returned.
 func (g *Groups) UnmarshalJSON(b []byte) error {
 	var rawGroups map[string][]string
-	if err := json.Unmarshal(b, &rawGroups); err != nil {
+	if err := json.Unmarshal(b, &rawGroups, policyJSONOpts...); err != nil {
 		return err
 	}
 
@@ -1024,7 +1031,7 @@ type Hosts map[Host]Prefix
 
 func (h *Hosts) UnmarshalJSON(b []byte) error {
 	var rawHosts map[string]string
-	if err := json.Unmarshal(b, &rawHosts); err != nil {
+	if err := json.Unmarshal(b, &rawHosts, policyJSONOpts...); err != nil {
 		return err
 	}
 
@@ -1249,7 +1256,7 @@ type ACL struct {
 func (a *ACL) UnmarshalJSON(b []byte) error {
 	// First unmarshal into a map to filter out comment fields
 	var raw map[string]any
-	if err := json.Unmarshal(b, &raw); err != nil {
+	if err := json.Unmarshal(b, &raw, policyJSONOpts...); err != nil {
 		return err
 	}
 
@@ -1272,7 +1279,7 @@ func (a *ACL) UnmarshalJSON(b []byte) error {
 	var temp aclAlias
 
 	// Unmarshal into the temporary struct using the v2 JSON options
-	if err := json.Unmarshal(filteredBytes, &temp, json.DefaultOptionsV2(), json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(filteredBytes, &temp, policyJSONOpts...); err != nil {
 		return err
 	}
 
@@ -1627,7 +1634,7 @@ func (g Groups) MarshalJSON() ([]byte, error) {
 
 func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -1650,7 +1657,7 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 
 func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -1778,7 +1785,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	}
 
 	ast.Standardize()
-	if err = json.Unmarshal(ast.Pack(), &policy, json.MatchCaseInsensitiveNames(true), json.RejectUnknownMembers(true)); err != nil {
+	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil {
 		var serr *json.SemanticError
 		if errors.As(err, &serr) && serr.Err == json.ErrUnknownName {
 			ptr := serr.JSONPointer
