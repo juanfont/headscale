@@ -49,6 +49,7 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 	}
 
 	var releases []Release
+
 	err = json.Unmarshal(body, &releases)
 	if err != nil {
 		return nil, fmt.Errorf("error unmarshalling JSON: %w", err)
@@ -67,6 +68,7 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 
 		// Fetch the raw Go file
 		rawURL := fmt.Sprintf(rawFileURL, version)
+
 		resp, err := http.Get(rawURL)
 		if err != nil {
 			continue
@@ -97,6 +99,7 @@ func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.Capabili
 	for version, capVer := range versions {
 		// Remove 'v' prefix and split by '.'
 		cleanVersion := strings.TrimPrefix(version, "v")
+
 		parts := strings.Split(cleanVersion, ".")
 		if len(parts) >= minVersionParts {
 			majorMinor := parts[0] + "." + parts[1]
@@ -123,6 +126,7 @@ func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.Capabili
 
 	// The minimum supported version is the oldest of the latest 10
 	oldestSupportedMajorMinor := majorMinors[len(majorMinors)-supportedCount]
+
 	return majorMinorToCapVer[oldestSupportedMajorMinor]
 }
 
@@ -137,15 +141,18 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 
 	sortedVersions := xmaps.Keys(versions)
 	sort.Strings(sortedVersions)
+
 	for _, version := range sortedVersions {
 		fmt.Fprintf(&content, "\t\"%s\": %d,\n", version, versions[version])
 	}
+
 	content.WriteString("}\n")
 
 	content.WriteString("\n\n")
 	content.WriteString("var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{\n")
 
 	capVarToTailscaleVer := make(map[tailcfg.CapabilityVersion]string)
+
 	for _, v := range sortedVersions {
 		capabilityVersion := versions[v]
 
@@ -155,16 +162,19 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 		if _, ok := capVarToTailscaleVer[capabilityVersion]; ok {
 			continue
 		}
-		capVarToTailscaleVer[cap] = v
+
+		capVarToTailscaleVer[capabilityVersion] = v
 	}
 
 	capsSorted := xmaps.Keys(capVarToTailscaleVer)
 	sort.Slice(capsSorted, func(i, j int) bool {
 		return capsSorted[i] < capsSorted[j]
 	})
+
 	for _, capVer := range capsSorted {
 		fmt.Fprintf(&content, "\t%d:\t\t\"%s\",\n", capVer, capVarToTailscaleVer[capVer])
 	}
+
 	content.WriteString("}\n\n")
 
 	// Add the MinSupportedCapabilityVersion constant
@@ -193,6 +203,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	for version, capVer := range versions {
 		cleanVersion := strings.TrimPrefix(version, "v")
+
 		parts := strings.Split(cleanVersion, ".")
 		if len(parts) >= minVersionParts {
 			majorMinor := parts[0] + "." + parts[1]
@@ -231,29 +242,37 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	// Latest 3 with v prefix
 	content.WriteString("\t{3, false, []string{")
+
 	for i, version := range latest3 {
 		content.WriteString(fmt.Sprintf("\"v%s\"", version))
+
 		if i < len(latest3)-1 {
 			content.WriteString(", ")
 		}
 	}
+
 	content.WriteString("}},\n")
 
 	// Latest 2 without v prefix
 	content.WriteString("\t{2, true, []string{")
+
 	for i, version := range latest2 {
 		content.WriteString(fmt.Sprintf("\"%s\"", version))
+
 		if i < len(latest2)-1 {
 			content.WriteString(", ")
 		}
 	}
+
 	content.WriteString("}},\n")
 
 	// Latest 10 without v prefix (all supported)
 	content.WriteString("\t{10, true, []string{\n")
+
 	for _, version := range latest10 {
 		content.WriteString(fmt.Sprintf("\t\t\"%s\",\n", version))
 	}
+
 	content.WriteString("\t}},\n")
 
 	// Empty case
@@ -264,6 +283,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	capVerToTailscaleVer := make(map[tailcfg.CapabilityVersion]string)
 	sortedVersions := xmaps.Keys(versions)
 	sort.Strings(sortedVersions)
+
 	for _, v := range sortedVersions {
 		capabilityVersion := versions[v]
 		if _, ok := capVerToTailscaleVer[capabilityVersion]; !ok {
@@ -292,9 +312,11 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 		if testCount >= maxTestCases {
 			break
 		}
+
 		if capVer != minSupportedCapVer { // Don't duplicate the min version test
 			version := capVerToTailscaleVer[capVer]
 			content.WriteString(fmt.Sprintf("\t{%d, \"%s\"},\n", capVer, version))
+
 			testCount++
 		}
 	}
@@ -311,7 +333,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	}
 
 	// Write to file
-	err = os.WriteFile(testFile, formatted, 0644)
+	err = os.WriteFile(testFile, formatted, filePermissions)
 	if err != nil {
 		return fmt.Errorf("error writing test data file: %w", err)
 	}

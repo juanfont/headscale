@@ -12,8 +12,6 @@ import (
 	"tailscale.com/util/set"
 )
 
-const MinSupportedCapabilityVersion tailcfg.CapabilityVersion = 90
-
 // CanOldCodeBeCleanedUp is intended to be called on startup to see if
 // there are old code that can ble cleaned up, entries should contain
 // a CapVer where something can be cleaned up and a panic if it can.
@@ -29,12 +27,14 @@ func CanOldCodeBeCleanedUp() {
 func tailscaleVersSorted() []string {
 	vers := xmaps.Keys(tailscaleToCapVer)
 	sort.Strings(vers)
+
 	return vers
 }
 
 func capVersSorted() []tailcfg.CapabilityVersion {
 	capVers := xmaps.Keys(capVerToTailscaleVer)
 	slices.Sort(capVers)
+
 	return capVers
 }
 
@@ -48,6 +48,7 @@ func CapabilityVersion(ver string) tailcfg.CapabilityVersion {
 	if !strings.HasPrefix(ver, "v") {
 		ver = "v" + ver
 	}
+
 	return tailscaleToCapVer[ver]
 }
 
@@ -73,10 +74,12 @@ func TailscaleLatestMajorMinor(n int, stripV bool) []string {
 	}
 
 	majors := set.Set[string]{}
+
 	for _, vers := range tailscaleVersSorted() {
 		if stripV {
 			vers = strings.TrimPrefix(vers, "v")
 		}
+
 		v := strings.Split(vers, ".")
 		majors.Add(v[0] + "." + v[1])
 	}
