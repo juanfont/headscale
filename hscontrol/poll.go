@@ -100,6 +100,8 @@ func (m *mapSession) beforeServeLongPoll() {
 	}
 }
 
+// afterServeLongPoll is called when a long-polling session ends and the node
+// is disconnected.
 func (m *mapSession) afterServeLongPoll() {
 	if m.node.IsEphemeral() {
 		m.h.ephemeralGC.Schedule(m.node.ID, m.h.cfg.EphemeralNodeInactivityTimeout)
