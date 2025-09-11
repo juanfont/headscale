@@ -240,7 +240,6 @@ func TestShuffleDERPMapEdgeCases(t *testing.T) {
 	}
 }
 
-
 func TestShuffleDERPMapWithoutBaseDomain(t *testing.T) {
 	viper.Reset()
 	resetDerpRandomForTesting()

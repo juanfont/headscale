@@ -140,10 +140,13 @@ var crc64Table = crc64.MakeTable(crc64.ISO)
 var (
 	derpRandomOnce sync.Once
 	derpRandomInst *rand.Rand
-	derpRandomMu   sync.RWMutex
+	derpRandomMu   sync.Mutex
 )
 
 func derpRandom() *rand.Rand {
+	derpRandomMu.Lock()
+	defer derpRandomMu.Unlock()
+
 	derpRandomOnce.Do(func() {
 		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
 		rnd := rand.New(rand.NewSource(0))
