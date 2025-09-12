@@ -108,7 +108,7 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		}
 
 	case change.NodeNewOrUpdate:
-		mapResp, err = mapper.fullMapResponse(nodeID, version)
+		mapResp, err = mapper.peerChangeResponse(nodeID, version, c.NodeID)
 
 	case change.NodeRemove:
 		mapResp, err = mapper.peerRemovedResponse(nodeID, c.NodeID)
