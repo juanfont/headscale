@@ -1615,6 +1615,134 @@ func TestResolveAutoApprovers(t *testing.T) {
 	}
 }
 
+func TestSSHUsers_NormalUsers(t *testing.T) {
+	tests := []struct {
+		name     string
+		users    SSHUsers
+		expected []SSHUser
+	}{
+		{
+			name:     "empty users",
+			users:    SSHUsers{},
+			expected: []SSHUser{},
+		},
+		{
+			name:     "only root",
+			users:    SSHUsers{"root"},
+			expected: []SSHUser{},
+		},
+		{
+			name:     "only autogroup:nonroot",
+			users:    SSHUsers{SSHUser(AutoGroupNonRoot)},
+			expected: []SSHUser{},
+		},
+		{
+			name:     "only normal user",
+			users:    SSHUsers{"ssh-it-user"},
+			expected: []SSHUser{"ssh-it-user"},
+		},
+		{
+			name:     "multiple normal users",
+			users:    SSHUsers{"ubuntu", "admin", "user1"},
+			expected: []SSHUser{"ubuntu", "admin", "user1"},
+		},
+		{
+			name:     "mixed users with root",
+			users:    SSHUsers{"ubuntu", "root", "admin"},
+			expected: []SSHUser{"ubuntu", "admin"},
+		},
+		{
+			name:     "mixed users with autogroup:nonroot",
+			users:    SSHUsers{"ubuntu", SSHUser(AutoGroupNonRoot), "admin"},
+			expected: []SSHUser{"ubuntu", "admin"},
+		},
+		{
+			name:     "mixed users with both root and autogroup:nonroot",
+			users:    SSHUsers{"ubuntu", "root", SSHUser(AutoGroupNonRoot), "admin"},
+			expected: []SSHUser{"ubuntu", "admin"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.users.NormalUsers()
+			assert.ElementsMatch(t, tt.expected, result, "NormalUsers() should return expected normal users")
+		})
+	}
+}
+
+func TestSSHUsers_ContainsRoot(t *testing.T) {
+	tests := []struct {
+		name     string
+		users    SSHUsers
+		expected bool
+	}{
+		{
+			name:     "empty users",
+			users:    SSHUsers{},
+			expected: false,
+		},
+		{
+			name:     "contains root",
+			users:    SSHUsers{"root"},
+			expected: true,
+		},
+		{
+			name:     "does not contain root",
+			users:    SSHUsers{"ubuntu", "admin"},
+			expected: false,
+		},
+		{
+			name:     "contains root among others",
+			users:    SSHUsers{"ubuntu", "root", "admin"},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.users.ContainsRoot()
+			assert.Equal(t, tt.expected, result, "ContainsRoot() should return expected result")
+		})
+	}
+}
+
+func TestSSHUsers_ContainsNonRoot(t *testing.T) {
+	tests := []struct {
+		name     string
+		users    SSHUsers
+		expected bool
+	}{
+		{
+			name:     "empty users",
+			users:    SSHUsers{},
+			expected: false,
+		},
+		{
+			name:     "contains autogroup:nonroot",
+			users:    SSHUsers{SSHUser(AutoGroupNonRoot)},
+			expected: true,
+		},
+		{
+			name:     "does not contain autogroup:nonroot",
+			users:    SSHUsers{"ubuntu", "admin", "root"},
+			expected: false,
+		},
+		{
+			name:     "contains autogroup:nonroot among others",
+			users:    SSHUsers{"ubuntu", SSHUser(AutoGroupNonRoot), "admin"},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.users.ContainsNonRoot()
+			assert.Equal(t, tt.expected, result, "ContainsNonRoot() should return expected result")
+		})
+	}
+}
+
 func mustIPSet(prefixes ...string) *netipx.IPSet {
 	var builder netipx.IPSetBuilder
 	for _, p := range prefixes {
