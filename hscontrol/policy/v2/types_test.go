@@ -352,20 +352,6 @@ func TestUnmarshalPolicy(t *testing.T) {
 			name: "2652-asterix-error-better-explain",
 			input: `
 {
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"*"
-			],
-			"dst": [
-				"*:*"
-			],
-			"proto": [
-				"*:*"
-			]
-		}
-	],
 	"ssh": [
 		{
 			"action": "accept",
@@ -375,9 +361,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			"dst": [
 				"*"
 			],
-			"proto": [
-				"*:*"
-			]
+			"users": ["root"]
 		}
 	]
 }

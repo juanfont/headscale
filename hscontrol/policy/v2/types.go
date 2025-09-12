@@ -1720,6 +1720,11 @@ func (p *Policy) validate() error {
 				}
 			}
 		}
+
+		// Validate protocol-port compatibility
+		if err := validateProtocolPortCompatibility(acl.Protocol, acl.Destinations); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	for _, ssh := range p.SSHs {
