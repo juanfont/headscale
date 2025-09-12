@@ -63,6 +63,8 @@ upstream is changed.
   - **IMPORTANT: Backup your SQLite database before upgrading**
   - Introduces safer table renaming migration strategy
   - Addresses longstanding database integrity issues
+- Add flag to directly manipulate the policy in the database
+  [#2765](https://github.com/juanfont/headscale/pull/2765)
 - DERPmap update frequency default changed from 24h to 3h
   [#2741](https://github.com/juanfont/headscale/pull/2741)
 - DERPmap update mechanism has been improved with retry,

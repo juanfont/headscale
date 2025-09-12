@@ -169,7 +169,14 @@ func ErrorOutput(errResult error, override string, outputFormat string) {
 		Error string `json:"error"`
 	}
 
-	fmt.Fprintf(os.Stderr, "%s\n", output(errOutput{errResult.Error()}, override, outputFormat))
+	var errorMessage string
+	if errResult != nil {
+		errorMessage = errResult.Error()
+	} else {
+		errorMessage = override
+	}
+
+	fmt.Fprintf(os.Stderr, "%s\n", output(errOutput{errorMessage}, override, outputFormat))
 	os.Exit(1)
 }
 
