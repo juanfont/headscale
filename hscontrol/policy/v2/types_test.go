@@ -352,20 +352,6 @@ func TestUnmarshalPolicy(t *testing.T) {
 			name: "2652-asterix-error-better-explain",
 			input: `
 {
-	"acls": [
-		{
-			"action": "accept",
-			"src": [
-				"*"
-			],
-			"dst": [
-				"*:*"
-			],
-			"proto": [
-				"*:*"
-			]
-		}
-	],
 	"ssh": [
 		{
 			"action": "accept",
@@ -375,9 +361,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			"dst": [
 				"*"
 			],
-			"proto": [
-				"*:*"
-			]
+			"users": ["root"]
 		}
 	]
 }
@@ -991,6 +975,500 @@ func TestUnmarshalPolicy(t *testing.T) {
 }
 `,
 			wantErr: `first port must be >0, or use '*' for wildcard`,
+		},
+		{
+			name: "disallow-unsupported-fields",
+			input: `
+{
+  // rules doesnt exists, we have "acls"
+  "rules": [
+  ]
+}
+`,
+			wantErr: `unknown field "rules"`,
+		},
+		{
+			name: "disallow-unsupported-fields-nested",
+			input: `
+{
+    "acls": [
+        { "action": "accept", "BAD": ["FOO:BAR:FOO:BAR"], "NOT": ["BAD:BAD:BAD:BAD"] }
+      ]
+}
+`,
+			wantErr: `unknown field`,
+		},
+		{
+			name: "invalid-group-name",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "INVALID_GROUP_FIELD": ["user@example.com"]
+  }
+}
+`,
+			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
+		},
+		{
+			name: "invalid-group-datatype",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "group:invalid": "should fail"
+  }
+}
+`,
+			wantErr: `Group "group:invalid" value must be an array of users, got string: "should fail"`,
+		},
+		{
+			name: "invalid-group-name-and-datatype-fails-on-name-first",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "INVALID_GROUP_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-hosts-level",
+			input: `
+{
+  "hosts": {
+    "host1": "10.0.0.1",
+    "INVALID_HOST_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `Hostname "INVALID_HOST_FIELD" contains an invalid IP address: "should fail"`,
+		},
+		{
+			name: "disallow-unsupported-fields-tagowners-level",
+			input: `
+{
+  "tagOwners": {
+    "tag:test": ["user@example.com"],
+    "INVALID_TAG_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `tag has to start with "tag:", got: "INVALID_TAG_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-acls-level",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "tcp",
+      "src": ["*"],
+      "dst": ["*:*"],
+      "INVALID_ACL_FIELD": "should fail"
+    }
+  ]
+}
+`,
+			wantErr: `unknown field "INVALID_ACL_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-ssh-level",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": ["user@example.com"],
+      "dst": ["user@example.com"],
+      "users": ["root"],
+      "INVALID_SSH_FIELD": "should fail"
+    }
+  ]
+}
+`,
+			wantErr: `unknown field "INVALID_SSH_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-policy-level",
+			input: `
+{
+  "acls": [
+    {
+      "action": "accept",
+      "proto": "tcp",
+      "src": ["*"],
+      "dst": ["*:*"]
+    }
+  ],
+  "INVALID_POLICY_FIELD": "should fail at policy level"
+}
+`,
+			wantErr: `unknown field "INVALID_POLICY_FIELD"`,
+		},
+		{
+			name: "disallow-unsupported-fields-autoapprovers-level",
+			input: `
+{
+  "autoApprovers": {
+    "routes": {
+      "10.0.0.0/8": ["user@example.com"]
+    },
+    "exitNode": ["user@example.com"],
+    "INVALID_AUTO_APPROVER_FIELD": "should fail"
+  }
+}
+`,
+			wantErr: `unknown field "INVALID_AUTO_APPROVER_FIELD"`,
+		},
+		// headscale-admin uses # in some field names to add metadata, so we will ignore
+		// those to ensure it doesnt break.
+		// https://github.com/GoodiesHQ/headscale-admin/blob/214a44a9c15c92d2b42383f131b51df10c84017c/src/lib/common/acl.svelte.ts#L38
+		{
+			name: "hash-fields-are-allowed-but-ignored",
+			input: `
+{
+  "acls": [
+    {
+      "#ha-test": "SOME VALUE",
+      "action": "accept",
+      "src": [
+        "10.0.0.1"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							pp("10.0.0.1/32"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: ptr.To(AutoGroup("autogroup:internet")),
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-asterix-invalid-acl-input",
+			input: `
+{
+	"ssh": [
+		{
+			"action": "accept",
+			"src": [
+				"user@example.com"
+			],
+			"dst": [
+				"user@example.com"
+			],
+			"users": ["root"],
+			"proto": "tcp"
+		}
+	]
+}
+`,
+			wantErr: `unknown field "proto"`,
+		},
+		{
+			name: "protocol-wildcard-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "*",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			wantErr: `proto name "*" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)`,
+		},
+		{
+			name: "protocol-case-insensitive-uppercase",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "ICMP",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-case-insensitive-mixed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "IcmP",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-leading-zero-not-permitted",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "0",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			wantErr: `leading 0 not permitted in protocol number "0"`,
+		},
+		{
+			name: "protocol-empty-applies-to-tcp-udp-only",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-icmp-with-specific-port-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "icmp",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			wantErr: `protocol "icmp" does not support specific ports; only "*" is allowed`,
+		},
+		{
+			name: "protocol-icmp-with-wildcard-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "icmp",
+			"src": ["*"],
+			"dst": ["*:*"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "icmp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-gre-with-specific-port-not-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "gre",
+			"src": ["*"],
+			"dst": ["*:443"]
+		}
+	]
+}
+`,
+			wantErr: `protocol "gre" does not support specific ports; only "*" is allowed`,
+		},
+		{
+			name: "protocol-tcp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "tcp",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "tcp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-udp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "udp",
+			"src": ["*"],
+			"dst": ["*:53"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "udp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 53, Last: 53}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "protocol-sctp-with-specific-port-allowed",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"proto": "sctp",
+			"src": ["*"],
+			"dst": ["*:9000"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "sctp",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 9000, Last: 9000}},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -2090,4 +2568,292 @@ func TestNodeCanHaveTag(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected ACL
+		wantErr  bool
+	}{
+		{
+			name: "basic ACL with comment fields",
+			input: `{
+				"#comment": "This is a comment",
+				"action": "accept",
+				"proto": "tcp",
+				"src": ["user1@example.com"],
+				"dst": ["tag:server:80"]
+			}`,
+			expected: ACL{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []Alias{mustParseAlias("user1@example.com")},
+				Destinations: []AliasWithPorts{
+					{
+						Alias: mustParseAlias("tag:server"),
+						Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "multiple comment fields",
+			input: `{
+				"#description": "Allow access to web servers",
+				"#note": "Created by admin",
+				"#created_date": "2024-01-15",
+				"action": "accept",
+				"proto": "tcp",
+				"src": ["group:developers"],
+				"dst": ["10.0.0.0/24:443"]
+			}`,
+			expected: ACL{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []Alias{mustParseAlias("group:developers")},
+				Destinations: []AliasWithPorts{
+					{
+						Alias: mustParseAlias("10.0.0.0/24"),
+						Ports: []tailcfg.PortRange{{First: 443, Last: 443}},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "comment field with complex object value",
+			input: `{
+				"#metadata": {
+					"description": "Complex comment object",
+					"tags": ["web", "production"],
+					"created_by": "admin"
+				},
+				"action": "accept",
+				"proto": "udp",
+				"src": ["*"],
+				"dst": ["autogroup:internet:53"]
+			}`,
+			expected: ACL{
+				Action:   ActionAccept,
+				Protocol: "udp",
+				Sources:  []Alias{Wildcard},
+				Destinations: []AliasWithPorts{
+					{
+						Alias: mustParseAlias("autogroup:internet"),
+						Ports: []tailcfg.PortRange{{First: 53, Last: 53}},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid action should fail",
+			input: `{
+				"action": "deny",
+				"proto": "tcp",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "no comment fields",
+			input: `{
+				"action": "accept",
+				"proto": "icmp",
+				"src": ["tag:client"],
+				"dst": ["tag:server:*"]
+			}`,
+			expected: ACL{
+				Action:   ActionAccept,
+				Protocol: "icmp",
+				Sources:  []Alias{mustParseAlias("tag:client")},
+				Destinations: []AliasWithPorts{
+					{
+						Alias: mustParseAlias("tag:server"),
+						Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "only comment fields",
+			input: `{
+				"#comment": "This rule is disabled",
+				"#reason": "Temporary disable for maintenance"
+			}`,
+			expected: ACL{
+				Action:       Action(""),
+				Protocol:     Protocol(""),
+				Sources:      nil,
+				Destinations: nil,
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid JSON",
+			input: `{
+				"#comment": "This is a comment",
+				"action": "accept",
+				"proto": "tcp"
+				"src": ["invalid json"]
+			}`,
+			wantErr: true,
+		},
+		{
+			name: "invalid field after comment filtering",
+			input: `{
+				"#comment": "This is a comment",
+				"action": "accept",
+				"proto": "tcp",
+				"src": ["user1@example.com"],
+				"dst": ["invalid-destination"]
+			}`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var acl ACL
+			err := json.Unmarshal([]byte(tt.input), &acl)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.expected.Action, acl.Action)
+			assert.Equal(t, tt.expected.Protocol, acl.Protocol)
+			assert.Equal(t, len(tt.expected.Sources), len(acl.Sources))
+			assert.Equal(t, len(tt.expected.Destinations), len(acl.Destinations))
+
+			// Compare sources
+			for i, expectedSrc := range tt.expected.Sources {
+				if i < len(acl.Sources) {
+					assert.Equal(t, expectedSrc, acl.Sources[i])
+				}
+			}
+
+			// Compare destinations
+			for i, expectedDst := range tt.expected.Destinations {
+				if i < len(acl.Destinations) {
+					assert.Equal(t, expectedDst.Alias, acl.Destinations[i].Alias)
+					assert.Equal(t, expectedDst.Ports, acl.Destinations[i].Ports)
+				}
+			}
+		})
+	}
+}
+
+func TestACL_UnmarshalJSON_Roundtrip(t *testing.T) {
+	// Test that marshaling and unmarshaling preserves data (excluding comments)
+	original := ACL{
+		Action:   "accept",
+		Protocol: "tcp",
+		Sources:  []Alias{mustParseAlias("group:admins")},
+		Destinations: []AliasWithPorts{
+			{
+				Alias: mustParseAlias("tag:server"),
+				Ports: []tailcfg.PortRange{{First: 22, Last: 22}, {First: 80, Last: 80}},
+			},
+		},
+	}
+
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	// Unmarshal back
+	var unmarshaled ACL
+	err = json.Unmarshal(jsonBytes, &unmarshaled)
+	require.NoError(t, err)
+
+	// Should be equal
+	assert.Equal(t, original.Action, unmarshaled.Action)
+	assert.Equal(t, original.Protocol, unmarshaled.Protocol)
+	assert.Equal(t, len(original.Sources), len(unmarshaled.Sources))
+	assert.Equal(t, len(original.Destinations), len(unmarshaled.Destinations))
+}
+
+func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {
+	// Test that ACL unmarshaling works within a Policy context
+	policyJSON := `{
+		"groups": {
+			"group:developers": ["user1@example.com", "user2@example.com"]
+		},
+		"tagOwners": {
+			"tag:server": ["group:developers"]
+		},
+		"acls": [
+			{
+				"#description": "Allow developers to access servers",
+				"#priority": "high",
+				"action": "accept",
+				"proto": "tcp",
+				"src": ["group:developers"],
+				"dst": ["tag:server:22,80,443"]
+			},
+			{
+				"#note": "Allow all other traffic",
+				"action": "accept",
+				"proto": "tcp",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}
+		]
+	}`
+
+	policy, err := unmarshalPolicy([]byte(policyJSON))
+	require.NoError(t, err)
+	require.NotNil(t, policy)
+
+	// Check that ACLs were parsed correctly
+	require.Len(t, policy.ACLs, 2)
+
+	// First ACL
+	acl1 := policy.ACLs[0]
+	assert.Equal(t, ActionAccept, acl1.Action)
+	assert.Equal(t, Protocol("tcp"), acl1.Protocol)
+	require.Len(t, acl1.Sources, 1)
+	require.Len(t, acl1.Destinations, 1)
+
+	// Second ACL
+	acl2 := policy.ACLs[1]
+	assert.Equal(t, ActionAccept, acl2.Action)
+	assert.Equal(t, Protocol("tcp"), acl2.Protocol)
+	require.Len(t, acl2.Sources, 1)
+	require.Len(t, acl2.Destinations, 1)
+}
+
+func TestACL_UnmarshalJSON_InvalidAction(t *testing.T) {
+	// Test that invalid actions are rejected
+	policyJSON := `{
+		"acls": [
+			{
+				"action": "deny",
+				"proto": "tcp",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}
+		]
+	}`
+
+	_, err := unmarshalPolicy([]byte(policyJSON))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `invalid action "deny"`)
+}
+
+// Helper function to parse aliases for testing
+func mustParseAlias(s string) Alias {
+	alias, err := parseAlias(s)
+	if err != nil {
+		panic(err)
+	}
+	return alias
 }

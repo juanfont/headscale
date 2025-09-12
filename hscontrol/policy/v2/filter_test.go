@@ -92,6 +92,7 @@ func TestParsing(t *testing.T) {
 						{IP: "::/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,
@@ -193,6 +194,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,
@@ -229,6 +231,7 @@ func TestParsing(t *testing.T) {
 							Ports: tailcfg.PortRange{First: 5400, Last: 5500},
 						},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,
@@ -268,6 +271,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,
@@ -301,6 +305,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,
@@ -334,6 +339,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{protocolTCP, protocolUDP},
 				},
 			},
 			wantErr: false,

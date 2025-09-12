@@ -89,6 +89,8 @@ upstream is changed.
   [#2663](https://github.com/juanfont/headscale/pull/2663)
 - OIDC: Update user with claims from UserInfo _before_ comparing with allowed
   groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
+- Policy will now reject invalid fields, making it easier to spot spelling errors
+  [#2764](https://github.com/juanfont/headscale/pull/2764)
 
 ## 0.26.1 (2025-06-06)
 

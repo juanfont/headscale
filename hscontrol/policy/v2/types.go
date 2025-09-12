@@ -1,14 +1,14 @@
 package v2
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/go-json-experiment/json"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -22,6 +22,13 @@ import (
 	"tailscale.com/util/multierr"
 	"tailscale.com/util/slicesx"
 )
+
+// Global JSON options for consistent parsing across all struct unmarshaling
+var policyJSONOpts = []json.Options{
+	json.DefaultOptionsV2(),
+	json.MatchCaseInsensitiveNames(true),
+	json.RejectUnknownMembers(true),
+}
 
 const Wildcard = Asterix(0)
 
@@ -614,10 +621,8 @@ type AliasWithPorts struct {
 }
 
 func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
-	// TODO(kradalby): use encoding/json/v2 (go-json-experiment)
-	dec := json.NewDecoder(bytes.NewReader(b))
 	var v any
-	if err := dec.Decode(&v); err != nil {
+	if err := json.Unmarshal(b, &v); err != nil {
 		return err
 	}
 
@@ -735,7 +740,7 @@ type Aliases []Alias
 
 func (a *Aliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -825,7 +830,7 @@ type AutoApprovers []AutoApprover
 
 func (aa *AutoApprovers) UnmarshalJSON(b []byte) error {
 	var autoApprovers []AutoApproverEnc
-	err := json.Unmarshal(b, &autoApprovers)
+	err := json.Unmarshal(b, &autoApprovers, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -920,7 +925,7 @@ type Owners []Owner
 
 func (o *Owners) UnmarshalJSON(b []byte) error {
 	var owners []OwnerEnc
-	err := json.Unmarshal(b, &owners)
+	err := json.Unmarshal(b, &owners, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -994,18 +999,46 @@ func (g Groups) Contains(group *Group) error {
 // that all group names conform to the expected format, which is always prefixed
 // with "group:". If any group name is invalid, an error is returned.
 func (g *Groups) UnmarshalJSON(b []byte) error {
-	var rawGroups map[string][]string
-	if err := json.Unmarshal(b, &rawGroups); err != nil {
+	// First unmarshal as a generic map to validate group names first
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(b, &rawMap); err != nil {
 		return err
+	}
+
+	// Validate group names first before checking data types
+	for key := range rawMap {
+		group := Group(key)
+		if err := group.Validate(); err != nil {
+			return err
+		}
+	}
+
+	// Then validate each field can be converted to []string
+	rawGroups := make(map[string][]string)
+	for key, value := range rawMap {
+		switch v := value.(type) {
+		case []interface{}:
+			// Convert []interface{} to []string
+			var stringSlice []string
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					stringSlice = append(stringSlice, str)
+				} else {
+					return fmt.Errorf(`Group "%s" contains invalid member type, expected string but got %T`, key, item)
+				}
+			}
+			rawGroups[key] = stringSlice
+		case string:
+			return fmt.Errorf(`Group "%s" value must be an array of users, got string: "%s"`, key, v)
+		default:
+			return fmt.Errorf(`Group "%s" value must be an array of users, got %T`, key, v)
+		}
 	}
 
 	*g = make(Groups)
 	for key, value := range rawGroups {
 		group := Group(key)
-		if err := group.Validate(); err != nil {
-			return err
-		}
-
+		// Group name already validated above
 		var usernames Usernames
 
 		for _, u := range value {
@@ -1031,7 +1064,7 @@ type Hosts map[Host]Prefix
 
 func (h *Hosts) UnmarshalJSON(b []byte) error {
 	var rawHosts map[string]string
-	if err := json.Unmarshal(b, &rawHosts); err != nil {
+	if err := json.Unmarshal(b, &rawHosts, policyJSONOpts...); err != nil {
 		return err
 	}
 
@@ -1242,11 +1275,288 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 	return ret, exitNodeSet, nil
 }
 
+// Action represents the action to take for an ACL rule.
+type Action string
+
+const (
+	ActionAccept Action = "accept"
+)
+
+// SSHAction represents the action to take for an SSH rule.
+type SSHAction string
+
+const (
+	SSHActionAccept SSHAction = "accept"
+	SSHActionCheck  SSHAction = "check"
+)
+
+// String returns the string representation of the Action.
+func (a Action) String() string {
+	return string(a)
+}
+
+// UnmarshalJSON implements JSON unmarshaling for Action.
+func (a *Action) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	switch str {
+	case "accept":
+		*a = ActionAccept
+	default:
+		return fmt.Errorf("invalid action %q, must be %q", str, ActionAccept)
+	}
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for Action.
+func (a Action) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(a))
+}
+
+// String returns the string representation of the SSHAction.
+func (a SSHAction) String() string {
+	return string(a)
+}
+
+// UnmarshalJSON implements JSON unmarshaling for SSHAction.
+func (a *SSHAction) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	switch str {
+	case "accept":
+		*a = SSHActionAccept
+	case "check":
+		*a = SSHActionCheck
+	default:
+		return fmt.Errorf("invalid SSH action %q, must be one of: accept, check", str)
+	}
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for SSHAction.
+func (a SSHAction) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(a))
+}
+
+// Protocol represents a network protocol with its IANA number and descriptions.
+type Protocol string
+
+const (
+	ProtocolICMP     Protocol = "icmp"
+	ProtocolIGMP     Protocol = "igmp"
+	ProtocolIPv4     Protocol = "ipv4"
+	ProtocolIPInIP   Protocol = "ip-in-ip"
+	ProtocolTCP      Protocol = "tcp"
+	ProtocolEGP      Protocol = "egp"
+	ProtocolIGP      Protocol = "igp"
+	ProtocolUDP      Protocol = "udp"
+	ProtocolGRE      Protocol = "gre"
+	ProtocolESP      Protocol = "esp"
+	ProtocolAH       Protocol = "ah"
+	ProtocolIPv6ICMP Protocol = "ipv6-icmp"
+	ProtocolSCTP     Protocol = "sctp"
+	ProtocolFC       Protocol = "fc"
+	ProtocolWildcard Protocol = "*"
+)
+
+// String returns the string representation of the Protocol.
+func (p Protocol) String() string {
+	return string(p)
+}
+
+// Description returns the human-readable description of the Protocol.
+func (p Protocol) Description() string {
+	switch p {
+	case ProtocolICMP:
+		return "Internet Control Message Protocol"
+	case ProtocolIGMP:
+		return "Internet Group Management Protocol"
+	case ProtocolIPv4:
+		return "IPv4 encapsulation"
+	case ProtocolTCP:
+		return "Transmission Control Protocol"
+	case ProtocolEGP:
+		return "Exterior Gateway Protocol"
+	case ProtocolIGP:
+		return "Interior Gateway Protocol"
+	case ProtocolUDP:
+		return "User Datagram Protocol"
+	case ProtocolGRE:
+		return "Generic Routing Encapsulation"
+	case ProtocolESP:
+		return "Encapsulating Security Payload"
+	case ProtocolAH:
+		return "Authentication Header"
+	case ProtocolIPv6ICMP:
+		return "Internet Control Message Protocol for IPv6"
+	case ProtocolSCTP:
+		return "Stream Control Transmission Protocol"
+	case ProtocolFC:
+		return "Fibre Channel"
+	case ProtocolWildcard:
+		return "Wildcard (not supported - use specific protocol)"
+	default:
+		return "Unknown Protocol"
+	}
+}
+
+// parseProtocol converts a Protocol to its IANA protocol numbers and wildcard requirement.
+// Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
+func (p Protocol) parseProtocol() ([]int, bool) {
+	switch p {
+	case "":
+		// Empty protocol applies to TCP and UDP traffic only
+		return []int{protocolTCP, protocolUDP}, false
+	case ProtocolWildcard:
+		// Wildcard protocol - defensive handling (should not reach here due to validation)
+		return nil, false
+	case ProtocolIGMP:
+		return []int{protocolIGMP}, true
+	case ProtocolIPv4, ProtocolIPInIP:
+		return []int{protocolIPv4}, true
+	case ProtocolTCP:
+		return []int{protocolTCP}, false
+	case ProtocolEGP:
+		return []int{protocolEGP}, true
+	case ProtocolIGP:
+		return []int{protocolIGP}, true
+	case ProtocolUDP:
+		return []int{protocolUDP}, false
+	case ProtocolGRE:
+		return []int{protocolGRE}, true
+	case ProtocolESP:
+		return []int{protocolESP}, true
+	case ProtocolAH:
+		return []int{protocolAH}, true
+	case ProtocolSCTP:
+		return []int{protocolSCTP}, false
+	case ProtocolICMP:
+		return []int{protocolICMP, protocolIPv6ICMP}, true
+	default:
+		// Try to parse as a numeric protocol number
+		// This should not fail since validation happened during unmarshaling
+		protocolNumber, _ := strconv.Atoi(string(p))
+
+		// Determine if wildcard is needed based on protocol number
+		needsWildcard := protocolNumber != protocolTCP &&
+			protocolNumber != protocolUDP &&
+			protocolNumber != protocolSCTP
+
+		return []int{protocolNumber}, needsWildcard
+	}
+}
+
+// UnmarshalJSON implements JSON unmarshaling for Protocol.
+func (p *Protocol) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+
+	// Normalize to lowercase for case-insensitive matching
+	*p = Protocol(strings.ToLower(str))
+
+	// Validate the protocol
+	if err := p.validate(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validate checks if the Protocol is valid.
+func (p Protocol) validate() error {
+	switch p {
+	case "", ProtocolICMP, ProtocolIGMP, ProtocolIPv4, ProtocolIPInIP,
+		ProtocolTCP, ProtocolEGP, ProtocolIGP, ProtocolUDP, ProtocolGRE,
+		ProtocolESP, ProtocolAH, ProtocolSCTP:
+		return nil
+	case ProtocolWildcard:
+		// Wildcard "*" is not allowed - Tailscale rejects it
+		return fmt.Errorf("proto name \"*\" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)")
+	default:
+		// Try to parse as a numeric protocol number
+		str := string(p)
+
+		// Check for leading zeros (not allowed by Tailscale)
+		if str == "0" || (len(str) > 1 && str[0] == '0') {
+			return fmt.Errorf("leading 0 not permitted in protocol number \"%s\"", str)
+		}
+
+		protocolNumber, err := strconv.Atoi(str)
+		if err != nil {
+			return fmt.Errorf("invalid protocol %q: must be a known protocol name or valid protocol number 0-255", p)
+		}
+
+		if protocolNumber < 0 || protocolNumber > 255 {
+			return fmt.Errorf("protocol number %d out of range (0-255)", protocolNumber)
+		}
+
+		return nil
+	}
+}
+
+// MarshalJSON implements JSON marshaling for Protocol.
+func (p Protocol) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(p))
+}
+
+// Protocol constants matching the IANA numbers
+const (
+	protocolICMP     = 1   // Internet Control Message
+	protocolIGMP     = 2   // Internet Group Management
+	protocolIPv4     = 4   // IPv4 encapsulation
+	protocolTCP      = 6   // Transmission Control
+	protocolEGP      = 8   // Exterior Gateway Protocol
+	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
+	protocolUDP      = 17  // User Datagram
+	protocolGRE      = 47  // Generic Routing Encapsulation
+	protocolESP      = 50  // Encap Security Payload
+	protocolAH       = 51  // Authentication Header
+	protocolIPv6ICMP = 58  // ICMP for IPv6
+	protocolSCTP     = 132 // Stream Control Transmission Protocol
+	protocolFC       = 133 // Fibre Channel
+)
+
 type ACL struct {
-	Action       string           `json:"action"` // TODO(kradalby): add strict type
-	Protocol     string           `json:"proto"`  // TODO(kradalby): add strict type
+	Action       Action           `json:"action"`
+	Protocol     Protocol         `json:"proto"`
 	Sources      Aliases          `json:"src"`
 	Destinations []AliasWithPorts `json:"dst"`
+}
+
+// UnmarshalJSON implements custom unmarshalling for ACL that ignores fields starting with '#'.
+// headscale-admin uses # in some field names to add metadata, so we will ignore
+// those to ensure it doesnt break.
+// https://github.com/GoodiesHQ/headscale-admin/blob/214a44a9c15c92d2b42383f131b51df10c84017c/src/lib/common/acl.svelte.ts#L38
+func (a *ACL) UnmarshalJSON(b []byte) error {
+	// First unmarshal into a map to filter out comment fields
+	var raw map[string]any
+	if err := json.Unmarshal(b, &raw, policyJSONOpts...); err != nil {
+		return err
+	}
+
+	// Remove any fields that start with '#'
+	filtered := make(map[string]any)
+	for key, value := range raw {
+		if !strings.HasPrefix(key, "#") {
+			filtered[key] = value
+		}
+	}
+
+	// Marshal the filtered map back to JSON
+	filteredBytes, err := json.Marshal(filtered)
+	if err != nil {
+		return err
+	}
+
+	// Create a type alias to avoid infinite recursion
+	type aclAlias ACL
+	var temp aclAlias
+
+	// Unmarshal into the temporary struct using the v2 JSON options
+	if err := json.Unmarshal(filteredBytes, &temp, policyJSONOpts...); err != nil {
+		return err
+	}
+
+	// Copy the result back to the original struct
+	*a = ACL(temp)
+	return nil
 }
 
 // Policy represents a Tailscale Network Policy.
@@ -1266,7 +1576,7 @@ type Policy struct {
 	Hosts         Hosts              `json:"hosts,omitempty"`
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
 	ACLs          []ACL              `json:"acls,omitempty"`
-	AutoApprovers AutoApproverPolicy `json:"autoApprovers,omitempty"`
+	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
 }
 
@@ -1444,13 +1754,14 @@ func (p *Policy) validate() error {
 				}
 			}
 		}
+
+		// Validate protocol-port compatibility
+		if err := validateProtocolPortCompatibility(acl.Protocol, acl.Destinations); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	for _, ssh := range p.SSHs {
-		if ssh.Action != "accept" && ssh.Action != "check" {
-			errs = append(errs, fmt.Errorf("SSH action %q is not valid, must be accept or check", ssh.Action))
-		}
-
 		for _, user := range ssh.Users {
 			if strings.HasPrefix(string(user), "autogroup:") {
 				maybeAuto := AutoGroup(user)
@@ -1564,7 +1875,7 @@ func (p *Policy) validate() error {
 
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       string         `json:"action"`
+	Action       SSHAction      `json:"action"`
 	Sources      SSHSrcAliases  `json:"src"`
 	Destinations SSHDstAliases  `json:"dst"`
 	Users        SSHUsers       `json:"users"`
@@ -1595,7 +1906,7 @@ func (g Groups) MarshalJSON() ([]byte, error) {
 
 func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -1618,7 +1929,7 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 
 func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 	var aliases []AliasEnc
-	err := json.Unmarshal(b, &aliases)
+	err := json.Unmarshal(b, &aliases, policyJSONOpts...)
 	if err != nil {
 		return err
 	}
@@ -1762,9 +2073,13 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	}
 
 	ast.Standardize()
-	acl := ast.Pack()
-
-	if err = json.Unmarshal(acl, &policy); err != nil {
+	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil {
+		var serr *json.SemanticError
+		if errors.As(err, &serr) && serr.Err == json.ErrUnknownName {
+			ptr := serr.JSONPointer
+			name := ptr.LastToken()
+			return nil, fmt.Errorf("unknown field %q", name)
+		}
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
 	}
 
@@ -1775,6 +2090,25 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	return &policy, nil
 }
 
-const (
-	expectedTokenItems = 2
-)
+// validateProtocolPortCompatibility checks that only TCP, UDP, and SCTP protocols
+// can have specific ports. All other protocols should only use wildcard ports.
+func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts) error {
+	// Only TCP, UDP, and SCTP support specific ports
+	supportsSpecificPorts := protocol == ProtocolTCP || protocol == ProtocolUDP || protocol == ProtocolSCTP || protocol == ""
+
+	if supportsSpecificPorts {
+		return nil // No validation needed for these protocols
+	}
+
+	// For all other protocols, check that all destinations use wildcard ports
+	for _, dst := range destinations {
+		for _, portRange := range dst.Ports {
+			// Check if it's not a wildcard port (0-65535)
+			if !(portRange.First == 0 && portRange.Last == 65535) {
+				return fmt.Errorf("protocol %q does not support specific ports; only \"*\" is allowed", protocol)
+			}
+		}
+	}
+
+	return nil
+}

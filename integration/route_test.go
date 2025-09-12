@@ -1481,7 +1481,7 @@ func TestSubnetRouteACL(t *testing.T) {
 	wantClientFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+				ipproto.TCP, ipproto.UDP,
 			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
@@ -1513,7 +1513,7 @@ func TestSubnetRouteACL(t *testing.T) {
 	wantSubnetFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+				ipproto.TCP, ipproto.UDP,
 			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
@@ -1535,7 +1535,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		},
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
+				ipproto.TCP, ipproto.UDP,
 			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
