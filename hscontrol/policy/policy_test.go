@@ -2360,6 +2360,177 @@ func TestReduceRoutes(t *testing.T) {
 				netip.MustParsePrefix("10.10.12.0/24"),
 			},
 		},
+		{
+			name: "return-path-subnet-router-to-regular-node-issue-2608",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.123.45.89"), // Node B - regular node
+					User: types.User{Name: "node-b"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("192.168.1.0/24"), // Subnet connected to Node A
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// Policy allows 192.168.1.0/24 and group:routers to access *:*
+						SrcIPs: []string{
+							"192.168.1.0/24", // Subnet behind router
+							"100.123.45.67",  // Node A (router, part of group:routers)
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*", Ports: tailcfg.PortRangeAny}, // Access to everything
+						},
+					},
+				},
+			},
+			// Node B should receive the 192.168.1.0/24 route for return traffic
+			// even though Node B cannot initiate connections to that network
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.0/24"),
+			},
+		},
+		{
+			name: "return-path-router-perspective-2608",
+			args: args{
+				node: &types.Node{
+					ID:   1,
+					IPv4: ap("100.123.45.67"), // Node A - router node
+					User: types.User{Name: "router"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("192.168.1.0/24"), // Subnet connected to this router
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// Policy allows 192.168.1.0/24 and group:routers to access *:*
+						SrcIPs: []string{
+							"192.168.1.0/24", // Subnet behind router
+							"100.123.45.67",  // Node A (router, part of group:routers)
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*", Ports: tailcfg.PortRangeAny}, // Access to everything
+						},
+					},
+				},
+			},
+			// Router should have access to its own routes
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.0/24"),
+			},
+		},
+		{
+			name: "subnet-behind-router-bidirectional-connectivity-issue-2608",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.123.45.89"), // Node B - regular node that should be reachable
+					User: types.User{Name: "node-b"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("192.168.1.0/24"), // Subnet behind router
+					netip.MustParsePrefix("10.0.0.0/24"),    // Another subnet
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// Only 192.168.1.0/24 and routers can access everything
+						SrcIPs: []string{
+							"192.168.1.0/24", // Subnet that can connect to Node B
+							"100.123.45.67",  // Router node
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*", Ports: tailcfg.PortRangeAny},
+						},
+					},
+					{
+						// Node B cannot access anything (no rules with Node B as source)
+						SrcIPs:   []string{"100.123.45.89"},
+						DstPorts: []tailcfg.NetPortRange{
+							// No destinations - Node B cannot initiate connections
+						},
+					},
+				},
+			},
+			// Node B should still get the 192.168.1.0/24 route for return traffic
+			// but should NOT get 10.0.0.0/24 since nothing allows that subnet to connect to Node B
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.0/24"),
+			},
+		},
+		{
+			name: "no-route-leakage-when-no-connection-allowed-2608",
+			args: args{
+				node: &types.Node{
+					ID:   3,
+					IPv4: ap("100.123.45.99"), // Node C - isolated node
+					User: types.User{Name: "isolated-node"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("192.168.1.0/24"), // Subnet behind router
+					netip.MustParsePrefix("10.0.0.0/24"),    // Another private subnet
+					netip.MustParsePrefix("172.16.0.0/24"),  // Yet another subnet
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// Only specific subnets and routers can access specific destinations
+						SrcIPs: []string{
+							"192.168.1.0/24", // This subnet can access everything
+							"100.123.45.67",  // Router node can access everything
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.123.45.89", Ports: tailcfg.PortRangeAny}, // Only to Node B
+						},
+					},
+					{
+						// 10.0.0.0/24 can only access router
+						SrcIPs: []string{"10.0.0.0/24"},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "100.123.45.67", Ports: tailcfg.PortRangeAny}, // Only to router
+						},
+					},
+					{
+						// 172.16.0.0/24 has no access rules at all
+					},
+				},
+			},
+			// Node C should get NO routes because:
+			// - 192.168.1.0/24 can only connect to Node B (not Node C)
+			// - 10.0.0.0/24 can only connect to router (not Node C)
+			// - 172.16.0.0/24 has no rules allowing it to connect anywhere
+			// - Node C is not in any rules as a destination
+			want: nil,
+		},
+		{
+			name: "original-issue-2608-with-slash14-network",
+			args: args{
+				node: &types.Node{
+					ID:   2,
+					IPv4: ap("100.123.45.89"), // Node B - regular node
+					User: types.User{Name: "node-b"},
+				},
+				routes: []netip.Prefix{
+					netip.MustParsePrefix("192.168.1.0/14"), // Network 192.168.1.0/14 as mentioned in original issue
+				},
+				rules: []tailcfg.FilterRule{
+					{
+						// Policy allows 192.168.1.0/24 (part of /14) and group:routers to access *:*
+						SrcIPs: []string{
+							"192.168.1.0/24", // Subnet behind router (part of the larger /14 network)
+							"100.123.45.67",  // Node A (router, part of group:routers)
+						},
+						DstPorts: []tailcfg.NetPortRange{
+							{IP: "*", Ports: tailcfg.PortRangeAny}, // Access to everything
+						},
+					},
+				},
+			},
+			// Node B should receive the 192.168.1.0/14 route for return traffic
+			// even though only 192.168.1.0/24 (part of /14) can connect to Node B
+			// This is the exact scenario from the original issue
+			want: []netip.Prefix{
+				netip.MustParsePrefix("192.168.1.0/14"),
+			},
+		},
 	}
 
 	for _, tt := range tests {

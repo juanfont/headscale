@@ -70,6 +70,8 @@ upstream is changed.
   [#2741](https://github.com/juanfont/headscale/pull/2741)
 - Add support for `autogroup:member`, `autogroup:tagged`
   [#2572](https://github.com/juanfont/headscale/pull/2572)
+- Fix bug where return routes were being removed by policy
+  [#2767](https://github.com/juanfont/headscale/pull/2767)
 - Remove policy v1 code [#2600](https://github.com/juanfont/headscale/pull/2600)
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
