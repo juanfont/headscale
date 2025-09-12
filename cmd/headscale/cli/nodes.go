@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
@@ -222,8 +221,6 @@ var listNodeRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -290,8 +287,6 @@ var expireNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -312,8 +307,6 @@ var expireNodeCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response.GetNode(), "Node expired", output)
@@ -333,8 +326,6 @@ var renameNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -360,8 +351,6 @@ var renameNodeCmd = &cobra.Command{
 				),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(response.GetNode(), "Node renamed", output)
@@ -382,8 +371,6 @@ var deleteNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -401,8 +388,6 @@ var deleteNodeCmd = &cobra.Command{
 				"Error getting node node: "+status.Convert(err).Message(),
 				output,
 			)
-
-			return
 		}
 
 		deleteRequest := &v1.DeleteNodeRequest{
@@ -412,16 +397,10 @@ var deleteNodeCmd = &cobra.Command{
 		confirm := false
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			prompt := &survey.Confirm{
-				Message: fmt.Sprintf(
-					"Do you want to remove the node %s?",
-					getResponse.GetNode().GetName(),
-				),
-			}
-			err = survey.AskOne(prompt, &confirm)
-			if err != nil {
-				return
-			}
+			confirm = util.YesNo(fmt.Sprintf(
+				"Do you want to remove the node %s?",
+				getResponse.GetNode().GetName(),
+			))
 		}
 
 		if confirm || force {
@@ -437,8 +416,6 @@ var deleteNodeCmd = &cobra.Command{
 					"Error deleting node: "+status.Convert(err).Message(),
 					output,
 				)
-
-				return
 			}
 			SuccessOutput(
 				map[string]string{"Result": "Node deleted"},
@@ -465,8 +442,6 @@ var moveNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		user, err := cmd.Flags().GetUint64("user")
@@ -476,8 +451,6 @@ var moveNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error getting user: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -495,8 +468,6 @@ var moveNodeCmd = &cobra.Command{
 				"Error getting node: "+status.Convert(err).Message(),
 				output,
 			)
-
-			return
 		}
 
 		moveRequest := &v1.MoveNodeRequest{
@@ -511,8 +482,6 @@ var moveNodeCmd = &cobra.Command{
 				"Error moving node: "+status.Convert(err).Message(),
 				output,
 			)
-
-			return
 		}
 
 		SuccessOutput(moveResponse.GetNode(), "Node moved to another user", output)
@@ -535,20 +504,13 @@ If you remove IPv4 or IPv6 prefixes from the config,
 it can be run to remove the IPs that should no longer
 be assigned to nodes.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var err error
 		output, _ := cmd.Flags().GetString("output")
 
 		confirm := false
 
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			prompt := &survey.Confirm{
-				Message: "Are you sure that you want to assign/remove IPs to/from nodes?",
-			}
-			err = survey.AskOne(prompt, &confirm)
-			if err != nil {
-				return
-			}
+			confirm = util.YesNo("Are you sure that you want to assign/remove IPs to/from nodes?")
 		}
 
 		if confirm || force {
@@ -563,8 +525,6 @@ be assigned to nodes.`,
 					"Error backfilling IPs: "+status.Convert(err).Message(),
 					output,
 				)
-
-				return
 			}
 
 			SuccessOutput(changes, "Node IPs backfilled successfully", output)
@@ -763,8 +723,6 @@ var tagCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 		tagsToSet, err := cmd.Flags().GetStringSlice("tags")
 		if err != nil {
@@ -773,8 +731,6 @@ var tagCmd = &cobra.Command{
 				fmt.Sprintf("Error retrieving list of tags to add to node, %v", err),
 				output,
 			)
-
-			return
 		}
 
 		// Sending tags to node
@@ -789,8 +745,6 @@ var tagCmd = &cobra.Command{
 				fmt.Sprintf("Error while sending tags to headscale: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		if resp != nil {
@@ -820,8 +774,6 @@ var approveRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
-
-			return
 		}
 		routes, err := cmd.Flags().GetStringSlice("routes")
 		if err != nil {
@@ -830,8 +782,6 @@ var approveRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error retrieving list of routes to add to node, %v", err),
 				output,
 			)
-
-			return
 		}
 
 		// Sending routes to node
@@ -846,8 +796,6 @@ var approveRoutesCmd = &cobra.Command{
 				fmt.Sprintf("Error while sending routes to headscale: %s", err),
 				output,
 			)
-
-			return
 		}
 
 		if resp != nil {

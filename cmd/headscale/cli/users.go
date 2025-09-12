@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strconv"
 
-	survey "github.com/AlecAivazis/survey/v2"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -161,16 +161,10 @@ var destroyUserCmd = &cobra.Command{
 		confirm := false
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
-			prompt := &survey.Confirm{
-				Message: fmt.Sprintf(
-					"Do you want to remove the user %q (%d) and any associated preauthkeys?",
-					user.GetName(), user.GetId(),
-				),
-			}
-			err := survey.AskOne(prompt, &confirm)
-			if err != nil {
-				return
-			}
+			confirm = util.YesNo(fmt.Sprintf(
+				"Do you want to remove the user %q (%d) and any associated preauthkeys?",
+				user.GetName(), user.GetId(),
+			))
 		}
 
 		if confirm || force {
