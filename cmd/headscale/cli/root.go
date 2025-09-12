@@ -71,19 +71,20 @@ func initConfig() {
 
 	disableUpdateCheck := viper.GetBool("disable_check_updates")
 	if !disableUpdateCheck && !machineOutput {
+		versionInfo := types.GetVersionInfo()
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
-			types.Version != "dev" {
+			!versionInfo.Dirty {
 			githubTag := &latest.GithubTag{
 				Owner:      "juanfont",
 				Repository: "headscale",
 			}
-			res, err := latest.Check(githubTag, types.Version)
+			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
 				log.Warn().Msgf(
 					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 					res.Current,
-					types.Version,
+					versionInfo.Version,
 				)
 			}
 		}
