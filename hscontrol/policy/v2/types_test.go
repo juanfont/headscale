@@ -996,10 +996,34 @@ func TestUnmarshalPolicy(t *testing.T) {
       ]
 }
 `,
-			wantErr: `unknown field "BAD"`,
+			wantErr: `unknown field`,
 		},
 		{
-			name: "disallow-unsupported-fields-groups-level",
+			name: "invalid-group-name",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "INVALID_GROUP_FIELD": ["user@example.com"]
+  }
+}
+`,
+			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
+		},
+		{
+			name: "invalid-group-datatype",
+			input: `
+{
+  "groups": {
+    "group:test": ["user@example.com"],
+    "group:invalid": "should fail"
+  }
+}
+`,
+			wantErr: `Group "group:invalid" value must be an array of users, got string: "should fail"`,
+		},
+		{
+			name: "invalid-group-name-and-datatype-fails-on-name-first",
 			input: `
 {
   "groups": {
@@ -1008,7 +1032,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }
 }
 `,
-			wantErr: `cannot unmarshal JSON string into Go []string`,
+			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
 		},
 		{
 			name: "disallow-unsupported-fields-hosts-level",
@@ -1254,6 +1278,37 @@ func TestUnmarshalPolicy(t *testing.T) {
 }
 `,
 			wantErr: `leading 0 not permitted in protocol number "0"`,
+		},
+		{
+			name: "protocol-empty-applies-to-tcp-udp-only",
+			input: `
+{
+	"acls": [
+		{
+			"action": "accept",
+			"src": ["*"],
+			"dst": ["*:80"]
+		}
+	]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action:   "accept",
+						Protocol: "",
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: Wildcard,
+								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
+							},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "protocol-icmp-with-specific-port-not-allowed",

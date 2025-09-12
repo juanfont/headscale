@@ -994,18 +994,46 @@ func (g Groups) Contains(group *Group) error {
 // that all group names conform to the expected format, which is always prefixed
 // with "group:". If any group name is invalid, an error is returned.
 func (g *Groups) UnmarshalJSON(b []byte) error {
-	var rawGroups map[string][]string
-	if err := json.Unmarshal(b, &rawGroups, policyJSONOpts...); err != nil {
+	// First unmarshal as a generic map to validate group names first
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(b, &rawMap); err != nil {
 		return err
+	}
+
+	// Validate group names first before checking data types
+	for key := range rawMap {
+		group := Group(key)
+		if err := group.Validate(); err != nil {
+			return err
+		}
+	}
+
+	// Then validate each field can be converted to []string
+	rawGroups := make(map[string][]string)
+	for key, value := range rawMap {
+		switch v := value.(type) {
+		case []interface{}:
+			// Convert []interface{} to []string
+			var stringSlice []string
+			for _, item := range v {
+				if str, ok := item.(string); ok {
+					stringSlice = append(stringSlice, str)
+				} else {
+					return fmt.Errorf(`Group "%s" contains invalid member type, expected string but got %T`, key, item)
+				}
+			}
+			rawGroups[key] = stringSlice
+		case string:
+			return fmt.Errorf(`Group "%s" value must be an array of users, got string: "%s"`, key, v)
+		default:
+			return fmt.Errorf(`Group "%s" value must be an array of users, got %T`, key, v)
+		}
 	}
 
 	*g = make(Groups)
 	for key, value := range rawGroups {
 		group := Group(key)
-		if err := group.Validate(); err != nil {
-			return err
-		}
-
+		// Group name already validated above
 		var usernames Usernames
 
 		for _, u := range value {
@@ -1359,7 +1387,7 @@ func (p Protocol) Description() string {
 	case ProtocolFC:
 		return "Fibre Channel"
 	case ProtocolWildcard:
-		return "Wildcard (all protocols)"
+		return "Wildcard (not supported - use specific protocol)"
 	default:
 		return "Unknown Protocol"
 	}
@@ -1370,9 +1398,10 @@ func (p Protocol) Description() string {
 func (p Protocol) parseProtocol() ([]int, bool) {
 	switch p {
 	case "":
-		return nil, false
+		// Empty protocol applies to TCP and UDP traffic only
+		return []int{protocolTCP, protocolUDP}, false
 	case ProtocolWildcard:
-		// Wildcard protocol - allows all protocols like empty string
+		// Wildcard protocol - defensive handling (should not reach here due to validation)
 		return nil, false
 	case ProtocolIGMP:
 		return []int{protocolIGMP}, true
