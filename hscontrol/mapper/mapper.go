@@ -190,7 +190,6 @@ func (m *mapper) peerChangeResponse(
 	return m.NewMapResponseBuilder(nodeID).
 		WithDebugType(changeResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithSelfNode().
 		WithUserProfiles(peers).
 		WithPeerChanges(peers).
 		Build()
