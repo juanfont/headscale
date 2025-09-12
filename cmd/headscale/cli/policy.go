@@ -9,10 +9,10 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/views"
-	"tailscale.com/util/prompt"
 )
 
 const (
@@ -52,7 +52,13 @@ var getPolicy = &cobra.Command{
 		output, _ := cmd.Flags().GetString("output")
 		var policy string
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			if !prompt.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+			confirm := false
+			force, _ := cmd.Flags().GetBool("force")
+			if !force {
+				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
+			}
+
+			if !confirm && !force {
 				ErrorOutput(nil, "Aborting command", output)
 				return
 			}
@@ -60,7 +66,6 @@ var getPolicy = &cobra.Command{
 			cfg, err := types.LoadServerConfig()
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed loading config: %s", err), output)
-				return
 			}
 
 			d, err := db.NewHeadscaleDatabase(
@@ -70,13 +75,11 @@ var getPolicy = &cobra.Command{
 			)
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to open database: %s", err), output)
-				return
 			}
 
 			pol, err := d.GetPolicy()
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed loading Policy from database: %s", err), output)
-				return
 			}
 
 			policy = pol.Data
@@ -124,8 +127,20 @@ var setPolicy = &cobra.Command{
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
 		}
 
+		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
+			return
+		}
+
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			if !prompt.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+			confirm := false
+			force, _ := cmd.Flags().GetBool("force")
+			if !force {
+				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
+			}
+
+			if !confirm && !force {
 				ErrorOutput(nil, "Aborting command", output)
 				return
 			}
@@ -133,7 +148,6 @@ var setPolicy = &cobra.Command{
 			cfg, err := types.LoadServerConfig()
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed loading config: %s", err), output)
-				return
 			}
 
 			d, err := db.NewHeadscaleDatabase(
@@ -143,13 +157,11 @@ var setPolicy = &cobra.Command{
 			)
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to open database: %s", err), output)
-				return
 			}
 
 			_, err = d.SetPolicy(string(policyBytes))
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
-				return
 			}
 		} else {
 			request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
@@ -160,7 +172,6 @@ var setPolicy = &cobra.Command{
 
 			if _, err := client.SetPolicy(ctx, request); err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
-				return
 			}
 		}
 
