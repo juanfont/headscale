@@ -143,3 +143,19 @@ in their output of `tailscale status`. Traffic is still filtered according to th
 ping` which is always allowed in either direction.
 
 See also <https://tailscale.com/kb/1087/device-visibility>.
+
+## My policy is stored in the database and Headscale refuses to start due to an invalid policy. How can I recover?
+
+Headscale checks if the policy is valid during startup and refuses to start if it detects an error. The error message
+indicates which part of the policy is invalid. Follow these steps to fix your policy:
+
+- Dump the policy to a file: `headscale policy get --bypass-grpc-and-access-database-directly > policy.json`
+- Edit and fixup `policy.json`. Use the command `headscale policy check --file policy.json` to validate the policy.
+- Load the modified policy: `headscale policy set --bypass-grpc-and-access-database-directly --file policy.json`
+- Start Headscale as usual.
+
+!!! warning "Full server configuration required"
+
+    The above commands to get/set the policy require a complete server configuration file including database settings. A
+    minimal config to [control Headscale via remote CLI](../ref/remote-cli.md) is not sufficient. You may use `headscale
+    -c /path/to/config.yaml` to specify the path to an alternative configuration file.

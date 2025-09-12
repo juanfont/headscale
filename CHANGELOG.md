@@ -93,6 +93,8 @@ upstream is changed.
   groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
 - Policy will now reject invalid fields, making it easier to spot spelling errors
   [#2764](https://github.com/juanfont/headscale/pull/2764)
+- Add FAQ entry on how to recover from an invalid policy in the database
+  [#2776](https://github.com/juanfont/headscale/pull/2776)
 
 ## 0.26.1 (2025-06-06)
 
