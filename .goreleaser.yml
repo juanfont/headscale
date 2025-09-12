@@ -23,10 +23,6 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
-    ldflags:
-      - -s -w
-      - -X github.com/juanfont/headscale/hscontrol/types.Version={{ .Version }}
-      - -X github.com/juanfont/headscale/hscontrol/types.GitCommitHash={{ .Commit }}
     tags:
       - ts2019
 

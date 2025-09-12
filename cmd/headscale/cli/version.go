@@ -7,6 +7,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(versionCmd)
+	versionCmd.Flags().StringP("output", "o", "", "Output format. Empty for human-readable, 'json', 'json-line' or 'yaml'")
 }
 
 var versionCmd = &cobra.Command{
@@ -15,9 +16,9 @@ var versionCmd = &cobra.Command{
 	Long:  "The version of headscale.",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		SuccessOutput(map[string]string{
-			"version": types.Version,
-			"commit":  types.GitCommitHash,
-		}, types.Version, output)
+
+		info := types.GetVersionInfo()
+
+		SuccessOutput(info, info.String(), output)
 	},
 }
