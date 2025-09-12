@@ -28,7 +28,7 @@ func (pol *Policy) compileFilterRules(
 	var rules []tailcfg.FilterRule
 
 	for _, acl := range pol.ACLs {
-		if acl.Action != "accept" {
+		if acl.Action != ActionAccept {
 			return nil, ErrInvalidAction
 		}
 
@@ -41,12 +41,7 @@ func (pol *Policy) compileFilterRules(
 			continue
 		}
 
-		// TODO(kradalby): integrate type into schema
-		// TODO(kradalby): figure out the _ is wildcard stuff
-		protocols, _, err := parseProtocol(acl.Protocol)
-		if err != nil {
-			return nil, fmt.Errorf("parsing policy, protocol err: %w ", err)
-		}
+		protocols, _ := acl.Protocol.parseProtocol()
 
 		var destPorts []tailcfg.NetPortRange
 		for _, dest := range acl.Destinations {
@@ -132,9 +127,9 @@ func (pol *Policy) compileSSHPolicy(
 
 		var action tailcfg.SSHAction
 		switch rule.Action {
-		case "accept":
+		case SSHActionAccept:
 			action = sshAction(true, 0)
-		case "check":
+		case SSHActionCheck:
 			action = sshAction(true, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)

@@ -1885,7 +1885,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			policyFilePath,
 		},
 	)
-	assert.ErrorContains(t, err, "compiling filter rules: invalid action")
+	assert.ErrorContains(t, err, `invalid action "unknown-action"`)
 
 	// The new policy was invalid, the old one should still be in place, which
 	// is none.

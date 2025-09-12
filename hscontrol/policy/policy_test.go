@@ -222,6 +222,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 				{
 					SrcIPs: []string{
@@ -236,6 +237,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -371,10 +373,12 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 				{
 					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: hsExitNodeDestForTest,
+					IPProto:  []int{6, 17},
 				},
 			},
 		},
@@ -478,6 +482,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -513,6 +518,7 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
+					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -588,6 +594,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -601,6 +608,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -676,6 +684,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -689,6 +698,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -756,6 +766,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
+					IPProto: []int{6, 17},
 				},
 			},
 		},
@@ -1736,7 +1747,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `SSH action "invalid" is not valid, must be accept or check`,
+			errorMessage: `invalid SSH action "invalid", must be one of: accept, check`,
 		},
 		{
 			name:       "invalid-check-period",
