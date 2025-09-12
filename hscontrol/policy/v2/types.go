@@ -20,6 +20,7 @@ import (
 	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
+	"tailscale.com/util/slicesx"
 )
 
 const Wildcard = Asterix(0)
@@ -504,6 +505,10 @@ func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	}
 
 	return nil
+}
+
+func (ag AutoGroup) String() string {
+	return string(ag)
 }
 
 // MarshalJSON marshals the AutoGroup to JSON.
@@ -1562,7 +1567,7 @@ type SSH struct {
 	Action       string         `json:"action"`
 	Sources      SSHSrcAliases  `json:"src"`
 	Destinations SSHDstAliases  `json:"dst"`
-	Users        []SSHUser      `json:"users"`
+	Users        SSHUsers       `json:"users"`
 	CheckPeriod  model.Duration `json:"checkPeriod,omitempty"`
 }
 
@@ -1714,6 +1719,22 @@ func (a SSHSrcAliases) Resolve(p *Policy, users types.Users, nodes views.Slice[t
 // SSHDstAliases is a list of aliases that can be used as destinations in an SSH rule.
 // It can be a list of usernames, tags or autogroups.
 type SSHDstAliases []Alias
+
+type SSHUsers []SSHUser
+
+func (u SSHUsers) ContainsRoot() bool {
+	return slices.Contains(u, "root")
+}
+
+func (u SSHUsers) ContainsNonRoot() bool {
+	return slices.Contains(u, SSHUser(AutoGroupNonRoot))
+}
+
+func (u SSHUsers) NormalUsers() []SSHUser {
+	return slicesx.Filter(nil, u, func(user SSHUser) bool {
+		return user != "root" && user != SSHUser(AutoGroupNonRoot)
+	})
+}
 
 type SSHUser string
 

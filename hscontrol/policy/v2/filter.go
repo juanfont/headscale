@@ -89,11 +89,12 @@ func (pol *Policy) compileFilterRules(
 
 func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 	return tailcfg.SSHAction{
-		Reject:                   !accept,
-		Accept:                   accept,
-		SessionDuration:          duration,
-		AllowAgentForwarding:     true,
-		AllowLocalPortForwarding: true,
+		Reject:                    !accept,
+		Accept:                    accept,
+		SessionDuration:           duration,
+		AllowAgentForwarding:      true,
+		AllowLocalPortForwarding:  true,
+		AllowRemotePortForwarding: true,
 	}
 }
 
@@ -153,8 +154,17 @@ func (pol *Policy) compileSSHPolicy(
 		}
 
 		userMap := make(map[string]string, len(rule.Users))
-		for _, user := range rule.Users {
-			userMap[user.String()] = "="
+		if rule.Users.ContainsNonRoot() {
+			userMap["*"] = "="
+
+			// by default, we do not allow root unless explicitly stated
+			userMap["root"] = ""
+		}
+		if rule.Users.ContainsRoot() {
+			userMap["root"] = "root"
+		}
+		for _, u := range rule.Users.NormalUsers() {
+			userMap[u.String()] = u.String()
 		}
 		rules = append(rules, &tailcfg.SSHRule{
 			Principals: principals,
