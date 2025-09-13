@@ -158,6 +158,26 @@ func (m *mapper) fullMapResponse(
 		Build()
 }
 
+func (m *mapper) selfMapResponse(
+	nodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+) (*tailcfg.MapResponse, error) {
+	ma, err := m.NewMapResponseBuilder(nodeID).
+		WithDebugType(selfResponseDebug).
+		WithCapabilityVersion(capVer).
+		WithSelfNode().
+		Build()
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the peers to nil, to ensure the node does not think
+	// its getting a new list.
+	ma.Peers = nil
+
+	return ma, err
+}
+
 func (m *mapper) derpMapResponse(
 	nodeID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
@@ -190,7 +210,6 @@ func (m *mapper) peerChangeResponse(
 	return m.NewMapResponseBuilder(nodeID).
 		WithDebugType(changeResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithSelfNode().
 		WithUserProfiles(peers).
 		WithPeerChanges(peers).
 		Build()

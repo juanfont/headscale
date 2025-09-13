@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
-	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
 )
@@ -492,41 +490,6 @@ func EnsureUniqueGivenName(
 	}
 
 	return givenName, nil
-}
-
-// ExpireExpiredNodes checks for nodes that have expired since the last check
-// and returns a time to be used for the next check, a StateUpdate
-// containing the expired nodes, and a boolean indicating if any nodes were found.
-func ExpireExpiredNodes(tx *gorm.DB,
-	lastCheck time.Time,
-) (time.Time, []change.ChangeSet, bool) {
-	// use the time of the start of the function to ensure we
-	// dont miss some nodes by returning it _after_ we have
-	// checked everything.
-	started := time.Now()
-
-	expired := make([]*tailcfg.PeerChange, 0)
-	var updates []change.ChangeSet
-
-	nodes, err := ListNodes(tx)
-	if err != nil {
-		return time.Unix(0, 0), nil, false
-	}
-	for _, node := range nodes {
-		if node.IsExpired() && node.Expiry.After(lastCheck) {
-			expired = append(expired, &tailcfg.PeerChange{
-				NodeID:    tailcfg.NodeID(node.ID),
-				KeyExpiry: node.Expiry,
-			})
-			updates = append(updates, change.KeyExpiry(node.ID))
-		}
-	}
-
-	if len(expired) > 0 {
-		return started, updates, true
-	}
-
-	return started, nil, false
 }
 
 // EphemeralGarbageCollector is a garbage collector that will delete nodes after

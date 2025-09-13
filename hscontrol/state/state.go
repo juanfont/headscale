@@ -650,7 +650,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 	}
 
 	if !c.IsFull() {
-		c = change.KeyExpiry(nodeID)
+		c = change.KeyExpiry(nodeID, expiry)
 	}
 
 	return n, c, nil
@@ -898,7 +898,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 		// Why check After(lastCheck): We only want to notify about nodes that
 		// expired since the last check to avoid duplicate notifications
 		if node.IsExpired() && node.Expiry().Valid() && node.Expiry().Get().After(lastCheck) {
-			updates = append(updates, change.KeyExpiry(node.ID()))
+			updates = append(updates, change.KeyExpiry(node.ID(), node.Expiry().Get()))
 		}
 	}
 
@@ -1118,7 +1118,11 @@ func (s *State) HandleNodeFromAuthPath(
 		// Get updated node from NodeStore
 		updatedNode, _ := s.nodeStore.GetNode(existingNodeView.ID())
 
-		return updatedNode, change.KeyExpiry(existingNodeView.ID()), nil
+		if expiry != nil {
+			return updatedNode, change.KeyExpiry(existingNodeView.ID(), *expiry), nil
+		}
+
+		return updatedNode, change.FullSet, nil
 	}
 
 	// New node registration
