@@ -1,7 +1,7 @@
 # DNS
 
 Headscale supports [most DNS features](../about/features.md) from Tailscale. DNS related settings can be configured
-within `dns` section of the [configuration file](./configuration.md).
+within the `dns` section of the [configuration file](./configuration.md).
 
 ## Setting extra DNS records
 
