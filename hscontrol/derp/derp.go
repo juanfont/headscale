@@ -17,7 +17,6 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
 )
 
@@ -32,7 +31,7 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = yaml.Unmarshal(b, &derpMap)
+	err = json.Unmarshal(b, &derpMap)
 
 	return &derpMap, err
 }
