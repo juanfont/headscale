@@ -1028,7 +1028,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 
 			// Add multiple changes rapidly to test batching
 			batcher.AddWork(change.DERPSet)
-			batcher.AddWork(change.KeyExpiry(testNodes[1].n.ID))
+			batcher.AddWork(change.KeyExpiry(testNodes[1].n.ID, *testNodes[1].n.Expiry))
 			batcher.AddWork(change.DERPSet)
 			batcher.AddWork(change.NodeAdded(testNodes[1].n.ID))
 			batcher.AddWork(change.DERPSet)
@@ -1278,7 +1278,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 
 					// Add node-specific work occasionally
 					if i%10 == 0 {
-						batcher.AddWork(change.KeyExpiry(testNode.n.ID))
+						batcher.AddWork(change.KeyExpiry(testNode.n.ID, *testNode.n.Expiry))
 					}
 
 					// Rapid removal creates race between worker and removal
@@ -1493,7 +1493,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 					if i%7 == 0 && len(allNodes) > 0 {
 						// Node-specific changes using real nodes
 						node := allNodes[i%len(allNodes)]
-						batcher.AddWork(change.KeyExpiry(node.n.ID))
+						batcher.AddWork(change.KeyExpiry(node.n.ID, *node.n.Expiry))
 					}
 
 					// Small delay to allow some batching

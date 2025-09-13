@@ -113,6 +113,21 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 	case change.NodeRemove:
 		mapResp, err = mapper.peerRemovedResponse(nodeID, c.NodeID)
 
+	case change.NodeKeyExpiry:
+		// If the node is the one whose key is expiring, we send a "full" self update
+		// as nodes will ignore patch updates about themselves (?).
+		if nodeID == c.NodeID {
+			mapResp, err = mapper.selfMapResponse(nodeID, version)
+			// mapResp, err = mapper.fullMapResponse(nodeID, version)
+		} else {
+			mapResp, err = mapper.peerChangedPatchResponse(nodeID, []*tailcfg.PeerChange{
+				{
+					NodeID:    c.NodeID.NodeID(),
+					KeyExpiry: c.NodeExpiry,
+				},
+			})
+		}
+
 	default:
 		// The following will always hit this:
 		// change.Full, change.Policy

@@ -28,6 +28,7 @@ type debugType string
 
 const (
 	fullResponseDebug   debugType = "full"
+	selfResponseDebug   debugType = "self"
 	patchResponseDebug  debugType = "patch"
 	removeResponseDebug debugType = "remove"
 	changeResponseDebug debugType = "change"
