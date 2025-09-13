@@ -3,6 +3,7 @@ package change
 
 import (
 	"errors"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 )
@@ -68,6 +69,9 @@ type ChangeSet struct {
 
 	// IsSubnetRouter indicates whether the node is a subnet router.
 	IsSubnetRouter bool
+
+	// NodeExpiry is set if the change is NodeKeyExpiry.
+	NodeExpiry *time.Time
 }
 
 func (c *ChangeSet) Validate() error {
@@ -179,10 +183,11 @@ func NodeOffline(id types.NodeID) ChangeSet {
 	}
 }
 
-func KeyExpiry(id types.NodeID) ChangeSet {
+func KeyExpiry(id types.NodeID, expiry time.Time) ChangeSet {
 	return ChangeSet{
-		Change: NodeKeyExpiry,
-		NodeID: id,
+		Change:     NodeKeyExpiry,
+		NodeID:     id,
+		NodeExpiry: &expiry,
 	}
 }
 
