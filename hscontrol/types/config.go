@@ -235,6 +235,8 @@ type Tuning struct {
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
 	BatcherWorkers                 int
+	RegisterCacheCleanup           time.Duration
+	RegisterCacheExpiration        time.Duration
 }
 
 func validatePKCEMethod(method string) error {
@@ -1002,6 +1004,8 @@ func LoadServerConfig() (*Config, error) {
 				}
 				return DefaultBatcherWorkers()
 			}(),
+			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
+			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
 		},
 	}, nil
 }
