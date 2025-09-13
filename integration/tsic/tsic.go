@@ -1333,3 +1333,69 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 
 	return &p.Persist.PrivateNodeKey, nil
 }
+
+func (t *TailscaleInContainer) SetNodePrivateKey(privateKey key.NodePrivate) error {
+	state, err := t.ReadFile(paths.DefaultTailscaledStateFile())
+	if err != nil {
+		return fmt.Errorf("failed to read state file: %w", err)
+	}
+	store := &mem.Store{}
+	if err = store.LoadFromJSON(state); err != nil {
+		return fmt.Errorf("failed to unmarshal state file: %w", err)
+	}
+
+	currentProfileKey, err := store.ReadState(ipn.CurrentProfileStateKey)
+	if err != nil {
+		return fmt.Errorf("failed to read current profile state key: %w", err)
+	}
+	currentProfile, err := store.ReadState(ipn.StateKey(currentProfileKey))
+	if err != nil {
+		return fmt.Errorf("failed to read current profile state: %w", err)
+	}
+
+	p := &ipn.Prefs{}
+	if err = json.Unmarshal(currentProfile, &p); err != nil {
+		return fmt.Errorf("failed to unmarshal current profile state: %w", err)
+	}
+
+	// Update the private node key
+	p.Persist.PrivateNodeKey = privateKey
+
+	// Marshal the updated preferences back to JSON
+	updatedProfile, err := json.Marshal(p)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated profile state: %w", err)
+	}
+
+	// Write the updated profile back to the store
+	if err = store.WriteState(ipn.StateKey(currentProfileKey), updatedProfile); err != nil {
+		return fmt.Errorf("failed to write updated profile state: %w", err)
+	}
+
+	// Save the updated store back to the state file
+	updatedState, err := store.ExportToJSON()
+	if err != nil {
+		return fmt.Errorf("failed to export updated state: %w", err)
+	}
+
+	if err = t.WriteFile(paths.DefaultTailscaledStateFile(), updatedState); err != nil {
+		return fmt.Errorf("failed to write updated state file: %w", err)
+	}
+
+	return nil
+}
+
+func (t *TailscaleInContainer) ReloadTailscaled() error {
+	command := []string{
+		"kill",
+		"-HUP",
+		"1",
+	}
+
+	_, _, err := t.Execute(command)
+	if err != nil {
+		return fmt.Errorf("failed to reload tailscaled: %w", err)
+	}
+
+	return nil
+}
