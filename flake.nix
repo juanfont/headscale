@@ -97,9 +97,10 @@
         #   buildGoModule = buildGo;
         # };
 
-        goreleaser = prev.goreleaser.override {
-          buildGoModule = buildGo;
-        };
+        # The package uses buildGo125Module, not the convention.
+        # goreleaser = prev.goreleaser.override {
+        #   buildGoModule = buildGo;
+        # };
 
         gotestsum = prev.gotestsum.override {
           buildGoModule = buildGo;
