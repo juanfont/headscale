@@ -130,6 +130,11 @@ func RemoveUpdatesForSelf(id types.NodeID, cs []ChangeSet) (ret []ChangeSet) {
 	return ret
 }
 
+// IsSelfUpdate reports whether this ChangeSet represents an update to the given node itself.
+func (c ChangeSet) IsSelfUpdate(nodeID types.NodeID) bool {
+	return c.NodeID == nodeID
+}
+
 func (c ChangeSet) AlsoSelf() bool {
 	// If NodeID is 0, it means this ChangeSet is not related to a specific node,
 	// so we consider it as a change that should be sent to all nodes.

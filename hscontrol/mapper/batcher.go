@@ -108,7 +108,13 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		}
 
 	case change.NodeNewOrUpdate:
-		mapResp, err = mapper.peerChangeResponse(nodeID, version, c.NodeID)
+		// If the node is the one being updated, we send a "full" self update
+		// to ensure the node sees changes to its own properties (e.g., hostname/DNS name changes)
+		if c.IsSelfUpdate(nodeID) {
+			mapResp, err = mapper.selfMapResponse(nodeID, version)
+		} else {
+			mapResp, err = mapper.peerChangeResponse(nodeID, version, c.NodeID)
+		}
 
 	case change.NodeRemove:
 		mapResp, err = mapper.peerRemovedResponse(nodeID, c.NodeID)
@@ -116,7 +122,7 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 	case change.NodeKeyExpiry:
 		// If the node is the one whose key is expiring, we send a "full" self update
 		// as nodes will ignore patch updates about themselves (?).
-		if nodeID == c.NodeID {
+		if c.IsSelfUpdate(nodeID) {
 			mapResp, err = mapper.selfMapResponse(nodeID, version)
 			// mapResp, err = mapper.fullMapResponse(nodeID, version)
 		} else {
