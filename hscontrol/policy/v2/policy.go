@@ -3,7 +3,6 @@ package v2
 import (
 	"encoding/json"
 	"fmt"
-	"maps"
 	"net/netip"
 	"slices"
 	"strings"
@@ -37,7 +36,6 @@ type PolicyManager struct {
 	autoApproveMapHash deephash.Sum
 	autoApproveMap     map[netip.Prefix]*netipx.IPSet
 
-	sshPolicyHash deephash.Sum
 	// Lazy map of SSH policies
 	sshPolicyMap map[types.NodeID]*tailcfg.SSHPolicy
 }
@@ -69,9 +67,11 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// Save current SSH policy map for comparison
-	oldSSHPolicyMap := make(map[types.NodeID]*tailcfg.SSHPolicy)
-	maps.Copy(oldSSHPolicyMap, pm.sshPolicyMap)
+	// Clear the SSH policy map to ensure it's recalculated with the new policy.
+	// TODO(kradalby): This could potentially be optimized by only clearing the
+	// policies for nodes that have changed. Particularly if the only difference is
+	// that nodes has been added or removed.
+	clear(pm.sshPolicyMap)
 
 	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
 	if err != nil {
@@ -144,45 +144,8 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.exitSet = exitSet
 	pm.exitSetHash = exitSetHash
 
-	// Check if SSH policy compilation results have changed by computing
-	// SSH policies for all nodes and comparing their hash
-	var sshPolicyChanged bool
-	if len(pm.pol.SSHs) > 0 {
-		newSSHPolicies := make(map[types.NodeID]*tailcfg.SSHPolicy)
-		for i := 0; i < pm.nodes.Len(); i++ {
-			node := pm.nodes.At(i)
-			sshPol, err := pm.pol.compileSSHPolicy(pm.users, node, pm.nodes)
-			if err != nil {
-				// If compilation fails, store nil policy
-				newSSHPolicies[node.ID()] = nil
-			} else {
-				newSSHPolicies[node.ID()] = sshPol
-			}
-		}
-
-		sshPolicyHash := deephash.Hash(&newSSHPolicies)
-		sshPolicyChanged = sshPolicyHash != pm.sshPolicyHash
-		if sshPolicyChanged {
-			log.Debug().
-				Str("sshPolicy.hash.old", pm.sshPolicyHash.String()[:8]).
-				Str("sshPolicy.hash.new", sshPolicyHash.String()[:8]).
-				Msg("SSH policy hash changed")
-			// Clear and update the SSH policy map with the newly computed policies
-			clear(pm.sshPolicyMap)
-			pm.sshPolicyMap = newSSHPolicies
-		}
-		pm.sshPolicyHash = sshPolicyHash
-	} else {
-		// If no SSH policy is defined, clear the map if it's not already empty
-		if len(pm.sshPolicyMap) > 0 {
-			sshPolicyChanged = true
-			clear(pm.sshPolicyMap)
-			pm.sshPolicyHash = deephash.Sum{}
-		}
-	}
-
-	// If none of the calculated values changed, no need to update nodes
-	if !filterChanged && !tagOwnerChanged && !autoApproveChanged && !exitSetChanged && !sshPolicyChanged {
+	// If neither of the calculated values changed, no need to update nodes
+	if !filterChanged && !tagOwnerChanged && !autoApproveChanged && !exitSetChanged {
 		log.Trace().
 			Msg("Policy evaluation detected no changes - all hashes match")
 		return false, nil
@@ -193,7 +156,6 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		Bool("tagOwners.changed", tagOwnerChanged).
 		Bool("autoApprovers.changed", autoApproveChanged).
 		Bool("exitNodes.changed", exitSetChanged).
-		Bool("sshPolicy.changed", sshPolicyChanged).
 		Msg("Policy changes require node updates")
 
 	return true, nil
@@ -266,7 +228,23 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	defer pm.mu.Unlock()
 	pm.users = users
 
-	return pm.updateLocked()
+	// Clear SSH policy map when users change to force SSH policy recomputation
+	// This ensures that if SSH policy compilation previously failed due to missing users,
+	// it will be retried with the new user list
+	clear(pm.sshPolicyMap)
+
+	changed, err := pm.updateLocked()
+	if err != nil {
+		return false, err
+	}
+
+	// If SSH policies exist, force a policy change when users are updated
+	// This ensures nodes get updated SSH policies even if other policy hashes didn't change
+	if pm.pol != nil && pm.pol.SSHs != nil && len(pm.pol.SSHs) > 0 {
+		return true, nil
+	}
+
+	return changed, nil
 }
 
 // SetNodes updates the nodes in the policy manager and updates the filter rules.
