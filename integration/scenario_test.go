@@ -5,6 +5,7 @@ import (
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/stretchr/testify/require"
 )
 
 // This file is intended to "test the test framework", by proxy it will also test
@@ -34,7 +35,7 @@ func TestHeadscale(t *testing.T) {
 	user := "test-space"
 
 	scenario, err := NewScenario(ScenarioSpec{})
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
@@ -82,7 +83,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	count := 1
 
 	scenario, err := NewScenario(ScenarioSpec{})
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
