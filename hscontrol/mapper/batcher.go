@@ -88,16 +88,9 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 			// TODO(kradalby): This can potentially be a peer update of the old and new subnet router.
 			mapResp, err = mapper.fullMapResponse(nodeID, version)
 		} else {
-			// CRITICAL FIX: Read actual online status from NodeStore when available,
-			// fall back to deriving from change type for unit tests or when NodeStore is empty
-			var onlineStatus bool
-			if node, found := mapper.state.GetNodeByID(c.NodeID); found && node.IsOnline().Valid() {
-				// Use actual NodeStore status when available (production case)
-				onlineStatus = node.IsOnline().Get()
-			} else {
-				// Fall back to deriving from change type (unit test case or initial setup)
-				onlineStatus = c.Change == change.NodeCameOnline
-			}
+			// Trust the change type for online/offline status to avoid race conditions
+			// between NodeStore updates and change processing
+			onlineStatus := c.Change == change.NodeCameOnline
 
 			mapResp, err = mapper.peerChangedPatchResponse(nodeID, []*tailcfg.PeerChange{
 				{
@@ -108,8 +101,9 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		}
 
 	case change.NodeNewOrUpdate:
-		// If the node is the one being updated, we send a "full" self update
+		// If the node is the one being updated, we send a self update that preserves peer information
 		// to ensure the node sees changes to its own properties (e.g., hostname/DNS name changes)
+		// without losing its view of peer status during rapid reconnection cycles
 		if c.IsSelfUpdate(nodeID) {
 			mapResp, err = mapper.selfMapResponse(nodeID, version)
 		} else {
