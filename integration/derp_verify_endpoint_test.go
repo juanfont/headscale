@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/derp"
 	"tailscale.com/derp/derphttp"
 	"tailscale.com/net/netmon"
@@ -23,7 +24,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 
 	// Generate random hostname for the headscale instance
 	hash, err := util.GenerateRandomStringDNSSafe(6)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	testName := "derpverify"
 	hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 
@@ -31,7 +32,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 
 	// Create cert for headscale
 	certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	spec := ScenarioSpec{
 		NodesPerUser: len(MustTestVersions),
@@ -39,14 +40,14 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	derper, err := scenario.CreateDERPServer("head",
 		dsic.WithCACert(certHeadscale),
 		dsic.WithVerifyClientURL(fmt.Sprintf("https://%s/verify", net.JoinHostPort(hostname, strconv.Itoa(headscalePort)))),
 	)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	derpRegion := tailcfg.DERPRegion{
 		RegionCode: "test-derpverify",
@@ -74,17 +75,17 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		hsic.WithPort(headscalePort),
 		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
 		hsic.WithDERPConfig(derpMap))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	fakeKey := key.NewNode()
 	DERPVerify(t, fakeKey, derpRegion, false)
 
 	for _, client := range allClients {
 		nodeKey, err := client.GetNodePrivateKey()
-		assertNoErr(t, err)
+		require.NoError(t, err)
 		DERPVerify(t, *nodeKey, derpRegion, true)
 	}
 }

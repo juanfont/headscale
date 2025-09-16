@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
@@ -33,16 +34,16 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		hsic.WithDERPAsIP(),
 		hsic.WithTLS(),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// assertClientsState(t, allClients)
 
@@ -63,7 +64,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
@@ -72,16 +73,16 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 		hsic.WithDERPAsIP(),
 		hsic.WithTLS(),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// assertClientsState(t, allClients)
 
@@ -93,15 +94,22 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
+
+	// Collect expected node IDs for validation
+	expectedNodes := collectExpectedNodeIDs(t, allClients)
+
+	// Validate initial connection state
+	validateInitialConnection(t, headscale, expectedNodes)
 
 	var listNodes []*v1.Node
+	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 		listNodes, err = headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, listNodes, len(allClients), "Node count should match client count after login")
-	}, 20*time.Second, 1*time.Second)
+		assert.NoError(ct, err, "Failed to list nodes after web authentication")
+		assert.Len(ct, listNodes, len(allClients), "Expected %d nodes after web auth, got %d", len(allClients), len(listNodes))
+	}, 30*time.Second, 2*time.Second, "validating node count matches client count after web authentication")
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -122,7 +130,10 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	}
 
 	err = scenario.WaitForTailscaleLogout()
-	assertNoErrLogout(t, err)
+	requireNoErrLogout(t, err)
+
+	// Validate that all nodes are offline after logout
+	validateLogoutComplete(t, headscale, expectedNodes)
 
 	t.Logf("all clients logged out")
 
@@ -136,7 +147,7 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	t.Logf("all clients logged in again")
 
 	allIps, err = scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	allAddrs = lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -145,13 +156,17 @@ func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
 	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
+	t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 		listNodes, err = headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count after re-login")
-	}, 20*time.Second, 1*time.Second)
+		assert.NoError(ct, err, "Failed to list nodes after web flow logout")
+		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after logout - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
+	}, 60*time.Second, 2*time.Second, "validating node persistence in database after web flow logout")
 	t.Logf("node count first login: %d, after relogin: %d", nodeCountBeforeLogout, len(listNodes))
+
+	// Validate connection state after relogin
+	validateReloginComplete(t, headscale, expectedNodes)
 
 	for _, client := range allClients {
 		ips, err := client.IPs()

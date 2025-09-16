@@ -60,8 +60,8 @@ type DebugStringInfo struct {
 
 // DebugOverview returns a comprehensive overview of the current state for debugging.
 func (s *State) DebugOverview() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	allNodes := s.nodeStore.ListNodes()
 	users, _ := s.ListAllUsers()
@@ -265,14 +265,14 @@ func (s *State) DebugPolicyManager() string {
 
 // PolicyDebugString returns a debug representation of the current policy.
 func (s *State) PolicyDebugString() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	return s.polMan.DebugString()
 }
 
 // DebugOverviewJSON returns a structured overview of the current state for debugging.
 func (s *State) DebugOverviewJSON() DebugOverviewInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	allNodes := s.nodeStore.ListNodes()
 	users, _ := s.ListAllUsers()
 

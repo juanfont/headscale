@@ -50,6 +50,7 @@ var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 type State struct {
 	// mu protects all in-memory data structures from concurrent access
 	mu deadlock.RWMutex
+
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
@@ -211,6 +212,9 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
 func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	pol, err := policyBytes(s.db, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
