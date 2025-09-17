@@ -28,6 +28,7 @@ type debugType string
 
 const (
 	fullResponseDebug   debugType = "full"
+	selfResponseDebug   debugType = "self"
 	patchResponseDebug  debugType = "patch"
 	removeResponseDebug debugType = "remove"
 	changeResponseDebug debugType = "change"
@@ -68,24 +69,17 @@ func (b *MapResponseBuilder) WithCapabilityVersion(capVer tailcfg.CapabilityVers
 
 // WithSelfNode adds the requesting node to the response.
 func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
-	nodeView, ok := b.mapper.state.GetNodeByID(b.nodeID)
+	nv, ok := b.mapper.state.GetNodeByID(b.nodeID)
 	if !ok {
 		b.addError(errors.New("node not found"))
 		return b
 	}
 
-	// Always use batcher's view of online status for self node
-	// The batcher respects grace periods for logout scenarios
-	node := nodeView.AsStruct()
-	// if b.mapper.batcher != nil {
-	// 	node.IsOnline = ptr.To(b.mapper.batcher.IsConnected(b.nodeID))
-	// }
-
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(
-		node.View(), b.capVer, b.mapper.state,
+		nv, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node.View(), b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
 		b.mapper.cfg)
 	if err != nil {
