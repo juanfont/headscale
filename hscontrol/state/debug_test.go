@@ -33,8 +33,8 @@ func TestNodeStoreDebugString(t *testing.T) {
 				store := NewNodeStore(nil, allowAllPeersFunc)
 				store.Start()
 
-				store.PutNode(node1)
-				store.PutNode(node2)
+				_ = store.PutNode(node1)
+				_ = store.PutNode(node2)
 
 				return store
 			},
