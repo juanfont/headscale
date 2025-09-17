@@ -228,7 +228,23 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	defer pm.mu.Unlock()
 	pm.users = users
 
-	return pm.updateLocked()
+	// Clear SSH policy map when users change to force SSH policy recomputation
+	// This ensures that if SSH policy compilation previously failed due to missing users,
+	// it will be retried with the new user list
+	clear(pm.sshPolicyMap)
+
+	changed, err := pm.updateLocked()
+	if err != nil {
+		return false, err
+	}
+
+	// If SSH policies exist, force a policy change when users are updated
+	// This ensures nodes get updated SSH policies even if other policy hashes didn't change
+	if pm.pol != nil && pm.pol.SSHs != nil && len(pm.pol.SSHs) > 0 {
+		return true, nil
+	}
+
+	return changed, nil
 }
 
 // SetNodes updates the nodes in the policy manager and updates the filter rules.
