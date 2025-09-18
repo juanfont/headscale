@@ -412,6 +412,59 @@ func (api headscaleV1APIServer) DeleteNode(
 	return &v1.DeleteNodeResponse{}, nil
 }
 
+func (api headscaleV1APIServer) ExtendNodeExpiration(
+	ctx context.Context,
+	request *v1.ExtendNodeExpirationRequest,
+) (*v1.ExtendNodeExpirationResponse, error) {
+	// Extract the new_expiration field as a Go time.Time value
+	newExpiry := request.GetNewExpiration().AsTime()
+
+	// Validate the provided expiration timestamp
+	now := time.Now()
+	if newExpiry.Before(now) {
+		return nil, status.Error(codes.InvalidArgument, "new expiration time must be in the future")
+	}
+	
+	// Prevent setting extremely distant expiration dates (max 2 years from now)
+	maxExpiry := now.AddDate(2, 0, 0)
+	if newExpiry.After(maxExpiry) {
+		return nil, status.Error(codes.InvalidArgument, "new expiration time cannot be more than 2 years in the future")
+	}
+
+	// Update the node's expiration timestamp
+	node, policyChanged, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), newExpiry)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Send policy update notifications if needed
+	if policyChanged {
+		ctx := types.NotifyCtx(context.Background(), "grpc-node-expiry-extended", node.Hostname)
+		api.h.nodeNotifier.NotifyAll(ctx, types.UpdateFull())
+	}
+
+	// Notify self about the update
+	ctx = types.NotifyCtx(ctx, "cli-extendnodeexpiration-self", node.Hostname)
+	api.h.nodeNotifier.NotifyByNodeID(
+		ctx,
+		types.UpdateSelf(node.ID),
+		node.ID,
+	)
+
+	// Notify other peers about the updated expiration
+	ctx = types.NotifyCtx(ctx, "cli-extendnodeexpiration-peers", node.Hostname)
+	api.h.nodeNotifier.NotifyWithIgnore(ctx, types.UpdateExpire(node.ID, newExpiry), node.ID)
+
+	// Log the updated expiration
+	log.Trace().
+		Str("node", node.Hostname).
+		Time("new_expiry", newExpiry).
+		Msg("node expiration updated successfully")
+
+	// Return the updated node in the response
+	return &v1.ExtendNodeExpirationResponse{Node: node.Proto()}, nil
+}
+
 func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
