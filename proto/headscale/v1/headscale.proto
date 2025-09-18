@@ -182,6 +182,14 @@ service HeadscaleService {
   }
   // --- Policy end ---
 
+  // --- Health start ---
+  rpc Health(HealthRequest) returns (HealthResponse) {
+    option (google.api.http) = {
+      get : "/api/v1/health"
+    };
+  }
+  // --- Health end ---
+
   // Implement Tailscale API
   // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
   //     option(google.api.http) = {
@@ -208,4 +216,10 @@ service HeadscaleService {
   //         post : "/api/v1/device/{id}/routes"
   //     };
   // }
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool database_connectivity = 1;
 }
