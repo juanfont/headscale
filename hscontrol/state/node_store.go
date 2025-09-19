@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	batchSize    = 10
+	batchSize    = 100
 	batchTimeout = 500 * time.Millisecond
 )
 
