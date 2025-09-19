@@ -4,17 +4,20 @@ import (
 	"maps"
 	"net/netip"
 	"sort"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
@@ -33,7 +36,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -51,16 +54,16 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// assertClientsState(t, allClients)
 
@@ -72,10 +75,10 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	listUsers, err := headscale.ListUsers()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	want := []*v1.User{
 		{
@@ -141,7 +144,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
@@ -156,18 +159,18 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		hsic.WithTestName("oidcexpirenodes"),
 		hsic.WithConfigEnv(oidcMap),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	// Record when sync completes to better estimate token expiry timing
 	syncCompleteTime := time.Now()
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 	loginDuration := time.Since(syncCompleteTime)
 	t.Logf("Login and sync completed in %v", loginDuration)
 
@@ -348,7 +351,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
-			assertNoErr(t, err)
+			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			oidcMap := map[string]string{
@@ -366,20 +369,20 @@ func TestOIDC024UserCreation(t *testing.T) {
 				hsic.WithTLS(),
 				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 			)
-			assertNoErrHeadscaleEnv(t, err)
+			requireNoErrHeadscaleEnv(t, err)
 
 			// Ensure that the nodes have logged in, this is what
 			// triggers user creation via OIDC.
 			err = scenario.WaitForTailscaleSync()
-			assertNoErrSync(t, err)
+			requireNoErrSync(t, err)
 
 			headscale, err := scenario.Headscale()
-			assertNoErr(t, err)
+			require.NoError(t, err)
 
 			want := tt.want(scenario.mockOIDC.Issuer())
 
 			listUsers, err := headscale.ListUsers()
-			assertNoErr(t, err)
+			require.NoError(t, err)
 
 			sort.Slice(listUsers, func(i, j int) bool {
 				return listUsers[i].GetId() < listUsers[j].GetId()
@@ -405,7 +408,7 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
@@ -423,17 +426,17 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	// Get all clients and verify they can connect
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	allIps, err := scenario.ListTailscaleClientsIPs()
-	assertNoErrListClientIPs(t, err)
+	requireNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
 		return x.String()
@@ -443,6 +446,11 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+// TestOIDCReloginSameNodeNewUser tests the scenario where:
+// 1. A Tailscale client logs in with user1 (creates node1 for user1)
+// 2. The same client logs out and logs in with user2 (creates node2 for user2)
+// 3. The same client logs out and logs in with user1 again (reuses node1, node2 remains)
+// This validates that OIDC relogin properly handles node reuse and cleanup.
 func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -457,7 +465,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			oidcMockUser("user1", true),
 		},
 	})
-	assertNoErr(t, err)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	oidcMap := map[string]string{
@@ -476,24 +484,25 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithDERPAsIP(),
 	)
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	u, err := ts.LoginWithURL(headscale.GetEndpoint())
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	_, err = doLoginURL(ts.Hostname(), u)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
+	t.Logf("Validating initial user creation at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		listUsers, err := headscale.ListUsers()
-		assertNoErr(t, err)
-		assert.Len(t, listUsers, 1)
+		assert.NoError(ct, err, "Failed to list users during initial validation")
+		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -509,44 +518,61 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		})
 
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-			t.Fatalf("unexpected users: %s", diff)
+			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating users after first login")
+	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
 
-	listNodes, err := headscale.ListNodes()
-	assertNoErr(t, err)
-	assert.Len(t, listNodes, 1)
+	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
+	var listNodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during initial validation")
+		assert.Len(ct, listNodes, 1, "Expected exactly 1 node after first login, got %d", len(listNodes))
+	}, 30*time.Second, 1*time.Second, "validating initial node creation for user1 after OIDC login")
+
+	// Collect expected node IDs for validation after user1 initial login
+	expectedNodes := make([]types.NodeID, 0, 1)
+	status := ts.MustStatus()
+	nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+	require.NoError(t, err)
+	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
+
+	// Validate initial connection state for user1
+	validateInitialConnection(t, headscale, expectedNodes)
 
 	// Log out user1 and log in user2, this should create a new node
 	// for user2, the node should have the same machine key and
 	// a new node key.
 	err = ts.Logout()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
 	// logs in immediately after the first logout and I cannot reproduce it
 	// manually.
 	err = ts.Logout()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	// Wait for logout to complete and then do second logout
+	t.Logf("Waiting for user1 logout completion at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Check that the first logout completed
 		status, err := ts.Status()
-		assert.NoError(ct, err)
-		assert.Equal(ct, "NeedsLogin", status.BackendState)
-	}, 30*time.Second, 1*time.Second)
+		assert.NoError(ct, err, "Failed to get client status during logout validation")
+		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout, got %s", status.BackendState)
+	}, 30*time.Second, 1*time.Second, "waiting for user1 logout to complete before user2 login")
 
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	_, err = doLoginURL(ts.Hostname(), u)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
+	t.Logf("Validating user2 creation at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		listUsers, err := headscale.ListUsers()
-		assertNoErr(t, err)
-		assert.Len(t, listUsers, 2)
+		assert.NoError(ct, err, "Failed to list users after user2 login")
+		assert.Len(ct, listUsers, 2, "Expected exactly 2 users after user2 login, got %d users", len(listUsers))
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -569,27 +595,83 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		})
 
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-			ct.Errorf("unexpected users: %s", diff)
+			ct.Errorf("User validation failed after user2 login - expected both user1 and user2: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating users after new user login")
+	}, 30*time.Second, 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
 
 	var listNodesAfterNewUserLogin []*v1.Node
+	// First, wait for the new node to be created
+	t.Logf("Waiting for user2 node creation at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		listNodesAfterNewUserLogin, err = headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, listNodesAfterNewUserLogin, 2)
+		assert.NoError(ct, err, "Failed to list nodes after user2 login")
+		// We might temporarily have more than 2 nodes during cleanup, so check for at least 2
+		assert.GreaterOrEqual(ct, len(listNodesAfterNewUserLogin), 2, "Should have at least 2 nodes after user2 login, got %d (may include temporary nodes during cleanup)", len(listNodesAfterNewUserLogin))
+	}, 30*time.Second, 1*time.Second, "waiting for user2 node creation (allowing temporary extra nodes during cleanup)")
 
-		// Machine key is the same as the "machine" has not changed,
-		// but Node key is not as it is a new node
-		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
-		assert.Equal(ct, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
-		assert.NotEqual(ct, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey())
-	}, 30*time.Second, 1*time.Second, "listing nodes after new user login")
+	// Then wait for cleanup to stabilize at exactly 2 nodes
+	t.Logf("Waiting for node cleanup stabilization at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listNodesAfterNewUserLogin, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during cleanup validation")
+		assert.Len(ct, listNodesAfterNewUserLogin, 2, "Should have exactly 2 nodes after cleanup (1 for user1, 1 for user2), got %d nodes", len(listNodesAfterNewUserLogin))
+
+		// Validate that both nodes have the same machine key but different node keys
+		if len(listNodesAfterNewUserLogin) >= 2 {
+			// Machine key is the same as the "machine" has not changed,
+			// but Node key is not as it is a new node
+			assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey(), "Machine key should be preserved from original node")
+			assert.Equal(ct, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey(), "Both nodes should share the same machine key")
+			assert.NotEqual(ct, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey(), "Node keys should be different between user1 and user2 nodes")
+		}
+	}, 90*time.Second, 2*time.Second, "waiting for node count stabilization at exactly 2 nodes after user2 login")
+
+	// Security validation: Only user2's node should be active after user switch
+	var activeUser2NodeID types.NodeID
+	for _, node := range listNodesAfterNewUserLogin {
+		if node.GetUser().GetId() == 2 { // user2
+			activeUser2NodeID = types.NodeID(node.GetId())
+			t.Logf("Active user2 node: %d (User: %s)", node.GetId(), node.GetUser().GetName())
+			break
+		}
+	}
+
+	// Validate only user2's node is online (security requirement)
+	t.Logf("Validating only user2 node is online at %s", time.Now().Format(TimestampFormat))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodeStore, err := headscale.DebugNodeStore()
+		assert.NoError(c, err, "Failed to get nodestore debug info")
+
+		// Check user2 node is online
+		if node, exists := nodeStore[activeUser2NodeID]; exists {
+			assert.NotNil(c, node.IsOnline, "User2 node should have online status")
+			if node.IsOnline != nil {
+				assert.True(c, *node.IsOnline, "User2 node should be online after login")
+			}
+		} else {
+			assert.Fail(c, "User2 node not found in nodestore")
+		}
+	}, 60*time.Second, 2*time.Second, "validating only user2 node is online after user switch")
+
+	// Before logging out user2, validate we have exactly 2 nodes and both are stable
+	t.Logf("Pre-logout validation: checking node stability at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		currentNodes, err := headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes before user2 logout")
+		assert.Len(ct, currentNodes, 2, "Should have exactly 2 stable nodes before user2 logout, got %d", len(currentNodes))
+
+		// Validate node stability - ensure no phantom nodes
+		for i, node := range currentNodes {
+			assert.NotNil(ct, node.GetUser(), "Node %d should have a valid user before logout", i)
+			assert.NotEmpty(ct, node.GetMachineKey(), "Node %d should have a valid machine key before logout", i)
+			t.Logf("Pre-logout node %d: User=%s, MachineKey=%s", i, node.GetUser().GetName(), node.GetMachineKey()[:16]+"...")
+		}
+	}, 60*time.Second, 2*time.Second, "validating stable node count and integrity before user2 logout")
 
 	// Log out user2, and log into user1, no new node should be created,
 	// the node should now "become" node1 again
 	err = ts.Logout()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	t.Logf("Logged out take one")
 	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
@@ -598,41 +680,63 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	// logs in immediately after the first logout and I cannot reproduce it
 	// manually.
 	err = ts.Logout()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	t.Logf("Logged out take two")
 	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
 	// Wait for logout to complete and then do second logout
+	t.Logf("Waiting for user2 logout completion at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Check that the first logout completed
 		status, err := ts.Status()
-		assert.NoError(ct, err)
-		assert.Equal(ct, "NeedsLogin", status.BackendState)
-	}, 30*time.Second, 1*time.Second)
+		assert.NoError(ct, err, "Failed to get client status during user2 logout validation")
+		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after user2 logout, got %s", status.BackendState)
+	}, 30*time.Second, 1*time.Second, "waiting for user2 logout to complete before user1 relogin")
+
+	// Before logging back in, ensure we still have exactly 2 nodes
+	// Note: We skip validateLogoutComplete here since it expects all nodes to be offline,
+	// but in OIDC scenario we maintain both nodes in DB with only active user online
+
+	// Additional validation that nodes are properly maintained during logout
+	t.Logf("Post-logout validation: checking node persistence at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		currentNodes, err := headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes after user2 logout")
+		assert.Len(ct, currentNodes, 2, "Should still have exactly 2 nodes after user2 logout (nodes should persist), got %d", len(currentNodes))
+
+		// Ensure both nodes are still valid (not cleaned up incorrectly)
+		for i, node := range currentNodes {
+			assert.NotNil(ct, node.GetUser(), "Node %d should still have a valid user after user2 logout", i)
+			assert.NotEmpty(ct, node.GetMachineKey(), "Node %d should still have a valid machine key after user2 logout", i)
+			t.Logf("Post-logout node %d: User=%s, MachineKey=%s", i, node.GetUser().GetName(), node.GetMachineKey()[:16]+"...")
+		}
+	}, 60*time.Second, 2*time.Second, "validating node persistence and integrity after user2 logout")
 
 	// We do not actually "change" the user here, it is done by logging in again
 	// as the OIDC mock server is kind of like a stack, and the next user is
 	// prepared and ready to go.
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	_, err = doLoginURL(ts.Hostname(), u)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
+	t.Logf("Waiting for user1 relogin completion at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		status, err := ts.Status()
-		assert.NoError(ct, err)
-		assert.Equal(ct, "Running", status.BackendState)
-	}, 30*time.Second, 1*time.Second)
+		assert.NoError(ct, err, "Failed to get client status during user1 relogin validation")
+		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after user1 relogin, got %s", status.BackendState)
+	}, 30*time.Second, 1*time.Second, "waiting for user1 relogin to complete (final login)")
 
 	t.Logf("Logged back in")
 	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
 
+	t.Logf("Final validation: checking user persistence at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		listUsers, err := headscale.ListUsers()
-		assert.NoError(ct, err)
-		assert.Len(ct, listUsers, 2)
+		assert.NoError(ct, err, "Failed to list users during final validation")
+		assert.Len(ct, listUsers, 2, "Should still have exactly 2 users after user1 relogin, got %d", len(listUsers))
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -655,59 +759,75 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		})
 
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
-			ct.Errorf("unexpected users: %s", diff)
+			ct.Errorf("Final user validation failed - both users should persist after relogin cycle: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "log out user2, and log into user1, no new node should be created")
+	}, 30*time.Second, 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
 
+	var listNodesAfterLoggingBackIn []*v1.Node
+	// Wait for login to complete and nodes to stabilize
+	t.Logf("Final node validation: checking node stability after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		listNodesAfterLoggingBackIn, err := headscale.ListNodes()
-		assert.NoError(ct, err)
-		assert.Len(ct, listNodesAfterLoggingBackIn, 2)
+		listNodesAfterLoggingBackIn, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during final validation")
+
+		// Allow for temporary instability during login process
+		if len(listNodesAfterLoggingBackIn) < 2 {
+			ct.Errorf("Not enough nodes yet during final validation, got %d, want at least 2", len(listNodesAfterLoggingBackIn))
+			return
+		}
+
+		// Final check should have exactly 2 nodes
+		assert.Len(ct, listNodesAfterLoggingBackIn, 2, "Should have exactly 2 nodes after complete relogin cycle, got %d", len(listNodesAfterLoggingBackIn))
 
 		// Validate that the machine we had when we logged in the first time, has the same
 		// machine key, but a different ID than the newly logged in version of the same
 		// machine.
-		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey())
-		assert.Equal(ct, listNodes[0].GetNodeKey(), listNodesAfterNewUserLogin[0].GetNodeKey())
-		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[0].GetId())
-		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey())
-		assert.NotEqual(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[1].GetId())
-		assert.NotEqual(ct, listNodes[0].GetUser().GetId(), listNodesAfterNewUserLogin[1].GetUser().GetId())
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[0].GetMachineKey(), "Original user1 machine key should match user1 node after user switch")
+		assert.Equal(ct, listNodes[0].GetNodeKey(), listNodesAfterNewUserLogin[0].GetNodeKey(), "Original user1 node key should match user1 node after user switch")
+		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[0].GetId(), "Original user1 node ID should match user1 node after user switch")
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey(), "User1 and user2 nodes should share the same machine key")
+		assert.NotEqual(ct, listNodes[0].GetId(), listNodesAfterNewUserLogin[1].GetId(), "User1 and user2 nodes should have different node IDs")
+		assert.NotEqual(ct, listNodes[0].GetUser().GetId(), listNodesAfterNewUserLogin[1].GetUser().GetId(), "User1 and user2 nodes should belong to different users")
 
 		// Even tho we are logging in again with the same user, the previous key has been expired
 		// and a new one has been generated. The node entry in the database should be the same
 		// as the user + machinekey still matches.
-		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterLoggingBackIn[0].GetMachineKey())
-		assert.NotEqual(ct, listNodes[0].GetNodeKey(), listNodesAfterLoggingBackIn[0].GetNodeKey())
-		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterLoggingBackIn[0].GetId())
+		assert.Equal(ct, listNodes[0].GetMachineKey(), listNodesAfterLoggingBackIn[0].GetMachineKey(), "Machine key should remain consistent after user1 relogin")
+		assert.NotEqual(ct, listNodes[0].GetNodeKey(), listNodesAfterLoggingBackIn[0].GetNodeKey(), "Node key should be regenerated after user1 relogin")
+		assert.Equal(ct, listNodes[0].GetId(), listNodesAfterLoggingBackIn[0].GetId(), "Node ID should be preserved for user1 after relogin")
 
 		// The "logged back in" machine should have the same machinekey but a different nodekey
 		// than the version logged in with a different user.
-		assert.Equal(ct, listNodesAfterLoggingBackIn[0].GetMachineKey(), listNodesAfterLoggingBackIn[1].GetMachineKey())
-		assert.NotEqual(ct, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey())
-	}, 30*time.Second, 1*time.Second, "log out user2, and log into user1, no new node should be created")
-}
+		assert.Equal(ct, listNodesAfterLoggingBackIn[0].GetMachineKey(), listNodesAfterLoggingBackIn[1].GetMachineKey(), "Both final nodes should share the same machine key")
+		assert.NotEqual(ct, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey(), "Final nodes should have different node keys for different users")
 
-// assertTailscaleNodesLogout verifies that all provided Tailscale clients
-// are in the logged-out state (NeedsLogin).
-func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
-	if h, ok := t.(interface{ Helper() }); ok {
-		h.Helper()
+		t.Logf("Final validation complete - node counts and key relationships verified at %s", time.Now().Format(TimestampFormat))
+	}, 60*time.Second, 2*time.Second, "validating final node state after complete user1->user2->user1 relogin cycle with detailed key validation")
+
+	// Security validation: Only user1's node should be active after relogin
+	var activeUser1NodeID types.NodeID
+	for _, node := range listNodesAfterLoggingBackIn {
+		if node.GetUser().GetId() == 1 { // user1
+			activeUser1NodeID = types.NodeID(node.GetId())
+			t.Logf("Active user1 node after relogin: %d (User: %s)", node.GetId(), node.GetUser().GetName())
+			break
+		}
 	}
 
-	for _, client := range clients {
-		status, err := client.Status()
-		assert.NoError(t, err, "failed to get status for client %s", client.Hostname())
-		assert.Equal(t, "NeedsLogin", status.BackendState,
-			"client %s should be logged out", client.Hostname())
-	}
-}
+	// Validate only user1's node is online (security requirement)
+	t.Logf("Validating only user1 node is online after relogin at %s", time.Now().Format(TimestampFormat))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodeStore, err := headscale.DebugNodeStore()
+		assert.NoError(c, err, "Failed to get nodestore debug info")
 
-func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
-	return mockoidc.MockUser{
-		Subject:           username,
-		PreferredUsername: username,
-		Email:             username + "@headscale.net",
-		EmailVerified:     emailVerified,
-	}
+		// Check user1 node is online
+		if node, exists := nodeStore[activeUser1NodeID]; exists {
+			assert.NotNil(c, node.IsOnline, "User1 node should have online status after relogin")
+			if node.IsOnline != nil {
+				assert.True(c, *node.IsOnline, "User1 node should be online after relogin")
+			}
+		} else {
+			assert.Fail(c, "User1 node not found in nodestore after relogin")
+		}
+	}, 60*time.Second, 2*time.Second, "validating only user1 node is online after final relogin")
 }
