@@ -227,12 +227,21 @@ func (h *Headscale) handleRegisterWithAuthKey(
 
 	user := node.User()
 
-	return &tailcfg.RegisterResponse{
+	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
 		User:              *user.TailscaleUser(),
 		Login:             *user.TailscaleLogin(),
-	}, nil
+	}
+
+	log.Trace().
+		Interface("reg.resp", resp).
+		Interface("reg.req", regReq).
+		Str("node.name", node.Hostname()).
+		Uint64("node.id", node.ID().Uint64()).
+		Msg("RegisterResponse")
+
+	return resp, nil
 }
 
 func (h *Headscale) handleRegisterInteractive(
