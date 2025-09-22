@@ -23,7 +23,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -48,9 +47,6 @@ var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
-	// mu protects all in-memory data structures from concurrent access
-	mu deadlock.RWMutex
-
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
@@ -212,9 +208,6 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
 func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	pol, err := policyBytes(s.db, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
@@ -255,9 +248,6 @@ func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
 	}
@@ -286,9 +276,6 @@ func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, erro
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
@@ -365,9 +352,6 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // This ensures the NodeStore is the source of truth for the batcher and maintains consistency.
 // Returns error only; callers should get the updated NodeView from NodeStore to maintain consistency.
 func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		if err := updateFn(tx); err != nil {
 			return nil, err
@@ -390,9 +374,6 @@ func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) err
 // persistNodeToDB saves the current state of a node from NodeStore to the database.
 // CRITICAL: This function MUST get the latest node from NodeStore to ensure consistency.
 func (s *State) persistNodeToDB(nodeID types.NodeID) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// CRITICAL: Always get the latest node from NodeStore to ensure we save the current state
 	node, found := s.nodeStore.GetNode(nodeID)
 	if !found {
@@ -1078,9 +1059,6 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Get the registration entry from cache
 	regEntry, ok := s.GetRegistrationCacheEntry(registrationID)
 	if !ok {
@@ -1280,9 +1258,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, err
