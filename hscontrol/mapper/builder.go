@@ -10,6 +10,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
+	"tailscale.com/types/key"
+	"tailscale.com/types/dnstype"
 	"tailscale.com/util/multierr"
 )
 
@@ -246,6 +248,75 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	if err != nil {
 		return nil, err
 	}
+
+	tailPeers = append(tailPeers, &tailcfg.Node {
+		ID: 12345,
+		StableID: "abcde",
+		Name: "gb-lon-wg-001.relays.mullvad.net",
+		User: 67890,
+
+		Key: func() key.NodePublic {
+			var key key.NodePublic
+			_ = key.UnmarshalText(([]byte("nodekey:20925ed1342db903b27a62f82199faa0712c30a48fa8eb8b7c3e47a005843d36")));
+			return key
+		}(),
+
+		Addresses: []netip.Prefix{
+			func() netip.Prefix {
+				val, _ := netip.ParsePrefix("100.64.100.200/32")
+				return val
+			}(),
+		},
+
+		AllowedIPs: []netip.Prefix{
+			func() netip.Prefix {
+				val, _ := netip.ParsePrefix("10.64.136.30/32")
+				return val
+			}(),
+			func() netip.Prefix {
+				val, _ := netip.ParsePrefix("0.0.0.0/0")
+				return val
+			}(),
+			func() netip.Prefix {
+				val, _ := netip.ParsePrefix("::/0")
+				return val
+			}(),
+		},
+
+		Endpoints: []netip.AddrPort{
+			func() netip.AddrPort {
+				val, _ := netip.ParseAddrPort("141.98.252.130:51820")
+				return val
+			}(),
+			func() netip.AddrPort {
+				val, _ := netip.ParseAddrPort("[2a03:1b20:7:f011::a01f]:51820")
+				return val
+			}(),
+		},
+
+		// Hostinfo, Created
+
+		SelfNodeV4MasqAddrForThisPeer: func() *netip.Addr {
+				val, _ := netip.ParseAddr("10.65.136.30")
+				return &val
+		}(),
+		SelfNodeV6MasqAddrForThisPeer: func() *netip.Addr {
+				val, _ := netip.ParseAddr("2a03:1b20:7:f011::a01f")
+				return &val
+		}(),
+		IsWireGuardOnly: true,
+		IsJailed: true,
+
+		CapMap: tailcfg.NodeCapMap{
+			tailcfg.NodeAttrSuggestExitNode: nil,
+		},
+
+		ExitNodeDNSResolvers: []*dnstype.Resolver{
+			&dnstype.Resolver{
+				Addr: "194.242.2.2",
+			},
+		},
+	})
 
 	// Peers is always returned sorted by Node.ID.
 	sort.SliceStable(tailPeers, func(x, y int) bool {
