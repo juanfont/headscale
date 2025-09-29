@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -463,7 +462,7 @@ func New(
 	if err != nil {
 		// Try to get more detailed build output
 		log.Printf("Docker build failed, attempting to get detailed output...")
-		buildOutput := runDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+		buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
 		if buildOutput != "" {
 			return nil, fmt.Errorf("could not start headscale container: %w\n\nDetailed build output:\n%s", err, buildOutput)
 		}
@@ -1397,14 +1396,4 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	return nodeStore, nil
-}
-
-// runDockerBuildForDiagnostics runs docker build manually to get detailed error output
-func runDockerBuildForDiagnostics(contextDir, dockerfile string) string {
-	cmd := exec.Command("docker", "build", "-f", dockerfile, contextDir)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(output)
-	}
-	return ""
 }

@@ -322,6 +322,20 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 			dockertestutil.DockerMemoryLimit,
 		)
+		if err != nil {
+			// Try to get more detailed build output
+			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
+			buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+			if buildOutput != "" {
+				return nil, fmt.Errorf(
+					"%s could not start tailscale container (version: %s): %w\n\nDetailed build output:\n%s",
+					hostname,
+					version,
+					err,
+					buildOutput,
+				)
+			}
+		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = version
@@ -333,6 +347,9 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 			dockertestutil.DockerMemoryLimit,
 		)
+		if err != nil {
+			log.Printf("Docker run failed for %s (unstable), error: %v", hostname, err)
+		}
 	default:
 		tailscaleOptions.Repository = "tailscale/tailscale"
 		tailscaleOptions.Tag = "v" + version
@@ -344,6 +361,9 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 			dockertestutil.DockerMemoryLimit,
 		)
+		if err != nil {
+			log.Printf("Docker run failed for %s (version: v%s), error: %v", hostname, version, err)
+		}
 	}
 
 	if err != nil {
