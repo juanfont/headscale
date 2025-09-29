@@ -55,7 +55,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
-func TestAuthWebFlowLogoutAndRelogin(t *testing.T) {
+func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{

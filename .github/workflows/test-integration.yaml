@@ -32,7 +32,7 @@ jobs:
           - TestOIDCAuthenticationWithPKCE
           - TestOIDCReloginSameNodeNewUser
           - TestAuthWebFlowAuthenticationPingAll
-          - TestAuthWebFlowLogoutAndRelogin
+          - TestAuthWebFlowLogoutAndReloginSameUser
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
