@@ -838,14 +838,14 @@ func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
 
 	var err error
 	hc := &http.Client{
-		Transport: LoggingRoundTripper{},
+		Transport: LoggingRoundTripper{Hostname: hostname},
 	}
 	hc.Jar, err = cookiejar.New(nil)
 	if err != nil {
 		return "", fmt.Errorf("%s failed to create cookiejar	: %w", hostname, err)
 	}
 
-	log.Printf("%s logging in with url", hostname)
+	log.Printf("%s logging in with url: %s", hostname, loginURL.String())
 	ctx := context.Background()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 	resp, err := hc.Do(req)
@@ -907,7 +907,9 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
 }
 
-type LoggingRoundTripper struct{}
+type LoggingRoundTripper struct {
+	Hostname string
+}
 
 func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	noTls := &http.Transport{
@@ -918,9 +920,12 @@ func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 		return nil, err
 	}
 
-	log.Printf("---")
-	log.Printf("method: %s | url: %s", resp.Request.Method, resp.Request.URL.String())
-	log.Printf("status: %d | cookies: %+v", resp.StatusCode, resp.Cookies())
+	log.Printf(`
+---
+%s - method: %s | url: %s
+%s - status: %d | cookies: %+v
+---
+`, t.Hostname, req.Method, req.URL.String(), t.Hostname, resp.StatusCode, resp.Cookies())
 
 	return resp, nil
 }
