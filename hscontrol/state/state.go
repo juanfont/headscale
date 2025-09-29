@@ -494,12 +494,12 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 	return s.nodeStore.GetNodeByNodeKey(nodeKey)
 }
 
-// GetNodeByMachineKey retrieves a node by its machine key.
+// GetNodeByMachineKey retrieves a node by its machine key and user ID.
 // The bool indicates if the node exists or is available (like "err not found").
 // The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
 // it isn't an invalid node (this is more of a node error or node is broken).
-func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
-	return s.nodeStore.GetNodeByMachineKey(machineKey)
+func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
+	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -960,11 +960,11 @@ func (s *State) HandleNodeFromAuthPath(
 
 	var finalNode types.NodeView
 
-	// Check if node already exists with same machine key
-	existingNode, exists := s.nodeStore.GetNodeByMachineKey(regEntry.Node.MachineKey)
+	// Check if node already exists with same machine key for this user
+	existingNode, exists := s.nodeStore.GetNodeByMachineKey(regEntry.Node.MachineKey, types.UserID(user.ID))
 
-	// If this node exist and belongs to the same user as the pre-auth key, update the node in place.
-	if exists && existingNode.Valid() && existingNode.User().ID == uint(userID) {
+	// If this node exists for this user, update the node in place.
+	if exists && existingNode.Valid() {
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNode.ID(), func(node *types.Node) {
 			node.NodeKey = regEntry.Node.NodeKey
@@ -1135,11 +1135,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 	var finalNode types.NodeView
 
-	// Check if node already exists with same machine key
-	existingNode, exists := s.nodeStore.GetNodeByMachineKey(machineKey)
+	// Check if node already exists with same machine key for this user
+	existingNode, exists := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
 
-	// If this node exist and belongs to the same user as the pre-auth key, update the node in place.
-	if exists && existingNode.Valid() && existingNode.User().ID == pak.User.ID {
+	// If this node exists for this user, update the node in place.
+	if exists && existingNode.Valid() {
 		log.Trace().
 			Caller().
 			Str("node.name", existingNode.Hostname()).
@@ -1177,7 +1177,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		})
 
 		if !ok {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNode.ID)
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNode.ID())
 		}
 
 		// Use the node from UpdateNode to save to database

@@ -121,10 +121,11 @@ type Snapshot struct {
 	nodesByID map[types.NodeID]types.Node
 
 	// calculated from nodesByID
-	nodesByNodeKey map[key.NodePublic]types.NodeView
-	peersByNode    map[types.NodeID][]types.NodeView
-	nodesByUser    map[types.UserID][]types.NodeView
-	allNodes       []types.NodeView
+	nodesByNodeKey    map[key.NodePublic]types.NodeView
+	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
+	peersByNode       map[types.NodeID][]types.NodeView
+	nodesByUser       map[types.UserID][]types.NodeView
+	allNodes          []types.NodeView
 }
 
 // PeersFunc is a function that takes a list of nodes and returns a map
@@ -367,9 +368,10 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 	}
 
 	newSnap := Snapshot{
-		nodesByID:      nodes,
-		allNodes:       allNodes,
-		nodesByNodeKey: make(map[key.NodePublic]types.NodeView),
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
+		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
 
 		// peersByNode is most likely the most expensive operation,
 		// it will use the list of all nodes, combined with the
@@ -383,11 +385,19 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		nodesByUser: make(map[types.UserID][]types.NodeView),
 	}
 
-	// Build nodesByUser and nodesByNodeKey maps
+	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
 		nodeView := n.View()
-		newSnap.nodesByUser[types.UserID(n.UserID)] = append(newSnap.nodesByUser[types.UserID(n.UserID)], nodeView)
+		userID := types.UserID(n.UserID)
+
+		newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+
+		// Build machine key index
+		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
+			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
+		}
+		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
 	}
 
 	return newSnap
@@ -426,19 +436,17 @@ func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bo
 	return nodeView, exists
 }
 
-// GetNodeByMachineKey returns a node by its machine key. The bool indicates if the node exists.
-func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
+// GetNodeByMachineKey returns a node by its machine key and user ID. The bool indicates if the node exists.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key"))
 	defer timer.ObserveDuration()
 
 	nodeStoreOperations.WithLabelValues("get_by_machine_key").Inc()
 
 	snapshot := s.data.Load()
-	// We don't have a byMachineKey map, so we need to iterate
-	// This could be optimized by adding a byMachineKey map if this becomes a hot path
-	for _, node := range snapshot.nodesByID {
-		if node.MachineKey == machineKey {
-			return node.View(), true
+	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
+		if node, exists := userMap[userID]; exists {
+			return node, true
 		}
 	}
 
