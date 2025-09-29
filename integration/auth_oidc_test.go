@@ -831,3 +831,227 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		}
 	}, 60*time.Second, 2*time.Second, "validating only user1 node is online after final relogin")
 }
+
+// TestOIDCReloginSameNodeSameUser tests the scenario where a single Tailscale client
+// authenticates using OIDC (OpenID Connect), logs out, and then logs back in as the same user.
+//
+// OIDC is an authentication layer built on top of OAuth 2.0 that allows users to authenticate
+// using external identity providers (like Google, Microsoft, etc.) rather than managing
+// credentials directly in headscale.
+//
+// This test validates the "same user relogin" behavior in headscale's OIDC authentication flow:
+// - A single client authenticates via OIDC as user1
+// - The client logs out, ending the session
+// - The same client logs back in via OIDC as the same user (user1)
+// - The test verifies that the user account persists correctly
+// - The test verifies that the machine key is preserved (since it's the same physical device)
+// - The test verifies that the node ID is preserved (since it's the same user on the same device)
+// - The test verifies that the node key is regenerated (since it's a new session)
+// - The test verifies that the client comes back online properly
+//
+// This scenario is important for normal user workflows where someone might need to restart
+// their Tailscale client, reboot their computer, or temporarily disconnect and reconnect.
+// It ensures that headscale properly handles session management while preserving device
+// identity and user associations.
+//
+// The test uses a single node scenario (unlike multi-node tests) to focus specifically on
+// the authentication and session management aspects rather than network topology changes.
+// The "same node" in the name refers to the same physical device/client, while "same user"
+// refers to authenticating with the same OIDC identity.
+func TestOIDCReloginSameNodeSameUser(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Create scenario with same user for both login attempts
+	scenario, err := NewScenario(ScenarioSpec{
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true), // Initial login
+			oidcMockUser("user1", true), // Relogin with same user
+		},
+	})
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcsameuser"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithDERPAsIP(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
+	require.NoError(t, err)
+
+	// Initial login as user1
+	u, err := ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	require.NoError(t, err)
+
+	t.Logf("Validating initial user1 creation at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listUsers, err := headscale.ListUsers()
+		assert.NoError(ct, err, "Failed to list users during initial validation")
+		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
+		wantUsers := []*v1.User{
+			{
+				Id:         1,
+				Name:       "user1",
+				Email:      "user1@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+			},
+		}
+
+		sort.Slice(listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		})
+
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
+		}
+	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
+
+	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
+	var initialNodes []*v1.Node
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+		initialNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during initial validation")
+		assert.Len(ct, initialNodes, 1, "Expected exactly 1 node after first login, got %d", len(initialNodes))
+	}, 30*time.Second, 1*time.Second, "validating initial node creation for user1 after OIDC login")
+
+	// Collect expected node IDs for validation after user1 initial login
+	expectedNodes := make([]types.NodeID, 0, 1)
+	status := ts.MustStatus()
+	nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+	require.NoError(t, err)
+	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
+
+	// Validate initial connection state for user1
+	validateInitialConnection(t, headscale, expectedNodes)
+
+	// Store initial node keys for comparison
+	initialMachineKey := initialNodes[0].GetMachineKey()
+	initialNodeKey := initialNodes[0].GetNodeKey()
+	initialNodeID := initialNodes[0].GetId()
+
+	// Logout user1
+	err = ts.Logout()
+	require.NoError(t, err)
+
+	// TODO(kradalby): Not sure why we need to logout twice, but it fails and
+	// logs in immediately after the first logout and I cannot reproduce it
+	// manually.
+	err = ts.Logout()
+	require.NoError(t, err)
+
+	// Wait for logout to complete
+	t.Logf("Waiting for user1 logout completion at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		// Check that the logout completed
+		status, err := ts.Status()
+		assert.NoError(ct, err, "Failed to get client status during logout validation")
+		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout, got %s", status.BackendState)
+	}, 30*time.Second, 1*time.Second, "waiting for user1 logout to complete before same-user relogin")
+
+	// Validate node persistence during logout (node should remain in DB)
+	t.Logf("Validating node persistence during logout at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listNodes, err := headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during logout validation")
+		assert.Len(ct, listNodes, 1, "Should still have exactly 1 node during logout (node should persist in DB), got %d", len(listNodes))
+	}, 30*time.Second, 1*time.Second, "validating node persistence in database during same-user logout")
+
+	// Login again as the same user (user1)
+	u, err = ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	require.NoError(t, err)
+
+	t.Logf("Waiting for user1 relogin completion at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := ts.Status()
+		assert.NoError(ct, err, "Failed to get client status during relogin validation")
+		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after user1 relogin, got %s", status.BackendState)
+	}, 30*time.Second, 1*time.Second, "waiting for user1 relogin to complete (same user)")
+
+	t.Logf("Final validation: checking user persistence after same-user relogin at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		listUsers, err := headscale.ListUsers()
+		assert.NoError(ct, err, "Failed to list users during final validation")
+		assert.Len(ct, listUsers, 1, "Should still have exactly 1 user after same-user relogin, got %d", len(listUsers))
+		wantUsers := []*v1.User{
+			{
+				Id:         1,
+				Name:       "user1",
+				Email:      "user1@headscale.net",
+				Provider:   "oidc",
+				ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+			},
+		}
+
+		sort.Slice(listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		})
+
+		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			ct.Errorf("Final user validation failed - user1 should persist after same-user relogin: %s", diff)
+		}
+	}, 30*time.Second, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")
+
+	var finalNodes []*v1.Node
+	t.Logf("Final node validation: checking node stability after same-user relogin at %s", time.Now().Format(TimestampFormat))
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		finalNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err, "Failed to list nodes during final validation")
+		assert.Len(ct, finalNodes, 1, "Should have exactly 1 node after same-user relogin, got %d", len(finalNodes))
+
+		// Validate node key behavior for same user relogin
+		finalNode := finalNodes[0]
+
+		// Machine key should be preserved (same physical machine)
+		assert.Equal(ct, initialMachineKey, finalNode.GetMachineKey(), "Machine key should be preserved for same user same node relogin")
+
+		// Node ID should be preserved (same user, same machine)
+		assert.Equal(ct, initialNodeID, finalNode.GetId(), "Node ID should be preserved for same user same node relogin")
+
+		// Node key should be regenerated (new session after logout)
+		assert.NotEqual(ct, initialNodeKey, finalNode.GetNodeKey(), "Node key should be regenerated after logout/relogin even for same user")
+
+		t.Logf("Final validation complete - same user relogin key relationships verified at %s", time.Now().Format(TimestampFormat))
+	}, 60*time.Second, 2*time.Second, "validating final node state after same-user OIDC relogin cycle with key preservation validation")
+
+	// Security validation: user1's node should be active after relogin
+	activeUser1NodeID := types.NodeID(finalNodes[0].GetId())
+	t.Logf("Validating user1 node is online after same-user relogin at %s", time.Now().Format(TimestampFormat))
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodeStore, err := headscale.DebugNodeStore()
+		assert.NoError(c, err, "Failed to get nodestore debug info")
+
+		// Check user1 node is online
+		if node, exists := nodeStore[activeUser1NodeID]; exists {
+			assert.NotNil(c, node.IsOnline, "User1 node should have online status after same-user relogin")
+			if node.IsOnline != nil {
+				assert.True(c, *node.IsOnline, "User1 node should be online after same-user relogin")
+			}
+		} else {
+			assert.Fail(c, "User1 node not found in nodestore after same-user relogin")
+		}
+	}, 60*time.Second, 2*time.Second, "validating user1 node is online after same-user OIDC relogin")
+}
