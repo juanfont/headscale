@@ -453,6 +453,29 @@ func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic, userID typ
 	return types.NodeView{}, false
 }
 
+// GetNodeByMachineKeyAnyUser returns the first node with the given machine key,
+// regardless of which user it belongs to. This is useful for scenarios like
+// transferring a node to a different user when re-authenticating with a
+// different user's auth key.
+// If multiple nodes exist with the same machine key (different users), the
+// first one found is returned (order is not guaranteed).
+func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key_any_user"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_machine_key_any_user").Inc()
+
+	snapshot := s.data.Load()
+	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
+		// Return the first node found (order not guaranteed due to map iteration)
+		for _, node := range userMap {
+			return node, true
+		}
+	}
+
+	return types.NodeView{}, false
+}
+
 // DebugString returns debug information about the NodeStore.
 func (s *NodeStore) DebugString() string {
 	snapshot := s.data.Load()

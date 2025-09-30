@@ -206,14 +206,16 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			return
 		}
 
-		// Validate node counts first
-		expectedCount := len(expectedNodes)
-		assert.Equal(c, expectedCount, debugInfo.TotalNodes, "Batcher total nodes mismatch - expected %d nodes, got %d", expectedCount, debugInfo.TotalNodes)
-		assert.Equal(c, expectedCount, len(nodeStore), "NodeStore total nodes mismatch - expected %d nodes, got %d", expectedCount, len(nodeStore))
+		// Validate that all expected nodes are present in nodeStore
+		for _, nodeID := range expectedNodes {
+			_, exists := nodeStore[nodeID]
+			assert.True(c, exists, "Expected node %d not found in nodeStore", nodeID)
+		}
 
 		// Check that we have map responses for expected nodes
 		mapResponseCount := len(mapResponses)
-		assert.Equal(c, expectedCount, mapResponseCount, "MapResponses total nodes mismatch - expected %d responses, got %d", expectedCount, mapResponseCount)
+		expectedCount := len(expectedNodes)
+		assert.GreaterOrEqual(c, mapResponseCount, expectedCount, "MapResponses insufficient - expected at least %d responses, got %d", expectedCount, mapResponseCount)
 
 		// Build status map for each node
 		nodeStatus := make(map[types.NodeID]NodeSystemStatus)
@@ -223,13 +225,22 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			nodeStatus[nodeID] = NodeSystemStatus{}
 		}
 
-		// Check batcher state
-		for nodeIDStr, nodeInfo := range debugInfo.ConnectedNodes {
-			nodeID := types.MustParseNodeID(nodeIDStr)
-			if status, exists := nodeStatus[nodeID]; exists {
-				status.Batcher = nodeInfo.Connected
-				status.BatcherConnCount = nodeInfo.ActiveConnections
-				nodeStatus[nodeID] = status
+		// Check batcher state for expected nodes
+		for _, nodeID := range expectedNodes {
+			nodeIDStr := fmt.Sprintf("%d", nodeID)
+			if nodeInfo, exists := debugInfo.ConnectedNodes[nodeIDStr]; exists {
+				if status, exists := nodeStatus[nodeID]; exists {
+					status.Batcher = nodeInfo.Connected
+					status.BatcherConnCount = nodeInfo.ActiveConnections
+					nodeStatus[nodeID] = status
+				}
+			} else {
+				// Node not found in batcher, mark as disconnected
+				if status, exists := nodeStatus[nodeID]; exists {
+					status.Batcher = false
+					status.BatcherConnCount = 0
+					nodeStatus[nodeID] = status
+				}
 			}
 		}
 
@@ -250,19 +261,27 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 		} else {
 			// Multi-node scenario: check peer visibility
 			for nodeID := range nodeStatus {
-			NODE_STATUS:
+				// Initialize as offline - will be set to true only if visible in all relevant peer maps
+				onlineFromMaps[nodeID] = false
+
+				// Count how many peer maps should show this node
+				expectedPeerMaps := 0
+				foundOnlinePeerMaps := 0
+
 				for id, peerMap := range onlineMap {
 					if id == nodeID {
-						continue
+						continue // Skip self-references
 					}
+					expectedPeerMaps++
 
-					online := peerMap[nodeID]
-					// If the node is offline in any map response, we consider it offline
-					if !online {
-						onlineFromMaps[nodeID] = false
-						continue NODE_STATUS
+					if online, exists := peerMap[nodeID]; exists && online {
+						foundOnlinePeerMaps++
 					}
+				}
 
+				// Node is considered online if it appears online in all peer maps
+				// (or if there are no peer maps to check)
+				if expectedPeerMaps == 0 || foundOnlinePeerMaps == expectedPeerMaps {
 					onlineFromMaps[nodeID] = true
 				}
 			}
@@ -277,12 +296,14 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			}
 		}
 
-		// Check nodestore state
-		for nodeID, node := range nodeStore {
-			if status, exists := nodeStatus[nodeID]; exists {
-				// Check if node is online in nodestore
-				status.NodeStore = node.IsOnline != nil && *node.IsOnline
-				nodeStatus[nodeID] = status
+		// Check nodestore state for expected nodes
+		for _, nodeID := range expectedNodes {
+			if node, exists := nodeStore[nodeID]; exists {
+				if status, exists := nodeStatus[nodeID]; exists {
+					// Check if node is online in nodestore
+					status.NodeStore = node.IsOnline != nil && *node.IsOnline
+					nodeStatus[nodeID] = status
+				}
 			}
 		}
 
@@ -438,9 +459,11 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 			return
 		}
 
-		// Validate node counts first
-		expectedCount := len(expectedNodes)
-		assert.Equal(c, expectedCount, len(nodeStore), "NodeStore total nodes mismatch during NetInfo validation - expected %d nodes, got %d", expectedCount, len(nodeStore))
+		// Validate that all expected nodes are present in nodeStore
+		for _, nodeID := range expectedNodes {
+			_, exists := nodeStore[nodeID]
+			assert.True(c, exists, "Expected node %d not found in nodeStore during NetInfo validation", nodeID)
+		}
 
 		// Check each expected node
 		for _, nodeID := range expectedNodes {

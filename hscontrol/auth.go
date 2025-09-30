@@ -11,6 +11,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -41,9 +42,9 @@ func (h *Headscale) handleRegister(
 				return nil, fmt.Errorf("handling existing node: %w", err)
 			}
 
-			// If resp is nil, we do not yet have something to return to the node,
-			// meaning that we should proceed and see if the node is trying to re-auth.
-			if resp == nil {
+			// If resp is not nil, we have a response to return to the node.
+			// If resp is nil, we should proceed and see if the node is trying to re-auth.
+			if resp != nil {
 				return resp, nil
 			}
 		} else {
@@ -301,12 +302,33 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, fmt.Errorf("generating registration ID: %w", err)
 	}
 
+	// Ensure we have valid hostinfo and hostname
+	validHostinfo, hostname := util.EnsureValidHostinfo(
+		req.Hostinfo,
+		machineKey.String(),
+		req.NodeKey.String(),
+	)
+
+	if req.Hostinfo == nil {
+		log.Warn().
+			Str("machine.key", machineKey.ShortString()).
+			Str("node.key", req.NodeKey.ShortString()).
+			Str("generated.hostname", hostname).
+			Msg("Received registration request with nil hostinfo, generated default hostname")
+	} else if req.Hostinfo.Hostname == "" {
+		log.Warn().
+			Str("machine.key", machineKey.ShortString()).
+			Str("node.key", req.NodeKey.ShortString()).
+			Str("generated.hostname", hostname).
+			Msg("Received registration request with empty hostname, generated default")
+	}
+
 	nodeToRegister := types.RegisterNode{
 		Node: types.Node{
-			Hostname:   req.Hostinfo.Hostname,
+			Hostname:   hostname,
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
-			Hostinfo:   req.Hostinfo,
+			Hostinfo:   validHostinfo,
 			LastSeen:   ptr.To(time.Now()),
 			Expiry:     &req.Expiry,
 		},
