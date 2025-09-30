@@ -61,7 +61,7 @@ func TestNetInfoFromMapRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NetInfoFromMapRequest(nodeID, tt.currentHostinfo, tt.reqHostinfo)
+			result := netInfoFromMapRequest(nodeID, tt.currentHostinfo, tt.reqHostinfo)
 
 			if tt.expectNetInfo == nil {
 				assert.Nil(t, result, "expected nil NetInfo")
@@ -100,11 +100,11 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		}
 
 		// BUG: Using the node being modified (no NetInfo) instead of existing node (has NetInfo)
-		buggyResult := NetInfoFromMapRequest(nodeID, nodeBeingModifiedHostinfo, newRegistrationHostinfo)
+		buggyResult := netInfoFromMapRequest(nodeID, nodeBeingModifiedHostinfo, newRegistrationHostinfo)
 		assert.Nil(t, buggyResult, "Bug: Should return nil when using wrong hostinfo reference")
 
 		// CORRECT: Using the existing node's hostinfo (has NetInfo)
-		correctResult := NetInfoFromMapRequest(nodeID, existingNodeHostinfo, newRegistrationHostinfo)
+		correctResult := netInfoFromMapRequest(nodeID, existingNodeHostinfo, newRegistrationHostinfo)
 		assert.NotNil(t, correctResult, "Fix: Should preserve NetInfo when using correct hostinfo reference")
 		assert.Equal(t, 5, correctResult.PreferredDERP, "Should preserve the DERP region from existing node")
 	})

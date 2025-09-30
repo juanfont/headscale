@@ -10,9 +10,9 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// NetInfoFromMapRequest determines the correct NetInfo to use.
+// netInfoFromMapRequest determines the correct NetInfo to use.
 // Returns the NetInfo that should be used for this request.
-func NetInfoFromMapRequest(
+func netInfoFromMapRequest(
 	nodeID types.NodeID,
 	currentHostinfo *tailcfg.Hostinfo,
 	reqHostinfo *tailcfg.Hostinfo,

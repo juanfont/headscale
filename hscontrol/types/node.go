@@ -638,6 +638,11 @@ func (node Node) DebugString() string {
 	return sb.String()
 }
 
+func (v NodeView) UserView() UserView {
+	u := v.User()
+	return u.View()
+}
+
 func (v NodeView) IPs() []netip.Addr {
 	if !v.Valid() {
 		return nil

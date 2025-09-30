@@ -701,7 +701,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 				// Preserve NetInfo from existing node to prevent loss during backfill
-				netInfo := NetInfoFromMapRequest(node.ID, existingNode.Hostinfo().AsStruct(), node.Hostinfo)
+				netInfo := netInfoFromMapRequest(node.ID, existingNode.Hostinfo().AsStruct(), node.Hostinfo)
 				node.Hostinfo = existingNode.Hostinfo().AsStruct()
 				node.Hostinfo.NetInfo = netInfo
 			}
@@ -928,7 +928,11 @@ func (s *State) HandleNodeFromAuthPath(
 
 		// Update NodeStore first with the new expiry
 		updatedNode, ok := s.nodeStore.UpdateNode(existingNodeView.ID(), func(node *types.Node) {
-			node.Expiry = expiry
+			if expiry != nil {
+				node.Expiry = expiry
+			} else {
+				node.Expiry = regEntry.Node.Expiry
+			}
 
 			// Mark as offline since node is reconnecting
 			node.IsOnline = ptr.To(false)
@@ -975,17 +979,20 @@ func (s *State) HandleNodeFromAuthPath(
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 			// Preserve NetInfo from existing node when re-registering
-			netInfo := NetInfoFromMapRequest(existingNode.ID(), existingNode.Hostinfo().AsStruct(), regEntry.Node.Hostinfo)
+			netInfo := netInfoFromMapRequest(existingNode.ID(), existingNode.Hostinfo().AsStruct(), regEntry.Node.Hostinfo)
 			node.Hostinfo = regEntry.Node.Hostinfo
 			node.Hostinfo.NetInfo = netInfo
 
 			node.Endpoints = regEntry.Node.Endpoints
 			node.RegisterMethod = regEntry.Node.RegisterMethod
-			if expiry != nil {
-				node.Expiry = expiry
-			}
 			node.IsOnline = ptr.To(false)
 			node.LastSeen = ptr.To(time.Now())
+
+			if expiry != nil {
+				node.Expiry = expiry
+			} else {
+				node.Expiry = regEntry.Node.Expiry
+			}
 		})
 
 		if !ok {
@@ -1030,6 +1037,8 @@ func (s *State) HandleNodeFromAuthPath(
 		nodeToRegister.RegisterMethod = registrationMethod
 		if expiry != nil {
 			nodeToRegister.Expiry = expiry
+		} else {
+			nodeToRegister.Expiry = regEntry.Node.Expiry
 		}
 
 		// Allocate new IPs
@@ -1103,27 +1112,30 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
-	// Check if this is a logout request for an ephemeral node
-	if !regReq.Expiry.IsZero() && regReq.Expiry.Before(time.Now()) && pak.Ephemeral {
-		// Find the node to delete
-		var nodeToDelete types.NodeView
-		for _, nv := range s.nodeStore.ListNodes().All() {
-			if nv.Valid() && nv.MachineKey() == machineKey {
-				nodeToDelete = nv
-				break
-			}
-		}
-		if nodeToDelete.Valid() {
-			c, err := s.DeleteNode(nodeToDelete)
-			if err != nil {
-				return types.NodeView{}, change.EmptySet, fmt.Errorf("deleting ephemeral node during logout: %w", err)
-			}
+	// TODO(kradalby): Evaluate if this is needed, we should be handling this in
+	// handleLogout in auth.go
+	//
+	// // Check if this is a logout request for an ephemeral node
+	// if !regReq.Expiry.IsZero() && regReq.Expiry.Before(time.Now()) && pak.Ephemeral {
+	// 	// Find the node to delete
+	// 	var nodeToDelete types.NodeView
+	// 	for _, nv := range s.nodeStore.ListNodes().All() {
+	// 		if nv.Valid() && nv.MachineKey() == machineKey {
+	// 			nodeToDelete = nv
+	// 			break
+	// 		}
+	// 	}
+	// 	if nodeToDelete.Valid() {
+	// 		c, err := s.DeleteNode(nodeToDelete)
+	// 		if err != nil {
+	// 			return types.NodeView{}, change.EmptySet, fmt.Errorf("deleting ephemeral node during logout: %w", err)
+	// 		}
 
-			return types.NodeView{}, c, nil
-		}
+	// 		return types.NodeView{}, c, nil
+	// 	}
 
-		return types.NodeView{}, change.EmptySet, nil
-	}
+	// 	return types.NodeView{}, change.EmptySet, nil
+	// }
 
 	log.Debug().
 		Caller().
@@ -1158,7 +1170,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 			// Preserve NetInfo from existing node when re-registering
-			netInfo := NetInfoFromMapRequest(existingNode.ID(), node.Hostinfo, regReq.Hostinfo)
+			netInfo := netInfoFromMapRequest(existingNode.ID(), node.Hostinfo, regReq.Hostinfo)
 			node.Hostinfo = regReq.Hostinfo
 			node.Hostinfo.NetInfo = netInfo
 
@@ -1224,10 +1236,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			ForcedTags:     pak.Proto().GetAclTags(),
 			AuthKey:        pak,
 			AuthKeyID:      &pak.ID,
-		}
-
-		if !regReq.Expiry.IsZero() {
-			nodeToRegister.Expiry = &regReq.Expiry
+			Expiry:         &regReq.Expiry,
 		}
 
 		ipv4, ipv6, err := s.ipAlloc.Next()
@@ -1416,7 +1425,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
 		// Get the correct NetInfo to use
-		netInfo := NetInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
+		netInfo := netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
 		if req.Hostinfo != nil {
 			req.Hostinfo.NetInfo = netInfo
 		} else {
