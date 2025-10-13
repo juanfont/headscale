@@ -58,6 +58,33 @@ type DebugStringInfo struct {
 	Content string `json:"content"`
 }
 
+// DebugRegistrationCacheInfo represents registration cache information in a structured format.
+type DebugRegistrationCacheInfo struct {
+	TotalEntries int                                      `json:"total_entries"`
+	Entries      map[string]DebugRegistrationCacheEntry   `json:"entries"`
+	CacheConfig  DebugRegistrationCacheConfig             `json:"cache_config"`
+}
+
+// DebugRegistrationCacheEntry represents a single registration cache entry.
+type DebugRegistrationCacheEntry struct {
+	ID             string    `json:"id"`
+	NodeID         uint64    `json:"node_id"`
+	Hostname       string    `json:"hostname"`
+	GivenName      string    `json:"given_name"`
+	UserID         uint64    `json:"user_id"`
+	RegisterMethod string    `json:"register_method"`
+	Expires        int64     `json:"expires"`
+	ChannelStatus  string    `json:"channel_status"`
+}
+
+// DebugRegistrationCacheConfig represents the cache configuration.
+type DebugRegistrationCacheConfig struct {
+	Type       string `json:"type"`
+	Expiration string `json:"expiration"`
+	Cleanup    string `json:"cleanup"`
+	Status     string `json:"status"`
+}
+
 // DebugOverview returns a comprehensive overview of the current state for debugging.
 func (s *State) DebugOverview() string {
 	s.mu.RLock()
@@ -378,4 +405,100 @@ func (s *State) DebugPolicyManagerJSON() DebugStringInfo {
 	return DebugStringInfo{
 		Content: s.polMan.DebugString(),
 	}
+}
+
+// DebugRegistrationCacheJSON returns structured debug information about the registration cache.
+func (s *State) DebugRegistrationCacheJSON() DebugRegistrationCacheInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := s.registrationCache.Items()
+	
+	info := DebugRegistrationCacheInfo{
+		TotalEntries: len(items),
+		Entries:      make(map[string]DebugRegistrationCacheEntry),
+		CacheConfig: DebugRegistrationCacheConfig{
+			Type:       "zcache",
+			Expiration: registerCacheExpiration.String(),
+			Cleanup:    registerCacheCleanup.String(),
+			Status:     "active",
+		},
+	}
+
+	for id, item := range items {
+		regNode := item.Object
+		channelStatus := func() string {
+			select {
+			case <-regNode.Registered:
+				return "closed"
+			default:
+				return "open"
+			}
+		}()
+
+		info.Entries[id.String()] = DebugRegistrationCacheEntry{
+			ID:             id.String(),
+			NodeID:         uint64(regNode.Node.ID),
+			Hostname:       regNode.Node.Hostname,
+			GivenName:      regNode.Node.GivenName,
+			UserID:         uint64(regNode.Node.UserID),
+			RegisterMethod: regNode.Node.RegisterMethod,
+			Expires:        item.Expiration,
+			ChannelStatus:  channelStatus,
+		}
+	}
+
+	return info
+}
+
+// DebugRegistrationCacheString returns a formatted string representation of the registration cache
+func (s *State) DebugRegistrationCacheString() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	items := s.registrationCache.Items()
+	
+	var result strings.Builder
+	
+	// Cache configuration information
+	result.WriteString("Registration Cache Configuration:\n")
+	result.WriteString("=====================================\n")
+	result.WriteString(fmt.Sprintf("  Type: %s\n", "zcache"))
+	result.WriteString(fmt.Sprintf("  Expiration: %s\n", registerCacheExpiration.String()))
+	result.WriteString(fmt.Sprintf("  Cleanup: %s\n", registerCacheCleanup.String()))
+	result.WriteString(fmt.Sprintf("  Status: %s\n", "active"))
+	result.WriteString("\n")
+	
+	// Cache entries
+	if len(items) == 0 {
+		result.WriteString("No pending registrations\n")
+		return result.String()
+	}
+
+	result.WriteString(fmt.Sprintf("Registration Cache Entries (%d total):\n", len(items)))
+	result.WriteString("=====================================\n")
+	
+	for id, item := range items {
+		regNode := item.Object
+		channelStatus := func() string {
+			select {
+			case <-regNode.Registered:
+				return "closed"
+			default:
+				return "open"
+			}
+		}()
+		
+		result.WriteString(fmt.Sprintf("  ID: %s\n", id.String()))
+		result.WriteString(fmt.Sprintf("  Node ID: %d\n", uint64(regNode.Node.ID)))
+		result.WriteString(fmt.Sprintf("  Hostname: %s\n", regNode.Node.Hostname))
+		result.WriteString(fmt.Sprintf("  Given Name: %s\n", regNode.Node.GivenName))
+		result.WriteString(fmt.Sprintf("  User ID: %d\n", uint64(regNode.Node.UserID)))
+		result.WriteString(fmt.Sprintf("  Register Method: %s\n", regNode.Node.RegisterMethod))
+		result.WriteString(fmt.Sprintf("  Expires: %d\n", item.Expiration))
+		result.WriteString(fmt.Sprintf("  Channel Status: %s\n", channelStatus))
+		result.WriteString("-------------------------------------\n")
+	}
+	
+	return result.String()
 }

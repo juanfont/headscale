@@ -156,15 +156,26 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 	// Registration cache endpoint
 	debug.Handle("registration-cache", "Registration cache information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cacheInfo := h.state.DebugRegistrationCache()
-		cacheJSON, err := json.MarshalIndent(cacheInfo, "", "  ")
-		if err != nil {
-			httpError(w, err)
-			return
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+
+		if wantsJSON {
+			registrationCacheInfo := h.state.DebugRegistrationCacheJSON()
+			registrationCacheJSON, err := json.MarshalIndent(registrationCacheInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write(registrationCacheJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(h.state.DebugRegistrationCacheString()))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write(cacheJSON)
 	}))
 
 	// Routes endpoint
