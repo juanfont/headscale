@@ -198,9 +198,9 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 }
 
 // This test will first log in two sets of nodes to two sets of users, then
-// it will log out all users from user2 and log them in as user1.
-// This should leave us with all nodes connected to user1, while user2
-// still has nodes, but they are not connected.
+// it will log out all nodes and log them in as user1 using a pre-auth key.
+// This should create new nodes for user1 while preserving the original nodes for user2.
+// Pre-auth key re-authentication with a different user creates new nodes, not transfers.
 func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -295,7 +295,9 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", 120*time.Second)
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedUser1Nodes, "all user1 nodes should have NetInfo and DERP after relogin", 3*time.Minute)
 
-	// Validate that all the old nodes are still present with user2
+	// Validate that user2 still has their original nodes after user1's re-authentication
+	// When nodes re-authenticate with a different user's pre-auth key, NEW nodes are created
+	// for the new user. The original nodes remain with the original user.
 	var user2Nodes []*v1.Node
 	t.Logf("Validating user2 node persistence after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {

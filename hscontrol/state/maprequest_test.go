@@ -108,6 +108,32 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		assert.NotNil(t, correctResult, "Fix: Should preserve NetInfo when using correct hostinfo reference")
 		assert.Equal(t, 5, correctResult.PreferredDERP, "Should preserve the DERP region from existing node")
 	})
+
+	t.Run("new_node_creation_for_different_user_should_preserve_netinfo", func(t *testing.T) {
+		// This test covers the scenario where:
+		// 1. A node exists for user1 with NetInfo
+		// 2. The same machine logs in as user2 (different user)
+		// 3. A NEW node is created for user2 (pre-auth key flow)
+		// 4. The new node should preserve NetInfo from the old node
+
+		// Existing node for user1 with NetInfo
+		existingNodeUser1Hostinfo := &tailcfg.Hostinfo{
+			Hostname: "test-node",
+			NetInfo:  &tailcfg.NetInfo{PreferredDERP: 7},
+		}
+
+		// New registration request for user2 (no NetInfo yet)
+		newNodeUser2Hostinfo := &tailcfg.Hostinfo{
+			Hostname: "test-node",
+			OS:       "linux",
+			// NetInfo is nil - registration request doesn't include it
+		}
+
+		// When creating a new node for user2, we should preserve NetInfo from user1's node
+		result := netInfoFromMapRequest(types.NodeID(2), existingNodeUser1Hostinfo, newNodeUser2Hostinfo)
+		assert.NotNil(t, result, "New node for user2 should preserve NetInfo from user1's node")
+		assert.Equal(t, 7, result.PreferredDERP, "Should preserve DERP region from existing node")
+	})
 }
 
 // Simple helper function for tests

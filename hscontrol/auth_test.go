@@ -3,6 +3,7 @@ package hscontrol
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -1206,11 +1207,11 @@ func TestAuthenticationFlows(t *testing.T) {
 		// === REGISTRATION CACHE EDGE CASES ===
 		// Tests edge cases in registration cache handling during interactive flow
 
-		// TEST: Followup registration with nil response (auth failure)
-		// WHAT: Tests that followup request handles nil node response (authentication failed)
-		// INPUT: Followup request where auth completion sends nil (indicates auth failure)
-		// EXPECTED: Request fails with unauthorized error
-		// WHY: Nil response signals authentication failure; must be rejected
+		// TEST: Followup registration with nil response (cache expired during auth)
+		// WHAT: Tests that followup request handles nil node response (cache expired/cleared)
+		// INPUT: Followup request where auth completion sends nil (cache was cleared)
+		// EXPECTED: Returns new AuthURL so client can retry authentication
+		// WHY: Nil response means cache expired - give client new AuthURL instead of error
 		{
 			name: "followup_registration_node_nil_response",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
@@ -1228,10 +1229,10 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 				app.state.SetRegistrationCacheEntry(regID, nodeToRegister)
 
-				// Simulate registration that returns nil (authentication failed)
+				// Simulate registration that returns nil (cache expired during auth)
 				go func() {
 					time.Sleep(20 * time.Millisecond)
-					registered <- nil // Nil indicates auth failure
+					registered <- nil // Nil indicates cache expiry
 				}()
 
 				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
@@ -1240,10 +1241,20 @@ func TestAuthenticationFlows(t *testing.T) {
 				return tailcfg.RegisterRequest{
 					Followup: followupURL,
 					NodeKey:  nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname: "nil-response-node",
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
 			machineKey: func() key.MachinePublic { return machineKey1.Public() },
-			wantError:  true,
+			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+				// Should get a new AuthURL, not an error
+				assert.NotEmpty(t, resp.AuthURL, "should receive new AuthURL when cache returns nil")
+				assert.Contains(t, resp.AuthURL, "/register/", "AuthURL should contain registration path")
+				assert.False(t, resp.MachineAuthorized, "machine should not be authorized yet")
+			},
 		},
 		// TEST: Malformed followup path is rejected
 		// WHAT: Tests that followup URL with malformed path is rejected
@@ -1557,26 +1568,30 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
-				// Verify node was transferred to user2
-				node, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
-				require.True(t, found, "node should exist for user2 after transfer")
-				assert.Equal(t, uint(2), node.UserID(), "node should belong to user2")
+				// Verify NEW node was created for user2
+				node2, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
+				require.True(t, found, "new node should exist for user2")
+				assert.Equal(t, uint(2), node2.UserID(), "new node should belong to user2")
 
-				user := node.User()
-				assert.Equal(t, "user2-context", user.Username(), "node should show user2 username")
+				user := node2.User()
+				assert.Equal(t, "user2-context", user.Username(), "new node should show user2 username")
 
-				// Verify node no longer exists for user1
-				_, found = app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
-				assert.False(t, found, "node should not exist for user1 after transfer")
+				// Verify original node still exists for user1
+				node1, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
+				require.True(t, found, "original node should still exist for user1")
+				assert.Equal(t, uint(1), node1.UserID(), "original node should still belong to user1")
+
+				// Verify they are different nodes (different IDs)
+				assert.NotEqual(t, node1.ID(), node2.ID(), "should be different node IDs")
 			},
 		},
-		// TEST: Re-authentication with different user via interactive flow
-		// WHAT: Tests node transfer when re-authenticating interactively with a different user
+		// TEST: Re-authentication with different user via interactive flow creates new node
+		// WHAT: Tests new node creation when re-authenticating interactively with a different user
 		// INPUT: Node registered with user1, re-authenticates interactively as user2 (same machine key, same node key)
-		// EXPECTED: Node is transferred to user2 (updates UserID and related fields)
-		// WHY: Validates device reassignment scenarios in interactive flow - should match auth key behavior
+		// EXPECTED: New node is created for user2, user1's original node remains (no transfer)
+		// WHY: Same physical machine can have separate node identities per user
 		{
-			name: "interactive_reauth_existing_node_different_user",
+			name: "interactive_reauth_existing_node_different_user_creates_new_node",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				// Create user1 and register a node with auth key
 				user1 := app.state.CreateUserForTest("interactive-user-1")
@@ -1627,20 +1642,73 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			validateCompleteResponse: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
-				// Node should be transferred to user2 (interactive-test-user created during auth)
-				node, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
-				require.True(t, found, "node should exist for user2 after interactive transfer")
-				assert.Equal(t, uint(2), node.UserID(), "node should belong to user2")
+				// User1's original node should STILL exist (not transferred)
+				node1, found1 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
+				require.True(t, found1, "user1's original node should still exist")
+				assert.Equal(t, uint(1), node1.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, nodeKey1.Public(), node1.NodeKey(), "user1's node should have original node key")
 
-				user := node.User()
-				assert.Equal(t, "interactive-test-user", user.Username(), "node should show user2 username")
+				// User2 should have a NEW node created
+				node2, found2 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
+				require.True(t, found2, "user2 should have new node created")
+				assert.Equal(t, uint(2), node2.UserID(), "user2's node should belong to user2")
 
-				// Verify node no longer exists for user1
-				_, found = app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
-				assert.False(t, found, "node should not exist for user1 after transfer")
+				user := node2.User()
+				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should show correct username")
 
-				// Verify same node key (not a new node)
-				assert.Equal(t, nodeKey1.Public(), node.NodeKey(), "should be same node, not a new one")
+				// Both nodes should have the same machine key but different IDs
+				assert.NotEqual(t, node1.ID(), node2.ID(), "should be different nodes (different IDs)")
+				assert.Equal(t, machineKey1.Public(), node2.MachineKey(), "user2's node should have same machine key")
+			},
+		},
+		// TEST: Followup request after registration cache expiry
+		// WHAT: Tests that expired followup requests get a new AuthURL instead of error
+		// INPUT: Followup request for registration ID that has expired/been evicted from cache
+		// EXPECTED: Returns new AuthURL (not error) so client can retry authentication
+		// WHY: Validates new reqToNewRegisterResponse functionality - prevents client getting stuck
+		{
+			name: "followup_request_after_cache_expiry",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+				// Generate a registration ID that doesn't exist in cache
+				// This simulates an expired/missing cache entry
+				regID, err := types.NewRegistrationID()
+				if err != nil {
+					return "", err
+				}
+				// Don't add it to cache - it's already expired/missing
+				return regID.String(), nil
+			},
+			request: func(regID string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Followup: "http://localhost:8080/register/" + regID,
+					NodeKey:  nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname: "expired-cache-node",
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+				// Should get a new AuthURL, not an error
+				assert.NotEmpty(t, resp.AuthURL, "should receive new AuthURL when registration expired")
+				assert.Contains(t, resp.AuthURL, "/register/", "AuthURL should contain registration path")
+				assert.False(t, resp.MachineAuthorized, "machine should not be authorized yet")
+
+				// Verify the response contains a valid registration URL
+				authURL, err := url.Parse(resp.AuthURL)
+				assert.NoError(t, err, "AuthURL should be a valid URL")
+				assert.True(t, strings.HasPrefix(authURL.Path, "/register/"), "AuthURL path should start with /register/")
+
+				// Extract and validate the new registration ID exists in cache
+				newRegIDStr := strings.TrimPrefix(authURL.Path, "/register/")
+				newRegID, err := types.RegistrationIDFromString(newRegIDStr)
+				assert.NoError(t, err, "should be able to parse new registration ID")
+
+				// Verify new registration entry exists in cache
+				_, found := app.state.GetRegistrationCacheEntry(newRegID)
+				assert.True(t, found, "new registration should exist in cache")
 			},
 		},
 		// TEST: Logout with expiry exactly at current time
@@ -1735,13 +1803,13 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 
 		// === COMPREHENSIVE INTERACTIVE WORKFLOW EDGE CASES ===
-		// TEST: Interactive workflow with existing node from different user
-		// WHAT: Tests node transfer when re-authenticating interactively with different user (same machine key, different node key)
+		// TEST: Interactive workflow with existing node from different user creates new node
+		// WHAT: Tests new node creation when re-authenticating interactively with different user
 		// INPUT: Node already registered with user1, interactive auth with user2 (same machine key, different node key)
-		// EXPECTED: Node is transferred to user2 and node key is updated
-		// WHY: Same machine key = same physical device, so transfer to new user (consistent with auth key behavior)
+		// EXPECTED: New node is created for user2, user1's original node remains (no transfer)
+		// WHY: Same physical machine can have separate node identities per user
 		{
-			name: "interactive_workflow_with_existing_node_different_user",
+			name: "interactive_workflow_with_existing_node_different_user_creates_new_node",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				// First create a node under user1
 				user1 := app.state.CreateUserForTest("existing-user-1")
@@ -1792,22 +1860,23 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			validateCompleteResponse: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
-				// Original node with nodeKey1 should no longer exist (it was transferred)
-				_, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
-				assert.False(t, found1, "original node with nodeKey1 should not exist after transfer")
+				// User1's original node with nodeKey1 should STILL exist
+				node1, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				require.True(t, found1, "user1's original node with nodeKey1 should still exist")
+				assert.Equal(t, uint(1), node1.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, uint64(1), node1.ID().Uint64(), "user1's node should be ID=1")
 
-				// Node should be transferred to user2 with the new node key (nodeKey2)
+				// User2 should have a NEW node with nodeKey2
 				node2, found2 := app.state.GetNodeByNodeKey(nodeKey2.Public())
-				require.True(t, found2, "node should exist with new node key after transfer")
+				require.True(t, found2, "user2 should have new node with nodeKey2")
 
-				// Verify it's the same node (same ID) but transferred to new user
-				assert.Equal(t, "existing-node-user2", node2.Hostname(), "hostname should be updated")
-				user2 := node2.User()
-				assert.Equal(t, "interactive-test-user", user2.Username(), "node should belong to new user")
-				assert.Equal(t, machineKey1.Public(), node2.MachineKey(), "machine key should remain the same")
+				assert.Equal(t, "existing-node-user2", node2.Hostname(), "hostname should be from new registration")
+				user := node2.User()
+				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should belong to user2")
+				assert.Equal(t, machineKey1.Public(), node2.MachineKey(), "machine key should be the same")
 
-				// Verify it's the transferred node, not a new one
-				assert.Equal(t, uint64(1), node2.ID().Uint64(), "should be the same node (ID=1), not a new node")
+				// Verify it's a NEW node, not transferred
+				assert.NotEqual(t, uint64(1), node2.ID().Uint64(), "should be a NEW node (different ID)")
 			},
 		},
 		// TEST: Interactive workflow with malformed followup URL
@@ -2000,22 +2069,23 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			validateCompleteResponse: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
-				// Node is transferred to new user with node key updated (same machine key = same device)
-				// The node with nodeKey2 should exist (transferred and updated)
+				// User1's original node with nodeKey1 should STILL exist
+				oldNode, foundOld := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				require.True(t, foundOld, "user1's original node with nodeKey1 should still exist")
+				assert.Equal(t, uint(1), oldNode.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, uint64(1), oldNode.ID().Uint64(), "user1's node should be ID=1")
+
+				// User2 should have a NEW node with nodeKey2
 				newNode, found := app.state.GetNodeByNodeKey(nodeKey2.Public())
-				require.True(t, found, "node should exist with new node key after transfer")
+				require.True(t, found, "user2 should have new node with nodeKey2")
 				assert.Equal(t, "rotation-node-updated", newNode.Hostname())
 				assert.Equal(t, machineKey1.Public(), newNode.MachineKey())
-				// Should be associated with the interactive test user after transfer
+
 				user := newNode.User()
-				assert.Equal(t, "interactive-test-user", user.Username())
+				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should belong to user2")
 
-				// Original node with nodeKey1 should NOT exist (it was transferred and node key updated)
-				_, foundOld := app.state.GetNodeByNodeKey(nodeKey1.Public())
-				assert.False(t, foundOld, "original node with old node key should not exist after transfer")
-
-				// Verify it's the same node (ID=1), not a new one
-				assert.Equal(t, uint64(1), newNode.ID().Uint64(), "should be the same node (ID=1), not a new node")
+				// Verify it's a NEW node, not transferred
+				assert.NotEqual(t, uint64(1), newNode.ID().Uint64(), "should be a NEW node (different ID)")
 			},
 		},
 		// TEST: Interactive workflow with nil hostinfo
@@ -2556,6 +2626,341 @@ func TestNodeStoreLookup(t *testing.T) {
 	require.Equal(t, "test-node", node.Hostname())
 
 	t.Logf("Found node: hostname=%s, id=%d", node.Hostname(), node.ID().Uint64())
+}
+
+// TestPreAuthKeyLogoutAndReloginDifferentUser tests the scenario where:
+// 1. Multiple nodes register with different users using pre-auth keys
+// 2. All nodes logout
+// 3. All nodes re-login using a different user's pre-auth key
+// EXPECTED BEHAVIOR: Should create NEW nodes for the new user, leaving old nodes with the old user.
+// This matches the integration test expectation and web flow behavior.
+func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
+	app := createTestApp(t)
+
+	// Create two users
+	user1 := app.state.CreateUserForTest("user1")
+	user2 := app.state.CreateUserForTest("user2")
+
+	// Create pre-auth keys for both users
+	pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	require.NoError(t, err)
+	pak2, err := app.state.CreatePreAuthKey(types.UserID(user2.ID), true, false, nil, nil)
+	require.NoError(t, err)
+
+	// Create machine and node keys for 4 nodes (2 per user)
+	type nodeInfo struct {
+		machineKey key.MachinePrivate
+		nodeKey    key.NodePrivate
+		hostname   string
+		nodeID     types.NodeID
+	}
+
+	nodes := []nodeInfo{
+		{machineKey: key.NewMachine(), nodeKey: key.NewNode(), hostname: "user1-node1"},
+		{machineKey: key.NewMachine(), nodeKey: key.NewNode(), hostname: "user1-node2"},
+		{machineKey: key.NewMachine(), nodeKey: key.NewNode(), hostname: "user2-node1"},
+		{machineKey: key.NewMachine(), nodeKey: key.NewNode(), hostname: "user2-node2"},
+	}
+
+	// Register nodes: first 2 to user1, last 2 to user2
+	for i, node := range nodes {
+		authKey := pak1.Key
+		if i >= 2 {
+			authKey = pak2.Key
+		}
+
+		regReq := tailcfg.RegisterRequest{
+			Auth: &tailcfg.RegisterResponseAuth{
+				AuthKey: authKey,
+			},
+			NodeKey: node.nodeKey.Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: node.hostname,
+			},
+			Expiry: time.Now().Add(24 * time.Hour),
+		}
+
+		resp, err := app.handleRegisterWithAuthKey(regReq, node.machineKey.Public())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.MachineAuthorized)
+
+		// Get the node ID
+		var registeredNode types.NodeView
+		require.EventuallyWithT(t, func(c *assert.CollectT) {
+			var found bool
+			registeredNode, found = app.state.GetNodeByNodeKey(node.nodeKey.Public())
+			assert.True(c, found, "Node should be found in NodeStore")
+		}, 1*time.Second, 100*time.Millisecond, "waiting for node to be available")
+
+		nodes[i].nodeID = registeredNode.ID()
+		t.Logf("Registered node %s with ID %d to user%d", node.hostname, registeredNode.ID().Uint64(), i/2+1)
+	}
+
+	// Verify initial state: user1 has 2 nodes, user2 has 2 nodes
+	user1Nodes := app.state.ListNodesByUser(types.UserID(user1.ID))
+	user2Nodes := app.state.ListNodesByUser(types.UserID(user2.ID))
+	require.Equal(t, 2, user1Nodes.Len(), "user1 should have 2 nodes initially")
+	require.Equal(t, 2, user2Nodes.Len(), "user2 should have 2 nodes initially")
+
+	t.Logf("Initial state verified: user1=%d nodes, user2=%d nodes", user1Nodes.Len(), user2Nodes.Len())
+
+	// Simulate logout for all nodes
+	for _, node := range nodes {
+		logoutReq := tailcfg.RegisterRequest{
+			Auth:    nil, // nil Auth indicates logout
+			NodeKey: node.nodeKey.Public(),
+		}
+
+		resp, err := app.handleRegister(context.Background(), logoutReq, node.machineKey.Public())
+		require.NoError(t, err)
+		t.Logf("Logout response for %s: %+v", node.hostname, resp)
+	}
+
+	t.Logf("All nodes logged out")
+
+	// Create a new pre-auth key for user1 (reusable for all nodes)
+	newPak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	require.NoError(t, err)
+
+	// Re-login all nodes using user1's new pre-auth key
+	for i, node := range nodes {
+		regReq := tailcfg.RegisterRequest{
+			Auth: &tailcfg.RegisterResponseAuth{
+				AuthKey: newPak1.Key,
+			},
+			NodeKey: node.nodeKey.Public(),
+			Hostinfo: &tailcfg.Hostinfo{
+				Hostname: node.hostname,
+			},
+			Expiry: time.Now().Add(24 * time.Hour),
+		}
+
+		resp, err := app.handleRegisterWithAuthKey(regReq, node.machineKey.Public())
+		require.NoError(t, err)
+		require.NotNil(t, resp)
+		require.True(t, resp.MachineAuthorized)
+
+		t.Logf("Re-registered node %s (originally user%d) with user1's pre-auth key", node.hostname, i/2+1)
+	}
+
+	// Verify final state after re-login
+	// EXPECTED: New nodes created for user1, old nodes remain with original users
+	user1NodesAfter := app.state.ListNodesByUser(types.UserID(user1.ID))
+	user2NodesAfter := app.state.ListNodesByUser(types.UserID(user2.ID))
+
+	t.Logf("Final state: user1=%d nodes, user2=%d nodes", user1NodesAfter.Len(), user2NodesAfter.Len())
+
+	// CORRECT BEHAVIOR: When re-authenticating with a DIFFERENT user's pre-auth key,
+	// new nodes should be created (not transferred). This matches:
+	// 1. The integration test expectation
+	// 2. The web flow behavior (creates new nodes)
+	// 3. The principle that each user owns distinct node entries
+	require.Equal(t, 4, user1NodesAfter.Len(), "user1 should have 4 nodes total (2 original + 2 new from user2's machines)")
+	require.Equal(t, 2, user2NodesAfter.Len(), "user2 should still have 2 nodes (old nodes from original registration)")
+
+	// Verify original nodes still exist with original users
+	for i := 0; i < 2; i++ {
+		node := nodes[i]
+		// User1's original nodes should still be owned by user1
+		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
+		require.True(t, found, "User1's original node %s should still exist", node.hostname)
+		require.Equal(t, user1.ID, registeredNode.UserID(), "Node %s should still belong to user1", node.hostname)
+		t.Logf("✓ User1's original node %s (ID=%d) still owned by user1", node.hostname, registeredNode.ID().Uint64())
+	}
+
+	for i := 2; i < 4; i++ {
+		node := nodes[i]
+		// User2's original nodes should still be owned by user2
+		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user2.ID))
+		require.True(t, found, "User2's original node %s should still exist", node.hostname)
+		require.Equal(t, user2.ID, registeredNode.UserID(), "Node %s should still belong to user2", node.hostname)
+		t.Logf("✓ User2's original node %s (ID=%d) still owned by user2", node.hostname, registeredNode.ID().Uint64())
+	}
+
+	// Verify new nodes were created for user1 with the same machine keys
+	t.Logf("Verifying new nodes created for user1 from user2's machine keys...")
+	for i := 2; i < 4; i++ {
+		node := nodes[i]
+		// Should be able to find a node with user1 and this machine key (the new one)
+		newNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
+		require.True(t, found, "Should have created new node for user1 with machine key from %s", node.hostname)
+		require.Equal(t, user1.ID, newNode.UserID(), "New node should belong to user1")
+		t.Logf("✓ New node created for user1 with machine key from %s (ID=%d)", node.hostname, newNode.ID().Uint64())
+	}
+}
+
+// TestWebFlowReauthDifferentUser validates CLI registration behavior when switching users.
+// This test replicates the TestAuthWebFlowLogoutAndReloginNewUser integration test scenario.
+//
+// IMPORTANT: CLI registration creates NEW nodes (different from interactive flow which transfers).
+//
+// Scenario:
+// 1. Node registers with user1 via pre-auth key
+// 2. Node logs out (expires)
+// 3. Admin runs: headscale nodes register --user user2 --key <key>
+//
+// Expected behavior:
+// - User1's original node should STILL EXIST (expired)
+// - User2 should get a NEW node created (NOT transfer)
+// - Both nodes share the same machine key (same physical device)
+func TestWebFlowReauthDifferentUser(t *testing.T) {
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+	nodeKey2 := key.NewNode() // Node key rotates on re-auth
+
+	app := createTestApp(t)
+
+	// Step 1: Register node for user1 via pre-auth key (simulating initial web flow registration)
+	user1 := app.state.CreateUserForTest("user1")
+	pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	require.NoError(t, err)
+
+	regReq1 := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak1.Key,
+		},
+		NodeKey: nodeKey1.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-machine",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp1, err := app.handleRegisterWithAuthKey(regReq1, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp1.MachineAuthorized, "Should be authorized via pre-auth key")
+
+	// Verify node exists for user1
+	user1Node, found := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+	require.True(t, found, "Node should exist for user1")
+	require.Equal(t, user1.ID, user1Node.UserID(), "Node should belong to user1")
+	user1NodeID := user1Node.ID()
+	t.Logf("✓ User1 node created with ID: %d", user1NodeID)
+
+	// Step 2: Simulate logout by expiring the node
+	pastTime := time.Now().Add(-1 * time.Hour)
+	logoutReq := tailcfg.RegisterRequest{
+		NodeKey: nodeKey1.Public(),
+		Expiry:  pastTime, // Expired = logout
+	}
+	_, err = app.handleRegister(context.Background(), logoutReq, machineKey.Public())
+	require.NoError(t, err)
+
+	// Verify node is expired
+	user1Node, found = app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+	require.True(t, found, "Node should still exist after logout")
+	require.True(t, user1Node.IsExpired(), "Node should be expired after logout")
+	t.Logf("✓ User1 node expired (logged out)")
+
+	// Step 3: Start interactive re-authentication (simulates "tailscale up")
+	user2 := app.state.CreateUserForTest("user2")
+
+	reAuthReq := tailcfg.RegisterRequest{
+		// No Auth field - triggers interactive flow
+		NodeKey: nodeKey2.Public(), // New node key (rotated on re-auth)
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-machine",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	// Initial request should return AuthURL
+	initialResp, err := app.handleRegister(context.Background(), reAuthReq, machineKey.Public())
+	require.NoError(t, err)
+	require.NotEmpty(t, initialResp.AuthURL, "Should receive AuthURL for interactive flow")
+	t.Logf("✓ Interactive flow started, AuthURL: %s", initialResp.AuthURL)
+
+	// Extract registration ID from AuthURL
+	regID, err := extractRegistrationIDFromAuthURL(initialResp.AuthURL)
+	require.NoError(t, err, "Should extract registration ID from AuthURL")
+	require.NotEmpty(t, regID, "Should have valid registration ID")
+
+	// Step 4: Admin completes authentication via CLI
+	// This simulates: headscale nodes register --user user2 --key <key>
+	node, _, err := app.state.HandleNodeFromAuthPath(
+		regID,
+		types.UserID(user2.ID), // Register to user2, not user1!
+		nil,                    // No custom expiry
+		"cli",                  // Registration method (CLI register command)
+	)
+	require.NoError(t, err, "HandleNodeFromAuthPath should succeed")
+	t.Logf("✓ Admin registered node to user2 via CLI (node ID: %d)", node.ID())
+
+	t.Run("user1_original_node_still_exists", func(t *testing.T) {
+		// User1's original node should STILL exist (not transferred to user2)
+		user1NodeAfter, found1 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+		assert.True(t, found1, "User1's original node should still exist (not transferred)")
+
+		if !found1 {
+			t.Fatal("User1's node was transferred or deleted - this breaks the integration test!")
+		}
+
+		assert.Equal(t, user1.ID, user1NodeAfter.UserID(), "User1's node should still belong to user1")
+		assert.Equal(t, user1NodeID, user1NodeAfter.ID(), "Should be the same node (same ID)")
+		assert.True(t, user1NodeAfter.IsExpired(), "User1's node should still be expired")
+		t.Logf("✓ User1's original node still exists (ID: %d, expired: %v)", user1NodeAfter.ID(), user1NodeAfter.IsExpired())
+	})
+
+	t.Run("user2_has_new_node_created", func(t *testing.T) {
+		// User2 should have a NEW node created (not transfer from user1)
+		user2Node, found2 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user2.ID))
+		assert.True(t, found2, "User2 should have a new node created")
+
+		if !found2 {
+			t.Fatal("User2 doesn't have a node - registration failed!")
+		}
+
+		assert.Equal(t, user2.ID, user2Node.UserID(), "User2's node should belong to user2")
+		assert.NotEqual(t, user1NodeID, user2Node.ID(), "Should be a NEW node (different ID), not transfer!")
+		assert.Equal(t, machineKey.Public(), user2Node.MachineKey(), "Should have same machine key")
+		assert.Equal(t, nodeKey2.Public(), user2Node.NodeKey(), "Should have new node key")
+		assert.False(t, user2Node.IsExpired(), "User2's node should NOT be expired (active)")
+		t.Logf("✓ User2's new node created (ID: %d, active)", user2Node.ID())
+	})
+
+	t.Run("returned_node_is_user2_new_node", func(t *testing.T) {
+		// The node returned from HandleNodeFromAuthPath should be user2's NEW node
+		assert.Equal(t, user2.ID, node.UserID(), "Returned node should belong to user2")
+		assert.NotEqual(t, user1NodeID, node.ID(), "Returned node should be NEW, not transferred from user1")
+		t.Logf("✓ HandleNodeFromAuthPath returned user2's new node (ID: %d)", node.ID())
+	})
+
+	t.Run("both_nodes_share_machine_key", func(t *testing.T) {
+		// Both nodes should have the same machine key (same physical device)
+		user1NodeFinal, found1 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
+		user2NodeFinal, found2 := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user2.ID))
+
+		require.True(t, found1, "User1 node should exist")
+		require.True(t, found2, "User2 node should exist")
+
+		assert.Equal(t, machineKey.Public(), user1NodeFinal.MachineKey(), "User1 node should have correct machine key")
+		assert.Equal(t, machineKey.Public(), user2NodeFinal.MachineKey(), "User2 node should have same machine key")
+		t.Logf("✓ Both nodes share machine key: %s", machineKey.Public().ShortString())
+	})
+
+	t.Run("total_node_count", func(t *testing.T) {
+		// We should have exactly 2 nodes total: one for user1 (expired), one for user2 (active)
+		allNodesSlice := app.state.ListNodes()
+		assert.Equal(t, 2, allNodesSlice.Len(), "Should have exactly 2 nodes total")
+
+		// Count nodes per user
+		user1Nodes := 0
+		user2Nodes := 0
+		for i := 0; i < allNodesSlice.Len(); i++ {
+			n := allNodesSlice.At(i)
+			if n.UserID() == user1.ID {
+				user1Nodes++
+			}
+			if n.UserID() == user2.ID {
+				user2Nodes++
+			}
+		}
+
+		assert.Equal(t, 1, user1Nodes, "User1 should have 1 node")
+		assert.Equal(t, 1, user2Nodes, "User2 should have 1 node")
+		t.Logf("✓ Total: 2 nodes (user1: 1 expired, user2: 1 active)")
+	})
 }
 
 // Helper function to create test app

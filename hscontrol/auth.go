@@ -29,8 +29,41 @@ func (h *Headscale) handleRegister(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
+	// Check for logout/expiry FIRST, before checking auth key.
+	// Tailscale clients may send logout requests with BOTH a past expiry AND an auth key.
+	// A past expiry takes precedence - it's a logout regardless of other fields.
+	if !req.Expiry.IsZero() && req.Expiry.Before(time.Now()) {
+		log.Debug().
+			Str("node.key", req.NodeKey.ShortString()).
+			Time("expiry", req.Expiry).
+			Bool("has_auth", req.Auth != nil).
+			Msg("Detected logout attempt with past expiry")
+
+		// This is a logout attempt (expiry in the past)
+		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
+			log.Debug().
+				Uint64("node.id", node.ID().Uint64()).
+				Str("node.name", node.Hostname()).
+				Bool("is_ephemeral", node.IsEphemeral()).
+				Bool("has_authkey", node.AuthKey().Valid()).
+				Msg("Found existing node for logout, calling handleLogout")
+
+			resp, err := h.handleLogout(node, req, machineKey)
+			if err != nil {
+				return nil, fmt.Errorf("handling logout: %w", err)
+			}
+			if resp != nil {
+				return resp, nil
+			}
+		} else {
+			log.Warn().
+				Str("node.key", req.NodeKey.ShortString()).
+				Msg("Logout attempt but node not found in NodeStore")
+		}
+	}
+
 	// If the register request does not contain a Auth struct, it means we are logging
-	// out an existing node.
+	// out an existing node (legacy logout path for clients that send Auth=nil).
 	if req.Auth == nil {
 		// If the register request present a NodeKey that is currently in use, we will
 		// check if the node needs to be sent to re-auth, or if the node is logging out.
@@ -106,11 +139,10 @@ func (h *Headscale) handleLogout(
 		return nil, NewHTTPError(http.StatusUnauthorized, "node exist with different machine key", nil)
 	}
 
-	// If auth is set, it means that this node is authenticating and we can return
-	// early to run the correct re-authentication logic.
-	if req.Auth != nil {
-		return nil, nil
-	}
+	// Note: We do NOT return early if req.Auth is set, because Tailscale clients
+	// may send logout requests with BOTH a past expiry AND an auth key.
+	// A past expiry indicates logout, regardless of whether Auth is present.
+	// The expiry check below will handle the logout logic.
 
 	// If the node is expired and this is not a re-authentication attempt,
 	// force the client to re-authenticate.
@@ -141,7 +173,20 @@ func (h *Headscale) handleLogout(
 
 	// If the request expiry is in the past, we consider it a logout.
 	if req.Expiry.Before(time.Now()) {
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("node.name", node.Hostname()).
+			Bool("is_ephemeral", node.IsEphemeral()).
+			Bool("has_authkey", node.AuthKey().Valid()).
+			Time("req.expiry", req.Expiry).
+			Msg("Processing logout request with past expiry")
+
 		if node.IsEphemeral() {
+			log.Info().
+				Uint64("node.id", node.ID().Uint64()).
+				Str("node.name", node.Hostname()).
+				Msg("Deleting ephemeral node during logout")
+
 			c, err := h.state.DeleteNode(node)
 			if err != nil {
 				return nil, fmt.Errorf("deleting ephemeral node: %w", err)
@@ -154,6 +199,11 @@ func (h *Headscale) handleLogout(
 				MachineAuthorized: false,
 			}, nil
 		}
+
+		log.Debug().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("node.name", node.Hostname()).
+			Msg("Node is not ephemeral, setting expiry instead of deleting")
 	}
 
 	// Update the internal state with the nodes new expiry, meaning it is
@@ -233,12 +283,19 @@ func (h *Headscale) reqToNewRegisterResponse(
 		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
 	}
 
+	// Ensure we have valid hostinfo and hostname
+	validHostinfo, hostname := util.EnsureValidHostinfo(
+		req.Hostinfo,
+		machineKey.String(),
+		req.NodeKey.String(),
+	)
+
 	nodeToRegister := types.NewRegisterNode(
 		types.Node{
-			Hostname:   req.Hostinfo.Hostname,
+			Hostname:   hostname,
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
-			Hostinfo:   req.Hostinfo,
+			Hostinfo:   validHostinfo,
 			LastSeen:   ptr.To(time.Now()),
 		},
 	)

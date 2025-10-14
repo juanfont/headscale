@@ -57,14 +57,14 @@ managed by systemd.
 1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
     ```shell
-    sudo wget --output-document=/usr/local/bin/headscale \
+    sudo wget --output-document=/usr/bin/headscale \
     https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
     ```
 
 1.  Make `headscale` executable:
 
     ```shell
-    sudo chmod +x /usr/local/bin/headscale
+    sudo chmod +x /usr/bin/headscale
     ```
 
 1.  Add a dedicated local user to run headscale:

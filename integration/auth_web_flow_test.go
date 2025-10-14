@@ -10,6 +10,7 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -282,10 +283,30 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	t.Logf("all clients logged out")
 
 	// Log all clients back in as user1 using web flow
-	for _, userName := range spec.Users {
-		err = scenario.RunTailscaleUpWithURL(userName, headscale.GetEndpoint())
+	// We manually iterate over all clients and authenticate each one as user1
+	// This tests the cross-user re-authentication behavior where ALL clients
+	// (including those originally from user2) are registered to user1
+	for _, client := range allClients {
+		loginURL, err := client.LoginWithURL(headscale.GetEndpoint())
 		if err != nil {
-			t.Fatalf("failed to run tailscale up for user %s as user1: %s", userName, err)
+			t.Fatalf("failed to get login URL for client %s: %s", client.Hostname(), err)
+		}
+
+		body, err := doLoginURL(client.Hostname(), loginURL)
+		if err != nil {
+			t.Fatalf("failed to complete login for client %s: %s", client.Hostname(), err)
+		}
+
+		// Register all clients as user1 (this is where cross-user registration happens)
+		// This simulates: headscale nodes register --user user1 --key <key>
+		scenario.runHeadscaleRegister("user1", body)
+	}
+
+	// Wait for all clients to reach running state
+	for _, client := range allClients {
+		err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
+		if err != nil {
+			t.Fatalf("%s tailscale node has not reached running: %s", client.Hostname(), err)
 		}
 	}
 
@@ -309,15 +330,16 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	// Validate connection state after relogin as user1
 	validateReloginComplete(t, headscale, expectedUser1Nodes)
 
-	// Validate that all the old nodes are still present with user2
+	// Validate that user2's old nodes still exist in database (but are expired/offline)
+	// When CLI registration creates new nodes for user1, user2's old nodes remain
 	var user2Nodes []*v1.Node
-	t.Logf("Validating user2 node persistence after user1 web flow relogin at %s", time.Now().Format(TimestampFormat))
+	t.Logf("Validating user2 old nodes remain in database after CLI registration to user1 at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 		user2Nodes, err = headscale.ListNodes("user2")
-		assert.NoError(ct, err, "Failed to list nodes for user2 after user1 web flow relogin")
-		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d clients after user1 web flow relogin, got %d nodes", len(allClients)/2, len(user2Nodes))
-	}, 30*time.Second, 2*time.Second, "validating user2 nodes persist after user1 web flow relogin (should not be affected)")
+		assert.NoError(ct, err, "Failed to list nodes for user2 after CLI registration to user1")
+		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d old nodes (likely expired) after CLI registration to user1, got %d nodes", len(allClients)/2, len(user2Nodes))
+	}, 30*time.Second, 2*time.Second, "validating user2 old nodes remain in database after CLI registration to user1")
 
 	t.Logf("Validating client login states after web flow user switch at %s", time.Now().Format(TimestampFormat))
 	for _, client := range allClients {
