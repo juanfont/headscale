@@ -60,7 +60,9 @@ prefixes:
   v6: fd7a:115c:a1e0::/48
 
   # Strategy used for allocation of IPs to nodes, available options:
-  # - sequential (default): assigns the next free IP from the previous given IP.
+  # - sequential (default): assigns the next free IP from the previous given
+  #   IP. A best-effort approach is used and Headscale might leave holes in the
+  #   IP range or fill up existing holes in the IP range.
   # - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
   allocation: sequential
 
