@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"tailscale.com/tailcfg"
 )
 
 func TestTailscaleVersionNewerOrEqual(t *testing.T) {
@@ -791,5 +792,397 @@ over a maximum of 30 hops:
 				t.Errorf("Error message: got %q, want %q", gotErr.Error(), wantErr.Error())
 			}
 		})
+	}
+}
+
+func TestSafeHostname(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		hostinfo   *tailcfg.Hostinfo
+		machineKey string
+		nodeKey    string
+		want       string
+	}{
+		{
+			name: "valid_hostname",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test-node",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "test-node",
+		},
+		{
+			name:       "nil_hostinfo_with_machine_key",
+			hostinfo:   nil,
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "node-mkey1234",
+		},
+		{
+			name:       "nil_hostinfo_with_node_key_only",
+			hostinfo:   nil,
+			machineKey: "",
+			nodeKey:    "nkey12345678",
+			want:       "node-nkey1234",
+		},
+		{
+			name:       "nil_hostinfo_no_keys",
+			hostinfo:   nil,
+			machineKey: "",
+			nodeKey:    "",
+			want:       "unknown-node",
+		},
+		{
+			name: "empty_hostname_with_machine_key",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "node-mkey1234",
+		},
+		{
+			name: "empty_hostname_with_node_key_only",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey: "",
+			nodeKey:    "nkey12345678",
+			want:       "node-nkey1234",
+		},
+		{
+			name: "empty_hostname_no_keys",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey: "",
+			nodeKey:    "",
+			want:       "unknown-node",
+		},
+		{
+			name: "hostname_exactly_63_chars",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "123456789012345678901234567890123456789012345678901234567890123",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "123456789012345678901234567890123456789012345678901234567890123",
+		},
+		{
+			name: "hostname_64_chars_truncated",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "1234567890123456789012345678901234567890123456789012345678901234",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "123456789012345678901234567890123456789012345678901234567890123",
+		},
+		{
+			name: "hostname_very_long_truncated",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test-node-with-very-long-hostname-that-exceeds-dns-label-limits-of-63-characters-and-should-be-truncated",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "test-node-with-very-long-hostname-that-exceeds-dns-label-limits",
+		},
+		{
+			name: "hostname_with_special_chars",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "node-with-special!@#$%",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "node-with-special!@#$%",
+		},
+		{
+			name: "hostname_with_unicode",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "node-ñoño-测试",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "node-ñoño-测试",
+		},
+		{
+			name: "short_machine_key",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey: "short",
+			nodeKey:    "nkey12345678",
+			want:       "node-short",
+		},
+		{
+			name: "short_node_key",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey: "",
+			nodeKey:    "short",
+			want:       "node-short",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := SafeHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
+			if got != tt.want {
+				t.Errorf("SafeHostname() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnsureValidHostinfo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		hostinfo      *tailcfg.Hostinfo
+		machineKey    string
+		nodeKey       string
+		wantHostname  string
+		checkHostinfo func(*testing.T, *tailcfg.Hostinfo)
+	}{
+		{
+			name: "valid_hostinfo_unchanged",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test-node",
+				OS:       "linux",
+			},
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "test-node",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "test-node" {
+					t.Errorf("hostname = %v, want test-node", hi.Hostname)
+				}
+				if hi.OS != "linux" {
+					t.Errorf("OS = %v, want linux", hi.OS)
+				}
+			},
+		},
+		{
+			name:         "nil_hostinfo_creates_default",
+			hostinfo:     nil,
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "node-mkey1234",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "node-mkey1234" {
+					t.Errorf("hostname = %v, want node-mkey1234", hi.Hostname)
+				}
+			},
+		},
+		{
+			name: "empty_hostname_updated",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+				OS:       "darwin",
+			},
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "node-mkey1234",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "node-mkey1234" {
+					t.Errorf("hostname = %v, want node-mkey1234", hi.Hostname)
+				}
+				if hi.OS != "darwin" {
+					t.Errorf("OS = %v, want darwin", hi.OS)
+				}
+			},
+		},
+		{
+			name: "long_hostname_truncated",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test-node-with-very-long-hostname-that-exceeds-dns-label-limits-of-63-characters",
+			},
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "test-node-with-very-long-hostname-that-exceeds-dns-label-limits",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "test-node-with-very-long-hostname-that-exceeds-dns-label-limits" {
+					t.Errorf("hostname = %v, want truncated", hi.Hostname)
+				}
+				if len(hi.Hostname) != 63 {
+					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
+				}
+			},
+		},
+		{
+			name:         "nil_hostinfo_node_key_only",
+			hostinfo:     nil,
+			machineKey:   "",
+			nodeKey:      "nkey12345678",
+			wantHostname: "node-nkey1234",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "node-nkey1234" {
+					t.Errorf("hostname = %v, want node-nkey1234", hi.Hostname)
+				}
+			},
+		},
+		{
+			name:         "nil_hostinfo_no_keys",
+			hostinfo:     nil,
+			machineKey:   "",
+			nodeKey:      "",
+			wantHostname: "unknown-node",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "unknown-node" {
+					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
+				}
+			},
+		},
+		{
+			name: "empty_hostname_no_keys",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "",
+			},
+			machineKey:   "",
+			nodeKey:      "",
+			wantHostname: "unknown-node",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "unknown-node" {
+					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
+				}
+			},
+		},
+		{
+			name: "preserves_other_fields",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname:     "test",
+				OS:           "windows",
+				OSVersion:    "10.0.19044",
+				DeviceModel:  "test-device",
+				BackendLogID: "log123",
+			},
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "test",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if hi.Hostname != "test" {
+					t.Errorf("hostname = %v, want test", hi.Hostname)
+				}
+				if hi.OS != "windows" {
+					t.Errorf("OS = %v, want windows", hi.OS)
+				}
+				if hi.OSVersion != "10.0.19044" {
+					t.Errorf("OSVersion = %v, want 10.0.19044", hi.OSVersion)
+				}
+				if hi.DeviceModel != "test-device" {
+					t.Errorf("DeviceModel = %v, want test-device", hi.DeviceModel)
+				}
+				if hi.BackendLogID != "log123" {
+					t.Errorf("BackendLogID = %v, want log123", hi.BackendLogID)
+				}
+			},
+		},
+		{
+			name: "exactly_63_chars_unchanged",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "123456789012345678901234567890123456789012345678901234567890123",
+			},
+			machineKey:   "mkey12345678",
+			nodeKey:      "nkey12345678",
+			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				if hi == nil {
+					t.Error("hostinfo should not be nil")
+				}
+				if len(hi.Hostname) != 63 {
+					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			gotHostinfo, gotHostname := EnsureValidHostinfo(tt.hostinfo, tt.machineKey, tt.nodeKey)
+
+			if gotHostname != tt.wantHostname {
+				t.Errorf("EnsureValidHostinfo() hostname = %v, want %v", gotHostname, tt.wantHostname)
+			}
+			if gotHostinfo == nil {
+				t.Error("returned hostinfo should never be nil")
+			}
+
+			if tt.checkHostinfo != nil {
+				tt.checkHostinfo(t, gotHostinfo)
+			}
+		})
+	}
+}
+
+func TestSafeHostname_DNSLabelLimit(t *testing.T) {
+	t.Parallel()
+
+	testCases := []string{
+		"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+		"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+	}
+
+	for i, hostname := range testCases {
+		t.Run(cmp.Diff("", ""), func(t *testing.T) {
+			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
+			result := SafeHostname(hostinfo, "mkey", "nkey")
+			if len(result) > 63 {
+				t.Errorf("test case %d: hostname length = %d, want <= 63", i, len(result))
+			}
+		})
+	}
+}
+
+func TestEnsureValidHostinfo_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	originalHostinfo := &tailcfg.Hostinfo{
+		Hostname: "test-node",
+		OS:       "linux",
+	}
+
+	hostinfo1, hostname1 := EnsureValidHostinfo(originalHostinfo, "mkey", "nkey")
+	hostinfo2, hostname2 := EnsureValidHostinfo(hostinfo1, "mkey", "nkey")
+
+	if hostname1 != hostname2 {
+		t.Errorf("hostnames not equal: %v != %v", hostname1, hostname2)
+	}
+	if hostinfo1.Hostname != hostinfo2.Hostname {
+		t.Errorf("hostinfo hostnames not equal: %v != %v", hostinfo1.Hostname, hostinfo2.Hostname)
+	}
+	if hostinfo1.OS != hostinfo2.OS {
+		t.Errorf("hostinfo OS not equal: %v != %v", hostinfo1.OS, hostinfo2.OS)
 	}
 }

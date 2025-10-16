@@ -61,7 +61,7 @@ func TestNetInfoFromMapRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NetInfoFromMapRequest(nodeID, tt.currentHostinfo, tt.reqHostinfo)
+			result := netInfoFromMapRequest(nodeID, tt.currentHostinfo, tt.reqHostinfo)
 
 			if tt.expectNetInfo == nil {
 				assert.Nil(t, result, "expected nil NetInfo")
@@ -100,13 +100,39 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		}
 
 		// BUG: Using the node being modified (no NetInfo) instead of existing node (has NetInfo)
-		buggyResult := NetInfoFromMapRequest(nodeID, nodeBeingModifiedHostinfo, newRegistrationHostinfo)
+		buggyResult := netInfoFromMapRequest(nodeID, nodeBeingModifiedHostinfo, newRegistrationHostinfo)
 		assert.Nil(t, buggyResult, "Bug: Should return nil when using wrong hostinfo reference")
 
 		// CORRECT: Using the existing node's hostinfo (has NetInfo)
-		correctResult := NetInfoFromMapRequest(nodeID, existingNodeHostinfo, newRegistrationHostinfo)
+		correctResult := netInfoFromMapRequest(nodeID, existingNodeHostinfo, newRegistrationHostinfo)
 		assert.NotNil(t, correctResult, "Fix: Should preserve NetInfo when using correct hostinfo reference")
 		assert.Equal(t, 5, correctResult.PreferredDERP, "Should preserve the DERP region from existing node")
+	})
+
+	t.Run("new_node_creation_for_different_user_should_preserve_netinfo", func(t *testing.T) {
+		// This test covers the scenario where:
+		// 1. A node exists for user1 with NetInfo
+		// 2. The same machine logs in as user2 (different user)
+		// 3. A NEW node is created for user2 (pre-auth key flow)
+		// 4. The new node should preserve NetInfo from the old node
+
+		// Existing node for user1 with NetInfo
+		existingNodeUser1Hostinfo := &tailcfg.Hostinfo{
+			Hostname: "test-node",
+			NetInfo:  &tailcfg.NetInfo{PreferredDERP: 7},
+		}
+
+		// New registration request for user2 (no NetInfo yet)
+		newNodeUser2Hostinfo := &tailcfg.Hostinfo{
+			Hostname: "test-node",
+			OS:       "linux",
+			// NetInfo is nil - registration request doesn't include it
+		}
+
+		// When creating a new node for user2, we should preserve NetInfo from user1's node
+		result := netInfoFromMapRequest(types.NodeID(2), existingNodeUser1Hostinfo, newNodeUser2Hostinfo)
+		assert.NotNil(t, result, "New node for user2 should preserve NetInfo from user1's node")
+		assert.Equal(t, 7, result.PreferredDERP, "Should preserve DERP region from existing node")
 	})
 }
 

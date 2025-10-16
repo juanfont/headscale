@@ -4,6 +4,7 @@
 package state
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -23,7 +24,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -48,8 +48,6 @@ var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
-	// mu protects all in-memory data structures from concurrent access
-	mu deadlock.RWMutex
 	// cfg holds the current Headscale configuration
 	cfg *types.Config
 
@@ -257,9 +255,6 @@ func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
 	}
@@ -288,9 +283,6 @@ func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, erro
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
 func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
@@ -361,44 +353,28 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 	return s.db.ListUsers()
 }
 
-// updateNodeTx performs a database transaction to update a node and refresh the policy manager.
-// IMPORTANT: This function does NOT update the NodeStore. The caller MUST update the NodeStore
-// BEFORE calling this function with the EXACT same changes that the database update will make.
-// This ensures the NodeStore is the source of truth for the batcher and maintains consistency.
-// Returns error only; callers should get the updated NodeView from NodeStore to maintain consistency.
-func (s *State) updateNodeTx(nodeID types.NodeID, updateFn func(tx *gorm.DB) error) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// persistNodeToDB saves the given node state to the database.
+// This function must receive the exact node state to save to ensure consistency between
+// NodeStore and the database. It verifies the node still exists in NodeStore to prevent
+// race conditions where a node might be deleted between UpdateNode returning and
+// persistNodeToDB being called.
+func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
+	if !node.Valid() {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("invalid node view provided")
+	}
 
-	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if err := updateFn(tx); err != nil {
-			return nil, err
-		}
-
-		node, err := hsdb.GetNodeByID(tx, nodeID)
-		if err != nil {
-			return nil, err
-		}
-
-		if err := tx.Save(node).Error; err != nil {
-			return nil, fmt.Errorf("updating node: %w", err)
-		}
-
-		return node, nil
-	})
-	return err
-}
-
-// persistNodeToDB saves the current state of a node from NodeStore to the database.
-// CRITICAL: This function MUST get the latest node from NodeStore to ensure consistency.
-func (s *State) persistNodeToDB(nodeID types.NodeID) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// CRITICAL: Always get the latest node from NodeStore to ensure we save the current state
-	node, found := s.nodeStore.GetNode(nodeID)
-	if !found {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+	// Verify the node still exists in NodeStore before persisting to database.
+	// Without this check, we could hit a race condition where UpdateNode returns a valid
+	// node from a batch update, then the node gets deleted (e.g., ephemeral node logout),
+	// and persistNodeToDB would incorrectly re-insert the deleted node into the database.
+	_, exists := s.nodeStore.GetNode(node.ID())
+	if !exists {
+		log.Warn().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("node.name", node.Hostname()).
+			Bool("is_ephemeral", node.IsEphemeral()).
+			Msg("Node no longer exists in NodeStore, skipping database persist to prevent race condition")
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("node %d no longer exists in NodeStore, skipping database persist", node.ID())
 	}
 
 	nodePtr := node.AsStruct()
@@ -424,10 +400,10 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.ChangeSet,
 	// Update NodeStore first
 	nodePtr := node.AsStruct()
 
-	s.nodeStore.PutNode(*nodePtr)
+	resultNode := s.nodeStore.PutNode(*nodePtr)
 
-	// Then save to database
-	return s.persistNodeToDB(node.ID())
+	// Then save to database using the result from PutNode
+	return s.persistNodeToDB(resultNode)
 }
 
 // DeleteNode permanently removes a node and cleans up associated resources.
@@ -461,17 +437,14 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 	// This ensures that when the NodeCameOnline change is distributed and processed by other nodes,
 	// the NodeStore already reflects the correct online status for full map generation.
 	// now := time.Now()
-	s.nodeStore.UpdateNode(id, func(n *types.Node) {
+	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.IsOnline = ptr.To(true)
 		// n.LastSeen = ptr.To(now)
 	})
-	c := []change.ChangeSet{change.NodeOnline(id)}
-
-	// Get fresh node data from NodeStore after the online status update
-	node, found := s.GetNodeByID(id)
-	if !found {
+	if !ok {
 		return nil
 	}
+	c := []change.ChangeSet{change.NodeOnline(id)}
 
 	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node connected")
 
@@ -491,39 +464,25 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 func (s *State) Disconnect(id types.NodeID) ([]change.ChangeSet, error) {
 	now := time.Now()
 
-	// Get node info before updating for logging
-	node, found := s.GetNodeByID(id)
-	var nodeName string
-	if found {
-		nodeName = node.Hostname()
-	}
-
-	s.nodeStore.UpdateNode(id, func(n *types.Node) {
+	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.LastSeen = ptr.To(now)
 		// NodeStore is the source of truth for all node state including online status.
 		n.IsOnline = ptr.To(false)
 	})
 
-	if found {
-		log.Info().Uint64("node.id", id.Uint64()).Str("node.name", nodeName).Msg("Node disconnected")
+	if !ok {
+		return nil, fmt.Errorf("node not found: %d", id)
 	}
 
-	err := s.updateNodeTx(id, func(tx *gorm.DB) error {
-		// Update last_seen in the database
-		// Note: IsOnline is managed only in NodeStore (marked with gorm:"-"), not persisted to database
-		return hsdb.SetLastSeen(tx, id, now)
-	})
+	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node disconnected")
+
+	// Special error handling for disconnect - we log errors but continue
+	// because NodeStore is already updated and we need to notify peers
+	_, c, err := s.persistNodeToDB(node)
 	if err != nil {
 		// Log error but don't fail the disconnection - NodeStore is already updated
 		// and we need to send change notifications to peers
-		log.Error().Err(err).Uint64("node.id", id.Uint64()).Str("node.name", nodeName).Msg("Failed to update last seen in database")
-	}
-
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		// Log error but continue - disconnection must proceed
-		log.Error().Err(err).Uint64("node.id", id.Uint64()).Str("node.name", nodeName).Msg("Failed to update policy manager after node disconnect")
+		log.Error().Err(err).Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Failed to update last seen in database")
 		c = change.EmptySet
 	}
 
@@ -559,12 +518,12 @@ func (s *State) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bool) 
 	return s.nodeStore.GetNodeByNodeKey(nodeKey)
 }
 
-// GetNodeByMachineKey retrieves a node by its machine key.
+// GetNodeByMachineKey retrieves a node by its machine key and user ID.
 // The bool indicates if the node exists or is available (like "err not found").
 // The NodeView might be invalid, so it must be checked with .Valid(), which must be used to ensure
 // it isn't an invalid node (this is more of a node error or node is broken).
-func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
-	return s.nodeStore.GetNodeByMachineKey(machineKey)
+func (s *State) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
+	return s.nodeStore.GetNodeByMachineKey(machineKey, userID)
 }
 
 // ListNodes retrieves specific nodes by ID, or all nodes if no IDs provided.
@@ -635,77 +594,37 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 
 // SetNodeExpiry updates the expiration time for a node.
 func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.ChangeSet, error) {
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
-	// If the database update fails, the NodeStore change will remain, but since we return
-	// an error, no change notification will be sent to the batcher.
+	// Update NodeStore before database to ensure consistency. The NodeStore update is
+	// blocking and will be the source of truth for the batcher. The database update must
+	// make the exact same change. If the database update fails, the NodeStore change will
+	// remain, but since we return an error, no change notification will be sent to the
+	// batcher, preventing inconsistent state propagation.
 	expiryPtr := expiry
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.Expiry = &expiryPtr
 	})
 
-	err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.NodeSetExpiry(tx, nodeID, expiry)
-	})
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node expiry: %w", err)
-	}
-
-	// Get the updated node from NodeStore to ensure consistency
-	// TODO(kradalby): Validate if this NodeStore read makes sense after database update
-	n, found := s.GetNodeByID(nodeID)
-	if !found {
+	if !ok {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
-	}
-
-	if !c.IsFull() {
-		c = change.KeyExpiry(nodeID, expiry)
-	}
-
-	return n, c, nil
+	return s.persistNodeToDB(n)
 }
 
 // SetNodeTags assigns tags to a node for use in access control policies.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.ChangeSet, error) {
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+	// Update NodeStore before database to ensure consistency. The NodeStore update is
+	// blocking and will be the source of truth for the batcher. The database update must
+	// make the exact same change.
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ForcedTags = tags
 	})
 
-	err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.SetTags(tx, nodeID, tags)
-	})
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node tags: %w", err)
-	}
-
-	// Get the updated node from NodeStore to ensure consistency
-	// TODO(kradalby): Validate if this NodeStore read makes sense after database update
-	n, found := s.GetNodeByID(nodeID)
-	if !found {
+	if !ok {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
-	}
-
-	if !c.IsFull() {
-		c = change.NodeAdded(nodeID)
-	}
-
-	return n, c, nil
+	return s.persistNodeToDB(n)
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
@@ -713,44 +632,32 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	// TODO(kradalby): In principle we should call the AutoApprove logic here
 	// because even if the CLI removes an auto-approved route, it will be added
 	// back automatically.
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.ApprovedRoutes = routes
 	})
 
-	err := s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.SetApprovedRoutes(tx, nodeID, routes)
-	})
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting approved routes: %w", err)
-	}
-
-	// Get the updated node from NodeStore to ensure consistency
-	// TODO(kradalby): Validate if this NodeStore read makes sense after database update
-	n, found := s.GetNodeByID(nodeID)
-	if !found {
+	if !ok {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
+	// Persist the node changes to the database
+	nodeView, c, err := s.persistNodeToDB(n)
 	if err != nil {
-		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
+		return types.NodeView{}, change.EmptySet, err
 	}
 
-	// Get the node from NodeStore to ensure we have the latest state
-	nodeView, ok := s.GetNodeByID(nodeID)
-	if !ok {
-		return n, change.EmptySet, fmt.Errorf("node %d not found in NodeStore", nodeID)
-	}
-	// Use SubnetRoutes() instead of ApprovedRoutes() to ensure we only set
-	// primary routes for routes that are both announced AND approved
+	// Update primary routes table based on SubnetRoutes (intersection of announced and approved).
+	// The primary routes table is what the mapper uses to generate network maps, so updating it
+	// here ensures that route changes are distributed to peers.
 	routeChange := s.primaryRoutes.SetRoutes(nodeID, nodeView.SubnetRoutes()...)
 
+	// If routes changed or the changeset isn't already a full update, trigger a policy change
+	// to ensure all nodes get updated network maps
 	if routeChange || !c.IsFull() {
 		c = change.PolicyChange()
 	}
 
-	return n, c, nil
+	return nodeView, c, nil
 }
 
 // RenameNode changes the display name of a node.
@@ -760,49 +667,27 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
 	}
 
-	// Check name uniqueness
-	nodes, err := s.db.ListNodes()
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("checking name uniqueness: %w", err)
-	}
-	for _, node := range nodes {
-		if node.ID != nodeID && node.GivenName == newName {
+	// Check name uniqueness against NodeStore
+	allNodes := s.nodeStore.ListNodes()
+	for i := 0; i < allNodes.Len(); i++ {
+		node := allNodes.At(i)
+		if node.ID() != nodeID && node.AsStruct().GivenName == newName {
 			return types.NodeView{}, change.EmptySet, fmt.Errorf("name is not unique: %s", newName)
 		}
 	}
 
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
-	s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+	// Update NodeStore before database to ensure consistency. The NodeStore update is
+	// blocking and will be the source of truth for the batcher. The database update must
+	// make the exact same change.
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.GivenName = newName
 	})
 
-	err = s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.RenameNode(tx, nodeID, newName)
-	})
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
-	}
-
-	// Get the updated node from NodeStore to ensure consistency
-	// TODO(kradalby): Validate if this NodeStore read makes sense after database update
-	n, found := s.GetNodeByID(nodeID)
-	if !found {
+	if !ok {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
-	}
-
-	if !c.IsFull() {
-		c = change.NodeAdded(nodeID)
-	}
-
-	return n, c, nil
+	return s.persistNodeToDB(n)
 }
 
 // AssignNodeToUser transfers a node to a different user.
@@ -818,39 +703,19 @@ func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (type
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("user not found: %w", err)
 	}
 
-	// CRITICAL: Update NodeStore BEFORE database to ensure consistency.
-	// The NodeStore update is blocking and will be the source of truth for the batcher.
-	// The database update MUST make the EXACT same change.
-	s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+	// Update NodeStore before database to ensure consistency. The NodeStore update is
+	// blocking and will be the source of truth for the batcher. The database update must
+	// make the exact same change.
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
 		n.User = *user
 		n.UserID = uint(userID)
 	})
 
-	err = s.updateNodeTx(nodeID, func(tx *gorm.DB) error {
-		return hsdb.AssignNodeToUser(tx, nodeID, userID)
-	})
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
-	}
-
-	// Get the updated node from NodeStore to ensure consistency
-	// TODO(kradalby): Validate if this NodeStore read makes sense after database update
-	n, found := s.GetNodeByID(nodeID)
-	if !found {
+	if !ok {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
 	}
 
-	// Check if policy manager needs updating
-	c, err := s.updatePolicyManagerNodes()
-	if err != nil {
-		return n, change.EmptySet, fmt.Errorf("failed to update policy manager after node update: %w", err)
-	}
-
-	if !c.IsFull() {
-		c = change.NodeAdded(nodeID)
-	}
-
-	return n, c, nil
+	return s.persistNodeToDB(n)
 }
 
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
@@ -877,20 +742,13 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 				// Preserve NetInfo from existing node to prevent loss during backfill
-				netInfo := NetInfoFromMapRequest(node.ID, existingNode.AsStruct().Hostinfo, node.Hostinfo)
-				if netInfo != nil {
-					if node.Hostinfo != nil {
-						hostinfoCopy := *node.Hostinfo
-						hostinfoCopy.NetInfo = netInfo
-						node.Hostinfo = &hostinfoCopy
-					} else {
-						node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
-					}
-				}
+				netInfo := netInfoFromMapRequest(node.ID, existingNode.Hostinfo().AsStruct(), node.Hostinfo)
+				node.Hostinfo = existingNode.Hostinfo().AsStruct()
+				node.Hostinfo.NetInfo = netInfo
 			}
 			// TODO(kradalby): This should just update the IP addresses, nothing else in the node store.
 			// We should avoid PutNode here.
-			s.nodeStore.PutNode(*node)
+			_ = s.nodeStore.PutNode(*node)
 		}
 	}
 
@@ -1043,6 +901,38 @@ func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral b
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
+// Test helpers for the state layer
+
+// CreateUserForTest creates a test user. This is a convenience wrapper around the database layer.
+func (s *State) CreateUserForTest(name ...string) *types.User {
+	return s.db.CreateUserForTest(name...)
+}
+
+// CreateNodeForTest creates a test node. This is a convenience wrapper around the database layer.
+func (s *State) CreateNodeForTest(user *types.User, hostname ...string) *types.Node {
+	return s.db.CreateNodeForTest(user, hostname...)
+}
+
+// CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
+func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
+	return s.db.CreateRegisteredNodeForTest(user, hostname...)
+}
+
+// CreateNodesForTest creates multiple test nodes. This is a convenience wrapper around the database layer.
+func (s *State) CreateNodesForTest(user *types.User, count int, namePrefix ...string) []*types.Node {
+	return s.db.CreateNodesForTest(user, count, namePrefix...)
+}
+
+// CreateUsersForTest creates multiple test users. This is a convenience wrapper around the database layer.
+func (s *State) CreateUsersForTest(count int, namePrefix ...string) []*types.User {
+	return s.db.CreateUsersForTest(count, namePrefix...)
+}
+
+// DB returns the underlying database for testing purposes.
+func (s *State) DB() *hsdb.HSDatabase {
+	return s.db
+}
+
 // GetPreAuthKey retrieves a pre-authentication key by ID.
 func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
 	return s.db.GetPreAuthKey(id)
@@ -1073,6 +963,131 @@ func (s *State) SetRegistrationCacheEntry(id types.RegistrationID, entry types.R
 	s.registrationCache.Set(id, entry)
 }
 
+// logHostinfoValidation logs warnings when hostinfo is nil or has empty hostname.
+func logHostinfoValidation(machineKey, nodeKey, username, hostname string, hostinfo *tailcfg.Hostinfo) {
+	if hostinfo == nil {
+		log.Warn().
+			Caller().
+			Str("machine.key", machineKey).
+			Str("node.key", nodeKey).
+			Str("user.name", username).
+			Str("generated.hostname", hostname).
+			Msg("Registration had nil hostinfo, generated default hostname")
+	} else if hostinfo.Hostname == "" {
+		log.Warn().
+			Caller().
+			Str("machine.key", machineKey).
+			Str("node.key", nodeKey).
+			Str("user.name", username).
+			Str("generated.hostname", hostname).
+			Msg("Registration had empty hostname, generated default")
+	}
+}
+
+// preserveNetInfo preserves NetInfo from an existing node for faster DERP connectivity.
+// If no existing node is provided, it creates new netinfo from the provided hostinfo.
+func preserveNetInfo(existingNode types.NodeView, nodeID types.NodeID, validHostinfo *tailcfg.Hostinfo) *tailcfg.NetInfo {
+	var existingHostinfo *tailcfg.Hostinfo
+	if existingNode.Valid() {
+		existingHostinfo = existingNode.Hostinfo().AsStruct()
+	}
+	return netInfoFromMapRequest(nodeID, existingHostinfo, validHostinfo)
+}
+
+// newNodeParams contains parameters for creating a new node.
+type newNodeParams struct {
+	User           types.User
+	MachineKey     key.MachinePublic
+	NodeKey        key.NodePublic
+	DiscoKey       key.DiscoPublic
+	Hostname       string
+	Hostinfo       *tailcfg.Hostinfo
+	Endpoints      []netip.AddrPort
+	Expiry         *time.Time
+	RegisterMethod string
+
+	// Optional: Pre-auth key specific fields
+	PreAuthKey *types.PreAuthKey
+
+	// Optional: Existing node for netinfo preservation
+	ExistingNodeForNetinfo types.NodeView
+}
+
+// createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to NodeStore.
+// It preserves netinfo from an existing node if one is provided (for faster DERP connectivity).
+func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, error) {
+	// Preserve NetInfo from existing node if available
+	if params.Hostinfo != nil {
+		params.Hostinfo.NetInfo = preserveNetInfo(
+			params.ExistingNodeForNetinfo,
+			types.NodeID(0),
+			params.Hostinfo,
+		)
+	}
+
+	// Prepare the node for registration
+	nodeToRegister := types.Node{
+		Hostname:       params.Hostname,
+		UserID:         params.User.ID,
+		User:           params.User,
+		MachineKey:     params.MachineKey,
+		NodeKey:        params.NodeKey,
+		DiscoKey:       params.DiscoKey,
+		Hostinfo:       params.Hostinfo,
+		Endpoints:      params.Endpoints,
+		LastSeen:       ptr.To(time.Now()),
+		RegisterMethod: params.RegisterMethod,
+		Expiry:         params.Expiry,
+	}
+
+	// Pre-auth key specific fields
+	if params.PreAuthKey != nil {
+		nodeToRegister.ForcedTags = params.PreAuthKey.Proto().GetAclTags()
+		nodeToRegister.AuthKey = params.PreAuthKey
+		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
+	}
+
+	// Allocate new IPs
+	ipv4, ipv6, err := s.ipAlloc.Next()
+	if err != nil {
+		return types.NodeView{}, fmt.Errorf("allocating IPs: %w", err)
+	}
+
+	nodeToRegister.IPv4 = ipv4
+	nodeToRegister.IPv6 = ipv6
+
+	// Ensure unique given name if not set
+	if nodeToRegister.GivenName == "" {
+		givenName, err := hsdb.EnsureUniqueGivenName(s.db.DB, nodeToRegister.Hostname)
+		if err != nil {
+			return types.NodeView{}, fmt.Errorf("failed to ensure unique given name: %w", err)
+		}
+		nodeToRegister.GivenName = givenName
+	}
+
+	// New node - database first to get ID, then NodeStore
+	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+		if err := tx.Save(&nodeToRegister).Error; err != nil {
+			return nil, fmt.Errorf("failed to save node: %w", err)
+		}
+
+		if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
+			err := hsdb.UsePreAuthKey(tx, params.PreAuthKey)
+			if err != nil {
+				return nil, fmt.Errorf("using pre auth key: %w", err)
+			}
+		}
+
+		return &nodeToRegister, nil
+	})
+	if err != nil {
+		return types.NodeView{}, err
+	}
+
+	// Add to NodeStore after database creates the ID
+	return s.nodeStore.PutNode(*savedNode), nil
+}
+
 // HandleNodeFromAuthPath handles node registration through authentication flow (like OIDC).
 func (s *State) HandleNodeFromAuthPath(
 	registrationID types.RegistrationID,
@@ -1080,9 +1095,6 @@ func (s *State) HandleNodeFromAuthPath(
 	expiry *time.Time,
 	registrationMethod string,
 ) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	// Get the registration entry from cache
 	regEntry, ok := s.GetRegistrationCacheEntry(registrationID)
 	if !ok {
@@ -1095,182 +1107,161 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	// Check if node already exists by node key
-	existingNodeView, exists := s.nodeStore.GetNodeByNodeKey(regEntry.Node.NodeKey)
-	if exists && existingNodeView.Valid() {
-		// Node exists - this is a refresh/re-registration
+	// Ensure we have valid hostinfo and hostname from the registration cache entry
+	validHostinfo, hostname := util.EnsureValidHostinfo(
+		regEntry.Node.Hostinfo,
+		regEntry.Node.MachineKey.String(),
+		regEntry.Node.NodeKey.String(),
+	)
+
+	logHostinfoValidation(
+		regEntry.Node.MachineKey.ShortString(),
+		regEntry.Node.NodeKey.String(),
+		user.Username(),
+		hostname,
+		regEntry.Node.Hostinfo,
+	)
+
+	var finalNode types.NodeView
+
+	// Check if node already exists with same machine key for this user
+	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(regEntry.Node.MachineKey, types.UserID(user.ID))
+
+	// If this node exists for this user, update the node in place.
+	if existsSameUser && existingNodeSameUser.Valid() {
 		log.Debug().
 			Caller().
 			Str("registration_id", registrationID.String()).
 			Str("user.name", user.Username()).
 			Str("registrationMethod", registrationMethod).
-			Str("node.name", existingNodeView.Hostname()).
-			Uint64("node.id", existingNodeView.ID().Uint64()).
-			Msg("Refreshing existing node registration")
+			Str("node.name", existingNodeSameUser.Hostname()).
+			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
+			Msg("Updating existing node registration")
 
-		// Update NodeStore first with the new expiry
-		s.nodeStore.UpdateNode(existingNodeView.ID(), func(node *types.Node) {
-			if expiry != nil {
-				node.Expiry = expiry
-			}
-			// Mark as offline since node is reconnecting
-			node.IsOnline = ptr.To(false)
-			node.LastSeen = ptr.To(time.Now())
-		})
-
-		// Save to database
-		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			err := hsdb.NodeSetExpiry(tx, existingNodeView.ID(), *expiry)
-			if err != nil {
-				return nil, err
-			}
-			// Return the node to satisfy the Write signature
-			return hsdb.GetNodeByID(tx, existingNodeView.ID())
-		})
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to update node expiry: %w", err)
-		}
-
-		// Get updated node from NodeStore
-		updatedNode, _ := s.nodeStore.GetNode(existingNodeView.ID())
-
-		if expiry != nil {
-			return updatedNode, change.KeyExpiry(existingNodeView.ID(), *expiry), nil
-		}
-
-		return updatedNode, change.FullSet, nil
-	}
-
-	// New node registration
-	log.Debug().
-		Caller().
-		Str("registration_id", registrationID.String()).
-		Str("user.name", user.Username()).
-		Str("registrationMethod", registrationMethod).
-		Str("expiresAt", fmt.Sprintf("%v", expiry)).
-		Msg("Registering new node from auth callback")
-
-	// Check if node exists with same machine key
-	var existingMachineNode *types.Node
-	if nv, exists := s.nodeStore.GetNodeByMachineKey(regEntry.Node.MachineKey); exists && nv.Valid() {
-		existingMachineNode = nv.AsStruct()
-	}
-
-	// Prepare the node for registration
-	nodeToRegister := regEntry.Node
-	nodeToRegister.UserID = uint(userID)
-	nodeToRegister.User = *user
-	nodeToRegister.RegisterMethod = registrationMethod
-	if expiry != nil {
-		nodeToRegister.Expiry = expiry
-	}
-
-	// Handle IP allocation
-	var ipv4, ipv6 *netip.Addr
-	if existingMachineNode != nil && existingMachineNode.UserID == uint(userID) {
-		// Reuse existing IPs and properties
-		nodeToRegister.ID = existingMachineNode.ID
-		nodeToRegister.GivenName = existingMachineNode.GivenName
-		nodeToRegister.ApprovedRoutes = existingMachineNode.ApprovedRoutes
-		ipv4 = existingMachineNode.IPv4
-		ipv6 = existingMachineNode.IPv6
-	} else {
-		// Allocate new IPs
-		ipv4, ipv6, err = s.ipAlloc.Next()
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("allocating IPs: %w", err)
-		}
-	}
-
-	nodeToRegister.IPv4 = ipv4
-	nodeToRegister.IPv6 = ipv6
-
-	// Ensure unique given name if not set
-	if nodeToRegister.GivenName == "" {
-		givenName, err := hsdb.EnsureUniqueGivenName(s.db.DB, nodeToRegister.Hostname)
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to ensure unique given name: %w", err)
-		}
-		nodeToRegister.GivenName = givenName
-	}
-
-	var savedNode *types.Node
-	if existingMachineNode != nil && existingMachineNode.UserID == uint(userID) {
 		// Update existing node - NodeStore first, then database
-		s.nodeStore.UpdateNode(existingMachineNode.ID, func(node *types.Node) {
-			node.NodeKey = nodeToRegister.NodeKey
-			node.DiscoKey = nodeToRegister.DiscoKey
-			node.Hostname = nodeToRegister.Hostname
+		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
+			node.NodeKey = regEntry.Node.NodeKey
+			node.DiscoKey = regEntry.Node.DiscoKey
+			node.Hostname = hostname
 
 			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 			// Preserve NetInfo from existing node when re-registering
-			netInfo := NetInfoFromMapRequest(existingMachineNode.ID, existingMachineNode.Hostinfo, nodeToRegister.Hostinfo)
-			if netInfo != nil {
-				if nodeToRegister.Hostinfo != nil {
-					hostinfoCopy := *nodeToRegister.Hostinfo
-					hostinfoCopy.NetInfo = netInfo
-					node.Hostinfo = &hostinfoCopy
-				} else {
-					node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
-				}
-			} else {
-				node.Hostinfo = nodeToRegister.Hostinfo
-			}
+			node.Hostinfo = validHostinfo
+			node.Hostinfo.NetInfo = preserveNetInfo(existingNodeSameUser, existingNodeSameUser.ID(), validHostinfo)
 
-			node.Endpoints = nodeToRegister.Endpoints
-			node.RegisterMethod = nodeToRegister.RegisterMethod
-			if expiry != nil {
-				node.Expiry = expiry
-			}
+			node.Endpoints = regEntry.Node.Endpoints
+			node.RegisterMethod = regEntry.Node.RegisterMethod
 			node.IsOnline = ptr.To(false)
 			node.LastSeen = ptr.To(time.Now())
+
+			if expiry != nil {
+				node.Expiry = expiry
+			} else {
+				node.Expiry = regEntry.Node.Expiry
+			}
 		})
 
-		// Save to database
-		savedNode, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(&nodeToRegister).Error; err != nil {
+		if !ok {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
+		}
+
+		// Use the node from UpdateNode to save to database
+		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+			if err := tx.Save(updatedNodeView.AsStruct()).Error; err != nil {
 				return nil, fmt.Errorf("failed to save node: %w", err)
 			}
-			return &nodeToRegister, nil
+			return nil, nil
 		})
 		if err != nil {
 			return types.NodeView{}, change.EmptySet, err
 		}
+
+		log.Trace().
+			Caller().
+			Str("node.name", updatedNodeView.Hostname()).
+			Uint64("node.id", updatedNodeView.ID().Uint64()).
+			Str("machine.key", regEntry.Node.MachineKey.ShortString()).
+			Str("node.key", updatedNodeView.NodeKey().ShortString()).
+			Str("user.name", user.Name).
+			Msg("Node re-authorized")
+
+		finalNode = updatedNodeView
 	} else {
-		// New node - database first to get ID, then NodeStore
-		savedNode, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(&nodeToRegister).Error; err != nil {
-				return nil, fmt.Errorf("failed to save node: %w", err)
-			}
-			return &nodeToRegister, nil
+		// Node does not exist for this user with this machine key
+		// Check if node exists with this machine key for a different user (for netinfo preservation)
+		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(regEntry.Node.MachineKey)
+
+		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID() != user.ID {
+			// Node exists but belongs to a different user
+			// Create a NEW node for the new user (do not transfer)
+			// This allows the same machine to have separate node identities per user
+			oldUser := existingNodeAnyUser.User()
+			log.Info().
+				Caller().
+				Str("existing.node.name", existingNodeAnyUser.Hostname()).
+				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
+				Str("machine.key", regEntry.Node.MachineKey.ShortString()).
+				Str("old.user", oldUser.Username()).
+				Str("new.user", user.Username()).
+				Str("method", registrationMethod).
+				Msg("Creating new node for different user (same machine key exists for another user)")
+		}
+
+		// Create a completely new node
+		log.Debug().
+			Caller().
+			Str("registration_id", registrationID.String()).
+			Str("user.name", user.Username()).
+			Str("registrationMethod", registrationMethod).
+			Str("expiresAt", fmt.Sprintf("%v", expiry)).
+			Msg("Registering new node from auth callback")
+
+		// Create and save new node
+		var err error
+		finalNode, err = s.createAndSaveNewNode(newNodeParams{
+			User:                   *user,
+			MachineKey:             regEntry.Node.MachineKey,
+			NodeKey:                regEntry.Node.NodeKey,
+			DiscoKey:               regEntry.Node.DiscoKey,
+			Hostname:               hostname,
+			Hostinfo:               validHostinfo,
+			Endpoints:              regEntry.Node.Endpoints,
+			Expiry:                 cmp.Or(expiry, regEntry.Node.Expiry),
+			RegisterMethod:         registrationMethod,
+			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
 		})
 		if err != nil {
 			return types.NodeView{}, change.EmptySet, err
 		}
-
-		// Add to NodeStore after database creates the ID
-		s.nodeStore.PutNode(*savedNode)
 	}
 
 	// Signal to waiting clients
-	regEntry.SendAndClose(savedNode)
+	regEntry.SendAndClose(finalNode.AsStruct())
 
 	// Delete from registration cache
 	s.registrationCache.Delete(registrationID)
 
-	// Update policy manager
+	// Update policy managers
+	usersChange, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager users: %w", err)
+	}
+
 	nodesChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return savedNode.View(), change.NodeAdded(savedNode.ID), fmt.Errorf("failed to update policy manager: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
 	}
 
-	if !nodesChange.Empty() {
-		return savedNode.View(), nodesChange, nil
+	var c change.ChangeSet
+	if !usersChange.Empty() || !nodesChange.Empty() {
+		c = change.PolicyChange()
+	} else {
+		c = change.NodeAdded(finalNode.ID())
 	}
 
-	return savedNode.View(), change.NodeAdded(savedNode.ID), nil
+	return finalNode, c, nil
 }
 
 // HandleNodeFromPreAuthKey handles node registration using a pre-authentication key.
@@ -1278,9 +1269,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (types.NodeView, change.ChangeSet, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
 		return types.NodeView{}, change.EmptySet, err
@@ -1291,196 +1279,166 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
-	// Check if this is a logout request for an ephemeral node
-	if !regReq.Expiry.IsZero() && regReq.Expiry.Before(time.Now()) && pak.Ephemeral {
-		// Find the node to delete
-		var nodeToDelete types.NodeView
-		for _, nv := range s.nodeStore.ListNodes().All() {
-			if nv.Valid() && nv.MachineKey() == machineKey {
-				nodeToDelete = nv
-				break
-			}
-		}
-		if nodeToDelete.Valid() {
-			c, err := s.DeleteNode(nodeToDelete)
-			if err != nil {
-				return types.NodeView{}, change.EmptySet, fmt.Errorf("deleting ephemeral node during logout: %w", err)
-			}
+	// Ensure we have valid hostinfo and hostname - handle nil/empty cases
+	validHostinfo, hostname := util.EnsureValidHostinfo(
+		regReq.Hostinfo,
+		machineKey.String(),
+		regReq.NodeKey.String(),
+	)
 
-			return types.NodeView{}, c, nil
-		}
-
-		return types.NodeView{}, change.EmptySet, nil
-	}
+	logHostinfoValidation(
+		machineKey.ShortString(),
+		regReq.NodeKey.ShortString(),
+		pak.User.Username(),
+		hostname,
+		regReq.Hostinfo,
+	)
 
 	log.Debug().
 		Caller().
-		Str("node.name", regReq.Hostinfo.Hostname).
+		Str("node.name", hostname).
 		Str("machine.key", machineKey.ShortString()).
 		Str("node.key", regReq.NodeKey.ShortString()).
 		Str("user.name", pak.User.Username()).
 		Msg("Registering node with pre-auth key")
 
-	// Check if node already exists with same machine key
-	var existingNode *types.Node
-	if nv, exists := s.nodeStore.GetNodeByMachineKey(machineKey); exists && nv.Valid() {
-		existingNode = nv.AsStruct()
-	}
+	var finalNode types.NodeView
 
-	// Prepare the node for registration
-	nodeToRegister := types.Node{
-		Hostname:       regReq.Hostinfo.Hostname,
-		UserID:         pak.User.ID,
-		User:           pak.User,
-		MachineKey:     machineKey,
-		NodeKey:        regReq.NodeKey,
-		Hostinfo:       regReq.Hostinfo,
-		LastSeen:       ptr.To(time.Now()),
-		RegisterMethod: util.RegisterMethodAuthKey,
-		ForcedTags:     pak.Proto().GetAclTags(),
-		AuthKey:        pak,
-		AuthKeyID:      &pak.ID,
-	}
+	// Check if node already exists with same machine key for this user
+	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
 
-	if !regReq.Expiry.IsZero() {
-		nodeToRegister.Expiry = &regReq.Expiry
-	}
+	// If this node exists for this user, update the node in place.
+	if existsSameUser && existingNodeSameUser.Valid() {
+		log.Trace().
+			Caller().
+			Str("node.name", existingNodeSameUser.Hostname()).
+			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
+			Str("machine.key", machineKey.ShortString()).
+			Str("node.key", existingNodeSameUser.NodeKey().ShortString()).
+			Str("user.name", pak.User.Username()).
+			Msg("Node re-registering with existing machine key and user, updating in place")
 
-	// Handle IP allocation and existing node properties
-	var ipv4, ipv6 *netip.Addr
-	if existingNode != nil && existingNode.UserID == pak.User.ID {
-		// Reuse existing node properties
-		nodeToRegister.ID = existingNode.ID
-		nodeToRegister.GivenName = existingNode.GivenName
-		nodeToRegister.ApprovedRoutes = existingNode.ApprovedRoutes
-		ipv4 = existingNode.IPv4
-		ipv6 = existingNode.IPv6
-	} else {
-		// Allocate new IPs
-		ipv4, ipv6, err = s.ipAlloc.Next()
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("allocating IPs: %w", err)
-		}
-	}
-
-	nodeToRegister.IPv4 = ipv4
-	nodeToRegister.IPv6 = ipv6
-
-	// Ensure unique given name if not set
-	if nodeToRegister.GivenName == "" {
-		givenName, err := hsdb.EnsureUniqueGivenName(s.db.DB, nodeToRegister.Hostname)
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to ensure unique given name: %w", err)
-		}
-		nodeToRegister.GivenName = givenName
-	}
-
-	var savedNode *types.Node
-	if existingNode != nil && existingNode.UserID == pak.User.ID {
 		// Update existing node - NodeStore first, then database
-		s.nodeStore.UpdateNode(existingNode.ID, func(node *types.Node) {
-			node.NodeKey = nodeToRegister.NodeKey
-			node.Hostname = nodeToRegister.Hostname
+		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
+			node.NodeKey = regReq.NodeKey
+			node.Hostname = hostname
 
 			// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 			// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
 
 			// Preserve NetInfo from existing node when re-registering
-			netInfo := NetInfoFromMapRequest(existingNode.ID, existingNode.Hostinfo, nodeToRegister.Hostinfo)
-			if netInfo != nil {
-				if nodeToRegister.Hostinfo != nil {
-					hostinfoCopy := *nodeToRegister.Hostinfo
-					hostinfoCopy.NetInfo = netInfo
-					node.Hostinfo = &hostinfoCopy
-				} else {
-					node.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
-				}
-			} else {
-				node.Hostinfo = nodeToRegister.Hostinfo
-			}
+			node.Hostinfo = validHostinfo
+			node.Hostinfo.NetInfo = preserveNetInfo(existingNodeSameUser, existingNodeSameUser.ID(), validHostinfo)
 
-			node.Endpoints = nodeToRegister.Endpoints
-			node.RegisterMethod = nodeToRegister.RegisterMethod
-			node.ForcedTags = nodeToRegister.ForcedTags
-			node.AuthKey = nodeToRegister.AuthKey
-			node.AuthKeyID = nodeToRegister.AuthKeyID
-			if nodeToRegister.Expiry != nil {
-				node.Expiry = nodeToRegister.Expiry
-			}
+			node.RegisterMethod = util.RegisterMethodAuthKey
+
+			// TODO(kradalby): This might need a rework as part of #2417
+			node.ForcedTags = pak.Proto().GetAclTags()
+			node.AuthKey = pak
+			node.AuthKeyID = &pak.ID
 			node.IsOnline = ptr.To(false)
 			node.LastSeen = ptr.To(time.Now())
+
+			// Update expiry, if it is zero, it means that the node will
+			// not have an expiry anymore. If it is non-zero, we set that.
+			node.Expiry = &regReq.Expiry
 		})
+
+		if !ok {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
+		}
+
+		// Use the node from UpdateNode to save to database
+		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+			if err := tx.Save(updatedNodeView.AsStruct()).Error; err != nil {
+				return nil, fmt.Errorf("failed to save node: %w", err)
+			}
+
+			if !pak.Reusable {
+				err = hsdb.UsePreAuthKey(tx, pak)
+				if err != nil {
+					return nil, fmt.Errorf("using pre auth key: %w", err)
+				}
+			}
+
+			return nil, nil
+		})
+		if err != nil {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("writing node to database: %w", err)
+		}
 
 		log.Trace().
 			Caller().
-			Str("node.name", nodeToRegister.Hostname).
-			Uint64("node.id", existingNode.ID.Uint64()).
+			Str("node.name", updatedNodeView.Hostname()).
+			Uint64("node.id", updatedNodeView.ID().Uint64()).
 			Str("machine.key", machineKey.ShortString()).
-			Str("node.key", regReq.NodeKey.ShortString()).
+			Str("node.key", updatedNodeView.NodeKey().ShortString()).
 			Str("user.name", pak.User.Username()).
 			Msg("Node re-authorized")
 
-		// Save to database
-		savedNode, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(&nodeToRegister).Error; err != nil {
-				return nil, fmt.Errorf("failed to save node: %w", err)
-			}
-
-			if !pak.Reusable {
-				err = hsdb.UsePreAuthKey(tx, pak)
-				if err != nil {
-					return nil, fmt.Errorf("using pre auth key: %w", err)
-				}
-			}
-
-			return &nodeToRegister, nil
-		})
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("writing node to database: %w", err)
-		}
+		finalNode = updatedNodeView
 	} else {
-		// New node - database first to get ID, then NodeStore
-		savedNode, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(&nodeToRegister).Error; err != nil {
-				return nil, fmt.Errorf("failed to save node: %w", err)
-			}
+		// Node does not exist for this user with this machine key
+		// Check if node exists with this machine key for a different user
+		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
-			if !pak.Reusable {
-				err = hsdb.UsePreAuthKey(tx, pak)
-				if err != nil {
-					return nil, fmt.Errorf("using pre auth key: %w", err)
-				}
-			}
-
-			return &nodeToRegister, nil
-		})
-		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("writing node to database: %w", err)
+		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID() != pak.User.ID {
+			// Node exists but belongs to a different user
+			// Create a NEW node for the new user (do not transfer)
+			// This allows the same machine to have separate node identities per user
+			oldUser := existingNodeAnyUser.User()
+			log.Info().
+				Caller().
+				Str("existing.node.name", existingNodeAnyUser.Hostname()).
+				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
+				Str("machine.key", machineKey.ShortString()).
+				Str("old.user", oldUser.Username()).
+				Str("new.user", pak.User.Username()).
+				Msg("Creating new node for different user (same machine key exists for another user)")
 		}
 
-		// Add to NodeStore after database creates the ID
-		s.nodeStore.PutNode(*savedNode)
+		// This is a new node for this user - create it
+		// (Either completely new, or new for this user while existing for another user)
+
+		// Create and save new node
+		var err error
+		finalNode, err = s.createAndSaveNewNode(newNodeParams{
+			User:                   pak.User,
+			MachineKey:             machineKey,
+			NodeKey:                regReq.NodeKey,
+			DiscoKey:               key.DiscoPublic{}, // DiscoKey not available in RegisterRequest
+			Hostname:               hostname,
+			Hostinfo:               validHostinfo,
+			Endpoints:              nil, // Endpoints not available in RegisterRequest
+			Expiry:                 &regReq.Expiry,
+			RegisterMethod:         util.RegisterMethodAuthKey,
+			PreAuthKey:             pak,
+			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
+		})
+		if err != nil {
+			return types.NodeView{}, change.EmptySet, fmt.Errorf("creating new node: %w", err)
+		}
 	}
 
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return savedNode.View(), change.NodeAdded(savedNode.ID), fmt.Errorf("failed to update policy manager users: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager users: %w", err)
 	}
 
 	nodesChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return savedNode.View(), change.NodeAdded(savedNode.ID), fmt.Errorf("failed to update policy manager nodes: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
 	}
 
 	var c change.ChangeSet
 	if !usersChange.Empty() || !nodesChange.Empty() {
 		c = change.PolicyChange()
 	} else {
-		c = change.NodeAdded(savedNode.ID)
+		c = change.NodeAdded(finalNode.ID())
 	}
 
-	return savedNode.View(), c, nil
+	return finalNode, c, nil
 }
 
 // updatePolicyManagerUsers updates the policy manager with current users.
@@ -1603,26 +1561,16 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	var needsRouteApproval bool
 	// We need to ensure we update the node as it is in the NodeStore at
 	// the time of the request.
-	s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
+	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
 		peerChange := currentNode.PeerChangeFromMapRequest(req)
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
 		// Get the correct NetInfo to use
-		netInfo := NetInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
-
-		// Apply NetInfo to request Hostinfo
+		netInfo := netInfoFromMapRequest(id, currentNode.Hostinfo, req.Hostinfo)
 		if req.Hostinfo != nil {
-			if netInfo != nil {
-				// Create a copy to avoid modifying the original
-				hostinfoCopy := *req.Hostinfo
-				hostinfoCopy.NetInfo = netInfo
-				req.Hostinfo = &hostinfoCopy
-			}
-		} else if netInfo != nil {
-			// Create minimal Hostinfo with NetInfo
-			req.Hostinfo = &tailcfg.Hostinfo{
-				NetInfo: netInfo,
-			}
+			req.Hostinfo.NetInfo = netInfo
+		} else {
+			req.Hostinfo = &tailcfg.Hostinfo{NetInfo: netInfo}
 		}
 
 		// Re-check hostinfoChanged after potential NetInfo preservation
@@ -1706,6 +1654,10 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 	})
 
+	if !ok {
+		return change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", id)
+	}
+
 	nodeRouteChange := change.EmptySet
 
 	// Handle route changes after NodeStore update
@@ -1735,12 +1687,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	}
 
 	if needsRouteUpdate {
-		// Get the updated node to access its subnet routes
-		updatedNode, exists := s.GetNodeByID(id)
-		if !exists {
-			return change.EmptySet, fmt.Errorf("node disappeared during update: %d", id)
-		}
-
 		// SetNodeRoutes sets the active/distributed routes, so we must use SubnetRoutes()
 		// which returns only the intersection of announced AND approved routes.
 		// Using AnnouncedRoutes() would bypass the security model and auto-approve everything.
@@ -1754,7 +1700,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		nodeRouteChange = s.SetNodeRoutes(id, updatedNode.SubnetRoutes()...)
 	}
 
-	_, policyChange, err := s.persistNodeToDB(id)
+	_, policyChange, err := s.persistNodeToDB(updatedNode)
 	if err != nil {
 		return change.EmptySet, fmt.Errorf("saving to database: %w", err)
 	}

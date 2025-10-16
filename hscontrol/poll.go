@@ -197,11 +197,12 @@ func (m *mapSession) serveLongPoll() {
 	m.keepAliveTicker = time.NewTicker(m.keepAlive)
 
 	// Process the initial MapRequest to update node state (endpoints, hostinfo, etc.)
-	// CRITICAL: This must be done BEFORE calling Connect() to ensure routes are properly
-	// synchronized. When nodes reconnect, they send their hostinfo with announced routes
-	// in the MapRequest. We need this data in NodeStore before Connect() sets up the
-	// primary routes, otherwise SubnetRoutes() returns empty and the node is removed
-	// from AvailableRoutes.
+	// This must be done BEFORE calling Connect() to ensure routes are properly synchronized.
+	// When nodes reconnect, they send their hostinfo with announced routes in the MapRequest.
+	// We need this data in NodeStore before Connect() sets up the primary routes, because
+	// SubnetRoutes() calculates the intersection of announced and approved routes. If we
+	// call Connect() first, SubnetRoutes() returns empty (no announced routes yet), causing
+	// the node to be incorrectly removed from AvailableRoutes.
 	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 	if err != nil {
 		m.errf(err, "failed to update node from initial MapRequest")

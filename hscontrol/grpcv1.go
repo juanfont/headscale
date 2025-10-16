@@ -741,7 +741,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	hostinfo := tailcfg.Hostinfo{
 		RoutableIPs: routes,
 		OS:          "TestOS",
-		Hostname:    "DebugTestNode",
+		Hostname:    request.GetName(),
 	}
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())

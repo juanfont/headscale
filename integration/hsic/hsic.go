@@ -460,6 +460,12 @@ func New(
 		dockertestutil.DockerAllowNetworkAdministration,
 	)
 	if err != nil {
+		// Try to get more detailed build output
+		log.Printf("Docker build failed, attempting to get detailed output...")
+		buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+		if buildOutput != "" {
+			return nil, fmt.Errorf("could not start headscale container: %w\n\nDetailed build output:\n%s", err, buildOutput)
+		}
 		return nil, fmt.Errorf("could not start headscale container: %w", err)
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
