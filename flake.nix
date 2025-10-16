@@ -18,7 +18,7 @@
     {
       overlay = _: prev: let
         pkgs = nixpkgs.legacyPackages.${prev.system};
-        buildGo = pkgs.buildGo124Module;
+        buildGo = pkgs.buildGo125Module;
         vendorHash = "sha256-hIY6asY3rOIqf/5P6lFmnNCDWcqNPJaj+tqJuOvGJlo=";
       in {
         headscale = buildGo {
@@ -125,7 +125,7 @@
         overlays = [self.overlay];
         inherit system;
       };
-      buildDeps = with pkgs; [git go_1_24 gnumake];
+      buildDeps = with pkgs; [git go_1_25 gnumake];
       devDeps = with pkgs;
         buildDeps
         ++ [
