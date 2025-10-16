@@ -496,13 +496,13 @@ func TestSSHAutogroupSelf(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	user2Clients, err := scenario.ListTailscaleClients("user2")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// Test that user1's devices can SSH to each other
 	for _, client := range user1Clients {
