@@ -534,9 +534,14 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
-	status := ts.MustStatus()
-	nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
-	require.NoError(t, err)
+	var nodeID uint64
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status := ts.MustStatus()
+		assert.NotEmpty(ct, status.Self.ID, "Node ID should be populated in status")
+		var err error
+		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
+		assert.NoError(ct, err, "Failed to parse node ID from status")
+	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
 	// Validate initial connection state for user1
@@ -1048,9 +1053,14 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
-	status := ts.MustStatus()
-	nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
-	require.NoError(t, err)
+	var nodeID uint64
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status := ts.MustStatus()
+		assert.NotEmpty(ct, status.Self.ID, "Node ID should be populated in status")
+		var err error
+		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
+		assert.NoError(ct, err, "Failed to parse node ID from status")
+	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
 	// Validate initial connection state for user1

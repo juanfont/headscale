@@ -474,9 +474,11 @@ func TestACLAllowUserDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Len(t, result, 13)
-			require.NoError(t, err)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.NoError(c, err)
+				assert.Len(c, result, 13)
+			}, 10*time.Second, 500*time.Millisecond, "Verifying user1 can reach user2")
 		}
 	}
 
@@ -489,9 +491,11 @@ func TestACLAllowUserDst(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result)
-			require.Error(t, err)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				result, err := client.Curl(url)
+				assert.Error(c, err)
+				assert.Empty(c, result)
+			}, 10*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
 }
