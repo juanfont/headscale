@@ -95,8 +95,9 @@ upstream is changed.
   [#2764](https://github.com/juanfont/headscale/pull/2764)
 - Add FAQ entry on how to recover from an invalid policy in the database
   [#2776](https://github.com/juanfont/headscale/pull/2776)
-- EXPERIMENTAL: Add support for `autogroup:self` 
+- EXPERIMENTAL: Add support for `autogroup:self`
   [#2789](https://github.com/juanfont/headscale/pull/2789)
+- Add healthcheck command [#2659](https://github.com/juanfont/headscale/pull/2659)
 
 ## 0.26.1 (2025-06-06)
 
