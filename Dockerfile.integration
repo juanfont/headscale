@@ -2,7 +2,7 @@
 # and are in no way endorsed by Headscale's maintainers as an
 # official nor supported release or distribution.
 
-FROM docker.io/golang:1.24-bookworm
+FROM docker.io/golang:1.25-bookworm
 ARG VERSION=dev
 ENV GOPATH /go
 WORKDIR /go/src/headscale
