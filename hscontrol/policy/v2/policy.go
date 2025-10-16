@@ -563,7 +563,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	if len(affectedUsers) > 0 {
 		log.Debug().
 			Int("affected_users", len(affectedUsers)).
-			Int("cleared_cache_entries", len(pm.filterRulesMap)).
+			Int("remaining_cache_entries", len(pm.filterRulesMap)).
 			Msg("Selectively cleared autogroup:self cache for affected users")
 	}
 }
