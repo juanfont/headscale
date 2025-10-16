@@ -2,7 +2,7 @@
 version: 2
 before:
   hooks:
-    - go mod tidy -compat=1.24
+    - go mod tidy -compat=1.25
     - go mod vendor
 
 release:
