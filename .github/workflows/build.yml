@@ -94,6 +94,8 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
 
       - name: Run go cross compile
+        env:
+          CGO_ENABLED: 0
         run:
           env ${{ matrix.env }} nix develop --command -- go build -o "headscale"
           ./cmd/headscale
