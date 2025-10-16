@@ -111,6 +111,13 @@ service HeadscaleService {
     };
   }
 
+  rpc ExtendNodeExpiration(ExtendNodeExpirationRequest) returns (ExtendNodeExpirationResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/node/{node_id}/extend_expiration"
+      body : "*"
+    };
+  }
+
   rpc RenameNode(RenameNodeRequest) returns (RenameNodeResponse) {
     option (google.api.http) = {
       post : "/api/v1/node/{node_id}/rename/{new_name}"

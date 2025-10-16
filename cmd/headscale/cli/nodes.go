@@ -15,6 +15,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/types/key"
 )
 
@@ -56,6 +57,18 @@ func init() {
 		log.Fatal(err.Error())
 	}
 	nodeCmd.AddCommand(expireNodeCmd)
+
+	extendNodeExpirationCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	err = extendNodeExpirationCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	extendNodeExpirationCmd.Flags().StringP("new-expiry", "e", "", "New expiration time in RFC3339 format, e.g., 2024-01-01T15:04:05Z")
+	err = extendNodeExpirationCmd.MarkFlagRequired("new-expiry")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	nodeCmd.AddCommand(extendNodeExpirationCmd)
 
 	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	err = renameNodeCmd.MarkFlagRequired("identifier")
@@ -310,6 +323,55 @@ var expireNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetNode(), "Node expired", output)
+	},
+}
+
+var extendNodeExpirationCmd = &cobra.Command{
+	Use:   "extend-expiration",
+	Short: "Extends the expiration of a node by setting a new expiration time",
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+		nodeID, err := cmd.Flags().GetUint64("identifier")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting identifier from flag: %s", err), output)
+		}
+
+		newExpiryStr, err := cmd.Flags().GetString("new-expiry")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting new-expiry from flag: %s", err), output)
+		}
+
+		// Parse the new-expiry timestamp from string to time.Time
+		newExpiry, err := time.Parse(time.RFC3339, newExpiryStr)
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Invalid expiration time format: must be in RFC3339 format, %s", err), output)
+		}
+
+		// Set up context and gRPC client
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		// Build the gRPC request
+		request := &v1.ExtendNodeExpirationRequest{
+			NodeId:        nodeID,
+			NewExpiration: timestamppb.New(newExpiry), // convert time.Time to protobuf timestamp
+		}
+
+		// Make the gRPC call
+		response, err := client.ExtendNodeExpiration(ctx, request)
+		if err != nil {
+			st, ok := status.FromError(err)
+			if ok {
+				ErrorOutput(st.Err(), st.Message(), output)
+			} else {
+				ErrorOutput(err, "Unexpected error during ExtendNodeExpiration RPC call", output)
+			}
+			return
+		}
+
+		// Print the result
+		SuccessOutput(response, "Node expiration extended successfully", output)
 	},
 }
 
