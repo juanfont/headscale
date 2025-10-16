@@ -2,15 +2,17 @@
 
 ## Next
 
+## 0.27.0 (2025-xx-xx)
+
 **Minimum supported Tailscale client version: v1.64.0**
 
 ### Database integrity improvements
 
-This release includes a significant database migration that addresses longstanding
-issues with the database schema and data integrity that has accumulated over the
-years. The migration introduces a `schema.sql` file as the source of truth for
-the expected database schema to ensure new migrations that will cause divergence
-does not occur again.
+This release includes a significant database migration that addresses
+longstanding issues with the database schema and data integrity that has
+accumulated over the years. The migration introduces a `schema.sql` file as the
+source of truth for the expected database schema to ensure new migrations that
+will cause divergence does not occur again.
 
 These issues arose from a combination of factors discovered over time: SQLite
 foreign keys not being enforced for many early versions, all migrations being
@@ -22,8 +24,9 @@ enforced throughout the migration process.
 We are only improving SQLite databases with this change - PostgreSQL databases
 are not affected.
 
-Please read the [PR description](https://github.com/juanfont/headscale/pull/2617)
-for more technical details about the issues and solutions.
+Please read the
+[PR description](https://github.com/juanfont/headscale/pull/2617) for more
+technical details about the issues and solutions.
 
 **SQLite Database Backup Example:**
 
@@ -45,9 +48,35 @@ systemctl start headscale
 ### DERPMap update frequency
 
 The default DERPMap update frequency has been changed from 24 hours to 3 hours.
-If you set the `derp.update_frequency` configuration option, it is recommended to change
-it to `3h` to ensure that the headscale instance gets the latest DERPMap updates when
-upstream is changed.
+If you set the `derp.update_frequency` configuration option, it is recommended
+to change it to `3h` to ensure that the headscale instance gets the latest
+DERPMap updates when upstream is changed.
+
+### Autogroups
+
+This release adds support for the three missing autogroups: `self`
+(experimental), `member`, and `tagged`. Please refer to the
+[documentation](https://tailscale.com/kb/1018/autogroups/) for a detailed
+explanation.
+
+`autogroup:self` is marked as experimental and should be used with caution, but
+we need help testing it. Experimental here means two things; first, generating
+the packet filter from policies that use `autogroup:self` is very expensive, and
+it might perform, or straight up not work on Headscale installations with a
+large number of nodes. Second, the implementation might have bugs or edge cases
+we are not aware of, meaning that nodes or users might gain _more_ access than
+expected. Please report bugs.
+
+### Node store (in memory database)
+
+Under the hood, we have added a new datastructure to store nodes in memory. This
+datastructure is called `NodeStore` and aims to reduce the reading and writing
+of nodes to the database layer. We have not benchmarked it, but expect it to
+improve performance for read heavy workloads. We think of it as, "worst case" we
+have moved the bottle neck somewhere else, and "best case" we should see a good
+improvement in compute resource usage at the expense of memory usage. We are
+quite excited for this change and think it will make it easier for us to improve
+the code base over time and make it more correct and efficient.
 
 ### BREAKING
 
@@ -67,8 +96,8 @@ upstream is changed.
   [#2765](https://github.com/juanfont/headscale/pull/2765)
 - DERPmap update frequency default changed from 24h to 3h
   [#2741](https://github.com/juanfont/headscale/pull/2741)
-- DERPmap update mechanism has been improved with retry,
-  and is now failing conservatively, preserving the old map upon failure.
+- DERPmap update mechanism has been improved with retry, and is now failing
+  conservatively, preserving the old map upon failure.
   [#2741](https://github.com/juanfont/headscale/pull/2741)
 - Add support for `autogroup:member`, `autogroup:tagged`
   [#2572](https://github.com/juanfont/headscale/pull/2572)
@@ -77,8 +106,6 @@ upstream is changed.
 - Remove policy v1 code [#2600](https://github.com/juanfont/headscale/pull/2600)
 - Refactor Debian/Ubuntu packaging and drop support for Ubuntu 20.04.
   [#2614](https://github.com/juanfont/headscale/pull/2614)
-- Support client verify for DERP
-  [#2046](https://github.com/juanfont/headscale/pull/2046)
 - Remove redundant check regarding `noise` config
   [#2658](https://github.com/juanfont/headscale/pull/2658)
 - Refactor OpenID Connect documentation
@@ -90,9 +117,10 @@ upstream is changed.
 - OIDC: Use group claim from UserInfo
   [#2663](https://github.com/juanfont/headscale/pull/2663)
 - OIDC: Update user with claims from UserInfo _before_ comparing with allowed
-  groups, email and domain [#2663](https://github.com/juanfont/headscale/pull/2663)
-- Policy will now reject invalid fields, making it easier to spot spelling errors
-  [#2764](https://github.com/juanfont/headscale/pull/2764)
+  groups, email and domain
+  [#2663](https://github.com/juanfont/headscale/pull/2663)
+- Policy will now reject invalid fields, making it easier to spot spelling
+  errors [#2764](https://github.com/juanfont/headscale/pull/2764)
 - Add FAQ entry on how to recover from an invalid policy in the database
   [#2776](https://github.com/juanfont/headscale/pull/2776)
 - EXPERIMENTAL: Add support for `autogroup:self`
@@ -254,7 +282,6 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2438](https://github.com/juanfont/headscale/pull/2438)
 - Add documentation for routes
   [#2496](https://github.com/juanfont/headscale/pull/2496)
-
 
 ## 0.25.1 (2025-02-25)
 
