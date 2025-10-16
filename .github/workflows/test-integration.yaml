@@ -23,6 +23,7 @@ jobs:
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
           - TestACLAutogroupMember
           - TestACLAutogroupTagged
+          - TestACLAutogroupSelf
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
@@ -82,6 +83,7 @@ jobs:
           - TestSSHNoSSHConfigured
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
+          - TestSSHAutogroupSelf
     uses: ./.github/workflows/integration-test-template.yml
     with:
       test: ${{ matrix.test }}

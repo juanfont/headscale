@@ -13,6 +13,8 @@ import (
 type PolicyManager interface {
 	// Filter returns the current filter rules for the entire tailnet and the associated matchers.
 	Filter() ([]tailcfg.FilterRule, []matcher.Match)
+	// FilterForNode returns filter rules for a specific node, handling autogroup:self
+	FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error)
 	SSHPolicy(types.NodeView) (*tailcfg.SSHPolicy, error)
 	SetPolicy([]byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)

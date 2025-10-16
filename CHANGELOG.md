@@ -95,6 +95,8 @@ upstream is changed.
   [#2764](https://github.com/juanfont/headscale/pull/2764)
 - Add FAQ entry on how to recover from an invalid policy in the database
   [#2776](https://github.com/juanfont/headscale/pull/2776)
+- EXPERIMENTAL: Add support for `autogroup:self` 
+  [#2789](https://github.com/juanfont/headscale/pull/2789)
 
 ## 0.26.1 (2025-06-06)
 
@@ -251,6 +253,7 @@ working in v1 and not tested might be broken in v2 (and vice versa).
   [#2438](https://github.com/juanfont/headscale/pull/2438)
 - Add documentation for routes
   [#2496](https://github.com/juanfont/headscale/pull/2496)
+
 
 ## 0.25.1 (2025-02-25)
 

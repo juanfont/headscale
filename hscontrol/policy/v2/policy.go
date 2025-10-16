@@ -38,6 +38,10 @@ type PolicyManager struct {
 
 	// Lazy map of SSH policies
 	sshPolicyMap map[types.NodeID]*tailcfg.SSHPolicy
+
+	// Lazy map of per-node filter rules (when autogroup:self is used)
+	filterRulesMap    map[types.NodeID][]tailcfg.FilterRule
+	usesAutogroupSelf bool
 }
 
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
@@ -50,10 +54,12 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 	}
 
 	pm := PolicyManager{
-		pol:          policy,
-		users:        users,
-		nodes:        nodes,
-		sshPolicyMap: make(map[types.NodeID]*tailcfg.SSHPolicy, nodes.Len()),
+		pol:               policy,
+		users:             users,
+		nodes:             nodes,
+		sshPolicyMap:      make(map[types.NodeID]*tailcfg.SSHPolicy, nodes.Len()),
+		filterRulesMap:    make(map[types.NodeID][]tailcfg.FilterRule, nodes.Len()),
+		usesAutogroupSelf: policy.usesAutogroupSelf(),
 	}
 
 	_, err = pm.updateLocked()
@@ -72,8 +78,17 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// policies for nodes that have changed. Particularly if the only difference is
 	// that nodes has been added or removed.
 	clear(pm.sshPolicyMap)
+	clear(pm.filterRulesMap)
 
-	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
+	// Check if policy uses autogroup:self
+	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
+
+	var filter []tailcfg.FilterRule
+
+	var err error
+
+	// Standard compilation for all policies
+	filter, err = pm.pol.compileFilterRules(pm.users, pm.nodes)
 	if err != nil {
 		return false, fmt.Errorf("compiling filter rules: %w", err)
 	}
@@ -218,6 +233,35 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	return pm.filter, pm.matchers
 }
 
+// FilterForNode returns the filter rules for a specific node.
+// If the policy uses autogroup:self, this returns node-specific rules for security.
+// Otherwise, it returns the global filter rules for efficiency.
+func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRule, error) {
+	if pm == nil {
+		return nil, nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if !pm.usesAutogroupSelf {
+		return pm.filter, nil
+	}
+
+	if rules, ok := pm.filterRulesMap[node.ID()]; ok {
+		return rules, nil
+	}
+
+	rules, err := pm.pol.compileFilterRulesForNode(pm.users, node, pm.nodes)
+	if err != nil {
+		return nil, fmt.Errorf("compiling filter rules for node: %w", err)
+	}
+
+	pm.filterRulesMap[node.ID()] = rules
+
+	return rules, nil
+}
+
 // SetUsers updates the users in the policy manager and updates the filter rules.
 func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	if pm == nil {
@@ -255,6 +299,20 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// Clear cache based on what actually changed
+	if pm.usesAutogroupSelf {
+		// For autogroup:self, we need granular invalidation since rules depend on:
+		// - User ownership (node.User().ID)
+		// - Tag status (node.IsTagged())
+		// - IP addresses (node.IPs())
+		// - Node existence (added/removed)
+		pm.invalidateAutogroupSelfCache(pm.nodes, nodes)
+	} else {
+		// For non-autogroup:self policies, we can clear everything
+		clear(pm.filterRulesMap)
+	}
+
 	pm.nodes = nodes
 
 	return pm.updateLocked()
@@ -398,4 +456,114 @@ func (pm *PolicyManager) DebugString() string {
 	}
 
 	return sb.String()
+}
+
+// invalidateAutogroupSelfCache intelligently clears only the cache entries that need to be
+// invalidated when using autogroup:self policies. This is much more efficient than clearing
+// the entire cache.
+func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.Slice[types.NodeView]) {
+	// Build maps for efficient lookup
+	oldNodeMap := make(map[types.NodeID]types.NodeView)
+	for _, node := range oldNodes.All() {
+		oldNodeMap[node.ID()] = node
+	}
+
+	newNodeMap := make(map[types.NodeID]types.NodeView)
+	for _, node := range newNodes.All() {
+		newNodeMap[node.ID()] = node
+	}
+
+	// Track which users are affected by changes
+	affectedUsers := make(map[uint]struct{})
+
+	// Check for removed nodes
+	for nodeID, oldNode := range oldNodeMap {
+		if _, exists := newNodeMap[nodeID]; !exists {
+			affectedUsers[oldNode.User().ID] = struct{}{}
+		}
+	}
+
+	// Check for added nodes
+	for nodeID, newNode := range newNodeMap {
+		if _, exists := oldNodeMap[nodeID]; !exists {
+			affectedUsers[newNode.User().ID] = struct{}{}
+		}
+	}
+
+	// Check for modified nodes (user changes, tag changes, IP changes)
+	for nodeID, newNode := range newNodeMap {
+		if oldNode, exists := oldNodeMap[nodeID]; exists {
+			// Check if user changed
+			if oldNode.User().ID != newNode.User().ID {
+				affectedUsers[oldNode.User().ID] = struct{}{}
+				affectedUsers[newNode.User().ID] = struct{}{}
+			}
+
+			// Check if tag status changed
+			if oldNode.IsTagged() != newNode.IsTagged() {
+				affectedUsers[newNode.User().ID] = struct{}{}
+			}
+
+			// Check if IPs changed (simple check - could be more sophisticated)
+			oldIPs := oldNode.IPs()
+			newIPs := newNode.IPs()
+			if len(oldIPs) != len(newIPs) {
+				affectedUsers[newNode.User().ID] = struct{}{}
+			} else {
+				// Check if any IPs are different
+				for i, oldIP := range oldIPs {
+					if i >= len(newIPs) || oldIP != newIPs[i] {
+						affectedUsers[newNode.User().ID] = struct{}{}
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Clear cache entries for affected users only
+	// For autogroup:self, we need to clear all nodes belonging to affected users
+	// because autogroup:self rules depend on the entire user's device set
+	for nodeID := range pm.filterRulesMap {
+		// Find the user for this cached node
+		var nodeUserID uint
+		found := false
+
+		// Check in new nodes first
+		for _, node := range newNodes.All() {
+			if node.ID() == nodeID {
+				nodeUserID = node.User().ID
+				found = true
+				break
+			}
+		}
+
+		// If not found in new nodes, check old nodes
+		if !found {
+			for _, node := range oldNodes.All() {
+				if node.ID() == nodeID {
+					nodeUserID = node.User().ID
+					found = true
+					break
+				}
+			}
+		}
+
+		// If we found the user and they're affected, clear this cache entry
+		if found {
+			if _, affected := affectedUsers[nodeUserID]; affected {
+				delete(pm.filterRulesMap, nodeID)
+			}
+		} else {
+			// Node not found in either old or new list, clear it
+			delete(pm.filterRulesMap, nodeID)
+		}
+	}
+
+	if len(affectedUsers) > 0 {
+		log.Debug().
+			Int("affected_users", len(affectedUsers)).
+			Int("remaining_cache_entries", len(pm.filterRulesMap)).
+			Msg("Selectively cleared autogroup:self cache for affected users")
+	}
 }
