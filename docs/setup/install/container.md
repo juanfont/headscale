@@ -39,6 +39,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
       --volume "$(pwd)/run:/var/run/headscale" \
       --publish 127.0.0.1:8080:8080 \
       --publish 127.0.0.1:9090:9090 \
+      --health-cmd "CMD headscale health" \
       docker.io/headscale/headscale:<VERSION> \
       serve
     ```
@@ -66,6 +67,8 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
           - <HEADSCALE_PATH>/lib:/var/lib/headscale
           - <HEADSCALE_PATH>/run:/var/run/headscale
         command: serve
+        healthcheck:
+            test: ["CMD", "headscale", "health"]
     ```
 
 1.  Verify headscale is running:
