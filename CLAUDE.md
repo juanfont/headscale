@@ -528,3 +528,4 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 - **Integration Tests**: Require Docker and can consume significant disk space - use headscale-integration-tester agent
 - **Performance**: NodeStore optimizations are critical for scale - be careful with changes to state management
 - **Quality Assurance**: Always use appropriate specialized agents for testing and validation tasks
+- **NEVER create gists in the user's name**: Do not use the `create_gist` tool - present information directly in the response instead
