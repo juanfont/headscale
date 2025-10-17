@@ -602,7 +602,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 	mc.updateCount.Add(1)
 
-	log.Info().Uint64("node.id", mc.id.Uint64()).
+	log.Debug().Uint64("node.id", mc.id.Uint64()).
 		Int("successful_sends", successCount).
 		Int("failed_connections", len(failedConnections)).
 		Int("remaining_connections", len(mc.connections)).
