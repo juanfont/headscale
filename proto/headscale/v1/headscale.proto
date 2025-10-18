@@ -9,6 +9,7 @@ import "headscale/v1/preauthkey.proto";
 import "headscale/v1/node.proto";
 import "headscale/v1/apikey.proto";
 import "headscale/v1/policy.proto";
+import "headscale/v1/wireguard_only_peer.proto";
 
 service HeadscaleService {
   // --- User start ---
@@ -138,6 +139,24 @@ service HeadscaleService {
   }
 
   // --- Node end ---
+
+  // --- WireGuard-Only Peers start ---
+  rpc RegisterWireGuardOnlyPeer(RegisterWireGuardOnlyPeerRequest)
+      returns (RegisterWireGuardOnlyPeerResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/wireguard-only-peer/register"
+      body : "*"
+    };
+  }
+
+  rpc GetWireGuardOnlyPeer(GetWireGuardOnlyPeerRequest)
+      returns (GetWireGuardOnlyPeerResponse) {
+    option (google.api.http) = {
+      get : "/api/v1/wireguard-only-peer/{peer_id}"
+    };
+  }
+
+  // --- WireGuard-Only Peers end ---
 
   // --- ApiKeys start ---
   rpc CreateApiKey(CreateApiKeyRequest) returns (CreateApiKeyResponse) {

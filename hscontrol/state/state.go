@@ -602,6 +602,71 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 	return views.SliceOf(filteredNodes)
 }
 
+// GetWireGuardOnlyPeersForNode retrieves all WireGuard-only peers that are visible
+// to the specified node. A node can see a WireGuard-only peer if the node's ID
+// is in the peer's KnownNodeIDs list.
+func (s *State) GetWireGuardOnlyPeersForNode(nodeID types.NodeID) (types.WireGuardOnlyPeers, error) {
+	return s.db.ListWireGuardOnlyPeersForNode(nodeID)
+}
+
+// CreateWireGuardOnlyPeer creates a new WireGuard-only peer, allocating IP addresses
+// for it and storing it in the database.
+func (s *State) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ipv4, ipv6, err := s.ipAlloc.Next()
+	if err != nil {
+		return fmt.Errorf("allocating IP addresses: %w", err)
+	}
+
+	peer.IPv4 = ipv4
+	peer.IPv6 = ipv6
+
+	if err := s.db.CreateWireGuardOnlyPeer(peer); err != nil {
+		return fmt.Errorf("creating wireguard-only peer in database: %w", err)
+	}
+
+	log.Info().
+		Str("name", peer.Name).
+		Uint64("id", peer.ID).
+		Str("ipv4", func() string {
+			if ipv4 != nil {
+				return ipv4.String()
+			}
+			return "none"
+		}()).
+		Str("ipv6", func() string {
+			if ipv6 != nil {
+				return ipv6.String()
+			}
+			return "none"
+		}()).
+		Msg("Created WireGuard-only peer")
+
+	return nil
+}
+
+// GetWireGuardOnlyPeerByID retrieves a WireGuard-only peer by its ID.
+func (s *State) GetWireGuardOnlyPeerByID(id uint64) (*types.WireGuardOnlyPeer, error) {
+	return s.db.GetWireGuardOnlyPeerByID(id)
+}
+
+// ListWireGuardOnlyPeers lists all WireGuard-only peers, optionally filtered by user ID.
+func (s *State) ListWireGuardOnlyPeers(userID *uint) (types.WireGuardOnlyPeers, error) {
+	return s.db.ListWireGuardOnlyPeers(userID)
+}
+
+// DeleteWireGuardOnlyPeer deletes a WireGuard-only peer by ID.
+func (s *State) DeleteWireGuardOnlyPeer(id uint64) (change.ChangeSet, error) {
+	err := s.db.DeleteWireGuardOnlyPeer(id)
+	if err != nil {
+		return change.EmptySet, err
+	}
+	c := change.WireGuardPeerRemoved(types.NodeID(id))
+	return c, nil
+}
+
 // ListEphemeralNodes retrieves all ephemeral (temporary) nodes in the system.
 func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 	allNodes := s.nodeStore.ListNodes()

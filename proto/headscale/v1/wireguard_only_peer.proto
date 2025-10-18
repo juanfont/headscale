@@ -1,0 +1,95 @@
+syntax = "proto3";
+package headscale.v1;
+
+import "google/protobuf/timestamp.proto";
+import "headscale/v1/user.proto";
+
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+// WireGuardOnlyPeer represents an external WireGuard peer that does not run
+// a Tailscale client. These peers are manually configured and statically defined.
+message WireGuardOnlyPeer {
+  uint64 id = 1;
+  string name = 2;
+  User user = 3;
+
+  // WireGuard public key of the peer
+  string public_key = 4;
+
+  // List of regular node IDs that can see this WireGuard-only peer
+  // This is unidirectional - only these nodes will have the peer in their maps
+  repeated uint64 known_node_ids = 5;
+
+  // AllowedIPs that the WireGuard-only peer is allowed to route
+  // Typically includes exit routes like 0.0.0.0/0 and ::/0
+  repeated string allowed_ips = 6;
+
+  // WireGuard endpoints where the peer can be reached
+  repeated string endpoints = 7;
+
+  // Source IP addresses that the WireGuard-only peer expects to see
+  // from our nodes.
+  optional string self_ipv4_masq_addr = 8;
+  optional string self_ipv6_masq_addr = 9;
+
+  // Auto-allocated tailnet IP addresses for the peer
+  string ipv4 = 10;
+  string ipv6 = 11;
+
+  // DNS resolvers to use when this peer is used as an exit node
+  repeated string exit_node_dns_resolvers = 12;
+
+  // Whether to suggest this peer as an exit node
+  bool suggest_exit_node = 13;
+
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message RegisterWireGuardOnlyPeerRequest {
+  // Human-readable name for the peer
+  string name = 1;
+  uint64 user_id = 2;
+  string public_key = 3;
+
+  // Node IDs that should be able to see this peer
+  repeated uint64 known_node_ids = 4;
+
+  repeated string allowed_ips = 5;
+  repeated string endpoints = 6;
+
+  // At least one masq addr is required
+  optional string self_ipv4_masq_addr = 7;
+  optional string self_ipv6_masq_addr = 8;
+
+  // Optional exit node configuration
+  repeated string exit_node_dns_resolvers = 9;
+  bool suggest_exit_node = 10;
+}
+
+message RegisterWireGuardOnlyPeerResponse {
+  WireGuardOnlyPeer peer = 1;
+}
+
+message ListWireGuardOnlyPeersRequest {
+  // Optional: filter by user ID
+  optional uint64 user_id = 1;
+}
+
+message ListWireGuardOnlyPeersResponse {
+  repeated WireGuardOnlyPeer peers = 1;
+}
+
+message DeleteWireGuardOnlyPeerRequest {
+  uint64 peer_id = 1;
+}
+
+message DeleteWireGuardOnlyPeerResponse {}
+
+message GetWireGuardOnlyPeerRequest {
+  uint64 peer_id = 1;
+}
+
+message GetWireGuardOnlyPeerResponse {
+  WireGuardOnlyPeer peer = 1;
+}

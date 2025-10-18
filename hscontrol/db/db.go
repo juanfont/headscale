@@ -936,6 +936,79 @@ AND auth_key_id NOT IN (
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
+
+			// Add wireguard_only_peers table for external WireGuard peer support.
+			{
+				ID: "202510181528",
+				Migrate: func(tx *gorm.DB) error {
+					// Common columns shared between SQLite and PostgreSQL.
+					// Database-specific types are parameterized with %s placeholders.
+					commonColumns := `
+  name text UNIQUE NOT NULL,
+  user_id %s NOT NULL,
+  public_key text NOT NULL,
+  known_node_ids text NOT NULL,
+  allowed_ips text NOT NULL,
+  endpoints text NOT NULL,
+  self_ipv4_masq_addr text,
+  self_ipv6_masq_addr text,
+  ipv4 text,
+  ipv6 text,
+  exit_node_dns_resolvers text,
+  suggest_exit_node %s DEFAULT false,
+
+  created_at %s,
+  updated_at %s,
+  deleted_at %s,
+
+  CONSTRAINT fk_wireguard_only_peers_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+`
+
+					if cfg.Type == types.DatabaseSqlite {
+						createTableSQL := fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS wireguard_only_peers(
+  id integer PRIMARY KEY AUTOINCREMENT,
+%s)`,
+							fmt.Sprintf(commonColumns, "integer", "numeric", "datetime", "datetime", "datetime"))
+
+						err := tx.Exec(createTableSQL).Error
+						if err != nil {
+							return fmt.Errorf("creating wireguard_only_peers table: %w", err)
+						}
+
+						err = tx.Exec(`
+INSERT OR REPLACE INTO sqlite_sequence (name, seq)
+VALUES ('wireguard_only_peers', ?)`,
+							types.WireGuardOnlyPeerIDOffset-1).Error
+						if err != nil {
+							return fmt.Errorf("initializing wireguard_only_peers sequence: %w", err)
+						}
+					} else if cfg.Type == types.DatabasePostgres {
+						createTableSQL := fmt.Sprintf(`
+CREATE TABLE IF NOT EXISTS wireguard_only_peers(
+  id BIGSERIAL PRIMARY KEY,
+%s)`,
+							fmt.Sprintf(commonColumns, "bigint", "boolean", "timestamp with time zone", "timestamp with time zone", "timestamp with time zone"))
+
+						err := tx.Exec(createTableSQL).Error
+						if err != nil {
+							return fmt.Errorf("creating wireguard_only_peers table: %w", err)
+						}
+
+						// PostgreSQL ALTER SEQUENCE doesn't support parameterized queries, so we use fmt.Sprintf.
+						// This is safe because WireGuardOnlyPeerIDOffset is a compile-time constant from our code.
+						err = tx.Exec(fmt.Sprintf(`
+ALTER SEQUENCE wireguard_only_peers_id_seq RESTART WITH %d
+						`, types.WireGuardOnlyPeerIDOffset)).Error
+						if err != nil {
+							return fmt.Errorf("initializing wireguard_only_peers sequence: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

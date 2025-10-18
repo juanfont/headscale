@@ -1,0 +1,510 @@
+package integration
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/netip"
+	"testing"
+	"time"
+
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/key"
+)
+
+// TestWireGuardOnlyPeerBasicRegistration tests the basic registration flow for WireGuard-only peers.
+// It verifies that:
+// - A WireGuard-only peer can be registered via CLI
+// - The peer appears in the network map of nodes specified in KnownNodeIDs
+// - The peer does NOT appear for nodes not in KnownNodeIDs
+// - The peer has correct properties (IsWireGuardOnly, IsJailed)
+func TestWireGuardOnlyPeerBasicRegistration(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 3,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-basic"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 3, "should have 3 clients")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 3, "should have 3 nodes")
+
+	node1ID := nodes[0].GetId()
+	node2ID := nodes[1].GetId()
+	_ = nodes[2].GetId() // node3 should NOT see the peer
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	// Register a WireGuard-only peer that should be visible to node1 and node2 only
+	result, err := headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--known-nodes", fmt.Sprintf("%d,%d", node1ID, node2ID),
+		"--allowed-ips", "0.0.0.0/0,::/0",
+		"--endpoints", "192.0.2.1:51820",
+		"--self-ipv4-masq-addr", "10.64.0.100",
+		"--suggest-exit-node",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to register WireGuard-only peer")
+	require.NotEmpty(t, result, "registration result should not be empty")
+
+	t.Logf("WireGuard-only peer registered: %s", result)
+
+	var peer *v1.WireGuardOnlyPeer
+	err = json.Unmarshal([]byte(result), &peer)
+	require.NoError(t, err, "failed to parse registration result")
+	require.GreaterOrEqual(t, peer.Id, uint64(types.WireGuardOnlyPeerIDOffset), "WireGuard-only peer ID should be >= 100 million")
+
+	// Wait for the peer to appear in network maps
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify node1 can see the WireGuard-only peer
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status1, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status1.Peers() {
+			peer := status1.Peer[peerKey]
+			if peer.HostName == "test-wg-peer" {
+				found = true
+
+				assert.NotEmpty(c, peer.AllowedIPs, "peer should have allowed IPs")
+				assert.NotNil(c, peer.CapMap, "peer should have capability map")
+				_, hasExitNode := peer.CapMap[tailcfg.NodeAttrSuggestExitNode]
+				assert.True(c, hasExitNode, "peer should be suggested as exit node")
+				break
+			}
+		}
+		assert.True(c, found, "node1 should see the WireGuard-only peer")
+	}, 10*time.Second, 500*time.Millisecond, "node1 should see WireGuard-only peer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status2, err := allClients[1].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status2.Peers() {
+			peer := status2.Peer[peerKey]
+			if peer.HostName == "test-wg-peer" {
+				found = true
+				break
+			}
+		}
+		assert.True(c, found, "node2 should see the WireGuard-only peer")
+	}, 10*time.Second, 500*time.Millisecond, "node2 should see WireGuard-only peer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status3, err := allClients[2].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status3.Peers() {
+			peer := status3.Peer[peerKey]
+			if peer.HostName == "test-wg-peer" {
+				found = true
+				break
+			}
+		}
+		assert.False(c, found, "node3 should NOT see the WireGuard-only peer (not in KnownNodeIDs)")
+	}, 10*time.Second, 500*time.Millisecond, "node3 should not see WireGuard-only peer")
+}
+
+// TestWireGuardOnlyPeerDeletion tests that deleting a WireGuard-only peer removes it from node network maps.
+func TestWireGuardOnlyPeerDeletion(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-delete"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 2, "should have 2 clients")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 2, "should have 2 nodes")
+
+	node1ID := nodes[0].GetId()
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	// Register a WireGuard-only peer
+	result, err := headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer-delete",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--known-nodes", fmt.Sprintf("%d", node1ID),
+		"--allowed-ips", "10.99.0.0/24",
+		"--endpoints", "192.0.2.1:51820",
+		"--self-ipv4-masq-addr", "10.64.0.100",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to register WireGuard-only peer")
+	require.NotEmpty(t, result, "registration result should not be empty")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status.Peers() {
+			peer := status.Peer[peerKey]
+			if peer.HostName == "test-wg-peer-delete" {
+				found = true
+				break
+			}
+		}
+		assert.True(c, found, "peer should be visible before deletion")
+	}, 10*time.Second, 500*time.Millisecond, "peer should be visible")
+
+	var registeredPeer *v1.WireGuardOnlyPeer
+	err = json.Unmarshal([]byte(result), &registeredPeer)
+	require.NoError(t, err, "failed to parse registration result")
+
+	peerID := registeredPeer.Id
+
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"delete",
+		"--identifier", fmt.Sprintf("%d", peerID),
+	})
+	require.NoError(t, err, "failed to delete WireGuard-only peer")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status.Peers() {
+			peer := status.Peer[peerKey]
+			if peer.HostName == "test-wg-peer-delete" {
+				found = true
+				break
+			}
+		}
+		assert.False(c, found, "peer should not be visible after deletion")
+	}, 10*time.Second, 500*time.Millisecond, "peer should be removed from network map")
+}
+
+// TestWireGuardOnlyPeerIPAllocation tests that WireGuard-only peers receive proper IP addresses.
+func TestWireGuardOnlyPeerIPAllocation(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-ips"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 1, "should have 1 client")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 1, "should have 1 node")
+
+	nodeID := nodes[0].GetId()
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	result, err := headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer-ips",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--known-nodes", fmt.Sprintf("%d", nodeID),
+		"--allowed-ips", "0.0.0.0/0",
+		"--endpoints", "192.0.2.1:51820",
+		"--self-ipv4-masq-addr", "10.64.0.100",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to register WireGuard-only peer")
+	require.NotEmpty(t, result, "registration result should not be empty")
+
+	var peer *v1.WireGuardOnlyPeer
+	err = json.Unmarshal([]byte(result), &peer)
+	require.NoError(t, err, "failed to parse JSON")
+
+	require.NotEmpty(t, peer.Ipv4, "peer should have IPv4 address")
+	require.NotEmpty(t, peer.Ipv6, "peer should have IPv6 address")
+
+	ipv4, err := netip.ParseAddr(peer.Ipv4)
+	require.NoError(t, err, "IPv4 address should be valid")
+	require.True(t, ipv4.Is4(), "IPv4 address should be an IPv4 address")
+
+	ipv6, err := netip.ParseAddr(peer.Ipv6)
+	require.NoError(t, err, "IPv6 address should be valid")
+	require.True(t, ipv6.Is6(), "IPv6 address should be an IPv6 address")
+
+	t.Logf("WireGuard-only peer allocated IPs - IPv4: %s, IPv6: %s", peer.Ipv4, peer.Ipv6)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status.Peers() {
+			peerStatus := status.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-ips" {
+				found = true
+
+				hasIPv4 := false
+				hasIPv6 := false
+				for _, addr := range peerStatus.TailscaleIPs {
+					if addr.String() == peer.Ipv4 {
+						hasIPv4 = true
+					}
+					if addr.String() == peer.Ipv6 {
+						hasIPv6 = true
+					}
+				}
+
+				assert.True(c, hasIPv4, "peer should have allocated IPv4 in network map")
+				assert.True(c, hasIPv6, "peer should have allocated IPv6 in network map")
+				break
+			}
+		}
+		assert.True(c, found, "peer should be visible in network map")
+	}, 10*time.Second, 500*time.Millisecond, "peer should have correct IPs in network map")
+}
+
+// TestWireGuardOnlyPeerMasqueradeAddressValidation tests that at least one masquerade address is required.
+func TestWireGuardOnlyPeerMasqueradeAddressValidation(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-masq-validation"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 1, "should have 1 client")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 1, "should have 1 node")
+
+	nodeID := nodes[0].GetId()
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer-no-masq",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--known-nodes", fmt.Sprintf("%d", nodeID),
+		"--allowed-ips", "0.0.0.0/0",
+		"--endpoints", "192.0.2.1:51820",
+	})
+	require.Error(t, err, "registration should fail without masquerade address")
+
+	t.Logf("Registration correctly failed without masquerade address")
+}
+
+// TestWireGuardOnlyPeerMapResponse tests that WireGuard-only peers have the correct
+// tailcfg.Node fields set in the network map response.
+func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-mapresponse"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 1, "should have 1 client")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 1, "should have 1 node")
+
+	nodeID := nodes[0].GetId()
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	expectedIPv4Masq := netip.MustParseAddr("10.64.0.100")
+	expectedIPv6Masq := netip.MustParseAddr("fd7a:115c:a1e0::100")
+	expectedAllowedIPs := []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}
+	expectedEndpoint := "192.0.2.1:51820"
+
+	result, err := headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer-mapresponse",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--known-nodes", fmt.Sprintf("%d", nodeID),
+		"--allowed-ips", "0.0.0.0/0,::/0",
+		"--endpoints", expectedEndpoint,
+		"--self-ipv4-masq-addr", expectedIPv4Masq.String(),
+		"--self-ipv6-masq-addr", expectedIPv6Masq.String(),
+		"--suggest-exit-node",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to register WireGuard-only peer")
+	require.NotEmpty(t, result, "registration result should not be empty")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nm, err := allClients[0].Netmap()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peer := range nm.Peers {
+			if peer.ComputedName() == "test-wg-peer-mapresponse" {
+				found = true
+
+				assert.True(c, peer.IsWireGuardOnly(), "peer should have IsWireGuardOnly set to true")
+				assert.True(c, peer.IsJailed(), "peer should have IsJailed set to true")
+
+				masqV4, ok := peer.SelfNodeV4MasqAddrForThisPeer().GetOk()
+				assert.True(c, ok, "peer should have SelfNodeV4MasqAddrForThisPeer set")
+				assert.Equal(c, expectedIPv4Masq, masqV4, "IPv4 masquerade address should match")
+
+				masqV6, ok := peer.SelfNodeV6MasqAddrForThisPeer().GetOk()
+				assert.True(c, ok, "peer should have SelfNodeV6MasqAddrForThisPeer set")
+				assert.Equal(c, expectedIPv6Masq, masqV6, "IPv6 masquerade address should match")
+
+				assert.NotEmpty(c, peer.AllowedIPs(), "peer should have AllowedIPs")
+				allowedIPs := peer.AllowedIPs().AsSlice()
+				assert.ElementsMatch(c, expectedAllowedIPs, allowedIPs, "AllowedIPs should match expected")
+
+				assert.NotEmpty(c, peer.Endpoints(), "peer should have Endpoints")
+				endpoints := peer.Endpoints().AsSlice()
+				assert.Contains(c, endpoints, expectedEndpoint, "Endpoints should contain expected endpoint")
+
+				capMap := peer.CapMap()
+				hasExitNode := capMap.Contains(tailcfg.NodeAttrSuggestExitNode)
+				assert.True(c, hasExitNode, "peer CapMap should contain exit node attribute")
+
+				break
+			}
+		}
+		assert.True(c, found, "WireGuard-only peer should be in the network map")
+	}, 10*time.Second, 500*time.Millisecond, "WireGuard-only peer should have correct tailcfg.Node fields")
+}

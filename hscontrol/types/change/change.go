@@ -35,6 +35,11 @@ const (
 	NodeKeyExpiry   Change = 24
 	NodeNewOrUpdate Change = 25
 
+	// WireGuard-only peer changes.
+	// These peers do not run Tailscale clients and therefore never receive map updates.
+	WireGuardPeerNewOrUpdate Change = 31
+	WireGuardPeerRemove      Change = 32
+
 	// User changes.
 	UserNewOrUpdate Change = 51
 	UserRemove      Change = 52
@@ -45,6 +50,9 @@ func (c Change) AlsoSelf() bool {
 	switch c {
 	case NodeRemove, NodeKeyExpiry, NodeNewOrUpdate:
 		return true
+	case WireGuardPeerNewOrUpdate, WireGuardPeerRemove:
+		// WireGuard-only peers don't receive updates as they don't run Tailscale clients
+		return false
 	}
 
 	return false
@@ -193,6 +201,20 @@ func KeyExpiry(id types.NodeID, expiry time.Time) ChangeSet {
 		Change:     NodeKeyExpiry,
 		NodeID:     id,
 		NodeExpiry: &expiry,
+	}
+}
+
+func WireGuardPeerAdded(id types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change: WireGuardPeerNewOrUpdate,
+		NodeID: id,
+	}
+}
+
+func WireGuardPeerRemoved(id types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change: WireGuardPeerRemove,
+		NodeID: id,
 	}
 }
 

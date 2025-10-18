@@ -215,6 +215,51 @@ func (m *mapper) peerChangeResponse(
 		Build()
 }
 
+// wireGuardPeerChangeResponse handles changes to WireGuard-only peers.
+// These peers are stored separately from regular nodes and have different visibility rules.
+func (m *mapper) wireGuardPeerChangeResponse(
+	nodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+	wgPeerID types.NodeID,
+) (*tailcfg.MapResponse, error) {
+	wgPeer, err := m.state.GetWireGuardOnlyPeerByID(uint64(wgPeerID))
+	if err != nil {
+		return nil, fmt.Errorf("fetching wireguard-only peer %d: %w", wgPeerID, err)
+	}
+
+	// Only nodes in the peer's KnownNodeIDs list should receive updates
+	canSee := false
+	for _, knownID := range wgPeer.KnownNodeIDs {
+		if types.NodeID(knownID) == nodeID {
+			canSee = true
+			break
+		}
+	}
+
+	if canSee {
+		return m.NewMapResponseBuilder(nodeID).
+			WithDebugType(changeResponseDebug).
+			WithCapabilityVersion(capVer).
+			WithWireGuardOnlyPeerChange(wgPeer).
+			Build()
+	} else {
+		return m.NewMapResponseBuilder(nodeID).
+			WithDebugType(changeResponseDebug).
+			Build()
+	}
+}
+
+// wireGuardPeerRemovedResponse creates a MapResponse for WireGuard-only peer removal.
+func (m *mapper) wireGuardPeerRemovedResponse(
+	nodeID types.NodeID,
+	wgPeerID types.NodeID,
+) (*tailcfg.MapResponse, error) {
+	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(removeResponseDebug).
+		WithPeersRemoved(wgPeerID).
+		Build()
+}
+
 // peerRemovedResponse creates a MapResponse indicating that a peer has been removed.
 func (m *mapper) peerRemovedResponse(
 	nodeID types.NodeID,

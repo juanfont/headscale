@@ -99,6 +99,28 @@ CREATE TABLE nodes(
   CONSTRAINT fk_nodes_auth_key FOREIGN KEY(auth_key_id) REFERENCES pre_auth_keys(id)
 );
 
+CREATE TABLE wireguard_only_peers(
+  id integer PRIMARY KEY AUTOINCREMENT,
+  name text UNIQUE NOT NULL,
+  user_id integer NOT NULL,
+  public_key text NOT NULL,
+  known_node_ids text NOT NULL,
+  allowed_ips text NOT NULL,
+  endpoints text NOT NULL,
+  self_ipv4_masq_addr text,
+  self_ipv6_masq_addr text,
+  ipv4 text,
+  ipv6 text,
+  exit_node_dns_resolvers text,
+  suggest_exit_node numeric DEFAULT false,
+
+  created_at datetime,
+  updated_at datetime,
+  deleted_at datetime,
+
+  CONSTRAINT fk_wireguard_only_peers_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE policies(
   id integer PRIMARY KEY AUTOINCREMENT,
   data text,

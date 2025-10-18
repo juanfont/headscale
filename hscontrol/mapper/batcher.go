@@ -113,6 +113,12 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 	case change.NodeRemove:
 		mapResp, err = mapper.peerRemovedResponse(nodeID, c.NodeID)
 
+	case change.WireGuardPeerNewOrUpdate:
+		mapResp, err = mapper.wireGuardPeerChangeResponse(nodeID, version, c.NodeID)
+
+	case change.WireGuardPeerRemove:
+		mapResp, err = mapper.wireGuardPeerRemovedResponse(nodeID, c.NodeID)
+
 	case change.NodeKeyExpiry:
 		// If the node is the one whose key is expiring, we send a "full" self update
 		// as nodes will ignore patch updates about themselves (?).
