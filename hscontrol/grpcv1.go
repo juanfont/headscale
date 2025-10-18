@@ -793,4 +793,26 @@ func (api headscaleV1APIServer) Health(
 	return response, healthErr
 }
 
+func (api headscaleV1APIServer) ListPendingRegistrations(
+	ctx context.Context,
+	_ *v1.ListPendingRegistrationsRequest,
+) (*v1.ListPendingRegistrationsResponse, error) {
+	regs := api.h.state.ListPendingRegistrations()
+	resp := &v1.ListPendingRegistrationsResponse{}
+	for _, r := range regs {
+		var ts *timestamppb.Timestamp
+		if r.Expiry != nil {
+			ts = timestamppb.New(*r.Expiry)
+		}
+		resp.Registrations = append(resp.Registrations, &v1.PendingRegistration{
+			Id:         r.ID.String(),
+			Hostname:   r.Hostname,
+			MachineKey: r.MachineKey,
+			NodeKey:    r.NodeKey,
+			Expiry:     ts,
+		})
+	}
+	return resp, nil
+}
+
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
