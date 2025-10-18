@@ -793,6 +793,70 @@
           "HeadscaleService"
         ]
       }
+    },
+    "/api/v1/wireguard-only-peer/register": {
+      "post": {
+        "summary": "--- WireGuard-Only Peers start ---",
+        "operationId": "HeadscaleService_RegisterWireGuardOnlyPeer",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RegisterWireGuardOnlyPeerResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RegisterWireGuardOnlyPeerRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/wireguard-only-peer/{peerId}": {
+      "get": {
+        "operationId": "HeadscaleService_GetWireGuardOnlyPeer",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetWireGuardOnlyPeerResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "peerId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -1056,6 +1120,14 @@
         }
       }
     },
+    "v1GetWireGuardOnlyPeerResponse": {
+      "type": "object",
+      "properties": {
+        "peer": {
+          "$ref": "#/definitions/v1WireGuardOnlyPeer"
+        }
+      }
+    },
     "v1ListApiKeysResponse": {
       "type": "object",
       "properties": {
@@ -1076,6 +1148,13 @@
           "items": {
             "type": "object",
             "$ref": "#/definitions/v1Node"
+          }
+        },
+        "wireguardOnlyPeers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1WireGuardOnlyPeer"
           }
         }
       }
@@ -1258,6 +1337,67 @@
         }
       }
     },
+    "v1RegisterWireGuardOnlyPeerRequest": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Human-readable name for the peer"
+        },
+        "userId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "publicKey": {
+          "type": "string"
+        },
+        "knownNodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "title": "Node IDs that should be able to see this peer"
+        },
+        "allowedIps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selfIpv4MasqAddr": {
+          "type": "string",
+          "title": "At least one masq addr is required"
+        },
+        "selfIpv6MasqAddr": {
+          "type": "string"
+        },
+        "exitNodeDnsResolvers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "Optional exit node configuration"
+        },
+        "suggestExitNode": {
+          "type": "boolean"
+        }
+      }
+    },
+    "v1RegisterWireGuardOnlyPeerResponse": {
+      "type": "object",
+      "properties": {
+        "peer": {
+          "$ref": "#/definitions/v1WireGuardOnlyPeer"
+        }
+      }
+    },
     "v1RenameNodeResponse": {
       "type": "object",
       "properties": {
@@ -1340,6 +1480,81 @@
           "type": "string"
         }
       }
+    },
+    "v1WireGuardOnlyPeer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "name": {
+          "type": "string"
+        },
+        "user": {
+          "$ref": "#/definitions/v1User"
+        },
+        "publicKey": {
+          "type": "string",
+          "title": "WireGuard public key of the peer"
+        },
+        "knownNodeIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uint64"
+          },
+          "title": "List of regular node IDs that can see this WireGuard-only peer\nThis is unidirectional - only these nodes will have the peer in their maps"
+        },
+        "allowedIps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "AllowedIPs that the WireGuard-only peer is allowed to route\nTypically includes exit routes like 0.0.0.0/0 and ::/0"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "WireGuard endpoints where the peer can be reached"
+        },
+        "selfIpv4MasqAddr": {
+          "type": "string",
+          "description": "Source IP addresses that the WireGuard-only peer expects to see\nfrom our nodes."
+        },
+        "selfIpv6MasqAddr": {
+          "type": "string"
+        },
+        "ipv4": {
+          "type": "string",
+          "title": "Auto-allocated tailnet IP addresses for the peer"
+        },
+        "ipv6": {
+          "type": "string"
+        },
+        "exitNodeDnsResolvers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "title": "DNS resolvers to use when this peer is used as an exit node"
+        },
+        "suggestExitNode": {
+          "type": "boolean",
+          "title": "Whether to suggest this peer as an exit node"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "WireGuardOnlyPeer represents an external WireGuard peer that does not run\na Tailscale client. These peers are manually configured and statically defined."
     }
   }
 }
