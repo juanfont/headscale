@@ -1164,7 +1164,7 @@ func TestNodeCommand(t *testing.T) {
 				"debug",
 				"create-node",
 				"--name",
-				fmt.Sprintf("otherUser-node-%d", index+1),
+				fmt.Sprintf("otheruser-node-%d", index+1),
 				"--user",
 				"other-user",
 				"--key",
@@ -1221,8 +1221,8 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, uint64(6), listAllWithotherUser[5].GetId())
 	assert.Equal(t, uint64(7), listAllWithotherUser[6].GetId())
 
-	assert.Equal(t, "otherUser-node-1", listAllWithotherUser[5].GetName())
-	assert.Equal(t, "otherUser-node-2", listAllWithotherUser[6].GetName())
+	assert.Equal(t, "otheruser-node-1", listAllWithotherUser[5].GetName())
+	assert.Equal(t, "otheruser-node-2", listAllWithotherUser[6].GetName())
 
 	// Test list all nodes after added otherUser
 	var listOnlyotherUserMachineUser []v1.Node
@@ -1248,12 +1248,12 @@ func TestNodeCommand(t *testing.T) {
 
 	assert.Equal(
 		t,
-		"otherUser-node-1",
+		"otheruser-node-1",
 		listOnlyotherUserMachineUser[0].GetName(),
 	)
 	assert.Equal(
 		t,
-		"otherUser-node-2",
+		"otheruser-node-2",
 		listOnlyotherUserMachineUser[1].GetName(),
 	)
 
@@ -1558,7 +1558,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			strings.Repeat("t", 64),
 		},
 	)
-	assert.ErrorContains(t, err, "not be over 63 chars")
+	assert.ErrorContains(t, err, "must not exceed 63 characters")
 
 	var listAllAfterRenameAttempt []v1.Node
 	err = executeAndUnmarshal(

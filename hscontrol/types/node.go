@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -27,6 +28,8 @@ var (
 	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
+
+	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 )
 
 type (
@@ -144,7 +147,10 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 
 // GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) GivenNameHasBeenChanged() bool {
-	return node.GivenName == util.ConvertWithFQDNRules(node.Hostname)
+	// Strip invalid DNS characters for givenName comparison
+	normalised := strings.ToLower(node.Hostname)
+	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+	return node.GivenName == normalised
 }
 
 // IsExpired returns whether the node registration has expired.
@@ -531,20 +537,34 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		return
 	}
 
-	if node.Hostname != hostInfo.Hostname {
+	newHostname := strings.ToLower(hostInfo.Hostname)
+	if err := util.ValidateHostname(newHostname); err != nil {
+		log.Warn().
+			Str("node.id", node.ID.String()).
+			Str("current_hostname", node.Hostname).
+			Str("rejected_hostname", hostInfo.Hostname).
+			Err(err).
+			Msg("Rejecting invalid hostname update from hostinfo")
+		return
+	}
+
+	if node.Hostname != newHostname {
 		log.Trace().
 			Str("node.id", node.ID.String()).
 			Str("old_hostname", node.Hostname).
-			Str("new_hostname", hostInfo.Hostname).
+			Str("new_hostname", newHostname).
 			Str("old_given_name", node.GivenName).
 			Bool("given_name_changed", node.GivenNameHasBeenChanged()).
 			Msg("Updating hostname from hostinfo")
 
 		if node.GivenNameHasBeenChanged() {
-			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
+			// Strip invalid DNS characters for givenName display
+			givenName := strings.ToLower(newHostname)
+			givenName = invalidDNSRegex.ReplaceAllString(givenName, "")
+			node.GivenName = givenName
 		}
 
-		node.Hostname = hostInfo.Hostname
+		node.Hostname = newHostname
 
 		log.Trace().
 			Str("node.id", node.ID.String()).

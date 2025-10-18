@@ -1,6 +1,7 @@
 package hscontrol
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -283,19 +284,23 @@ func (h *Headscale) reqToNewRegisterResponse(
 		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
 	}
 
-	// Ensure we have valid hostinfo and hostname
-	validHostinfo, hostname := util.EnsureValidHostinfo(
+	// Ensure we have a valid hostname
+	hostname := util.EnsureHostname(
 		req.Hostinfo,
 		machineKey.String(),
 		req.NodeKey.String(),
 	)
+
+	// Ensure we have valid hostinfo
+	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
+	hostinfo.Hostname = hostname
 
 	nodeToRegister := types.NewRegisterNode(
 		types.Node{
 			Hostname:   hostname,
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
-			Hostinfo:   validHostinfo,
+			Hostinfo:   hostinfo,
 			LastSeen:   ptr.To(time.Now()),
 		},
 	)
@@ -396,13 +401,15 @@ func (h *Headscale) handleRegisterInteractive(
 		return nil, fmt.Errorf("generating registration ID: %w", err)
 	}
 
-	// Ensure we have valid hostinfo and hostname
-	validHostinfo, hostname := util.EnsureValidHostinfo(
+	// Ensure we have a valid hostname
+	hostname := util.EnsureHostname(
 		req.Hostinfo,
 		machineKey.String(),
 		req.NodeKey.String(),
 	)
 
+	// Ensure we have valid hostinfo
+	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
 	if req.Hostinfo == nil {
 		log.Warn().
 			Str("machine.key", machineKey.ShortString()).
@@ -416,13 +423,14 @@ func (h *Headscale) handleRegisterInteractive(
 			Str("generated.hostname", hostname).
 			Msg("Received registration request with empty hostname, generated default")
 	}
+	hostinfo.Hostname = hostname
 
 	nodeToRegister := types.NewRegisterNode(
 		types.Node{
 			Hostname:   hostname,
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
-			Hostinfo:   validHostinfo,
+			Hostinfo:   hostinfo,
 			LastSeen:   ptr.To(time.Now()),
 		},
 	)

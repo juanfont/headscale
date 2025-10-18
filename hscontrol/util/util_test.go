@@ -3,6 +3,7 @@ package util
 import (
 	"errors"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -795,7 +796,7 @@ over a maximum of 30 hops:
 	}
 }
 
-func TestSafeHostname(t *testing.T) {
+func TestEnsureHostname(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -878,7 +879,7 @@ func TestSafeHostname(t *testing.T) {
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
-			want:       "123456789012345678901234567890123456789012345678901234567890123",
+			want:       "invalid-",
 		},
 		{
 			name: "hostname_very_long_truncated",
@@ -887,7 +888,7 @@ func TestSafeHostname(t *testing.T) {
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
-			want:       "test-node-with-very-long-hostname-that-exceeds-dns-label-limits",
+			want:       "invalid-",
 		},
 		{
 			name: "hostname_with_special_chars",
@@ -896,7 +897,7 @@ func TestSafeHostname(t *testing.T) {
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
-			want:       "node-with-special!@#$%",
+			want:       "invalid-",
 		},
 		{
 			name: "hostname_with_unicode",
@@ -905,7 +906,7 @@ func TestSafeHostname(t *testing.T) {
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
-			want:       "node-ñoño-测试",
+			want:       "invalid-",
 		},
 		{
 			name: "short_machine_key",
@@ -925,20 +926,160 @@ func TestSafeHostname(t *testing.T) {
 			nodeKey:    "short",
 			want:       "node-short",
 		},
+		{
+			name: "hostname_with_emoji_replaced",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "hostname-with-💩",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "hostname_only_emoji_replaced",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "🚀",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "hostname_with_multiple_emojis_replaced",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "node-🎉-🚀-test",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "uppercase_to_lowercase",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "User2-Host",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "user2-host",
+		},
+		{
+			name: "underscore_removed",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test_node",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "at_sign_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "Test@Host",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "chinese_chars_with_dash_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "server-北京-01",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "chinese_only_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "我的电脑",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "emoji_with_text_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "laptop-🚀",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "mixed_chinese_emoji_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "测试💻机器",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "only_emojis_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "🎉🎊",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "only_at_signs_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "@@@",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "starts_with_dash_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "-test",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "ends_with_dash_invalid",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: "test-",
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
+		{
+			name: "very_long_hostname_truncated",
+			hostinfo: &tailcfg.Hostinfo{
+				Hostname: strings.Repeat("t", 70),
+			},
+			machineKey: "mkey12345678",
+			nodeKey:    "nkey12345678",
+			want:       "invalid-",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := SafeHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
-			if got != tt.want {
-				t.Errorf("SafeHostname() = %v, want %v", got, tt.want)
+			got := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
+			// For invalid hostnames, we just check the prefix since the random part varies
+			if strings.HasPrefix(tt.want, "invalid-") {
+				if !strings.HasPrefix(got, "invalid-") {
+					t.Errorf("EnsureHostname() = %v, want prefix %v", got, tt.want)
+				}
+			} else if got != tt.want {
+				t.Errorf("EnsureHostname() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestEnsureValidHostinfo(t *testing.T) {
+func TestEnsureHostnameWithHostinfo(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -976,14 +1117,6 @@ func TestEnsureValidHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "node-mkey1234",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
-				if hi == nil {
-					t.Error("hostinfo should not be nil")
-				}
-				if hi.Hostname != "node-mkey1234" {
-					t.Errorf("hostname = %v, want node-mkey1234", hi.Hostname)
-				}
-			},
 		},
 		{
 			name: "empty_hostname_updated",
@@ -994,37 +1127,15 @@ func TestEnsureValidHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "node-mkey1234",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
-				if hi == nil {
-					t.Error("hostinfo should not be nil")
-				}
-				if hi.Hostname != "node-mkey1234" {
-					t.Errorf("hostname = %v, want node-mkey1234", hi.Hostname)
-				}
-				if hi.OS != "darwin" {
-					t.Errorf("OS = %v, want darwin", hi.OS)
-				}
-			},
 		},
 		{
-			name: "long_hostname_truncated",
+			name: "long_hostname_rejected",
 			hostinfo: &tailcfg.Hostinfo{
 				Hostname: "test-node-with-very-long-hostname-that-exceeds-dns-label-limits-of-63-characters",
 			},
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
-			wantHostname: "test-node-with-very-long-hostname-that-exceeds-dns-label-limits",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
-				if hi == nil {
-					t.Error("hostinfo should not be nil")
-				}
-				if hi.Hostname != "test-node-with-very-long-hostname-that-exceeds-dns-label-limits" {
-					t.Errorf("hostname = %v, want truncated", hi.Hostname)
-				}
-				if len(hi.Hostname) != 63 {
-					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
-				}
-			},
+			wantHostname: "invalid-",
 		},
 		{
 			name:         "nil_hostinfo_node_key_only",
@@ -1128,23 +1239,20 @@ func TestEnsureValidHostinfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			gotHostinfo, gotHostname := EnsureValidHostinfo(tt.hostinfo, tt.machineKey, tt.nodeKey)
-
-			if gotHostname != tt.wantHostname {
-				t.Errorf("EnsureValidHostinfo() hostname = %v, want %v", gotHostname, tt.wantHostname)
-			}
-			if gotHostinfo == nil {
-				t.Error("returned hostinfo should never be nil")
-			}
-
-			if tt.checkHostinfo != nil {
-				tt.checkHostinfo(t, gotHostinfo)
+			gotHostname := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
+			// For invalid hostnames, we just check the prefix since the random part varies
+			if strings.HasPrefix(tt.wantHostname, "invalid-") {
+				if !strings.HasPrefix(gotHostname, "invalid-") {
+					t.Errorf("EnsureHostname() = %v, want prefix %v", gotHostname, tt.wantHostname)
+				}
+			} else if gotHostname != tt.wantHostname {
+				t.Errorf("EnsureHostname() hostname = %v, want %v", gotHostname, tt.wantHostname)
 			}
 		})
 	}
 }
 
-func TestSafeHostname_DNSLabelLimit(t *testing.T) {
+func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 	t.Parallel()
 
 	testCases := []string{
@@ -1157,7 +1265,7 @@ func TestSafeHostname_DNSLabelLimit(t *testing.T) {
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
-			result := SafeHostname(hostinfo, "mkey", "nkey")
+			result := EnsureHostname(hostinfo, "mkey", "nkey")
 			if len(result) > 63 {
 				t.Errorf("test case %d: hostname length = %d, want <= 63", i, len(result))
 			}
@@ -1165,7 +1273,7 @@ func TestSafeHostname_DNSLabelLimit(t *testing.T) {
 	}
 }
 
-func TestEnsureValidHostinfo_Idempotent(t *testing.T) {
+func TestEnsureHostname_Idempotent(t *testing.T) {
 	t.Parallel()
 
 	originalHostinfo := &tailcfg.Hostinfo{
@@ -1173,16 +1281,10 @@ func TestEnsureValidHostinfo_Idempotent(t *testing.T) {
 		OS:       "linux",
 	}
 
-	hostinfo1, hostname1 := EnsureValidHostinfo(originalHostinfo, "mkey", "nkey")
-	hostinfo2, hostname2 := EnsureValidHostinfo(hostinfo1, "mkey", "nkey")
+	hostname1 := EnsureHostname(originalHostinfo, "mkey", "nkey")
+	hostname2 := EnsureHostname(originalHostinfo, "mkey", "nkey")
 
 	if hostname1 != hostname2 {
 		t.Errorf("hostnames not equal: %v != %v", hostname1, hostname2)
-	}
-	if hostinfo1.Hostname != hostinfo2.Hostname {
-		t.Errorf("hostinfo hostnames not equal: %v != %v", hostinfo1.Hostname, hostinfo2.Hostname)
-	}
-	if hostinfo1.OS != hostinfo2.OS {
-		t.Errorf("hostinfo OS not equal: %v != %v", hostinfo1.OS, hostinfo2.OS)
 	}
 }

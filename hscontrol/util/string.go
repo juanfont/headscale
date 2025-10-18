@@ -66,6 +66,11 @@ func MustGenerateRandomStringDNSSafe(size int) string {
 	return hash
 }
 
+func InvalidString() string {
+	hash, _ := GenerateRandomStringDNSSafe(8)
+	return "invalid-" + hash
+}
+
 func TailNodesToString(nodes []*tailcfg.Node) string {
 	temp := make([]string, len(nodes))
 

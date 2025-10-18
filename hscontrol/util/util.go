@@ -1,6 +1,7 @@
 package util
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -264,54 +265,32 @@ func IsCI() bool {
 // if Hostinfo is nil or Hostname is empty. This prevents nil pointer dereferences
 // and ensures nodes always have a valid hostname.
 // The hostname is truncated to 63 characters to comply with DNS label length limits (RFC 1123).
-func SafeHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) string {
+// EnsureHostname guarantees a valid hostname for node registration.
+// This function never fails - it always returns a valid hostname.
+//
+// Strategy:
+// 1. If hostinfo is nil/empty → generate default from keys
+// 2. If hostname is provided → normalise it
+// 3. If normalisation fails → generate invalid-<random> replacement
+//
+// Returns the guaranteed-valid hostname to use.
+func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) string {
 	if hostinfo == nil || hostinfo.Hostname == "" {
-		// Generate a default hostname using machine key prefix
-		if machineKey != "" {
-			keyPrefix := machineKey
-			if len(machineKey) > 8 {
-				keyPrefix = machineKey[:8]
-			}
-			return fmt.Sprintf("node-%s", keyPrefix)
+		key := cmp.Or(machineKey, nodeKey)
+		if key == "" {
+			return "unknown-node"
 		}
-		if nodeKey != "" {
-			keyPrefix := nodeKey
-			if len(nodeKey) > 8 {
-				keyPrefix = nodeKey[:8]
-			}
-			return fmt.Sprintf("node-%s", keyPrefix)
+		keyPrefix := key
+		if len(key) > 8 {
+			keyPrefix = key[:8]
 		}
-		return "unknown-node"
+		return fmt.Sprintf("node-%s", keyPrefix)
 	}
 
-	hostname := hostinfo.Hostname
-
-	// Validate hostname length - DNS label limit is 63 characters (RFC 1123)
-	// Truncate if necessary to ensure compatibility with given name generation
-	if len(hostname) > 63 {
-		hostname = hostname[:63]
+	lowercased := strings.ToLower(hostinfo.Hostname)
+	if err := ValidateHostname(lowercased); err == nil {
+		return lowercased
 	}
 
-	return hostname
-}
-
-// EnsureValidHostinfo ensures that Hostinfo is non-nil and has a valid hostname.
-// If Hostinfo is nil, it creates a minimal valid Hostinfo with a generated hostname.
-// Returns the validated/created Hostinfo and the extracted hostname.
-func EnsureValidHostinfo(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) (*tailcfg.Hostinfo, string) {
-	if hostinfo == nil {
-		hostname := SafeHostname(nil, machineKey, nodeKey)
-		return &tailcfg.Hostinfo{
-			Hostname: hostname,
-		}, hostname
-	}
-
-	hostname := SafeHostname(hostinfo, machineKey, nodeKey)
-
-	// Update the hostname in the hostinfo if it was empty or if it was truncated
-	if hostinfo.Hostname == "" || hostinfo.Hostname != hostname {
-		hostinfo.Hostname = hostname
-	}
-
-	return hostinfo, hostname
+	return InvalidString()
 }
