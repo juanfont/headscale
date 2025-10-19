@@ -393,11 +393,13 @@ unix_socket_permission: "0770"
 #     method: S256
 
 # Logtail configuration
-# Logtail is Tailscales logging and auditing infrastructure, it allows the control panel
-# to instruct tailscale nodes to log their activity to a remote server.
+# Logtail is Tailscales logging and auditing infrastructure, it allows the
+# control panel to instruct tailscale nodes to log their activity to a remote
+# server. To disable logging on the client side, please refer to:
+# https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging
 logtail:
-  # Enable logtail for this headscales clients.
-  # As there is currently no support for overriding the log server in headscale, this is
+  # Enable logtail for tailscale nodes of this Headscale instance.
+  # As there is currently no support for overriding the log server in Headscale, this is
   # disabled by default. Enabling this will make your clients send logs to Tailscale Inc.
   enabled: false
 
