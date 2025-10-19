@@ -159,3 +159,19 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
     The above commands to get/set the policy require a complete server configuration file including database settings. A
     minimal config to [control Headscale via remote CLI](../ref/remote-cli.md) is not sufficient. You may use `headscale
     -c /path/to/config.yaml` to specify the path to an alternative configuration file.
+
+## How can I avoid to send logs to Tailscale Inc?
+
+A Tailscale client [collects logs about its operation and connection attempts with other
+clients](https://tailscale.com/kb/1011/log-mesh-traffic#client-logs) and sends them to a central log service operated by
+Tailscale Inc.
+
+Headscale, by default, instructs clients to disable log submission to the central log service. This configuration is
+applied by a client once it successfully connected with Headscale. See the configuration option `logtail.enabled` in the
+[configuration file](../ref/configuration.md) for details.
+
+Alternatively, logging can also be disabled on the client side. This is independent of Headscale and opting out of
+client logging disables log submission early during client startup. The configuration is operating system specific and
+is usually achieved by setting the environment variable `TS_NO_LOGS_NO_SUPPORT=true` or by passing the flag
+`--no-logs-no-support` to `tailscaled`. See
+<https://tailscale.com/kb/1011/log-mesh-traffic#opting-out-of-client-logging> for details.
