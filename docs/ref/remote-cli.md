@@ -67,12 +67,6 @@ headscale apikeys expire --prefix "<PREFIX>"
         export HEADSCALE_CLI_API_KEY="<API_KEY_FROM_PREVIOUS_STEP>"
         ```
 
-        !!! bug
-
-            Headscale currently requires at least an empty configuration file when environment variables are used to
-            specify connection details. See [issue 2193](https://github.com/juanfont/headscale/issues/2193) for more
-            information.
-
     This instructs the `headscale` binary to connect to a remote instance at `<HEADSCALE_ADDRESS>:<PORT>`, instead of
     connecting to the local instance.
 
