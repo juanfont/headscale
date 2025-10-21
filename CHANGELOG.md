@@ -192,7 +192,7 @@ new policy code passes all of our tests.
 - Error messages should be more descriptive and informative.
   - There is still work to be here, but it is already improved with "typing"
     (e.g. only Users can be put in Groups)
-- All users must contain an `@` character.
+- All users in the policy must contain an `@` character.
   - If your user naturally contains and `@`, like an email, this will just work.
   - If its based on usernames, or other identifiers not containing an `@`, an
     `@` should be appended at the end. For example, if your user is `john`, it
