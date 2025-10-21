@@ -25,6 +25,7 @@ type ControlServer interface {
 	CreateUser(user string) (*v1.User, error)
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	ListNodes(users ...string) ([]*v1.Node, error)
+	DeleteNode(nodeID uint64) error
 	NodesByUser() (map[string][]*v1.Node, error)
 	NodesByName() (map[string]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
@@ -38,4 +39,5 @@ type ControlServer interface {
 	PrimaryRoutes() (*routes.DebugRoutes, error)
 	DebugBatcher() (*hscontrol.DebugBatcherInfo, error)
 	DebugNodeStore() (map[types.NodeID]types.Node, error)
+	DebugFilter() ([]tailcfg.FilterRule, error)
 }

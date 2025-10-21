@@ -32,6 +32,7 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
 	"tailscale.com/util/multierr"
+	"tailscale.com/wgengine/filter"
 )
 
 const (
@@ -1352,4 +1353,19 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	return &p.Persist.PrivateNodeKey, nil
+}
+
+// PacketFilter returns the current packet filter rules from the client's network map.
+// This is useful for verifying that policy changes have propagated to the client.
+func (t *TailscaleInContainer) PacketFilter() ([]filter.Match, error) {
+	if !util.TailscaleVersionNewerOrEqual("1.56", t.version) {
+		return nil, fmt.Errorf("tsic.PacketFilter() requires Tailscale 1.56+, current version: %s", t.version)
+	}
+
+	nm, err := t.Netmap()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get netmap: %w", err)
+	}
+
+	return nm.PacketFilter, nil
 }

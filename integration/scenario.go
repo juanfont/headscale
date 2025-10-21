@@ -693,6 +693,35 @@ func (s *Scenario) WaitForTailscaleSync() error {
 	return err
 }
 
+// WaitForTailscaleSyncPerUser blocks execution until each TailscaleClient has the expected
+// number of peers for its user. This is useful for policies like autogroup:self where nodes
+// only see same-user peers, not all nodes in the network.
+func (s *Scenario) WaitForTailscaleSyncPerUser(timeout, retryInterval time.Duration) error {
+	var allErrors []error
+
+	for _, user := range s.users {
+		// Calculate expected peer count: number of nodes in this user minus 1 (self)
+		expectedPeers := len(user.Clients) - 1
+
+		for _, client := range user.Clients {
+			c := client
+			expectedCount := expectedPeers
+			user.syncWaitGroup.Go(func() error {
+				return c.WaitForPeers(expectedCount, timeout, retryInterval)
+			})
+		}
+		if err := user.syncWaitGroup.Wait(); err != nil {
+			allErrors = append(allErrors, err)
+		}
+	}
+
+	if len(allErrors) > 0 {
+		return multierr.New(allErrors...)
+	}
+
+	return nil
+}
+
 // WaitForTailscaleSyncWithPeerCount blocks execution until all the TailscaleClient reports
 // to have all other TailscaleClients present in their netmap.NetworkMap.
 func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, retryInterval time.Duration) error {

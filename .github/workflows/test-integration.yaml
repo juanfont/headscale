@@ -28,6 +28,7 @@ jobs:
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass
           - TestCLIWithConfigAuthenticationBypass
+          - TestACLPolicyPropagationOverTime
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey

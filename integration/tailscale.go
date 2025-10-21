@@ -14,6 +14,7 @@ import (
 	"tailscale.com/net/netcheck"
 	"tailscale.com/types/key"
 	"tailscale.com/types/netmap"
+	"tailscale.com/wgengine/filter"
 )
 
 // nolint
@@ -52,6 +53,7 @@ type TailscaleClient interface {
 	ContainerID() string
 	MustID() types.NodeID
 	ReadFile(path string) ([]byte, error)
+	PacketFilter() ([]filter.Match, error)
 
 	// FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client
 	// and a bool indicating if the clients online count and peer count is equal.
