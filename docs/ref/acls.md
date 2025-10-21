@@ -210,7 +210,7 @@ Headscale supports several autogroups that automatically include users, destinat
 
 ### `autogroup:internet`
 
-Allows access to the internet through [exit nodes](routes.md#exit-node). Can only be used in ACL destinations.  
+Allows access to the internet through [exit nodes](routes.md#exit-node). Can only be used in ACL destinations.
 
 ```json
 {
@@ -244,10 +244,10 @@ Includes all devices that have at least one tag.
 }
 ```
 
-### `autogroup:self` 
+### `autogroup:self`
 **(EXPERIMENTAL)**
 
-!!! warning "The current implementation of `autogroup:self` is inefficient"  
+!!! warning "The current implementation of `autogroup:self` is inefficient"
 
 Includes devices where the same user is authenticated on both the source and destination. Does not include tagged devices. Can only be used in ACL destinations.
 
@@ -260,15 +260,16 @@ Includes devices where the same user is authenticated on both the source and des
 ```
 *Using `autogroup:self` may cause performance degradation on the Headscale coordinator server in large deployments, as filter rules must be compiled per-node rather than globally and the current implementation is not very efficient.*
 
-If you experience performance issues, consider using more specific ACL rules or limiting the use of `autogroup:self`.  
-```json    
+If you experience performance issues, consider using more specific ACL rules or limiting the use of `autogroup:self`.
+```json
 {
-// To allow internal users communications to their own nodes we can do following rules to allow access in case autogroup:self is causing performance issues.
-{ "action": "accept", "src": ["boss@"], "dst": ["boss@:"] },
-{ "action": "accept", "src": ["dev1@"], "dst": ["dev1@:*"] },
-{ "action": "accept", "src": ["dev2@"], "dst": ["dev2@:"] },
-{ "action": "accept", "src": ["admin1@"], "dst": ["admin1@:"] },
-{ "action": "accept", "src": ["intern1@"], "dst": ["intern1@:"] }
+  // The following rules allow internal users to communicate with their
+  // own nodes in case autogroup:self is causing performance issues.
+  { "action": "accept", "src": ["boss@"], "dst": ["boss@:*"] },
+  { "action": "accept", "src": ["dev1@"], "dst": ["dev1@:*"] },
+  { "action": "accept", "src": ["dev2@"], "dst": ["dev2@:*"] },
+  { "action": "accept", "src": ["admin1@"], "dst": ["admin1@:*"] },
+  { "action": "accept", "src": ["intern1@"], "dst": ["intern1@:*"] }
 }
 ```
 
