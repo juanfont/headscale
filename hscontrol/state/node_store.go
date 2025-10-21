@@ -20,9 +20,10 @@ const (
 )
 
 const (
-	put    = 1
-	del    = 2
-	update = 3
+	put             = 1
+	del             = 2
+	update          = 3
+	rebuildPeerMaps = 4
 )
 
 const prometheusNamespace = "headscale"
@@ -142,6 +143,8 @@ type work struct {
 	updateFn   UpdateNodeFunc
 	result     chan struct{}
 	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
+	// For rebuildPeerMaps operation
+	rebuildResult chan struct{}
 }
 
 // PutNode adds or updates a node in the store.
@@ -298,6 +301,9 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Track which work items need node results
 	nodeResultRequests := make(map[types.NodeID][]*work)
 
+	// Track rebuildPeerMaps operations
+	var rebuildOps []*work
+
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
@@ -321,6 +327,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
+		case rebuildPeerMaps:
+			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
+			// below to recalculate peer relationships using the current peersFunc
+			rebuildOps = append(rebuildOps, w)
 		}
 	}
 
@@ -347,9 +357,16 @@ func (s *NodeStore) applyBatch(batch []work) {
 		}
 	}
 
-	// Signal completion for all work items
+	// Signal completion for rebuildPeerMaps operations
+	for _, w := range rebuildOps {
+		close(w.rebuildResult)
+	}
+
+	// Signal completion for all other work items
 	for _, w := range batch {
-		close(w.result)
+		if w.op != rebuildPeerMaps {
+			close(w.result)
+		}
 	}
 }
 
@@ -544,6 +561,22 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
 	return views.SliceOf(s.data.Load().peersByNode[id])
+}
+
+// RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.
+// This must be called after policy changes because peersFunc uses PolicyManager's
+// filters to determine which nodes can see each other. Without rebuilding, the
+// peer map would use stale filter data until the next node add/delete.
+func (s *NodeStore) RebuildPeerMaps() {
+	result := make(chan struct{})
+
+	w := work{
+		op:            rebuildPeerMaps,
+		rebuildResult: result,
+	}
+
+	s.writeQueue <- w
+	<-result
 }
 
 // ListNodesByUser returns a slice of all nodes for a given user ID.
