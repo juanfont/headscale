@@ -74,14 +74,21 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				clientIPs[client] = ips
 			}
 
-			listNodes, err := headscale.ListNodes()
-			assert.Len(t, allClients, len(listNodes))
-			nodeCountBeforeLogout := len(listNodes)
-			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
+			var listNodes []*v1.Node
+			var nodeCountBeforeLogout int
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				listNodes, err = headscale.ListNodes()
+				assert.NoError(c, err)
+				assert.Len(c, listNodes, len(allClients))
 
-			for _, node := range listNodes {
-				assertLastSeenSet(t, node)
-			}
+				for _, node := range listNodes {
+					assertLastSeenSetWithCollect(c, node)
+				}
+			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+
+			nodeCountBeforeLogout = len(listNodes)
+			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
 			for _, client := range allClients {
 				err := client.Logout()
@@ -188,11 +195,16 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				}
 			}
 
-			listNodes, err = headscale.ListNodes()
-			require.Len(t, listNodes, nodeCountBeforeLogout)
-			for _, node := range listNodes {
-				assertLastSeenSet(t, node)
-			}
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				listNodes, err = headscale.ListNodes()
+				assert.NoError(c, err)
+				assert.Len(c, listNodes, nodeCountBeforeLogout)
+
+				for _, node := range listNodes {
+					assertLastSeenSetWithCollect(c, node)
+				}
+			}, 10*time.Second, 200*time.Millisecond, "Waiting for node list after relogin")
 		})
 	}
 }
@@ -238,9 +250,16 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-	listNodes, err := headscale.ListNodes()
-	assert.Len(t, allClients, len(listNodes))
-	nodeCountBeforeLogout := len(listNodes)
+	var listNodes []*v1.Node
+	var nodeCountBeforeLogout int
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, listNodes, len(allClients))
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+
+	nodeCountBeforeLogout = len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
 	for _, client := range allClients {
@@ -371,9 +390,16 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-			listNodes, err := headscale.ListNodes()
-			assert.Len(t, allClients, len(listNodes))
-			nodeCountBeforeLogout := len(listNodes)
+			var listNodes []*v1.Node
+			var nodeCountBeforeLogout int
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				var err error
+				listNodes, err = headscale.ListNodes()
+				assert.NoError(c, err)
+				assert.Len(c, listNodes, len(allClients))
+			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+
+			nodeCountBeforeLogout = len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
 			for _, client := range allClients {

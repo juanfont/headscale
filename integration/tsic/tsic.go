@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/dockertestutil"
@@ -598,28 +599,39 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		return t.ips, nil
 	}
 
-	ips := make([]netip.Addr, 0)
-
-	command := []string{
-		"tailscale",
-		"ip",
-	}
-
-	result, _, err := t.Execute(command)
-	if err != nil {
-		return []netip.Addr{}, fmt.Errorf("%s failed to join tailscale client: %w", t.hostname, err)
-	}
-
-	for address := range strings.SplitSeq(result, "\n") {
-		address = strings.TrimSuffix(address, "\n")
-		if len(address) < 1 {
-			continue
+	// Retry with exponential backoff to handle eventual consistency
+	ips, err := backoff.Retry(context.Background(), func() ([]netip.Addr, error) {
+		command := []string{
+			"tailscale",
+			"ip",
 		}
-		ip, err := netip.ParseAddr(address)
+
+		result, _, err := t.Execute(command)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s failed to get IPs: %w", t.hostname, err)
 		}
-		ips = append(ips, ip)
+
+		ips := make([]netip.Addr, 0)
+		for address := range strings.SplitSeq(result, "\n") {
+			address = strings.TrimSuffix(address, "\n")
+			if len(address) < 1 {
+				continue
+			}
+			ip, err := netip.ParseAddr(address)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse IP %s: %w", address, err)
+			}
+			ips = append(ips, ip)
+		}
+
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("no IPs returned yet for %s", t.hostname)
+		}
+
+		return ips, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IPs for %s after retries: %w", t.hostname, err)
 	}
 
 	return ips, nil
@@ -630,7 +642,6 @@ func (t *TailscaleInContainer) MustIPs() []netip.Addr {
 	if err != nil {
 		panic(err)
 	}
-
 	return ips
 }
 
@@ -647,16 +658,15 @@ func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
 		}
 	}
 
-	return netip.Addr{}, errors.New("no IPv4 address found")
+	return netip.Addr{}, fmt.Errorf("no IPv4 address found for %s", t.hostname)
 }
 
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
-	for _, ip := range t.MustIPs() {
-		if ip.Is4() {
-			return ip
-		}
+	ip, err := t.IPv4()
+	if err != nil {
+		panic(err)
 	}
-	panic("no ipv4 found")
+	return ip
 }
 
 func (t *TailscaleInContainer) MustIPv6() netip.Addr {
@@ -901,12 +911,33 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 		return t.fqdn, nil
 	}
 
-	status, err := t.Status()
+	// Retry with exponential backoff to handle eventual consistency
+	fqdn, err := backoff.Retry(context.Background(), func() (string, error) {
+		status, err := t.Status()
+		if err != nil {
+			return "", fmt.Errorf("failed to get status: %w", err)
+		}
+
+		if status.Self.DNSName == "" {
+			return "", fmt.Errorf("FQDN not yet available")
+		}
+
+		return status.Self.DNSName, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
 	if err != nil {
-		return "", fmt.Errorf("failed to get FQDN: %w", err)
+		return "", fmt.Errorf("failed to get FQDN for %s after retries: %w", t.hostname, err)
 	}
 
-	return status.Self.DNSName, nil
+	return fqdn, nil
+}
+
+// MustFQDN returns the FQDN as a string of the Tailscale instance, panicking on error.
+func (t *TailscaleInContainer) MustFQDN() string {
+	fqdn, err := t.FQDN()
+	if err != nil {
+		panic(err)
+	}
+	return fqdn
 }
 
 // FailingPeersAsString returns a formatted-ish multi-line-string of peers in the client

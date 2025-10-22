@@ -1358,16 +1358,8 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	// Sort nodes by ID
 	sort.SliceStable(allClients, func(i, j int) bool {
-		statusI, err := allClients[i].Status()
-		if err != nil {
-			return false
-		}
-
-		statusJ, err := allClients[j].Status()
-		if err != nil {
-			return false
-		}
-
+		statusI := allClients[i].MustStatus()
+		statusJ := allClients[j].MustStatus()
 		return statusI.Self.ID < statusJ.Self.ID
 	})
 
@@ -1475,9 +1467,7 @@ func TestSubnetRouteACL(t *testing.T) {
 		requirePeerSubnetRoutesWithCollect(c, srs1PeerStatus, []netip.Prefix{netip.MustParsePrefix(expectedRoutes["1"])})
 	}, 5*time.Second, 200*time.Millisecond, "Verifying client can see subnet routes from router")
 
-	clientNm, err := client.Netmap()
-	require.NoError(t, err)
-
+	// Wait for packet filter updates to propagate to client netmap
 	wantClientFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
@@ -1503,13 +1493,16 @@ func TestSubnetRouteACL(t *testing.T) {
 		},
 	}
 
-	if diff := cmpdiff.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
-		t.Errorf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff)
-	}
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		clientNm, err := client.Netmap()
+		assert.NoError(c, err)
 
-	subnetNm, err := subRouter1.Netmap()
-	require.NoError(t, err)
+		if diff := cmpdiff.Diff(wantClientFilter, clientNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
+			assert.Fail(c, fmt.Sprintf("Client (%s) filter, unexpected result (-want +got):\n%s", client.Hostname(), diff))
+		}
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for client packet filter to update")
 
+	// Wait for packet filter updates to propagate to subnet router netmap
 	wantSubnetFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
@@ -1553,9 +1546,14 @@ func TestSubnetRouteACL(t *testing.T) {
 		},
 	}
 
-	if diff := cmpdiff.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
-		t.Errorf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff)
-	}
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		subnetNm, err := subRouter1.Netmap()
+		assert.NoError(c, err)
+
+		if diff := cmpdiff.Diff(wantSubnetFilter, subnetNm.PacketFilter, util.ViewSliceIPProtoComparer, util.PrefixComparer); diff != "" {
+			assert.Fail(c, fmt.Sprintf("Subnet (%s) filter, unexpected result (-want +got):\n%s", subRouter1.Hostname(), diff))
+		}
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for subnet router packet filter to update")
 }
 
 // TestEnablingExitRoutes tests enabling exit routes for clients.
@@ -1592,12 +1590,16 @@ func TestEnablingExitRoutes(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	nodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	require.Len(t, nodes, 2)
+	var nodes []*v1.Node
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
 
-	requireNodeRouteCount(t, nodes[0], 2, 0, 0)
-	requireNodeRouteCount(t, nodes[1], 2, 0, 0)
+		requireNodeRouteCountWithCollect(c, nodes[0], 2, 0, 0)
+		requireNodeRouteCountWithCollect(c, nodes[1], 2, 0, 0)
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for route advertisements to propagate")
 
 	// Verify that no routes has been sent to the client,
 	// they are not yet enabled.

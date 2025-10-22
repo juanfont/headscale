@@ -901,15 +901,18 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	// a little bit more than HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION
 	time.Sleep(2 * time.Minute)
 
-	st, err := ts.Status()
-	require.NoError(t, err)
-	assert.Equal(t, "NeedsLogin", st.BackendState)
+	var newUrl *url.URL
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		st, err := ts.Status()
+		assert.NoError(c, err)
+		assert.Equal(c, "NeedsLogin", st.BackendState)
 
-	// get new AuthURL from daemon
-	newUrl, err := url.Parse(st.AuthURL)
-	require.NoError(t, err)
+		// get new AuthURL from daemon
+		newUrl, err = url.Parse(st.AuthURL)
+		assert.NoError(c, err)
 
-	assert.NotEqual(t, u.String(), st.AuthURL, "AuthURL should change")
+		assert.NotEqual(c, u.String(), st.AuthURL, "AuthURL should change")
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for registration cache to expire and status to reflect NeedsLogin")
 
 	_, err = doLoginURL(ts.Hostname(), newUrl)
 	require.NoError(t, err)
@@ -943,9 +946,11 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 
-	listNodes, err := headscale.ListNodes()
-	require.NoError(t, err)
-	assert.Len(t, listNodes, 1)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		listNodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, listNodes, 1)
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list after OIDC login")
 }
 
 // TestOIDCReloginSameNodeSameUser tests the scenario where a single Tailscale client
