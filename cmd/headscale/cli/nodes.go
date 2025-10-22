@@ -225,10 +225,10 @@ var listNodesCmd = &cobra.Command{
 		}
 
 		if output != "" {
-			SuccessOutput(response.GetNodes(), "", output)
+			SuccessOutput(response, "", output)
 		}
 
-		tableData, err := nodesToPtables(user, showTags, response.GetNodes(), response.GetWireguardOnlyPeers())
+		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 		}
@@ -240,6 +240,23 @@ var listNodesCmd = &cobra.Command{
 				fmt.Sprintf("Failed to render pterm table: %s", err),
 				output,
 			)
+		}
+
+		// Render WG-only peers table if any exist
+		if len(response.GetWireguardOnlyPeers()) > 0 {
+			wgTableData, err := wgOnlyPeersToPtable(user, response.GetWireguardOnlyPeers())
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error converting WG-only peers to table: %s", err), output)
+			}
+
+			err = pterm.DefaultTable.WithHasHeader().WithData(wgTableData).Render()
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Failed to render WG-only peers pterm table: %s", err),
+					output,
+				)
+			}
 		}
 	},
 }
@@ -559,10 +576,7 @@ func nodesToPtables(
 	currentUser string,
 	showTags bool,
 	nodes []*v1.Node,
-	wgPeers []*v1.WireGuardOnlyPeer,
 ) (pterm.TableData, error) {
-	hasWGPeers := len(wgPeers) > 0
-
 	tableHeader := []string{
 		"ID",
 		"Hostname",
@@ -576,9 +590,6 @@ func nodesToPtables(
 		"Expiration",
 		"Connected",
 		"Expired",
-	}
-	if hasWGPeers {
-		tableHeader = append(tableHeader, "WG-only")
 	}
 	if showTags {
 		tableHeader = append(tableHeader, []string{
@@ -693,9 +704,6 @@ func nodesToPtables(
 			online,
 			expired,
 		}
-		if hasWGPeers {
-			nodeData = append(nodeData, "")
-		}
 		if showTags {
 			nodeData = append(nodeData, []string{forcedTags, invalidTags, validTags}...)
 		}
@@ -704,6 +712,28 @@ func nodesToPtables(
 			nodeData,
 		)
 	}
+
+	return tableData, nil
+}
+
+func wgOnlyPeersToPtable(
+	currentUser string,
+	wgPeers []*v1.WireGuardOnlyPeer,
+) (pterm.TableData, error) {
+	tableHeader := []string{
+		"ID",
+		"Name",
+		"User",
+		"Public Key",
+		"IPs",
+		"Known Nodes",
+		"Allowed IPs",
+		"Endpoints",
+		"Masq IPs",
+		"Exit DNS",
+		"Suggest Exit",
+	}
+	tableData := pterm.TableData{tableHeader}
 
 	for _, peer := range wgPeers {
 		var nodeKey key.NodePublic
@@ -719,25 +749,50 @@ func nodesToPtables(
 			user = pterm.LightYellow(peer.GetUser().GetName())
 		}
 
+		// Format IPs
+		var ips []string
+		if peer.GetIpv4() != "" {
+			ips = append(ips, peer.GetIpv4())
+		}
+		if peer.GetIpv6() != "" {
+			ips = append(ips, peer.GetIpv6())
+		}
+
+		// Format Known Nodes
+		var knownNodesStr []string
+		for _, nodeID := range peer.GetKnownNodeIds() {
+			knownNodesStr = append(knownNodesStr, strconv.FormatUint(nodeID, util.Base10))
+		}
+
+		// Format Masq IPs
+		var masqIPs []string
+		if peer.GetSelfIpv4MasqAddr() != "" {
+			masqIPs = append(masqIPs, peer.GetSelfIpv4MasqAddr())
+		}
+		if peer.GetSelfIpv6MasqAddr() != "" {
+			masqIPs = append(masqIPs, peer.GetSelfIpv6MasqAddr())
+		}
+
+		// Format Suggest Exit Node
+		var suggestExit string
+		if peer.GetSuggestExitNode() {
+			suggestExit = "yes"
+		} else {
+			suggestExit = "no"
+		}
+
 		peerData := []string{
 			strconv.FormatUint(peer.GetId(), util.Base10),
 			peer.GetName(),
-			peer.GetName(),
-			"",
-			nodeKey.ShortString(),
 			user,
-			strings.Join([]string{peer.GetIpv4(), peer.GetIpv6()}, ", "),
-			"",
-			"",
-			"",
-			"",
-			"",
-		}
-		if hasWGPeers {
-			peerData = append(peerData, "yes")
-		}
-		if showTags {
-			peerData = append(peerData, []string{"", "", ""}...)
+			nodeKey.ShortString(),
+			strings.Join(ips, ", "),
+			strings.Join(knownNodesStr, ", "),
+			strings.Join(peer.GetAllowedIps(), ", "),
+			strings.Join(peer.GetEndpoints(), ", "),
+			strings.Join(masqIPs, ", "),
+			strings.Join(peer.GetExitNodeDnsResolvers(), ", "),
+			suggestExit,
 		}
 		tableData = append(tableData, peerData)
 	}
