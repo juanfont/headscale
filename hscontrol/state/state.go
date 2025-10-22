@@ -662,8 +662,7 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
-	// Validate the new name before making any changes
-	if err := util.CheckForFQDNRules(newName); err != nil {
+	if err := util.ValidateHostname(newName); err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
 	}
 
@@ -1112,12 +1111,16 @@ func (s *State) HandleNodeFromAuthPath(
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to find user: %w", err)
 	}
 
-	// Ensure we have valid hostinfo and hostname from the registration cache entry
-	validHostinfo, hostname := util.EnsureValidHostinfo(
+	// Ensure we have a valid hostname from the registration cache entry
+	hostname := util.EnsureHostname(
 		regEntry.Node.Hostinfo,
 		regEntry.Node.MachineKey.String(),
 		regEntry.Node.NodeKey.String(),
 	)
+
+	// Ensure we have valid hostinfo
+	validHostinfo := cmp.Or(regEntry.Node.Hostinfo, &tailcfg.Hostinfo{})
+	validHostinfo.Hostname = hostname
 
 	logHostinfoValidation(
 		regEntry.Node.MachineKey.ShortString(),
@@ -1284,12 +1287,16 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
-	// Ensure we have valid hostinfo and hostname - handle nil/empty cases
-	validHostinfo, hostname := util.EnsureValidHostinfo(
+	// Ensure we have a valid hostname - handle nil/empty cases
+	hostname := util.EnsureHostname(
 		regReq.Hostinfo,
 		machineKey.String(),
 		regReq.NodeKey.String(),
 	)
+
+	// Ensure we have valid hostinfo
+	validHostinfo := cmp.Or(regReq.Hostinfo, &tailcfg.Hostinfo{})
+	validHostinfo.Hostname = hostname
 
 	logHostinfoValidation(
 		machineKey.ShortString(),

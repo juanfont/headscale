@@ -26,8 +26,7 @@ func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
 // CreateUser creates a new User. Returns error if could not be created
 // or another user already exists.
 func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
-	err := util.ValidateUsername(user.Name)
-	if err != nil {
+	if err := util.ValidateHostname(user.Name); err != nil {
 		return nil, err
 	}
 	if err := tx.Create(&user).Error; err != nil {
@@ -93,8 +92,7 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	if err != nil {
 		return err
 	}
-	err = util.ValidateUsername(newName)
-	if err != nil {
+	if err = util.ValidateHostname(newName); err != nil {
 		return err
 	}
 
