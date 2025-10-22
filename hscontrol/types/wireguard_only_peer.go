@@ -115,11 +115,11 @@ func (p *WireGuardOnlyPeer) Proto() *v1.WireGuardOnlyPeer {
 	}
 
 	if p.SelfIPv4MasqAddr != nil {
-		peer.SelfIpv4MasqAddr = stringPtr(p.SelfIPv4MasqAddr.String())
+		peer.SelfIpv4MasqAddr = ptrTo(p.SelfIPv4MasqAddr.String())
 	}
 
 	if p.SelfIPv6MasqAddr != nil {
-		peer.SelfIpv6MasqAddr = stringPtr(p.SelfIPv6MasqAddr.String())
+		peer.SelfIpv6MasqAddr = ptrTo(p.SelfIPv6MasqAddr.String())
 	}
 
 	if p.IPv4 != nil {
@@ -159,7 +159,10 @@ func (p *WireGuardOnlyPeer) ToTailcfgNode() (*tailcfg.Node, error) {
 		PrimaryRoutes: nil,
 		Endpoints:     p.Endpoints,
 
-		Online: nil,
+		// We have no way of knowing whether the WireGuard-only peer is actually online.
+		// The Android app (and maybe other clients) prevent us from setting offline
+		// nodes as exit nodes so this needs to be true.
+		Online: 		 ptrTo(true),
 		IsWireGuardOnly: true,
 		IsJailed:        true,
 
@@ -238,6 +241,6 @@ func addrPortsToString(addrPorts []netip.AddrPort) []string {
 	return result
 }
 
-func stringPtr(s string) *string {
-	return &s
+func ptrTo[T any](value T) *T {
+    return &value
 }
