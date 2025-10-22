@@ -405,12 +405,12 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 
 		valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
 		if err != nil {
-			log.Error().
+			log.Info().
 				Caller().
 				Err(err).
 				Str("client_address", req.RemoteAddr).
 				Msg("failed to validate token")
-			writeUnauthorized(http.StatusInternalServerError)
+			writeUnauthorized(http.StatusUnauthorized)
 			return
 		}
 
