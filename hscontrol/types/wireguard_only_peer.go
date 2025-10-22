@@ -166,6 +166,24 @@ func (p *WireGuardOnlyPeer) ToTailcfgNode() (*tailcfg.Node, error) {
 		IsWireGuardOnly: true,
 		IsJailed:        true,
 
+		// When a client attempts to select the best exit node out of the ones
+		// suggested, it considers the proximity to the server as defined by
+		// Hostinfo. To prevent it from crashing on invalid Hostinfo, we must
+		// provide some fake data that can be parsed successfully.
+		// https://github.com/tailscale/tailscale/blob/f23e4279c42aec766eb6a89562c1fed3a1b97e09/ipn/ipnlocal/local.go#L7768
+		Hostinfo: (&tailcfg.Hostinfo{
+			Hostname: p.Name,
+			Location: ptrTo(tailcfg.Location{
+				Country: "United States",
+				CountryCode: "US",
+				City: "New York",
+				CityCode: "NYC",
+				Latitude: 40.730610,
+				Longitude: -73.935242,
+				Priority: 100,
+			}),
+		}).View(),
+
 		Expired: false,
 		Created: p.CreatedAt.UTC(),
 	}
