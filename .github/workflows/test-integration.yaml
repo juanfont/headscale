@@ -24,6 +24,10 @@ jobs:
           - TestACLAutogroupMember
           - TestACLAutogroupTagged
           - TestACLAutogroupSelf
+          - TestAPIAuthenticationBypass
+          - TestAPIAuthenticationBypassCurl
+          - TestGRPCAuthenticationBypass
+          - TestCLIWithConfigAuthenticationBypass
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
@@ -32,8 +36,8 @@ jobs:
           - TestOIDC024UserCreation
           - TestOIDCAuthenticationWithPKCE
           - TestOIDCReloginSameNodeNewUser
-          - TestOIDCReloginSameNodeSameUser
           - TestOIDCFollowUpUrl
+          - TestOIDCReloginSameNodeSameUser
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
