@@ -866,7 +866,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via FQDN")
 
 			// test3 cannot query test1
-			result, err = test3.Curl(test1ip4URL)
+			result, err := test3.Curl(test1ip4URL)
 			assert.Empty(t, result)
 			require.Error(t, err)
 

@@ -185,7 +185,6 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestShuffleDERPMapEdgeCases(t *testing.T) {

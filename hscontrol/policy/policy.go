@@ -78,7 +78,6 @@ func BuildPeerMap(
 	return ret
 }
 
-
 // ApproveRoutesWithPolicy checks if the node can approve the announced routes
 // and returns the new list of approved routes.
 // The approved routes will include:

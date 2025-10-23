@@ -81,7 +81,7 @@ func extractDirectoryFromTar(tarReader io.Reader, targetDir string) error {
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
 			}
-			
+
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {

@@ -73,7 +73,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 
 	// Use the worker pool for controlled concurrency instead of direct generation
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
-
 	if err != nil {
 		log.Error().Uint64("node.id", id.Uint64()).Err(err).Msg("Initial map generation failed")
 		nodeConn.removeConnectionByChannel(c)
