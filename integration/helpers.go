@@ -507,6 +507,11 @@ func assertLastSeenSet(t *testing.T, node *v1.Node) {
 	assert.NotNil(t, node.GetLastSeen())
 }
 
+func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
+	assert.NotNil(c, node)
+	assert.NotNil(c, node.GetLastSeen())
+}
+
 // assertTailscaleNodesLogout verifies that all provided Tailscale clients
 // are in the logged-out state (NeedsLogin).
 func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
@@ -633,50 +638,50 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 
 	t.Logf("Checking netmap of %q", client.Hostname())
 
-	netmap, err := client.Netmap()
-	if err != nil {
-		t.Fatalf("getting netmap for %q: %s", client.Hostname(), err)
-	}
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		netmap, err := client.Netmap()
+		assert.NoError(c, err, "getting netmap for %q", client.Hostname())
 
-	assert.Truef(t, netmap.SelfNode.Hostinfo().Valid(), "%q does not have Hostinfo", client.Hostname())
-	if hi := netmap.SelfNode.Hostinfo(); hi.Valid() {
-		assert.LessOrEqual(t, 1, netmap.SelfNode.Hostinfo().Services().Len(), "%q does not have enough services, got: %v", client.Hostname(), netmap.SelfNode.Hostinfo().Services())
-	}
-
-	assert.NotEmptyf(t, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
-	assert.NotEmptyf(t, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
-
-	assert.Truef(t, netmap.SelfNode.Online().Get(), "%q is not online", client.Hostname())
-
-	assert.Falsef(t, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
-	assert.Falsef(t, netmap.SelfNode.Machine().IsZero(), "%q does not have a valid MachineKey", client.Hostname())
-	assert.Falsef(t, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
-
-	for _, peer := range netmap.Peers {
-		assert.NotEqualf(t, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString())
-		assert.NotEqualf(t, 0, peer.HomeDERP(), "peer (%s) has no home DERP in %q's netmap, got: %d", peer.ComputedName(), client.Hostname(), peer.HomeDERP())
-
-		assert.Truef(t, peer.Hostinfo().Valid(), "peer (%s) of %q does not have Hostinfo", peer.ComputedName(), client.Hostname())
-		if hi := peer.Hostinfo(); hi.Valid() {
-			assert.LessOrEqualf(t, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
-
-			// Netinfo is not always set
-			// assert.Truef(t, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
-			if ni := hi.NetInfo(); ni.Valid() {
-				assert.NotEqualf(t, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
-			}
+		assert.Truef(c, netmap.SelfNode.Hostinfo().Valid(), "%q does not have Hostinfo", client.Hostname())
+		if hi := netmap.SelfNode.Hostinfo(); hi.Valid() {
+			assert.LessOrEqual(c, 1, netmap.SelfNode.Hostinfo().Services().Len(), "%q does not have enough services, got: %v", client.Hostname(), netmap.SelfNode.Hostinfo().Services())
 		}
 
-		assert.NotEmptyf(t, peer.Endpoints(), "peer (%s) of %q does not have any endpoints", peer.ComputedName(), client.Hostname())
-		assert.NotEmptyf(t, peer.AllowedIPs(), "peer (%s) of %q does not have any allowed IPs", peer.ComputedName(), client.Hostname())
-		assert.NotEmptyf(t, peer.Addresses(), "peer (%s) of %q does not have any addresses", peer.ComputedName(), client.Hostname())
+		assert.NotEmptyf(c, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
+		assert.NotEmptyf(c, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
 
-		assert.Truef(t, peer.Online().Get(), "peer (%s) of %q is not online", peer.ComputedName(), client.Hostname())
+		assert.Truef(c, netmap.SelfNode.Online().Get(), "%q is not online", client.Hostname())
 
-		assert.Falsef(t, peer.Key().IsZero(), "peer (%s) of %q does not have a valid NodeKey", peer.ComputedName(), client.Hostname())
-		assert.Falsef(t, peer.Machine().IsZero(), "peer (%s) of %q does not have a valid MachineKey", peer.ComputedName(), client.Hostname())
-		assert.Falsef(t, peer.DiscoKey().IsZero(), "peer (%s) of %q does not have a valid DiscoKey", peer.ComputedName(), client.Hostname())
-	}
+		assert.Falsef(c, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
+		assert.Falsef(c, netmap.SelfNode.Machine().IsZero(), "%q does not have a valid MachineKey", client.Hostname())
+		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
+
+		for _, peer := range netmap.Peers {
+			assert.NotEqualf(c, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString())
+			assert.NotEqualf(c, 0, peer.HomeDERP(), "peer (%s) has no home DERP in %q's netmap, got: %d", peer.ComputedName(), client.Hostname(), peer.HomeDERP())
+
+			assert.Truef(c, peer.Hostinfo().Valid(), "peer (%s) of %q does not have Hostinfo", peer.ComputedName(), client.Hostname())
+			if hi := peer.Hostinfo(); hi.Valid() {
+				assert.LessOrEqualf(c, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
+
+				// Netinfo is not always set
+				// assert.Truef(c, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
+				if ni := hi.NetInfo(); ni.Valid() {
+					assert.NotEqualf(c, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
+				}
+			}
+
+			assert.NotEmptyf(c, peer.Endpoints(), "peer (%s) of %q does not have any endpoints", peer.ComputedName(), client.Hostname())
+			assert.NotEmptyf(c, peer.AllowedIPs(), "peer (%s) of %q does not have any allowed IPs", peer.ComputedName(), client.Hostname())
+			assert.NotEmptyf(c, peer.Addresses(), "peer (%s) of %q does not have any addresses", peer.ComputedName(), client.Hostname())
+
+			assert.Truef(c, peer.Online().Get(), "peer (%s) of %q is not online", peer.ComputedName(), client.Hostname())
+
+			assert.Falsef(c, peer.Key().IsZero(), "peer (%s) of %q does not have a valid NodeKey", peer.ComputedName(), client.Hostname())
+			assert.Falsef(c, peer.Machine().IsZero(), "peer (%s) of %q does not have a valid MachineKey", peer.ComputedName(), client.Hostname())
+			assert.Falsef(c, peer.DiscoKey().IsZero(), "peer (%s) of %q does not have a valid DiscoKey", peer.ComputedName(), client.Hostname())
+		}
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for valid netmap for %q", client.Hostname())
 }
 
 // assertValidStatus validates that a client's status has all required fields for proper operation.
@@ -919,4 +924,126 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 		Email:             username + "@headscale.net",
 		EmailVerified:     emailVerified,
 	}
+}
+
+// GetUserByName retrieves a user by name from the headscale server.
+// This is a common pattern used when creating preauth keys or managing users.
+func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
+	users, err := headscale.ListUsers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list users: %w", err)
+	}
+
+	for _, u := range users {
+		if u.GetName() == username {
+			return u, nil
+		}
+	}
+
+	return nil, fmt.Errorf("user %s not found", username)
+}
+
+// FindNewClient finds a client that is in the new list but not in the original list.
+// This is useful when dynamically adding nodes during tests and needing to identify
+// which client was just added.
+func FindNewClient(original, updated []TailscaleClient) (TailscaleClient, error) {
+	for _, client := range updated {
+		isOriginal := false
+		for _, origClient := range original {
+			if client.Hostname() == origClient.Hostname() {
+				isOriginal = true
+				break
+			}
+		}
+		if !isOriginal {
+			return client, nil
+		}
+	}
+	return nil, fmt.Errorf("no new client found")
+}
+
+// AddAndLoginClient adds a new tailscale client to a user and logs it in.
+// This combines the common pattern of:
+// 1. Creating a new node
+// 2. Finding the new node in the client list
+// 3. Getting the user to create a preauth key
+// 4. Logging in the new node
+func (s *Scenario) AddAndLoginClient(
+	t *testing.T,
+	username string,
+	version string,
+	headscale ControlServer,
+	tsOpts ...tsic.Option,
+) (TailscaleClient, error) {
+	t.Helper()
+
+	// Get the original client list
+	originalClients, err := s.ListTailscaleClients(username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list original clients: %w", err)
+	}
+
+	// Create the new node
+	err = s.CreateTailscaleNodesInUser(username, version, 1, tsOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tailscale node: %w", err)
+	}
+
+	// Wait for the new node to appear in the client list
+	var newClient TailscaleClient
+
+	_, err = backoff.Retry(t.Context(), func() (struct{}, error) {
+		updatedClients, err := s.ListTailscaleClients(username)
+		if err != nil {
+			return struct{}{}, fmt.Errorf("failed to list updated clients: %w", err)
+		}
+
+		if len(updatedClients) != len(originalClients)+1 {
+			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients))
+		}
+
+		newClient, err = FindNewClient(originalClients, updatedClients)
+		if err != nil {
+			return struct{}{}, fmt.Errorf("failed to find new client: %w", err)
+		}
+
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewConstantBackOff(500*time.Millisecond)), backoff.WithMaxElapsedTime(10*time.Second))
+	if err != nil {
+		return nil, fmt.Errorf("timeout waiting for new client: %w", err)
+	}
+
+	// Get the user and create preauth key
+	user, err := GetUserByName(headscale, username)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	authKey, err := s.CreatePreAuthKey(user.GetId(), true, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preauth key: %w", err)
+	}
+
+	// Login the new client
+	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+	if err != nil {
+		return nil, fmt.Errorf("failed to login new client: %w", err)
+	}
+
+	return newClient, nil
+}
+
+// MustAddAndLoginClient is like AddAndLoginClient but fails the test on error.
+func (s *Scenario) MustAddAndLoginClient(
+	t *testing.T,
+	username string,
+	version string,
+	headscale ControlServer,
+	tsOpts ...tsic.Option,
+) TailscaleClient {
+	t.Helper()
+
+	client, err := s.AddAndLoginClient(t, username, version, headscale, tsOpts...)
+	require.NoError(t, err)
+	return client
 }

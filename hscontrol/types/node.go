@@ -855,3 +855,22 @@ func (v NodeView) IPsAsString() []string {
 	}
 	return v.ж.IPsAsString()
 }
+
+// HasNetworkChanges checks if the node has network-related changes.
+// Returns true if IPs, announced routes, or approved routes changed.
+// This is primarily used for policy cache invalidation.
+func (v NodeView) HasNetworkChanges(other NodeView) bool {
+	if !slices.Equal(v.IPs(), other.IPs()) {
+		return true
+	}
+
+	if !slices.Equal(v.AnnouncedRoutes(), other.AnnouncedRoutes()) {
+		return true
+	}
+
+	if !slices.Equal(v.SubnetRoutes(), other.SubnetRoutes()) {
+		return true
+	}
+
+	return false
+}

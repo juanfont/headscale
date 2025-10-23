@@ -854,7 +854,6 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	node1 := nodes[0].View()
 
 	rules, err := policy2.compileFilterRulesForNode(users, node1, nodes.ViewSlice())
-
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -1082,6 +1082,30 @@ func (t *HeadscaleInContainer) ListNodes(
 	return ret, nil
 }
 
+func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
+	command := []string{
+		"headscale",
+		"nodes",
+		"delete",
+		"--identifier",
+		fmt.Sprintf("%d", nodeID),
+		"--output",
+		"json",
+		"--force",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete node command: %w", err)
+	}
+
+	return nil
+}
+
 func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
 	nodes, err := t.ListNodes()
 	if err != nil {
@@ -1396,4 +1420,39 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	return nodeStore, nil
+}
+
+// DebugFilter fetches the current filter rules from the debug endpoint.
+func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/filter",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching filter from debug endpoint: %w", err)
+	}
+
+	var filterRules []tailcfg.FilterRule
+	if err := json.Unmarshal([]byte(result), &filterRules); err != nil {
+		return nil, fmt.Errorf("decoding filter response: %w", err)
+	}
+
+	return filterRules, nil
+}
+
+// DebugPolicy fetches the current policy from the debug endpoint.
+func (t *HeadscaleInContainer) DebugPolicy() (string, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "http://localhost:9090/debug/policy",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return "", fmt.Errorf("fetching policy from debug endpoint: %w", err)
+	}
+
+	return result, nil
 }

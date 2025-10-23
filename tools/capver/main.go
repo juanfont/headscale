@@ -136,7 +136,7 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 	}
 
 	// Write to file
-	err = os.WriteFile(outputFile, formatted, 0644)
+	err = os.WriteFile(outputFile, formatted, 0o644)
 	if err != nil {
 		return fmt.Errorf("error writing file: %w", err)
 	}

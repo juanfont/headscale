@@ -793,3 +793,179 @@ func TestNodeRegisterMethodToV1Enum(t *testing.T) {
 		})
 	}
 }
+
+// TestHasNetworkChanges tests the NodeView method for detecting
+// when a node's network properties have changed.
+func TestHasNetworkChanges(t *testing.T) {
+	mustIPPtr := func(s string) *netip.Addr {
+		ip := netip.MustParseAddr(s)
+		return &ip
+	}
+
+	tests := []struct {
+		name    string
+		old     *Node
+		new     *Node
+		changed bool
+	}{
+		{
+			name: "no changes",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				IPv6:           mustIPPtr("fd7a:115c:a1e0::1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				IPv6:           mustIPPtr("fd7a:115c:a1e0::1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: false,
+		},
+		{
+			name: "IPv4 changed",
+			old: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			new: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.2"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			changed: true,
+		},
+		{
+			name: "IPv6 changed",
+			old: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			new: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::2"),
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs added",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs removed",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs changed",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes added",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes removed",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes changed",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24"), netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24"), netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: true,
+		},
+		{
+			name: "irrelevant property changed (Hostname)",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostname: "old-name",
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostname: "new-name",
+			},
+			changed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.new.View().HasNetworkChanges(tt.old.View())
+			if got != tt.changed {
+				t.Errorf("HasNetworkChanges() = %v, want %v", got, tt.changed)
+			}
+		})
+	}
+}
