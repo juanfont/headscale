@@ -4,7 +4,7 @@
 
 ## 0.27.0 (2025-xx-xx)
 
-**Minimum supported Tailscale client version: v1.64.0**
+**Minimum supported Tailscale client version: v1.68.0**
 
 ### Database integrity improvements
 
