@@ -24,11 +24,11 @@ jobs:
           - TestACLAutogroupMember
           - TestACLAutogroupTagged
           - TestACLAutogroupSelf
+          - TestACLPolicyPropagationOverTime
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass
           - TestCLIWithConfigAuthenticationBypass
-          - TestACLPolicyPropagationOverTime
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
