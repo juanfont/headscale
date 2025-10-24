@@ -62,6 +62,7 @@ jobs:
             '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
       - name: Run Integration Test
+        if: always() && steps.changed-files.outputs.files == 'true'
         run:
           nix develop --command -- hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
           --timeout=120m \
