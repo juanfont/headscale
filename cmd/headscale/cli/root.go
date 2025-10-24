@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"slices"
+	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
@@ -75,8 +76,9 @@ func initConfig() {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {
 			githubTag := &latest.GithubTag{
-				Owner:      "juanfont",
-				Repository: "headscale",
+				Owner:         "juanfont",
+				Repository:    "headscale",
+				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
@@ -88,6 +90,43 @@ func initConfig() {
 				)
 			}
 		}
+	}
+}
+
+var prereleases = []string{"alpha", "beta", "rc", "dev"}
+
+func isPreReleaseVersion(version string) bool {
+	for _, unstable := range prereleases {
+		if strings.Contains(version, unstable) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterPreReleasesIfStable returns a function that filters out
+// pre-release tags if the current version is stable.
+// If the current version is a pre-release, it does not filter anything.
+// versionFunc is a function that returns the current version string, it is
+// a func for testability.
+func filterPreReleasesIfStable(versionFunc func() string) func(string) bool {
+	return func(tag string) bool {
+		version := versionFunc()
+
+		// If we are on a pre-release version, then we do not filter anything
+		// as we want to recommend the user the latest pre-release.
+		if isPreReleaseVersion(version) {
+			return false
+		}
+
+		// If we are on a stable release, filter out pre-releases.
+		for _, ignore := range prereleases {
+			if strings.Contains(tag, ignore) {
+				return true
+			}
+		}
+
+		return false
 	}
 }
 
