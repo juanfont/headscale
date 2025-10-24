@@ -20,12 +20,10 @@ func RegisterWeb(registrationID types.RegistrationID) *elem.Element {
 	return HtmlStructure(
 		elem.Title(nil, elem.Text("Registration - Headscale")),
 		elem.Body(attrs.Props{
-			attrs.Style: styles.Props{
-				styles.FontFamily: "sans",
-			}.ToInline(),
+			attrs.Style: bodyStyle.ToInline(),
 		},
-			elem.H1(nil, elem.Text("headscale")),
-			elem.H2(nil, elem.Text("Machine registration")),
+			headerOne("headscale"),
+			headerTwo("Machine registration"),
 			elem.P(nil, elem.Text("Run the command below in the headscale server to add this machine to your network: ")),
 			elem.Code(attrs.Props{attrs.Style: codeStyleRegisterWebAPI.ToInline()},
 				elem.Text(fmt.Sprintf("headscale nodes register --key %s --user USERNAME", registrationID.String())),
