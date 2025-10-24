@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	xmaps "golang.org/x/exp/maps"
+	"tailscale.com/envknob"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -2215,11 +2216,31 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 	}
 
+	// Check if we should run the full matrix of tests
+	// By default, we only run a minimal subset to avoid overwhelming Docker/disk
+	// Set HEADSCALE_INTEGRATION_FULL_MATRIX=1 to run all combinations
+	fullMatrix := envknob.Bool("HEADSCALE_INTEGRATION_FULL_MATRIX")
+
+	// Minimal test set: 3 tests covering all key dimensions
+	// - Both auth methods (authkey, webauth)
+	// - All 3 approver types (tag, user, group)
+	// - Both policy modes (database, file)
+	// - Both advertiseDuringUp values (true, false)
+	minimalTestSet := map[string]bool{
+		"authkey-tag-advertiseduringup-false-pol-database":  true, // authkey + database + tag + false
+		"webauth-user-advertiseduringup-true-pol-file":      true, // webauth + file + user + true
+		"authkey-group-advertiseduringup-false-pol-file":    true, // authkey + file + group + false
+	}
+
 	for _, tt := range tests {
 		for _, polMode := range []types.PolicyMode{types.PolicyModeDB, types.PolicyModeFile} {
 			for _, advertiseDuringUp := range []bool{false, true} {
 				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, polMode)
 				t.Run(name, func(t *testing.T) {
+					// Skip tests not in minimal set unless full matrix is enabled
+					if !fullMatrix && !minimalTestSet[name] {
+						t.Skip("Skipping to reduce test matrix size. Set HEADSCALE_INTEGRATION_FULL_MATRIX=1 to run all tests.")
+					}
 					scenario, err := NewScenario(tt.spec)
 					require.NoErrorf(t, err, "failed to create scenario: %s", err)
 					defer scenario.ShutdownAssertNoPanics(t)
