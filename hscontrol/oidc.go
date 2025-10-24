@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -190,13 +189,6 @@ type oidcCallbackTemplateConfig struct {
 	User string
 	Verb string
 }
-
-//go:embed assets/oidc_callback_template.html
-var oidcCallbackTemplateContent string
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
-)
 
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
@@ -573,21 +565,12 @@ func (a *AuthProviderOIDC) handleRegistration(
 	return !nodeChange.Empty(), nil
 }
 
-// TODO(kradalby):
-// Rewrite in elem-go.
 func renderOIDCCallbackTemplate(
 	user *types.User,
 	verb string,
 ) (*bytes.Buffer, error) {
-	var content bytes.Buffer
-	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: user.Display(),
-		Verb: verb,
-	}); err != nil {
-		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
-	}
-
-	return &content, nil
+	html := templates.OIDCCallback(user.Display(), verb).Render()
+	return bytes.NewBufferString(html), nil
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.
