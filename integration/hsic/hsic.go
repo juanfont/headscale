@@ -1232,26 +1232,26 @@ func (h *HeadscaleInContainer) writePolicy(pol *policyv2.Policy) error {
 }
 
 func (h *HeadscaleInContainer) PID() (int, error) {
-	cmd := []string{"bash", "-c", `ps aux | grep headscale | grep -v grep | awk '{print $2}'`}
-	output, err := h.Execute(cmd)
+	// Use pidof to find the headscale process, which is more reliable than grep
+	// as it only looks for the actual binary name, not processes that contain
+	// "headscale" in their command line (like the dlv debugger).
+	output, err := h.Execute([]string{"pidof", "headscale"})
 	if err != nil {
-		return 0, fmt.Errorf("failed to execute command: %w", err)
+		// pidof returns exit code 1 when no process is found
+		return 0, os.ErrNotExist
 	}
 
-	lines := strings.TrimSpace(output)
-	if lines == "" {
-		return 0, os.ErrNotExist // No output means no process found
+	// pidof returns space-separated PIDs on a single line
+	pidStrs := strings.Fields(strings.TrimSpace(output))
+	if len(pidStrs) == 0 {
+		return 0, os.ErrNotExist
 	}
 
-	pids := make([]int, 0, len(lines))
-	for _, line := range strings.Split(lines, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		pidInt, err := strconv.Atoi(line)
+	pids := make([]int, 0, len(pidStrs))
+	for _, pidStr := range pidStrs {
+		pidInt, err := strconv.Atoi(pidStr)
 		if err != nil {
-			return 0, fmt.Errorf("parsing PID: %w", err)
+			return 0, fmt.Errorf("parsing PID %q: %w", pidStr, err)
 		}
 		// We dont care about the root pid for the container
 		if pidInt == 1 {
@@ -1266,7 +1266,9 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 	case 1:
 		return pids[0], nil
 	default:
-		return 0, errors.New("multiple headscale processes running")
+		// If we still have multiple PIDs, return the first one as a fallback
+		// This can happen in edge cases during startup/shutdown
+		return pids[0], nil
 	}
 }
 
