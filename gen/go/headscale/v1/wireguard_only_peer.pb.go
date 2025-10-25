@@ -46,14 +46,12 @@ type WireGuardOnlyPeer struct {
 	// Auto-allocated tailnet IP addresses for the peer
 	Ipv4 string `protobuf:"bytes,10,opt,name=ipv4,proto3" json:"ipv4,omitempty"`
 	Ipv6 string `protobuf:"bytes,11,opt,name=ipv6,proto3" json:"ipv6,omitempty"`
-	// DNS resolvers to use when this peer is used as an exit node
-	ExitNodeDnsResolvers []string `protobuf:"bytes,12,rep,name=exit_node_dns_resolvers,json=exitNodeDnsResolvers,proto3" json:"exit_node_dns_resolvers,omitempty"`
-	// Whether to suggest this peer as an exit node
-	SuggestExitNode bool                   `protobuf:"varint,13,opt,name=suggest_exit_node,json=suggestExitNode,proto3" json:"suggest_exit_node,omitempty"`
-	CreatedAt       *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt       *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	// JSON string containing extra configuration (exit node settings, tags, location)
+	ExtraConfig   string                 `protobuf:"bytes,12,opt,name=extra_config,json=extraConfig,proto3" json:"extra_config,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *WireGuardOnlyPeer) Reset() {
@@ -163,18 +161,11 @@ func (x *WireGuardOnlyPeer) GetIpv6() string {
 	return ""
 }
 
-func (x *WireGuardOnlyPeer) GetExitNodeDnsResolvers() []string {
+func (x *WireGuardOnlyPeer) GetExtraConfig() string {
 	if x != nil {
-		return x.ExitNodeDnsResolvers
+		return x.ExtraConfig
 	}
-	return nil
-}
-
-func (x *WireGuardOnlyPeer) GetSuggestExitNode() bool {
-	if x != nil {
-		return x.SuggestExitNode
-	}
-	return false
+	return ""
 }
 
 func (x *WireGuardOnlyPeer) GetCreatedAt() *timestamppb.Timestamp {
@@ -204,11 +195,10 @@ type RegisterWireGuardOnlyPeerRequest struct {
 	// At least one masq addr is required
 	SelfIpv4MasqAddr *string `protobuf:"bytes,7,opt,name=self_ipv4_masq_addr,json=selfIpv4MasqAddr,proto3,oneof" json:"self_ipv4_masq_addr,omitempty"`
 	SelfIpv6MasqAddr *string `protobuf:"bytes,8,opt,name=self_ipv6_masq_addr,json=selfIpv6MasqAddr,proto3,oneof" json:"self_ipv6_masq_addr,omitempty"`
-	// Optional exit node configuration
-	ExitNodeDnsResolvers []string `protobuf:"bytes,9,rep,name=exit_node_dns_resolvers,json=exitNodeDnsResolvers,proto3" json:"exit_node_dns_resolvers,omitempty"`
-	SuggestExitNode      bool     `protobuf:"varint,10,opt,name=suggest_exit_node,json=suggestExitNode,proto3" json:"suggest_exit_node,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Optional extra configuration as JSON (exit node settings, tags, location)
+	ExtraConfig   *string `protobuf:"bytes,9,opt,name=extra_config,json=extraConfig,proto3,oneof" json:"extra_config,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterWireGuardOnlyPeerRequest) Reset() {
@@ -297,18 +287,11 @@ func (x *RegisterWireGuardOnlyPeerRequest) GetSelfIpv6MasqAddr() string {
 	return ""
 }
 
-func (x *RegisterWireGuardOnlyPeerRequest) GetExitNodeDnsResolvers() []string {
-	if x != nil {
-		return x.ExitNodeDnsResolvers
+func (x *RegisterWireGuardOnlyPeerRequest) GetExtraConfig() string {
+	if x != nil && x.ExtraConfig != nil {
+		return *x.ExtraConfig
 	}
-	return nil
-}
-
-func (x *RegisterWireGuardOnlyPeerRequest) GetSuggestExitNode() bool {
-	if x != nil {
-		return x.SuggestExitNode
-	}
-	return false
+	return ""
 }
 
 type RegisterWireGuardOnlyPeerResponse struct {
@@ -616,7 +599,7 @@ var File_headscale_v1_wireguard_only_peer_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_wireguard_only_peer_proto_rawDesc = "" +
 	"\n" +
-	"&headscale/v1/wireguard_only_peer.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17headscale/v1/user.proto\"\xfc\x04\n" +
+	"&headscale/v1/wireguard_only_peer.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17headscale/v1/user.proto\"\xbc\x04\n" +
 	"\x11WireGuardOnlyPeer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12&\n" +
@@ -631,15 +614,14 @@ const file_headscale_v1_wireguard_only_peer_proto_rawDesc = "" +
 	"\x13self_ipv6_masq_addr\x18\t \x01(\tH\x01R\x10selfIpv6MasqAddr\x88\x01\x01\x12\x12\n" +
 	"\x04ipv4\x18\n" +
 	" \x01(\tR\x04ipv4\x12\x12\n" +
-	"\x04ipv6\x18\v \x01(\tR\x04ipv6\x125\n" +
-	"\x17exit_node_dns_resolvers\x18\f \x03(\tR\x14exitNodeDnsResolvers\x12*\n" +
-	"\x11suggest_exit_node\x18\r \x01(\bR\x0fsuggestExitNode\x129\n" +
+	"\x04ipv6\x18\v \x01(\tR\x04ipv6\x12!\n" +
+	"\fextra_config\x18\f \x01(\tR\vextraConfig\x129\n" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
 	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x16\n" +
 	"\x14_self_ipv4_masq_addrB\x16\n" +
-	"\x14_self_ipv6_masq_addr\"\xce\x03\n" +
+	"\x14_self_ipv6_masq_addr\"\xa4\x03\n" +
 	" RegisterWireGuardOnlyPeerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12\x1d\n" +
@@ -650,12 +632,11 @@ const file_headscale_v1_wireguard_only_peer_proto_rawDesc = "" +
 	"allowedIps\x12\x1c\n" +
 	"\tendpoints\x18\x06 \x03(\tR\tendpoints\x122\n" +
 	"\x13self_ipv4_masq_addr\x18\a \x01(\tH\x00R\x10selfIpv4MasqAddr\x88\x01\x01\x122\n" +
-	"\x13self_ipv6_masq_addr\x18\b \x01(\tH\x01R\x10selfIpv6MasqAddr\x88\x01\x01\x125\n" +
-	"\x17exit_node_dns_resolvers\x18\t \x03(\tR\x14exitNodeDnsResolvers\x12*\n" +
-	"\x11suggest_exit_node\x18\n" +
-	" \x01(\bR\x0fsuggestExitNodeB\x16\n" +
+	"\x13self_ipv6_masq_addr\x18\b \x01(\tH\x01R\x10selfIpv6MasqAddr\x88\x01\x01\x12&\n" +
+	"\fextra_config\x18\t \x01(\tH\x02R\vextraConfig\x88\x01\x01B\x16\n" +
 	"\x14_self_ipv4_masq_addrB\x16\n" +
-	"\x14_self_ipv6_masq_addr\"X\n" +
+	"\x14_self_ipv6_masq_addrB\x0f\n" +
+	"\r_extra_config\"X\n" +
 	"!RegisterWireGuardOnlyPeerResponse\x123\n" +
 	"\x04peer\x18\x01 \x01(\v2\x1f.headscale.v1.WireGuardOnlyPeerR\x04peer\"I\n" +
 	"\x1dListWireGuardOnlyPeersRequest\x12\x1c\n" +

@@ -1378,15 +1378,9 @@
         "selfIpv6MasqAddr": {
           "type": "string"
         },
-        "exitNodeDnsResolvers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "title": "Optional exit node configuration"
-        },
-        "suggestExitNode": {
-          "type": "boolean"
+        "extraConfig": {
+          "type": "string",
+          "title": "Optional extra configuration as JSON (exit node settings, tags, location)"
         }
       }
     },
@@ -1534,16 +1528,9 @@
         "ipv6": {
           "type": "string"
         },
-        "exitNodeDnsResolvers": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "title": "DNS resolvers to use when this peer is used as an exit node"
-        },
-        "suggestExitNode": {
-          "type": "boolean",
-          "title": "Whether to suggest this peer as an exit node"
+        "extraConfig": {
+          "type": "string",
+          "title": "JSON string containing extra configuration (exit node settings, tags, location)"
         },
         "createdAt": {
           "type": "string",
