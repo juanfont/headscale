@@ -954,8 +954,7 @@ AND auth_key_id NOT IN (
   self_ipv6_masq_addr text,
   ipv4 text,
   ipv6 text,
-  exit_node_dns_resolvers text,
-  suggest_exit_node %s DEFAULT false,
+  extra_config text,
 
   created_at %s,
   updated_at %s,
@@ -969,7 +968,7 @@ AND auth_key_id NOT IN (
 CREATE TABLE IF NOT EXISTS wireguard_only_peers(
   id integer PRIMARY KEY AUTOINCREMENT,
 %s)`,
-							fmt.Sprintf(commonColumns, "integer", "numeric", "datetime", "datetime", "datetime"))
+							fmt.Sprintf(commonColumns, "integer", "datetime", "datetime", "datetime"))
 
 						err := tx.Exec(createTableSQL).Error
 						if err != nil {
@@ -988,7 +987,7 @@ VALUES ('wireguard_only_peers', ?)`,
 CREATE TABLE IF NOT EXISTS wireguard_only_peers(
   id BIGSERIAL PRIMARY KEY,
 %s)`,
-							fmt.Sprintf(commonColumns, "bigint", "boolean", "timestamp with time zone", "timestamp with time zone", "timestamp with time zone"))
+							fmt.Sprintf(commonColumns, "bigint", "timestamp with time zone", "timestamp with time zone", "timestamp with time zone"))
 
 						err := tx.Exec(createTableSQL).Error
 						if err != nil {

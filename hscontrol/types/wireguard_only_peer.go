@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/netip"
 	"time"
@@ -13,6 +14,16 @@ import (
 )
 
 const WireGuardOnlyPeerIDOffset = 100_000_000
+
+// WireGuardOnlyPeerExtraConfig holds optional configuration for a WireGuard-only peer.
+// This is stored as JSON in the database and allows configuring exit node behavior,
+// tags, and location data for proximity-based exit node selection.
+type WireGuardOnlyPeerExtraConfig struct {
+	ExitNodeDNSResolvers []string          `json:"exitNodeDNSResolvers,omitempty"`
+	SuggestExitNode      *bool             `json:"suggestExitNode,omitempty"`
+	Tags                 []string          `json:"tags,omitempty"`
+	Location             *tailcfg.Location `json:"location,omitempty"`
+}
 
 // WireGuardOnlyPeer represents an external WireGuard peer that does not run
 // a full Tailscale client. These peers are manually configured and statically defined.
@@ -55,11 +66,8 @@ type WireGuardOnlyPeer struct {
 	IPv4 *netip.Addr `gorm:"column:ipv4;serializer:text"`
 	IPv6 *netip.Addr `gorm:"column:ipv6;serializer:text"`
 
-	// DNS resolvers to use when this peer is used as an exit node
-	ExitNodeDNSResolvers []string `gorm:"serializer:json"`
-
-	// Whether to suggest this peer as an exit node to clients
-	SuggestExitNode bool `gorm:"default:false"`
+	// Extra configuration stored as JSON (exit node settings, tags, location)
+	ExtraConfig *WireGuardOnlyPeerExtraConfig `gorm:"serializer:json"`
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -102,16 +110,15 @@ func (p *WireGuardOnlyPeer) Prefixes() []netip.Prefix {
 // Proto converts the WireGuardOnlyPeer to protobuf representation
 func (p *WireGuardOnlyPeer) Proto() *v1.WireGuardOnlyPeer {
 	peer := &v1.WireGuardOnlyPeer{
-		Id:                p.ID,
-		Name:              p.Name,
-		User:              p.User.Proto(),
-		PublicKey:         p.PublicKey.String(),
-		KnownNodeIds:      p.KnownNodeIDs,
-		AllowedIps:        prefixesToString(p.AllowedIPs),
-		Endpoints:         addrPortsToString(p.Endpoints),
-		SuggestExitNode:   p.SuggestExitNode,
-		CreatedAt:         timestamppb.New(p.CreatedAt),
-		UpdatedAt:         timestamppb.New(p.UpdatedAt),
+		Id:           p.ID,
+		Name:         p.Name,
+		User:         p.User.Proto(),
+		PublicKey:    p.PublicKey.String(),
+		KnownNodeIds: p.KnownNodeIDs,
+		AllowedIps:   prefixesToString(p.AllowedIPs),
+		Endpoints:    addrPortsToString(p.Endpoints),
+		CreatedAt:    timestamppb.New(p.CreatedAt),
+		UpdatedAt:    timestamppb.New(p.UpdatedAt),
 	}
 
 	if p.SelfIPv4MasqAddr != nil {
@@ -130,8 +137,9 @@ func (p *WireGuardOnlyPeer) Proto() *v1.WireGuardOnlyPeer {
 		peer.Ipv6 = p.IPv6.String()
 	}
 
-	if len(p.ExitNodeDNSResolvers) > 0 {
-		peer.ExitNodeDnsResolvers = p.ExitNodeDNSResolvers
+	if p.ExtraConfig != nil {
+		extraConfigJSON, _ := json.Marshal(p.ExtraConfig)
+		peer.ExtraConfig = string(extraConfigJSON)
 	}
 
 	return peer
@@ -162,27 +170,9 @@ func (p *WireGuardOnlyPeer) ToTailcfgNode() (*tailcfg.Node, error) {
 		// We have no way of knowing whether the WireGuard-only peer is actually online.
 		// The Android app (and maybe other clients) prevent us from setting offline
 		// nodes as exit nodes so this needs to be true.
-		Online: 		 ptrTo(true),
+		Online:          ptrTo(true),
 		IsWireGuardOnly: true,
 		IsJailed:        true,
-
-		// When a client attempts to select the best exit node out of the ones
-		// suggested, it considers the proximity to the server as defined by
-		// Hostinfo. To prevent it from crashing on invalid Hostinfo, we must
-		// provide some fake data that can be parsed successfully.
-		// https://github.com/tailscale/tailscale/blob/f23e4279c42aec766eb6a89562c1fed3a1b97e09/ipn/ipnlocal/local.go#L7768
-		Hostinfo: (&tailcfg.Hostinfo{
-			Hostname: p.Name,
-			Location: ptrTo(tailcfg.Location{
-				Country: "United States",
-				CountryCode: "US",
-				City: "New York",
-				CityCode: "NYC",
-				Latitude: 40.730610,
-				Longitude: -73.935242,
-				Priority: 100,
-			}),
-		}).View(),
 
 		Expired: false,
 		Created: p.CreatedAt.UTC(),
@@ -196,18 +186,31 @@ func (p *WireGuardOnlyPeer) ToTailcfgNode() (*tailcfg.Node, error) {
 		node.SelfNodeV6MasqAddrForThisPeer = p.SelfIPv6MasqAddr
 	}
 
-	node.CapMap = tailcfg.NodeCapMap{}
+	if p.ExtraConfig != nil {
+		if len(p.ExtraConfig.Tags) > 0 {
+			node.Tags = p.ExtraConfig.Tags
+		}
 
-	if p.SuggestExitNode {
-		node.CapMap[tailcfg.NodeAttrSuggestExitNode] = nil
-	}
+		if len(p.ExtraConfig.ExitNodeDNSResolvers) > 0 {
 
-	if len(p.ExitNodeDNSResolvers) > 0 {
-		node.ExitNodeDNSResolvers = make([]*dnstype.Resolver, 0, len(p.ExitNodeDNSResolvers))
-		for _, resolver := range p.ExitNodeDNSResolvers {
-			node.ExitNodeDNSResolvers = append(node.ExitNodeDNSResolvers, &dnstype.Resolver{
-				Addr: resolver,
-			})
+			node.ExitNodeDNSResolvers = make([]*dnstype.Resolver, 0, len(p.ExtraConfig.ExitNodeDNSResolvers))
+			for _, resolver := range p.ExtraConfig.ExitNodeDNSResolvers {
+				node.ExitNodeDNSResolvers = append(node.ExitNodeDNSResolvers, &dnstype.Resolver{
+					Addr: resolver,
+				})
+			}
+		}
+
+		if p.ExtraConfig.SuggestExitNode != nil && *p.ExtraConfig.SuggestExitNode {
+			node.CapMap = tailcfg.NodeCapMap{}
+			node.CapMap[tailcfg.NodeAttrSuggestExitNode] = nil
+		}
+
+		if p.ExtraConfig.Location != nil {
+			node.Hostinfo = (&tailcfg.Hostinfo{
+				Hostname: p.Name,
+				Location: p.ExtraConfig.Location,
+			}).View()
 		}
 	}
 
@@ -260,5 +263,5 @@ func addrPortsToString(addrPorts []netip.AddrPort) []string {
 }
 
 func ptrTo[T any](value T) *T {
-    return &value
+	return &value
 }

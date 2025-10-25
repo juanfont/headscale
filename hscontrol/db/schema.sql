@@ -111,8 +111,7 @@ CREATE TABLE wireguard_only_peers(
   self_ipv6_masq_addr text,
   ipv4 text,
   ipv6 text,
-  exit_node_dns_resolvers text,
-  suggest_exit_node numeric DEFAULT false,
+  extra_config text,
 
   created_at datetime,
   updated_at datetime,

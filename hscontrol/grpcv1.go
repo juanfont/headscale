@@ -5,6 +5,7 @@ package hscontrol
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -821,8 +822,7 @@ func parseWireGuardOnlyPeerFromRequest(
 	endpointsStr []string,
 	selfIPv4MasqAddrStr *string,
 	selfIPv6MasqAddrStr *string,
-	exitNodeDNSResolvers []string,
-	suggestExitNode bool,
+	extraConfigJSON *string,
 ) (*types.WireGuardOnlyPeer, error) {
 	var publicKey key.NodePublic
 	if err := publicKey.UnmarshalText([]byte(publicKeyStr)); err != nil {
@@ -871,17 +871,25 @@ func parseWireGuardOnlyPeerFromRequest(
 		selfIPv6MasqAddr = &addr
 	}
 
+	// Parse and validate extra config JSON
+	var extraConfig *types.WireGuardOnlyPeerExtraConfig
+	if extraConfigJSON != nil && *extraConfigJSON != "" {
+		extraConfig = &types.WireGuardOnlyPeerExtraConfig{}
+		if err := json.Unmarshal([]byte(*extraConfigJSON), extraConfig); err != nil {
+			return nil, fmt.Errorf("invalid extra-config JSON: %w", err)
+		}
+	}
+
 	peer := &types.WireGuardOnlyPeer{
-		Name:                 name,
-		UserID:               userID,
-		PublicKey:            publicKey,
-		KnownNodeIDs:         knownNodeIDs,
-		AllowedIPs:           allowedIPs,
-		Endpoints:            endpoints,
-		SelfIPv4MasqAddr:     selfIPv4MasqAddr,
-		SelfIPv6MasqAddr:     selfIPv6MasqAddr,
-		ExitNodeDNSResolvers: exitNodeDNSResolvers,
-		SuggestExitNode:      suggestExitNode,
+		Name:             name,
+		UserID:           userID,
+		PublicKey:        publicKey,
+		KnownNodeIDs:     knownNodeIDs,
+		AllowedIPs:       allowedIPs,
+		Endpoints:        endpoints,
+		SelfIPv4MasqAddr: selfIPv4MasqAddr,
+		SelfIPv6MasqAddr: selfIPv6MasqAddr,
+		ExtraConfig:      extraConfig,
 	}
 
 	return peer, nil
@@ -900,8 +908,7 @@ func (api headscaleV1APIServer) RegisterWireGuardOnlyPeer(
 		request.GetEndpoints(),
 		request.SelfIpv4MasqAddr,
 		request.SelfIpv6MasqAddr,
-		request.GetExitNodeDnsResolvers(),
-		request.GetSuggestExitNode(),
+		request.ExtraConfig,
 	)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid request: %s", err)

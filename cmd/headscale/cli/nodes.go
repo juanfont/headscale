@@ -135,8 +135,7 @@ func init() {
 	}
 	registerWgOnlyCmd.Flags().String("self-ipv4-masq-addr", "", "IPv4 masquerade address (source IP the peer expects)")
 	registerWgOnlyCmd.Flags().String("self-ipv6-masq-addr", "", "IPv6 masquerade address (source IP the peer expects)")
-	registerWgOnlyCmd.Flags().String("exit-node-dns-resolvers", "", "Comma-separated list of DNS resolvers for exit node usage")
-	registerWgOnlyCmd.Flags().Bool("suggest-exit-node", false, "Suggest this peer as an exit node")
+	registerWgOnlyCmd.Flags().String("extra-config", "", "Extra configuration as JSON (optional: exitNodeDNSResolvers, suggestExitNode, tags, location)")
 	nodeCmd.AddCommand(registerWgOnlyCmd)
 }
 
@@ -730,8 +729,7 @@ func wgOnlyPeersToPtable(
 		"Allowed IPs",
 		"Endpoints",
 		"Masq IPs",
-		"Exit DNS",
-		"Suggest Exit",
+		"Extra Config",
 	}
 	tableData := pterm.TableData{tableHeader}
 
@@ -773,13 +771,7 @@ func wgOnlyPeersToPtable(
 			masqIPs = append(masqIPs, peer.GetSelfIpv6MasqAddr())
 		}
 
-		// Format Suggest Exit Node
-		var suggestExit string
-		if peer.GetSuggestExitNode() {
-			suggestExit = "yes"
-		} else {
-			suggestExit = "no"
-		}
+		extraConfig := peer.GetExtraConfig()
 
 		peerData := []string{
 			strconv.FormatUint(peer.GetId(), util.Base10),
@@ -791,8 +783,7 @@ func wgOnlyPeersToPtable(
 			strings.Join(peer.GetAllowedIps(), ", "),
 			strings.Join(peer.GetEndpoints(), ", "),
 			strings.Join(masqIPs, ", "),
-			strings.Join(peer.GetExitNodeDnsResolvers(), ", "),
-			suggestExit,
+			extraConfig,
 		}
 		tableData = append(tableData, peerData)
 	}
@@ -959,8 +950,7 @@ your nodes`,
 
 		selfIPv4MasqAddr, _ := cmd.Flags().GetString("self-ipv4-masq-addr")
 		selfIPv6MasqAddr, _ := cmd.Flags().GetString("self-ipv6-masq-addr")
-		exitNodeDNSResolversStr, _ := cmd.Flags().GetString("exit-node-dns-resolvers")
-		suggestExitNode, _ := cmd.Flags().GetBool("suggest-exit-node")
+		extraConfig, _ := cmd.Flags().GetString("extra-config")
 
 		if selfIPv4MasqAddr == "" && selfIPv6MasqAddr == "" {
 			ErrorOutput(
@@ -1000,23 +990,14 @@ your nodes`,
 			endpoints[i] = strings.TrimSpace(endpoints[i])
 		}
 
-		var exitNodeDNSResolvers []string
-		if exitNodeDNSResolversStr != "" {
-			exitNodeDNSResolvers = strings.Split(exitNodeDNSResolversStr, ",")
-			for i := range exitNodeDNSResolvers {
-				exitNodeDNSResolvers[i] = strings.TrimSpace(exitNodeDNSResolvers[i])
-			}
-		}
-
 		request := &v1.RegisterWireGuardOnlyPeerRequest{
-			Name:                 name,
-			UserId:               userID,
-			PublicKey:            publicKey,
-			KnownNodeIds:         knownNodeIDs,
-			AllowedIps:           allowedIPs,
-			Endpoints:            endpoints,
-			ExitNodeDnsResolvers: exitNodeDNSResolvers,
-			SuggestExitNode:      suggestExitNode,
+			Name:         name,
+			UserId:       userID,
+			PublicKey:    publicKey,
+			KnownNodeIds: knownNodeIDs,
+			AllowedIps:   allowedIPs,
+			Endpoints:    endpoints,
+			ExtraConfig:  &extraConfig,
 		}
 
 		if selfIPv4MasqAddr != "" {
@@ -1046,4 +1027,3 @@ your nodes`,
 		)
 	},
 }
-

@@ -72,7 +72,7 @@ func TestWireGuardOnlyPeerBasicRegistration(t *testing.T) {
 		"--allowed-ips", "0.0.0.0/0,::/0",
 		"--endpoints", "192.0.2.1:51820",
 		"--self-ipv4-masq-addr", "10.64.0.100",
-		"--suggest-exit-node",
+		"--extra-config", `{"suggestExitNode":true}`,
 		"--output", "json",
 	})
 	require.NoError(t, err, "failed to register WireGuard-only peer")
@@ -403,7 +403,7 @@ func TestWireGuardOnlyPeerMasqueradeAddressValidation(t *testing.T) {
 }
 
 // TestWireGuardOnlyPeerMapResponse tests that WireGuard-only peers have the correct
-// tailcfg.Node fields set in the network map response.
+// tailcfg.Node fields set in the network map response, including all extra config parameters.
 func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -448,6 +448,22 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 	}
 	expectedEndpoint := "192.0.2.1:51820"
 
+	// Test complete extra config with all fields
+	extraConfig := `{
+		"exitNodeDNSResolvers": ["10.64.0.1", "10.64.0.2"],
+		"suggestExitNode": true,
+		"tags": ["tag:exit-node", "tag:mullvad"],
+		"location": {
+			"country": "Sweden",
+			"countryCode": "SE",
+			"city": "Stockholm",
+			"cityCode": "sto",
+			"latitude": 59.3293,
+			"longitude": 18.0686,
+			"priority": 100
+		}
+	}`
+
 	result, err := headscale.Execute([]string{
 		"headscale",
 		"node",
@@ -460,7 +476,7 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 		"--endpoints", expectedEndpoint,
 		"--self-ipv4-masq-addr", expectedIPv4Masq.String(),
 		"--self-ipv6-masq-addr", expectedIPv6Masq.String(),
-		"--suggest-exit-node",
+		"--extra-config", extraConfig,
 		"--output", "json",
 	})
 	require.NoError(t, err, "failed to register WireGuard-only peer")
@@ -479,9 +495,11 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 			if peer.ComputedName() == "test-wg-peer-mapresponse" {
 				found = true
 
+				// Basic WireGuard-only peer properties
 				assert.True(c, peer.IsWireGuardOnly(), "peer should have IsWireGuardOnly set to true")
 				assert.True(c, peer.IsJailed(), "peer should have IsJailed set to true")
 
+				// Masquerade addresses
 				masqV4, ok := peer.SelfNodeV4MasqAddrForThisPeer().GetOk()
 				assert.True(c, ok, "peer should have SelfNodeV4MasqAddrForThisPeer set")
 				assert.Equal(c, expectedIPv4Masq, masqV4, "IPv4 masquerade address should match")
@@ -490,21 +508,53 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 				assert.True(c, ok, "peer should have SelfNodeV6MasqAddrForThisPeer set")
 				assert.Equal(c, expectedIPv6Masq, masqV6, "IPv6 masquerade address should match")
 
+				// AllowedIPs
 				assert.NotEmpty(c, peer.AllowedIPs(), "peer should have AllowedIPs")
 				allowedIPs := peer.AllowedIPs().AsSlice()
 				assert.ElementsMatch(c, expectedAllowedIPs, allowedIPs, "AllowedIPs should match expected")
 
+				// Endpoints
 				assert.NotEmpty(c, peer.Endpoints(), "peer should have Endpoints")
 				endpoints := peer.Endpoints().AsSlice()
 				assert.Contains(c, endpoints, expectedEndpoint, "Endpoints should contain expected endpoint")
 
+				// Extra config: suggestExitNode capability
 				capMap := peer.CapMap()
 				hasExitNode := capMap.Contains(tailcfg.NodeAttrSuggestExitNode)
 				assert.True(c, hasExitNode, "peer CapMap should contain exit node attribute")
+
+				// Extra config: exit node DNS resolvers
+				exitDNS := peer.ExitNodeDNSResolvers()
+				assert.Equal(c, 2, exitDNS.Len(), "peer should have 2 exit node DNS resolvers")
+				if exitDNS.Len() == 2 {
+					assert.Equal(c, "10.64.0.1", exitDNS.At(0).Addr, "first DNS resolver should match")
+					assert.Equal(c, "10.64.0.2", exitDNS.At(1).Addr, "second DNS resolver should match")
+				}
+
+				// Extra config: tags
+				tags := peer.Tags().AsSlice()
+				assert.ElementsMatch(c, []string{"tag:exit-node", "tag:mullvad"}, tags, "tags should match expected")
+
+				// Extra config: location in Hostinfo
+				hostinfo := peer.Hostinfo()
+				location := hostinfo.Location()
+				assert.True(c, location.Valid(), "peer should have location in Hostinfo")
+				if location.Valid() {
+					assert.Equal(c, "Sweden", location.Country(), "location country should match")
+					assert.Equal(c, "SE", location.CountryCode(), "location country code should match")
+					assert.Equal(c, "Stockholm", location.City(), "location city should match")
+					assert.Equal(c, "sto", location.CityCode(), "location city code should match")
+					assert.InDelta(c, 59.3293, location.Latitude(), 0.0001, "location latitude should match")
+					assert.InDelta(c, 18.0686, location.Longitude(), 0.0001, "location longitude should match")
+					assert.Equal(c, 100, location.Priority(), "location priority should match")
+				}
+
+				// Verify hostname in Hostinfo is set to peer name
+				assert.Equal(c, "test-wg-peer-mapresponse", hostinfo.Hostname(), "Hostinfo hostname should match peer name")
 
 				break
 			}
 		}
 		assert.True(c, found, "WireGuard-only peer should be in the network map")
-	}, 10*time.Second, 500*time.Millisecond, "WireGuard-only peer should have correct tailcfg.Node fields")
+	}, 10*time.Second, 500*time.Millisecond, "WireGuard-only peer should have correct tailcfg.Node fields including all extra config")
 }

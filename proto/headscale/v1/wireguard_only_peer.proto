@@ -36,11 +36,8 @@ message WireGuardOnlyPeer {
   string ipv4 = 10;
   string ipv6 = 11;
 
-  // DNS resolvers to use when this peer is used as an exit node
-  repeated string exit_node_dns_resolvers = 12;
-
-  // Whether to suggest this peer as an exit node
-  bool suggest_exit_node = 13;
+  // JSON string containing extra configuration (exit node settings, tags, location)
+  string extra_config = 12;
 
   google.protobuf.Timestamp created_at = 14;
   google.protobuf.Timestamp updated_at = 15;
@@ -62,9 +59,8 @@ message RegisterWireGuardOnlyPeerRequest {
   optional string self_ipv4_masq_addr = 7;
   optional string self_ipv6_masq_addr = 8;
 
-  // Optional exit node configuration
-  repeated string exit_node_dns_resolvers = 9;
-  bool suggest_exit_node = 10;
+  // Optional extra configuration as JSON
+  optional string extra_config = 9;
 }
 
 message RegisterWireGuardOnlyPeerResponse {
