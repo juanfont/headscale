@@ -77,11 +77,12 @@ plugins:
         apple-client.md: usage/connect/apple.md
         dns-records.md: ref/dns.md
         exit-node.md: ref/routes.md
-        ref/exit-node.md: ref/routes.md
         faq.md: about/faq.md
         iOS-client.md: usage/connect/apple.md#ios
         oidc.md: ref/oidc.md
-        remote-cli.md: ref/remote-cli.md
+        ref/exit-node.md: ref/routes.md
+        ref/remote-cli.md: ref/api.md#grpc
+        remote-cli.md: ref/api.md#grpc
         reverse-proxy.md: ref/integration/reverse-proxy.md
         tls.md: ref/tls.md
         web-ui.md: ref/integration/web-ui.md
@@ -182,7 +183,7 @@ nav:
       - ACLs: ref/acls.md
       - DNS: ref/dns.md
       - DERP: ref/derp.md
-      - Remote CLI: ref/remote-cli.md
+      - API: ref/api.md
       - Debug: ref/debug.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md

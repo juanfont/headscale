@@ -1,5 +1,5 @@
 .github/workflows/test-integration-v2*
 docs/about/features.md
+docs/ref/api.md
 docs/ref/configuration.md
 docs/ref/oidc.md
-docs/ref/remote-cli.md
