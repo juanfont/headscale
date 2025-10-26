@@ -995,7 +995,7 @@ behaviour.
 - Add IPv6 support to the prefix assigned to namespaces
 - Add API Key support
   - Enable remote control of `headscale` via CLI
-    [docs](./docs/ref/remote-cli.md)
+    [docs](./docs/ref/api.md#grpc)
   - Enable HTTP API (beta, subject to change)
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist
