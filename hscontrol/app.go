@@ -733,7 +733,7 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
 
-	debugHTTPServer := h.debugHTTPServer()
+	debugHTTPServer := h.debugHTTPServer(router)
 	errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
 
 	log.Info().

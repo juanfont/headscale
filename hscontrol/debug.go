@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/arl/statsviz"
+	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tsweb"
 )
 
-func (h *Headscale) debugHTTPServer() *http.Server {
+func (h *Headscale) debugHTTPServer(mainRouter *mux.Router) *http.Server {
 	debugMux := http.NewServeMux()
 	debug := tsweb.Debugger(debugMux)
 
@@ -268,6 +270,34 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 	}))
 
+	// HTTP routes endpoint
+	debug.Handle("http-routes", "Registered HTTP routes", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check Accept header to determine response format
+		acceptHeader := r.Header.Get("Accept")
+		wantsJSON := strings.Contains(acceptHeader, "application/json")
+
+		if wantsJSON {
+			routesInfo := h.debugHTTPRoutesJSON(mainRouter)
+
+			routesJSON, err := json.MarshalIndent(routesInfo, "", "  ")
+			if err != nil {
+				httpError(w, err)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(routesJSON)
+		} else {
+			// Default to text/plain for backward compatibility
+			routesInfo := h.debugHTTPRoutes(mainRouter)
+
+			w.Header().Set("Content-Type", "text/plain")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(routesInfo))
+		}
+	}))
+
 	err := statsviz.Register(debugMux)
 	if err == nil {
 		debug.URL("/debug/statsviz", "Statsviz (visualise go metrics)")
@@ -405,4 +435,97 @@ func (h *Headscale) debugBatcherJSON() DebugBatcherInfo {
 	}
 
 	return info
+}
+
+// HTTPRouteInfo represents information about a registered HTTP route.
+type HTTPRouteInfo struct {
+	Path    string   `json:"path"`
+	Methods []string `json:"methods"`
+	Name    string   `json:"name,omitempty"`
+}
+
+// DebugHTTPRoutesInfo represents all HTTP routes in a structured format.
+type DebugHTTPRoutesInfo struct {
+	Routes     []HTTPRouteInfo `json:"routes"`
+	TotalCount int             `json:"total_count"`
+}
+
+// debugHTTPRoutes returns a text representation of all registered HTTP routes.
+func (h *Headscale) debugHTTPRoutes(router *mux.Router) string {
+	var sb strings.Builder
+	sb.WriteString("=== Registered HTTP Routes ===\n\n")
+
+	routes := collectRoutes(router)
+
+	for _, route := range routes {
+		methods := strings.Join(route.Methods, ", ")
+		if methods == "" {
+			methods = "ALL"
+		}
+
+		if route.Name != "" {
+			sb.WriteString(fmt.Sprintf("%-50s [%-20s] %s\n", route.Path, methods, route.Name))
+		} else {
+			sb.WriteString(fmt.Sprintf("%-50s [%-20s]\n", route.Path, methods))
+		}
+	}
+
+	sb.WriteString(fmt.Sprintf("\nTotal routes: %d\n", len(routes)))
+
+	return sb.String()
+}
+
+// debugHTTPRoutesJSON returns a structured representation of all registered HTTP routes.
+func (h *Headscale) debugHTTPRoutesJSON(router *mux.Router) DebugHTTPRoutesInfo {
+	routes := collectRoutes(router)
+
+	return DebugHTTPRoutesInfo{
+		Routes:     routes,
+		TotalCount: len(routes),
+	}
+}
+
+// collectRoutes walks the router and collects all registered routes.
+// Routes are returned sorted by path for consistent output.
+func collectRoutes(router *mux.Router) []HTTPRouteInfo {
+	var routes []HTTPRouteInfo
+
+	_ = router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, err := route.GetPathTemplate()
+		if err != nil {
+			// If we can't get a path template, try GetPathRegexp
+			var pathRegexp string
+
+			pathRegexp, err = route.GetPathRegexp()
+			if err != nil {
+				// Skip routes without a path (both template and regexp failed)
+				return nil //nolint:nilerr // intentionally skip routes without paths
+			}
+
+			pathTemplate = pathRegexp
+		}
+
+		methods, err := route.GetMethods()
+		if err != nil {
+			// No methods means it accepts all methods
+			methods = []string{}
+		}
+
+		name := route.GetName()
+
+		routes = append(routes, HTTPRouteInfo{
+			Path:    pathTemplate,
+			Methods: methods,
+			Name:    name,
+		})
+
+		return nil
+	})
+
+	// Sort routes by path for consistent output
+	sort.Slice(routes, func(i, j int) bool {
+		return routes[i].Path < routes[j].Path
+	})
+
+	return routes
 }
