@@ -2,7 +2,7 @@
 
 ## Next
 
-## 0.27.0 (2025-xx-xx)
+## 0.27.0 (2025-10-27)
 
 **Minimum supported Tailscale client version: v1.64.0**
 
