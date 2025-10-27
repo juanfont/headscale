@@ -145,6 +145,8 @@ kos:
       - "{{ .Tag }}"
       - '{{ trimprefix .Tag "v" }}'
       - "sha-{{ .ShortCommit }}"
+    creation_time: "{{.CommitTimestamp}}"
+    ko_data_creation_time: "{{.CommitTimestamp}}"
 
   - id: ghcr-debug
     repositories:
