@@ -201,6 +201,24 @@ func (h *Headscale) RobotsHandler(
 	}
 }
 
+// VersionHandler returns version information about the Headscale server
+// Listens in /version.
+func (h *Headscale) VersionHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+
+	versionInfo := types.GetVersionInfo()
+	if err := json.NewEncoder(writer).Encode(versionInfo); err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write version response")
+	}
+}
+
 var codeStyleRegisterWebAPI = styles.Props{
 	styles.Display:         "block",
 	styles.Padding:         "20px",
