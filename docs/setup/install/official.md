@@ -7,7 +7,7 @@ Both are available on the [GitHub releases page](https://github.com/juanfont/hea
 
 It is recommended to use our DEB packages to install headscale on a Debian based system as those packages configure a
 local user to run headscale, provide a default configuration and ship with a systemd service file. Supported
-distributions are Ubuntu 22.04 or newer, Debian 11 or newer.
+distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
 
 1.  Download the [latest headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
