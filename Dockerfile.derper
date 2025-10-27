@@ -12,7 +12,7 @@ WORKDIR /go/src/tailscale
 ARG TARGETARCH
 RUN GOARCH=$TARGETARCH go install -v ./cmd/derper
 
-FROM alpine:3.18
+FROM alpine:3.22
 RUN apk add --no-cache ca-certificates iptables iproute2 ip6tables curl
 
 COPY --from=build-env /go/bin/* /usr/local/bin/
