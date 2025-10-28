@@ -52,11 +52,11 @@ func TestOIDCCallbackTemplate(t *testing.T) {
 
 			// Save the output for manual inspection
 			testDataDir := filepath.Join("testdata", "oidc_templates")
-			err := os.MkdirAll(testDataDir, 0755)
+			err := os.MkdirAll(testDataDir, 0o755)
 			require.NoError(t, err)
 
 			outputFile := filepath.Join(testDataDir, tt.name+".html")
-			err = os.WriteFile(outputFile, []byte(html), 0644)
+			err = os.WriteFile(outputFile, []byte(html), 0o600)
 			require.NoError(t, err)
 		})
 	}
