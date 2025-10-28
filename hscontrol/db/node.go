@@ -27,9 +27,7 @@ const (
 	NodeGivenNameTrimSize   = 2
 )
 
-var (
-	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
-)
+var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var (
 	ErrNodeNotFound                  = errors.New("node not found")

@@ -2,6 +2,11 @@
 
 ## Next
 
+### Changes
+
+- Expire nodes with a custom timestamp
+  [#2828](https://github.com/juanfont/headscale/pull/2828)
+
 ## 0.27.0 (2025-10-27)
 
 **Minimum supported Tailscale client version: v1.64.0**
