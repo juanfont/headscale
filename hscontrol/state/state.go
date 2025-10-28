@@ -429,6 +429,8 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 		return change.EmptySet, err
 	}
 
+	s.ipAlloc.FreeIPs(node.IPs())
+
 	c := change.NodeRemoved(node.ID())
 
 	// Check if policy manager needs updating after node deletion
