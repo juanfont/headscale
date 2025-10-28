@@ -406,6 +406,13 @@
             "required": true,
             "type": "string",
             "format": "uint64"
+          },
+          {
+            "name": "expiry",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
           }
         ],
         "tags": [
