@@ -2,7 +2,6 @@ package templates
 
 import (
 	"github.com/chasefleming/elem-go"
-	"github.com/chasefleming/elem-go/attrs"
 )
 
 func Windows(url string) *elem.Element {
@@ -10,28 +9,19 @@ func Windows(url string) *elem.Element {
 		elem.Title(nil,
 			elem.Text("headscale - Windows"),
 		),
-		elem.Body(attrs.Props{
-			attrs.Style: bodyStyle.ToInline(),
-		},
-			headerOne("headscale: Windows configuration"),
-			elem.P(nil,
+		mdTypesetBody(
+			headscaleLogo(),
+			H1(elem.Text("Windows configuration")),
+			P(
 				elem.Text("Download "),
-				elem.A(attrs.Props{
-					attrs.Href:   "https://tailscale.com/download/windows",
-					attrs.Rel:    "noreferrer noopener",
-					attrs.Target: "_blank",
-				},
-					elem.Text("Tailscale for Windows ")),
-				elem.Text("and install it."),
+				externalLink("https://tailscale.com/download/windows", "Tailscale for Windows"),
+				elem.Text(" and install it."),
 			),
-			elem.P(nil,
-				elem.Text("Open a Command Prompt or Powershell and use Tailscale's login command to connect with headscale: "),
+			P(
+				elem.Text("Open a Command Prompt or PowerShell and use Tailscale's login command to connect with headscale:"),
 			),
-			elem.Pre(nil,
-				elem.Code(nil,
-					elem.Text("tailscale login --login-server "+url),
-				),
-			),
+			Pre(PreCode("tailscale login --login-server "+url)),
+			pageFooter(),
 		),
 	)
 }
