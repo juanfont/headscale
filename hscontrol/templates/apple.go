@@ -5,48 +5,43 @@ import (
 
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
+	"github.com/chasefleming/elem-go/styles"
 )
 
 func Apple(url string) *elem.Element {
 	return HtmlStructure(
 		elem.Title(nil,
 			elem.Text("headscale - Apple")),
-		elem.Body(attrs.Props{
-			attrs.Style: bodyStyle.ToInline(),
-		},
-			headerOne("headscale: iOS configuration"),
-			headerTwo("GUI"),
-			elem.Ol(nil,
+		mdTypesetBody(
+			headscaleLogo(),
+			H1(elem.Text("iOS configuration")),
+			H2(elem.Text("GUI")),
+			Ol(
 				elem.Li(
 					nil,
 					elem.Text("Install the official Tailscale iOS client from the "),
-					elem.A(
-						attrs.Props{
-							attrs.Href: "https://apps.apple.com/app/tailscale/id1470499037",
-						},
-						elem.Text("App store"),
-					),
+					externalLink("https://apps.apple.com/app/tailscale/id1470499037", "App Store"),
 				),
 				elem.Li(
 					nil,
-					elem.Text("Open the Tailscale app"),
+					elem.Text("Open the "),
+					elem.Strong(nil, elem.Text("Tailscale")),
+					elem.Text(" app"),
 				),
 				elem.Li(
 					nil,
-					elem.Text(`Click the account icon in the top-right corner and select "Log in…".`),
+					elem.Text("Click the account icon in the top-right corner and select "),
+					elem.Strong(nil, elem.Text("Log in…")),
 				),
 				elem.Li(
 					nil,
-					elem.Text(`Tap the top-right options menu button and select "Use custom coordination server".`),
+					elem.Text("Tap the top-right options menu button and select "),
+					elem.Strong(nil, elem.Text("Use custom coordination server")),
 				),
 				elem.Li(
 					nil,
-					elem.Text(
-						fmt.Sprintf(
-							`Enter your instance URL: "%s"`,
-							url,
-						),
-					),
+					elem.Text("Enter your instance URL: "),
+					Code(elem.Text(url)),
 				),
 				elem.Li(
 					nil,
@@ -55,65 +50,50 @@ func Apple(url string) *elem.Element {
 					),
 				),
 			),
-			headerOne("headscale: macOS configuration"),
-			headerTwo("Command line"),
-			elem.P(nil,
+			H1(elem.Text("macOS configuration")),
+			H2(elem.Text("Command line")),
+			P(
 				elem.Text("Use Tailscale's login command to add your profile:"),
 			),
-			elem.Pre(nil,
-				elem.Code(nil,
-					elem.Text("tailscale login --login-server "+url),
-				),
-			),
-			headerTwo("GUI"),
-			elem.Ol(nil,
+			Pre(PreCode("tailscale login --login-server "+url)),
+			H2(elem.Text("GUI")),
+			Ol(
 				elem.Li(
 					nil,
-					elem.Text(
-						"Option + Click the Tailscale icon in the menu and hover over the Debug menu",
-					),
+					elem.Text("Option + Click the "),
+					elem.Strong(nil, elem.Text("Tailscale")),
+					elem.Text(" icon in the menu and hover over the "),
+					elem.Strong(nil, elem.Text("Debug")),
+					elem.Text(" menu"),
 				),
 				elem.Li(nil,
-					elem.Text(`Under "Custom Login Server", select "Add Account..."`),
+					elem.Text("Under "),
+					elem.Strong(nil, elem.Text("Custom Login Server")),
+					elem.Text(", select "),
+					elem.Strong(nil, elem.Text("Add Account...")),
 				),
 				elem.Li(
 					nil,
-					elem.Text(
-						fmt.Sprintf(
-							`Enter "%s" of the headscale instance and press "Add Account"`,
-							url,
-						),
-					),
+					elem.Text("Enter "),
+					Code(elem.Text(url)),
+					elem.Text(" of the headscale instance and press "),
+					elem.Strong(nil, elem.Text("Add Account")),
 				),
 				elem.Li(nil,
-					elem.Text(`Follow the login procedure in the browser`),
+					elem.Text("Follow the login procedure in the browser"),
 				),
 			),
-			headerTwo("Profiles"),
-			elem.P(
-				nil,
+			H2(elem.Text("Profiles")),
+			P(
 				elem.Text(
 					"Headscale can be set to the default server by installing a Headscale configuration profile:",
 				),
 			),
-			elem.P(
-				nil,
-				elem.A(
-					attrs.Props{
-						attrs.Href:     "/apple/macos-app-store",
-						attrs.Download: "headscale_macos.mobileconfig",
-					},
-					elem.Text("macOS AppStore profile "),
-				),
-				elem.A(
-					attrs.Props{
-						attrs.Href:     "/apple/macos-standalone",
-						attrs.Download: "headscale_macos.mobileconfig",
-					},
-					elem.Text("macOS Standalone profile"),
-				),
+			elem.Div(attrs.Props{attrs.Style: styles.Props{styles.MarginTop: spaceL, styles.MarginBottom: spaceL}.ToInline()},
+				downloadButton("/apple/macos-app-store", "macOS AppStore profile"),
+				downloadButton("/apple/macos-standalone", "macOS Standalone profile"),
 			),
-			elem.Ol(nil,
+			Ol(
 				elem.Li(
 					nil,
 					elem.Text(
@@ -121,105 +101,82 @@ func Apple(url string) *elem.Element {
 					),
 				),
 				elem.Li(nil,
-					elem.Text(`Open System Preferences and go to "Profiles"`),
+					elem.Text("Open "),
+					elem.Strong(nil, elem.Text("System Preferences")),
+					elem.Text(" and go to "),
+					elem.Strong(nil, elem.Text("Profiles")),
 				),
 				elem.Li(nil,
-					elem.Text(`Find and install the Headscale profile`),
+					elem.Text("Find and install the "),
+					elem.Strong(nil, elem.Text("Headscale")),
+					elem.Text(" profile"),
 				),
 				elem.Li(nil,
-					elem.Text(`Restart Tailscale.app and log in`),
+					elem.Text("Restart "),
+					elem.Strong(nil, elem.Text("Tailscale.app")),
+					elem.Text(" and log in"),
 				),
 			),
-			elem.P(nil, elem.Text("Or")),
-			elem.P(
-				nil,
+			orDivider(),
+			P(
 				elem.Text(
-					"Use your terminal to configure the default setting for Tailscale by issuing:",
+					"Use your terminal to configure the default setting for Tailscale by issuing one of the following commands:",
 				),
 			),
-			elem.Ul(nil,
-				elem.Li(nil,
-					elem.Text(`for app store client:`),
-					elem.Code(
-						nil,
-						elem.Text(
-							"defaults write io.tailscale.ipn.macos ControlURL "+url,
-						),
-					),
-				),
-				elem.Li(nil,
-					elem.Text(`for standalone client:`),
-					elem.Code(
-						nil,
-						elem.Text(
-							"defaults write io.tailscale.ipn.macsys ControlURL "+url,
-						),
-					),
-				),
+			P(elem.Text("For app store client:")),
+			Pre(PreCode("defaults write io.tailscale.ipn.macos ControlURL "+url)),
+			P(elem.Text("For standalone client:")),
+			Pre(PreCode("defaults write io.tailscale.ipn.macsys ControlURL "+url)),
+			P(
+				elem.Text("Restart "),
+				elem.Strong(nil, elem.Text("Tailscale.app")),
+				elem.Text(" and log in."),
 			),
-			elem.P(nil,
-				elem.Text("Restart Tailscale.app and log in."),
-			),
-			headerThree("Caution"),
-			elem.P(
-				nil,
-				elem.Text(
-					"You should always download and inspect the profile before installing it:",
-				),
-			),
-			elem.Ul(nil,
-				elem.Li(nil,
-					elem.Text(`for app store client: `),
-					elem.Code(nil,
-						elem.Text(fmt.Sprintf(`curl %s/apple/macos-app-store`, url)),
-					),
-				),
-				elem.Li(nil,
-					elem.Text(`for standalone client: `),
-					elem.Code(nil,
-						elem.Text(fmt.Sprintf(`curl %s/apple/macos-standalone`, url)),
-					),
-				),
-			),
-			headerOne("headscale: tvOS configuration"),
-			headerTwo("GUI"),
-			elem.Ol(nil,
+			warningBox("Caution", "You should always download and inspect the profile before installing it."),
+			P(elem.Text("For app store client:")),
+			Pre(PreCode(fmt.Sprintf(`curl %s/apple/macos-app-store`, url))),
+			P(elem.Text("For standalone client:")),
+			Pre(PreCode(fmt.Sprintf(`curl %s/apple/macos-standalone`, url))),
+			H1(elem.Text("tvOS configuration")),
+			H2(elem.Text("GUI")),
+			Ol(
 				elem.Li(
 					nil,
 					elem.Text("Install the official Tailscale tvOS client from the "),
-					elem.A(
-						attrs.Props{
-							attrs.Href: "https://apps.apple.com/app/tailscale/id1470499037",
-						},
-						elem.Text("App store"),
-					),
+					externalLink("https://apps.apple.com/app/tailscale/id1470499037", "App Store"),
 				),
 				elem.Li(
 					nil,
-					elem.Text(
-						"Open Settings (the Apple tvOS settings) > Apps > Tailscale",
-					),
+					elem.Text("Open "),
+					elem.Strong(nil, elem.Text("Settings")),
+					elem.Text(" (the Apple tvOS settings) > "),
+					elem.Strong(nil, elem.Text("Apps")),
+					elem.Text(" > "),
+					elem.Strong(nil, elem.Text("Tailscale")),
 				),
 				elem.Li(
 					nil,
-					elem.Text(
-						fmt.Sprintf(
-							`Enter "%s" under "ALTERNATE COORDINATION SERVER URL"`,
-							url,
-						),
-					),
+					elem.Text("Enter "),
+					Code(elem.Text(url)),
+					elem.Text(" under "),
+					elem.Strong(nil, elem.Text("ALTERNATE COORDINATION SERVER URL")),
 				),
 				elem.Li(nil,
-					elem.Text("Return to the tvOS Home screen"),
+					elem.Text("Return to the tvOS "),
+					elem.Strong(nil, elem.Text("Home")),
+					elem.Text(" screen"),
 				),
 				elem.Li(nil,
-					elem.Text("Open Tailscale"),
+					elem.Text("Open "),
+					elem.Strong(nil, elem.Text("Tailscale")),
 				),
 				elem.Li(nil,
-					elem.Text(`Select "Install VPN configuration"`),
+					elem.Text("Select "),
+					elem.Strong(nil, elem.Text("Install VPN configuration")),
 				),
 				elem.Li(nil,
-					elem.Text(`Select "Allow"`),
+					elem.Text("Select "),
+					elem.Strong(nil, elem.Text("Allow")),
 				),
 				elem.Li(nil,
 					elem.Text("Scan the QR code and follow the login procedure"),
@@ -228,6 +185,7 @@ func Apple(url string) *elem.Element {
 					elem.Text("Headscale should now be working on your tvOS device"),
 				),
 			),
+			pageFooter(),
 		),
 	)
 }
