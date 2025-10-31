@@ -1611,37 +1611,170 @@ func TestACLAutogroupTagged(t *testing.T) {
 }
 
 // Test that only devices owned by the same user can access each other and cannot access devices of other users
+// Test structure:
+// - user1: 2 regular nodes (tests autogroup:self for same-user access)
+// - user2: 2 regular nodes (tests autogroup:self for same-user access and cross-user isolation)
+// - user-router: 1 node with tag:router-node (tests that autogroup:self doesn't interfere with other rules)
 func TestACLAutogroupSelf(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := aclScenario(t,
-		&policyv2.Policy{
-			ACLs: []policyv2.ACL{
-				{
-					Action:  "accept",
-					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
-					Destinations: []policyv2.AliasWithPorts{
-						aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
-					},
+	// Policy with TWO separate ACL rules:
+	// 1. autogroup:member -> autogroup:self (same-user access)
+	// 2. group:home -> tag:router-node (router access)
+	// This tests that autogroup:self doesn't prevent other rules from working
+	policy := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:home"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"),
+			},
+		},
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:router-node"): policyv2.Owners{
+				usernameOwner("user-router@"),
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+				},
+			},
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:home")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:router-node"), tailcfg.PortRangeAny),
+				},
+			},
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{tagp("tag:router-node")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(groupp("group:home"), tailcfg.PortRangeAny),
 				},
 			},
 		},
-		2,
-	)
+	}
+
+	// Create custom scenario: user1 and user2 with regular nodes, plus user-router with tagged node
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err := scenario.WaitForTailscaleSyncWithPeerCount(1, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/sh",
+				"-c",
+				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+			}),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("acl-autogroup-self"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
 	require.NoError(t, err)
+
+	// Add router node for user-router (single shared router node)
+	networks := scenario.Networks()
+	var network *dockertest.Network
+	if len(networks) > 0 {
+		network = networks[0]
+	}
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	routerUser, err := scenario.CreateUser("user-router")
+	require.NoError(t, err)
+
+	authKey, err := scenario.CreatePreAuthKey(routerUser.GetId(), true, false)
+	require.NoError(t, err)
+
+	// Create router node (tagged with tag:router-node)
+	routerClient, err := tsic.New(
+		scenario.Pool(),
+		"unstable",
+		tsic.WithCACert(headscale.GetCert()),
+		tsic.WithHeadscaleName(headscale.GetHostname()),
+		tsic.WithNetwork(network),
+		tsic.WithTags([]string{"tag:router-node"}),
+		tsic.WithNetfilter("off"),
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh",
+			"-c",
+			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+		}),
+		tsic.WithDockerWorkdir("/"),
+	)
+	require.NoError(t, err)
+
+	err = routerClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
+
+	err = routerClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+	require.NoError(t, err)
+
+	err = routerClient.WaitForRunning(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
+
+	userRouterObj := scenario.GetOrCreateUser("user-router")
+	userRouterObj.Clients[routerClient.Hostname()] = routerClient
 
 	user1Clients, err := scenario.GetClients("user1")
 	require.NoError(t, err)
-
 	user2Clients, err := scenario.GetClients("user2")
 	require.NoError(t, err)
 
-	// Test that user1's devices can access each other
+	var user1Regular, user2Regular []TailscaleClient
 	for _, client := range user1Clients {
-		for _, peer := range user1Clients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self != nil && (status.Self.Tags == nil || status.Self.Tags.Len() == 0) {
+			user1Regular = append(user1Regular, client)
+		}
+	}
+	for _, client := range user2Clients {
+		status, err := client.Status()
+		require.NoError(t, err)
+		if status.Self != nil && (status.Self.Tags == nil || status.Self.Tags.Len() == 0) {
+			user2Regular = append(user2Regular, client)
+		}
+	}
+
+	require.NotEmpty(t, user1Regular, "user1 should have regular (untagged) devices")
+	require.NotEmpty(t, user2Regular, "user2 should have regular (untagged) devices")
+	require.NotNil(t, routerClient, "router node should exist")
+
+	// Wait for all nodes to sync with their expected peer counts
+	// With our ACL policy:
+	// - Regular nodes (user1/user2): 1 same-user regular peer + 1 router-node = 2 peers
+	// - Router node: 2 user1 regular + 2 user2 regular = 4 peers
+	for _, client := range user1Regular {
+		err := client.WaitForPeers(2, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
+		require.NoError(t, err, "user1 regular device %s should see 2 peers (1 same-user peer + 1 router)", client.Hostname())
+	}
+	for _, client := range user2Regular {
+		err := client.WaitForPeers(2, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
+		require.NoError(t, err, "user2 regular device %s should see 2 peers (1 same-user peer + 1 router)", client.Hostname())
+	}
+	err = routerClient.WaitForPeers(4, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
+	require.NoError(t, err, "router should see 4 peers (all group:home regular nodes)")
+
+	// Test that user1's regular devices can access each other
+	for _, client := range user1Regular {
+		for _, peer := range user1Regular {
 			if client.Hostname() == peer.Hostname() {
 				continue
 			}
@@ -1656,13 +1789,13 @@ func TestACLAutogroupSelf(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 10*time.Second, 200*time.Millisecond, "user1 device should reach other user1 device")
+			}, 10*time.Second, 200*time.Millisecond, "user1 device should reach other user1 device via autogroup:self")
 		}
 	}
 
-	// Test that user2's devices can access each other
-	for _, client := range user2Clients {
-		for _, peer := range user2Clients {
+	// Test that user2's regular devices can access each other
+	for _, client := range user2Regular {
+		for _, peer := range user2Regular {
 			if client.Hostname() == peer.Hostname() {
 				continue
 			}
@@ -1677,36 +1810,64 @@ func TestACLAutogroupSelf(t *testing.T) {
 				result, err := client.Curl(url)
 				assert.NoError(c, err)
 				assert.Len(c, result, 13)
-			}, 10*time.Second, 200*time.Millisecond, "user2 device should reach other user2 device")
+			}, 10*time.Second, 200*time.Millisecond, "user2 device should reach other user2 device via autogroup:self")
 		}
 	}
 
-	// Test that devices from different users cannot access each other
-	for _, client := range user1Clients {
-		for _, peer := range user2Clients {
+	// Test that user1's regular devices can access router-node
+	for _, client := range user1Regular {
+		fqdn, err := routerClient.FQDN()
+		require.NoError(t, err)
+		url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+		t.Logf("url from %s (user1) to %s (router-node) - should SUCCEED", client.Hostname(), fqdn)
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			result, err := client.Curl(url)
+			assert.NoError(c, err)
+			assert.NotEmpty(c, result, "user1 should be able to access router-node via group:home -> tag:router-node rule")
+		}, 10*time.Second, 200*time.Millisecond, "user1 device should reach router-node (proves autogroup:self doesn't interfere)")
+	}
+
+	// Test that user2's regular devices can access router-node
+	for _, client := range user2Regular {
+		fqdn, err := routerClient.FQDN()
+		require.NoError(t, err)
+		url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+		t.Logf("url from %s (user2) to %s (router-node) - should SUCCEED", client.Hostname(), fqdn)
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			result, err := client.Curl(url)
+			assert.NoError(c, err)
+			assert.NotEmpty(c, result, "user2 should be able to access router-node via group:home -> tag:router-node rule")
+		}, 10*time.Second, 200*time.Millisecond, "user2 device should reach router-node (proves autogroup:self doesn't interfere)")
+	}
+
+	// Test that devices from different users cannot access each other's regular devices
+	for _, client := range user1Regular {
+		for _, peer := range user2Regular {
 			fqdn, err := peer.FQDN()
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-			t.Logf("url from %s (user1) to %s (user2) - should FAIL", client.Hostname(), fqdn)
+			t.Logf("url from %s (user1) to %s (user2 regular) - should FAIL", client.Hostname(), fqdn)
 
 			result, err := client.Curl(url)
-			assert.Empty(t, result, "user1 should not be able to access user2's devices with autogroup:self")
-			assert.Error(t, err, "connection from user1 to user2 should fail")
+			assert.Empty(t, result, "user1 should not be able to access user2's regular devices (autogroup:self isolation)")
+			assert.Error(t, err, "connection from user1 to user2 regular device should fail")
 		}
 	}
 
-	for _, client := range user2Clients {
-		for _, peer := range user1Clients {
+	for _, client := range user2Regular {
+		for _, peer := range user1Regular {
 			fqdn, err := peer.FQDN()
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-			t.Logf("url from %s (user2) to %s (user1) - should FAIL", client.Hostname(), fqdn)
+			t.Logf("url from %s (user2) to %s (user1 regular) - should FAIL", client.Hostname(), fqdn)
 
 			result, err := client.Curl(url)
-			assert.Empty(t, result, "user2 should not be able to access user1's devices with autogroup:self")
-			assert.Error(t, err, "connection from user2 to user1 should fail")
+			assert.Empty(t, result, "user2 should not be able to access user1's regular devices (autogroup:self isolation)")
+			assert.Error(t, err, "connection from user2 to user1 regular device should fail")
 		}
 	}
 }
