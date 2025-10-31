@@ -126,6 +126,8 @@ github.com/creachadair/flax v0.0.5 h1:zt+CRuXQASxwQ68e9GHAOnEgAU29nF0zYMHOCrL5wz
 github.com/creachadair/flax v0.0.5/go.mod h1:F1PML0JZLXSNDMNiRGK2yjm5f+L9QCHchyHBldFymj8=
 github.com/creachadair/mds v0.25.2 h1:xc0S0AfDq5GX9KUR5sLvi5XjA61/P6S5e0xFs1vA18Q=
 github.com/creachadair/mds v0.25.2/go.mod h1:+s4CFteFRj4eq2KcGHW8Wei3u9NyzSPzNV32EvjyK/Q=
+github.com/creachadair/mds v0.25.10 h1:9k9JB35D1xhOCFl0liBhagBBp8fWWkKZrA7UXsfoHtA=
+github.com/creachadair/mds v0.25.10/go.mod h1:4hatI3hRM+qhzuAmqPRFvaBM8mONkS7nsLxkcuTYUIs=
 github.com/creachadair/taskgroup v0.13.2 h1:3KyqakBuFsm3KkXi/9XIb0QcA8tEzLHLgaoidf0MdVc=
 github.com/creachadair/taskgroup v0.13.2/go.mod h1:i3V1Zx7H8RjwljUEeUWYT30Lmb9poewSb2XI1yTwD0g=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
@@ -278,6 +280,8 @@ github.com/jsimonetti/rtnetlink v1.4.1 h1:JfD4jthWBqZMEffc5RjgmlzpYttAVw1sdnmiNa
 github.com/jsimonetti/rtnetlink v1.4.1/go.mod h1:xJjT7t59UIZ62GLZbv6PLLo8VFrostJMPBAheR6OM8w=
 github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
 github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
+github.com/klauspost/compress v1.18.1 h1:bcSGx7UbpBqMChDtsF28Lw6v/G94LPrrbMbdC3JH2co=
+github.com/klauspost/compress v1.18.1/go.mod h1:ZQFFVG+MdnR0P+l6wpXgIL4NTtwiKIdBnrBd8Nrxr+0=
 github.com/klauspost/cpuid/v2 v2.0.9/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
 github.com/klauspost/cpuid/v2 v2.0.10/go.mod h1:g2LTdtYhdyuGPqyWyv7qRAmj1WBqxuObKfj5c0PQa7c=
 github.com/klauspost/cpuid/v2 v2.0.12/go.mod h1:g2LTdtYhdyuGPqyWyv7qRAmj1WBqxuObKfj5c0PQa7c=
@@ -461,6 +465,8 @@ github.com/tailscale/setec v0.0.0-20250305161714-445cadbbca3d h1:mnqtPWYyvNiPU9l
 github.com/tailscale/setec v0.0.0-20250305161714-445cadbbca3d/go.mod h1:9BzmlFc3OLqLzLTF/5AY+BMs+clxMqyhSGzgXIm8mNI=
 github.com/tailscale/squibble v0.0.0-20250108170732-a4ca58afa694 h1:95eIP97c88cqAFU/8nURjgI9xxPbD+Ci6mY/a79BI/w=
 github.com/tailscale/squibble v0.0.0-20250108170732-a4ca58afa694/go.mod h1:veguaG8tVg1H/JG5RfpoUW41I+O8ClPElo/fTYr8mMk=
+github.com/tailscale/squibble v0.0.0-20251030164342-4d5df9caa993 h1:FyiiAvDAxpB0DrW2GW3KOVfi3YFOtsQUEeFWbf55JJU=
+github.com/tailscale/squibble v0.0.0-20251030164342-4d5df9caa993/go.mod h1:xJkMmR3t+thnUQhA3Q4m2VSlS5pcOq+CIjmU/xfKKx4=
 github.com/tailscale/tailsql v0.0.0-20250421235516-02f85f087b97 h1:JJkDnrAhHvOCttk8z9xeZzcDlzzkRA7+Duxj9cwOyxk=
 github.com/tailscale/tailsql v0.0.0-20250421235516-02f85f087b97/go.mod h1:9jS8HxwsP2fU4ESZ7DZL+fpH/U66EVlVMzdgznH12RM=
 github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 h1:UBPHPtv8+nEAy2PD8RyAhOYvau1ek0HDJqLS/Pysi14=
