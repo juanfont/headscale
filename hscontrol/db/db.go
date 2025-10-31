@@ -962,7 +962,17 @@ AND auth_key_id NOT IN (
 		ctx, cancel := context.WithTimeout(context.Background(), contextTimeoutSecs*time.Second)
 		defer cancel()
 
-		if err := squibble.Validate(ctx, sqlConn, dbSchema); err != nil {
+		opts := squibble.DigestOptions{
+			IgnoreTables: []string{
+				// Litestream tables, these are inserted by
+				// litestream and not part of our schema
+				// https://litestream.io/how-it-works
+				"_litestream_lock",
+				"_litestream_seq",
+			},
+		}
+
+		if err := squibble.Validate(ctx, sqlConn, dbSchema, &opts); err != nil {
 			return nil, fmt.Errorf("validating schema: %w", err)
 		}
 	}
