@@ -88,9 +88,9 @@ func tailNode(
 	}
 	tags = lo.Uniq(tags)
 
+	// Get filtered routes (includes both primary routes and exit routes if allowed by policy)
 	routes := primaryRouteFunc(node.ID())
 	allowed := append(addrs, routes...)
-	allowed = append(allowed, node.ExitRoutes()...)
 	tsaddr.SortPrefixes(allowed)
 
 	tNode := tailcfg.Node{
