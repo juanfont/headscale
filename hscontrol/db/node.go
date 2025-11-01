@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
 )
@@ -230,6 +231,17 @@ func SetApprovedRoutes(
 		}
 
 		return nil
+	}
+
+	// When approving exit routes, ensure both IPv4 and IPv6 are included
+	// If either 0.0.0.0/0 or ::/0 is being approved, both should be approved
+	hasIPv4Exit := slices.Contains(routes, tsaddr.AllIPv4())
+	hasIPv6Exit := slices.Contains(routes, tsaddr.AllIPv6())
+
+	if hasIPv4Exit && !hasIPv6Exit {
+		routes = append(routes, tsaddr.AllIPv6())
+	} else if hasIPv6Exit && !hasIPv4Exit {
+		routes = append(routes, tsaddr.AllIPv4())
 	}
 
 	b, err := json.Marshal(routes)
