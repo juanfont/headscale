@@ -1339,3 +1339,70 @@ func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
 		assert.Empty(t, sshPolicy2.Rules, "tagged node should get no SSH rules with autogroup:self")
 	}
 }
+
+// TestSSHWithAutogroupSelfAndMixedDestinations tests that SSH rules can have both
+// autogroup:self and other destinations (like tag:router) in the same rule, and that
+// autogroup:self filtering only applies to autogroup:self destinations, not others.
+func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		{User: users[0], IPv4: ap("100.64.0.1"), Hostname: "user1-device"},
+		{User: users[0], IPv4: ap("100.64.0.2"), Hostname: "user1-device2"},
+		{User: users[1], IPv4: ap("100.64.0.3"), Hostname: "user2-device"},
+		{User: users[1], IPv4: ap("100.64.0.4"), Hostname: "user2-router", ForcedTags: []string{"tag:router"}},
+	}
+
+	policy := &Policy{
+		TagOwners: TagOwners{
+			Tag("tag:router"): Owners{up("user2@")},
+		},
+		SSHs: []SSH{
+			{
+				Action:       "accept",
+				Sources:      SSHSrcAliases{agp("autogroup:member")},
+				Destinations: SSHDstAliases{agp("autogroup:self"), tp("tag:router")},
+				Users:        []SSHUser{"admin"},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	// Test 1: Compile for user1's device (should only match autogroup:self destination)
+	node1 := nodes[0].View()
+	sshPolicy1, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy1)
+	require.Len(t, sshPolicy1.Rules, 1, "user1's device should have 1 SSH rule (autogroup:self)")
+
+	// Verify autogroup:self rule has filtered sources (only same-user devices)
+	selfRule := sshPolicy1.Rules[0]
+	require.Len(t, selfRule.Principals, 2, "autogroup:self rule should only have user1's devices")
+	selfPrincipals := make([]string, len(selfRule.Principals))
+	for i, p := range selfRule.Principals {
+		selfPrincipals[i] = p.NodeIP
+	}
+	require.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, selfPrincipals,
+		"autogroup:self rule should only include same-user untagged devices")
+
+	// Test 2: Compile for router (should only match tag:router destination)
+	routerNode := nodes[3].View() // user2-router
+	sshPolicyRouter, err := policy.compileSSHPolicy(users, routerNode, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicyRouter)
+	require.Len(t, sshPolicyRouter.Rules, 1, "router should have 1 SSH rule (tag:router)")
+
+	routerRule := sshPolicyRouter.Rules[0]
+	routerPrincipals := make([]string, len(routerRule.Principals))
+	for i, p := range routerRule.Principals {
+		routerPrincipals[i] = p.NodeIP
+	}
+	require.Contains(t, routerPrincipals, "100.64.0.1", "router rule should include user1's device (unfiltered sources)")
+	require.Contains(t, routerPrincipals, "100.64.0.2", "router rule should include user1's other device (unfiltered sources)")
+	require.Contains(t, routerPrincipals, "100.64.0.3", "router rule should include user2's device (unfiltered sources)")
+}

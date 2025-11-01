@@ -2,6 +2,7 @@ package v2
 
 import (
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -438,4 +439,83 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 	// - node2 cannot access node1
 	require.Empty(t, peerMap[node1.ID], "node1 should have no peers (can only reach itself)")
 	require.Empty(t, peerMap[node2.ID], "node2 should have no peers")
+}
+
+// When separate ACL rules exist (one with autogroup:self, one with tag:router),
+// the autogroup:self rule should not prevent the tag:router rule from working.
+// This ensures that autogroup:self doesn't interfere with other ACL rules.
+func TestAutogroupSelfWithOtherRules(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "test-1", Email: "test-1@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "test-2", Email: "test-2@example.com"},
+	}
+
+	// test-1 has a regular device
+	test1Node := &types.Node{
+		ID:       1,
+		Hostname: "test-1-device",
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		User:     users[0],
+		UserID:   users[0].ID,
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// test-2 has a router device with tag:node-router
+	test2RouterNode := &types.Node{
+		ID:         2,
+		Hostname:   "test-2-router",
+		IPv4:       ap("100.64.0.2"),
+		IPv6:       ap("fd7a:115c:a1e0::2"),
+		User:       users[1],
+		UserID:     users[1].ID,
+		ForcedTags: []string{"tag:node-router"},
+		Hostinfo:   &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{test1Node, test2RouterNode}
+
+	// This matches the exact policy from issue #2838:
+	// - First rule: autogroup:member -> autogroup:self (allows users to see their own devices)
+	// - Second rule: group:home -> tag:node-router (should allow group members to see router)
+	policy := `{
+		"groups": {
+			"group:home": ["test-1@example.com", "test-2@example.com"]
+		},
+		"tagOwners": {
+			"tag:node-router": ["group:home"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["group:home"],
+				"dst": ["tag:node-router:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// test-1 (in group:home) should see:
+	// 1. Their own node (from autogroup:self rule)
+	// 2. The router node (from group:home -> tag:node-router rule)
+	test1Peers := peerMap[test1Node.ID]
+
+	// Verify test-1 can see the router (group:home -> tag:node-router rule)
+	require.True(t, slices.ContainsFunc(test1Peers, func(n types.NodeView) bool {
+		return n.ID() == test2RouterNode.ID
+	}), "test-1 should see test-2's router via group:home -> tag:node-router rule, even when autogroup:self rule exists (issue #2838)")
+
+	// Verify that test-1 has filter rules (including autogroup:self and tag:node-router access)
+	rules, err := pm.FilterForNode(test1Node.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules, "test-1 should have filter rules from both ACL rules")
 }
