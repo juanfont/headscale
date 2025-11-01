@@ -3042,3 +3042,160 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 20*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router")
 }
+
+// TestExitNodeVisibilityWithACL tests that exit nodes are only visible
+// to nodes that have permission to use them according to ACL policy.
+// This is a regression test for issue #2788.
+func TestExitNodeVisibilityWithACL(t *testing.T) {
+IntegrationSkip(t)
+
+spec := ScenarioSpec{
+NodesPerUser: 1,
+Users:        []string{"mobile", "server", "exit-owner"},
+}
+
+scenario, err := NewScenario(spec)
+require.NoErrorf(t, err, "failed to create scenario: %s", err)
+defer scenario.ShutdownAssertNoPanics(t)
+
+// Policy that allows:
+// - mobile can communicate with server on port 80
+// - mobile does NOT have autogroup:internet, so should NOT see exit node
+policy := `
+{
+"hosts": {
+"mobile": "100.64.0.1/32",
+"server": "100.64.0.2/32",
+"exit": "100.64.0.3/32"
+},
+"acls": [
+{
+"action": "accept",
+"src": ["mobile"],
+"dst": ["server:80"]
+}
+]
+}
+`
+
+err = scenario.CreateHeadscaleEnv(
+[]tsic.Option{},
+hsic.WithTestName("exitnodeacl"),
+hsic.WithConfigEnv(map[string]string{
+"HEADSCALE_POLICY_MODE": "file",
+"HEADSCALE_POLICY_PATH": "/etc/headscale/policy.json",
+}),
+hsic.WithFileInContainer("/etc/headscale/policy.json", []byte(policy)),
+)
+requireNoErrHeadscaleEnv(t, err)
+
+allClients, err := scenario.ListTailscaleClients()
+requireNoErrListClients(t, err)
+require.Len(t, allClients, 3)
+
+err = scenario.WaitForTailscaleSync()
+requireNoErrSync(t, err)
+
+headscale, err := scenario.Headscale()
+requireNoErrGetHeadscale(t, err)
+
+// Find the clients
+var mobileClient, serverClient, exitClient TailscaleClient
+for _, client := range allClients {
+status := client.MustStatus()
+switch status.User[status.Self.UserID].LoginName {
+case "mobile@test.no":
+mobileClient = client
+case "server@test.no":
+serverClient = client
+case "exit-owner@test.no":
+exitClient = client
+}
+}
+require.NotNil(t, mobileClient, "mobile client not found")
+require.NotNil(t, serverClient, "server client not found")
+require.NotNil(t, exitClient, "exit client not found")
+
+// Advertise exit node from the exit-owner node
+_, _, err = exitClient.Execute([]string{
+"tailscale",
+"set",
+"--advertise-exit-node",
+})
+require.NoErrorf(t, err, "failed to advertise exit node: %s", err)
+
+// Wait for the exit node to be registered
+var nodes []*v1.Node
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+nodes, err = headscale.ListNodes()
+assert.NoError(c, err)
+assert.Len(c, nodes, 3)
+
+// Find the exit node
+var exitNode *v1.Node
+exitStatus := exitClient.MustStatus()
+for _, node := range nodes {
+if node.GetName() == exitStatus.Self.HostName {
+exitNode = node
+break
+}
+}
+assert.NotNil(c, exitNode, "exit node not found")
+if exitNode != nil {
+// Exit node should have 2 available routes (0.0.0.0/0 and ::/0)
+assert.Len(c, exitNode.GetAvailableRoutes(), 2, "exit node should advertise 2 routes")
+}
+}, 10*time.Second, 500*time.Millisecond, "waiting for exit node advertisement")
+
+// Approve the exit routes
+var exitNode *v1.Node
+exitStatus := exitClient.MustStatus()
+for _, node := range nodes {
+if node.GetName() == exitStatus.Self.HostName {
+exitNode = node
+break
+}
+}
+require.NotNil(t, exitNode, "exit node not found after advertisement")
+
+_, err = headscale.ApproveRoutes(exitNode.GetId(), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+require.NoError(t, err, "failed to approve exit routes")
+
+// Wait for routes to be approved in the database
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+nodes, err = headscale.ListNodes()
+assert.NoError(c, err)
+
+for _, node := range nodes {
+if node.GetName() == exitStatus.Self.HostName {
+assert.Len(c, node.GetApprovedRoutes(), 2, "exit node should have 2 approved routes")
+assert.Len(c, node.GetSubnetRoutes(), 2, "exit node should have 2 subnet routes")
+}
+}
+}, 10*time.Second, 500*time.Millisecond, "waiting for route approval")
+
+// The key test: mobile client should NOT see the exit node in their peer list
+// because they don't have autogroup:internet in their ACL
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+status, err := mobileClient.Status()
+assert.NoError(c, err)
+
+// Mobile should see server as a peer (allowed by ACL)
+serverStatus := serverClient.MustStatus()
+_, hasPeer := status.Peer[serverStatus.Self.PublicKey]
+assert.True(c, hasPeer, "mobile should see server as peer")
+
+// Mobile should NOT see exit node in peer list at all since no ACL allows access
+_, hasExitPeer := status.Peer[exitStatus.Self.PublicKey]
+assert.False(c, hasExitPeer, "mobile should NOT see exit node as peer without autogroup:internet in ACL")
+}, 10*time.Second, 500*time.Millisecond, "verifying mobile cannot see exit node")
+
+// Server should also not see the exit node (no ACL rule allowing it)
+assert.EventuallyWithT(t, func(c *assert.CollectT) {
+status, err := serverClient.Status()
+assert.NoError(c, err)
+
+_, hasExitPeer := status.Peer[exitStatus.Self.PublicKey]
+assert.False(c, hasExitPeer, "server should NOT see exit node as peer without autogroup:internet in ACL")
+}, 10*time.Second, 500*time.Millisecond, "verifying server cannot see exit node")
+}
