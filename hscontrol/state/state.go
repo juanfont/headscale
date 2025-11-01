@@ -456,9 +456,9 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node connected")
 
 	// Use the node's current routes for primary route update
-	// SubnetRoutes() returns only the intersection of announced AND approved routes
-	// We MUST use SubnetRoutes() to maintain the security model
-	routeChange := s.primaryRoutes.SetRoutes(id, node.SubnetRoutes()...)
+	// AllApprovedRoutes() returns only the intersection of announced AND approved routes
+	// We MUST use AllApprovedRoutes() to maintain the security model
+	routeChange := s.primaryRoutes.SetRoutes(id, node.AllApprovedRoutes()...)
 
 	if routeChange {
 		c = append(c, change.NodeAdded(id))
@@ -656,7 +656,7 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	// Update primary routes table based on SubnetRoutes (intersection of announced and approved).
 	// The primary routes table is what the mapper uses to generate network maps, so updating it
 	// here ensures that route changes are distributed to peers.
-	routeChange := s.primaryRoutes.SetRoutes(nodeID, nodeView.SubnetRoutes()...)
+	routeChange := s.primaryRoutes.SetRoutes(nodeID, nodeView.AllApprovedRoutes()...)
 
 	// If routes changed or the changeset isn't already a full update, trigger a policy change
 	// to ensure all nodes get updated network maps
@@ -1711,7 +1711,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	}
 
 	if needsRouteUpdate {
-		// SetNodeRoutes sets the active/distributed routes, so we must use SubnetRoutes()
+		// SetNodeRoutes sets the active/distributed routes, so we must use AllApprovedRoutes()
 		// which returns only the intersection of announced AND approved routes.
 		// Using AnnouncedRoutes() would bypass the security model and auto-approve everything.
 		log.Debug().
@@ -1719,9 +1719,9 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			Uint64("node.id", id.Uint64()).
 			Strs("announcedRoutes", util.PrefixesToString(updatedNode.AnnouncedRoutes())).
 			Strs("approvedRoutes", util.PrefixesToString(updatedNode.ApprovedRoutes().AsSlice())).
-			Strs("subnetRoutes", util.PrefixesToString(updatedNode.SubnetRoutes())).
+			Strs("allApprovedRoutes", util.PrefixesToString(updatedNode.AllApprovedRoutes())).
 			Msg("updating node routes for distribution")
-		nodeRouteChange = s.SetNodeRoutes(id, updatedNode.SubnetRoutes()...)
+		nodeRouteChange = s.SetNodeRoutes(id, updatedNode.AllApprovedRoutes()...)
 	}
 
 	_, policyChange, err := s.persistNodeToDB(updatedNode)

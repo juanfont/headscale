@@ -108,11 +108,12 @@ func TestTailNode(t *testing.T) {
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						tsaddr.AllIPv4(),
+						tsaddr.AllIPv6(),
 						netip.MustParsePrefix("192.168.0.0/24"),
 						netip.MustParsePrefix("172.0.0.0/10"),
 					},
 				},
-				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), netip.MustParsePrefix("192.168.0.0/24")},
+				ApprovedRoutes: []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), netip.MustParsePrefix("192.168.0.0/24")},
 				CreatedAt:      created,
 			},
 			dnsConfig:  &tailcfg.DNSConfig{},
@@ -150,6 +151,7 @@ func TestTailNode(t *testing.T) {
 				Hostinfo: hiview(tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						tsaddr.AllIPv4(),
+						tsaddr.AllIPv6(),
 						netip.MustParsePrefix("192.168.0.0/24"),
 						netip.MustParsePrefix("172.0.0.0/10"),
 					},

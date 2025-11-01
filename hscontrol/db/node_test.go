@@ -476,7 +476,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					require.NoError(t, err)
 				}
 
-				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View(), node.ApprovedRoutes, tt.routes)
+				newRoutes2, changed2 := policy.ApproveRoutesWithPolicy(pm, nodeTagged.View(), nodeTagged.ApprovedRoutes, tt.routes)
 				if changed2 {
 					err = SetApprovedRoutes(adb.DB, nodeTagged.ID, newRoutes2)
 					require.NoError(t, err)
@@ -490,7 +490,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes1) == 0 {
 					expectedRoutes1 = nil
 				}
-				if diff := cmp.Diff(expectedRoutes1, node1ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+				if diff := cmp.Diff(expectedRoutes1, node1ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
 
@@ -501,7 +501,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes2) == 0 {
 					expectedRoutes2 = nil
 				}
-				if diff := cmp.Diff(expectedRoutes2, node2ByID.SubnetRoutes(), util.Comparers...); diff != "" {
+				if diff := cmp.Diff(expectedRoutes2, node2ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
 			})
