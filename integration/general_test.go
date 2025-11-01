@@ -86,11 +86,11 @@ func TestPingAllByIP(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
-// TestPingAllByIPDirectConnections is a variant of TestPingAllByIP that validates
+// TestPingAllByIPRandomClientPort is a variant of TestPingAllByIP that validates
 // direct connections between nodes with randomize_client_port enabled. This test
 // ensures that nodes can establish direct peer-to-peer connections without relying
 // on DERP relay servers, and that the randomize_client_port feature works correctly.
-func TestPingAllByIPDirectConnections(t *testing.T) {
+func TestPingAllByIPRandomClientPort(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{

@@ -62,6 +62,7 @@ jobs:
           - TestDERPServerScenario
           - TestDERPServerWebsocketScenario
           - TestPingAllByIP
+          - TestPingAllByIPRandomClientPort
           - TestPingAllByIPPublicDERP
           - TestEphemeral
           - TestEphemeralInAlternateTimezone
