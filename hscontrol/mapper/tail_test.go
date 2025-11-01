@@ -221,6 +221,13 @@ func TestTailNode(t *testing.T) {
 				func(id types.NodeID) []netip.Prefix {
 					return primary.PrimaryRoutes(id)
 				},
+				func(id types.NodeID) []netip.Prefix {
+					// For tests, include exit routes if node has them
+					if id == tt.node.ID {
+						return tt.node.ExitRoutes()
+					}
+					return nil
+				},
 				cfg,
 			)
 
@@ -278,6 +285,9 @@ func TestNodeExpiry(t *testing.T) {
 				node.View(),
 				0,
 				polMan,
+				func(id types.NodeID) []netip.Prefix {
+					return []netip.Prefix{}
+				},
 				func(id types.NodeID) []netip.Prefix {
 					return []netip.Prefix{}
 				},

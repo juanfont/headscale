@@ -91,3 +91,10 @@ func (m *Match) SrcsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
 }
+
+// DestsContainsPrefixes checks if the destination IPSet contains all the given prefixes.
+// This is more strict than DestsOverlapsPrefixes - it requires the entire prefix to be
+// contained in the destination, not just overlapping.
+func (m *Match) DestsContainsPrefixes(prefixes ...netip.Prefix) bool {
+	return slices.ContainsFunc(prefixes, m.dests.ContainsPrefix)
+}
