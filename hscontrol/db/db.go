@@ -932,6 +932,26 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Drop all tables that are no longer in use and has existed.
+				// They potentially still present from broken migrations in the past.
+				ID: "202510311551",
+				Migrate: func(tx *gorm.DB) error {
+					for _, oldTable := range []string{"namespaces", "machines", "shared_machines", "kvs", "pre_auth_key_acl_tags", "routes"} {
+						err := tx.Migrator().DropTable(oldTable)
+						if err != nil {
+							log.Trace().Str("table", oldTable).
+								Err(err).
+								Msg("Error dropping old table, continuing...")
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
 			// From this point, the following rules must be followed:
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
