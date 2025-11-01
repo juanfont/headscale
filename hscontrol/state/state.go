@@ -108,6 +108,11 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading users: %w", err)
 	}
 
+	wgPeers, err := db.ListWireGuardOnlyPeers(nil) // nil = all users
+	if err != nil {
+		return nil, fmt.Errorf("loading wireguard-only peers: %w", err)
+	}
+
 	pol, err := policyBytes(db, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
@@ -118,7 +123,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("init policy manager: %w", err)
 	}
 
-	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+	nodeStore := NewNodeStore(nodes, wgPeers, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
 		_, matchers := polMan.Filter()
 		return policy.BuildPeerMap(views.SliceOf(nodes), matchers)
 	})
@@ -605,12 +610,13 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 // GetWireGuardOnlyPeersForNode retrieves all WireGuard-only peers that are visible
 // to the specified node. A node can see a WireGuard-only peer if the node's ID
 // is in the peer's KnownNodeIDs list.
+// This is called for every MapRequest (HOT PATH) - uses NodeStore cache.
 func (s *State) GetWireGuardOnlyPeersForNode(nodeID types.NodeID) (types.WireGuardOnlyPeers, error) {
-	return s.db.ListWireGuardOnlyPeersForNode(nodeID)
+	return s.nodeStore.ListWGPeersForNode(nodeID), nil
 }
 
 // CreateWireGuardOnlyPeer creates a new WireGuard-only peer, allocating IP addresses
-// for it and storing it in the database.
+// for it and storing it in the database and NodeStore cache.
 func (s *State) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -626,6 +632,8 @@ func (s *State) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
 	if err := s.db.CreateWireGuardOnlyPeer(peer); err != nil {
 		return fmt.Errorf("creating wireguard-only peer in database: %w", err)
 	}
+
+	s.nodeStore.PutWGPeer(peer)
 
 	log.Info().
 		Str("name", peer.Name).
@@ -647,22 +655,29 @@ func (s *State) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
 	return nil
 }
 
-// GetWireGuardOnlyPeerByID retrieves a WireGuard-only peer by its ID.
+// GetWireGuardOnlyPeerByID retrieves a WireGuard-only peer by its ID from cache.
 func (s *State) GetWireGuardOnlyPeerByID(id uint64) (*types.WireGuardOnlyPeer, error) {
-	return s.db.GetWireGuardOnlyPeerByID(id)
+	peer, found := s.nodeStore.GetWGPeer(types.NodeID(id))
+	if !found {
+		return nil, hsdb.ErrWireGuardOnlyPeerNotFound
+	}
+	return peer, nil
 }
 
-// ListWireGuardOnlyPeers lists all WireGuard-only peers, optionally filtered by user ID.
+// ListWireGuardOnlyPeers lists all WireGuard-only peers from cache, optionally filtered by user ID.
 func (s *State) ListWireGuardOnlyPeers(userID *uint) (types.WireGuardOnlyPeers, error) {
-	return s.db.ListWireGuardOnlyPeers(userID)
+	return s.nodeStore.ListWGPeers(userID), nil
 }
 
-// DeleteWireGuardOnlyPeer deletes a WireGuard-only peer by ID.
+// DeleteWireGuardOnlyPeer deletes a WireGuard-only peer by ID from database and cache.
 func (s *State) DeleteWireGuardOnlyPeer(id uint64) (change.ChangeSet, error) {
 	err := s.db.DeleteWireGuardOnlyPeer(id)
 	if err != nil {
 		return change.EmptySet, err
 	}
+
+	s.nodeStore.DeleteWGPeer(types.NodeID(id))
+
 	c := change.WireGuardPeerRemoved(types.NodeID(id))
 	return c, nil
 }

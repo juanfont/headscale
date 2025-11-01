@@ -145,7 +145,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nodes, peersFunc := tt.setupFunc()
-			snapshot := snapshotFromNodes(nodes, peersFunc)
+			snapshot := snapshotFromNodesAndWGPeers(nodes, make(map[types.NodeID]types.WireGuardOnlyPeer), peersFunc)
 			tt.validate(t, nodes, snapshot)
 		})
 	}
@@ -232,7 +232,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "create empty store and add single node",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, allowAllPeersFunc)
+				return NewNodeStore(nil, nil, allowAllPeersFunc)
 			},
 			steps: []testStep{
 				{
@@ -270,7 +270,7 @@ func TestNodeStoreOperations(t *testing.T) {
 			setupFunc: func(t *testing.T) *NodeStore {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				initialNodes := types.Nodes{&node1}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+				return NewNodeStore(initialNodes, nil, allowAllPeersFunc)
 			},
 			steps: []testStep{
 				{
@@ -336,7 +336,7 @@ func TestNodeStoreOperations(t *testing.T) {
 				node3 := createTestNode(3, 2, "user2", "node3")
 				initialNodes := types.Nodes{&node1, &node2, &node3}
 
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+				return NewNodeStore(initialNodes, nil, allowAllPeersFunc)
 			},
 			steps: []testStep{
 				{
@@ -395,7 +395,7 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+				return NewNodeStore(initialNodes, nil, allowAllPeersFunc)
 			},
 			steps: []testStep{
 				{
@@ -429,7 +429,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "test with odd-even peers filtering",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, oddEvenPeersFunc)
+				return NewNodeStore(nil, nil, oddEvenPeersFunc)
 			},
 			steps: []testStep{
 				{
@@ -498,4 +498,395 @@ func TestNodeStoreOperations(t *testing.T) {
 type testStep struct {
 	name   string
 	action func(store *NodeStore)
+}
+
+// WireGuard-only peer test helpers and tests
+
+func createTestWGPeer(peerID types.NodeID, userID uint, username, name string, knownNodeIDs []uint64) *types.WireGuardOnlyPeer {
+	nodeKey := key.NewNode()
+	ipv4 := netip.MustParseAddr("100.64.1.1")
+	ipv6 := netip.MustParseAddr("fd7a:115c:a1e0::101")
+	masqIPv4 := netip.MustParseAddr("10.0.0.1")
+
+	return &types.WireGuardOnlyPeer{
+		ID:           uint64(peerID),
+		Name:         name,
+		UserID:       userID,
+		PublicKey:    nodeKey.Public(),
+		KnownNodeIDs: knownNodeIDs,
+		AllowedIPs: []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		},
+		Endpoints: []netip.AddrPort{
+			netip.MustParseAddrPort("1.2.3.4:51820"),
+		},
+		SelfIPv4MasqAddr: &masqIPv4,
+		IPv4:             &ipv4,
+		IPv6:             &ipv6,
+		User: types.User{
+			Name:        username,
+			DisplayName: username,
+		},
+	}
+}
+
+func TestSnapshotFromNodesAndWGPeers(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupFunc func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc)
+		validate  func(t *testing.T, snapshot Snapshot)
+	}{
+		{
+			name: "empty nodes and wg peers",
+			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
+				nodes := make(map[types.NodeID]types.Node)
+				wgPeers := make(map[types.NodeID]types.WireGuardOnlyPeer)
+				peersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+					return make(map[types.NodeID][]types.NodeView)
+				}
+				return nodes, wgPeers, peersFunc
+			},
+			validate: func(t *testing.T, snapshot Snapshot) {
+				assert.Empty(t, snapshot.nodesByID)
+				assert.Empty(t, snapshot.wgPeersByID)
+				assert.Empty(t, snapshot.wgPeersByNode)
+				assert.Empty(t, snapshot.allWGPeers)
+			},
+		},
+		{
+			name: "single wg peer with no nodes",
+			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
+				nodes := make(map[types.NodeID]types.Node)
+				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
+				}
+				return nodes, wgPeers, allowAllPeersFunc
+			},
+			validate: func(t *testing.T, snapshot Snapshot) {
+				assert.Len(t, snapshot.wgPeersByID, 1)
+				assert.Len(t, snapshot.allWGPeers, 1)
+
+				// Check wgPeersByID
+				require.Contains(t, snapshot.wgPeersByID, types.NodeID(100))
+				assert.Equal(t, "wg-peer1", snapshot.wgPeersByID[100].Name)
+
+				// Check wgPeersByNode (inverted KnownNodeIDs)
+				assert.Len(t, snapshot.wgPeersByNode[1], 1)
+				assert.Equal(t, "wg-peer1", snapshot.wgPeersByNode[1][0].Name)
+				assert.Len(t, snapshot.wgPeersByNode[2], 1)
+				assert.Equal(t, "wg-peer1", snapshot.wgPeersByNode[2][0].Name)
+
+				// Nodes not in KnownNodeIDs should not see the peer
+				assert.Empty(t, snapshot.wgPeersByNode[3])
+			},
+		},
+		{
+			name: "multiple wg peers with overlapping KnownNodeIDs",
+			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
+				nodes := make(map[types.NodeID]types.Node)
+				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
+					101: *createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{2, 3}),
+					102: *createTestWGPeer(102, 2, "user2", "wg-peer3", []uint64{1}),
+				}
+				return nodes, wgPeers, allowAllPeersFunc
+			},
+			validate: func(t *testing.T, snapshot Snapshot) {
+				assert.Len(t, snapshot.wgPeersByID, 3)
+				assert.Len(t, snapshot.allWGPeers, 3)
+
+				// Node 1 should see wg-peer1 and wg-peer3
+				require.Len(t, snapshot.wgPeersByNode[1], 2)
+				peerNames := []string{snapshot.wgPeersByNode[1][0].Name, snapshot.wgPeersByNode[1][1].Name}
+				assert.Contains(t, peerNames, "wg-peer1")
+				assert.Contains(t, peerNames, "wg-peer3")
+
+				// Node 2 should see wg-peer1 and wg-peer2
+				require.Len(t, snapshot.wgPeersByNode[2], 2)
+				peerNames2 := []string{snapshot.wgPeersByNode[2][0].Name, snapshot.wgPeersByNode[2][1].Name}
+				assert.Contains(t, peerNames2, "wg-peer1")
+				assert.Contains(t, peerNames2, "wg-peer2")
+
+				// Node 3 should only see wg-peer2
+				require.Len(t, snapshot.wgPeersByNode[3], 1)
+				assert.Equal(t, "wg-peer2", snapshot.wgPeersByNode[3][0].Name)
+
+				// Node 4 should see nothing
+				assert.Empty(t, snapshot.wgPeersByNode[4])
+			},
+		},
+		{
+			name: "wg peers with regular nodes",
+			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
+				nodes := map[types.NodeID]types.Node{
+					1: createTestNode(1, 1, "user1", "node1"),
+					2: createTestNode(2, 1, "user1", "node2"),
+				}
+				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
+				}
+				return nodes, wgPeers, allowAllPeersFunc
+			},
+			validate: func(t *testing.T, snapshot Snapshot) {
+				// Regular nodes should be in their indexes
+				assert.Len(t, snapshot.nodesByID, 2)
+				assert.Len(t, snapshot.allNodes, 2)
+
+				// WG peers should be in their indexes
+				assert.Len(t, snapshot.wgPeersByID, 1)
+				assert.Len(t, snapshot.allWGPeers, 1)
+
+				// Both nodes should see the WG peer
+				assert.Len(t, snapshot.wgPeersByNode[1], 1)
+				assert.Len(t, snapshot.wgPeersByNode[2], 1)
+
+				// Regular peer relationships should still work
+				assert.Len(t, snapshot.peersByNode[1], 1)
+				assert.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0].ID())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nodes, wgPeers, peersFunc := tt.setupFunc()
+			snapshot := snapshotFromNodesAndWGPeers(nodes, wgPeers, peersFunc)
+			tt.validate(t, snapshot)
+		})
+	}
+}
+
+func TestNodeStoreWGPeerOperations(t *testing.T) {
+	tests := []struct {
+		name  string
+		steps []testStep
+	}{
+		{
+			name: "add and retrieve wg peer",
+			steps: []testStep{
+				{
+					name: "add wg peer",
+					action: func(store *NodeStore) {
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						store.PutWGPeer(peer)
+					},
+				},
+				{
+					name: "retrieve wg peer by ID",
+					action: func(store *NodeStore) {
+						peer, found := store.GetWGPeer(100)
+						require.True(t, found)
+						assert.Equal(t, "wg-peer1", peer.Name)
+						assert.Equal(t, uint64(100), peer.ID)
+					},
+				},
+				{
+					name: "list wg peers for node 1",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeersForNode(1)
+						require.Len(t, peers, 1)
+						assert.Equal(t, "wg-peer1", peers[0].Name)
+					},
+				},
+				{
+					name: "list wg peers for node 2",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeersForNode(2)
+						require.Len(t, peers, 1)
+						assert.Equal(t, "wg-peer1", peers[0].Name)
+					},
+				},
+				{
+					name: "node 3 should not see peer",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeersForNode(3)
+						assert.Empty(t, peers)
+					},
+				},
+			},
+		},
+		{
+			name: "update wg peer KnownNodeIDs",
+			steps: []testStep{
+				{
+					name: "add initial wg peer",
+					action: func(store *NodeStore) {
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
+						store.PutWGPeer(peer)
+					},
+				},
+				{
+					name: "verify node 1 sees peer",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeersForNode(1)
+						require.Len(t, peers, 1)
+					},
+				},
+				{
+					name: "verify node 2 does not see peer",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeersForNode(2)
+						assert.Empty(t, peers)
+					},
+				},
+				{
+					name: "update peer to add node 2",
+					action: func(store *NodeStore) {
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						store.PutWGPeer(peer)
+					},
+				},
+				{
+					name: "verify both nodes now see peer",
+					action: func(store *NodeStore) {
+						peers1 := store.ListWGPeersForNode(1)
+						peers2 := store.ListWGPeersForNode(2)
+						assert.Len(t, peers1, 1)
+						assert.Len(t, peers2, 1)
+					},
+				},
+			},
+		},
+		{
+			name: "delete wg peer",
+			steps: []testStep{
+				{
+					name: "add wg peer",
+					action: func(store *NodeStore) {
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						store.PutWGPeer(peer)
+					},
+				},
+				{
+					name: "verify peer exists",
+					action: func(store *NodeStore) {
+						_, found := store.GetWGPeer(100)
+						require.True(t, found)
+						peers := store.ListWGPeersForNode(1)
+						assert.Len(t, peers, 1)
+					},
+				},
+				{
+					name: "delete peer",
+					action: func(store *NodeStore) {
+						store.DeleteWGPeer(100)
+					},
+				},
+				{
+					name: "verify peer is gone",
+					action: func(store *NodeStore) {
+						_, found := store.GetWGPeer(100)
+						assert.False(t, found)
+
+						peers := store.ListWGPeersForNode(1)
+						assert.Empty(t, peers)
+						peers = store.ListWGPeersForNode(2)
+						assert.Empty(t, peers)
+					},
+				},
+			},
+		},
+		{
+			name: "list wg peers by user",
+			steps: []testStep{
+				{
+					name: "add wg peers for different users",
+					action: func(store *NodeStore) {
+						peer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
+						peer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{2})
+						peer3 := createTestWGPeer(102, 2, "user2", "wg-peer3", []uint64{3})
+						store.PutWGPeer(peer1)
+						store.PutWGPeer(peer2)
+						store.PutWGPeer(peer3)
+					},
+				},
+				{
+					name: "list all wg peers",
+					action: func(store *NodeStore) {
+						peers := store.ListWGPeers(nil)
+						assert.Len(t, peers, 3)
+					},
+				},
+				{
+					name: "list wg peers for user 1",
+					action: func(store *NodeStore) {
+						userID := uint(1)
+						peers := store.ListWGPeers(&userID)
+						require.Len(t, peers, 2)
+						names := []string{peers[0].Name, peers[1].Name}
+						assert.Contains(t, names, "wg-peer1")
+						assert.Contains(t, names, "wg-peer2")
+					},
+				},
+				{
+					name: "list wg peers for user 2",
+					action: func(store *NodeStore) {
+						userID := uint(2)
+						peers := store.ListWGPeers(&userID)
+						require.Len(t, peers, 1)
+						assert.Equal(t, "wg-peer3", peers[0].Name)
+					},
+				},
+			},
+		},
+		{
+			name: "mixed regular nodes and wg peers",
+			steps: []testStep{
+				{
+					name: "add regular nodes",
+					action: func(store *NodeStore) {
+						node1 := createTestNode(1, 1, "user1", "node1")
+						node2 := createTestNode(2, 1, "user1", "node2")
+						store.PutNode(node1)
+						store.PutNode(node2)
+					},
+				},
+				{
+					name: "add wg peers visible to nodes",
+					action: func(store *NodeStore) {
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						store.PutWGPeer(peer)
+					},
+				},
+				{
+					name: "verify regular nodes can see each other",
+					action: func(store *NodeStore) {
+						node1, found := store.GetNode(1)
+						require.True(t, found)
+						assert.True(t, node1.Valid())
+
+						peers := store.ListPeers(1)
+						assert.Equal(t, 1, peers.Len())
+					},
+				},
+				{
+					name: "verify nodes can see wg peer",
+					action: func(store *NodeStore) {
+						wgPeers := store.ListWGPeersForNode(1)
+						require.Len(t, wgPeers, 1)
+						assert.Equal(t, "wg-peer1", wgPeers[0].Name)
+
+						wgPeers2 := store.ListWGPeersForNode(2)
+						require.Len(t, wgPeers2, 1)
+						assert.Equal(t, "wg-peer1", wgPeers2[0].Name)
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := NewNodeStore(nil, nil, allowAllPeersFunc)
+			store.Start()
+			defer store.Stop()
+
+			for _, step := range tt.steps {
+				t.Run(step.name, func(t *testing.T) {
+					step.action(store)
+				})
+			}
+		})
+	}
 }

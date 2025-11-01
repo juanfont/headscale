@@ -15,7 +15,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 		{
 			name: "empty nodestore",
 			setupFn: func() *NodeStore {
-				return NewNodeStore(nil, allowAllPeersFunc)
+				return NewNodeStore(nil, nil, allowAllPeersFunc)
 			},
 			contains: []string{
 				"=== NodeStore Debug Information ===",
@@ -30,7 +30,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 2, "user2", "node2")
 
-				store := NewNodeStore(nil, allowAllPeersFunc)
+				store := NewNodeStore(nil, nil, allowAllPeersFunc)
 				store.Start()
 
 				store.PutNode(node1)
@@ -66,7 +66,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 
 func TestDebugRegistrationCache(t *testing.T) {
 	// Create a minimal NodeStore for testing debug methods
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, nil, allowAllPeersFunc)
 
 	debugStr := store.DebugString()
 
@@ -75,4 +75,43 @@ func TestDebugRegistrationCache(t *testing.T) {
 	assert.Contains(t, debugStr, "Total Nodes: 0")
 	assert.Contains(t, debugStr, "Users with Nodes: 0")
 	assert.Contains(t, debugStr, "NodeKey Index: 0 entries")
+	assert.Contains(t, debugStr, "Total WG Peers: 0")
+	assert.Contains(t, debugStr, "WG Peer Visibility:")
+}
+
+func TestNodeStoreDebugStringWithWGPeers(t *testing.T) {
+	// Create NodeStore with regular nodes and WG peers
+	node1 := createTestNode(1, 1, "user1", "node1")
+	node2 := createTestNode(2, 1, "user1", "node2")
+
+	store := NewNodeStore(nil, nil, allowAllPeersFunc)
+	store.Start()
+	defer store.Stop()
+
+	store.PutNode(node1)
+	store.PutNode(node2)
+
+	// WG peer 100: visible to node 1 only
+	wgPeer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
+	store.PutWGPeer(wgPeer1)
+
+	// WG peer 101: visible to both nodes
+	wgPeer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{1, 2})
+	store.PutWGPeer(wgPeer2)
+
+	debugStr := store.DebugString()
+
+	assert.Contains(t, debugStr, "Total WG Peers: 2")
+
+	assert.Contains(t, debugStr, "WG Peer Visibility:")
+	assert.Contains(t, debugStr, "Node 1 (node1): can see 2 WG peers")
+	assert.Contains(t, debugStr, "Node 2 (node2): can see 1 WG peers")
+
+	assert.Contains(t, debugStr, "WG Peer Details:")
+
+	assert.Contains(t, debugStr, "ID: 100, Name: \"wg-peer1\"")
+	assert.Contains(t, debugStr, "Visible to 1 nodes: [1]")
+
+	assert.Contains(t, debugStr, "ID: 101, Name: \"wg-peer2\"")
+	assert.Contains(t, debugStr, "Visible to 2 nodes: [1 2]")
 }
