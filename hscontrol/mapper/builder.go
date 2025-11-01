@@ -7,11 +7,54 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 )
+
+// canUseExitRoutes checks if a node can access exit routes (0.0.0.0/0 and ::/0)
+// based on ACL matchers. This specifically checks if the node has permission to
+// access the internet broadly, which is required to use exit nodes.
+//
+// Exit routes should only be visible when the ACL explicitly grants broad internet
+// access (e.g., via autogroup:internet), not just access to specific services.
+//
+// The function tests if the ACL grants access to well-known public DNS servers.
+// If any of these are accessible, it indicates the ACL grants broad internet access
+// (as opposed to just specific private services), which is sufficient for exit node usage.
+func canUseExitRoutes(node types.NodeView, matchers []matcher.Match) bool {
+	src := node.IPs()
+
+	// Sample public internet IPs to test for broad internet access.
+	// If the ACL grants access to any of these well-known public IPs, it indicates
+	// broad internet access (e.g., via autogroup:internet) rather than just access
+	// to specific private services.
+	samplePublicIPs := []netip.Addr{
+		netip.MustParseAddr("1.1.1.1"),         // Cloudflare DNS
+		netip.MustParseAddr("8.8.8.8"),         // Google DNS
+		netip.MustParseAddr("208.67.222.222"), // OpenDNS
+	}
+
+	// Check if any matcher grants access to sample public IPs
+	for _, matcher := range matchers {
+		// Check if this node is in the source
+		if !matcher.SrcsContainsIPs(src...) {
+			continue
+		}
+		
+		// Check if the destination includes any public internet IPs.
+		// DestsContainsIP returns true if ANY of the provided IPs is in the destination set.
+		// This will be true for autogroup:internet (which resolves to the public internet)
+		// but false for rules that only allow access to specific private IPs or services.
+		if matcher.DestsContainsIP(samplePublicIPs...) {
+			return true
+		}
+	}
+	
+	return false
+}
 
 // MapResponseBuilder provides a fluent interface for building tailcfg.MapResponse.
 type MapResponseBuilder struct {
@@ -80,6 +123,14 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		nv, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+		},
+		func(id types.NodeID) []netip.Prefix {
+			// For self node, always include its own exit routes
+			peerNode, ok := b.mapper.state.GetNodeByID(id)
+			if !ok {
+				return nil
+			}
+			return peerNode.ExitRoutes()
 		},
 		b.mapper.cfg)
 	if err != nil {
@@ -255,6 +306,22 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		changedViews, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+		},
+		func(id types.NodeID) []netip.Prefix {
+			// For peer nodes, only include exit routes if the requesting node can use exit nodes
+			peerNode, ok := b.mapper.state.GetNodeByID(id)
+			if !ok {
+				return nil
+			}
+			exitRoutes := peerNode.ExitRoutes()
+			if len(exitRoutes) == 0 {
+				return nil
+			}
+			// Check if the requesting node has permission to use exit nodes
+			if canUseExitRoutes(node, matchers) {
+				return exitRoutes
+			}
+			return nil
 		},
 		b.mapper.cfg)
 	if err != nil {

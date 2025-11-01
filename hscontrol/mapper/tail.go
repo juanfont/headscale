@@ -21,6 +21,7 @@ func tailNodes(
 	capVer tailcfg.CapabilityVersion,
 	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
+	exitRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
 	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
@@ -31,6 +32,7 @@ func tailNodes(
 			capVer,
 			checker,
 			primaryRouteFunc,
+			exitRouteFunc,
 			cfg,
 		)
 		if err != nil {
@@ -49,6 +51,7 @@ func tailNode(
 	capVer tailcfg.CapabilityVersion,
 	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
+	exitRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
 	addrs := node.Prefixes()
@@ -90,7 +93,10 @@ func tailNode(
 
 	routes := primaryRouteFunc(node.ID())
 	allowed := append(addrs, routes...)
-	allowed = append(allowed, node.ExitRoutes()...)
+	
+	// Only include exit routes if the exitRouteFunc allows them
+	exitRoutes := exitRouteFunc(node.ID())
+	allowed = append(allowed, exitRoutes...)
 	tsaddr.SortPrefixes(allowed)
 
 	tNode := tailcfg.Node{
