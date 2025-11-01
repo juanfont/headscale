@@ -10,6 +10,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -782,9 +783,284 @@ func TestReduceNodes(t *testing.T) {
 				got = append(got, v.AsStruct())
 			}
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
-				t.Errorf("FilterNodesByACL() unexpected result (-want +got):\n%s", diff)
+				t.Errorf("ReduceNodes() unexpected result (-want +got):\n%s", diff)
+				t.Log("Matchers: ")
+				for _, m := range matchers {
+					t.Log("\t+", m.DebugString())
+				}
 			}
 		})
+	}
+}
+
+func TestReduceNodesFromPolicy(t *testing.T) {
+	n := func(id types.NodeID, ip, hostname, username string, routess ...string) *types.Node {
+		var routes []netip.Prefix
+		for _, route := range routess {
+			routes = append(routes, netip.MustParsePrefix(route))
+		}
+
+		return &types.Node{
+			ID:       id,
+			IPv4:     ap(ip),
+			Hostname: hostname,
+			User:     types.User{Name: username},
+			Hostinfo: &tailcfg.Hostinfo{
+				RoutableIPs: routes,
+			},
+			ApprovedRoutes: routes,
+		}
+	}
+
+	type args struct {
+	}
+	tests := []struct {
+		name         string
+		nodes        types.Nodes
+		policy       string
+		node         *types.Node
+		want         types.Nodes
+		wantMatchers int
+	}{
+		{
+			name: "2788-exit-node-too-visible",
+			nodes: types.Nodes{
+				n(1, "100.64.0.1", "mobile", "mobile"),
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			policy: `
+{
+  "hosts": {
+    "mobile": "100.64.0.1/32",
+    "server": "100.64.0.2/32",
+    "exit": "100.64.0.3/32"
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "server:80"
+      ]
+    }
+  ]
+}`,
+			node: n(1, "100.64.0.1", "mobile", "mobile"),
+			want: types.Nodes{
+				n(2, "100.64.0.2", "server", "server"),
+			},
+			wantMatchers: 1,
+		},
+		{
+			name: "2788-exit-node-autogroup:internet",
+			nodes: types.Nodes{
+				n(1, "100.64.0.1", "mobile", "mobile"),
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			policy: `
+{
+  "hosts": {
+    "mobile": "100.64.0.1/32",
+    "server": "100.64.0.2/32",
+    "exit": "100.64.0.3/32"
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "server:80"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "autogroup:internet:*"
+      ]
+    }
+  ]
+}`,
+			node: n(1, "100.64.0.1", "mobile", "mobile"),
+			want: types.Nodes{
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			wantMatchers: 2,
+		},
+		{
+			name: "2788-exit-node-0000-route",
+			nodes: types.Nodes{
+				n(1, "100.64.0.1", "mobile", "mobile"),
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			policy: `
+{
+  "hosts": {
+    "mobile": "100.64.0.1/32",
+    "server": "100.64.0.2/32",
+    "exit": "100.64.0.3/32"
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "server:80"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "0.0.0.0/0:*"
+      ]
+    }
+  ]
+}`,
+			node: n(1, "100.64.0.1", "mobile", "mobile"),
+			want: types.Nodes{
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			wantMatchers: 2,
+		},
+		{
+			name: "2788-exit-node-::0-route",
+			nodes: types.Nodes{
+				n(1, "100.64.0.1", "mobile", "mobile"),
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			policy: `
+{
+  "hosts": {
+    "mobile": "100.64.0.1/32",
+    "server": "100.64.0.2/32",
+    "exit": "100.64.0.3/32"
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "server:80"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": [
+        "mobile"
+      ],
+      "dst": [
+        "::0/0:*"
+      ]
+    }
+  ]
+}`,
+			node: n(1, "100.64.0.1", "mobile", "mobile"),
+			want: types.Nodes{
+				n(2, "100.64.0.2", "server", "server"),
+				n(3, "100.64.0.3", "exit", "server", "0.0.0.0/0", "::/0"),
+			},
+			wantMatchers: 2,
+		},
+		{
+			name: "2784-split-exit-node-access",
+			nodes: types.Nodes{
+				n(1, "100.64.0.1", "user", "user"),
+				n(2, "100.64.0.2", "exit1", "exit", "0.0.0.0/0", "::/0"),
+				n(3, "100.64.0.3", "exit2", "exit", "0.0.0.0/0", "::/0"),
+				n(4, "100.64.0.4", "otheruser", "otheruser"),
+			},
+			policy: `
+{
+  "hosts": {
+    "user": "100.64.0.1/32",
+    "exit1": "100.64.0.2/32",
+    "exit2": "100.64.0.3/32",
+    "otheruser": "100.64.0.4/32",
+  },
+
+  "acls": [
+    {
+      "action": "accept",
+      "src": [
+        "user"
+      ],
+      "dst": [
+        "exit1:*"
+      ]
+    },
+    {
+      "action": "accept",
+      "src": [
+        "otheruser"
+      ],
+      "dst": [
+        "exit2:*"
+      ]
+    }
+  ]
+}`,
+			node: n(1, "100.64.0.1", "user", "user"),
+			want: types.Nodes{
+				n(2, "100.64.0.2", "exit1", "exit", "0.0.0.0/0", "::/0"),
+			},
+			wantMatchers: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
+			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
+				var pm PolicyManager
+				var err error
+				pm, err = pmf(nil, tt.nodes.ViewSlice())
+				require.NoError(t, err)
+
+				matchers, err := pm.MatchersForNode(tt.node.View())
+				require.NoError(t, err)
+				assert.Len(t, matchers, tt.wantMatchers)
+
+				gotViews := ReduceNodes(
+					tt.node.View(),
+					tt.nodes.ViewSlice(),
+					matchers,
+				)
+				// Convert views back to nodes for comparison in tests
+				var got types.Nodes
+				for _, v := range gotViews.All() {
+					got = append(got, v.AsStruct())
+				}
+				if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
+					t.Errorf("TestReduceNodesFromPolicy() unexpected result (-want +got):\n%s", diff)
+					t.Log("Matchers: ")
+					for _, m := range matchers {
+						t.Log("\t+", m.DebugString())
+					}
+				}
+			})
+		}
 	}
 }
 
