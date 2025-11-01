@@ -8,13 +8,23 @@ The OIDC callback and device registration web pages have been updated to use the
 Material for MkDocs design system from the official documentation. The templates
 now use consistent typography, spacing, and colours across all registration
 flows. External links are properly secured with noreferrer/noopener attributes.
+### Pre-authentication key security improvements
+
+Pre-authentication keys now use bcrypt hashing for improved security
+[#2853](https://github.com/juanfont/headscale/pull/2853). Keys are stored as a
+prefix and bcrypt hash instead of plaintext. The full key is only displayed once
+at creation time. When listing keys, only the prefix is shown (e.g.,
+`hskey-auth-{prefix}-***`). All new keys use the format
+`hskey-auth-{prefix}-{secret}`. Legacy plaintext keys continue to work for
+backwards compatibility.
 
 ### Changes
 
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
-- Reclaim IPs from the IP allocator when nodes are deleted [#2831](https://github.com/juanfont/headscale/pull/2831)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
+- Reclaim IPs from the IP allocator when nodes are deleted [#2831](https://github.com/juanfont/headscale/pull/2831)
+- Add bcrypt hashing for pre-authentication keys [#2853](https://github.com/juanfont/headscale/pull/2853)
 
 ## 0.27.1 (2025-11-11)
 

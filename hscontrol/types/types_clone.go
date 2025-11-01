@@ -110,6 +110,7 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 	}
 	dst := new(PreAuthKey)
 	*dst = *src
+	dst.Hash = append(src.Hash[:0:0], src.Hash...)
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.CreatedAt != nil {
 		dst.CreatedAt = ptr.To(*src.CreatedAt)
@@ -124,6 +125,8 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
 	ID         uint64
 	Key        string
+	Prefix     string
+	Hash       []byte
 	UserID     uint
 	User       User
 	Reusable   bool

@@ -921,7 +921,7 @@ func (s *State) DestroyAPIKey(key types.APIKey) error {
 }
 
 // CreatePreAuthKey generates a new pre-authentication key for a user.
-func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKey, error) {
+func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 

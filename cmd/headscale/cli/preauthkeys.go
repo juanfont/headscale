@@ -88,7 +88,7 @@ var listPreAuthKeys = &cobra.Command{
 		tableData := pterm.TableData{
 			{
 				"ID",
-				"Key",
+				"Key/Prefix",
 				"Reusable",
 				"Ephemeral",
 				"Used",
