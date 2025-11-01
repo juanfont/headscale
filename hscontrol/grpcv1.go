@@ -416,9 +416,12 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
 ) (*v1.ExpireNodeResponse, error) {
-	now := time.Now()
+	expiry := time.Now()
+	if request.GetExpiry() != nil {
+		expiry = request.GetExpiry().AsTime()
+	}
 
-	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), now)
+	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), expiry)
 	if err != nil {
 		return nil, err
 	}

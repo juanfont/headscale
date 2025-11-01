@@ -819,6 +819,104 @@ func TestExpireNode(t *testing.T) {
 	}
 }
 
+// TestSetNodeExpiryInFuture tests setting arbitrary expiration date
+// New expiration date should be stored in the db and propagated to all peers
+func TestSetNodeExpiryInFuture(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("expirenodefuture"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	targetExpiry := time.Now().Add(2 * time.Hour).Round(time.Second).UTC()
+
+	result, err := headscale.Execute(
+		[]string{
+			"headscale", "nodes", "expire",
+			"--identifier", "1",
+			"--output", "json",
+			"--expiry", targetExpiry.Format(time.RFC3339),
+		},
+	)
+	require.NoError(t, err)
+
+	var node v1.Node
+	err = json.Unmarshal([]byte(result), &node)
+	require.NoError(t, err)
+
+	require.True(t, node.GetExpiry().AsTime().After(time.Now()))
+	require.WithinDuration(t, targetExpiry, node.GetExpiry().AsTime(), 2*time.Second)
+
+	var nodeKey key.NodePublic
+	err = nodeKey.UnmarshalText([]byte(node.GetNodeKey()))
+	require.NoError(t, err)
+
+	for _, client := range allClients {
+		if client.Hostname() == node.GetName() {
+			continue
+		}
+
+		assert.EventuallyWithT(
+			t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				assert.NoError(ct, err)
+
+				peerStatus, ok := status.Peer[nodeKey]
+				assert.True(ct, ok, "node key should be present in peer list")
+
+				if !ok {
+					return
+				}
+
+				assert.NotNil(ct, peerStatus.KeyExpiry)
+				assert.NotNil(ct, peerStatus.Expired)
+
+				if peerStatus.KeyExpiry != nil {
+					assert.WithinDuration(
+						ct,
+						targetExpiry,
+						*peerStatus.KeyExpiry,
+						5*time.Second,
+						"node %q should have key expiry near the requested future time",
+						peerStatus.HostName,
+					)
+
+					assert.Truef(
+						ct,
+						peerStatus.KeyExpiry.After(time.Now()),
+						"node %q should have a key expiry timestamp in the future",
+						peerStatus.HostName,
+					)
+				}
+
+				assert.Falsef(
+					ct,
+					peerStatus.Expired,
+					"node %q should not be marked as expired",
+					peerStatus.HostName,
+				)
+			}, 3*time.Minute, 5*time.Second, "Waiting for future expiry to propagate",
+		)
+	}
+}
+
 func TestNodeOnlineStatus(t *testing.T) {
 	IntegrationSkip(t)
 

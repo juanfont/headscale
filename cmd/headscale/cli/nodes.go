@@ -15,6 +15,7 @@ import (
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/types/key"
 )
 
@@ -51,6 +52,7 @@ func init() {
 	nodeCmd.AddCommand(registerNodeCmd)
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
@@ -289,12 +291,37 @@ var expireNodeCmd = &cobra.Command{
 			)
 		}
 
+		expiry, err := cmd.Flags().GetString("expiry")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error converting expiry to string: %s", err),
+				output,
+			)
+
+			return
+		}
+		expiryTime := time.Now()
+		if expiry != "" {
+			expiryTime, err = time.Parse(time.RFC3339, expiry)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf("Error converting expiry to string: %s", err),
+					output,
+				)
+
+				return
+			}
+		}
+
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
 		request := &v1.ExpireNodeRequest{
 			NodeId: identifier,
+			Expiry: timestamppb.New(expiryTime),
 		}
 
 		response, err := client.ExpireNode(ctx, request)

@@ -82,7 +82,10 @@ message DeleteNodeRequest { uint64 node_id = 1; }
 
 message DeleteNodeResponse {}
 
-message ExpireNodeRequest { uint64 node_id = 1; }
+message ExpireNodeRequest {
+  uint64 node_id = 1;
+  google.protobuf.Timestamp expiry = 2;
+}
 
 message ExpireNodeResponse { Node node = 1; }
 
