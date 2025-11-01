@@ -535,13 +535,41 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 		}
 	}
 
-	// TODO(kradalby): Find a good way to compare updates
-	ret.Endpoints = req.Endpoints
+	// Compare endpoints using order-independent comparison
+	if EndpointsChanged(node.Endpoints, req.Endpoints) {
+		ret.Endpoints = req.Endpoints
+	}
 
 	now := time.Now()
 	ret.LastSeen = &now
 
 	return ret
+}
+
+// EndpointsChanged compares two endpoint slices and returns true if they differ.
+// The comparison is order-independent - endpoints are sorted before comparison.
+func EndpointsChanged(oldEndpoints, newEndpoints []netip.AddrPort) bool {
+	if len(oldEndpoints) != len(newEndpoints) {
+		return true
+	}
+
+	if len(oldEndpoints) == 0 {
+		return false
+	}
+
+	// Make copies to avoid modifying the original slices
+	oldCopy := slices.Clone(oldEndpoints)
+	newCopy := slices.Clone(newEndpoints)
+
+	// Sort both slices to enable order-independent comparison
+	slices.SortFunc(oldCopy, func(a, b netip.AddrPort) int {
+		return a.Compare(b)
+	})
+	slices.SortFunc(newCopy, func(a, b netip.AddrPort) int {
+		return a.Compare(b)
+	})
+
+	return !slices.Equal(oldCopy, newCopy)
 }
 
 func (node *Node) RegisterMethodToV1Enum() v1.RegisterMethod {
