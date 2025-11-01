@@ -246,15 +246,11 @@ func validatePKCEMethod(method string) error {
 	return nil
 }
 
-// Domain returns the hostname/domain part of the ServerURL.
-// If the ServerURL is not a valid URL, it returns the BaseDomain.
+// Domain returns the base domain for the tailnet.
+// This is the domain used for MagicDNS and displayed in Tailscale clients
+// as the network name.
 func (c *Config) Domain() string {
-	u, err := url.Parse(c.ServerURL)
-	if err != nil {
-		return c.BaseDomain
-	}
-
-	return u.Hostname()
+	return c.BaseDomain
 }
 
 // LoadConfig prepares and loads the Headscale configuration into Viper.
