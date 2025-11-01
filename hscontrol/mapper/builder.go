@@ -20,16 +20,20 @@ import (
 //
 // Exit routes should only be visible when the ACL explicitly grants broad internet
 // access (e.g., via autogroup:internet), not just access to specific services.
+//
+// The function tests if the ACL grants access to well-known public DNS servers.
+// If any of these are accessible, it indicates the ACL grants broad internet access
+// (as opposed to just specific private services), which is sufficient for exit node usage.
 func canUseExitRoutes(node types.NodeView, matchers []matcher.Match) bool {
 	src := node.IPs()
 
 	// Sample public internet IPs to test for broad internet access.
-	// If the ACL grants access to these well-known public IPs, it's granting
-	// internet access (e.g., via autogroup:internet).
-	// Use popular public DNS servers as representatives of internet access.
+	// If the ACL grants access to any of these well-known public IPs, it indicates
+	// broad internet access (e.g., via autogroup:internet) rather than just access
+	// to specific private services.
 	samplePublicIPs := []netip.Addr{
-		netip.MustParseAddr("1.1.1.1"),     // Cloudflare DNS
-		netip.MustParseAddr("8.8.8.8"),     // Google DNS
+		netip.MustParseAddr("1.1.1.1"),         // Cloudflare DNS
+		netip.MustParseAddr("8.8.8.8"),         // Google DNS
 		netip.MustParseAddr("208.67.222.222"), // OpenDNS
 	}
 
@@ -40,7 +44,8 @@ func canUseExitRoutes(node types.NodeView, matchers []matcher.Match) bool {
 			continue
 		}
 		
-		// Check if the destination includes public internet IPs.
+		// Check if the destination includes any public internet IPs.
+		// DestsContainsIP returns true if ANY of the provided IPs is in the destination set.
 		// This will be true for autogroup:internet (which resolves to the public internet)
 		// but false for rules that only allow access to specific private IPs or services.
 		if matcher.DestsContainsIP(samplePublicIPs...) {
