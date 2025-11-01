@@ -50,7 +50,12 @@ func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 
 	// Send the online notification that poll.go would normally send
 	// This ensures other nodes get notified about this node coming online
-	t.AddWork(change.NodeOnline(id))
+	node, ok := t.state.GetNodeByID(id)
+	if !ok {
+		return fmt.Errorf("%w: %d", errNodeNotFoundAfterAdd, id)
+	}
+
+	t.AddWork(change.NodeOnline(node))
 
 	return nil
 }
@@ -65,7 +70,10 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 
 	// Send the offline notification that poll.go would normally send
 	// Do this BEFORE removing from batcher so the change can be processed
-	t.AddWork(change.NodeOffline(id))
+	node, ok := t.state.GetNodeByID(id)
+	if ok {
+		t.AddWork(change.NodeOffline(node))
+	}
 
 	// Finally remove from the real batcher
 	removed := t.Batcher.RemoveNode(id, c)

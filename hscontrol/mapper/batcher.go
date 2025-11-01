@@ -128,6 +128,31 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 			})
 		}
 
+	case change.NodeEndpoint, change.NodeDERP:
+		// Endpoint or DERP changes can be sent as lightweight patches.
+		// Query the NodeStore for the current peer state to construct the PeerChange.
+		// Even if only endpoint or only DERP changed, we include both in the patch
+		// since they're often updated together and it's minimal overhead.
+		responseType = "patch"
+
+		peer, found := mapper.state.GetNodeByID(c.NodeID)
+		if !found {
+			return nil, fmt.Errorf("%w: %d", errNodeNotFoundInNodeStore, c.NodeID)
+		}
+
+		peerChange := &tailcfg.PeerChange{
+			NodeID:     c.NodeID.NodeID(),
+			Endpoints:  peer.Endpoints().AsSlice(),
+			DERPRegion: 0, // Will be set below if available
+		}
+
+		// Extract DERP region from Hostinfo if available
+		if hi := peer.AsStruct().Hostinfo; hi != nil && hi.NetInfo != nil {
+			peerChange.DERPRegion = hi.NetInfo.PreferredDERP
+		}
+
+		mapResp, err = mapper.peerChangedPatchResponse(nodeID, []*tailcfg.PeerChange{peerChange})
+
 	default:
 		// The following will always hit this:
 		// change.Full, change.Policy
