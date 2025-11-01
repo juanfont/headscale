@@ -3,6 +3,7 @@ package state
 import (
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -92,11 +93,11 @@ func TestNodeStoreDebugStringWithWGPeers(t *testing.T) {
 	store.PutNode(node2)
 
 	// WG peer 100: visible to node 1 only
-	wgPeer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
+	wgPeer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1})
 	store.PutWGPeer(wgPeer1)
 
 	// WG peer 101: visible to both nodes
-	wgPeer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{1, 2})
+	wgPeer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", types.NodeIDs{1, 2})
 	store.PutWGPeer(wgPeer2)
 
 	debugStr := store.DebugString()

@@ -230,7 +230,7 @@ func (m *mapper) wireGuardPeerChangeResponse(
 	// Only nodes in the peer's KnownNodeIDs list should receive updates
 	canSee := false
 	for _, knownID := range wgPeer.KnownNodeIDs {
-		if types.NodeID(knownID) == nodeID {
+		if knownID == nodeID {
 			canSee = true
 			break
 		}

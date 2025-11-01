@@ -390,8 +390,7 @@ func snapshotFromNodesAndWGPeers(
 	for _, peer := range wgPeers {
 		newSnap.allWGPeers = append(newSnap.allWGPeers, &peer)
 
-		for _, knownNodeID := range peer.KnownNodeIDs {
-			nodeID := types.NodeID(knownNodeID)
+		for _, nodeID := range peer.KnownNodeIDs {
 			newSnap.wgPeersByNode[nodeID] = append(newSnap.wgPeersByNode[nodeID], &peer)
 		}
 	}
@@ -658,7 +657,7 @@ func (s *NodeStore) ListWGPeers(userID *uint) []*types.WireGuardOnlyPeer {
 	// Filter by userID (not hot path, so iteration is acceptable)
 	var filtered []*types.WireGuardOnlyPeer
 	for _, peer := range allPeers {
-		if peer.UserID == *userID {
+		if peer.UserID == types.UserID(*userID) {
 			filtered = append(filtered, peer)
 		}
 	}

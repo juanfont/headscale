@@ -33,12 +33,12 @@ type WireGuardOnlyPeerExtraConfig struct {
 // Access control is managed solely through the KnownNodeIDs field, which determines
 // which regular nodes can see this peer.
 type WireGuardOnlyPeer struct {
-	ID uint64 `gorm:"primary_key"`
+	ID NodeID `gorm:"primary_key"`
 
 	// Human-readable name for the peer (must be unique)
 	Name string `gorm:"unique;not null"`
 
-	UserID uint
+	UserID UserID
 	User   User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	// WireGuard public key of the external peer
@@ -47,7 +47,7 @@ type WireGuardOnlyPeer struct {
 	// List of node IDs that can see this WireGuard-only peer
 	// Only nodes in this list will have the peer in their network map
 	// This is unidirectional - the WG-only peer doesn't get map updates
-	KnownNodeIDs []uint64 `gorm:"serializer:json;not null"`
+	KnownNodeIDs NodeIDs `gorm:"serializer:json;not null"`
 
 	// AllowedIPs that the WireGuard-only peer is allowed to route
 	// Typically includes exit routes like 0.0.0.0/0 and ::/0
@@ -109,12 +109,18 @@ func (p *WireGuardOnlyPeer) Prefixes() []netip.Prefix {
 
 // Proto converts the WireGuardOnlyPeer to protobuf representation
 func (p *WireGuardOnlyPeer) Proto() *v1.WireGuardOnlyPeer {
+	// Convert NodeIDs to []uint64 for protobuf
+	knownNodeIDs := make([]uint64, len(p.KnownNodeIDs))
+	for i, id := range p.KnownNodeIDs {
+		knownNodeIDs[i] = uint64(id)
+	}
+
 	peer := &v1.WireGuardOnlyPeer{
-		Id:           p.ID,
+		Id:           uint64(p.ID),
 		Name:         p.Name,
 		User:         p.User.Proto(),
 		PublicKey:    p.PublicKey.String(),
-		KnownNodeIds: p.KnownNodeIDs,
+		KnownNodeIds: knownNodeIDs,
 		AllowedIps:   prefixesToString(p.AllowedIPs),
 		Endpoints:    addrPortsToString(p.Endpoints),
 		CreatedAt:    timestamppb.New(p.CreatedAt),

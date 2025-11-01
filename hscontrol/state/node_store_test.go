@@ -502,14 +502,14 @@ type testStep struct {
 
 // WireGuard-only peer test helpers and tests
 
-func createTestWGPeer(peerID types.NodeID, userID uint, username, name string, knownNodeIDs []uint64) *types.WireGuardOnlyPeer {
+func createTestWGPeer(peerID types.NodeID, userID types.UserID, username, name string, knownNodeIDs types.NodeIDs) *types.WireGuardOnlyPeer {
 	nodeKey := key.NewNode()
 	ipv4 := netip.MustParseAddr("100.64.1.1")
 	ipv6 := netip.MustParseAddr("fd7a:115c:a1e0::101")
 	masqIPv4 := netip.MustParseAddr("10.0.0.1")
 
 	return &types.WireGuardOnlyPeer{
-		ID:           uint64(peerID),
+		ID:           peerID,
 		Name:         name,
 		UserID:       userID,
 		PublicKey:    nodeKey.Public(),
@@ -559,7 +559,7 @@ func TestSnapshotFromNodesAndWGPeers(t *testing.T) {
 			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
 				nodes := make(map[types.NodeID]types.Node)
 				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
-					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2}),
 				}
 				return nodes, wgPeers, allowAllPeersFunc
 			},
@@ -586,9 +586,9 @@ func TestSnapshotFromNodesAndWGPeers(t *testing.T) {
 			setupFunc: func() (map[types.NodeID]types.Node, map[types.NodeID]types.WireGuardOnlyPeer, PeersFunc) {
 				nodes := make(map[types.NodeID]types.Node)
 				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
-					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
-					101: *createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{2, 3}),
-					102: *createTestWGPeer(102, 2, "user2", "wg-peer3", []uint64{1}),
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2}),
+					101: *createTestWGPeer(101, 1, "user1", "wg-peer2", types.NodeIDs{2, 3}),
+					102: *createTestWGPeer(102, 2, "user2", "wg-peer3", types.NodeIDs{1}),
 				}
 				return nodes, wgPeers, allowAllPeersFunc
 			},
@@ -624,7 +624,7 @@ func TestSnapshotFromNodesAndWGPeers(t *testing.T) {
 					2: createTestNode(2, 1, "user1", "node2"),
 				}
 				wgPeers := map[types.NodeID]types.WireGuardOnlyPeer{
-					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2}),
+					100: *createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2}),
 				}
 				return nodes, wgPeers, allowAllPeersFunc
 			},
@@ -668,7 +668,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "add wg peer",
 					action: func(store *NodeStore) {
-						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2})
 						store.PutWGPeer(peer)
 					},
 				},
@@ -678,7 +678,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 						peer, found := store.GetWGPeer(100)
 						require.True(t, found)
 						assert.Equal(t, "wg-peer1", peer.Name)
-						assert.Equal(t, uint64(100), peer.ID)
+						assert.Equal(t, types.NodeID(100), peer.ID)
 					},
 				},
 				{
@@ -712,7 +712,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "add initial wg peer",
 					action: func(store *NodeStore) {
-						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1})
 						store.PutWGPeer(peer)
 					},
 				},
@@ -733,7 +733,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "update peer to add node 2",
 					action: func(store *NodeStore) {
-						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2})
 						store.PutWGPeer(peer)
 					},
 				},
@@ -754,7 +754,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "add wg peer",
 					action: func(store *NodeStore) {
-						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2})
 						store.PutWGPeer(peer)
 					},
 				},
@@ -793,9 +793,9 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "add wg peers for different users",
 					action: func(store *NodeStore) {
-						peer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1})
-						peer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", []uint64{2})
-						peer3 := createTestWGPeer(102, 2, "user2", "wg-peer3", []uint64{3})
+						peer1 := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1})
+						peer2 := createTestWGPeer(101, 1, "user1", "wg-peer2", types.NodeIDs{2})
+						peer3 := createTestWGPeer(102, 2, "user2", "wg-peer3", types.NodeIDs{3})
 						store.PutWGPeer(peer1)
 						store.PutWGPeer(peer2)
 						store.PutWGPeer(peer3)
@@ -845,7 +845,7 @@ func TestNodeStoreWGPeerOperations(t *testing.T) {
 				{
 					name: "add wg peers visible to nodes",
 					action: func(store *NodeStore) {
-						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", []uint64{1, 2})
+						peer := createTestWGPeer(100, 1, "user1", "wg-peer1", types.NodeIDs{1, 2})
 						store.PutWGPeer(peer)
 					},
 				},

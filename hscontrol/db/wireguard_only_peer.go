@@ -126,7 +126,7 @@ func ListWireGuardOnlyPeersForNode(tx *gorm.DB, nodeID types.NodeID) (types.Wire
 	var visiblePeers types.WireGuardOnlyPeers
 	for _, peer := range allPeers {
 		for _, knownID := range peer.KnownNodeIDs {
-			if types.NodeID(knownID) == nodeID {
+			if knownID == nodeID {
 				visiblePeers = append(visiblePeers, peer)
 				break
 			}

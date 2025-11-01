@@ -880,11 +880,17 @@ func parseWireGuardOnlyPeerFromRequest(
 		}
 	}
 
+	// Convert protobuf types to internal types
+	nodeIDs := make(types.NodeIDs, len(knownNodeIDs))
+	for i, id := range knownNodeIDs {
+		nodeIDs[i] = types.NodeID(id)
+	}
+
 	peer := &types.WireGuardOnlyPeer{
 		Name:             name,
-		UserID:           userID,
+		UserID:           types.UserID(userID),
 		PublicKey:        publicKey,
-		KnownNodeIDs:     knownNodeIDs,
+		KnownNodeIDs:     nodeIDs,
 		AllowedIPs:       allowedIPs,
 		Endpoints:        endpoints,
 		SelfIPv4MasqAddr: selfIPv4MasqAddr,
@@ -921,8 +927,8 @@ func (api headscaleV1APIServer) RegisterWireGuardOnlyPeer(
 
 	log.Info().
 		Str("name", peer.Name).
-		Uint64("id", peer.ID).
-		Uint("user_id", peer.UserID).
+		Uint64("id", uint64(peer.ID)).
+		Uint64("user_id", uint64(peer.UserID)).
 		Ints("known_node_ids", func() []int {
 			ids := make([]int, len(peer.KnownNodeIDs))
 			for i, id := range peer.KnownNodeIDs {
@@ -932,7 +938,7 @@ func (api headscaleV1APIServer) RegisterWireGuardOnlyPeer(
 		}()).
 		Msg("WireGuard-only peer registered")
 
-	api.h.Change(change.WireGuardPeerAdded(types.NodeID(peer.ID)))
+	api.h.Change(change.WireGuardPeerAdded(peer.ID))
 
 	return &v1.RegisterWireGuardOnlyPeerResponse{
 		Peer: peer.Proto(),

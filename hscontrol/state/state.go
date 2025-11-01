@@ -637,7 +637,7 @@ func (s *State) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
 
 	log.Info().
 		Str("name", peer.Name).
-		Uint64("id", peer.ID).
+		Uint64("id", uint64(peer.ID)).
 		Str("ipv4", func() string {
 			if ipv4 != nil {
 				return ipv4.String()
