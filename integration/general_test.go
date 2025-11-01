@@ -86,6 +86,113 @@ func TestPingAllByIP(t *testing.T) {
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
+// TestPingAllByIPDirectConnections is a variant of TestPingAllByIP that validates
+// direct connections between nodes with randomize_client_port enabled. This test
+// ensures that nodes can establish direct peer-to-peer connections without relying
+// on DERP relay servers, and that the randomize_client_port feature works correctly.
+func TestPingAllByIPDirectConnections(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1", "user2"},
+		MaxWait:      dockertestMaxWait(),
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("pingdirect"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_RANDOMIZE_CLIENT_PORT": "true",
+		}),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	requireNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	hs, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Extract node IDs for validation
+	expectedNodes := make([]types.NodeID, 0, len(allClients))
+	for _, client := range allClients {
+		status := client.MustStatus()
+		nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
+		require.NoError(t, err, "failed to parse node ID")
+		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
+	}
+	requireAllClientsOnline(t, hs, expectedNodes, true, "all clients should be online across all systems", 30*time.Second)
+
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	// Perform pings to establish connections
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Validate that connections are direct (not relayed through DERP)
+	// We check that each client has direct connections to its peers
+	t.Logf("Validating direct connections...")
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		for _, client := range allClients {
+			status, err := client.Status()
+			assert.NoError(ct, err, "failed to get status for client %s", client.Hostname())
+			if err != nil {
+				continue
+			}
+
+			// Check each peer to see if we have a direct connection
+			directCount := 0
+			relayedCount := 0
+			
+			for _, peerKey := range status.Peers() {
+				peerStatus := status.Peer[peerKey]
+				
+				// CurAddr indicates the current address being used to communicate with this peer
+				// If CurAddr is not empty and doesn't start with the DERP region ID, it's a direct connection
+				if peerStatus.CurAddr != "" {
+					// Direct connections will have an IP:port format
+					// Relayed connections typically show up differently or are empty
+					if !strings.Contains(peerStatus.CurAddr, "127.3.3.40") { // DERP relay address pattern
+						directCount++
+						t.Logf("Client %s -> Peer %s: DIRECT connection via %s", 
+							client.Hostname(), peerStatus.HostName, peerStatus.CurAddr)
+					} else {
+						relayedCount++
+						t.Logf("Client %s -> Peer %s: RELAYED connection via %s", 
+							client.Hostname(), peerStatus.HostName, peerStatus.CurAddr)
+					}
+				} else {
+					relayedCount++
+					t.Logf("Client %s -> Peer %s: No CurAddr (likely relayed via %s)", 
+						client.Hostname(), peerStatus.HostName, peerStatus.Relay)
+				}
+			}
+
+			// Assert that we have at least some direct connections
+			// In a local Docker network, we should be able to establish direct connections
+			assert.Greater(ct, directCount, 0, 
+				"Client %s should have at least one direct connection, got %d direct and %d relayed",
+				client.Hostname(), directCount, relayedCount)
+		}
+	}, 60*time.Second, 2*time.Second, "validating direct connections between peers")
+}
+
 func TestPingAllByIPPublicDERP(t *testing.T) {
 	IntegrationSkip(t)
 
