@@ -319,7 +319,14 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 			return true
 		}
 
+		// Check if the node has access to routes that might be part of a
+		// smaller subnet that is served from node2 as a subnet router.
 		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
+			return true
+		}
+
+		// If the dst is "the internet" and node2 is an exit node, allow access.
+		if matcher.DestsIsTheInternet() && node2.IsExitNode() {
 			return true
 		}
 	}
