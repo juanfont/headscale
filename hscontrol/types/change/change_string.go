@@ -18,6 +18,8 @@ func _() {
 	_ = x[NodeRemove-23]
 	_ = x[NodeKeyExpiry-24]
 	_ = x[NodeNewOrUpdate-25]
+	_ = x[NodeEndpoint-26]
+	_ = x[NodeDERP-27]
 	_ = x[UserNewOrUpdate-51]
 	_ = x[UserRemove-52]
 }
@@ -26,13 +28,13 @@ const (
 	_Change_name_0 = "ChangeUnknown"
 	_Change_name_1 = "Full"
 	_Change_name_2 = "PolicyDERPExtraRecords"
-	_Change_name_3 = "NodeCameOnlineNodeWentOfflineNodeRemoveNodeKeyExpiryNodeNewOrUpdate"
+	_Change_name_3 = "NodeCameOnlineNodeWentOfflineNodeRemoveNodeKeyExpiryNodeNewOrUpdateNodeEndpointNodeDERP"
 	_Change_name_4 = "UserNewOrUpdateUserRemove"
 )
 
 var (
 	_Change_index_2 = [...]uint8{0, 6, 10, 22}
-	_Change_index_3 = [...]uint8{0, 14, 29, 39, 52, 67}
+	_Change_index_3 = [...]uint8{0, 14, 29, 39, 52, 67, 79, 87}
 	_Change_index_4 = [...]uint8{0, 15, 25}
 )
 
@@ -45,7 +47,7 @@ func (i Change) String() string {
 	case 11 <= i && i <= 13:
 		i -= 11
 		return _Change_name_2[_Change_index_2[i]:_Change_index_2[i+1]]
-	case 21 <= i && i <= 25:
+	case 21 <= i && i <= 27:
 		i -= 21
 		return _Change_name_3[_Change_index_3[i]:_Change_index_3[i+1]]
 	case 51 <= i && i <= 52:
