@@ -698,27 +698,11 @@ func (v NodeView) InIPSet(set *netipx.IPSet) bool {
 }
 
 func (v NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
-	if !v.Valid() || !node2.Valid() {
+	if !v.Valid() {
 		return false
 	}
-	src := v.IPs()
-	allowedIPs := node2.IPs()
 
-	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src...) {
-			continue
-		}
-
-		if matcher.DestsContainsIP(allowedIPs...) {
-			return true
-		}
-
-		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
-			return true
-		}
-	}
-
-	return false
+	return v.ж.CanAccess(matchers, node2.AsStruct())
 }
 
 func (v NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
