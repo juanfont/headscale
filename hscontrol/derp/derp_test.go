@@ -83,9 +83,9 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 						RegionCode: "sea",
 						RegionName: "Seattle",
 						Nodes: []*tailcfg.DERPNode{
-							{Name: "10b", RegionID: 10, HostName: "derp10b.tailscale.com"},
-							{Name: "10c", RegionID: 10, HostName: "derp10c.tailscale.com"},
 							{Name: "10d", RegionID: 10, HostName: "derp10d.tailscale.com"},
+							{Name: "10c", RegionID: 10, HostName: "derp10c.tailscale.com"},
+							{Name: "10b", RegionID: 10, HostName: "derp10b.tailscale.com"},
 						},
 					},
 					2: {
@@ -93,9 +93,9 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 						RegionCode: "sfo",
 						RegionName: "San Francisco",
 						Nodes: []*tailcfg.DERPNode{
-							{Name: "2f", RegionID: 2, HostName: "derp2f.tailscale.com"},
-							{Name: "2e", RegionID: 2, HostName: "derp2e.tailscale.com"},
 							{Name: "2d", RegionID: 2, HostName: "derp2d.tailscale.com"},
+							{Name: "2e", RegionID: 2, HostName: "derp2e.tailscale.com"},
+							{Name: "2f", RegionID: 2, HostName: "derp2f.tailscale.com"},
 						},
 					},
 				},
