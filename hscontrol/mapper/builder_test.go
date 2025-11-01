@@ -57,10 +57,10 @@ func TestMapResponseBuilder_WithCapabilityVersion(t *testing.T) {
 }
 
 func TestMapResponseBuilder_WithDomain(t *testing.T) {
-	domain := "test.example.com"
+	baseDomain := "internal.example.com"
 	cfg := &types.Config{
-		ServerURL:  "https://test.example.com",
-		BaseDomain: domain,
+		ServerURL:  "https://headscale.external.com",
+		BaseDomain: baseDomain,
 	}
 
 	mockState := &state.State{}
@@ -74,7 +74,8 @@ func TestMapResponseBuilder_WithDomain(t *testing.T) {
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithDomain()
 
-	assert.Equal(t, domain, builder.resp.Domain)
+	// Domain should be the BaseDomain (internal tailnet domain), not ServerURL hostname
+	assert.Equal(t, baseDomain, builder.resp.Domain)
 	assert.False(t, builder.hasErrors())
 }
 
