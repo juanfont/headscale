@@ -79,7 +79,23 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	tailnode, err := tailNode(
 		nv, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			// Get the peer node to check for exit routes
+			peer, ok := b.mapper.state.GetNodeByID(id)
+			if !ok {
+				return nil
+			}
+			
+			// Start with primary routes (subnet routes, but not exit routes)
+			routes := policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			
+			// Also filter exit routes through policy
+			// Only add exit routes if the viewing node (self in this case) has permission to use them
+			if exitRoutes := peer.ExitRoutes(); len(exitRoutes) > 0 {
+				filteredExitRoutes := policy.ReduceRoutes(nv, exitRoutes, matchers)
+				routes = append(routes, filteredExitRoutes...)
+			}
+			
+			return routes
 		},
 		b.mapper.cfg)
 	if err != nil {
@@ -254,7 +270,23 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	tailPeers, err := tailNodes(
 		changedViews, b.capVer, b.mapper.state,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			// Get the peer node to check for exit routes
+			peer, ok := b.mapper.state.GetNodeByID(id)
+			if !ok {
+				return nil
+			}
+			
+			// Start with primary routes (subnet routes, but not exit routes)
+			routes := policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			
+			// Also filter exit routes through policy
+			// Only add exit routes if the viewing node has permission to use them
+			if exitRoutes := peer.ExitRoutes(); len(exitRoutes) > 0 {
+				filteredExitRoutes := policy.ReduceRoutes(node, exitRoutes, matchers)
+				routes = append(routes, filteredExitRoutes...)
+			}
+			
+			return routes
 		},
 		b.mapper.cfg)
 	if err != nil {
