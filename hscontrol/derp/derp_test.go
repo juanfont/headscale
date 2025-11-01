@@ -169,6 +169,74 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:       "same dataset with another base domain",
+			baseDomain: "another.example.com",
+			derpMap: &tailcfg.DERPMap{
+				Regions: map[int]*tailcfg.DERPRegion{
+					4: {
+						RegionID:   4,
+						RegionCode: "fra",
+						RegionName: "Frankfurt",
+						Nodes: []*tailcfg.DERPNode{
+							{Name: "4f", RegionID: 4, HostName: "derp4f.tailscale.com"},
+							{Name: "4g", RegionID: 4, HostName: "derp4g.tailscale.com"},
+							{Name: "4h", RegionID: 4, HostName: "derp4h.tailscale.com"},
+							{Name: "4i", RegionID: 4, HostName: "derp4i.tailscale.com"},
+						},
+					},
+				},
+			},
+			expected: &tailcfg.DERPMap{
+				Regions: map[int]*tailcfg.DERPRegion{
+					4: {
+						RegionID:   4,
+						RegionCode: "fra",
+						RegionName: "Frankfurt",
+						Nodes: []*tailcfg.DERPNode{
+							{Name: "4h", RegionID: 4, HostName: "derp4h.tailscale.com"},
+							{Name: "4f", RegionID: 4, HostName: "derp4f.tailscale.com"},
+							{Name: "4g", RegionID: 4, HostName: "derp4g.tailscale.com"},
+							{Name: "4i", RegionID: 4, HostName: "derp4i.tailscale.com"},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:       "same dataset with yet another base domain",
+			baseDomain: "yetanother.example.com",
+			derpMap: &tailcfg.DERPMap{
+				Regions: map[int]*tailcfg.DERPRegion{
+					4: {
+						RegionID:   4,
+						RegionCode: "fra",
+						RegionName: "Frankfurt",
+						Nodes: []*tailcfg.DERPNode{
+							{Name: "4f", RegionID: 4, HostName: "derp4f.tailscale.com"},
+							{Name: "4g", RegionID: 4, HostName: "derp4g.tailscale.com"},
+							{Name: "4h", RegionID: 4, HostName: "derp4h.tailscale.com"},
+							{Name: "4i", RegionID: 4, HostName: "derp4i.tailscale.com"},
+						},
+					},
+				},
+			},
+			expected: &tailcfg.DERPMap{
+				Regions: map[int]*tailcfg.DERPRegion{
+					4: {
+						RegionID:   4,
+						RegionCode: "fra",
+						RegionName: "Frankfurt",
+						Nodes: []*tailcfg.DERPNode{
+							{Name: "4i", RegionID: 4, HostName: "derp4i.tailscale.com"},
+							{Name: "4h", RegionID: 4, HostName: "derp4h.tailscale.com"},
+							{Name: "4f", RegionID: 4, HostName: "derp4f.tailscale.com"},
+							{Name: "4g", RegionID: 4, HostName: "derp4g.tailscale.com"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
