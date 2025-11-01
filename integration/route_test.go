@@ -3126,14 +3126,16 @@ require.NoErrorf(t, err, "failed to advertise exit node: %s", err)
 
 // Wait for the exit node to be registered
 var nodes []*v1.Node
+var exitNode *v1.Node
+exitStatus := exitClient.MustStatus()
+
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
 nodes, err = headscale.ListNodes()
 assert.NoError(c, err)
 assert.Len(c, nodes, 3)
 
 // Find the exit node
-var exitNode *v1.Node
-exitStatus := exitClient.MustStatus()
+exitNode = nil
 for _, node := range nodes {
 if node.GetName() == exitStatus.Self.HostName {
 exitNode = node
@@ -3148,14 +3150,6 @@ assert.Len(c, exitNode.GetAvailableRoutes(), 2, "exit node should advertise 2 ro
 }, 10*time.Second, 500*time.Millisecond, "waiting for exit node advertisement")
 
 // Approve the exit routes
-var exitNode *v1.Node
-exitStatus := exitClient.MustStatus()
-for _, node := range nodes {
-if node.GetName() == exitStatus.Self.HostName {
-exitNode = node
-break
-}
-}
 require.NotNil(t, exitNode, "exit node not found after advertisement")
 
 _, err = headscale.ApproveRoutes(exitNode.GetId(), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
