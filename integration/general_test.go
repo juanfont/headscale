@@ -164,23 +164,18 @@ func TestPingAllByIPDirectConnections(t *testing.T) {
 				peerStatus := status.Peer[peerKey]
 				
 				// CurAddr indicates the current address being used to communicate with this peer
-				// If CurAddr is not empty and doesn't start with the DERP region ID, it's a direct connection
-				if peerStatus.CurAddr != "" {
-					// Direct connections will have an IP:port format
-					// Relayed connections typically show up differently or are empty
-					if !strings.Contains(peerStatus.CurAddr, "127.3.3.40") { // DERP relay address pattern
-						directCount++
-						t.Logf("Client %s -> Peer %s: DIRECT connection via %s", 
-							client.Hostname(), peerStatus.HostName, peerStatus.CurAddr)
-					} else {
-						relayedCount++
-						t.Logf("Client %s -> Peer %s: RELAYED connection via %s", 
-							client.Hostname(), peerStatus.HostName, peerStatus.CurAddr)
-					}
+				// Direct connections have CurAddr set to an actual IP:port
+				// DERP-relayed connections either have no CurAddr or it contains the DERP magic IP
+				if peerStatus.CurAddr != "" && !strings.Contains(peerStatus.CurAddr, "127.3.3.40") {
+					// This is a direct connection - CurAddr contains the actual peer IP:port
+					directCount++
+					t.Logf("Client %s -> Peer %s: DIRECT connection via %s (relay: %s)", 
+						client.Hostname(), peerStatus.HostName, peerStatus.CurAddr, peerStatus.Relay)
 				} else {
+					// This is a relayed connection through DERP
 					relayedCount++
-					t.Logf("Client %s -> Peer %s: No CurAddr (likely relayed via %s)", 
-						client.Hostname(), peerStatus.HostName, peerStatus.Relay)
+					t.Logf("Client %s -> Peer %s: RELAYED connection (CurAddr: %s, relay: %s)", 
+						client.Hostname(), peerStatus.HostName, peerStatus.CurAddr, peerStatus.Relay)
 				}
 			}
 
