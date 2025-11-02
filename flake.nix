@@ -17,6 +17,12 @@
       commitHash = self.rev or self.dirtyRev;
     in
     {
+      # NixOS module
+      nixosModules = rec {
+        headscale = import ./nix/module.nix;
+        default = headscale;
+      };
+
       overlay = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
@@ -44,6 +50,10 @@
               "-X github.com/juanfont/headscale/hscontrol/types.Version=${headscaleVersion}"
               "-X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=${commitHash}"
             ];
+
+            meta = {
+              mainProgram = "headscale";
+            };
           };
 
           hi = buildGo {
@@ -246,6 +256,8 @@
               ${pkgs.golines}/bin/golines --max-len=88 --base-formatter=gofumpt -w ${./.}
               ${pkgs.clang-tools}/bin/clang-format -i ${./.}
             '';
+
+          headscale = pkgs.nixosTest (import ./nix/tests/headscale.nix);
         };
       });
 }
