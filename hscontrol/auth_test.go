@@ -3004,3 +3004,296 @@ func createTestApp(t *testing.T) *Headscale {
 
 	return app
 }
+
+// TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey tests the scenario reported in
+// https://github.com/juanfont/headscale/issues/2830
+//
+// Scenario:
+// 1. Node registers successfully with a single-use pre-auth key
+// 2. Node is running fine
+// 3. Node restarts (e.g., after headscale upgrade or tailscale container restart)
+// 4. Node sends RegisterRequest with the same pre-auth key
+// 5. BUG: Headscale rejects the request with "authkey expired" or "authkey already used"
+//
+// Expected behavior:
+// When an existing node (identified by matching NodeKey + MachineKey) re-registers
+// with a pre-auth key that it previously used, the registration should succeed.
+// The node is not creating a new registration - it's re-authenticating the same device.
+func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create user and single-use pre-auth key
+	user := app.state.CreateUserForTest("test-user")
+	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil) // reusable=false
+	require.NoError(t, err)
+	require.False(t, pak.Reusable, "key should be single-use for this test")
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// STEP 1: Initial registration with pre-auth key (simulates fresh node joining)
+	initialReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	t.Log("Step 1: Initial registration with pre-auth key")
+	initialResp, err := app.handleRegister(context.Background(), initialReq, machineKey.Public())
+	require.NoError(t, err, "initial registration should succeed")
+	require.NotNil(t, initialResp)
+	assert.True(t, initialResp.MachineAuthorized, "node should be authorized")
+	assert.False(t, initialResp.NodeKeyExpired, "node key should not be expired")
+
+	// Verify node was created in database
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found, "node should exist after initial registration")
+	assert.Equal(t, "test-node", node.Hostname())
+	assert.Equal(t, nodeKey.Public(), node.NodeKey())
+	assert.Equal(t, machineKey.Public(), node.MachineKey())
+
+	// Verify pre-auth key is now marked as used
+	usedPak, err := app.state.GetPreAuthKey(pak.Key)
+	require.NoError(t, err)
+	assert.True(t, usedPak.Used, "pre-auth key should be marked as used after initial registration")
+
+	// STEP 2: Simulate node restart - node sends RegisterRequest again with same pre-auth key
+	// This happens when:
+	// - Tailscale container restarts
+	// - Tailscaled service restarts
+	// - System reboots
+	// The Tailscale client persists the pre-auth key in its state and sends it on every registration
+	t.Log("Step 2: Node restart - re-registration with same (now used) pre-auth key")
+	restartReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key, // Same key, now marked as Used=true
+		},
+		NodeKey: nodeKey.Public(), // Same node key
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	// BUG: This fails with "authkey already used" or "authkey expired"
+	// EXPECTED: Should succeed because it's the same node re-registering
+	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
+
+	// This is the assertion that currently FAILS in v0.27.0
+	assert.NoError(t, err, "BUG: existing node re-registration with its own used pre-auth key should succeed")
+	if err != nil {
+		t.Logf("Error received (this is the bug): %v", err)
+		t.Logf("Expected behavior: Node should be able to re-register with the same pre-auth key it used initially")
+		return // Stop here to show the bug clearly
+	}
+
+	require.NotNil(t, restartResp)
+	assert.True(t, restartResp.MachineAuthorized, "node should remain authorized after restart")
+	assert.False(t, restartResp.NodeKeyExpired, "node key should not be expired after restart")
+
+	// Verify it's the same node (not a duplicate)
+	nodeAfterRestart, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found, "node should still exist after restart")
+	assert.Equal(t, node.ID(), nodeAfterRestart.ID(), "should be the same node, not a new one")
+	assert.Equal(t, "test-node", nodeAfterRestart.Hostname())
+}
+
+// TestNodeReregistrationWithReusablePreAuthKey tests that reusable keys work correctly
+// for node re-registration.
+func TestNodeReregistrationWithReusablePreAuthKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("test-user")
+	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil) // reusable=true
+	require.NoError(t, err)
+	require.True(t, pak.Reusable)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Initial registration
+	initialReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reusable-test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	initialResp, err := app.handleRegister(context.Background(), initialReq, machineKey.Public())
+	require.NoError(t, err)
+	require.NotNil(t, initialResp)
+	assert.True(t, initialResp.MachineAuthorized)
+
+	// Node restart - re-registration with reusable key
+	restartReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key, // Reusable key
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "reusable-test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
+	require.NoError(t, err, "reusable key should allow re-registration")
+	require.NotNil(t, restartResp)
+	assert.True(t, restartResp.MachineAuthorized)
+	assert.False(t, restartResp.NodeKeyExpired)
+}
+
+// TestNodeReregistrationWithExpiredPreAuthKey tests that truly expired keys
+// are still rejected even for existing nodes.
+func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("test-user")
+	expiry := time.Now().Add(-1 * time.Hour) // Already expired
+	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, &expiry, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Try to register with expired key
+	req := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "expired-key-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	_, err = app.handleRegister(context.Background(), req, machineKey.Public())
+	assert.Error(t, err, "expired pre-auth key should be rejected")
+	assert.Contains(t, err.Error(), "authkey expired", "error should mention key expiration")
+}
+// TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey tests that an existing node
+// can re-register using a pre-auth key that's already marked as Used=true, as long as:
+// 1. The node is re-registering with the same MachineKey it originally used
+// 2. The node is using the same pre-auth key it was originally registered with (AuthKeyID matches)
+//
+// This is the fix for GitHub issue #2830: https://github.com/juanfont/headscale/issues/2830
+//
+// Background: When Docker/Kubernetes containers restart, they keep their persistent state
+// (including the MachineKey), but container entrypoints unconditionally run:
+//   tailscale up --authkey=$TS_AUTHKEY
+//
+// This caused nodes to be rejected after restart because the pre-auth key was already
+// marked as Used=true from the initial registration. The fix allows re-registration of
+// existing nodes with their own used keys.
+func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.T) {
+	app := createTestApp(t)
+
+	// Create a user
+	user := app.state.CreateUserForTest("testuser")
+
+	// Create a SINGLE-USE pre-auth key (reusable=false)
+	// This is the type of key that triggers the bug in issue #2830
+	preAuthKey, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	require.NoError(t, err)
+	require.False(t, preAuthKey.Reusable, "Pre-auth key must be single-use to test issue #2830")
+	require.False(t, preAuthKey.Used, "Pre-auth key should not be used yet")
+
+	// Generate node keys for the client
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Step 1: Initial registration with the pre-auth key
+	// This simulates the first time the container starts and runs 'tailscale up --authkey=...'
+	initialReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: preAuthKey.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "issue-2830-test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	initialResp, err := app.handleRegisterWithAuthKey(initialReq, machineKey.Public())
+	require.NoError(t, err, "Initial registration should succeed")
+	require.True(t, initialResp.MachineAuthorized, "Node should be authorized after initial registration")
+	require.NotNil(t, initialResp.User, "User should be set in response")
+	require.Equal(t, "testuser", initialResp.User.DisplayName, "User should match the pre-auth key's user")
+
+	// Verify the pre-auth key is now marked as Used
+	updatedKey, err := app.state.GetPreAuthKey(preAuthKey.Key)
+	require.NoError(t, err)
+	require.True(t, updatedKey.Used, "Pre-auth key should be marked as Used after initial registration")
+
+	// Step 2: Container restart scenario
+	// The container keeps its MachineKey (persistent state), but the entrypoint script
+	// unconditionally runs 'tailscale up --authkey=$TS_AUTHKEY' again
+	//
+	// WITHOUT THE FIX: This would fail with "authkey already used" error
+	// WITH THE FIX: This succeeds because it's the same node re-registering with its own key
+
+	// Simulate sending the same RegisterRequest again (same MachineKey, same AuthKey)
+	// This is exactly what happens when a container restarts
+	reregisterReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: preAuthKey.Key, // Same key, now marked as Used=true
+		},
+		NodeKey: nodeKey.Public(), // Same NodeKey
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "issue-2830-test-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	reregisterResp, err := app.handleRegisterWithAuthKey(reregisterReq, machineKey.Public()) // Same MachineKey
+	require.NoError(t, err, "Re-registration with same MachineKey and used pre-auth key should succeed (fixes #2830)")
+	require.True(t, reregisterResp.MachineAuthorized, "Node should remain authorized after re-registration")
+	require.NotNil(t, reregisterResp.User, "User should be set in re-registration response")
+	require.Equal(t, "testuser", reregisterResp.User.DisplayName, "User should remain the same")
+
+	// Verify that only ONE node was created (not a duplicate)
+	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
+	require.Equal(t, 1, nodes.Len(), "Should have exactly one node (no duplicates created)")
+	require.Equal(t, "issue-2830-test-node", nodes.At(0).Hostname(), "Node hostname should match")
+
+	// Step 3: Verify that a DIFFERENT machine cannot use the same used key
+	// This ensures we didn't break the security model - only the original node can re-register
+	differentMachineKey := key.NewMachine()
+	differentNodeKey := key.NewNode()
+
+	attackReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: preAuthKey.Key, // Try to use the same key
+		},
+		NodeKey: differentNodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "attacker-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	_, err = app.handleRegisterWithAuthKey(attackReq, differentMachineKey.Public())
+	require.Error(t, err, "Different machine should NOT be able to use the same used pre-auth key")
+	require.Contains(t, err.Error(), "already used", "Error should indicate key is already used")
+
+	// Verify still only one node (the original one)
+	nodesAfterAttack := app.state.ListNodesByUser(types.UserID(user.ID))
+	require.Equal(t, 1, nodesAfterAttack.Len(), "Should still have exactly one node (attack prevented)")
+}

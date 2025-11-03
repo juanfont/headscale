@@ -555,6 +555,39 @@ func (t *TailscaleInContainer) Logout() error {
 	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
 }
 
+// Restart restarts the Tailscale container using Docker API.
+// This simulates a container restart (e.g., docker restart or Kubernetes pod restart).
+// The container's entrypoint will re-execute, which typically includes running
+// "tailscale up" with any auth keys stored in environment variables.
+func (t *TailscaleInContainer) Restart() error {
+	if t.container == nil {
+		return fmt.Errorf("container not initialized")
+	}
+
+	// Use Docker API to restart the container
+	err := t.pool.Client.RestartContainer(t.container.Container.ID, 30)
+	if err != nil {
+		return fmt.Errorf("failed to restart container %s: %w", t.hostname, err)
+	}
+
+	// Wait for the container to be back up and tailscaled to be ready
+	// We use exponential backoff to poll until we can successfully execute a command
+	_, err = backoff.Retry(context.Background(), func() (struct{}, error) {
+		// Try to execute a simple command to verify the container is responsive
+		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(5*time.Second))
+		if err != nil {
+			return struct{}{}, fmt.Errorf("container not ready: %w", err)
+		}
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
+
+	if err != nil {
+		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
+	}
+
+	return nil
+}
+
 // Helper that runs `tailscale up` with no arguments.
 func (t *TailscaleInContainer) Up() error {
 	command := []string{

@@ -1294,9 +1294,46 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.EmptySet, err
 	}
 
-	err = pak.Validate()
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+	// Check if node exists with same machine key before validating the key.
+	// For #2830: container restarts send the same pre-auth key which may be used/expired.
+	// Skip validation for existing nodes re-registering with the same NodeKey, as the
+	// key was only needed for initial authentication. NodeKey rotation requires validation.
+	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+
+	// Skip validation only if both the AuthKeyID and NodeKey match (not a rotation).
+	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid() &&
+		existingNodeSameUser.AuthKey().Valid() &&
+		existingNodeSameUser.AuthKeyID().Valid() &&
+		existingNodeSameUser.AuthKeyID().Get() == pak.ID
+
+	// Check if this is a NodeKey rotation (different NodeKey)
+	isNodeKeyRotation := existsSameUser && existingNodeSameUser.Valid() &&
+		existingNodeSameUser.NodeKey() != regReq.NodeKey
+
+	if isExistingNodeReregistering && !isNodeKeyRotation {
+		// Existing node re-registering with same NodeKey: skip validation.
+		// Pre-auth keys are only needed for initial authentication. Critical for
+		// containers that run "tailscale up --authkey=KEY" on every restart.
+		log.Debug().
+			Caller().
+			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
+			Str("node.name", existingNodeSameUser.Hostname()).
+			Str("machine.key", machineKey.ShortString()).
+			Str("node.key.existing", existingNodeSameUser.NodeKey().ShortString()).
+			Str("node.key.request", regReq.NodeKey.ShortString()).
+			Uint64("authkey.id", pak.ID).
+			Bool("authkey.used", pak.Used).
+			Bool("authkey.expired", pak.Expiration != nil && pak.Expiration.Before(time.Now())).
+			Bool("authkey.reusable", pak.Reusable).
+			Bool("nodekey.rotation", isNodeKeyRotation).
+			Msg("Existing node re-registering with same NodeKey and auth key, skipping validation")
+
+	} else {
+		// New node or NodeKey rotation: require valid auth key.
+		err = pak.Validate()
+		if err != nil {
+			return types.NodeView{}, change.EmptySet, err
+		}
 	}
 
 	// Ensure we have a valid hostname - handle nil/empty cases
@@ -1327,9 +1364,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 		Msg("Registering node with pre-auth key")
 
 	var finalNode types.NodeView
-
-	// Check if node already exists with same machine key for this user
-	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
 
 	// If this node exists for this user, update the node in place.
 	if existsSameUser && existingNodeSameUser.Valid() {
