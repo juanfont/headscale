@@ -860,47 +860,183 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
 }
 
-// doLoginURL visits the given login URL and returns the body as a
-// string.
-func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
-	log.Printf("%s login url: %s\n", hostname, loginURL.String())
+type debugJar struct {
+	inner *cookiejar.Jar
+	mu    sync.RWMutex
+	store map[string]map[string]map[string]*http.Cookie // domain -> path -> name -> cookie
+}
 
-	var err error
+func newDebugJar() (*debugJar, error) {
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, err
+	}
+	return &debugJar{
+		inner: jar,
+		store: make(map[string]map[string]map[string]*http.Cookie),
+	}, nil
+}
+
+func (j *debugJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
+	j.inner.SetCookies(u, cookies)
+
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	for _, c := range cookies {
+		if c == nil || c.Name == "" {
+			continue
+		}
+		domain := c.Domain
+		if domain == "" {
+			domain = u.Hostname()
+		}
+		path := c.Path
+		if path == "" {
+			path = "/"
+		}
+		if _, ok := j.store[domain]; !ok {
+			j.store[domain] = make(map[string]map[string]*http.Cookie)
+		}
+		if _, ok := j.store[domain][path]; !ok {
+			j.store[domain][path] = make(map[string]*http.Cookie)
+		}
+		j.store[domain][path][c.Name] = copyCookie(c)
+	}
+}
+
+func (j *debugJar) Cookies(u *url.URL) []*http.Cookie {
+	return j.inner.Cookies(u)
+}
+
+func (j *debugJar) Dump(w io.Writer) {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+
+	for domain, paths := range j.store {
+		fmt.Fprintf(w, "Domain: %s\n", domain)
+		for path, byName := range paths {
+			fmt.Fprintf(w, "  Path: %s\n", path)
+			for _, c := range byName {
+				fmt.Fprintf(
+					w, "    %s=%s; Expires=%v; Secure=%v; HttpOnly=%v; SameSite=%v\n",
+					c.Name, c.Value, c.Expires, c.Secure, c.HttpOnly, c.SameSite,
+				)
+			}
+		}
+	}
+}
+
+func copyCookie(c *http.Cookie) *http.Cookie {
+	cc := *c
+	return &cc
+}
+
+func newLoginHTTPClient(hostname string) (*http.Client, error) {
 	hc := &http.Client{
 		Transport: LoggingRoundTripper{Hostname: hostname},
 	}
-	hc.Jar, err = cookiejar.New(nil)
+
+	jar, err := newDebugJar()
 	if err != nil {
-		return "", fmt.Errorf("%s failed to create cookiejar	: %w", hostname, err)
+		return nil, fmt.Errorf("%s failed to create cookiejar: %w", hostname, err)
+	}
+
+	hc.Jar = jar
+
+	return hc, nil
+}
+
+// doLoginURL visits the given login URL and returns the body as a string.
+func doLoginURL(hostname string, loginURL *url.URL) (string, error) {
+	log.Printf("%s login url: %s\n", hostname, loginURL.String())
+
+	hc, err := newLoginHTTPClient(hostname)
+	if err != nil {
+		return "", err
+	}
+
+	body, _, err := doLoginURLWithClient(hostname, loginURL, hc, true)
+	if err != nil {
+		return "", err
+	}
+
+	return body, nil
+}
+
+// doLoginURLWithClient performs the login request using the provided HTTP client.
+// When followRedirects is false, it will return the first redirect without following it.
+func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, followRedirects bool) (
+	string,
+	*url.URL,
+	error,
+) {
+	if hc == nil {
+		return "", nil, fmt.Errorf("%s http client is nil", hostname)
+	}
+
+	if loginURL == nil {
+		return "", nil, fmt.Errorf("%s login url is nil", hostname)
 	}
 
 	log.Printf("%s logging in with url: %s", hostname, loginURL.String())
 	ctx := context.Background()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s failed to create http request: %w", hostname, err)
+	}
+
+	originalRedirect := hc.CheckRedirect
+	if !followRedirects {
+		hc.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+	}
+	defer func() {
+		hc.CheckRedirect = originalRedirect
+	}()
+
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("%s failed to send http request: %w", hostname, err)
+		return "", nil, fmt.Errorf("%s failed to send http request: %w", hostname, err)
 	}
-
-	log.Printf("cookies: %+v", hc.Jar.Cookies(loginURL))
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		log.Printf("body: %s", body)
-
-		return "", fmt.Errorf("%s response code of login request was %w", hostname, err)
-	}
-
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("%s failed to read response body: %s", hostname, err)
+		return "", nil, fmt.Errorf("%s failed to read response body: %w", hostname, err)
+	}
+	body := string(bodyBytes)
 
-		return "", fmt.Errorf("%s failed to read response body: %w", hostname, err)
+	var redirectURL *url.URL
+	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode < http.StatusBadRequest {
+		redirectURL, err = resp.Location()
+		if err != nil {
+			return body, nil, fmt.Errorf("%s failed to resolve redirect location: %w", hostname, err)
+		}
 	}
 
-	return string(body), nil
+	if followRedirects && resp.StatusCode != http.StatusOK {
+		log.Printf("body: %s", body)
+
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		log.Printf("body: %s", body)
+
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+	}
+
+	if hc.Jar != nil {
+		if jar, ok := hc.Jar.(*debugJar); ok {
+			jar.Dump(os.Stdout)
+		} else {
+			log.Printf("cookies: %+v", hc.Jar.Cookies(loginURL))
+		}
+	}
+
+	return body, redirectURL, nil
 }
 
 var errParseAuthPage = errors.New("failed to parse auth page")
