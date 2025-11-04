@@ -953,6 +953,119 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list after OIDC login")
 }
 
+// TestOIDCMultipleOpenedLoginUrls tests the scenario:
+// - client (mostly Windows) opens multiple browser tabs with different login URLs
+// - client performs auth on the first opened browser tab
+//
+// This test makes sure that cookies are still valid for the first browser tab.
+func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario(
+		ScenarioSpec{
+			OIDCUsers: []mockoidc.MockUser{
+				oidcMockUser("user1", true),
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcauthrelog"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithEmbeddedDERPServerOnly(),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	listUsers, err := headscale.ListUsers()
+	require.NoError(t, err)
+	assert.Empty(t, listUsers)
+
+	ts, err := scenario.CreateTailscaleNode(
+		"unstable",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	u1, err := ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	u2, err := ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	// make sure login URLs are different
+	require.NotEqual(t, u1.String(), u2.String())
+
+	loginClient, err := newLoginHTTPClient(ts.Hostname())
+	require.NoError(t, err)
+
+	// open the first login URL "in browser"
+	_, redirect1, err := doLoginURLWithClient(ts.Hostname(), u1, loginClient, false)
+	require.NoError(t, err)
+	// open the second login URL "in browser"
+	_, redirect2, err := doLoginURLWithClient(ts.Hostname(), u2, loginClient, false)
+	require.NoError(t, err)
+
+	// two valid redirects with different state/nonce params
+	require.NotEqual(t, redirect1.String(), redirect2.String())
+
+	// complete auth with the first opened "browser tab"
+	_, redirect1, err = doLoginURLWithClient(ts.Hostname(), redirect1, loginClient, true)
+	require.NoError(t, err)
+
+	listUsers, err = headscale.ListUsers()
+	require.NoError(t, err)
+	assert.Len(t, listUsers, 1)
+
+	wantUsers := []*v1.User{
+		{
+			Id:         1,
+			Name:       "user1",
+			Email:      "user1@headscale.net",
+			Provider:   "oidc",
+			ProviderId: scenario.mockOIDC.Issuer() + "/user1",
+		},
+	}
+
+	sort.Slice(
+		listUsers, func(i, j int) bool {
+			return listUsers[i].GetId() < listUsers[j].GetId()
+		},
+	)
+
+	if diff := cmp.Diff(
+		wantUsers,
+		listUsers,
+		cmpopts.IgnoreUnexported(v1.User{}),
+		cmpopts.IgnoreFields(v1.User{}, "CreatedAt"),
+	); diff != "" {
+		t.Fatalf("unexpected users: %s", diff)
+	}
+
+	assert.EventuallyWithT(
+		t, func(c *assert.CollectT) {
+			listNodes, err := headscale.ListNodes()
+			assert.NoError(c, err)
+			assert.Len(c, listNodes, 1)
+		}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list after OIDC login",
+	)
+}
+
 // TestOIDCReloginSameNodeSameUser tests the scenario where a single Tailscale client
 // authenticates using OIDC (OpenID Connect), logs out, and then logs back in as the same user.
 //

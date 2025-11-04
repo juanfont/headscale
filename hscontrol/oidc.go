@@ -213,7 +213,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	cookieState, err := req.Cookie("state")
+	stateCookieName := getCookieName("state", state)
+	cookieState, err := req.Cookie(stateCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "state not found", err))
 		return
@@ -235,8 +236,13 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		httpError(writer, err)
 		return
 	}
+	if idToken.Nonce == "" {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found in IDToken", err))
+		return
+	}
 
-	nonce, err := req.Cookie("nonce")
+	nonceCookieName := getCookieName("nonce", idToken.Nonce)
+	nonce, err := req.Cookie(nonceCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found", err))
 		return
@@ -584,6 +590,11 @@ func renderOIDCCallbackTemplate(
 	return &content, nil
 }
 
+// getCookieName generates a unique cookie name based on a cookie value.
+func getCookieName(baseName, value string) string {
+	return fmt.Sprintf("%s_%s", baseName, value[:6])
+}
+
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
 	val, err := util.GenerateRandomStringURLSafe(64)
 	if err != nil {
@@ -592,7 +603,7 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string,
 
 	c := &http.Cookie{
 		Path:     "/oidc/callback",
-		Name:     name,
+		Name:     getCookieName(name, val),
 		Value:    val,
 		MaxAge:   int(time.Hour.Seconds()),
 		Secure:   r.TLS != nil,
