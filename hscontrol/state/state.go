@@ -1344,7 +1344,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Bool("authkey.reusable", pak.Reusable).
 			Bool("nodekey.rotation", isNodeKeyRotation).
 			Msg("Existing node re-registering with same NodeKey and auth key, skipping validation")
-
 	} else {
 		// New node or NodeKey rotation: require valid auth key.
 		err = pak.Validate()

@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	"tailscale.com/tailcfg"
 	"zgo.at/zcache/v2"
 )
+
+var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
 
 // batcherTestCase defines a batcher function with a descriptive name for testing.
 type batcherTestCase struct {
