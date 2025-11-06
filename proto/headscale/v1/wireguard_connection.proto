@@ -1,0 +1,42 @@
+syntax = "proto3";
+package headscale.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+// WireGuardConnection represents a connection between a regular node and a WireGuard-only peer.
+// This allows each node to have unique masquerade addresses when communicating with the same
+// WireGuard peer.
+message WireGuardConnection {
+  uint64 node_id = 1;
+  uint64 wg_peer_id = 2;
+
+  // Per-connection masquerade addresses
+  // These are the source IP addresses that our node will use when communicating with this peer
+  // At least one must be specified
+  optional string ipv4_masq_addr = 3;
+  optional string ipv6_masq_addr = 4;
+
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message CreateWireGuardConnectionRequest {
+  uint64 node_id = 1;
+  uint64 wg_peer_id = 2;
+
+  // At least one masquerade address is required
+  optional string ipv4_masq_addr = 3;
+  optional string ipv6_masq_addr = 4;
+}
+
+message CreateWireGuardConnectionResponse {
+  WireGuardConnection connection = 1;
+}
+
+message DeleteWireGuardConnectionRequest {
+  uint64 node_id = 1;
+  uint64 wg_peer_id = 2;
+}
+
+message DeleteWireGuardConnectionResponse {}

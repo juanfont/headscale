@@ -11,7 +11,6 @@ import (
 var (
 	ErrWireGuardOnlyPeerNotFound      = errors.New("wireguard-only peer not found")
 	ErrWireGuardOnlyPeerAlreadyExists = errors.New("wireguard-only peer with this name already exists")
-	ErrWireGuardOnlyPeerInvalidMasqAddr = errors.New("at least one masquerade address (IPv4 or IPv6) must be specified")
 )
 
 // CreateWireGuardOnlyPeer creates a new WireGuard-only peer in the database.
@@ -19,8 +18,8 @@ var (
 // Use State.CreateWireGuardOnlyPeer instead for the full creation flow including IP allocation.
 //
 // IMPORTANT: WireGuard-only peers BYPASS ACL POLICIES. They are explicitly
-// configured by administrators and access control is managed solely through
-// the KnownNodeIDs field.
+// configured by administrators and access control is managed through
+// WireGuardConnection records that define which nodes can see which peers.
 func (hsdb *HSDatabase) CreateWireGuardOnlyPeer(peer *types.WireGuardOnlyPeer) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return CreateWireGuardOnlyPeer(tx, peer)
@@ -106,34 +105,6 @@ func ListWireGuardOnlyPeers(tx *gorm.DB, userID *uint) (types.WireGuardOnlyPeers
 	}
 
 	return peers, nil
-}
-
-// ListWireGuardOnlyPeersForNode returns all WireGuard-only peers that a given
-// node should be able to see. A node can see a WG-only peer if the node's ID
-// is in the peer's KnownNodeIDs list.
-func (hsdb *HSDatabase) ListWireGuardOnlyPeersForNode(nodeID types.NodeID) (types.WireGuardOnlyPeers, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) (types.WireGuardOnlyPeers, error) {
-		return ListWireGuardOnlyPeersForNode(rx, nodeID)
-	})
-}
-
-func ListWireGuardOnlyPeersForNode(tx *gorm.DB, nodeID types.NodeID) (types.WireGuardOnlyPeers, error) {
-	var allPeers types.WireGuardOnlyPeers
-	if err := tx.Preload("User").Find(&allPeers).Error; err != nil {
-		return nil, fmt.Errorf("listing all wireguard-only peers: %w", err)
-	}
-
-	var visiblePeers types.WireGuardOnlyPeers
-	for _, peer := range allPeers {
-		for _, knownID := range peer.KnownNodeIDs {
-			if knownID == nodeID {
-				visiblePeers = append(visiblePeers, peer)
-				break
-			}
-		}
-	}
-
-	return visiblePeers, nil
 }
 
 // UpdateWireGuardOnlyPeer updates an existing WireGuard-only peer.

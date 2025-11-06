@@ -558,3 +558,244 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 		assert.True(c, found, "WireGuard-only peer should be in the network map")
 	}, 10*time.Second, 500*time.Millisecond, "WireGuard-only peer should have correct tailcfg.Node fields including all extra config")
 }
+
+// TestWireGuardOnlyPeerDeletionWithConnections tests that a WireGuard-only peer cannot be deleted
+// when connections still exist. It verifies that:
+// - Deletion is blocked when connections exist
+// - Connections must be removed first before the peer can be deleted
+// - Stale connections don't persist after connection removal
+func TestWireGuardOnlyPeerDeletionWithConnections(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		nil,
+		hsic.WithTestName("wg-only-delete-with-connections"))
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+	require.Len(t, allClients, 2, "should have 2 clients")
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	assertNoErrGetHeadscale(t, err)
+
+	nodes, err := headscale.ListNodes()
+	require.NoError(t, err, "failed to list nodes")
+	require.Len(t, nodes, 2, "should have 2 nodes")
+
+	node1ID := nodes[0].GetId()
+	node2ID := nodes[1].GetId()
+
+	wgPrivateKey := key.NewNode()
+	wgPublicKey := wgPrivateKey.Public()
+
+	// Register a WireGuard-only peer without any connections initially
+	result, err := headscale.Execute([]string{
+		"headscale",
+		"node",
+		"register-wg-only",
+		"--name", "test-wg-peer-conn-delete",
+		"--user", "1",
+		"--public-key", wgPublicKey.String(),
+		"--allowed-ips", "10.99.0.0/24",
+		"--endpoints", "192.0.2.1:51820",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to register WireGuard-only peer")
+	require.NotEmpty(t, result, "registration result should not be empty")
+
+	var peer *v1.WireGuardOnlyPeer
+	err = json.Unmarshal([]byte(result), &peer)
+	require.NoError(t, err, "failed to parse registration result")
+
+	peerID := peer.Id
+
+	// Add connections to both nodes
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"add-wg-connection",
+		"--node-id", fmt.Sprintf("%d", node1ID),
+		"--wg-peer-id", fmt.Sprintf("%d", peerID),
+		"--ipv4-masq-addr", "10.64.0.100",
+	})
+	require.NoError(t, err, "failed to add connection to node1")
+
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"add-wg-connection",
+		"--node-id", fmt.Sprintf("%d", node2ID),
+		"--wg-peer-id", fmt.Sprintf("%d", peerID),
+		"--ipv4-masq-addr", "10.64.0.101",
+	})
+	require.NoError(t, err, "failed to add connection to node2")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify both nodes can see the peer
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status1, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status1.Peers() {
+			peerStatus := status1.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-conn-delete" {
+				found = true
+				break
+			}
+		}
+		assert.True(c, found, "node1 should see the WireGuard-only peer")
+	}, 10*time.Second, 500*time.Millisecond, "node1 should see peer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status2, err := allClients[1].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status2.Peers() {
+			peerStatus := status2.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-conn-delete" {
+				found = true
+				break
+			}
+		}
+		assert.True(c, found, "node2 should see the WireGuard-only peer")
+	}, 10*time.Second, 500*time.Millisecond, "node2 should see peer")
+
+	// THIS SHOULD FAIL: Try to delete peer while connections exist
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"delete",
+		"--identifier", fmt.Sprintf("%d", peerID),
+	})
+	require.Error(t, err, "deletion should fail when connections exist")
+	require.Contains(t, err.Error(), "has active connections", "error should mention active connections")
+
+	// Remove connection to node2
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"remove-wg-connection",
+		"--node-id", fmt.Sprintf("%d", node2ID),
+		"--wg-peer-id", fmt.Sprintf("%d", peerID),
+	})
+	require.NoError(t, err, "failed to remove connection to node2")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify node2 no longer sees the peer, but node1 still does
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status2, err := allClients[1].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status2.Peers() {
+			peerStatus := status2.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-conn-delete" {
+				found = true
+				break
+			}
+		}
+		assert.False(c, found, "node2 should NOT see the peer after connection removal")
+	}, 10*time.Second, 500*time.Millisecond, "node2 should not see peer after connection removal")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status1, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status1.Peers() {
+			peerStatus := status1.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-conn-delete" {
+				found = true
+				break
+			}
+		}
+		assert.True(c, found, "node1 should still see the peer (connection still exists)")
+	}, 10*time.Second, 500*time.Millisecond, "node1 should still see peer")
+
+	// THIS SHOULD STILL FAIL: Try to delete peer while one connection exists
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"delete",
+		"--identifier", fmt.Sprintf("%d", peerID),
+	})
+	require.Error(t, err, "deletion should fail when at least one connection exists")
+	require.Contains(t, err.Error(), "has active connections", "error should mention active connections")
+
+	// Remove the last connection
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"remove-wg-connection",
+		"--node-id", fmt.Sprintf("%d", node1ID),
+		"--wg-peer-id", fmt.Sprintf("%d", peerID),
+	})
+	require.NoError(t, err, "failed to remove connection to node1")
+
+	time.Sleep(2 * time.Second)
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify node1 no longer sees the peer
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status1, err := allClients[0].Status()
+		assert.NoError(c, err)
+
+		found := false
+		for _, peerKey := range status1.Peers() {
+			peerStatus := status1.Peer[peerKey]
+			if peerStatus.HostName == "test-wg-peer-conn-delete" {
+				found = true
+				break
+			}
+		}
+		assert.False(c, found, "node1 should NOT see the peer after connection removal")
+	}, 10*time.Second, 500*time.Millisecond, "node1 should not see peer after connection removal")
+
+	// NOW THIS SHOULD SUCCEED: Delete peer with no connections
+	_, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"delete",
+		"--identifier", fmt.Sprintf("%d", peerID),
+	})
+	require.NoError(t, err, "deletion should succeed when no connections exist")
+
+	// Verify the peer is actually deleted
+	result, err = headscale.Execute([]string{
+		"headscale",
+		"node",
+		"list",
+		"--output", "json",
+	})
+	require.NoError(t, err, "failed to list nodes")
+
+	var listedNodes []*v1.Node
+	err = json.Unmarshal([]byte(result), &listedNodes)
+	require.NoError(t, err, "failed to parse nodes list")
+
+	for _, node := range listedNodes {
+		require.NotEqual(t, peerID, node.Id, "deleted peer should not appear in node list")
+	}
+}

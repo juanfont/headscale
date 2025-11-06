@@ -10,6 +10,7 @@ import "headscale/v1/node.proto";
 import "headscale/v1/apikey.proto";
 import "headscale/v1/policy.proto";
 import "headscale/v1/wireguard_only_peer.proto";
+import "headscale/v1/wireguard_connection.proto";
 
 service HeadscaleService {
   // --- User start ---
@@ -153,6 +154,21 @@ service HeadscaleService {
       returns (GetWireGuardOnlyPeerResponse) {
     option (google.api.http) = {
       get : "/api/v1/wireguard-only-peer/{peer_id}"
+    };
+  }
+
+  rpc CreateWireGuardConnection(CreateWireGuardConnectionRequest)
+      returns (CreateWireGuardConnectionResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/wireguard/connection"
+      body : "*"
+    };
+  }
+
+  rpc DeleteWireGuardConnection(DeleteWireGuardConnectionRequest)
+      returns (DeleteWireGuardConnectionResponse) {
+    option (google.api.http) = {
+      delete : "/api/v1/wireguard/connection/{node_id}/{wg_peer_id}"
     };
   }
 

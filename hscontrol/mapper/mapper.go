@@ -222,31 +222,20 @@ func (m *mapper) wireGuardPeerChangeResponse(
 	capVer tailcfg.CapabilityVersion,
 	wgPeerID types.NodeID,
 ) (*tailcfg.MapResponse, error) {
-	wgPeer, err := m.state.GetWireGuardOnlyPeerByID(uint64(wgPeerID))
-	if err != nil {
-		return nil, fmt.Errorf("fetching wireguard-only peer %d: %w", wgPeerID, err)
-	}
-
-	// Only nodes in the peer's KnownNodeIDs list should receive updates
-	canSee := false
-	for _, knownID := range wgPeer.KnownNodeIDs {
-		if knownID == nodeID {
-			canSee = true
-			break
-		}
-	}
-
-	if canSee {
-		return m.NewMapResponseBuilder(nodeID).
-			WithDebugType(changeResponseDebug).
-			WithCapabilityVersion(capVer).
-			WithWireGuardOnlyPeerChange(wgPeer).
-			Build()
-	} else {
+	// Fetch connection and peer atomically from single snapshot to avoid TOCTOU races
+	cp, exists := m.state.GetWireGuardConnectionWithPeer(nodeID, wgPeerID)
+	if !exists {
+		// Node doesn't have a connection to this peer - no update needed
 		return m.NewMapResponseBuilder(nodeID).
 			WithDebugType(changeResponseDebug).
 			Build()
 	}
+
+	return m.NewMapResponseBuilder(nodeID).
+		WithDebugType(changeResponseDebug).
+		WithCapabilityVersion(capVer).
+		WithWireGuardOnlyPeerChangeWithConnection(cp.Peer, cp.Connection).
+		Build()
 }
 
 // wireGuardPeerRemovedResponse creates a MapResponse for WireGuard-only peer removal.

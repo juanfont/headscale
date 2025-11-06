@@ -9,59 +9,91 @@ WireGuard-only peers are particularly useful for using commercial VPN providers 
 ## Important Security Considerations
 
 !!! warning "ACL Bypass"
-    **WireGuard-only peers BYPASS ALL ACL POLICIES**. They are explicitly configured by administrators and do not participate in normal policy evaluation. Access control is managed solely through the `--known-nodes` parameter, which determines which regular nodes can see the peer.
+    **WireGuard-only peers BYPASS ALL ACL POLICIES**. They are explicitly configured by administrators and do not participate in normal policy evaluation. Access control is managed through connections - only nodes with explicit connections to a peer can see and use it.
 
-Because WireGuard-only peers cannot receive dynamic map updates from Headscale, they must be configured with a static list of peers on their side. Only the nodes you specify will have this peer added to their network maps.
+Because WireGuard-only peers cannot receive dynamic map updates from Headscale, they must be configured with a static list of peers on their side. Only nodes you explicitly connect will have this peer added to their network maps.
 
-## Prerequisites
+## Architecture Overview
 
-Before registering a WireGuard-only peer, you need:
+The WireGuard-only peer system uses a two-level architecture:
 
-1. The WireGuard public key of the external peer
-2. The endpoint (IP address and port) where the peer can be reached
-3. The routes (allowed IPs) that peer should handle
-4. At least one masquerade address (see [Masquerade Addresses](#masquerade-addresses))
-5. The node IDs of regular Tailscale nodes that should see this peer
+1. **WireGuard-only peer**: Defines the external endpoint's static properties (public key, endpoints, allowed IPs)
+2. **Connections**: Define which nodes can access the peer and the per-connection masquerade addresses
 
-## Register a WireGuard-Only Peer
+This separation allows different nodes to use different masquerade addresses when communicating with the same WireGuard peer, which is essential when the external peer assigns unique IPs to each connection.
 
-### Basic Registration
+## Setup Workflow
 
-Register a WireGuard-only peer using the `headscale node register-wg-only` command:
+### Step 1: Register the WireGuard-Only Peer
+
+Register the peer with its static properties:
 
 ```console
 $ headscale node register-wg-only \
     --name "mullvad-exit" \
     --user 1 \
     --public-key "xJsw8SNGxKwqPHgULHWY7Z2tPNBJPxKLbJ9FJxDfXr8=" \
-    --known-nodes "1,2,3" \
     --allowed-ips "0.0.0.0/0,::/0" \
     --endpoints "1.2.3.4:51820" \
-    --self-ipv4-masq-addr "10.64.0.100" \
-    --suggest-exit-node
+    --extra-config '{"suggestExitNode": true}'
 ```
 
-### Command Parameters
+#### Registration Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `--name` | Yes | Human-readable name for the peer |
 | `--user` | Yes | User ID that owns this peer |
 | `--public-key` | Yes | WireGuard public key of the external peer |
-| `--known-nodes` | Yes | Comma-separated list of node IDs that can see this peer |
 | `--allowed-ips` | Yes | Comma-separated list of IP prefixes the peer can route (e.g., `0.0.0.0/0,::/0` for an exit node) |
 | `--endpoints` | Yes | Comma-separated list of WireGuard endpoints (e.g., `1.2.3.4:51820,[2001:db8::1]:51820`) |
-| `--self-ipv4-masq-addr` | * | IPv4 address the external peer expects to see as source IP from your nodes |
-| `--self-ipv6-masq-addr` | * | IPv6 address the external peer expects to see as source IP from your nodes |
-| `--extra-config` | No | See [extra config](#Extra-Config) section |
+| `--extra-config` | No | See [extra config](#extra-config) section |
 
-\* At least one masquerade address (`--self-ipv4-masq-addr` or `--self-ipv6-masq-addr`) must be specified.
+### Step 2: Create Connections to Nodes
 
-### Masquerade Addresses
+After registering the peer, create connections for each node that should access it:
 
-Masquerade addresses are critical for WireGuard-only peers to work correctly. They specify the source IP address that the external peer expects to see from your nodes.
+```console
+$ headscale node add-wg-connection \
+    --node-id 1 \
+    --wg-peer-id 100000001 \
+    --ipv4-masq-addr "10.64.0.100"
 
-External WireGuard peers (like commercial VPN providers) expect traffic from specific IP addresses. Headscale nodes normally have tailnet IPs (e.g., `100.64.0.1`), but the external peer might only accept traffic from IPs it has assigned (e.g., `123.1.0.100`). The masquerade address tells Headscale to instruct your nodes to use this specific source IP when communicating with the peer.
+$ headscale node add-wg-connection \
+    --node-id 2 \
+    --wg-peer-id 100000001 \
+    --ipv4-masq-addr "10.64.0.101"
+    --ipv6-masq-addr "ff02:b::11"
+```
+
+#### Connection Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `--node-id` | Yes | ID of the regular Tailscale node to connect |
+| `--wg-peer-id` | Yes | ID of the WireGuard-only peer (from registration output) |
+| `--ipv4-masq-addr` | * | IPv4 address the external peer expects to see as source IP from this node |
+| `--ipv6-masq-addr` | * | IPv6 address the external peer expects to see as source IP from this node |
+
+\* At least one masquerade address must be specified per connection.
+
+### Managing Connections
+
+Remove a connection when a node should no longer access the peer:
+
+```console
+$ headscale node remove-wg-connection \
+    --node-id 1 \
+    --wg-peer-id 100000001
+```
+
+## Masquerade Addresses
+
+Masquerade addresses specify the source IP address that the external peer expects to see from your nodes. They are configured per-connection, allowing each node to use a different address.
+
+External WireGuard peers (like commercial VPN providers) expect traffic from specific IP addresses. Headscale nodes normally have tailnet IPs (e.g., `100.64.0.1`), but the external peer might only accept traffic from IPs it has assigned (e.g., `10.64.0.100`). The masquerade address tells Headscale to instruct the node to use this specific source IP when communicating with that peer.
+
+**Example**: If you have two nodes connecting to the same Mullvad server, each would typically receive a different assigned IP from Mullvad. Node 1 might use `10.64.0.100` and Node 2 might use `10.64.0.101` as their masquerade addresses for that connection.
 
 ### Extra Config
 
@@ -104,4 +136,4 @@ Example:
 
 When location data is provided, the Android Tailscale client will display the
 exit node with a flag emoji and formatted name: "🇸🇪 Sweden: Stockholm",
-and use geographic proximity for automatic exit node selection
+and use geographic proximity for automatic exit node suggestions.

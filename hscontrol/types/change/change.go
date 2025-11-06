@@ -40,6 +40,11 @@ const (
 	WireGuardPeerNewOrUpdate Change = 31
 	WireGuardPeerRemove      Change = 32
 
+	// WireGuard connection changes.
+	// Changes to node-to-peer connections affect which nodes can see which WG peers.
+	WireGuardConnectionAdded   Change = 33
+	WireGuardConnectionRemoved Change = 34
+
 	// User changes.
 	UserNewOrUpdate Change = 51
 	UserRemove      Change = 52
@@ -70,6 +75,10 @@ type ChangeSet struct {
 	// NodeID if set, is the ID of the node that is being changed.
 	// It must be set if this is a node change.
 	NodeID types.NodeID
+
+	// WGPeerID if set, is the ID of the WireGuard-only peer that is being changed.
+	// It must be set for WireGuard peer changes and connection changes.
+	WGPeerID types.NodeID
 
 	// UserID if set, is the ID of the user that is being changed.
 	// It must be set if this is a user change.
@@ -204,17 +213,33 @@ func KeyExpiry(id types.NodeID, expiry time.Time) ChangeSet {
 	}
 }
 
-func WireGuardPeerAdded(id types.NodeID) ChangeSet {
+func WireGuardPeerAdded(wgPeerID types.NodeID) ChangeSet {
 	return ChangeSet{
-		Change: WireGuardPeerNewOrUpdate,
-		NodeID: id,
+		Change:   WireGuardPeerNewOrUpdate,
+		WGPeerID: wgPeerID,
 	}
 }
 
-func WireGuardPeerRemoved(id types.NodeID) ChangeSet {
+func WireGuardPeerRemoved(wgPeerID types.NodeID) ChangeSet {
 	return ChangeSet{
-		Change: WireGuardPeerRemove,
-		NodeID: id,
+		Change:   WireGuardPeerRemove,
+		WGPeerID: wgPeerID,
+	}
+}
+
+func WireGuardConnectionCreated(nodeID, wgPeerID types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change:   WireGuardConnectionAdded,
+		NodeID:   nodeID,
+		WGPeerID: wgPeerID,
+	}
+}
+
+func WireGuardConnectionDeleted(nodeID, wgPeerID types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change:   WireGuardConnectionRemoved,
+		NodeID:   nodeID,
+		WGPeerID: wgPeerID,
 	}
 }
 

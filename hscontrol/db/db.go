@@ -937,7 +937,7 @@ AND auth_key_id NOT IN (
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
 
-			// Add wireguard_only_peers table for external WireGuard peer support.
+			// Add wireguard_only_peers table and node_wg_peer_connections table for external WireGuard peer support.
 			{
 				ID: "202510181528",
 				Migrate: func(tx *gorm.DB) error {
@@ -947,11 +947,8 @@ AND auth_key_id NOT IN (
   name text UNIQUE NOT NULL,
   user_id %s NOT NULL,
   public_key text NOT NULL,
-  known_node_ids text NOT NULL,
   allowed_ips text NOT NULL,
   endpoints text NOT NULL,
-  self_ipv4_masq_addr text,
-  self_ipv6_masq_addr text,
   ipv4 text,
   ipv6 text,
   extra_config text,
@@ -982,6 +979,24 @@ VALUES ('wireguard_only_peers', ?)`,
 						if err != nil {
 							return fmt.Errorf("initializing wireguard_only_peers sequence: %w", err)
 						}
+
+						// Create the connections table
+						err = tx.Exec(`
+CREATE TABLE IF NOT EXISTS node_wg_peer_connections(
+  node_id integer NOT NULL,
+  wg_peer_id integer NOT NULL,
+  ipv4_masq_addr text,
+  ipv6_masq_addr text,
+  created_at datetime,
+
+  PRIMARY KEY (node_id, wg_peer_id),
+  CONSTRAINT fk_connections_node FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+  CONSTRAINT fk_connections_wg_peer FOREIGN KEY(wg_peer_id) REFERENCES wireguard_only_peers(id) ON DELETE CASCADE,
+  CONSTRAINT check_at_least_one_masq_addr CHECK (ipv4_masq_addr IS NOT NULL OR ipv6_masq_addr IS NOT NULL)
+)`).Error
+						if err != nil {
+							return fmt.Errorf("creating node_wg_peer_connections table: %w", err)
+						}
 					} else if cfg.Type == types.DatabasePostgres {
 						createTableSQL := fmt.Sprintf(`
 CREATE TABLE IF NOT EXISTS wireguard_only_peers(
@@ -1001,6 +1016,24 @@ ALTER SEQUENCE wireguard_only_peers_id_seq RESTART WITH %d
 						`, types.WireGuardOnlyPeerIDOffset)).Error
 						if err != nil {
 							return fmt.Errorf("initializing wireguard_only_peers sequence: %w", err)
+						}
+
+						// Create the connections table
+						err = tx.Exec(`
+CREATE TABLE IF NOT EXISTS node_wg_peer_connections(
+  node_id bigint NOT NULL,
+  wg_peer_id bigint NOT NULL,
+  ipv4_masq_addr text,
+  ipv6_masq_addr text,
+  created_at timestamp with time zone,
+
+  PRIMARY KEY (node_id, wg_peer_id),
+  CONSTRAINT fk_connections_node FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+  CONSTRAINT fk_connections_wg_peer FOREIGN KEY(wg_peer_id) REFERENCES wireguard_only_peers(id) ON DELETE CASCADE,
+  CONSTRAINT check_at_least_one_masq_addr CHECK (ipv4_masq_addr IS NOT NULL OR ipv6_masq_addr IS NOT NULL)
+)`).Error
+						if err != nil {
+							return fmt.Errorf("creating node_wg_peer_connections table: %w", err)
 						}
 					}
 

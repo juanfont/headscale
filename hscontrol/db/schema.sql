@@ -104,11 +104,8 @@ CREATE TABLE wireguard_only_peers(
   name text UNIQUE NOT NULL,
   user_id integer NOT NULL,
   public_key text NOT NULL,
-  known_node_ids text NOT NULL,
   allowed_ips text NOT NULL,
   endpoints text NOT NULL,
-  self_ipv4_masq_addr text,
-  self_ipv6_masq_addr text,
   ipv4 text,
   ipv6 text,
   extra_config text,
@@ -118,6 +115,19 @@ CREATE TABLE wireguard_only_peers(
   deleted_at datetime,
 
   CONSTRAINT fk_wireguard_only_peers_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE node_wg_peer_connections(
+  node_id integer NOT NULL,
+  wg_peer_id integer NOT NULL,
+  ipv4_masq_addr text,
+  ipv6_masq_addr text,
+  created_at datetime,
+
+  PRIMARY KEY (node_id, wg_peer_id),
+  CONSTRAINT fk_connections_node FOREIGN KEY(node_id) REFERENCES nodes(id) ON DELETE CASCADE,
+  CONSTRAINT fk_connections_wg_peer FOREIGN KEY(wg_peer_id) REFERENCES wireguard_only_peers(id) ON DELETE CASCADE,
+  CONSTRAINT check_at_least_one_masq_addr CHECK (ipv4_masq_addr IS NOT NULL OR ipv6_masq_addr IS NOT NULL)
 );
 
 CREATE TABLE policies(

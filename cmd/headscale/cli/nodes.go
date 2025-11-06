@@ -118,11 +118,6 @@ func init() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	registerWgOnlyCmd.Flags().String("known-nodes", "", "Comma-separated list of node IDs that can see this peer")
-	err = registerWgOnlyCmd.MarkFlagRequired("known-nodes")
-	if err != nil {
-		log.Fatal(err.Error())
-	}
 	registerWgOnlyCmd.Flags().String("allowed-ips", "", "Comma-separated list of allowed IP prefixes (e.g., 0.0.0.0/0,::/0)")
 	err = registerWgOnlyCmd.MarkFlagRequired("allowed-ips")
 	if err != nil {
@@ -133,10 +128,34 @@ func init() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	registerWgOnlyCmd.Flags().String("self-ipv4-masq-addr", "", "IPv4 masquerade address (source IP the peer expects)")
-	registerWgOnlyCmd.Flags().String("self-ipv6-masq-addr", "", "IPv6 masquerade address (source IP the peer expects)")
 	registerWgOnlyCmd.Flags().String("extra-config", "", "Extra configuration as JSON (optional: exitNodeDNSResolvers, suggestExitNode, tags, location)")
 	nodeCmd.AddCommand(registerWgOnlyCmd)
+
+	addWgConnectionCmd.Flags().Uint64("node-id", 0, "Node ID to connect")
+	err = addWgConnectionCmd.MarkFlagRequired("node-id")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	addWgConnectionCmd.Flags().Uint64("wg-peer-id", 0, "WireGuard-only peer ID to connect")
+	err = addWgConnectionCmd.MarkFlagRequired("wg-peer-id")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	addWgConnectionCmd.Flags().String("ipv4-masq-addr", "", "IPv4 masquerade address for this connection")
+	addWgConnectionCmd.Flags().String("ipv6-masq-addr", "", "IPv6 masquerade address for this connection")
+	nodeCmd.AddCommand(addWgConnectionCmd)
+
+	removeWgConnectionCmd.Flags().Uint64("node-id", 0, "Node ID")
+	err = removeWgConnectionCmd.MarkFlagRequired("node-id")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	removeWgConnectionCmd.Flags().Uint64("wg-peer-id", 0, "WireGuard-only peer ID")
+	err = removeWgConnectionCmd.MarkFlagRequired("wg-peer-id")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	nodeCmd.AddCommand(removeWgConnectionCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -725,10 +744,8 @@ func wgOnlyPeersToPtable(
 		"User",
 		"Public Key",
 		"IPs",
-		"Known Nodes",
 		"Allowed IPs",
 		"Endpoints",
-		"Masq IPs",
 		"Extra Config",
 	}
 	tableData := pterm.TableData{tableHeader}
@@ -756,21 +773,6 @@ func wgOnlyPeersToPtable(
 			ips = append(ips, peer.GetIpv6())
 		}
 
-		// Format Known Nodes
-		var knownNodesStr []string
-		for _, nodeID := range peer.GetKnownNodeIds() {
-			knownNodesStr = append(knownNodesStr, strconv.FormatUint(nodeID, util.Base10))
-		}
-
-		// Format Masq IPs
-		var masqIPs []string
-		if peer.GetSelfIpv4MasqAddr() != "" {
-			masqIPs = append(masqIPs, peer.GetSelfIpv4MasqAddr())
-		}
-		if peer.GetSelfIpv6MasqAddr() != "" {
-			masqIPs = append(masqIPs, peer.GetSelfIpv6MasqAddr())
-		}
-
 		extraConfig := peer.GetExtraConfig()
 
 		peerData := []string{
@@ -779,10 +781,8 @@ func wgOnlyPeersToPtable(
 			user,
 			nodeKey.ShortString(),
 			strings.Join(ips, ", "),
-			strings.Join(knownNodesStr, ", "),
 			strings.Join(peer.GetAllowedIps(), ", "),
 			strings.Join(peer.GetEndpoints(), ", "),
-			strings.Join(masqIPs, ", "),
 			extraConfig,
 		}
 		tableData = append(tableData, peerData)
@@ -930,11 +930,8 @@ var registerWgOnlyCmd = &cobra.Command{
 endpoints that don't run Tailscale clients, such as commercial VPN providers.
 
 IMPORTANT: WireGuard-only peers BYPASS ACL POLICIES. They are explicitly configured
-by administrators, and access control is managed solely through the --known-nodes parameter.
-
-At least one masquerade address (--self-ipv4-masq-addr or --self-ipv6-masq-addr) must
-be specified. This is the source IP address that the external peer expects to see from
-your nodes`,
+by administrators. After registration, use 'nodes add-wg-connection' to connect nodes
+to this peer with per-connection masquerade addresses.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -944,41 +941,9 @@ your nodes`,
 		name, _ := cmd.Flags().GetString("name")
 		userID, _ := cmd.Flags().GetUint64("user")
 		publicKey, _ := cmd.Flags().GetString("public-key")
-		knownNodesStr, _ := cmd.Flags().GetString("known-nodes")
 		allowedIPsStr, _ := cmd.Flags().GetString("allowed-ips")
 		endpointsStr, _ := cmd.Flags().GetString("endpoints")
-
-		selfIPv4MasqAddr, _ := cmd.Flags().GetString("self-ipv4-masq-addr")
-		selfIPv6MasqAddr, _ := cmd.Flags().GetString("self-ipv6-masq-addr")
 		extraConfig, _ := cmd.Flags().GetString("extra-config")
-
-		if selfIPv4MasqAddr == "" && selfIPv6MasqAddr == "" {
-			ErrorOutput(
-				fmt.Errorf("at least one masquerade address must be specified"),
-				"At least one of --self-ipv4-masq-addr or --self-ipv6-masq-addr must be provided",
-				output,
-			)
-			return
-		}
-
-		knownNodeIDStrs := strings.Split(knownNodesStr, ",")
-		knownNodeIDs := make([]uint64, 0, len(knownNodeIDStrs))
-		for _, idStr := range knownNodeIDStrs {
-			idStr = strings.TrimSpace(idStr)
-			if idStr == "" {
-				continue
-			}
-			id, err := strconv.ParseUint(idStr, 10, 64)
-			if err != nil {
-				ErrorOutput(
-					err,
-					fmt.Sprintf("Invalid node ID %q: %s", idStr, err),
-					output,
-				)
-				return
-			}
-			knownNodeIDs = append(knownNodeIDs, id)
-		}
 
 		allowedIPs := strings.Split(allowedIPsStr, ",")
 		for i := range allowedIPs {
@@ -991,20 +956,12 @@ your nodes`,
 		}
 
 		request := &v1.RegisterWireGuardOnlyPeerRequest{
-			Name:         name,
-			UserId:       userID,
-			PublicKey:    publicKey,
-			KnownNodeIds: knownNodeIDs,
-			AllowedIps:   allowedIPs,
-			Endpoints:    endpoints,
-			ExtraConfig:  &extraConfig,
-		}
-
-		if selfIPv4MasqAddr != "" {
-			request.SelfIpv4MasqAddr = &selfIPv4MasqAddr
-		}
-		if selfIPv6MasqAddr != "" {
-			request.SelfIpv6MasqAddr = &selfIPv6MasqAddr
+			Name:        name,
+			UserId:      userID,
+			PublicKey:   publicKey,
+			AllowedIps:  allowedIPs,
+			Endpoints:   endpoints,
+			ExtraConfig: &extraConfig,
 		}
 
 		response, err := client.RegisterWireGuardOnlyPeer(ctx, request)
@@ -1019,10 +976,104 @@ your nodes`,
 
 		SuccessOutput(
 			response.GetPeer(),
-			fmt.Sprintf("WireGuard-only peer %s registered (allocated IPs: %s, %s)",
+			fmt.Sprintf("WireGuard-only peer %s registered (allocated IPs: %s, %s). Use 'nodes add-wg-connection' to connect nodes.",
 				response.GetPeer().GetName(),
 				response.GetPeer().GetIpv4(),
 				response.GetPeer().GetIpv6()),
+			output,
+		)
+	},
+}
+
+var addWgConnectionCmd = &cobra.Command{
+	Use:   "add-wg-connection",
+	Short: "Create a connection between a node and a WireGuard-only peer",
+	Long: `Create a connection between a node and a WireGuard-only peer with per-connection
+masquerade addresses. At least one masquerade address (--ipv4-masq-addr or --ipv6-masq-addr)
+must be specified. This is the source IP address that the WireGuard peer will see from this node.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		nodeID, _ := cmd.Flags().GetUint64("node-id")
+		wgPeerID, _ := cmd.Flags().GetUint64("wg-peer-id")
+		ipv4MasqAddr, _ := cmd.Flags().GetString("ipv4-masq-addr")
+		ipv6MasqAddr, _ := cmd.Flags().GetString("ipv6-masq-addr")
+
+		if ipv4MasqAddr == "" && ipv6MasqAddr == "" {
+			ErrorOutput(
+				fmt.Errorf("at least one masquerade address must be specified"),
+				"At least one of --ipv4-masq-addr or --ipv6-masq-addr must be provided",
+				output,
+			)
+			return
+		}
+
+		request := &v1.CreateWireGuardConnectionRequest{
+			NodeId:   nodeID,
+			WgPeerId: wgPeerID,
+		}
+
+		if ipv4MasqAddr != "" {
+			request.Ipv4MasqAddr = &ipv4MasqAddr
+		}
+		if ipv6MasqAddr != "" {
+			request.Ipv6MasqAddr = &ipv6MasqAddr
+		}
+
+		response, err := client.CreateWireGuardConnection(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to create connection: %s", status.Convert(err).Message()),
+				output,
+			)
+			return
+		}
+
+		SuccessOutput(
+			response.GetConnection(),
+			fmt.Sprintf("Connection created between node %d and WireGuard peer %d",
+				nodeID, wgPeerID),
+			output,
+		)
+	},
+}
+
+var removeWgConnectionCmd = &cobra.Command{
+	Use:   "remove-wg-connection",
+	Short: "Remove a connection between a node and a WireGuard-only peer",
+	Long:  `Remove a connection between a node and a WireGuard-only peer.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		nodeID, _ := cmd.Flags().GetUint64("node-id")
+		wgPeerID, _ := cmd.Flags().GetUint64("wg-peer-id")
+
+		request := &v1.DeleteWireGuardConnectionRequest{
+			NodeId:   nodeID,
+			WgPeerId: wgPeerID,
+		}
+
+		_, err := client.DeleteWireGuardConnection(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Failed to remove connection: %s", status.Convert(err).Message()),
+				output,
+			)
+			return
+		}
+
+		SuccessOutput(
+			nil,
+			fmt.Sprintf("Connection removed between node %d and WireGuard peer %d",
+				nodeID, wgPeerID),
 			output,
 		)
 	},

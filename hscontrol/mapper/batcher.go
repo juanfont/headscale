@@ -114,10 +114,26 @@ func generateMapResponse(nodeID types.NodeID, version tailcfg.CapabilityVersion,
 		mapResp, err = mapper.peerRemovedResponse(nodeID, c.NodeID)
 
 	case change.WireGuardPeerNewOrUpdate:
-		mapResp, err = mapper.wireGuardPeerChangeResponse(nodeID, version, c.NodeID)
+		mapResp, err = mapper.wireGuardPeerChangeResponse(nodeID, version, c.WGPeerID)
 
 	case change.WireGuardPeerRemove:
-		mapResp, err = mapper.wireGuardPeerRemovedResponse(nodeID, c.NodeID)
+		mapResp, err = mapper.wireGuardPeerRemovedResponse(nodeID, c.WGPeerID)
+
+	case change.WireGuardConnectionAdded:
+		// Only send update to the specific node whose connection was added
+		if c.NodeID == nodeID {
+			mapResp, err = mapper.wireGuardPeerChangeResponse(nodeID, version, c.WGPeerID)
+		} else {
+			// We return here because otherwise the nil check at the bottom will fail
+			return nil, nil
+		}
+
+	case change.WireGuardConnectionRemoved:
+		if c.NodeID == nodeID {
+			mapResp, err = mapper.wireGuardPeerRemovedResponse(nodeID, c.WGPeerID)
+		} else {
+			return nil, nil
+		}
 
 	case change.NodeKeyExpiry:
 		// If the node is the one whose key is expiring, we send a "full" self update

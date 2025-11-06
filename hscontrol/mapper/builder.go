@@ -226,8 +226,11 @@ func (b *MapResponseBuilder) WithPeerChanges(peers views.Slice[types.NodeView]) 
 // WithWireGuardOnlyPeerChange adds a single WireGuard-only peer change (for incremental updates).
 // This is used when a WireGuard-only peer is added or modified, since WG-only peers are not
 // part of the regular node list and need to be included directly.
-func (b *MapResponseBuilder) WithWireGuardOnlyPeerChange(wgPeer *types.WireGuardOnlyPeer) *MapResponseBuilder {
-	tailPeer, err := wgPeer.ToTailcfgNode()
+
+// WithWireGuardOnlyPeerChangeWithConnection adds a single WireGuard-only peer change with connection-specific
+// masquerade addresses for incremental updates.
+func (b *MapResponseBuilder) WithWireGuardOnlyPeerChangeWithConnection(wgPeer *types.WireGuardOnlyPeer, conn *types.WireGuardConnection) *MapResponseBuilder {
+	tailPeer, err := wgPeer.ToTailcfgNode(conn)
 	if err != nil {
 		b.addError(fmt.Errorf("converting wireguard-only peer to tailcfg node: %w", err))
 		return b
@@ -269,17 +272,14 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		return nil, err
 	}
 
-	wgOnlyPeers, err := b.mapper.state.GetWireGuardOnlyPeersForNode(b.nodeID)
-	if err != nil {
-		return nil, err
-	} else {
-		for _, wgPeer := range wgOnlyPeers {
-			tailPeer, err := wgPeer.ToTailcfgNode()
-			if err != nil {
-				return nil, err
-			}
-			tailPeers = append(tailPeers, tailPeer)
+	// Fetch connections with peers atomically from single snapshot to avoid TOCTOU races
+	connPeers := b.mapper.state.GetWireGuardConnectionsWithPeersForNode(b.nodeID)
+	for _, cp := range connPeers {
+		tailPeer, err := cp.Peer.ToTailcfgNode(cp.Connection)
+		if err != nil {
+			return nil, err
 		}
+		tailPeers = append(tailPeers, tailPeer)
 	}
 
 	// Peers is always returned sorted by Node.ID.

@@ -817,11 +817,8 @@ func parseWireGuardOnlyPeerFromRequest(
 	name string,
 	userID uint,
 	publicKeyStr string,
-	knownNodeIDs []uint64,
 	allowedIPsStr []string,
 	endpointsStr []string,
-	selfIPv4MasqAddrStr *string,
-	selfIPv6MasqAddrStr *string,
 	extraConfigJSON *string,
 ) (*types.WireGuardOnlyPeer, error) {
 	var publicKey key.NodePublic
@@ -847,30 +844,6 @@ func parseWireGuardOnlyPeerFromRequest(
 		endpoints = append(endpoints, addrPort)
 	}
 
-	var selfIPv4MasqAddr *netip.Addr
-	if selfIPv4MasqAddrStr != nil && *selfIPv4MasqAddrStr != "" {
-		addr, err := netip.ParseAddr(*selfIPv4MasqAddrStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid IPv4 masquerade address: %w", err)
-		}
-		if !addr.Is4() {
-			return nil, fmt.Errorf("IPv4 masquerade address must be an IPv4 address")
-		}
-		selfIPv4MasqAddr = &addr
-	}
-
-	var selfIPv6MasqAddr *netip.Addr
-	if selfIPv6MasqAddrStr != nil && *selfIPv6MasqAddrStr != "" {
-		addr, err := netip.ParseAddr(*selfIPv6MasqAddrStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid IPv6 masquerade address: %w", err)
-		}
-		if !addr.Is6() {
-			return nil, fmt.Errorf("IPv6 masquerade address must be an IPv6 address")
-		}
-		selfIPv6MasqAddr = &addr
-	}
-
 	// Parse and validate extra config JSON
 	var extraConfig *types.WireGuardOnlyPeerExtraConfig
 	if extraConfigJSON != nil && *extraConfigJSON != "" {
@@ -880,22 +853,13 @@ func parseWireGuardOnlyPeerFromRequest(
 		}
 	}
 
-	// Convert protobuf types to internal types
-	nodeIDs := make(types.NodeIDs, len(knownNodeIDs))
-	for i, id := range knownNodeIDs {
-		nodeIDs[i] = types.NodeID(id)
-	}
-
 	peer := &types.WireGuardOnlyPeer{
-		Name:             name,
-		UserID:           types.UserID(userID),
-		PublicKey:        publicKey,
-		KnownNodeIDs:     nodeIDs,
-		AllowedIPs:       allowedIPs,
-		Endpoints:        endpoints,
-		SelfIPv4MasqAddr: selfIPv4MasqAddr,
-		SelfIPv6MasqAddr: selfIPv6MasqAddr,
-		ExtraConfig:      extraConfig,
+		Name:        name,
+		UserID:      types.UserID(userID),
+		PublicKey:   publicKey,
+		AllowedIPs:  allowedIPs,
+		Endpoints:   endpoints,
+		ExtraConfig: extraConfig,
 	}
 
 	return peer, nil
@@ -909,11 +873,8 @@ func (api headscaleV1APIServer) RegisterWireGuardOnlyPeer(
 		request.GetName(),
 		uint(request.GetUserId()),
 		request.GetPublicKey(),
-		request.GetKnownNodeIds(),
 		request.GetAllowedIps(),
 		request.GetEndpoints(),
-		request.SelfIpv4MasqAddr,
-		request.SelfIpv6MasqAddr,
 		request.ExtraConfig,
 	)
 	if err != nil {
@@ -929,13 +890,6 @@ func (api headscaleV1APIServer) RegisterWireGuardOnlyPeer(
 		Str("name", peer.Name).
 		Uint64("id", uint64(peer.ID)).
 		Uint64("user_id", uint64(peer.UserID)).
-		Ints("known_node_ids", func() []int {
-			ids := make([]int, len(peer.KnownNodeIDs))
-			for i, id := range peer.KnownNodeIDs {
-				ids[i] = int(id)
-			}
-			return ids
-		}()).
 		Msg("WireGuard-only peer registered")
 
 	api.h.Change(change.WireGuardPeerAdded(peer.ID))
@@ -988,6 +942,86 @@ func (api headscaleV1APIServer) ListWireGuardOnlyPeers(
 	return &v1.ListWireGuardOnlyPeersResponse{
 		Peers: response,
 	}, nil
+}
+
+// CreateWireGuardConnection creates a connection between a node and a WireGuard-only peer.
+func (api headscaleV1APIServer) CreateWireGuardConnection(
+	ctx context.Context,
+	request *v1.CreateWireGuardConnectionRequest,
+) (*v1.CreateWireGuardConnectionResponse, error) {
+	var ipv4MasqAddr *netip.Addr
+	if request.Ipv4MasqAddr != nil && *request.Ipv4MasqAddr != "" {
+		addr, err := netip.ParseAddr(*request.Ipv4MasqAddr)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid IPv4 masquerade address: %s", err)
+		}
+		if !addr.Is4() {
+			return nil, status.Errorf(codes.InvalidArgument, "IPv4 masquerade address must be an IPv4 address")
+		}
+		ipv4MasqAddr = &addr
+	}
+
+	var ipv6MasqAddr *netip.Addr
+	if request.Ipv6MasqAddr != nil && *request.Ipv6MasqAddr != "" {
+		addr, err := netip.ParseAddr(*request.Ipv6MasqAddr)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid IPv6 masquerade address: %s", err)
+		}
+		if !addr.Is6() {
+			return nil, status.Errorf(codes.InvalidArgument, "IPv6 masquerade address must be an IPv6 address")
+		}
+		ipv6MasqAddr = &addr
+	}
+
+	if ipv4MasqAddr == nil && ipv6MasqAddr == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "at least one masquerade address (IPv4 or IPv6) must be specified")
+	}
+
+	conn := &types.WireGuardConnection{
+		NodeID:       types.NodeID(request.GetNodeId()),
+		WGPeerID:     types.NodeID(request.GetWgPeerId()),
+		IPv4MasqAddr: ipv4MasqAddr,
+		IPv6MasqAddr: ipv6MasqAddr,
+	}
+
+	changeSet, err := api.h.state.CreateWireGuardConnection(conn)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to create connection: %s", err)
+	}
+
+	log.Info().
+		Uint64("node_id", uint64(conn.NodeID)).
+		Uint64("wg_peer_id", uint64(conn.WGPeerID)).
+		Msg("WireGuard connection created")
+
+	api.h.Change(changeSet)
+
+	return &v1.CreateWireGuardConnectionResponse{
+		Connection: conn.ToProto(),
+	}, nil
+}
+
+// DeleteWireGuardConnection removes a connection between a node and a WireGuard-only peer.
+func (api headscaleV1APIServer) DeleteWireGuardConnection(
+	ctx context.Context,
+	request *v1.DeleteWireGuardConnectionRequest,
+) (*v1.DeleteWireGuardConnectionResponse, error) {
+	nodeID := types.NodeID(request.GetNodeId())
+	wgPeerID := types.NodeID(request.GetWgPeerId())
+
+	changeSet, err := api.h.state.DeleteWireGuardConnection(nodeID, wgPeerID)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to delete connection: %s", err)
+	}
+
+	log.Info().
+		Uint64("node_id", uint64(nodeID)).
+		Uint64("wg_peer_id", uint64(wgPeerID)).
+		Msg("WireGuard connection deleted")
+
+	api.h.Change(changeSet)
+
+	return &v1.DeleteWireGuardConnectionResponse{}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
