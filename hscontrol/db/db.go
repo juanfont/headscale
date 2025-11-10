@@ -952,6 +952,34 @@ AND auth_key_id NOT IN (
 					return nil
 				},
 			},
+			{
+				// Drop all indices that are no longer in use and has existed.
+				// They potentially still present from broken migrations in the past.
+				// They should all be cleaned up by the db engine, but we are a bit
+				// conservative to ensure all our previous mess is cleaned up.
+				ID: "202511101554-drop-old-idx",
+				Migrate: func(tx *gorm.DB) error {
+					for _, oldIdx := range []struct{ name, table string }{
+						{"idx_namespaces_deleted_at", "namespaces"},
+						{"idx_routes_deleted_at", "routes"},
+						{"idx_shared_machines_deleted_at", "shared_machines"},
+					} {
+						err := tx.Migrator().DropIndex(oldIdx.table, oldIdx.name)
+						if err != nil {
+							log.Trace().
+								Str("index", oldIdx.name).
+								Str("table", oldIdx.table).
+								Err(err).
+								Msg("Error dropping old index, continuing...")
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
 
 			// Migrations **above** this points will be REMOVED in version **0.29.0**
 			// This is to clean up a lot of old migrations that is seldom used
