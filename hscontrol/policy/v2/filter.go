@@ -316,7 +316,6 @@ func (pol *Policy) compileSSHPolicy(
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
-			continue // Skip this rule if we can't resolve sources
 		}
 
 		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
