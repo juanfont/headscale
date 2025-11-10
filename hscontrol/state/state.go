@@ -386,7 +386,11 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 
 	nodePtr := node.AsStruct()
 
-	if err := s.db.DB.Save(nodePtr).Error; err != nil {
+	// Use Omit("expiry") to prevent overwriting expiry during MapRequest updates.
+	// Expiry should only be updated through explicit SetNodeExpiry calls or re-registration.
+	// See: https://github.com/juanfont/headscale/issues/2862
+	err := s.db.DB.Omit("expiry").Updates(nodePtr).Error
+	if err != nil {
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("saving node: %w", err)
 	}
 
