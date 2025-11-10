@@ -952,6 +952,13 @@ AND auth_key_id NOT IN (
 					return nil
 				},
 			},
+
+			// Migrations **above** this points will be REMOVED in version **0.29.0**
+			// This is to clean up a lot of old migrations that is seldom used
+			// and carries a lot of technical debt.
+			// Any new migrations should be added after the comment below and follow
+			// the rules it sets out.
+
 			// From this point, the following rules must be followed:
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
