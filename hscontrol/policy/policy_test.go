@@ -1353,6 +1353,55 @@ func TestSSHPolicyRules(t *testing.T) {
 				},
 			}},
 		},
+		{
+			name:       "2863-allow-predefined-missing-users",
+			targetNode: taggedClient,
+			peers:      types.Nodes{&nodeUser2},
+			policy: `{
+  "groups": {
+   "group:example-infra": [
+      "user2@",
+      "not-created-yet@",
+    ],
+  },
+  "tagOwners": {
+    "tag:client": [
+      "user2@"
+    ],
+  },
+  "ssh": [
+    // Allow infra to ssh to tag:example-infra server as debian
+    {
+      "action": "accept",
+      "src": [
+        "group:example-infra"
+      ],
+      "dst": [
+        "tag:client",
+      ],
+      "users": [
+        "debian",
+      ],
+    },
+  ],
+}`,
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{
+						{NodeIP: "100.64.0.2"},
+					},
+					SSHUsers: map[string]string{
+						"debian": "debian",
+					},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+			}},
+		},
 	}
 
 	for _, tt := range tests {
