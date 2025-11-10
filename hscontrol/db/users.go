@@ -102,7 +102,8 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 
 	oldUser.Name = newName
 
-	if err := tx.Save(&oldUser).Error; err != nil {
+	err = tx.Updates(&oldUser).Error
+	if err != nil {
 		return err
 	}
 
