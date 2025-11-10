@@ -300,7 +300,9 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, err
 		}
 
-		if err := tx.Save(user).Error; err != nil {
+		// Use Updates() to only update modified fields, preserving unchanged values.
+		err = tx.Updates(user).Error
+		if err != nil {
 			return nil, fmt.Errorf("updating user: %w", err)
 		}
 
@@ -1191,9 +1193,10 @@ func (s *State) HandleNodeFromAuthPath(
 			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
 		}
 
-		// Use the node from UpdateNode to save to database
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(updatedNodeView.AsStruct()).Error; err != nil {
+			// Use Updates() to preserve fields not modified by UpdateNode.
+			err := tx.Updates(updatedNodeView.AsStruct()).Error
+			if err != nil {
 				return nil, fmt.Errorf("failed to save node: %w", err)
 			}
 			return nil, nil
@@ -1410,9 +1413,10 @@ func (s *State) HandleNodeFromPreAuthKey(
 			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
 		}
 
-		// Use the node from UpdateNode to save to database
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			if err := tx.Save(updatedNodeView.AsStruct()).Error; err != nil {
+			// Use Updates() to preserve fields not modified by UpdateNode.
+			err := tx.Updates(updatedNodeView.AsStruct()).Error
+			if err != nil {
 				return nil, fmt.Errorf("failed to save node: %w", err)
 			}
 

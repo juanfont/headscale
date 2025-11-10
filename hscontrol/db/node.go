@@ -452,13 +452,6 @@ func NodeSetMachineKey(
 	}).Error
 }
 
-// NodeSave saves a node object to the database, prefer to use a specific save method rather
-// than this. It is intended to be used when we are changing or.
-// TODO(kradalby): Remove this func, just use Save.
-func NodeSave(tx *gorm.DB, node *types.Node) error {
-	return tx.Save(node).Error
-}
-
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 	// Strip invalid DNS characters for givenName
 	suppliedName = strings.ToLower(suppliedName)

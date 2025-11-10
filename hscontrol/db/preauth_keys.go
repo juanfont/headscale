@@ -145,11 +145,12 @@ func (hsdb *HSDatabase) ExpirePreAuthKey(k *types.PreAuthKey) error {
 
 // UsePreAuthKey marks a PreAuthKey as used.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
-	k.Used = true
-	if err := tx.Save(k).Error; err != nil {
+	err := tx.Model(k).Update("used", true).Error
+	if err != nil {
 		return fmt.Errorf("failed to update key used status in the database: %w", err)
 	}
 
+	k.Used = true
 	return nil
 }
 
