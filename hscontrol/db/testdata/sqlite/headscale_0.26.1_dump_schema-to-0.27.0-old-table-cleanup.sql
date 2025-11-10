@@ -31,10 +31,15 @@ CREATE UNIQUE INDEX idx_name_provider_identifier ON users (name,provider_identif
 CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users (name) WHERE provider_identifier IS NULL;
 
 -- Create all the old tables we have had and ensure they are clean up.
-CREATE TABLE `namespaces` (`id` text,PRIMARY KEY (`id`));
+CREATE TABLE `namespaces` (`id` text,`deleted_at` datetime,PRIMARY KEY (`id`));
 CREATE TABLE `machines` (`id` text,PRIMARY KEY (`id`));
 CREATE TABLE `kvs` (`id` text,PRIMARY KEY (`id`));
-CREATE TABLE `shared_machines` (`id` text,PRIMARY KEY (`id`));
+CREATE TABLE `shared_machines` (`id` text,`deleted_at` datetime,PRIMARY KEY (`id`));
 CREATE TABLE `pre_auth_key_acl_tags` (`id` text,PRIMARY KEY (`id`));
-CREATE TABLE `routes` (`id` text,PRIMARY KEY (`id`));
+CREATE TABLE `routes` (`id` text,`deleted_at` datetime,PRIMARY KEY (`id`));
+
+CREATE INDEX `idx_routes_deleted_at` ON `routes`(`deleted_at`);
+CREATE INDEX `idx_namespaces_deleted_at` ON `namespaces`(`deleted_at`);
+CREATE INDEX `idx_shared_machines_deleted_at` ON `shared_machines`(`deleted_at`);
+
 COMMIT;
