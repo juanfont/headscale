@@ -9,6 +9,7 @@ Headscale is an open-source implementation of the Tailscale control server writt
 ## Development Commands
 
 ### Quick Setup
+
 ```bash
 # Recommended: Use Nix for dependency management
 nix develop
@@ -18,6 +19,7 @@ make dev  # runs fmt + lint + test + build
 ```
 
 ### Essential Commands
+
 ```bash
 # Build headscale binary
 make build
@@ -44,6 +46,7 @@ make clean
 ```
 
 ### Integration Testing
+
 ```bash
 # Use the hi (Headscale Integration) test runner
 go run ./cmd/hi doctor                    # Check system requirements
@@ -55,57 +58,137 @@ go run ./cmd/hi run "TestPattern" --postgres  # With PostgreSQL backend
 
 ## Pre-Commit Quality Checks
 
-### **MANDATORY: golangci-lint Before Every Commit**
+### **MANDATORY: Automated Pre-Commit Hooks with prek**
 
-**CRITICAL REQUIREMENT**: Before creating ANY commit, all code changes MUST pass golangci-lint with auto-fix enabled. This ensures code quality, consistency, and prevents common issues from entering the codebase.
+**CRITICAL REQUIREMENT**: This repository uses [prek](https://prek.j178.dev/) for automated pre-commit hooks. All commits are automatically validated for code quality, formatting, and common issues.
 
-**Required Command**:
+### Initial Setup
+
+When you first clone the repository or enter the nix shell, install the git hooks:
+
 ```bash
-golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
+# Enter nix development environment
+nix develop
+
+# Install prek git hooks (one-time setup)
+prek install
 ```
 
-**When to Run**:
-- After making any code changes
-- Before staging files for commit (`git add`)
-- After resolving merge conflicts
-- Before creating a pull request
+This installs the pre-commit hook at `.git/hooks/pre-commit` which automatically runs all configured checks before each commit.
 
-**What This Does**:
-- `--new-from-rev=upstream/main`: Only lints changed lines compared to upstream/main branch
-- `--timeout=5m`: Allows up to 5 minutes for linting (needed for large changes)
-- `--fix`: Automatically fixes issues that can be auto-corrected (formatting, imports, etc.)
+### Configured Hooks
 
-**Workflow Pattern**:
+The repository uses `.pre-commit-config.yaml` with the following hooks:
+
+**Built-in Checks** (optimized fast-path execution):
+
+- `check-added-large-files` - Prevents accidentally committing large files
+- `check-case-conflict` - Checks for files that would conflict in case-insensitive filesystems
+- `check-executables-have-shebangs` - Ensures executables have proper shebangs
+- `check-json` - Validates JSON syntax
+- `check-merge-conflict` - Prevents committing files with merge conflict markers
+- `check-symlinks` - Checks for broken symlinks
+- `check-toml` - Validates TOML syntax
+- `check-xml` - Validates XML syntax
+- `check-yaml` - Validates YAML syntax
+- `detect-private-key` - Detects accidentally committed private keys
+- `end-of-file-fixer` - Ensures files end with a newline
+- `fix-byte-order-marker` - Removes UTF-8 byte order markers
+- `mixed-line-ending` - Prevents mixed line endings
+- `trailing-whitespace` - Removes trailing whitespace
+
+**Project-Specific Hooks**:
+
+- `nixpkgs-fmt` - Formats Nix files
+- `prettier` - Formats markdown, YAML, JSON, and TOML files
+- `golangci-lint` - Runs Go linter with auto-fix on changed files only
+
+### Manual Hook Execution
+
+Run hooks manually without making a commit:
+
+```bash
+# Run hooks on staged files only
+prek run
+
+# Run hooks on all files in the repository
+prek run --all-files
+
+# Run a specific hook
+prek run golangci-lint
+
+# Run hooks on specific files
+prek run --files path/to/file1.go path/to/file2.go
+```
+
+### Workflow Pattern
+
+With prek installed, your normal workflow becomes:
+
 ```bash
 # 1. Make your code changes
 vim hscontrol/state/state.go
 
-# 2. Run golangci-lint with auto-fix
-golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
-
-# 3. Review and stage the changes (including auto-fixes)
+# 2. Stage your changes
 git add .
 
-# 4. Commit
-git commit -m "feat: add new feature
+# 3. Commit - hooks run automatically
+git commit -m "feat: add new feature"
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>"
+# If hooks fail, they will show which checks failed
+# Fix the issues and try committing again
 ```
 
-**Common Issues and Fixes**:
-- **Import ordering**: Auto-fixed by gci linter
-- **Code formatting**: Auto-fixed by gofumpt
-- **Line length**: Auto-fixed by golines (max width 88)
-- **Unused variables**: Must be manually fixed
-- **Error handling**: Must be manually fixed
+### Manual golangci-lint (Optional)
 
-**If Linting Fails**:
-1. Review the error messages carefully
-2. Fix issues that cannot be auto-corrected
-3. Re-run `golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix`
-4. Repeat until no errors remain
+While golangci-lint runs automatically via prek, you can also run it manually:
+
+```bash
+# Use the same logic as the pre-commit hook (recommended)
+./.golangci-lint-hook.sh
+
+# Or manually specify a base reference
+golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
+```
+
+The `.golangci-lint-hook.sh` script automatically finds where your branch diverged from the main branch by checking `upstream/main`, `origin/main`, or `main` in that order.
+
+### Skipping Hooks (Not Recommended)
+
+In rare cases where you need to skip hooks (e.g., work-in-progress commits), use:
+
+```bash
+git commit --no-verify -m "WIP: work in progress"
+```
+
+**WARNING**: Only use `--no-verify` for temporary WIP commits on feature branches. All commits to main must pass all hooks.
+
+### Troubleshooting
+
+**Hook installation issues**:
+
+```bash
+# Check if hooks are installed
+ls -la .git/hooks/pre-commit
+
+# Reinstall hooks
+prek install
+```
+
+**Hooks running slow**:
+
+```bash
+# prek uses optimized fast-path for built-in hooks
+# If running slow, check which hook is taking time with verbose output
+prek run -v
+```
+
+**Update hook configuration**:
+
+```bash
+# After modifying .pre-commit-config.yaml, hooks will automatically use new config
+# No reinstallation needed
+```
 
 ## Project Structure & Architecture
 
@@ -127,6 +210,7 @@ headscale/
 ### Core Packages (`hscontrol/`)
 
 **Main Server (`hscontrol/`)**
+
 - `app.go`: Application setup, dependency injection, server lifecycle
 - `handlers.go`: HTTP/gRPC API endpoints for management operations
 - `grpcv1.go`: gRPC service implementation for headscale API
@@ -136,12 +220,14 @@ headscale/
 - `oidc.go`: OpenID Connect integration for user authentication
 
 **State Management (`hscontrol/state/`)**
+
 - `state.go`: Central coordinator for all subsystems (database, policy, IP allocation, DERP)
 - `node_store.go`: **Performance-critical** - In-memory cache with copy-on-write semantics
 - Thread-safe operations with deadlock detection
 - Coordinates between database persistence and real-time operations
 
 **Database Layer (`hscontrol/db/`)**
+
 - `db.go`: Database abstraction, GORM setup, migration management
 - `node.go`: Node lifecycle, registration, expiration, IP assignment
 - `users.go`: User management, namespace isolation
@@ -152,6 +238,7 @@ headscale/
 - Schema migrations in `schema.sql` with extensive test data coverage
 
 **Policy Engine (`hscontrol/policy/`)**
+
 - `policy.go`: Core ACL evaluation logic, HuJSON parsing
 - `v2/`: Next-generation policy system with improved filtering
 - `matcher/`: ACL rule matching and evaluation engine
@@ -159,6 +246,7 @@ headscale/
 - Supports both file-based and database-stored policies
 
 **Network Management (`hscontrol/`)**
+
 - `derp/`: DERP (Designated Encrypted Relay for Packets) server implementation
   - NAT traversal when direct connections fail
   - Fallback relay for firewall-restricted environments
@@ -168,6 +256,7 @@ headscale/
 - `dns/`: DNS record management and MagicDNS implementation
 
 **Utilities & Support (`hscontrol/`)**
+
 - `types/`: Core data structures, configuration, validation
 - `util/`: Helper functions for networking, DNS, key management
 - `templates/`: Client configuration templates (Apple, Windows, etc.)
@@ -178,6 +267,7 @@ headscale/
 ### Key Subsystem Interactions
 
 **Node Registration Flow**
+
 1. **Client Connection**: `noise.go` handles secure protocol handshake
 2. **Authentication**: `auth.go` validates credentials (web/OIDC/preauth)
 3. **State Creation**: `state.go` coordinates IP allocation via `db/ip.go`
@@ -185,12 +275,14 @@ headscale/
 5. **Network Setup**: `mapper/` generates initial Tailscale network map
 
 **Ongoing Operations**
+
 1. **Poll Requests**: `poll.go` receives periodic client updates
 2. **State Updates**: `NodeStore` maintains real-time node information
 3. **Policy Application**: `policy/` evaluates ACL rules for peer relationships
 4. **Map Distribution**: `mapper/` sends network topology to all affected clients
 
 **Route Management**
+
 1. **Advertisement**: Clients announce routes via `poll.go` Hostinfo updates
 2. **Storage**: `db/` persists routes, `NodeStore` caches for performance
 3. **Approval**: `policy/` auto-approves routes based on ACL rules
@@ -199,10 +291,12 @@ headscale/
 ### Command-Line Tools (`cmd/`)
 
 **Main Server (`cmd/headscale/`)**
+
 - `headscale.go`: CLI parsing, configuration loading, server startup
 - Supports daemon mode, CLI operations (user/node management), database operations
 
 **Integration Test Runner (`cmd/hi/`)**
+
 - `main.go`: Test execution framework with Docker orchestration
 - `run.go`: Individual test execution with artifact collection
 - `doctor.go`: System requirements validation
@@ -212,11 +306,13 @@ headscale/
 ### Generated & External Code
 
 **Protocol Buffers (`proto/` → `gen/`)**
+
 - Defines gRPC API for headscale management operations
 - Client libraries can generate from these definitions
 - Run `make generate` after modifying `.proto` files
 
 **Integration Testing (`integration/`)**
+
 - `scenario.go`: Docker test environment setup
 - `tailscale.go`: Tailscale client container management
 - Individual test files for specific functionality areas
@@ -225,19 +321,22 @@ headscale/
 ### Critical Performance Paths
 
 **High-Frequency Operations**
+
 1. **MapRequest Processing** (`poll.go`): Every 15-60 seconds per client
 2. **NodeStore Reads** (`node_store.go`): Every operation requiring node data
 3. **Policy Evaluation** (`policy/`): On every peer relationship calculation
 4. **Route Lookups** (`routes/`): During network map generation
 
 **Database Write Patterns**
+
 - **Frequent**: Node heartbeats, endpoint updates, route changes
 - **Moderate**: User operations, policy updates, API key management
 - **Rare**: Schema migrations, bulk operations
 
 ### Configuration & Deployment
 
-**Configuration** (`hscontrol/types/config.go`)**
+**Configuration** (`hscontrol/types/config.go`)\*\*
+
 - Database connection settings (SQLite/PostgreSQL)
 - Network configuration (IP ranges, DNS settings)
 - Policy mode (file vs database)
@@ -245,6 +344,7 @@ headscale/
 - OIDC provider settings
 
 **Key Dependencies**
+
 - **GORM**: Database ORM with migration support
 - **Tailscale Libraries**: Core networking and protocol code
 - **Zerolog**: Structured logging throughout the application
@@ -253,6 +353,7 @@ headscale/
 ### Development Workflow Integration
 
 The architecture supports incremental development:
+
 - **Unit Tests**: Focus on individual packages (`*_test.go` files)
 - **Integration Tests**: Validate cross-component interactions
 - **Database Tests**: Extensive migration and data integrity validation
@@ -262,6 +363,7 @@ The architecture supports incremental development:
 ## Integration Testing System
 
 ### Overview
+
 Headscale uses Docker-based integration tests with real Tailscale clients to validate end-to-end functionality. The integration test system is complex and requires specialized knowledge for effective execution and debugging.
 
 ### **MANDATORY: Use the headscale-integration-tester Agent**
@@ -291,11 +393,13 @@ go run ./cmd/hi run "TestPattern*"
 ```
 
 **Critical Notes**:
+
 - Only ONE test can run at a time (Docker port conflicts)
 - Tests generate ~100MB of logs per run in `control_logs/`
 - Clean environment before each test: `rm -rf control_logs/202507* && docker system prune -f`
 
 ### Test Artifacts Location
+
 All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-ID/` including server logs, client logs, database dumps, MapResponse protocol data, and Prometheus metrics.
 
 **For all integration test work, use the headscale-integration-tester agent - it contains the complete knowledge needed for effective testing and debugging.**
@@ -317,6 +421,7 @@ All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-
 #### **CRITICAL: EventuallyWithT Pattern for External Calls**
 
 **All external calls in integration tests MUST be wrapped in EventuallyWithT blocks** to handle eventual consistency in distributed systems. External calls include:
+
 - `client.Status()` - Getting Tailscale client status
 - `client.Curl()` - Making HTTP requests through clients
 - `client.Traceroute()` - Running network diagnostics
@@ -324,6 +429,7 @@ All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-
 - Any other calls that interact with external systems or network operations
 
 **Key Rules**:
+
 1. **Never use bare `require.NoError(t, err)` with external calls** - Always wrap in EventuallyWithT
 2. **Keep related assertions together** - If multiple assertions depend on the same external call, keep them in the same EventuallyWithT block
 3. **Split unrelated external calls** - Different external calls should be in separate EventuallyWithT blocks
@@ -410,6 +516,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 ```
 
 **Helper Functions**:
+
 - Use `requirePeerSubnetRoutesWithCollect` instead of `requirePeerSubnetRoutes` inside EventuallyWithT
 - Use `requireNodeRouteCountWithCollect` instead of `requireNodeRouteCount` inside EventuallyWithT
 - Use `assertTracerouteViaIPWithCollect` instead of `assertTracerouteViaIP` inside EventuallyWithT
@@ -426,6 +533,7 @@ for _, node := range nodes {
 ```
 
 ### Running Problematic Tests
+
 - Some tests require significant time (e.g., `TestNodeOnlineStatus` runs for 12 minutes)
 - Infrastructure issues like disk space can cause test failures unrelated to code changes
 - Use `--postgres` flag when testing database-heavy scenarios
@@ -455,6 +563,7 @@ for _, node := range nodes {
 ### Integration Test Debugging Reference
 
 Test artifacts are preserved in `control_logs/TIMESTAMP-ID/` including:
+
 - Headscale server logs (stderr/stdout)
 - Tailscale client logs and status
 - Database dumps and network captures
@@ -465,10 +574,13 @@ Test artifacts are preserved in `control_logs/TIMESTAMP-ID/` including:
 ## EventuallyWithT Pattern for Integration Tests
 
 ### Overview
+
 EventuallyWithT is a testing pattern used to handle eventual consistency in distributed systems. In Headscale integration tests, many operations are asynchronous - clients advertise routes, the server processes them, updates propagate through the network. EventuallyWithT allows tests to wait for these operations to complete while making assertions.
 
 ### External Calls That Must Be Wrapped
+
 The following operations are **external calls** that interact with the headscale server or tailscale clients and MUST be wrapped in EventuallyWithT:
+
 - `headscale.ListNodes()` - Queries server state
 - `client.Status()` - Gets client network status
 - `client.Curl()` - Makes HTTP requests through the network
@@ -477,7 +589,9 @@ The following operations are **external calls** that interact with the headscale
 - Any operation that reads from the headscale server or tailscale client
 
 ### Operations That Must NOT Be Wrapped
+
 The following are **blocking operations** that modify state and should NOT be wrapped in EventuallyWithT:
+
 - `tailscale set` commands (e.g., `--advertise-routes`, `--exit-node`)
 - Any command that changes configuration or state
 - Use `client.MustStatus()` instead of `client.Status()` when you just need the ID for a blocking operation
