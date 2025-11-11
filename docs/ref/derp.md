@@ -165,7 +165,8 @@ Any Tailscale client may be used to introspect the DERP map and to check for con
 Additional DERP related metrics and information is available via the [metrics and debug
 endpoint](./debug.md#metrics-and-debug-endpoint).
 
-[^1]: This assumes that the default region code of the [configuration file](./configuration.md) is used.
+[^1]:
+    This assumes that the default region code of the [configuration file](./configuration.md) is used.
 
 ## Limitations
 

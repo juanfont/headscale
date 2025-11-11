@@ -10,19 +10,33 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
+        exclude: ^docs/
       - id: check-case-conflict
+        exclude: ^docs/
       - id: check-executables-have-shebangs
+        exclude: ^docs/
       - id: check-json
+        exclude: ^docs/
       - id: check-merge-conflict
+        exclude: ^docs/
       - id: check-symlinks
+        exclude: ^docs/
       - id: check-toml
+        exclude: ^docs/
       - id: check-xml
+        exclude: ^docs/
       - id: check-yaml
+        exclude: ^docs/
       - id: detect-private-key
+        exclude: ^docs/
       - id: end-of-file-fixer
+        exclude: ^docs/
       - id: fix-byte-order-marker
+        exclude: ^docs/
       - id: mixed-line-ending
+        exclude: ^docs/
       - id: trailing-whitespace
+        exclude: ^docs/
 
   # Local hooks for project-specific tooling
   - repo: local
@@ -54,7 +68,7 @@ repos:
             sass,
             markdown,
           ]
-        exclude: ^CHANGELOG\.md$
+        exclude: ^(CHANGELOG\.md|docs/)
 
       # Prettier for CHANGELOG.md with special formatting
       - id: prettier-changelog

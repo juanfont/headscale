@@ -68,7 +68,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
           - <HEADSCALE_PATH>/run:/var/run/headscale
         command: serve
         healthcheck:
-          test: ["CMD", "headscale", "health"]
+            test: ["CMD", "headscale", "health"]
     ```
 
 1.  Verify headscale is running:
