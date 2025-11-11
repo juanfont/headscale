@@ -71,6 +71,13 @@ func (h *Headscale) handleRegister(
 		// We do not look up nodes by [key.MachinePublic] as it might belong to multiple
 		// nodes, separated by users and this path is handling expiring/logout paths.
 		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
+			// When tailscaled restarts, it sends RegisterRequest with Auth=nil and Expiry=zero.
+			// Return the current node state without modification.
+			// See: https://github.com/juanfont/headscale/issues/2862
+			if req.Expiry.IsZero() && node.Expiry().Valid() && !node.IsExpired() {
+				return nodeToRegisterResponse(node), nil
+			}
+
 			resp, err := h.handleLogout(node, req, machineKey)
 			if err != nil {
 				return nil, fmt.Errorf("handling existing node: %w", err)
@@ -173,6 +180,7 @@ func (h *Headscale) handleLogout(
 	}
 
 	// If the request expiry is in the past, we consider it a logout.
+	// Zero expiry is handled in handleRegister() before calling this function.
 	if req.Expiry.Before(time.Now()) {
 		log.Debug().
 			Uint64("node.id", node.ID().Uint64()).
