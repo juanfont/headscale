@@ -214,6 +214,7 @@
 
           shellHook = ''
             export PATH="$PWD/result/bin:$PATH"
+            export CGO_ENABLED=0
           '';
         };
 
