@@ -25,6 +25,7 @@ backwards compatibility.
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
 - Reclaim IPs from the IP allocator when nodes are deleted [#2831](https://github.com/juanfont/headscale/pull/2831)
 - Add bcrypt hashing for pre-authentication keys [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Add structured prefix format for API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
 
 ## 0.27.1 (2025-11-11)
 
