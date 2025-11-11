@@ -117,7 +117,7 @@ help:
 	@echo ""
 	@echo "Specific targets:"
 	@echo "  fmt-go       - Format Go code only"
-	@echo "  fmt-prettier - Format documentation only" 
+	@echo "  fmt-prettier - Format documentation only"
 	@echo "  fmt-proto    - Format Protocol Buffer files only"
 	@echo "  lint-go      - Lint Go code only"
 	@echo "  lint-proto   - Lint Protocol Buffer files only"

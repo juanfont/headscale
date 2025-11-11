@@ -147,6 +147,7 @@ make build
 We recommend using Nix for dependency management to ensure you have all required tools. If you prefer to manage dependencies yourself, you can use Make directly:
 
 **With Nix (recommended):**
+
 ```shell
 nix develop
 make test
@@ -154,6 +155,7 @@ make build
 ```
 
 **With your own dependencies:**
+
 ```shell
 make test
 make build
