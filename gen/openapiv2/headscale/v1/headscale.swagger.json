@@ -857,6 +857,76 @@
           "HeadscaleService"
         ]
       }
+    },
+    "/api/v1/wireguard/connection": {
+      "post": {
+        "operationId": "HeadscaleService_CreateWireGuardConnection",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateWireGuardConnectionResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateWireGuardConnectionRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/wireguard/connection/{nodeId}/{wgPeerId}": {
+      "delete": {
+        "operationId": "HeadscaleService_DeleteWireGuardConnection",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeleteWireGuardConnectionResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "wgPeerId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -1029,6 +1099,34 @@
         }
       }
     },
+    "v1CreateWireGuardConnectionRequest": {
+      "type": "object",
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "wgPeerId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "ipv4MasqAddr": {
+          "type": "string",
+          "title": "At least one masquerade address is required"
+        },
+        "ipv6MasqAddr": {
+          "type": "string"
+        }
+      }
+    },
+    "v1CreateWireGuardConnectionResponse": {
+      "type": "object",
+      "properties": {
+        "connection": {
+          "$ref": "#/definitions/v1WireGuardConnection"
+        }
+      }
+    },
     "v1DebugCreateNodeRequest": {
       "type": "object",
       "properties": {
@@ -1064,6 +1162,9 @@
       "type": "object"
     },
     "v1DeleteUserResponse": {
+      "type": "object"
+    },
+    "v1DeleteWireGuardConnectionResponse": {
       "type": "object"
     },
     "v1ExpireApiKeyRequest": {
@@ -1351,14 +1452,6 @@
         "publicKey": {
           "type": "string"
         },
-        "knownNodeIds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "format": "uint64"
-          },
-          "title": "Node IDs that should be able to see this peer"
-        },
         "allowedIps": {
           "type": "array",
           "items": {
@@ -1371,16 +1464,9 @@
             "type": "string"
           }
         },
-        "selfIpv4MasqAddr": {
-          "type": "string",
-          "title": "At least one masq addr is required"
-        },
-        "selfIpv6MasqAddr": {
-          "type": "string"
-        },
         "extraConfig": {
           "type": "string",
-          "title": "Optional extra configuration as JSON (exit node settings, tags, location)"
+          "title": "Optional extra configuration as JSON"
         }
       }
     },
@@ -1475,6 +1561,31 @@
         }
       }
     },
+    "v1WireGuardConnection": {
+      "type": "object",
+      "properties": {
+        "nodeId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "wgPeerId": {
+          "type": "string",
+          "format": "uint64"
+        },
+        "ipv4MasqAddr": {
+          "type": "string",
+          "title": "Per-connection masquerade addresses\nThese are the source IP addresses that our node will use when communicating with this peer\nAt least one must be specified"
+        },
+        "ipv6MasqAddr": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "description": "WireGuardConnection represents a connection between a regular node and a WireGuard-only peer.\nThis allows each node to have unique masquerade addresses when communicating with the same\nWireGuard peer, enabling proper bidirectional routing."
+    },
     "v1WireGuardOnlyPeer": {
       "type": "object",
       "properties": {
@@ -1492,14 +1603,6 @@
           "type": "string",
           "title": "WireGuard public key of the peer"
         },
-        "knownNodeIds": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "format": "uint64"
-          },
-          "title": "List of regular node IDs that can see this WireGuard-only peer\nThis is unidirectional - only these nodes will have the peer in their maps"
-        },
         "allowedIps": {
           "type": "array",
           "items": {
@@ -1513,13 +1616,6 @@
             "type": "string"
           },
           "title": "WireGuard endpoints where the peer can be reached"
-        },
-        "selfIpv4MasqAddr": {
-          "type": "string",
-          "description": "Source IP addresses that the WireGuard-only peer expects to see\nfrom our nodes."
-        },
-        "selfIpv6MasqAddr": {
-          "type": "string"
         },
         "ipv4": {
           "type": "string",
@@ -1541,7 +1637,7 @@
           "format": "date-time"
         }
       },
-      "description": "WireGuardOnlyPeer represents an external WireGuard peer that does not run\na Tailscale client. These peers are manually configured and statically defined."
+      "description": "WireGuardOnlyPeer represents an external WireGuard peer that does not run\na Tailscale client. These peers are manually configured and statically defined.\nVisibility and masquerade addresses are now managed through the WireGuardConnection\nmodel (see wireguard_connection.proto)."
     }
   }
 }

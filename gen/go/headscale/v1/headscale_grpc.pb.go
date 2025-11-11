@@ -39,6 +39,8 @@ const (
 	HeadscaleService_BackfillNodeIPs_FullMethodName           = "/headscale.v1.HeadscaleService/BackfillNodeIPs"
 	HeadscaleService_RegisterWireGuardOnlyPeer_FullMethodName = "/headscale.v1.HeadscaleService/RegisterWireGuardOnlyPeer"
 	HeadscaleService_GetWireGuardOnlyPeer_FullMethodName      = "/headscale.v1.HeadscaleService/GetWireGuardOnlyPeer"
+	HeadscaleService_CreateWireGuardConnection_FullMethodName = "/headscale.v1.HeadscaleService/CreateWireGuardConnection"
+	HeadscaleService_DeleteWireGuardConnection_FullMethodName = "/headscale.v1.HeadscaleService/DeleteWireGuardConnection"
 	HeadscaleService_CreateApiKey_FullMethodName              = "/headscale.v1.HeadscaleService/CreateApiKey"
 	HeadscaleService_ExpireApiKey_FullMethodName              = "/headscale.v1.HeadscaleService/ExpireApiKey"
 	HeadscaleService_ListApiKeys_FullMethodName               = "/headscale.v1.HeadscaleService/ListApiKeys"
@@ -75,6 +77,8 @@ type HeadscaleServiceClient interface {
 	// --- WireGuard-Only Peers start ---
 	RegisterWireGuardOnlyPeer(ctx context.Context, in *RegisterWireGuardOnlyPeerRequest, opts ...grpc.CallOption) (*RegisterWireGuardOnlyPeerResponse, error)
 	GetWireGuardOnlyPeer(ctx context.Context, in *GetWireGuardOnlyPeerRequest, opts ...grpc.CallOption) (*GetWireGuardOnlyPeerResponse, error)
+	CreateWireGuardConnection(ctx context.Context, in *CreateWireGuardConnectionRequest, opts ...grpc.CallOption) (*CreateWireGuardConnectionResponse, error)
+	DeleteWireGuardConnection(ctx context.Context, in *DeleteWireGuardConnectionRequest, opts ...grpc.CallOption) (*DeleteWireGuardConnectionResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
 	ExpireApiKey(ctx context.Context, in *ExpireApiKeyRequest, opts ...grpc.CallOption) (*ExpireApiKeyResponse, error)
@@ -293,6 +297,26 @@ func (c *headscaleServiceClient) GetWireGuardOnlyPeer(ctx context.Context, in *G
 	return out, nil
 }
 
+func (c *headscaleServiceClient) CreateWireGuardConnection(ctx context.Context, in *CreateWireGuardConnectionRequest, opts ...grpc.CallOption) (*CreateWireGuardConnectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateWireGuardConnectionResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_CreateWireGuardConnection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) DeleteWireGuardConnection(ctx context.Context, in *DeleteWireGuardConnectionRequest, opts ...grpc.CallOption) (*DeleteWireGuardConnectionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteWireGuardConnectionResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_DeleteWireGuardConnection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *headscaleServiceClient) CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CreateApiKeyResponse)
@@ -381,6 +405,8 @@ type HeadscaleServiceServer interface {
 	// --- WireGuard-Only Peers start ---
 	RegisterWireGuardOnlyPeer(context.Context, *RegisterWireGuardOnlyPeerRequest) (*RegisterWireGuardOnlyPeerResponse, error)
 	GetWireGuardOnlyPeer(context.Context, *GetWireGuardOnlyPeerRequest) (*GetWireGuardOnlyPeerResponse, error)
+	CreateWireGuardConnection(context.Context, *CreateWireGuardConnectionRequest) (*CreateWireGuardConnectionResponse, error)
+	DeleteWireGuardConnection(context.Context, *DeleteWireGuardConnectionRequest) (*DeleteWireGuardConnectionResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
 	ExpireApiKey(context.Context, *ExpireApiKeyRequest) (*ExpireApiKeyResponse, error)
@@ -458,6 +484,12 @@ func (UnimplementedHeadscaleServiceServer) RegisterWireGuardOnlyPeer(context.Con
 }
 func (UnimplementedHeadscaleServiceServer) GetWireGuardOnlyPeer(context.Context, *GetWireGuardOnlyPeerRequest) (*GetWireGuardOnlyPeerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWireGuardOnlyPeer not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) CreateWireGuardConnection(context.Context, *CreateWireGuardConnectionRequest) (*CreateWireGuardConnectionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateWireGuardConnection not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) DeleteWireGuardConnection(context.Context, *DeleteWireGuardConnectionRequest) (*DeleteWireGuardConnectionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteWireGuardConnection not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateApiKey not implemented")
@@ -858,6 +890,42 @@ func _HeadscaleService_GetWireGuardOnlyPeer_Handler(srv interface{}, ctx context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_CreateWireGuardConnection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateWireGuardConnectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).CreateWireGuardConnection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_CreateWireGuardConnection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).CreateWireGuardConnection(ctx, req.(*CreateWireGuardConnectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_DeleteWireGuardConnection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteWireGuardConnectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).DeleteWireGuardConnection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_DeleteWireGuardConnection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).DeleteWireGuardConnection(ctx, req.(*DeleteWireGuardConnectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _HeadscaleService_CreateApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateApiKeyRequest)
 	if err := dec(in); err != nil {
@@ -1052,6 +1120,14 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWireGuardOnlyPeer",
 			Handler:    _HeadscaleService_GetWireGuardOnlyPeer_Handler,
+		},
+		{
+			MethodName: "CreateWireGuardConnection",
+			Handler:    _HeadscaleService_CreateWireGuardConnection_Handler,
+		},
+		{
+			MethodName: "DeleteWireGuardConnection",
+			Handler:    _HeadscaleService_DeleteWireGuardConnection_Handler,
 		},
 		{
 			MethodName: "CreateApiKey",

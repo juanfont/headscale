@@ -24,6 +24,8 @@ const (
 
 // WireGuardOnlyPeer represents an external WireGuard peer that does not run
 // a Tailscale client. These peers are manually configured and statically defined.
+// Visibility and masquerade addresses are now managed through the WireGuardConnection
+// model (see wireguard_connection.proto).
 type WireGuardOnlyPeer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -31,18 +33,11 @@ type WireGuardOnlyPeer struct {
 	User  *User                  `protobuf:"bytes,3,opt,name=user,proto3" json:"user,omitempty"`
 	// WireGuard public key of the peer
 	PublicKey string `protobuf:"bytes,4,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
-	// List of regular node IDs that can see this WireGuard-only peer
-	// This is unidirectional - only these nodes will have the peer in their maps
-	KnownNodeIds []uint64 `protobuf:"varint,5,rep,packed,name=known_node_ids,json=knownNodeIds,proto3" json:"known_node_ids,omitempty"`
 	// AllowedIPs that the WireGuard-only peer is allowed to route
 	// Typically includes exit routes like 0.0.0.0/0 and ::/0
 	AllowedIps []string `protobuf:"bytes,6,rep,name=allowed_ips,json=allowedIps,proto3" json:"allowed_ips,omitempty"`
 	// WireGuard endpoints where the peer can be reached
 	Endpoints []string `protobuf:"bytes,7,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
-	// Source IP addresses that the WireGuard-only peer expects to see
-	// from our nodes.
-	SelfIpv4MasqAddr *string `protobuf:"bytes,8,opt,name=self_ipv4_masq_addr,json=selfIpv4MasqAddr,proto3,oneof" json:"self_ipv4_masq_addr,omitempty"`
-	SelfIpv6MasqAddr *string `protobuf:"bytes,9,opt,name=self_ipv6_masq_addr,json=selfIpv6MasqAddr,proto3,oneof" json:"self_ipv6_masq_addr,omitempty"`
 	// Auto-allocated tailnet IP addresses for the peer
 	Ipv4 string `protobuf:"bytes,10,opt,name=ipv4,proto3" json:"ipv4,omitempty"`
 	Ipv6 string `protobuf:"bytes,11,opt,name=ipv6,proto3" json:"ipv6,omitempty"`
@@ -112,13 +107,6 @@ func (x *WireGuardOnlyPeer) GetPublicKey() string {
 	return ""
 }
 
-func (x *WireGuardOnlyPeer) GetKnownNodeIds() []uint64 {
-	if x != nil {
-		return x.KnownNodeIds
-	}
-	return nil
-}
-
 func (x *WireGuardOnlyPeer) GetAllowedIps() []string {
 	if x != nil {
 		return x.AllowedIps
@@ -131,20 +119,6 @@ func (x *WireGuardOnlyPeer) GetEndpoints() []string {
 		return x.Endpoints
 	}
 	return nil
-}
-
-func (x *WireGuardOnlyPeer) GetSelfIpv4MasqAddr() string {
-	if x != nil && x.SelfIpv4MasqAddr != nil {
-		return *x.SelfIpv4MasqAddr
-	}
-	return ""
-}
-
-func (x *WireGuardOnlyPeer) GetSelfIpv6MasqAddr() string {
-	if x != nil && x.SelfIpv6MasqAddr != nil {
-		return *x.SelfIpv6MasqAddr
-	}
-	return ""
 }
 
 func (x *WireGuardOnlyPeer) GetIpv4() string {
@@ -185,17 +159,12 @@ func (x *WireGuardOnlyPeer) GetUpdatedAt() *timestamppb.Timestamp {
 type RegisterWireGuardOnlyPeerRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Human-readable name for the peer
-	Name      string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	UserId    uint64 `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	PublicKey string `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
-	// Node IDs that should be able to see this peer
-	KnownNodeIds []uint64 `protobuf:"varint,4,rep,packed,name=known_node_ids,json=knownNodeIds,proto3" json:"known_node_ids,omitempty"`
-	AllowedIps   []string `protobuf:"bytes,5,rep,name=allowed_ips,json=allowedIps,proto3" json:"allowed_ips,omitempty"`
-	Endpoints    []string `protobuf:"bytes,6,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
-	// At least one masq addr is required
-	SelfIpv4MasqAddr *string `protobuf:"bytes,7,opt,name=self_ipv4_masq_addr,json=selfIpv4MasqAddr,proto3,oneof" json:"self_ipv4_masq_addr,omitempty"`
-	SelfIpv6MasqAddr *string `protobuf:"bytes,8,opt,name=self_ipv6_masq_addr,json=selfIpv6MasqAddr,proto3,oneof" json:"self_ipv6_masq_addr,omitempty"`
-	// Optional extra configuration as JSON (exit node settings, tags, location)
+	Name       string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	UserId     uint64   `protobuf:"varint,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	PublicKey  string   `protobuf:"bytes,3,opt,name=public_key,json=publicKey,proto3" json:"public_key,omitempty"`
+	AllowedIps []string `protobuf:"bytes,5,rep,name=allowed_ips,json=allowedIps,proto3" json:"allowed_ips,omitempty"`
+	Endpoints  []string `protobuf:"bytes,6,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	// Optional extra configuration as JSON
 	ExtraConfig   *string `protobuf:"bytes,9,opt,name=extra_config,json=extraConfig,proto3,oneof" json:"extra_config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -252,13 +221,6 @@ func (x *RegisterWireGuardOnlyPeerRequest) GetPublicKey() string {
 	return ""
 }
 
-func (x *RegisterWireGuardOnlyPeerRequest) GetKnownNodeIds() []uint64 {
-	if x != nil {
-		return x.KnownNodeIds
-	}
-	return nil
-}
-
 func (x *RegisterWireGuardOnlyPeerRequest) GetAllowedIps() []string {
 	if x != nil {
 		return x.AllowedIps
@@ -271,20 +233,6 @@ func (x *RegisterWireGuardOnlyPeerRequest) GetEndpoints() []string {
 		return x.Endpoints
 	}
 	return nil
-}
-
-func (x *RegisterWireGuardOnlyPeerRequest) GetSelfIpv4MasqAddr() string {
-	if x != nil && x.SelfIpv4MasqAddr != nil {
-		return *x.SelfIpv4MasqAddr
-	}
-	return ""
-}
-
-func (x *RegisterWireGuardOnlyPeerRequest) GetSelfIpv6MasqAddr() string {
-	if x != nil && x.SelfIpv6MasqAddr != nil {
-		return *x.SelfIpv6MasqAddr
-	}
-	return ""
 }
 
 func (x *RegisterWireGuardOnlyPeerRequest) GetExtraConfig() string {
@@ -599,19 +547,16 @@ var File_headscale_v1_wireguard_only_peer_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_wireguard_only_peer_proto_rawDesc = "" +
 	"\n" +
-	"&headscale/v1/wireguard_only_peer.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17headscale/v1/user.proto\"\xbc\x04\n" +
+	"&headscale/v1/wireguard_only_peer.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17headscale/v1/user.proto\"\xca\x03\n" +
 	"\x11WireGuardOnlyPeer\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12&\n" +
 	"\x04user\x18\x03 \x01(\v2\x12.headscale.v1.UserR\x04user\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x04 \x01(\tR\tpublicKey\x12$\n" +
-	"\x0eknown_node_ids\x18\x05 \x03(\x04R\fknownNodeIds\x12\x1f\n" +
+	"public_key\x18\x04 \x01(\tR\tpublicKey\x12\x1f\n" +
 	"\vallowed_ips\x18\x06 \x03(\tR\n" +
 	"allowedIps\x12\x1c\n" +
-	"\tendpoints\x18\a \x03(\tR\tendpoints\x122\n" +
-	"\x13self_ipv4_masq_addr\x18\b \x01(\tH\x00R\x10selfIpv4MasqAddr\x88\x01\x01\x122\n" +
-	"\x13self_ipv6_masq_addr\x18\t \x01(\tH\x01R\x10selfIpv6MasqAddr\x88\x01\x01\x12\x12\n" +
+	"\tendpoints\x18\a \x03(\tR\tendpoints\x12\x12\n" +
 	"\x04ipv4\x18\n" +
 	" \x01(\tR\x04ipv4\x12\x12\n" +
 	"\x04ipv6\x18\v \x01(\tR\x04ipv6\x12!\n" +
@@ -619,24 +564,18 @@ const file_headscale_v1_wireguard_only_peer_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB\x16\n" +
-	"\x14_self_ipv4_masq_addrB\x16\n" +
-	"\x14_self_ipv6_masq_addr\"\xa4\x03\n" +
+	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtJ\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"R\x0eknown_node_idsR\x13self_ipv4_masq_addrR\x13self_ipv6_masq_addr\"\xb2\x02\n" +
 	" RegisterWireGuardOnlyPeerRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\x04R\x06userId\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x03 \x01(\tR\tpublicKey\x12$\n" +
-	"\x0eknown_node_ids\x18\x04 \x03(\x04R\fknownNodeIds\x12\x1f\n" +
+	"public_key\x18\x03 \x01(\tR\tpublicKey\x12\x1f\n" +
 	"\vallowed_ips\x18\x05 \x03(\tR\n" +
 	"allowedIps\x12\x1c\n" +
-	"\tendpoints\x18\x06 \x03(\tR\tendpoints\x122\n" +
-	"\x13self_ipv4_masq_addr\x18\a \x01(\tH\x00R\x10selfIpv4MasqAddr\x88\x01\x01\x122\n" +
-	"\x13self_ipv6_masq_addr\x18\b \x01(\tH\x01R\x10selfIpv6MasqAddr\x88\x01\x01\x12&\n" +
-	"\fextra_config\x18\t \x01(\tH\x02R\vextraConfig\x88\x01\x01B\x16\n" +
-	"\x14_self_ipv4_masq_addrB\x16\n" +
-	"\x14_self_ipv6_masq_addrB\x0f\n" +
-	"\r_extra_config\"X\n" +
+	"\tendpoints\x18\x06 \x03(\tR\tendpoints\x12&\n" +
+	"\fextra_config\x18\t \x01(\tH\x00R\vextraConfig\x88\x01\x01B\x0f\n" +
+	"\r_extra_configJ\x04\b\x04\x10\x05J\x04\b\a\x10\bJ\x04\b\b\x10\tR\x0eknown_node_idsR\x13self_ipv4_masq_addrR\x13self_ipv6_masq_addr\"X\n" +
 	"!RegisterWireGuardOnlyPeerResponse\x123\n" +
 	"\x04peer\x18\x01 \x01(\v2\x1f.headscale.v1.WireGuardOnlyPeerR\x04peer\"I\n" +
 	"\x1dListWireGuardOnlyPeersRequest\x12\x1c\n" +
@@ -699,7 +638,6 @@ func file_headscale_v1_wireguard_only_peer_proto_init() {
 		return
 	}
 	file_headscale_v1_user_proto_init()
-	file_headscale_v1_wireguard_only_peer_proto_msgTypes[0].OneofWrappers = []any{}
 	file_headscale_v1_wireguard_only_peer_proto_msgTypes[1].OneofWrappers = []any{}
 	file_headscale_v1_wireguard_only_peer_proto_msgTypes[3].OneofWrappers = []any{}
 	type x struct{}
