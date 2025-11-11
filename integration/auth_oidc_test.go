@@ -1294,3 +1294,131 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		}
 	}, 60*time.Second, 2*time.Second, "validating user1 node is online after same-user OIDC relogin")
 }
+
+// TestOIDCExpiryAfterRestart validates that node expiry is preserved
+// when a tailscaled client restarts and reconnects to headscale.
+//
+// This test reproduces the bug reported in https://github.com/juanfont/headscale/issues/2862
+// where OIDC expiry was reset to 0001-01-01 00:00:00 after tailscaled restart.
+//
+// Test flow:
+// 1. Node logs in with OIDC (gets 72h expiry)
+// 2. Verify expiry is set correctly in headscale
+// 3. Restart tailscaled container (simulates daemon restart)
+// 4. Wait for reconnection
+// 5. Verify expiry is still set correctly (not zero).
+func TestOIDCExpiryAfterRestart(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario, err := NewScenario(ScenarioSpec{
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
+	})
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+		"HEADSCALE_OIDC_EXPIRY":             "72h",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcexpiry"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithDERPAsIP(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Create and login tailscale client
+	ts, err := scenario.CreateTailscaleNode("unstable", tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]))
+	require.NoError(t, err)
+
+	u, err := ts.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(ts.Hostname(), u)
+	require.NoError(t, err)
+
+	t.Logf("Validating initial login and expiry at %s", time.Now().Format(TimestampFormat))
+
+	// Verify initial expiry is set
+	var initialExpiry time.Time
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 1)
+
+		node := nodes[0]
+		assert.NotNil(ct, node.GetExpiry(), "Expiry should be set after OIDC login")
+
+		if node.GetExpiry() != nil {
+			expiryTime := node.GetExpiry().AsTime()
+			assert.False(ct, expiryTime.IsZero(), "Expiry should not be zero time")
+
+			initialExpiry = expiryTime
+			t.Logf("Initial expiry set to: %v (expires in %v)", expiryTime, time.Until(expiryTime))
+		}
+	}, 30*time.Second, 1*time.Second, "validating initial expiry after OIDC login")
+
+	// Now restart the tailscaled container
+	t.Logf("Restarting tailscaled container at %s", time.Now().Format(TimestampFormat))
+
+	err = ts.Restart()
+	require.NoError(t, err, "Failed to restart tailscaled container")
+
+	t.Logf("Tailscaled restarted, waiting for reconnection at %s", time.Now().Format(TimestampFormat))
+
+	// Wait for the node to come back online
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := ts.Status()
+		if !assert.NoError(ct, err) {
+			return
+		}
+
+		if !assert.NotNil(ct, status) {
+			return
+		}
+
+		assert.Equal(ct, "Running", status.BackendState)
+	}, 60*time.Second, 2*time.Second, "waiting for tailscale to reconnect after restart")
+
+	// THE CRITICAL TEST: Verify expiry is still set correctly after restart
+	t.Logf("Validating expiry preservation after restart at %s", time.Now().Format(TimestampFormat))
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 1, "Should still have exactly 1 node after restart")
+
+		node := nodes[0]
+		assert.NotNil(ct, node.GetExpiry(), "Expiry should NOT be nil after restart")
+
+		if node.GetExpiry() != nil {
+			expiryTime := node.GetExpiry().AsTime()
+
+			// This is the bug check - expiry should NOT be zero time
+			assert.False(ct, expiryTime.IsZero(),
+				"BUG: Expiry was reset to zero time after tailscaled restart! This is issue #2862")
+
+			// Expiry should be exactly the same as before restart
+			assert.Equal(ct, initialExpiry, expiryTime,
+				"Expiry should be exactly the same after restart, got %v, expected %v",
+				expiryTime, initialExpiry)
+
+			t.Logf("SUCCESS: Expiry preserved after restart: %v (expires in %v)",
+				expiryTime, time.Until(expiryTime))
+		}
+	}, 30*time.Second, 1*time.Second, "validating expiry preservation after restart")
+}
