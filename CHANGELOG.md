@@ -27,6 +27,10 @@ backwards compatibility.
 - Add bcrypt hashing for pre-authentication keys [#2853](https://github.com/juanfont/headscale/pull/2853)
 - Add structured prefix format for API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
 - Add registration keys for web authentication tracking (`hskey-reg-{random}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
+  - Detect when only node endpoints or DERP region changed and send
+    PeerChangedPatch responses instead of full map updates, reducing bandwidth
+    and improving performance
 
 ## 0.27.1 (2025-11-11)
 
