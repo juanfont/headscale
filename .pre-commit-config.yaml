@@ -2,6 +2,9 @@
 # See: https://prek.j178.dev/quickstart/
 # See: https://prek.j178.dev/builtin/
 
+# Global exclusions - ignore docs and generated code
+exclude: ^(docs/|gen/)
+
 repos:
   # Built-in hooks from pre-commit/pre-commit-hooks
   # prek will use fast-path optimized versions automatically
@@ -10,33 +13,19 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ^(docs/|gen/)
       - id: check-case-conflict
-        exclude: ^(docs/|gen/)
       - id: check-executables-have-shebangs
-        exclude: ^(docs/|gen/)
       - id: check-json
-        exclude: ^(docs/|gen/)
       - id: check-merge-conflict
-        exclude: ^(docs/|gen/)
       - id: check-symlinks
-        exclude: ^(docs/|gen/)
       - id: check-toml
-        exclude: ^(docs/|gen/)
       - id: check-xml
-        exclude: ^(docs/|gen/)
       - id: check-yaml
-        exclude: ^(docs/|gen/)
       - id: detect-private-key
-        exclude: ^(docs/|gen/)
       - id: end-of-file-fixer
-        exclude: ^(docs/|gen/)
       - id: fix-byte-order-marker
-        exclude: ^(docs/|gen/)
       - id: mixed-line-ending
-        exclude: ^(docs/|gen/)
       - id: trailing-whitespace
-        exclude: ^(docs/|gen/)
 
   # Local hooks for project-specific tooling
   - repo: local
@@ -68,7 +57,7 @@ repos:
             sass,
             markdown,
           ]
-        exclude: ^(CHANGELOG\.md|docs/|gen/)
+        exclude: ^CHANGELOG\.md$
 
       # Prettier for CHANGELOG.md with special formatting
       - id: prettier-changelog
