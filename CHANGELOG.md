@@ -4,6 +4,8 @@
 
 ### Changes
 
+- Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
+
 ## 0.27.1 (2025-11-11)
 
 **Minimum supported Tailscale client version: v1.64.0**

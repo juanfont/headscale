@@ -57,14 +57,6 @@ repos:
             sass,
             markdown,
           ]
-        exclude: ^CHANGELOG\.md$
-
-      # Prettier for CHANGELOG.md with special formatting
-      - id: prettier-changelog
-        name: prettier-changelog
-        entry: prettier --write --print-width 80 --prose-wrap always
-        language: system
-        files: ^CHANGELOG\.md$
 
       # golangci-lint for Go code quality
       - id: golangci-lint
