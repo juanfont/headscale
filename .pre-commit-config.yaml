@@ -1,0 +1,75 @@
+# prek/pre-commit configuration for headscale
+# See: https://prek.j178.dev/quickstart/
+# See: https://prek.j178.dev/builtin/
+
+# Global exclusions - ignore docs and generated code
+exclude: ^(docs/|gen/)
+
+repos:
+  # Built-in hooks from pre-commit/pre-commit-hooks
+  # prek will use fast-path optimized versions automatically
+  # See: https://prek.j178.dev/builtin/
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  # Local hooks for project-specific tooling
+  - repo: local
+    hooks:
+      # nixpkgs-fmt for Nix files
+      - id: nixpkgs-fmt
+        name: nixpkgs-fmt
+        entry: nixpkgs-fmt
+        language: system
+        files: \.nix$
+
+      # Prettier for formatting
+      - id: prettier
+        name: prettier
+        entry: prettier --write --list-different
+        language: system
+        types_or:
+          [
+            javascript,
+            jsx,
+            ts,
+            tsx,
+            yaml,
+            json,
+            toml,
+            html,
+            css,
+            scss,
+            sass,
+            markdown,
+          ]
+        exclude: ^CHANGELOG\.md$
+
+      # Prettier for CHANGELOG.md with special formatting
+      - id: prettier-changelog
+        name: prettier-changelog
+        entry: prettier --write --print-width 80 --prose-wrap always
+        language: system
+        files: ^CHANGELOG\.md$
+
+      # golangci-lint for Go code quality
+      - id: golangci-lint
+        name: golangci-lint
+        entry: .golangci-lint-hook.sh
+        language: system
+        types: [go]
+        pass_filenames: false
