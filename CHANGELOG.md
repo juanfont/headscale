@@ -89,7 +89,8 @@ the code base over time and make it more correct and efficient.
   [#2692](https://github.com/juanfont/headscale/pull/2692)
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
-- Stricter hostname validation [#2383](https://github.com/juanfont/headscale/pull/2383)
+- Stricter hostname validation
+  [#2383](https://github.com/juanfont/headscale/pull/2383)
   - Hostnames must be valid DNS labels (2-63 characters, alphanumeric and
     hyphens only, cannot start/end with hyphen)
   - **Client Registration (New Nodes)**: Invalid hostnames are automatically
@@ -144,7 +145,8 @@ the code base over time and make it more correct and efficient.
   [#2776](https://github.com/juanfont/headscale/pull/2776)
 - EXPERIMENTAL: Add support for `autogroup:self`
   [#2789](https://github.com/juanfont/headscale/pull/2789)
-- Add healthcheck command [#2659](https://github.com/juanfont/headscale/pull/2659)
+- Add healthcheck command
+  [#2659](https://github.com/juanfont/headscale/pull/2659)
 
 ## 0.26.1 (2025-06-06)
 
