@@ -4,6 +4,9 @@
 
 ### Changes
 
+- Add favicon to webpages
+  [#2858](https://github.com/juanfont/headscale/pull/2858)
+
 ## 0.27.1 (2025-11-11)
 
 **Minimum supported Tailscale client version: v1.64.0**
@@ -135,7 +138,6 @@ the code base over time and make it more correct and efficient.
       starting/ending with hyphen are rejected
 
 ### Changes
-
 - **Database schema migration improvements for SQLite**
   [#2617](https://github.com/juanfont/headscale/pull/2617)
   - **IMPORTANT: Backup your SQLite database before upgrading**
