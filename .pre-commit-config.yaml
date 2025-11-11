@@ -10,33 +10,33 @@ repos:
     rev: v5.0.0
     hooks:
       - id: check-added-large-files
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-case-conflict
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-executables-have-shebangs
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-json
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-merge-conflict
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-symlinks
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-toml
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-xml
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: check-yaml
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: detect-private-key
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: end-of-file-fixer
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: fix-byte-order-marker
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: mixed-line-ending
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
       - id: trailing-whitespace
-        exclude: ^docs/
+        exclude: ^(docs/|gen/)
 
   # Local hooks for project-specific tooling
   - repo: local
@@ -68,7 +68,7 @@ repos:
             sass,
             markdown,
           ]
-        exclude: ^(CHANGELOG\.md|docs/)
+        exclude: ^(CHANGELOG\.md|docs/|gen/)
 
       # Prettier for CHANGELOG.md with special formatting
       - id: prettier-changelog
