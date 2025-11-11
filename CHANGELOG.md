@@ -4,8 +4,37 @@
 
 ### Changes
 
+## 0.27.1 (2025-11-11)
+
+**Minimum supported Tailscale client version: v1.64.0**
+
+### Changes
+
 - Expire nodes with a custom timestamp
   [#2828](https://github.com/juanfont/headscale/pull/2828)
+- Fix issue where node expiry was reset when tailscaled restarts
+  [#2875](https://github.com/juanfont/headscale/pull/2875)
+- Fix OIDC authentication when multiple login URLs are opened
+  [#2861](https://github.com/juanfont/headscale/pull/2861)
+- Fix node re-registration failing with expired auth keys
+  [#2859](https://github.com/juanfont/headscale/pull/2859)
+- Remove old unused database tables and indices
+  [#2844](https://github.com/juanfont/headscale/pull/2844)
+  [#2872](https://github.com/juanfont/headscale/pull/2872)
+- Ignore litestream tables during database validation
+  [#2843](https://github.com/juanfont/headscale/pull/2843)
+- Fix exit node visibility to respect ACL rules
+  [#2855](https://github.com/juanfont/headscale/pull/2855)
+- Fix SSH policy becoming empty when unknown user is referenced
+  [#2874](https://github.com/juanfont/headscale/pull/2874)
+- Fix policy validation when using bypass-grpc mode
+  [#2854](https://github.com/juanfont/headscale/pull/2854)
+- Fix autogroup:self interaction with other ACL rules
+  [#2842](https://github.com/juanfont/headscale/pull/2842)
+- Fix flaky DERP map shuffle test
+  [#2848](https://github.com/juanfont/headscale/pull/2848)
+- Use current stable base images for Debian and Alpine containers
+  [#2827](https://github.com/juanfont/headscale/pull/2827)
 
 ## 0.27.0 (2025-10-27)
 
@@ -89,7 +118,8 @@ the code base over time and make it more correct and efficient.
   [#2692](https://github.com/juanfont/headscale/pull/2692)
 - Policy: Zero or empty destination port is no longer allowed
   [#2606](https://github.com/juanfont/headscale/pull/2606)
-- Stricter hostname validation [#2383](https://github.com/juanfont/headscale/pull/2383)
+- Stricter hostname validation
+  [#2383](https://github.com/juanfont/headscale/pull/2383)
   - Hostnames must be valid DNS labels (2-63 characters, alphanumeric and
     hyphens only, cannot start/end with hyphen)
   - **Client Registration (New Nodes)**: Invalid hostnames are automatically
@@ -144,7 +174,8 @@ the code base over time and make it more correct and efficient.
   [#2776](https://github.com/juanfont/headscale/pull/2776)
 - EXPERIMENTAL: Add support for `autogroup:self`
   [#2789](https://github.com/juanfont/headscale/pull/2789)
-- Add healthcheck command [#2659](https://github.com/juanfont/headscale/pull/2659)
+- Add healthcheck command
+  [#2659](https://github.com/juanfont/headscale/pull/2659)
 
 ## 0.26.1 (2025-06-06)
 
