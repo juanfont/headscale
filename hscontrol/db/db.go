@@ -1026,6 +1026,69 @@ AND auth_key_id NOT IN (
 		},
 	)
 
+	migrations.InitSchema(func(tx *gorm.DB) error {
+		// Create all tables using AutoMigrate
+		err := tx.AutoMigrate(
+			&types.User{},
+			&types.PreAuthKey{},
+			&types.APIKey{},
+			&types.Node{},
+			&types.Policy{},
+		)
+		if err != nil {
+			return err
+		}
+
+		// Drop all indexes (both GORM-created and potentially pre-existing ones)
+		// to ensure we can recreate them in the correct format
+		dropIndexes := []string{
+			`DROP INDEX IF EXISTS "idx_users_deleted_at"`,
+			`DROP INDEX IF EXISTS "idx_api_keys_prefix"`,
+			`DROP INDEX IF EXISTS "idx_policies_deleted_at"`,
+			`DROP INDEX IF EXISTS "idx_provider_identifier"`,
+			`DROP INDEX IF EXISTS "idx_name_provider_identifier"`,
+			`DROP INDEX IF EXISTS "idx_name_no_provider_identifier"`,
+			`DROP INDEX IF EXISTS "idx_pre_auth_keys_prefix"`,
+		}
+
+		for _, dropSQL := range dropIndexes {
+			err := tx.Exec(dropSQL).Error
+			if err != nil {
+				return err
+			}
+		}
+
+		// Recreate indexes without backticks to match schema.sql format
+		indexes := []string{
+			`CREATE INDEX idx_users_deleted_at ON users(deleted_at)`,
+			`CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)`,
+			`CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)`,
+			`
+CREATE UNIQUE INDEX idx_provider_identifier ON users(
+  provider_identifier
+) WHERE provider_identifier IS NOT NULL`,
+			`
+CREATE UNIQUE INDEX idx_name_provider_identifier ON users(
+  name,
+  provider_identifier
+)`,
+			`
+CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
+  name
+) WHERE provider_identifier IS NULL`,
+			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
+		}
+
+		for _, indexSQL := range indexes {
+			err := tx.Exec(indexSQL).Error
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
 	if err := runMigrations(cfg, dbConn, migrations); err != nil {
 		log.Fatal().Err(err).Msgf("Migration failed: %v", err)
 	}
