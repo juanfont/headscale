@@ -327,14 +327,38 @@ func New(
 		if err != nil {
 			// Try to get more detailed build output
 			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
-			buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+
+			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
 			if buildOutput != "" {
+				// Show the last 100 lines of build output to avoid overwhelming the logs
+				lines := strings.Split(buildOutput, "\n")
+
+				const maxLines = 100
+
+				startLine := 0
+				if len(lines) > maxLines {
+					startLine = len(lines) - maxLines
+				}
+
+				relevantOutput := strings.Join(lines[startLine:], "\n")
+
+				if buildErr != nil {
+					return nil, fmt.Errorf(
+						"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
+						hostname,
+						version,
+						err,
+						maxLines,
+						relevantOutput,
+					)
+				}
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDetailed build output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry. Last %d lines of output:\n%s",
 					hostname,
 					version,
 					err,
-					buildOutput,
+					maxLines,
+					relevantOutput,
 				)
 			}
 		}
@@ -580,7 +604,6 @@ func (t *TailscaleInContainer) Restart() error {
 		}
 		return struct{}{}, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
-
 	if err != nil {
 		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
 	}
