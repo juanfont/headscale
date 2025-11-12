@@ -146,6 +146,42 @@ func (hsdb *HSDatabase) ValidateAPIKey(keyStr string) (bool, error) {
 	return true, nil
 }
 
+// ParseAPIKeyPrefix extracts the database prefix from a display prefix.
+// Handles formats: "hskey-api-{12chars}-***", "hskey-api-{12chars}", or just "{12chars}".
+// Returns the 12-character prefix suitable for database lookup.
+func ParseAPIKeyPrefix(displayPrefix string) (string, error) {
+	// If it's already just the 12-character prefix, return it
+	if len(displayPrefix) == apiKeyPrefixLength && isValidBase64URLSafe(displayPrefix) {
+		return displayPrefix, nil
+	}
+
+	// If it starts with the API key prefix, parse it
+	if strings.HasPrefix(displayPrefix, apiKeyPrefix) {
+		// Remove the "hskey-api-" prefix
+		_, remainder, found := strings.Cut(displayPrefix, apiKeyPrefix)
+		if !found {
+			return "", fmt.Errorf("%w: invalid display prefix format", ErrAPIKeyFailedToParse)
+		}
+
+		// Extract just the first 12 characters (the actual prefix)
+		if len(remainder) < apiKeyPrefixLength {
+			return "", fmt.Errorf("%w: prefix too short", ErrAPIKeyFailedToParse)
+		}
+
+		prefix := remainder[:apiKeyPrefixLength]
+
+		// Validate it's base64 URL-safe
+		if !isValidBase64URLSafe(prefix) {
+			return "", fmt.Errorf("%w: prefix contains invalid characters", ErrAPIKeyFailedToParse)
+		}
+
+		return prefix, nil
+	}
+
+	// For legacy 7-character prefixes or other formats, return as-is
+	return displayPrefix, nil
+}
+
 // validateAPIKey validates an API key and returns the key if valid.
 // Handles both new (hskey-api-{prefix}-{secret}) and legacy (prefix.secret) formats.
 func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
@@ -216,12 +252,15 @@ func validateAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 
 	// Look up by prefix (indexed)
 	var key types.APIKey
-	if err := db.First(&key, "prefix = ?", prefix).Error; err != nil {
+
+	err := db.First(&key, "prefix = ?", prefix).Error
+	if err != nil {
 		return nil, fmt.Errorf("API key not found: %w", err)
 	}
 
 	// Verify bcrypt hash
-	if err := bcrypt.CompareHashAndPassword(key.Hash, []byte(secret)); err != nil {
+	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
+	if err != nil {
 		return nil, fmt.Errorf("invalid API key: %w", err)
 	}
 
@@ -242,12 +281,15 @@ func validateLegacyAPIKey(db *gorm.DB, keyStr string) (*types.APIKey, error) {
 	}
 
 	var key types.APIKey
-	if err := db.First(&key, "prefix = ?", prefix).Error; err != nil {
+
+	err := db.First(&key, "prefix = ?", prefix).Error
+	if err != nil {
 		return nil, fmt.Errorf("API key not found: %w", err)
 	}
 
 	// Verify bcrypt (key.Hash stores bcrypt of full secret)
-	if err := bcrypt.CompareHashAndPassword(key.Hash, []byte(secret)); err != nil {
+	err = bcrypt.CompareHashAndPassword(key.Hash, []byte(secret))
+	if err != nil {
 		return nil, fmt.Errorf("invalid API key: %w", err)
 	}
 

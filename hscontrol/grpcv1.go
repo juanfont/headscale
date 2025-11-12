@@ -236,10 +236,18 @@ func (api headscaleV1APIServer) RegisterNode(
 	ctx context.Context,
 	request *v1.RegisterNodeRequest,
 ) (*v1.RegisterNodeResponse, error) {
+	// Generate ephemeral registration key for tracking this registration flow in logs
+	registrationKey, err := util.GenerateRegistrationKey()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to generate registration key")
+		registrationKey = "" // Continue without key if generation fails
+	}
+
 	log.Trace().
 		Caller().
 		Str("user", request.GetUser()).
 		Str("registration_id", request.GetKey()).
+		Str("registration_key", registrationKey).
 		Msg("Registering node")
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
@@ -259,8 +267,18 @@ func (api headscaleV1APIServer) RegisterNode(
 		util.RegisterMethodCLI,
 	)
 	if err != nil {
+		log.Error().
+			Str("registration_key", registrationKey).
+			Err(err).
+			Msg("Failed to register node")
 		return nil, err
 	}
+
+	log.Info().
+		Str("registration_key", registrationKey).
+		Str("node_id", fmt.Sprintf("%d", node.ID())).
+		Str("hostname", node.Hostname()).
+		Msg("Node registered successfully")
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.

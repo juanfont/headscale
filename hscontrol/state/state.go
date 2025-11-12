@@ -901,7 +901,14 @@ func (s *State) CreateAPIKey(expiration *time.Time) (string, *types.APIKey, erro
 }
 
 // GetAPIKey retrieves an API key by its prefix.
-func (s *State) GetAPIKey(prefix string) (*types.APIKey, error) {
+// Accepts both display format (hskey-api-{12chars}-***) and database format ({12chars}).
+func (s *State) GetAPIKey(displayPrefix string) (*types.APIKey, error) {
+	// Parse the display prefix to extract the database prefix
+	prefix, err := hsdb.ParseAPIKeyPrefix(displayPrefix)
+	if err != nil {
+		return nil, err
+	}
+
 	return s.db.GetAPIKey(prefix)
 }
 
