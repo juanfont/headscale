@@ -6,6 +6,8 @@
 
 - Add favicon to webpages
   [#2858](https://github.com/juanfont/headscale/pull/2858)
+- Reclaim IPs from the IP allocator when nodes are deleted
+  [#2831](https://github.com/juanfont/headscale/pull/2831)
 
 ## 0.27.1 (2025-11-11)
 

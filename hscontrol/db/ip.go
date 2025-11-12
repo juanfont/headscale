@@ -341,3 +341,12 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 	return ret, err
 }
+
+func (i *IPAllocator) FreeIPs(ips []netip.Addr) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	for _, ip := range ips {
+		i.usedIPs.Remove(ip)
+	}
+}
