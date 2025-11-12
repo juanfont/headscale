@@ -329,31 +329,23 @@ func New(
 			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
 
 			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
-			if buildOutput != "" {
-				// Show the last 100 lines of build output to avoid overwhelming the logs
-				lines := strings.Split(buildOutput, "\n")
 
-				const maxLines = 100
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
 
-				startLine := 0
-				if len(lines) > maxLines {
-					startLine = len(lines) - maxLines
-				}
+			const maxLines = 100
 
-				relevantOutput := strings.Join(lines[startLine:], "\n")
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
 
-				if buildErr != nil {
-					return nil, fmt.Errorf(
-						"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
-						hostname,
-						version,
-						err,
-						maxLines,
-						relevantOutput,
-					)
-				}
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				// The diagnostic build also failed - this is the real error
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry. Last %d lines of output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
 					hostname,
 					version,
 					err,
@@ -361,6 +353,26 @@ func New(
 					relevantOutput,
 				)
 			}
+
+			if buildOutput != "" {
+				// Build succeeded on retry but container creation still failed
+				return nil, fmt.Errorf(
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+					hostname,
+					version,
+					err,
+					maxLines,
+					relevantOutput,
+				)
+			}
+
+			// No output at all - diagnostic build command may have failed
+			return nil, fmt.Errorf(
+				"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
+				hostname,
+				version,
+				err,
+			)
 		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
