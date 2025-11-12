@@ -17,6 +17,12 @@
       commitHash = self.rev or self.dirtyRev;
     in
     {
+      # NixOS module
+      nixosModules = rec {
+        headscale = import ./nix/module.nix;
+        default = headscale;
+      };
+
       overlay = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
@@ -38,12 +44,9 @@
 
             subPackages = [ "cmd/headscale" ];
 
-            ldflags = [
-              "-s"
-              "-w"
-              "-X github.com/juanfont/headscale/hscontrol/types.Version=${headscaleVersion}"
-              "-X github.com/juanfont/headscale/hscontrol/types.GitCommitHash=${commitHash}"
-            ];
+            meta = {
+              mainProgram = "headscale";
+            };
           };
 
           hi = buildGo {
@@ -228,24 +231,7 @@
         apps.default = apps.headscale;
 
         checks = {
-          format =
-            pkgs.runCommand "check-format"
-              {
-                buildInputs = with pkgs; [
-                  gnumake
-                  nixpkgs-fmt
-                  golangci-lint
-                  nodePackages.prettier
-                  golines
-                  clang-tools
-                ];
-              } ''
-              ${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt ${./.}
-              ${pkgs.golangci-lint}/bin/golangci-lint run --fix --timeout 10m
-              ${pkgs.nodePackages.prettier}/bin/prettier --write '**/**.{ts,js,md,yaml,yml,sass,css,scss,html}'
-              ${pkgs.golines}/bin/golines --max-len=88 --base-formatter=gofumpt -w ${./.}
-              ${pkgs.clang-tools}/bin/clang-format -i ${./.}
-            '';
+          headscale = pkgs.nixosTest (import ./nix/tests/headscale.nix);
         };
       });
 }

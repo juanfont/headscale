@@ -63,6 +63,8 @@ and container to run Headscale.**
 
 Please have a look at the [`documentation`](https://headscale.net/stable/).
 
+For NixOS users, a module is available in [`nix/`](./nix/).
+
 ## Talks
 
 - Fosdem 2023 (video): [Headscale: How we are using integration testing to reimplement Tailscale](https://fosdem.org/2023/schedule/event/goheadscale/)
