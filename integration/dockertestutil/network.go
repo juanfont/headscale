@@ -108,6 +108,8 @@ func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 }
 
 // CleanImagesInCI removes images if running in CI.
+// It only removes dangling (untagged) images to avoid forcing rebuilds.
+// Tagged images (golang:*, tailscale/tailscale:*, etc.) are automatically preserved.
 func CleanImagesInCI(pool *dockertest.Pool) error {
 	if !util.IsCI() {
 		log.Println("Skipping image cleanup outside of CI")
@@ -119,9 +121,26 @@ func CleanImagesInCI(pool *dockertest.Pool) error {
 		return fmt.Errorf("getting images: %w", err)
 	}
 
+	removedCount := 0
 	for _, image := range images {
-		log.Printf("removing image: %s, %v", image.ID, image.RepoTags)
-		_ = pool.Client.RemoveImage(image.ID)
+		// Only remove dangling (untagged) images to avoid forcing rebuilds
+		// Dangling images have no RepoTags or only have "<none>:<none>"
+		if len(image.RepoTags) == 0 || (len(image.RepoTags) == 1 && image.RepoTags[0] == "<none>:<none>") {
+			log.Printf("Removing dangling image: %s", image.ID[:12])
+
+			err := pool.Client.RemoveImage(image.ID)
+			if err != nil {
+				log.Printf("Warning: failed to remove image %s: %v", image.ID[:12], err)
+			} else {
+				removedCount++
+			}
+		}
+	}
+
+	if removedCount > 0 {
+		log.Printf("Removed %d dangling images in CI", removedCount)
+	} else {
+		log.Println("No dangling images to remove in CI")
 	}
 
 	return nil
