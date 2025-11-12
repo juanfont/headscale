@@ -172,7 +172,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		types.UserID(user.ID),
+		user.TypedID(),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -320,11 +320,40 @@ func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
+	// Validate tags not empty - tagged nodes must have at least one tag
+	if len(request.GetTags()) == 0 {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(
+			codes.InvalidArgument,
+			"cannot remove all tags from a node - tagged nodes must have at least one tag",
+		)
+	}
+
+	// Validate tag format
 	for _, tag := range request.GetTags() {
 		err := validateTag(tag)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// IMPORTANT: Enforce User XOR Tags rule
+	// Cannot set tags on user-owned nodes - tags define ownership
+	nodeView, found := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !found {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(codes.NotFound, "node not found")
+	}
+
+	// User-owned nodes are nodes with UserID that are NOT tagged
+	// (Tagged nodes may have UserID for "created by" tracking, but ownership is defined by tags)
+	isUserOwned := nodeView.UserID().Valid() && !nodeView.IsTagged()
+	if isUserOwned && len(request.GetTags()) > 0 {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(codes.InvalidArgument, "cannot set tags on user-owned nodes; tags and users are mutually exclusive")
 	}
 
 	node, nodeChange, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
@@ -508,13 +537,20 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	for index, node := range nodes.All() {
 		resp := node.Proto()
 
+		// IMPORTANT: Implement tags-as-identity model
+		// Tagged nodes ALWAYS show as TaggedDevices user in API responses
+		// (even though UserID is set internally for "created by" tracking)
+		if node.IsTagged() {
+			resp.User = types.TaggedDevices.Proto()
+		}
+
 		var tags []string
 		for _, tag := range node.RequestTags() {
 			if state.NodeCanHaveTag(node, tag) {
 				tags = append(tags, tag)
 			}
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
+		resp.ValidTags = lo.Uniq(append(tags, node.Tags().AsSlice()...))
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
@@ -775,7 +811,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
-			User:       *user,
+			User:       user,
 
 			Expiry:   &time.Time{},
 			LastSeen: &time.Time{},

@@ -83,7 +83,8 @@ func tailNode(
 			tags = append(tags, tag)
 		}
 	}
-	for _, tag := range node.ForcedTags().All() {
+
+	for _, tag := range node.Tags().All() {
 		tags = append(tags, tag)
 	}
 	tags = lo.Uniq(tags)
@@ -99,7 +100,21 @@ func tailNode(
 		Name:     hostname,
 		Cap:      capVer,
 
-		User: tailcfg.UserID(node.UserID()),
+		User: func() tailcfg.UserID {
+			// IMPORTANT: This handles the new tags-as-identity model
+			// Tagged nodes ALWAYS use TaggedDevices user, even if UserID is set
+			// (UserID on tagged nodes is just "created by" tracking)
+			if node.IsTagged() {
+				//nolint:gosec // G115: User IDs will never overflow int64
+				return tailcfg.UserID(int64(types.TaggedDevices.ID))
+			}
+
+			// User-owned nodes: use the actual user ID
+			// Note: UserID().Get() returns 0 if not set, which is fine for tests
+			// but in production, non-tagged nodes should always have a valid UserID
+			//nolint:gosec // G115: User IDs will never overflow int64
+			return tailcfg.UserID(int64(node.UserID().Get()))
+		}(),
 
 		Key:       node.NodeKey(),
 		KeyExpiry: keyExpiry.UTC(),

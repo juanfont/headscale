@@ -51,6 +51,8 @@ jobs:
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
+          - TestTaggedNodeRegistration
+          - TestTagPersistenceAcrossRestart
           - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeExpireCommand
