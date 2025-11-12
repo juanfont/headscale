@@ -4,6 +4,8 @@
 
 ### Changes
 
+- Add favicon to webpages
+  [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Reclaim IPs from the IP allocator when nodes are deleted
   [#2831](https://github.com/juanfont/headscale/pull/2831)
 
@@ -138,7 +140,6 @@ the code base over time and make it more correct and efficient.
       starting/ending with hyphen are rejected
 
 ### Changes
-
 - **Database schema migration improvements for SQLite**
   [#2617](https://github.com/juanfont/headscale/pull/2617)
   - **IMPORTANT: Backup your SQLite database before upgrading**

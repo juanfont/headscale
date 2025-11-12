@@ -49,6 +49,10 @@ func HtmlStructure(head, body *elem.Element) *elem.Element {
 				attrs.Name:    "viewport",
 				attrs.Content: "width=device-width, initial-scale=1.0",
 			}),
+			elem.Link(attrs.Props{
+				attrs.Rel: "icon",
+				attrs.Href: "/favicon.ico",
+			}),
 			head,
 		),
 		body,

@@ -1,6 +1,8 @@
 package hscontrol
 
 import (
+	"bytes"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
@@ -98,6 +101,7 @@ func (h *Headscale) handleVerifyRequest(
 
 	// Check if any node has the requested NodeKey
 	var nodeKeyFound bool
+
 	for _, node := range nodes.All() {
 		if node.NodeKey() == derpAdmitClientRequest.NodePublic {
 			nodeKeyFound = true
@@ -128,6 +132,7 @@ func (h *Headscale) VerifyHandler(
 		httpError(writer, err)
 		return
 	}
+
 	writer.Header().Set("Content-Type", "application/json")
 }
 
@@ -149,6 +154,7 @@ func (h *Headscale) KeyHandler(
 		resp := tailcfg.OverTLSPublicKeyResponse{
 			PublicKey: h.noisePrivateKey.Public(),
 		}
+
 		writer.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(writer).Encode(resp)
 
@@ -171,13 +177,14 @@ func (h *Headscale) HealthHandler(
 
 		if err != nil {
 			writer.WriteHeader(http.StatusInternalServerError)
+
 			res.Status = "fail"
 		}
 
 		json.NewEncoder(writer).Encode(res)
 	}
-
-	if err := h.state.PingDB(req.Context()); err != nil {
+	err := h.state.PingDB(req.Context())
+	if err != nil {
 		respond(err)
 
 		return
@@ -192,6 +199,7 @@ func (h *Headscale) RobotsHandler(
 ) {
 	writer.Header().Set("Content-Type", "text/plain")
 	writer.WriteHeader(http.StatusOK)
+
 	_, err := writer.Write([]byte("User-agent: *\nDisallow: /"))
 	if err != nil {
 		log.Error().
@@ -211,7 +219,8 @@ func (h *Headscale) VersionHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	versionInfo := types.GetVersionInfo()
-	if err := json.NewEncoder(writer).Encode(versionInfo); err != nil {
+	err := json.NewEncoder(writer).Encode(versionInfo)
+	if err != nil {
 		log.Error().
 			Caller().
 			Err(err).
@@ -267,4 +276,22 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+}
+
+//go:embed assets/favicon.png
+var favicon []byte
+
+func FaviconHandler(writer http.ResponseWriter, req *http.Request) {
+	writer.Header().Set("Content-Type", "image/png")
+	http.ServeContent(writer, req, "favicon.ico", time.Unix(0, 0), bytes.NewReader(favicon))
+}
+
+// Returns a blank page with favicon linked.
+func BlankHandler(writer http.ResponseWriter, res *http.Request) {
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	io.WriteString(writer, `
+		<!doctype html><html><head>
+		<link rel="icon" href="/favicon.ico">
+		</head><body></body></html>
+	`)
 }

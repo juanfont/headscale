@@ -20,7 +20,7 @@ func SwaggerUI(
 <html>
 	<head>
 	<link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@3/swagger-ui.css">
-
+	<link rel="icon" href="/favicon.ico">
 	<script src="https://unpkg.com/swagger-ui-dist@3/swagger-ui-standalone-preset.js"></script>
 	<script src="https://unpkg.com/swagger-ui-dist@3/swagger-ui-bundle.js" charset="UTF-8"></script>
 	</head>
@@ -57,6 +57,7 @@ func SwaggerUI(
 
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
+
 		_, err := writer.Write([]byte("Could not render Swagger"))
 		if err != nil {
 			log.Error().
@@ -70,6 +71,7 @@ func SwaggerUI(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
+
 	_, err := writer.Write(payload.Bytes())
 	if err != nil {
 		log.Error().
@@ -85,6 +87,7 @@ func SwaggerAPIv1(
 ) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
+
 	if _, err := writer.Write(apiV1JSON); err != nil {
 		log.Error().
 			Caller().
