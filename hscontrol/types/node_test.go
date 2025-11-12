@@ -139,7 +139,7 @@ func TestNodeFQDN(t *testing.T) {
 			name: "no-dnsconfig-with-username",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -150,7 +150,7 @@ func TestNodeFQDN(t *testing.T) {
 			name: "all-set",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -160,7 +160,7 @@ func TestNodeFQDN(t *testing.T) {
 		{
 			name: "no-given-name",
 			node: Node{
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -179,7 +179,7 @@ func TestNodeFQDN(t *testing.T) {
 			name: "no-dnsconfig",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},

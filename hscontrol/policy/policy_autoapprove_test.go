@@ -32,11 +32,11 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test-node",
-		UserID:         user1.ID,
-		User:           user1,
+		UserID:         ptr.To(user1.ID),
+		User:           ptr.To(user1),
 		RegisterMethod: util.RegisterMethodAuthKey,
 		IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
-		ForcedTags:     []string{"tag:test"},
+		Tags:           []string{"tag:test"},
 	}
 
 	node2 := &types.Node{
@@ -44,8 +44,8 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "other-node",
-		UserID:         user2.ID,
-		User:           user2,
+		UserID:         ptr.To(user2.ID),
+		User:           ptr.To(user2),
 		RegisterMethod: util.RegisterMethodAuthKey,
 		IPv4:           ptr.To(netip.MustParseAddr("100.64.0.2")),
 	}
@@ -304,8 +304,8 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "testnode",
-					UserID:         user.ID,
-					User:           user,
+					UserID:         ptr.To(user.ID),
+					User:           ptr.To(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
 					IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
 					ApprovedRoutes: tt.currentApproved,

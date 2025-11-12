@@ -189,7 +189,11 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 // ListNodesByUser gets all the nodes in a given user.
 func ListNodesByUser(tx *gorm.DB, uid types.UserID) (types.Nodes, error) {
 	nodes := types.Nodes{}
-	if err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: uint(uid)}).Find(&nodes).Error; err != nil {
+
+	uidPtr := uint(uid)
+
+	err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: &uidPtr}).Find(&nodes).Error
+	if err != nil {
 		return nil, err
 	}
 

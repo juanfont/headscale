@@ -83,7 +83,8 @@ func tailNode(
 			tags = append(tags, tag)
 		}
 	}
-	for _, tag := range node.ForcedTags().All() {
+
+	for _, tag := range node.Tags().All() {
 		tags = append(tags, tag)
 	}
 	tags = lo.Uniq(tags)
@@ -99,7 +100,7 @@ func tailNode(
 		Name:     hostname,
 		Cap:      capVer,
 
-		User: tailcfg.UserID(node.UserID()),
+		User: node.TailscaleUserID(),
 
 		Key:       node.NodeKey(),
 		KeyExpiry: keyExpiry.UTC(),
