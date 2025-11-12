@@ -1,22 +1,15 @@
 package templates
 
 import (
-	_ "embed"
-
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
+	"github.com/juanfont/headscale/hscontrol/assets"
 )
-
-//go:embed style.css
-var headscaleCSS string
-
-//go:embed headscale.svg
-var headscaleSVG string
 
 // mdTypesetBody creates a body element with md-typeset styling
 // that matches the official Headscale documentation design.
-// Uses CSS classes with styles defined in headscaleCSS.
+// Uses CSS classes with styles defined in assets.CSS.
 func mdTypesetBody(children ...elem.Node) *elem.Element {
 	return elem.Body(attrs.Props{
 		attrs.Style: styles.Props{
@@ -41,7 +34,7 @@ func mdTypesetBody(children ...elem.Node) *elem.Element {
 
 // Styled Element Wrappers
 // These functions wrap elem-go elements using CSS classes.
-// Styling is handled by the CSS in headscaleCSS.
+// Styling is handled by the CSS in assets.CSS.
 
 // H1 creates a H1 element styled by .md-typeset h1
 func H1(children ...elem.Node) *elem.Element {
@@ -126,7 +119,7 @@ func contentContainer(children ...elem.Node) *elem.Element {
 // The logo is styled by the .headscale-logo CSS class.
 func headscaleLogo() elem.Node {
 	// Return the embedded SVG as-is
-	return elem.Raw(headscaleSVG)
+	return elem.Raw(assets.SVG)
 }
 
 // pageFooter creates a consistent footer for all pages.
@@ -198,7 +191,7 @@ func HtmlStructure(head, body *elem.Element) *elem.Element {
 				attrs.Href: "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;700&display=swap",
 			}),
 			// Material for MkDocs CSS styles
-			elem.Style(attrs.Props{attrs.Type: "text/css"}, elem.Raw(headscaleCSS)),
+			elem.Style(attrs.Props{attrs.Type: "text/css"}, elem.Raw(assets.CSS)),
 			head,
 		),
 		body,

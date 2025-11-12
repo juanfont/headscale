@@ -2,7 +2,6 @@ package hscontrol
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -278,12 +278,9 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
 }
 
-//go:embed assets/favicon.png
-var favicon []byte
-
 func FaviconHandler(writer http.ResponseWriter, req *http.Request) {
 	writer.Header().Set("Content-Type", "image/png")
-	http.ServeContent(writer, req, "favicon.ico", time.Unix(0, 0), bytes.NewReader(favicon))
+	http.ServeContent(writer, req, "favicon.ico", time.Unix(0, 0), bytes.NewReader(assets.Favicon))
 }
 
 // BlankHandler returns a blank page with favicon linked.
