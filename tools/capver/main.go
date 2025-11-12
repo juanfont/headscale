@@ -20,14 +20,15 @@ import (
 )
 
 const (
-	releasesURL                 = "https://api.github.com/repos/tailscale/tailscale/releases"
-	rawFileURL                  = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
-	outputFile                  = "../../hscontrol/capver/capver_generated.go"
-	testFile                    = "../../hscontrol/capver/capver_test_data.go"
-	minVersionParts             = 2
-	fallbackCapVer              = 90
-	maxTestCases                = 4
-	supportedMajorMinorVersions = 10
+	releasesURL     = "https://api.github.com/repos/tailscale/tailscale/releases"
+	rawFileURL      = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
+	outputFile      = "../../hscontrol/capver/capver_generated.go"
+	testFile        = "../../hscontrol/capver/capver_test_data.go"
+	minVersionParts = 2
+	fallbackCapVer  = 90
+	maxTestCases    = 4
+	// TODO(https://github.com/tailscale/tailscale/issues/12849): Restore to 10 when v1.92 is released.
+	supportedMajorMinorVersions = 9
 	filePermissions             = 0o600
 )
 
@@ -177,6 +178,10 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 
 	content.WriteString("}\n\n")
 
+	// Add the SupportedMajorMinorVersions constant
+	content.WriteString("// SupportedMajorMinorVersions is the number of major.minor Tailscale versions supported.\n")
+	fmt.Fprintf(&content, "const SupportedMajorMinorVersions = %d\n\n", supportedMajorMinorVersions)
+
 	// Add the MinSupportedCapabilityVersion constant
 	content.WriteString("// MinSupportedCapabilityVersion represents the minimum capability version\n")
 	content.WriteString("// supported by this Headscale instance (latest 10 minor versions)\n")
@@ -266,8 +271,8 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	content.WriteString("}},\n")
 
-	// Latest 10 without v prefix (all supported)
-	content.WriteString("\t{10, true, []string{\n")
+	// Latest N without v prefix (all supported)
+	content.WriteString(fmt.Sprintf("\t{%d, true, []string{\n", supportedMajorMinorVersions))
 
 	for _, version := range latest10 {
 		content.WriteString(fmt.Sprintf("\t\t\"%s\",\n", version))

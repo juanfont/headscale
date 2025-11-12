@@ -2,7 +2,7 @@
 
 ## Next
 
-**Minimum supported Tailscale client version: v1.72.0**
+**Minimum supported Tailscale client version: v1.74.0**
 
 ### Web registration templates redesign
 
