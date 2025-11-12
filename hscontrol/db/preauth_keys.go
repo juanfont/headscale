@@ -124,8 +124,14 @@ func CreatePreAuthKey(
 	}
 
 	return &types.PreAuthKeyNew{
-		ID:  key.ID,
-		Key: keyStr,
+		ID:         key.ID,
+		Key:        keyStr,
+		Reusable:   key.Reusable,
+		Ephemeral:  key.Ephemeral,
+		Tags:       key.Tags,
+		Expiration: key.Expiration,
+		CreatedAt:  key.CreatedAt,
+		User:       key.User,
 	}, nil
 }
 

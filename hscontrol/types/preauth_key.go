@@ -41,14 +41,32 @@ type PreAuthKey struct {
 
 // PreAuthKeyNew is returned once when the key is created.
 type PreAuthKeyNew struct {
-	ID  uint64 `gorm:"primary_key"`
-	Key string
+	ID         uint64 `gorm:"primary_key"`
+	Key        string
+	Reusable   bool
+	Ephemeral  bool
+	Tags       []string
+	Expiration *time.Time
+	CreatedAt  *time.Time
+	User       User
 }
 
 func (key *PreAuthKeyNew) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
-		Id:  key.ID,
-		Key: key.Key,
+		Id:        key.ID,
+		Key:       key.Key,
+		User:      key.User.Proto(),
+		Reusable:  key.Reusable,
+		Ephemeral: key.Ephemeral,
+		AclTags:   key.Tags,
+	}
+
+	if key.Expiration != nil {
+		protoKey.Expiration = timestamppb.New(*key.Expiration)
+	}
+
+	if key.CreatedAt != nil {
+		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
 	}
 
 	return &protoKey
