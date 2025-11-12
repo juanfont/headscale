@@ -1023,6 +1023,45 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				ID: "202511122344-remove-newline-index",
+				Migrate: func(tx *gorm.DB) error {
+					// Reformat multi-line indexes to single-line for consistency
+					// This migration drops and recreates the three user identity indexes
+					// to match the single-line format expected by schema validation
+
+					// Drop existing multi-line indexes
+					dropIndexes := []string{
+						`DROP INDEX IF EXISTS idx_provider_identifier`,
+						`DROP INDEX IF EXISTS idx_name_provider_identifier`,
+						`DROP INDEX IF EXISTS idx_name_no_provider_identifier`,
+					}
+
+					for _, dropSQL := range dropIndexes {
+						err := tx.Exec(dropSQL).Error
+						if err != nil {
+							return fmt.Errorf("dropping index: %w", err)
+						}
+					}
+
+					// Recreate indexes in single-line format
+					createIndexes := []string{
+						`CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL`,
+						`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
+						`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
+					}
+
+					for _, createSQL := range createIndexes {
+						err := tx.Exec(createSQL).Error
+						if err != nil {
+							return fmt.Errorf("creating index: %w", err)
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -1063,19 +1102,9 @@ AND auth_key_id NOT IN (
 			`CREATE INDEX idx_users_deleted_at ON users(deleted_at)`,
 			`CREATE UNIQUE INDEX idx_api_keys_prefix ON api_keys(prefix)`,
 			`CREATE INDEX idx_policies_deleted_at ON policies(deleted_at)`,
-			`
-CREATE UNIQUE INDEX idx_provider_identifier ON users(
-  provider_identifier
-) WHERE provider_identifier IS NOT NULL`,
-			`
-CREATE UNIQUE INDEX idx_name_provider_identifier ON users(
-  name,
-  provider_identifier
-)`,
-			`
-CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
-  name
-) WHERE provider_identifier IS NULL`,
+			`CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL`,
+			`CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier)`,
+			`CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL`,
 			`CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''`,
 		}
 
