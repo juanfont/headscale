@@ -50,7 +50,7 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				user := db.CreateUserForTest("test")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				err = db.DestroyUser(types.UserID(user.ID))
@@ -71,13 +71,13 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             0,
 					Hostname:       "testnode",
-					UserID:         user.ID,
+					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}
@@ -152,6 +152,115 @@ func TestRenameUser(t *testing.T) {
 				err := db.RenameUser(types.UserID(userTest2.ID), "test")
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), "UNIQUE constraint failed")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db, err := newSQLiteTestDB()
+			require.NoError(t, err)
+
+			tt.test(t, db)
+		})
+	}
+}
+
+func TestAssignNodeToUser(t *testing.T) {
+	tests := []struct {
+		name string
+		test func(*testing.T, *HSDatabase)
+	}{
+		{
+			name: "success_reassign_node",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				oldUser := db.CreateUserForTest("old")
+				newUser := db.CreateUserForTest("new")
+
+				pak, err := db.CreatePreAuthKey(oldUser.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				node := types.Node{
+					ID:             12,
+					Hostname:       "testnode",
+					UserID:         &oldUser.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					AuthKeyID:      ptr.To(pak.ID),
+				}
+				trx := db.DB.Save(&node)
+				require.NoError(t, trx.Error)
+				assert.Equal(t, oldUser.ID, *node.UserID)
+
+				err = db.Write(func(tx *gorm.DB) error {
+					return AssignNodeToUser(tx, 12, types.UserID(newUser.ID))
+				})
+				require.NoError(t, err)
+
+				// Reload node from database to see updated values
+				updatedNode, err := db.GetNodeByID(12)
+				require.NoError(t, err)
+				assert.Equal(t, newUser.ID, *updatedNode.UserID)
+				assert.Equal(t, newUser.Name, updatedNode.User.Name)
+			},
+		},
+		{
+			name: "error_user_not_found",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				oldUser := db.CreateUserForTest("old")
+
+				pak, err := db.CreatePreAuthKey(oldUser.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				node := types.Node{
+					ID:             12,
+					Hostname:       "testnode",
+					UserID:         &oldUser.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					AuthKeyID:      ptr.To(pak.ID),
+				}
+				trx := db.DB.Save(&node)
+				require.NoError(t, trx.Error)
+
+				err = db.Write(func(tx *gorm.DB) error {
+					return AssignNodeToUser(tx, 12, 9584849)
+				})
+				assert.ErrorIs(t, err, ErrUserNotFound)
+			},
+		},
+		{
+			name: "success_reassign_to_same_user",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user := db.CreateUserForTest("user")
+
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				node := types.Node{
+					ID:             12,
+					Hostname:       "testnode",
+					UserID:         &user.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+					AuthKeyID:      ptr.To(pak.ID),
+				}
+				trx := db.DB.Save(&node)
+				require.NoError(t, trx.Error)
+
+				err = db.Write(func(tx *gorm.DB) error {
+					return AssignNodeToUser(tx, 12, types.UserID(user.ID))
+				})
+				require.NoError(t, err)
+
+				// Reload node from database again to see updated values
+				finalNode, err := db.GetNodeByID(12)
+				require.NoError(t, err)
+				assert.Equal(t, user.ID, *finalNode.UserID)
+				assert.Equal(t, user.Name, finalNode.User.Name)
 			},
 		},
 	}

@@ -6,7 +6,6 @@ import (
 	"net/netip"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,6 +27,7 @@ var (
 	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
+	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
 
 	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 )
@@ -97,16 +97,21 @@ type Node struct {
 	// GivenName is the name used in all DNS related
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
-	UserID    uint
-	User      User `gorm:"constraint:OnDelete:CASCADE;"`
+
+	// UserID is set for ALL nodes (tagged and user-owned) to track "created by".
+	// For tagged nodes, this is informational only - the tag is the owner.
+	// For user-owned nodes, this identifies the owner.
+	// Only nil for orphaned nodes (should not happen in normal operation).
+	UserID *uint
+	User   *User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
 
-	// ForcedTags are tags set by CLI/API. It is not considered
-	// the source of truth, but is one of the sources from
-	// which a tag might originate.
-	// ForcedTags are _always_ applied to the node.
-	ForcedTags []string `gorm:"column:forced_tags;serializer:json"`
+	// Tags is the definitive owner for tagged nodes.
+	// When non-empty, the node is "tagged" and tags define its identity.
+	// Empty for user-owned nodes.
+	// Tags cannot be removed once set (one-way transition).
+	Tags []string `gorm:"column:tags;serializer:json"`
 
 	// When a node has been created with a PreAuthKey, we need to
 	// prevent the preauthkey from being deleted before the node.
@@ -196,55 +201,32 @@ func (node *Node) HasIP(i netip.Addr) bool {
 	return false
 }
 
-// IsTagged reports if a device is tagged
-// and therefore should not be treated as a
-// user owned device.
-// Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys).
+// IsTagged reports if a device is tagged and therefore should not be treated
+// as a user-owned device.
+// When a node has tags, the tags define its identity (not the user).
 func (node *Node) IsTagged() bool {
-	if len(node.ForcedTags) > 0 {
-		return true
-	}
+	return len(node.Tags) > 0
+}
 
-	if node.AuthKey != nil && len(node.AuthKey.Tags) > 0 {
-		return true
-	}
-
-	if node.Hostinfo == nil {
-		return false
-	}
-
-	// TODO(kradalby): Figure out how tagging should work
-	// and hostinfo.requestedtags.
-	// Do this in other work.
-
-	return false
+// IsUserOwned returns true if node is owned by a user (not tagged).
+// Tagged nodes may have a UserID for "created by" tracking, but the tag is the owner.
+func (node *Node) IsUserOwned() bool {
+	return !node.IsTagged()
 }
 
 // HasTag reports if a node has a given tag.
-// Currently, this function only handles tags set
-// via CLI ("forced tags" and preauthkeys).
 func (node *Node) HasTag(tag string) bool {
-	return slices.Contains(node.Tags(), tag)
+	return slices.Contains(node.Tags, tag)
 }
 
-func (node *Node) Tags() []string {
-	var tags []string
-
-	if node.AuthKey != nil {
-		tags = append(tags, node.AuthKey.Tags...)
+// TypedUserID returns the UserID as a typed UserID type.
+// Returns 0 if UserID is nil.
+func (node *Node) TypedUserID() UserID {
+	if node.UserID == nil {
+		return 0
 	}
 
-	// TODO(kradalby): Figure out how tagging should work
-	// and hostinfo.requestedtags.
-	// Do this in other work.
-	// #2417
-
-	tags = append(tags, node.ForcedTags...)
-	sort.Strings(tags)
-	tags = slices.Compact(tags)
-
-	return tags
+	return UserID(*node.UserID)
 }
 
 func (node *Node) RequestTags() []string {
@@ -389,8 +371,8 @@ func (node *Node) Proto() *v1.Node {
 		IpAddresses: node.IPsAsString(),
 		Name:        node.Hostname,
 		GivenName:   node.GivenName,
-		User:        node.User.Proto(),
-		ForcedTags:  node.ForcedTags,
+		User:        nil, // Will be set below based on node type
+		ForcedTags:  node.Tags,
 		Online:      node.IsOnline != nil && *node.IsOnline,
 
 		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has
@@ -402,6 +384,13 @@ func (node *Node) Proto() *v1.Node {
 		RegisterMethod: node.RegisterMethodToV1Enum(),
 
 		CreatedAt: timestamppb.New(node.CreatedAt),
+	}
+
+	// Set User field based on node ownership
+	// Note: User will be set to TaggedDevices in the gRPC layer (grpcv1.go)
+	// for proper MapResponse formatting
+	if node.User != nil {
+		nodeProto.User = node.User.Proto()
 	}
 
 	if node.AuthKey != nil {
@@ -701,8 +690,20 @@ func (nodes Nodes) DebugString() string {
 func (node Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
-	fmt.Fprintf(&sb, "\tUser: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
-	fmt.Fprintf(&sb, "\tTags: %v\n", node.Tags())
+
+	// Show ownership status
+	if node.IsTagged() {
+		fmt.Fprintf(&sb, "\tTagged: %v\n", node.Tags)
+
+		if node.User != nil {
+			fmt.Fprintf(&sb, "\tCreated by: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+		}
+	} else if node.User != nil {
+		fmt.Fprintf(&sb, "\tUser-owned: %s (%d, %q)\n", node.User.Display(), node.User.ID, node.User.Username())
+	} else {
+		fmt.Fprintf(&sb, "\tOrphaned: no user or tags\n")
+	}
+
 	fmt.Fprintf(&sb, "\tIPs: %v\n", node.IPs())
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
 	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
@@ -714,8 +715,7 @@ func (node Node) DebugString() string {
 }
 
 func (v NodeView) UserView() UserView {
-	u := v.User()
-	return u.View()
+	return v.User()
 }
 
 func (v NodeView) IPs() []netip.Addr {
@@ -788,13 +788,6 @@ func (v NodeView) RequestTagsSlice() views.Slice[string] {
 		return views.Slice[string]{}
 	}
 	return v.Hostinfo().RequestTags()
-}
-
-func (v NodeView) Tags() []string {
-	if !v.Valid() {
-		return nil
-	}
-	return v.ж.Tags()
 }
 
 // IsTagged reports if a device is tagged
@@ -891,6 +884,32 @@ func (v NodeView) HasTag(tag string) bool {
 		return false
 	}
 	return v.ж.HasTag(tag)
+}
+
+// TypedUserID returns the UserID as a typed UserID type.
+// Returns 0 if UserID is nil or node is invalid.
+func (v NodeView) TypedUserID() UserID {
+	if !v.Valid() {
+		return 0
+	}
+
+	return v.ж.TypedUserID()
+}
+
+// TailscaleUserID returns the user ID to use in Tailscale protocol.
+// Tagged nodes always return TaggedDevices.ID, user-owned nodes return their actual UserID.
+func (v NodeView) TailscaleUserID() tailcfg.UserID {
+	if !v.Valid() {
+		return 0
+	}
+
+	if v.IsTagged() {
+		//nolint:gosec // G115: TaggedDevices.ID is a constant that fits in int64
+		return tailcfg.UserID(int64(TaggedDevices.ID))
+	}
+
+	//nolint:gosec // G115: UserID values are within int64 range
+	return tailcfg.UserID(int64(v.UserID().Get()))
 }
 
 // Prefixes returns the node IPs as netip.Prefix.

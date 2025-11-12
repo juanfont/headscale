@@ -237,6 +237,21 @@ headscale/
 - `policy.go`: Policy storage and retrieval
 - Schema migrations in `schema.sql` with extensive test data coverage
 
+**CRITICAL DATABASE MIGRATION RULES**:
+
+1. **NEVER reorder existing migrations** - Migration order is immutable once committed
+2. **ONLY add new migrations to the END** of the migrations array
+3. **NEVER disable foreign keys** in new migrations - no new migrations should be added to `migrationsRequiringFKDisabled`
+4. **Migration ID format**: `YYYYMMDDHHSS-short-description` (timestamp + descriptive suffix)
+   - Example: `202511131500-add-user-roles`
+   - The timestamp must be chronologically ordered
+5. **New migrations go after the comment** "As of 2025-07-02, no new IDs should be added here"
+6. If you need to rename a column that other migrations depend on:
+   - Accept that the old column name will exist in intermediate migration states
+   - Update code to work with the new column name
+   - Let AutoMigrate create the new column if needed
+   - Do NOT try to rename columns that later migrations reference
+
 **Policy Engine (`hscontrol/policy/`)**
 
 - `policy.go`: Core ACL evaluation logic, HuJSON parsing
@@ -687,6 +702,199 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 }, 10*time.Second, 500*time.Millisecond, "mixed operations")
 ```
 
+## Tags-as-Identity Architecture
+
+### Overview
+
+Headscale implements a **tags-as-identity** model where tags and user ownership are mutually exclusive ways to identify nodes. This is a fundamental architectural principle that affects node registration, ownership, ACL evaluation, and API behavior.
+
+### Core Principle: Tags XOR User Ownership
+
+Every node in Headscale is **either** tagged **or** user-owned, never both:
+
+- **Tagged Nodes**: Ownership is defined by tags (e.g., `tag:server`, `tag:database`)
+  - Tags are set during registration via tagged PreAuthKey
+  - Tags are immutable after registration (cannot be changed via API)
+  - May have `UserID` set for "created by" tracking, but ownership is via tags
+  - Identified by: `node.IsTagged()` returns `true`
+
+- **User-Owned Nodes**: Ownership is defined by user assignment
+  - Registered via OIDC, web auth, or untagged PreAuthKey
+  - Node belongs to a specific user's namespace
+  - No tags (empty tags array)
+  - Identified by: `node.UserID().Valid() && !node.IsTagged()`
+
+### Critical Implementation Details
+
+#### Node Identification Methods
+
+```go
+// Primary methods for determining node ownership
+node.IsTagged()      // Returns true if node has tags OR AuthKey.Tags
+node.HasTag(tag)     // Returns true if node has specific tag
+node.IsUserOwned()   // Returns true if UserID set AND not tagged
+
+// IMPORTANT: UserID can be set on tagged nodes for tracking!
+// Always use IsTagged() to determine actual ownership, not just UserID.Valid()
+```
+
+#### UserID Field Semantics
+
+**Critical distinction**: `UserID` has different meanings depending on node type:
+
+- **Tagged nodes**: `UserID` is optional "created by" tracking
+  - Indicates which user created the tagged PreAuthKey
+  - Does NOT define ownership (tags define ownership)
+  - Example: User "alice" creates tagged PreAuthKey with `tag:server`, node gets `UserID=alice.ID` + `Tags=["tag:server"]`
+
+- **User-owned nodes**: `UserID` defines ownership
+  - Required field for non-tagged nodes
+  - Defines which user namespace the node belongs to
+  - Example: User "bob" registers via OIDC, node gets `UserID=bob.ID` + `Tags=[]`
+
+#### Mapper Behavior (mapper/tail.go)
+
+The mapper converts internal nodes to Tailscale protocol format, handling the TaggedDevices special user:
+
+```go
+// From mapper/tail.go:102-116
+User: func() tailcfg.UserID {
+    // IMPORTANT: Tags-as-identity model
+    // Tagged nodes ALWAYS use TaggedDevices user, even if UserID is set
+    if node.IsTagged() {
+        return tailcfg.UserID(int64(types.TaggedDevices.ID))
+    }
+    // User-owned nodes: use the actual user ID
+    return tailcfg.UserID(int64(node.UserID().Get()))
+}()
+```
+
+**TaggedDevices constant** (`types.TaggedDevices.ID = 2147455555`): Special user ID for all tagged nodes in MapResponse protocol.
+
+#### Registration Flow
+
+**Tagged Node Registration** (via tagged PreAuthKey):
+
+1. User creates PreAuthKey with tags: `pak.Tags = ["tag:server"]`
+2. Node registers with PreAuthKey
+3. Node gets: `Tags = ["tag:server"]`, `UserID = user.ID` (optional tracking), `AuthKeyID = pak.ID`
+4. `IsTagged()` returns `true` (ownership via tags)
+5. MapResponse sends `User = TaggedDevices.ID`
+
+**User-Owned Node Registration** (via OIDC/web/untagged PreAuthKey):
+
+1. User authenticates or uses untagged PreAuthKey
+2. Node registers
+3. Node gets: `Tags = []`, `UserID = user.ID` (required)
+4. `IsTagged()` returns `false` (ownership via user)
+5. MapResponse sends `User = user.ID`
+
+#### API Validation (SetTags)
+
+The SetTags gRPC API enforces tags-as-identity rules:
+
+```go
+// From grpcv1.go:340-347
+// User-owned nodes are nodes with UserID that are NOT tagged
+isUserOwned := nodeView.UserID().Valid() && !nodeView.IsTagged()
+if isUserOwned && len(request.GetTags()) > 0 {
+    return error("cannot set tags on user-owned nodes")
+}
+```
+
+**Key validation rules**:
+
+- ✅ Can call SetTags on tagged nodes (tags already define ownership)
+- ❌ Cannot set tags on user-owned nodes (would violate XOR rule)
+- ❌ Cannot remove all tags from tagged nodes (would orphan the node)
+
+#### Database Layer (db/node.go)
+
+**Tag storage**: Tags are stored in PostgreSQL ARRAY column and SQLite JSON column:
+
+```sql
+-- From schema.sql
+tags TEXT[] DEFAULT '{}' NOT NULL,  -- PostgreSQL
+tags TEXT DEFAULT '[]' NOT NULL,    -- SQLite (JSON array)
+```
+
+**Validation** (`state/tags.go`):
+
+- `validateNodeOwnership()`: Enforces tags XOR user rule
+- `validateAndNormalizeTags()`: Validates tag format (`tag:name`) and uniqueness
+
+#### Policy Layer
+
+**Tag Ownership** (policy/v2/policy.go):
+
+```go
+func NodeCanHaveTag(node types.NodeView, tag string) bool {
+    // Checks if node's IP is in the tagOwnerMap IP set
+    // This is IP-based authorization, not UserID-based
+    if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
+        if slices.ContainsFunc(node.IPs(), ips.Contains) {
+            return true
+        }
+    }
+    return false
+}
+```
+
+**Important**: Tag authorization is based on IP ranges in ACL, not UserID. Tags define identity, ACL authorizes that identity.
+
+### Testing Tags-as-Identity
+
+**Unit Tests** (`hscontrol/types/node_tags_test.go`):
+
+- `TestNodeIsTagged`: Validates IsTagged() for various scenarios
+- `TestNodeOwnershipModel`: Tests tags XOR user ownership
+- `TestUserTypedID`: Helper method validation
+
+**API Tests** (`hscontrol/grpcv1_test.go`):
+
+- `TestSetTags_UserXORTags`: Validates rejection of setting tags on user-owned nodes
+- `TestSetTags_TaggedNode`: Validates that tagged nodes (even with UserID) are not rejected
+
+**Auth Tests** (`hscontrol/auth_test.go:890-928`):
+
+- Tests node registration with tagged PreAuthKey
+- Validates tags are applied during registration
+
+### Common Pitfalls
+
+1. **Don't check only `UserID.Valid()` to determine user ownership**
+   - ❌ Wrong: `if node.UserID().Valid() { /* user-owned */ }`
+   - ✅ Correct: `if node.UserID().Valid() && !node.IsTagged() { /* user-owned */ }`
+
+2. **Don't assume tagged nodes never have UserID set**
+   - Tagged nodes MAY have UserID for "created by" tracking
+   - Always use `IsTagged()` to determine ownership type
+
+3. **Don't allow setting tags on user-owned nodes**
+   - This violates the tags XOR user principle
+   - Use API validation to prevent this
+
+4. **Don't forget TaggedDevices in mapper**
+   - All tagged nodes MUST use `TaggedDevices.ID` in MapResponse
+   - User ID is only for actual user-owned nodes
+
+### Migration Considerations
+
+When nodes transition between ownership models:
+
+- **No automatic migration**: Tags-as-identity is set at registration and immutable
+- **Re-registration required**: To change from user-owned to tagged (or vice versa), node must be deleted and re-registered
+- **UserID persistence**: UserID on tagged nodes is informational and not cleared
+
+### Architecture Benefits
+
+The tags-as-identity model provides:
+
+1. **Clear ownership semantics**: No ambiguity about who/what owns a node
+2. **ACL simplicity**: Tag-based access control without user conflicts
+3. **API safety**: Validation prevents invalid ownership states
+4. **Protocol compatibility**: TaggedDevices special user aligns with Tailscale's model
+
 ## Important Notes
 
 - **Dependencies**: Use `nix develop` for consistent toolchain (Go, buf, protobuf tools, linting)
@@ -697,3 +905,4 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 - **Integration Tests**: Require Docker and can consume significant disk space - use headscale-integration-tester agent
 - **Performance**: NodeStore optimizations are critical for scale - be careful with changes to state management
 - **Quality Assurance**: Always use appropriate specialized agents for testing and validation tasks
+- **Tags-as-Identity**: Tags and user ownership are mutually exclusive - always use `IsTagged()` to determine ownership

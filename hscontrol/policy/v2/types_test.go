@@ -1549,7 +1549,17 @@ func TestResolvePolicy(t *testing.T) {
 		"groupuser1": {Model: gorm.Model{ID: 3}, Name: "groupuser1"},
 		"groupuser2": {Model: gorm.Model{ID: 4}, Name: "groupuser2"},
 		"notme":      {Model: gorm.Model{ID: 5}, Name: "notme"},
+		"testuser2":  {Model: gorm.Model{ID: 6}, Name: "testuser2"},
 	}
+
+	// Extract users to variables so we can take their addresses
+	testuser := users["testuser"]
+	groupuser := users["groupuser"]
+	groupuser1 := users["groupuser1"]
+	groupuser2 := users["groupuser2"]
+	notme := users["notme"]
+	testuser2 := users["testuser2"]
+
 	tests := []struct {
 		name      string
 		nodes     types.Nodes
@@ -1579,29 +1589,27 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
+					User: ptr.To(notme),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Not matching forced tags
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:anything"},
+					User: ptr.To(testuser),
+					Tags: []string{"tag:anything"},
 					IPv4:       ap("100.100.101.2"),
 				},
-				// not matching pak tag
+				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: users["testuser"],
-					AuthKey: &types.PreAuthKey{
-						Tags: []string{"alsotagged"},
-					},
+					User: ptr.To(testuser),
+					Tags: []string{"alsotagged"},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.103"),
 				},
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.104"),
 				},
 			},
@@ -1613,29 +1621,27 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
+					User: ptr.To(notme),
 					IPv4: ap("100.100.101.4"),
 				},
 				// Not matching forced tags
 				{
-					User:       users["groupuser"],
-					ForcedTags: []string{"tag:anything"},
+					User: ptr.To(groupuser),
+					Tags: []string{"tag:anything"},
 					IPv4:       ap("100.100.101.5"),
 				},
-				// not matching pak tag
+				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: users["groupuser"],
-					AuthKey: &types.PreAuthKey{
-						Tags: []string{"tag:alsotagged"},
-					},
+					User: ptr.To(groupuser),
+					Tags: []string{"tag:alsotagged"},
 					IPv4: ap("100.100.101.6"),
 				},
 				{
-					User: users["groupuser"],
+					User: ptr.To(groupuser),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: users["groupuser"],
+					User: ptr.To(groupuser),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -1653,12 +1659,12 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: users["notme"],
+					User: ptr.To(notme),
 					IPv4: ap("100.100.101.9"),
 				},
 				// Not matching forced tags
 				{
-					ForcedTags: []string{"tag:anything"},
+					Tags: []string{"tag:anything"},
 					IPv4:       ap("100.100.101.10"),
 				},
 				// not matching pak tag
@@ -1670,14 +1676,12 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Not matching forced tags
 				{
-					ForcedTags: []string{"tag:test"},
+					Tags: []string{"tag:test"},
 					IPv4:       ap("100.100.101.234"),
 				},
-				// not matching pak tag
+				// matching tag (tags copied from AuthKey during registration)
 				{
-					AuthKey: &types.PreAuthKey{
-						Tags: []string{"tag:test"},
-					},
+					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.239"),
 				},
 			},
@@ -1706,11 +1710,11 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: ptr.To(Group("group:testgroup")),
 			nodes: types.Nodes{
 				{
-					User: users["groupuser1"],
+					User: ptr.To(groupuser1),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: users["groupuser2"],
+					User: ptr.To(groupuser2),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -1731,7 +1735,7 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: ptr.To(Username("invaliduser@")),
 			nodes: types.Nodes{
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.103"),
 				},
 			},
@@ -1742,7 +1746,7 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: tp("tag:invalid"),
 			nodes: types.Nodes{
 				{
-					ForcedTags: []string{"tag:test"},
+					Tags: []string{"tag:test"},
 					IPv4:       ap("100.100.101.234"),
 				},
 			},
@@ -1763,18 +1767,18 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be included)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with forced tags (should be excluded)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test"},
+					User: ptr.To(testuser),
+					Tags: []string{"tag:test"},
 					IPv4:       ap("100.100.101.2"),
 				},
 				// Node with allowed requested tag (should be excluded)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test"},
 					},
@@ -1782,7 +1786,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with non-allowed requested tag (should be included)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed"},
 					},
@@ -1790,7 +1794,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, one allowed (should be excluded)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test", "tag:notallowed"},
 					},
@@ -1798,7 +1802,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, none allowed (should be included)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
 					},
@@ -1822,18 +1826,18 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be excluded)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with forced tag (should be included)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test"},
+					User: ptr.To(testuser),
+					Tags: []string{"tag:test"},
 					IPv4:       ap("100.100.101.2"),
 				},
 				// Node with allowed requested tag (should be included)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test"},
 					},
@@ -1841,7 +1845,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with non-allowed requested tag (should be excluded)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed"},
 					},
@@ -1849,7 +1853,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, one allowed (should be included)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test", "tag:notallowed"},
 					},
@@ -1857,7 +1861,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple requested tags, none allowed (should be excluded)
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
 					},
@@ -1865,8 +1869,8 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				// Node with multiple forced tags (should be included)
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test", "tag:other"},
+					User: ptr.To(testuser),
+					Tags: []string{"tag:test", "tag:other"},
 					IPv4:       ap("100.100.101.7"),
 				},
 			},
@@ -1886,20 +1890,20 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: ptr.To(AutoGroupSelf),
 			nodes: types.Nodes{
 				{
-					User: users["testuser"],
+					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				{
-					User: users["testuser2"],
+					User: ptr.To(testuser2),
 					IPv4: ap("100.100.101.2"),
 				},
 				{
-					User:       users["testuser"],
-					ForcedTags: []string{"tag:test"},
+					User: ptr.To(testuser),
+					Tags: []string{"tag:test"},
 					IPv4:       ap("100.100.101.3"),
 				},
 				{
-					User: users["testuser2"],
+					User: ptr.To(testuser2),
 					Hostinfo: &tailcfg.Hostinfo{
 						RequestTags: []string{"tag:test"},
 					},
@@ -1961,23 +1965,23 @@ func TestResolveAutoApprovers(t *testing.T) {
 	nodes := types.Nodes{
 		{
 			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			User: &users[0],
 		},
 		{
 			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			User: &users[1],
 		},
 		{
 			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			User: &users[2],
 		},
 		{
 			IPv4:       ap("100.64.0.4"),
-			ForcedTags: []string{"tag:testtag"},
+			Tags: []string{"tag:testtag"},
 		},
 		{
 			IPv4:       ap("100.64.0.5"),
-			ForcedTags: []string{"tag:exittest"},
+			Tags: []string{"tag:exittest"},
 		},
 	}
 
@@ -2280,15 +2284,15 @@ func TestNodeCanApproveRoute(t *testing.T) {
 	nodes := types.Nodes{
 		{
 			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			User: &users[0],
 		},
 		{
 			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			User: &users[1],
 		},
 		{
 			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			User: &users[2],
 		},
 	}
 
@@ -2413,15 +2417,15 @@ func TestResolveTagOwners(t *testing.T) {
 	nodes := types.Nodes{
 		{
 			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			User: &users[0],
 		},
 		{
 			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			User: &users[1],
 		},
 		{
 			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			User: &users[2],
 		},
 	}
 
@@ -2498,15 +2502,15 @@ func TestNodeCanHaveTag(t *testing.T) {
 	nodes := types.Nodes{
 		{
 			IPv4: ap("100.64.0.1"),
-			User: users[0],
+			User: &users[0],
 		},
 		{
 			IPv4: ap("100.64.0.2"),
-			User: users[1],
+			User: &users[1],
 		},
 		{
 			IPv4: ap("100.64.0.3"),
-			User: users[2],
+			User: &users[2],
 		},
 	}
 
@@ -2578,6 +2582,49 @@ func TestNodeCanHaveTag(t *testing.T) {
 			},
 			node: nodes[0],
 			tag:  "tag:test",
+			want: false,
+		},
+		{
+			name: "node-with-unauthorized-tag-different-user",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node: nodes[2], // user3's node
+			tag:  "tag:prod",
+			want: false,
+		},
+		{
+			name: "node-with-multiple-tags-one-unauthorized",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:web"):      Owners{ptr.To(Username("user1@"))},
+					Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
+				},
+			},
+			node: nodes[0], // user1's node
+			tag:  "tag:database",
+			want: false, // user1 cannot have tag:database (owned by user2)
+		},
+		{
+			name: "empty-tagowners-map",
+			policy: &Policy{
+				TagOwners: TagOwners{},
+			},
+			node: nodes[0],
+			tag:  "tag:test",
+			want: false, // No one can have tags if tagOwners is empty
+		},
+		{
+			name: "tag-not-in-tagowners",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node: nodes[0],
+			tag:  "tag:dev", // This tag is not defined in tagOwners
 			want: false,
 		},
 	}

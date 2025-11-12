@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -44,17 +45,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -68,19 +69,19 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					User: &types.User{Name: "joe"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 				&types.Node{
 					ID:   3,
 					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					User: &types.User{Name: "mickael"},
 				},
 			},
 		},
@@ -91,17 +92,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -115,14 +116,14 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					User: &types.User{Name: "joe"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 		},
@@ -133,17 +134,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -157,14 +158,14 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   3,
 					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					User: &types.User{Name: "mickael"},
 				},
 			},
 		},
@@ -175,17 +176,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -199,14 +200,14 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					User: &types.User{Name: "joe"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 		},
@@ -217,17 +218,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -241,19 +242,19 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					User: &types.User{Name: "joe"},
 				},
 				&types.Node{
 					ID:   3,
 					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					User: &types.User{Name: "mickael"},
 				},
 			},
 		},
@@ -264,17 +265,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -288,19 +289,19 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 			want: types.Nodes{
 				&types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "joe"},
+					User: &types.User{Name: "joe"},
 				},
 				&types.Node{
 					ID:   3,
 					IPv4: ap("100.64.0.3"),
-					User: types.User{Name: "mickael"},
+					User: &types.User{Name: "mickael"},
 				},
 			},
 		},
@@ -311,17 +312,17 @@ func TestReduceNodes(t *testing.T) {
 					&types.Node{
 						ID:   1,
 						IPv4: ap("100.64.0.1"),
-						User: types.User{Name: "joe"},
+						User: &types.User{Name: "joe"},
 					},
 					&types.Node{
 						ID:   2,
 						IPv4: ap("100.64.0.2"),
-						User: types.User{Name: "marc"},
+						User: &types.User{Name: "marc"},
 					},
 					&types.Node{
 						ID:   3,
 						IPv4: ap("100.64.0.3"),
-						User: types.User{Name: "mickael"},
+						User: &types.User{Name: "mickael"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -329,7 +330,7 @@ func TestReduceNodes(t *testing.T) {
 				node: &types.Node{ // current nodes
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "marc"},
+					User: &types.User{Name: "marc"},
 				},
 			},
 			want: nil,
@@ -347,28 +348,28 @@ func TestReduceNodes(t *testing.T) {
 						Hostname: "ts-head-upcrmb",
 						IPv4:     ap("100.64.0.3"),
 						IPv6:     ap("fd7a:115c:a1e0::3"),
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					&types.Node{
 						ID:       2,
 						Hostname: "ts-unstable-rlwpvr",
 						IPv4:     ap("100.64.0.4"),
 						IPv6:     ap("fd7a:115c:a1e0::4"),
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					&types.Node{
 						ID:       3,
 						Hostname: "ts-head-8w6paa",
 						IPv4:     ap("100.64.0.1"),
 						IPv6:     ap("fd7a:115c:a1e0::1"),
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2"},
 					},
 					&types.Node{
 						ID:       4,
 						Hostname: "ts-unstable-lys2ib",
 						IPv4:     ap("100.64.0.2"),
 						IPv6:     ap("fd7a:115c:a1e0::2"),
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2"},
 					},
 				},
 				rules: []tailcfg.FilterRule{ // list of all ACLRules registered
@@ -390,7 +391,7 @@ func TestReduceNodes(t *testing.T) {
 					Hostname: "ts-head-8w6paa",
 					IPv4:     ap("100.64.0.1"),
 					IPv6:     ap("fd7a:115c:a1e0::1"),
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2"},
 				},
 			},
 			want: types.Nodes{
@@ -399,14 +400,14 @@ func TestReduceNodes(t *testing.T) {
 					Hostname: "ts-head-upcrmb",
 					IPv4:     ap("100.64.0.3"),
 					IPv6:     ap("fd7a:115c:a1e0::3"),
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 				&types.Node{
 					ID:       2,
 					Hostname: "ts-unstable-rlwpvr",
 					IPv4:     ap("100.64.0.4"),
 					IPv6:     ap("fd7a:115c:a1e0::4"),
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 			},
 		},
@@ -418,13 +419,13 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "peer1",
-						User:     types.User{Name: "mini"},
+						User:     &types.User{Name: "mini"},
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.3"),
 						Hostname: "peer2",
-						User:     types.User{Name: "peer2"},
+						User:     &types.User{Name: "peer2"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -440,7 +441,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "mini",
-					User:     types.User{Name: "mini"},
+					User:     &types.User{Name: "mini"},
 				},
 			},
 			want: []*types.Node{
@@ -448,7 +449,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
 					Hostname: "peer2",
-					User:     types.User{Name: "peer2"},
+					User:     &types.User{Name: "peer2"},
 				},
 			},
 		},
@@ -460,19 +461,19 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "user1-2",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					{
 						ID:       0,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "user1-1",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					{
 						ID:       3,
 						IPv4:     ap("100.64.0.4"),
 						Hostname: "user2-2",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -509,7 +510,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
 					Hostname: "user-2-1",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2"},
 				},
 			},
 			want: []*types.Node{
@@ -517,19 +518,19 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "user1-2",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 				{
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1-1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 				{
 					ID:       3,
 					IPv4:     ap("100.64.0.4"),
 					Hostname: "user2-2",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2"},
 				},
 			},
 		},
@@ -541,19 +542,19 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "user1-2",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.3"),
 						Hostname: "user-2-1",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2"},
 					},
 					{
 						ID:       3,
 						IPv4:     ap("100.64.0.4"),
 						Hostname: "user2-2",
-						User:     types.User{Name: "user2"},
+						User:     &types.User{Name: "user2"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -590,7 +591,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       0,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1-1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 			},
 			want: []*types.Node{
@@ -598,19 +599,19 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "user1-2",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 				{
 					ID:       2,
 					IPv4:     ap("100.64.0.3"),
 					Hostname: "user-2-1",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2"},
 				},
 				{
 					ID:       3,
 					IPv4:     ap("100.64.0.4"),
 					Hostname: "user2-2",
-					User:     types.User{Name: "user2"},
+					User:     &types.User{Name: "user2"},
 				},
 			},
 		},
@@ -622,13 +623,13 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "user1",
-						User:     types.User{Name: "user1"},
+						User:     &types.User{Name: "user1"},
 					},
 					{
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router"},
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 						},
@@ -649,7 +650,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "user1",
-					User:     types.User{Name: "user1"},
+					User:     &types.User{Name: "user1"},
 				},
 			},
 			want: []*types.Node{
@@ -657,7 +658,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router"},
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 					},
@@ -673,7 +674,7 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router"},
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 						},
@@ -683,7 +684,7 @@ func TestReduceNodes(t *testing.T) {
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "node",
-						User:     types.User{Name: "node"},
+						User:     &types.User{Name: "node"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -700,7 +701,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router"},
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 					},
@@ -712,7 +713,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "node",
-					User:     types.User{Name: "node"},
+					User:     &types.User{Name: "node"},
 				},
 			},
 		},
@@ -724,7 +725,7 @@ func TestReduceNodes(t *testing.T) {
 						ID:       1,
 						IPv4:     ap("100.64.0.1"),
 						Hostname: "router",
-						User:     types.User{Name: "router"},
+						User:     &types.User{Name: "router"},
 						Hostinfo: &tailcfg.Hostinfo{
 							RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 						},
@@ -734,7 +735,7 @@ func TestReduceNodes(t *testing.T) {
 						ID:       2,
 						IPv4:     ap("100.64.0.2"),
 						Hostname: "node",
-						User:     types.User{Name: "node"},
+						User:     &types.User{Name: "node"},
 					},
 				},
 				rules: []tailcfg.FilterRule{
@@ -751,7 +752,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       2,
 					IPv4:     ap("100.64.0.2"),
 					Hostname: "node",
-					User:     types.User{Name: "node"},
+					User:     &types.User{Name: "node"},
 				},
 			},
 			want: []*types.Node{
@@ -759,7 +760,7 @@ func TestReduceNodes(t *testing.T) {
 					ID:       1,
 					IPv4:     ap("100.64.0.1"),
 					Hostname: "router",
-					User:     types.User{Name: "router"},
+					User:     &types.User{Name: "router"},
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.99.0.0/16")},
 					},
@@ -804,7 +805,7 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 			ID:       id,
 			IPv4:     ap(ip),
 			Hostname: hostname,
-			User:     types.User{Name: username},
+			User:     &types.User{Name: username},
 			Hostinfo: &tailcfg.Hostinfo{
 				RoutableIPs: routes,
 			},
@@ -812,8 +813,6 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 		}
 	}
 
-	type args struct {
-	}
 	tests := []struct {
 		name         string
 		nodes        types.Nodes
@@ -1075,22 +1074,22 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   1,
-		User:     users[0],
+		UserID:   ptr.To(uint(1)),
+		User:     ptr.To(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   2,
-		User:     users[1],
+		UserID:   ptr.To(uint(2)),
+		User:     ptr.To(users[1]),
 	}
 
 	taggedClient := types.Node{
-		Hostname:   "tagged-client",
-		IPv4:       ap("100.64.0.4"),
-		UserID:     2,
-		User:       users[1],
-		ForcedTags: []string{"tag:client"},
+		Hostname: "tagged-client",
+		IPv4:     ap("100.64.0.4"),
+		UserID:   ptr.To(uint(2)),
+		User:     ptr.To(users[1]),
+		Tags:     []string{"tag:client"},
 	}
 
 	tests := []struct {
@@ -1447,7 +1446,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1475,7 +1474,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1501,7 +1500,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1529,7 +1528,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1556,7 +1555,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1581,7 +1580,7 @@ func TestReduceRoutes(t *testing.T) {
 					ID:   1,
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: types.User{Name: "user1"},
+					User: &types.User{Name: "user1"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.0.0.0/24"),
@@ -1614,7 +1613,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // Node IP
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1646,7 +1645,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1673,7 +1672,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1701,7 +1700,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"),
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1739,7 +1738,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // node with IP 100.64.0.2
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1774,7 +1773,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.64.0.1"), // router with IP 100.64.0.1
-					User: types.User{Name: "router"},
+					User: &types.User{Name: "router"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1816,7 +1815,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // node
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1850,7 +1849,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.64.0.2"), // node
-					User: types.User{Name: "node"},
+					User: &types.User{Name: "node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("10.10.10.0/24"),
@@ -1887,7 +1886,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.123.45.89"), // Node B - regular node
-					User: types.User{Name: "node-b"},
+					User: &types.User{Name: "node-b"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.1.0/24"), // Subnet connected to Node A
@@ -1917,7 +1916,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   1,
 					IPv4: ap("100.123.45.67"), // Node A - router node
-					User: types.User{Name: "router"},
+					User: &types.User{Name: "router"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.1.0/24"), // Subnet connected to this router
@@ -1946,7 +1945,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.123.45.89"), // Node B - regular node that should be reachable
-					User: types.User{Name: "node-b"},
+					User: &types.User{Name: "node-b"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.1.0/24"), // Subnet behind router
@@ -1984,7 +1983,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   3,
 					IPv4: ap("100.123.45.99"), // Node C - isolated node
-					User: types.User{Name: "isolated-node"},
+					User: &types.User{Name: "isolated-node"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.1.0/24"), // Subnet behind router
@@ -2027,7 +2026,7 @@ func TestReduceRoutes(t *testing.T) {
 				node: &types.Node{
 					ID:   2,
 					IPv4: ap("100.123.45.89"), // Node B - regular node
-					User: types.User{Name: "node-b"},
+					User: &types.User{Name: "node-b"},
 				},
 				routes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.1.0/14"), // Network 192.168.1.0/14 as mentioned in original issue

@@ -664,14 +664,14 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	// Check for removed nodes
 	for nodeID, oldNode := range oldNodeMap {
 		if _, exists := newNodeMap[nodeID]; !exists {
-			affectedUsers[oldNode.User().ID] = struct{}{}
+			affectedUsers[oldNode.User().ID()] = struct{}{}
 		}
 	}
 
 	// Check for added nodes
 	for nodeID, newNode := range newNodeMap {
 		if _, exists := oldNodeMap[nodeID]; !exists {
-			affectedUsers[newNode.User().ID] = struct{}{}
+			affectedUsers[newNode.User().ID()] = struct{}{}
 		}
 	}
 
@@ -679,26 +679,26 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	for nodeID, newNode := range newNodeMap {
 		if oldNode, exists := oldNodeMap[nodeID]; exists {
 			// Check if user changed
-			if oldNode.User().ID != newNode.User().ID {
-				affectedUsers[oldNode.User().ID] = struct{}{}
-				affectedUsers[newNode.User().ID] = struct{}{}
+			if oldNode.User().ID() != newNode.User().ID() {
+				affectedUsers[oldNode.User().ID()] = struct{}{}
+				affectedUsers[newNode.User().ID()] = struct{}{}
 			}
 
 			// Check if tag status changed
 			if oldNode.IsTagged() != newNode.IsTagged() {
-				affectedUsers[newNode.User().ID] = struct{}{}
+				affectedUsers[newNode.User().ID()] = struct{}{}
 			}
 
 			// Check if IPs changed (simple check - could be more sophisticated)
 			oldIPs := oldNode.IPs()
 			newIPs := newNode.IPs()
 			if len(oldIPs) != len(newIPs) {
-				affectedUsers[newNode.User().ID] = struct{}{}
+				affectedUsers[newNode.User().ID()] = struct{}{}
 			} else {
 				// Check if any IPs are different
 				for i, oldIP := range oldIPs {
 					if i >= len(newIPs) || oldIP != newIPs[i] {
-						affectedUsers[newNode.User().ID] = struct{}{}
+						affectedUsers[newNode.User().ID()] = struct{}{}
 						break
 					}
 				}
@@ -717,7 +717,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 		// Check in new nodes first
 		for _, node := range newNodes.All() {
 			if node.ID() == nodeID {
-				nodeUserID = node.User().ID
+				nodeUserID = node.User().ID()
 				found = true
 				break
 			}
@@ -727,7 +727,7 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 		if !found {
 			for _, node := range oldNodes.All() {
 				if node.ID() == nodeID {
-					nodeUserID = node.User().ID
+					nodeUserID = node.User().ID()
 					found = true
 					break
 				}

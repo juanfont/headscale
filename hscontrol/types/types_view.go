@@ -139,12 +139,13 @@ func (v NodeView) IPv4() views.ValuePointer[netip.Addr]   { return views.ValuePo
 
 func (v NodeView) IPv6() views.ValuePointer[netip.Addr] { return views.ValuePointerOf(v.ж.IPv6) }
 
-func (v NodeView) Hostname() string                      { return v.ж.Hostname }
-func (v NodeView) GivenName() string                     { return v.ж.GivenName }
-func (v NodeView) UserID() uint                          { return v.ж.UserID }
-func (v NodeView) User() User                            { return v.ж.User }
+func (v NodeView) Hostname() string                 { return v.ж.Hostname }
+func (v NodeView) GivenName() string                { return v.ж.GivenName }
+func (v NodeView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
+
+func (v NodeView) User() UserView                        { return v.ж.User.View() }
 func (v NodeView) RegisterMethod() string                { return v.ж.RegisterMethod }
-func (v NodeView) ForcedTags() views.Slice[string]       { return views.SliceOf(v.ж.ForcedTags) }
+func (v NodeView) Tags() views.Slice[string]             { return views.SliceOf(v.ж.Tags) }
 func (v NodeView) AuthKeyID() views.ValuePointer[uint64] { return views.ValuePointerOf(v.ж.AuthKeyID) }
 
 func (v NodeView) AuthKey() PreAuthKeyView               { return v.ж.AuthKey.View() }
@@ -179,10 +180,10 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	IPv6           *netip.Addr
 	Hostname       string
 	GivenName      string
-	UserID         uint
-	User           User
+	UserID         *uint
+	User           *User
 	RegisterMethod string
-	ForcedTags     []string
+	Tags           []string
 	AuthKeyID      *uint64
 	AuthKey        *PreAuthKey
 	Expiry         *time.Time
@@ -239,16 +240,17 @@ func (v *PreAuthKeyView) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v PreAuthKeyView) ID() uint64                    { return v.ж.ID }
-func (v PreAuthKeyView) Key() string                   { return v.ж.Key }
-func (v PreAuthKeyView) Prefix() string                { return v.ж.Prefix }
-func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.Hash) }
-func (v PreAuthKeyView) UserID() uint                  { return v.ж.UserID }
-func (v PreAuthKeyView) User() User                    { return v.ж.User }
-func (v PreAuthKeyView) Reusable() bool                { return v.ж.Reusable }
-func (v PreAuthKeyView) Ephemeral() bool               { return v.ж.Ephemeral }
-func (v PreAuthKeyView) Used() bool                    { return v.ж.Used }
-func (v PreAuthKeyView) Tags() views.Slice[string]     { return views.SliceOf(v.ж.Tags) }
+func (v PreAuthKeyView) ID() uint64                       { return v.ж.ID }
+func (v PreAuthKeyView) Key() string                      { return v.ж.Key }
+func (v PreAuthKeyView) Prefix() string                   { return v.ж.Prefix }
+func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte]    { return views.ByteSliceOf(v.ж.Hash) }
+func (v PreAuthKeyView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
+
+func (v PreAuthKeyView) User() UserView            { return v.ж.User.View() }
+func (v PreAuthKeyView) Reusable() bool            { return v.ж.Reusable }
+func (v PreAuthKeyView) Ephemeral() bool           { return v.ж.Ephemeral }
+func (v PreAuthKeyView) Used() bool                { return v.ж.Used }
+func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -263,8 +265,8 @@ var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
 	Key        string
 	Prefix     string
 	Hash       []byte
-	UserID     uint
-	User       User
+	UserID     *uint
+	User       *User
 	Reusable   bool
 	Ephemeral  bool
 	Used       bool

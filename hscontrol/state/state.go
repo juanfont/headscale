@@ -53,6 +53,9 @@ const (
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
 var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
+// ErrNodeNotFound is returned when a node cannot be found by its ID.
+var ErrNodeNotFound = errors.New("node not found")
+
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
@@ -651,13 +654,36 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 	return s.persistNodeToDB(n)
 }
 
-// SetNodeTags assigns tags to a node for use in access control policies.
+// SetNodeTags assigns tags to a node, making it a "tagged node".
+// Once a node is tagged, it cannot be un-tagged (only tags can be changed).
+// The UserID is preserved as "created by" information.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.ChangeSet, error) {
+	// CANNOT REMOVE ALL TAGS
+	if len(tags) == 0 {
+		return types.NodeView{}, change.EmptySet, types.ErrCannotRemoveAllTags
+	}
+
+	// Get node for validation
+	existingNode, exists := s.nodeStore.GetNode(nodeID)
+	if !exists {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("%w: %d", ErrNodeNotFound, nodeID)
+	}
+
+	// Validate tags against policy
+	validatedTags, err := s.validateAndNormalizeTags(existingNode.AsStruct(), tags)
+	if err != nil {
+		return types.NodeView{}, change.EmptySet, err
+	}
+
+	// Log the operation
+	logTagOperation(existingNode, validatedTags)
+
 	// Update NodeStore before database to ensure consistency. The NodeStore update is
 	// blocking and will be the source of truth for the batcher. The database update must
 	// make the exact same change.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.ForcedTags = tags
+		node.Tags = validatedTags
+		// UserID is preserved as "created by" - do NOT set to nil
 	})
 
 	if !ok {
@@ -720,6 +746,35 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	// make the exact same change.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.GivenName = newName
+	})
+
+	if !ok {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+	}
+
+	return s.persistNodeToDB(n)
+}
+
+// AssignNodeToUser transfers a node to a different user.
+func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, change.ChangeSet, error) {
+	// Validate that both node and user exist
+	_, found := s.GetNodeByID(nodeID)
+	if !found {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found: %d", nodeID)
+	}
+
+	user, err := s.GetUserByID(userID)
+	if err != nil {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("user not found: %w", err)
+	}
+
+	// Update NodeStore before database to ensure consistency. The NodeStore update is
+	// blocking and will be the source of truth for the batcher. The database update must
+	// make the exact same change.
+	uid := uint(userID)
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
+		n.User = user
+		n.UserID = &uid
 	})
 
 	if !ok {
@@ -925,7 +980,8 @@ func (s *State) DestroyAPIKey(key types.APIKey) error {
 }
 
 // CreatePreAuthKey generates a new pre-authentication key for a user.
-func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
+// The userID parameter is now optional (can be nil) for system-created tagged keys.
+func (s *State) CreatePreAuthKey(userID *types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 
@@ -1056,8 +1112,6 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	// Prepare the node for registration
 	nodeToRegister := types.Node{
 		Hostname:       params.Hostname,
-		UserID:         params.User.ID,
-		User:           params.User,
 		MachineKey:     params.MachineKey,
 		NodeKey:        params.NodeKey,
 		DiscoKey:       params.DiscoKey,
@@ -1068,11 +1122,38 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		Expiry:         params.Expiry,
 	}
 
-	// Pre-auth key specific fields
+	// Assign ownership based on PreAuthKey
 	if params.PreAuthKey != nil {
-		nodeToRegister.ForcedTags = params.PreAuthKey.Proto().GetAclTags()
+		if params.PreAuthKey.IsTagged() {
+			// TAGGED NODE
+			// Tags from PreAuthKey are assigned ONLY during initial authentication
+			nodeToRegister.Tags = params.PreAuthKey.Proto().GetAclTags()
+
+			// Set UserID to track "created by" (who created the PreAuthKey)
+			if params.PreAuthKey.UserID != nil {
+				nodeToRegister.UserID = params.PreAuthKey.UserID
+				nodeToRegister.User = params.PreAuthKey.User
+			}
+			// If PreAuthKey.UserID is nil, the node is "orphaned" (system-created)
+		} else {
+			// USER-OWNED NODE
+			nodeToRegister.UserID = &params.PreAuthKey.User.ID
+			nodeToRegister.User = params.PreAuthKey.User
+			nodeToRegister.Tags = nil
+		}
 		nodeToRegister.AuthKey = params.PreAuthKey
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
+	} else {
+		// Non-PreAuthKey registration (OIDC, CLI) - always user-owned
+		nodeToRegister.UserID = &params.User.ID
+		nodeToRegister.User = &params.User
+		nodeToRegister.Tags = nil
+	}
+
+	// Validate before saving
+	err := validateNodeOwnership(&nodeToRegister)
+	if err != nil {
+		return types.NodeView{}, err
 	}
 
 	// Allocate new IPs
@@ -1149,7 +1230,7 @@ func (s *State) HandleNodeFromAuthPath(
 	logHostinfoValidation(
 		regEntry.Node.MachineKey.ShortString(),
 		regEntry.Node.NodeKey.String(),
-		user.Username(),
+		user.Name,
 		hostname,
 		regEntry.Node.Hostinfo,
 	)
@@ -1164,7 +1245,7 @@ func (s *State) HandleNodeFromAuthPath(
 		log.Debug().
 			Caller().
 			Str("registration_id", registrationID.String()).
-			Str("user.name", user.Username()).
+			Str("user.name", user.Name).
 			Str("registrationMethod", registrationMethod).
 			Str("node.name", existingNodeSameUser.Hostname()).
 			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
@@ -1226,7 +1307,7 @@ func (s *State) HandleNodeFromAuthPath(
 		// Check if node exists with this machine key for a different user (for netinfo preservation)
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(regEntry.Node.MachineKey)
 
-		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID() != user.ID {
+		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != user.ID {
 			// Node exists but belongs to a different user
 			// Create a NEW node for the new user (do not transfer)
 			// This allows the same machine to have separate node identities per user
@@ -1236,8 +1317,8 @@ func (s *State) HandleNodeFromAuthPath(
 				Str("existing.node.name", existingNodeAnyUser.Hostname()).
 				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
 				Str("machine.key", regEntry.Node.MachineKey.ShortString()).
-				Str("old.user", oldUser.Username()).
-				Str("new.user", user.Username()).
+				Str("old.user", oldUser.Name()).
+				Str("new.user", user.Name).
 				Str("method", registrationMethod).
 				Msg("Creating new node for different user (same machine key exists for another user)")
 		}
@@ -1246,7 +1327,7 @@ func (s *State) HandleNodeFromAuthPath(
 		log.Debug().
 			Caller().
 			Str("registration_id", registrationID.String()).
-			Str("user.name", user.Username()).
+			Str("user.name", user.Name).
 			Str("registrationMethod", registrationMethod).
 			Str("expiresAt", fmt.Sprintf("%v", expiry)).
 			Msg("Registering new node from auth callback")
@@ -1402,8 +1483,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 			node.RegisterMethod = util.RegisterMethodAuthKey
 
-			// TODO(kradalby): This might need a rework as part of #2417
-			node.ForcedTags = pak.Proto().GetAclTags()
+			// CRITICAL: Tags from PreAuthKey are ONLY applied during initial authentication
+			// On re-registration, we MUST NOT change tags or node ownership
+			// The node keeps whatever tags/user ownership it already has
+			//
+			// Only update AuthKey reference
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
 			node.IsOnline = ptr.To(false)
@@ -1453,7 +1537,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Check if node exists with this machine key for a different user
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
-		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID() != pak.User.ID {
+		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
 			// Node exists but belongs to a different user
 			// Create a NEW node for the new user (do not transfer)
 			// This allows the same machine to have separate node identities per user
@@ -1463,7 +1547,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 				Str("existing.node.name", existingNodeAnyUser.Hostname()).
 				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
 				Str("machine.key", machineKey.ShortString()).
-				Str("old.user", oldUser.Username()).
+				Str("old.user", oldUser.Name()).
 				Str("new.user", pak.User.Username()).
 				Msg("Creating new node for different user (same machine key exists for another user)")
 		}
@@ -1474,7 +1558,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Create and save new node
 		var err error
 		finalNode, err = s.createAndSaveNewNode(newNodeParams{
-			User:                   pak.User,
+			User:                   *pak.User,
 			MachineKey:             machineKey,
 			NodeKey:                regReq.NodeKey,
 			DiscoKey:               key.DiscoPublic{}, // DiscoKey not available in RegisterRequest

@@ -168,15 +168,15 @@ func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       tt.nodeHostname,
-					UserID:         user.ID,
-					User:           user,
+					UserID:         ptr.To(user.ID),
+					User:           ptr.To(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.announcedRoutes,
 					},
 					IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
 					ApprovedRoutes: tt.currentApproved,
-					ForcedTags:     tt.nodeTags,
+					Tags:           tt.nodeTags,
 				}
 				nodes := types.Nodes{&node}
 
@@ -294,8 +294,8 @@ func TestApproveRoutesWithPolicy_EdgeCases(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "testnode",
-					UserID:         user.ID,
-					User:           user,
+					UserID:         ptr.To(user.ID),
+					User:           ptr.To(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.announcedRoutes,
@@ -343,8 +343,8 @@ func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "testnode",
-		UserID:         user.ID,
-		User:           user,
+		UserID:         ptr.To(user.ID),
+		User:           ptr.To(user),
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo: &tailcfg.Hostinfo{
 			RoutableIPs: announcedRoutes,

@@ -15,15 +15,15 @@ import (
 )
 
 var (
-	ErrPreAuthKeyNotFound          = errors.New("AuthKey not found")
-	ErrPreAuthKeyExpired           = errors.New("AuthKey expired")
-	ErrSingleUseAuthKeyHasBeenUsed = errors.New("AuthKey has already been used")
+	ErrPreAuthKeyNotFound          = errors.New("auth-key not found")
+	ErrPreAuthKeyExpired           = errors.New("auth-key expired")
+	ErrSingleUseAuthKeyHasBeenUsed = errors.New("auth-key has already been used")
 	ErrUserMismatch                = errors.New("user mismatch")
-	ErrPreAuthKeyACLTagInvalid     = errors.New("AuthKey tag is invalid")
+	ErrPreAuthKeyACLTagInvalid     = errors.New("auth-key tag is invalid")
 )
 
 func (hsdb *HSDatabase) CreatePreAuthKey(
-	uid types.UserID,
+	uid *types.UserID,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
@@ -41,17 +41,40 @@ const (
 )
 
 // CreatePreAuthKey creates a new PreAuthKey in a user, and returns it.
+// The uid parameter can be nil for system-created tagged keys.
+// For tagged keys, uid tracks "created by" (who created the key).
+// For user-owned keys, uid tracks the node owner.
 func CreatePreAuthKey(
 	tx *gorm.DB,
-	uid types.UserID,
+	uid *types.UserID,
 	reusable bool,
 	ephemeral bool,
 	expiration *time.Time,
 	aclTags []string,
 ) (*types.PreAuthKeyNew, error) {
-	user, err := GetUserByID(tx, uid)
-	if err != nil {
-		return nil, err
+	// Validate: must be tagged OR user-owned, not neither
+	if uid == nil && len(aclTags) == 0 {
+		return nil, ErrPreAuthKeyNotTaggedOrOwned
+	}
+
+	// If uid != nil && len(aclTags) > 0:
+	// Both are allowed: UserID tracks "created by", tags define node ownership
+	// This is valid per the new model
+
+	var (
+		user   *types.User
+		userID *uint
+	)
+
+	if uid != nil {
+		var err error
+
+		user, err = GetUserByID(tx, *uid)
+		if err != nil {
+			return nil, err
+		}
+
+		userID = &user.ID
 	}
 
 	// Remove duplicates and sort for consistency
@@ -108,15 +131,15 @@ func CreatePreAuthKey(
 	}
 
 	key := types.PreAuthKey{
-		UserID:     user.ID,
-		User:       *user,
+		UserID:     userID, // nil for system-created keys, or "created by" for tagged keys
+		User:       user,   // nil for system-created keys
 		Reusable:   reusable,
 		Ephemeral:  ephemeral,
 		CreatedAt:  &now,
 		Expiration: expiration,
-		Tags:       aclTags,
-		Prefix:     prefix, // Store prefix
-		Hash:       hash,   // Store hash
+		Tags:       aclTags, // empty for user-owned keys
+		Prefix:     prefix,  // Store prefix
+		Hash:       hash,    // Store hash
 	}
 
 	if err := tx.Save(&key).Error; err != nil {
@@ -149,14 +172,19 @@ func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, e
 	}
 
 	keys := []types.PreAuthKey{}
-	if err := tx.Preload("User").Where(&types.PreAuthKey{UserID: user.ID}).Find(&keys).Error; err != nil {
+
+	err = tx.Preload("User").Where(&types.PreAuthKey{UserID: &user.ID}).Find(&keys).Error
+	if err != nil {
 		return nil, err
 	}
 
 	return keys, nil
 }
 
-var ErrPreAuthKeyFailedToParse = errors.New("failed to parse AuthKey")
+var (
+	ErrPreAuthKeyFailedToParse    = errors.New("failed to parse auth-key")
+	ErrPreAuthKeyNotTaggedOrOwned = errors.New("auth-key must be either tagged or owned by user")
+)
 
 func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 	var pak types.PreAuthKey

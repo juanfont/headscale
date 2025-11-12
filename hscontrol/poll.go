@@ -295,6 +295,7 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 	}
 
 	data := make([]byte, reservedResponseHeaderSize)
+	//nolint:gosec // G115: JSON response size will not exceed uint32 max
 	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
 	data = append(data, jsonBody...)
 
