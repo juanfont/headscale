@@ -462,11 +462,29 @@ func New(
 	if err != nil {
 		// Try to get more detailed build output
 		log.Printf("Docker build failed, attempting to get detailed output...")
-		buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+
+		buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
 		if buildOutput != "" {
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nDetailed build output:\n%s", err, buildOutput)
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
+
+			const maxLines = 100
+
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
+
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+			}
+
+			return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
 		}
-		return nil, fmt.Errorf("could not start headscale container: %w", err)
+
+		return nil, fmt.Errorf("could not start headscale container: %w (unable to get diagnostic build output)", err)
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
 
