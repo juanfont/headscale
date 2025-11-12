@@ -64,7 +64,6 @@ fmt-go: check-deps $(GO_SOURCES)
 fmt-prettier: check-deps $(DOC_SOURCES)
 	@echo "Formatting documentation and config files..."
 	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
-	prettier --write --print-width 80 --prose-wrap always CHANGELOG.md
 
 .PHONY: fmt-proto
 fmt-proto: check-deps $(PROTO_SOURCES)
