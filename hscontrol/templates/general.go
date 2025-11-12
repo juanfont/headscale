@@ -14,8 +14,6 @@ var headscaleCSS string
 //go:embed headscale.svg
 var headscaleSVG string
 
-
-
 // mdTypesetBody creates a body element with md-typeset styling
 // that matches the official Headscale documentation design.
 // Uses CSS classes with styles defined in headscaleCSS.
@@ -191,8 +189,8 @@ func HtmlStructure(head, body *elem.Element) *elem.Element {
 			}),
 			// Google Fonts for Roboto and Roboto Mono
 			elem.Link(attrs.Props{
-				attrs.Rel:      "preconnect",
-				attrs.Href:     "https://fonts.gstatic.com",
+				attrs.Rel:     "preconnect",
+				attrs.Href:    "https://fonts.gstatic.com",
 				"crossorigin": "",
 			}),
 			elem.Link(attrs.Props{
@@ -204,5 +202,22 @@ func HtmlStructure(head, body *elem.Element) *elem.Element {
 			head,
 		),
 		body,
+	)
+}
+
+// BlankPage creates a minimal blank HTML page with favicon.
+// Used for endpoints that need to return a valid HTML page with no content.
+func BlankPage() *elem.Element {
+	return elem.Html(attrs.Props{attrs.Lang: "en"},
+		elem.Head(nil,
+			elem.Meta(attrs.Props{
+				attrs.Charset: "UTF-8",
+			}),
+			elem.Link(attrs.Props{
+				attrs.Rel:  "icon",
+				attrs.Href: "/favicon.ico",
+			}),
+		),
+		elem.Body(nil),
 	)
 }
