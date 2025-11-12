@@ -2,6 +2,8 @@
 
 ## Next
 
+**Minimum supported Tailscale client version: v1.74.0**
+
 ### Web registration templates redesign
 
 The OIDC callback and device registration web pages have been updated to use the
