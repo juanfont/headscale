@@ -286,12 +286,16 @@ func FaviconHandler(writer http.ResponseWriter, req *http.Request) {
 	http.ServeContent(writer, req, "favicon.ico", time.Unix(0, 0), bytes.NewReader(favicon))
 }
 
-// Returns a blank page with favicon linked.
+// BlankHandler returns a blank page with favicon linked.
 func BlankHandler(writer http.ResponseWriter, res *http.Request) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	io.WriteString(writer, `
-		<!doctype html><html><head>
-		<link rel="icon" href="/favicon.ico">
-		</head><body></body></html>
-	`)
+	writer.WriteHeader(http.StatusOK)
+
+	_, err := writer.Write([]byte(templates.BlankPage().Render()))
+	if err != nil {
+		log.Error().
+			Caller().
+			Err(err).
+			Msg("Failed to write HTTP response")
+	}
 }
