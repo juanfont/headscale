@@ -239,14 +239,16 @@ func (v *PreAuthKeyView) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (v PreAuthKeyView) ID() uint64                { return v.ж.ID }
-func (v PreAuthKeyView) Key() string               { return v.ж.Key }
-func (v PreAuthKeyView) UserID() uint              { return v.ж.UserID }
-func (v PreAuthKeyView) User() User                { return v.ж.User }
-func (v PreAuthKeyView) Reusable() bool            { return v.ж.Reusable }
-func (v PreAuthKeyView) Ephemeral() bool           { return v.ж.Ephemeral }
-func (v PreAuthKeyView) Used() bool                { return v.ж.Used }
-func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
+func (v PreAuthKeyView) ID() uint64                    { return v.ж.ID }
+func (v PreAuthKeyView) Key() string                   { return v.ж.Key }
+func (v PreAuthKeyView) Prefix() string                { return v.ж.Prefix }
+func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.Hash) }
+func (v PreAuthKeyView) UserID() uint                  { return v.ж.UserID }
+func (v PreAuthKeyView) User() User                    { return v.ж.User }
+func (v PreAuthKeyView) Reusable() bool                { return v.ж.Reusable }
+func (v PreAuthKeyView) Ephemeral() bool               { return v.ж.Ephemeral }
+func (v PreAuthKeyView) Used() bool                    { return v.ж.Used }
+func (v PreAuthKeyView) Tags() views.Slice[string]     { return views.SliceOf(v.ж.Tags) }
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
 }
@@ -259,6 +261,8 @@ func (v PreAuthKeyView) Expiration() views.ValuePointer[time.Time] {
 var _PreAuthKeyViewNeedsRegeneration = PreAuthKey(struct {
 	ID         uint64
 	Key        string
+	Prefix     string
+	Hash       []byte
 	UserID     uint
 	User       User
 	Reusable   bool

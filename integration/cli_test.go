@@ -337,9 +337,10 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		},
 	)
 
-	assert.NotEmpty(t, listedPreAuthKeys[1].GetKey())
-	assert.NotEmpty(t, listedPreAuthKeys[2].GetKey())
-	assert.NotEmpty(t, listedPreAuthKeys[3].GetKey())
+	// New keys show prefix after listing, so check the created keys instead
+	assert.NotEmpty(t, keys[0].GetKey())
+	assert.NotEmpty(t, keys[1].GetKey())
+	assert.NotEmpty(t, keys[2].GetKey())
 
 	assert.True(t, listedPreAuthKeys[1].GetExpiration().AsTime().After(time.Now()))
 	assert.True(t, listedPreAuthKeys[2].GetExpiration().AsTime().After(time.Now()))
@@ -370,7 +371,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		)
 	}
 
-	// Test key expiry
+	// Test key expiry - use the full key from creation, not the masked one from listing
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
@@ -378,7 +379,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			"--user",
 			"1",
 			"expire",
-			listedPreAuthKeys[1].GetKey(),
+			keys[0].GetKey(),
 		},
 	)
 	require.NoError(t, err)

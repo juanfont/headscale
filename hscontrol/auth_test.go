@@ -3026,7 +3026,11 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 
 	// Create user and single-use pre-auth key
 	user := app.state.CreateUserForTest("test-user")
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil) // reusable=false
+	pakNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil) // reusable=false
+	require.NoError(t, err)
+
+	// Fetch the full pre-auth key to check Reusable field
+	pak, err := app.state.GetPreAuthKey(pakNew.Key)
 	require.NoError(t, err)
 	require.False(t, pak.Reusable, "key should be single-use for this test")
 
@@ -3036,7 +3040,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	// STEP 1: Initial registration with pre-auth key (simulates fresh node joining)
 	initialReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: pak.Key,
+			AuthKey: pakNew.Key,
 		},
 		NodeKey: nodeKey.Public(),
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3060,7 +3064,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	assert.Equal(t, machineKey.Public(), node.MachineKey())
 
 	// Verify pre-auth key is now marked as used
-	usedPak, err := app.state.GetPreAuthKey(pak.Key)
+	usedPak, err := app.state.GetPreAuthKey(pakNew.Key)
 	require.NoError(t, err)
 	assert.True(t, usedPak.Used, "pre-auth key should be marked as used after initial registration")
 
@@ -3073,7 +3077,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	t.Log("Step 2: Node restart - re-registration with same (now used) pre-auth key")
 	restartReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: pak.Key, // Same key, now marked as Used=true
+			AuthKey: pakNew.Key, // Same key, now marked as Used=true
 		},
 		NodeKey: nodeKey.Public(), // Same node key
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3113,7 +3117,11 @@ func TestNodeReregistrationWithReusablePreAuthKey(t *testing.T) {
 	app := createTestApp(t)
 
 	user := app.state.CreateUserForTest("test-user")
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil) // reusable=true
+	pakNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil) // reusable=true
+	require.NoError(t, err)
+
+	// Fetch the full pre-auth key to check Reusable field
+	pak, err := app.state.GetPreAuthKey(pakNew.Key)
 	require.NoError(t, err)
 	require.True(t, pak.Reusable)
 
@@ -3123,7 +3131,7 @@ func TestNodeReregistrationWithReusablePreAuthKey(t *testing.T) {
 	// Initial registration
 	initialReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: pak.Key,
+			AuthKey: pakNew.Key,
 		},
 		NodeKey: nodeKey.Public(),
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3140,7 +3148,7 @@ func TestNodeReregistrationWithReusablePreAuthKey(t *testing.T) {
 	// Node restart - re-registration with reusable key
 	restartReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: pak.Key, // Reusable key
+			AuthKey: pakNew.Key, // Reusable key
 		},
 		NodeKey: nodeKey.Public(),
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3209,7 +3217,11 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 
 	// Create a SINGLE-USE pre-auth key (reusable=false)
 	// This is the type of key that triggers the bug in issue #2830
-	preAuthKey, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	preAuthKeyNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	require.NoError(t, err)
+
+	// Fetch the full pre-auth key to check Reusable and Used fields
+	preAuthKey, err := app.state.GetPreAuthKey(preAuthKeyNew.Key)
 	require.NoError(t, err)
 	require.False(t, preAuthKey.Reusable, "Pre-auth key must be single-use to test issue #2830")
 	require.False(t, preAuthKey.Used, "Pre-auth key should not be used yet")
@@ -3222,7 +3234,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 	// This simulates the first time the container starts and runs 'tailscale up --authkey=...'
 	initialReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: preAuthKey.Key,
+			AuthKey: preAuthKeyNew.Key, // Use the full key from creation
 		},
 		NodeKey: nodeKey.Public(),
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3238,7 +3250,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 	require.Equal(t, "testuser", initialResp.User.DisplayName, "User should match the pre-auth key's user")
 
 	// Verify the pre-auth key is now marked as Used
-	updatedKey, err := app.state.GetPreAuthKey(preAuthKey.Key)
+	updatedKey, err := app.state.GetPreAuthKey(preAuthKeyNew.Key)
 	require.NoError(t, err)
 	require.True(t, updatedKey.Used, "Pre-auth key should be marked as Used after initial registration")
 
@@ -3253,7 +3265,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 	// This is exactly what happens when a container restarts
 	reregisterReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: preAuthKey.Key, // Same key, now marked as Used=true
+			AuthKey: preAuthKeyNew.Key, // Same key, now marked as Used=true
 		},
 		NodeKey: nodeKey.Public(), // Same NodeKey
 		Hostinfo: &tailcfg.Hostinfo{
@@ -3280,7 +3292,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 
 	attackReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
-			AuthKey: preAuthKey.Key, // Try to use the same key
+			AuthKey: preAuthKeyNew.Key, // Try to use the same key
 		},
 		NodeKey: differentNodeKey.Public(),
 		Hostinfo: &tailcfg.Hostinfo{

@@ -14,8 +14,15 @@ func (e PAKError) Error() string { return string(e) }
 
 // PreAuthKey describes a pre-authorization key usable in a particular user.
 type PreAuthKey struct {
-	ID        uint64 `gorm:"primary_key"`
-	Key       string
+	ID uint64 `gorm:"primary_key"`
+
+	// Legacy plaintext key (for backwards compatibility)
+	Key string
+
+	// New bcrypt-based authentication
+	Prefix string
+	Hash   []byte // bcrypt
+
 	UserID    uint
 	User      User `gorm:"constraint:OnDelete:SET NULL;"`
 	Reusable  bool
@@ -32,15 +39,57 @@ type PreAuthKey struct {
 	Expiration *time.Time
 }
 
+// PreAuthKeyNew is returned once when the key is created.
+type PreAuthKeyNew struct {
+	ID         uint64 `gorm:"primary_key"`
+	Key        string
+	Reusable   bool
+	Ephemeral  bool
+	Tags       []string
+	Expiration *time.Time
+	CreatedAt  *time.Time
+	User       User
+}
+
+func (key *PreAuthKeyNew) Proto() *v1.PreAuthKey {
+	protoKey := v1.PreAuthKey{
+		Id:        key.ID,
+		Key:       key.Key,
+		User:      key.User.Proto(),
+		Reusable:  key.Reusable,
+		Ephemeral: key.Ephemeral,
+		AclTags:   key.Tags,
+	}
+
+	if key.Expiration != nil {
+		protoKey.Expiration = timestamppb.New(*key.Expiration)
+	}
+
+	if key.CreatedAt != nil {
+		protoKey.CreatedAt = timestamppb.New(*key.CreatedAt)
+	}
+
+	return &protoKey
+}
+
 func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	protoKey := v1.PreAuthKey{
 		User:      key.User.Proto(),
 		Id:        key.ID,
-		Key:       key.Key,
 		Ephemeral: key.Ephemeral,
 		Reusable:  key.Reusable,
 		Used:      key.Used,
 		AclTags:   key.Tags,
+	}
+
+	// For new keys (with prefix/hash), show the prefix so users can identify the key
+	// For legacy keys (with plaintext key), show the full key for backwards compatibility
+	if key.Prefix != "" {
+		protoKey.Key = "hskey-auth-" + key.Prefix + "-***"
+	} else if key.Key != "" {
+		// Legacy key - show full key for backwards compatibility
+		// TODO: Consider hiding this in a future major version
+		protoKey.Key = key.Key
 	}
 
 	if key.Expiration != nil {

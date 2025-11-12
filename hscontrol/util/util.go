@@ -294,3 +294,20 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 
 	return InvalidString()
 }
+
+// GenerateRegistrationKey generates a vanity key for tracking web authentication
+// registration flows in logs. This key is NOT stored in the database and does NOT use bcrypt -
+// it's purely for observability and correlating log entries during the registration process.
+func GenerateRegistrationKey() (string, error) {
+	const (
+		registerKeyPrefix = "hskey-reg-" //nolint:gosec // This is a vanity key for logging, not a credential
+		registerKeyLength = 64
+	)
+
+	randomPart, err := GenerateRandomStringURLSafe(registerKeyLength)
+	if err != nil {
+		return "", fmt.Errorf("generating registration key: %w", err)
+	}
+
+	return registerKeyPrefix + randomPart, nil
+}

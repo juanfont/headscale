@@ -991,6 +991,38 @@ AND auth_key_id NOT IN (
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
+			{
+				// Add columns for prefix and hash for pre auth keys, implementing
+				// them with the same security model as api keys.
+				ID: "202511011637-preauthkey-bcrypt",
+				Migrate: func(tx *gorm.DB) error {
+					// Check and add prefix column if it doesn't exist
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "prefix") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "prefix")
+						if err != nil {
+							return fmt.Errorf("adding prefix column: %w", err)
+						}
+					}
+
+					// Check and add hash column if it doesn't exist
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "hash") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "hash")
+						if err != nil {
+							return fmt.Errorf("adding hash column: %w", err)
+						}
+					}
+
+					// Create partial unique index to allow multiple legacy keys (NULL/empty prefix)
+					// while enforcing uniqueness for new bcrypt-based keys
+					err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''").Error
+					if err != nil {
+						return fmt.Errorf("creating prefix index: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

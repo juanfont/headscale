@@ -901,7 +901,14 @@ func (s *State) CreateAPIKey(expiration *time.Time) (string, *types.APIKey, erro
 }
 
 // GetAPIKey retrieves an API key by its prefix.
-func (s *State) GetAPIKey(prefix string) (*types.APIKey, error) {
+// Accepts both display format (hskey-api-{12chars}-***) and database format ({12chars}).
+func (s *State) GetAPIKey(displayPrefix string) (*types.APIKey, error) {
+	// Parse the display prefix to extract the database prefix
+	prefix, err := hsdb.ParseAPIKeyPrefix(displayPrefix)
+	if err != nil {
+		return nil, err
+	}
+
 	return s.db.GetAPIKey(prefix)
 }
 
@@ -921,7 +928,7 @@ func (s *State) DestroyAPIKey(key types.APIKey) error {
 }
 
 // CreatePreAuthKey generates a new pre-authentication key for a user.
-func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKey, error) {
+func (s *State) CreatePreAuthKey(userID types.UserID, reusable bool, ephemeral bool, expiration *time.Time, aclTags []string) (*types.PreAuthKeyNew, error) {
 	return s.db.CreatePreAuthKey(userID, reusable, ephemeral, expiration, aclTags)
 }
 

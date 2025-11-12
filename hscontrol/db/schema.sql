@@ -48,6 +48,8 @@ CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
 CREATE TABLE pre_auth_keys(
   id integer PRIMARY KEY AUTOINCREMENT,
   key text,
+  prefix text,
+  hash blob,
   user_id integer,
   reusable numeric,
   ephemeral numeric DEFAULT false,
@@ -59,6 +61,7 @@ CREATE TABLE pre_auth_keys(
 
   CONSTRAINT fk_pre_auth_keys_user FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+CREATE UNIQUE INDEX idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != '';
 
 CREATE TABLE api_keys(
   id integer PRIMARY KEY AUTOINCREMENT,
