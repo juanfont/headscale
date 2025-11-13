@@ -7,7 +7,7 @@ Both are available on the [GitHub releases page](https://github.com/juanfont/hea
 
 It is recommended to use our DEB packages to install headscale on a Debian based system as those packages configure a
 local user to run headscale, provide a default configuration and ship with a systemd service file. Supported
-distributions are Ubuntu 22.04 or newer, Debian 11 or newer.
+distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
 
 1.  Download the [latest headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
@@ -57,14 +57,14 @@ managed by systemd.
 1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
 
     ```shell
-    sudo wget --output-document=/usr/local/bin/headscale \
+    sudo wget --output-document=/usr/bin/headscale \
     https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
     ```
 
 1.  Make `headscale` executable:
 
     ```shell
-    sudo chmod +x /usr/local/bin/headscale
+    sudo chmod +x /usr/bin/headscale
     ```
 
 1.  Add a dedicated local user to run headscale:

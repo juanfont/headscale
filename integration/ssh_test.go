@@ -11,7 +11,9 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 func isSSHNoAccessStdError(stderr string) bool {
@@ -30,7 +32,7 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Sce
 		Users:        []string{"user1", "user2"},
 	}
 	scenario, err := NewScenario(spec)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
@@ -50,13 +52,13 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Sce
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("ssh"),
 	)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
 	return scenario
 }
@@ -93,19 +95,19 @@ func TestSSHOneUserToAll(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	user1Clients, err := scenario.ListTailscaleClients("user1")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	user2Clients, err := scenario.ListTailscaleClients("user2")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
+	requireNoErrListFQDN(t, err)
 
 	for _, client := range user1Clients {
 		for _, peer := range allClients {
@@ -160,16 +162,16 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	nsOneClients, err := scenario.ListTailscaleClients("user1")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	nsTwoClients, err := scenario.ListTailscaleClients("user2")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
+	requireNoErrListFQDN(t, err)
 
 	testInterUserSSH := func(sourceClients []TailscaleClient, targetClients []TailscaleClient) {
 		for _, client := range sourceClients {
@@ -208,13 +210,13 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
+	requireNoErrListFQDN(t, err)
 
 	for _, client := range allClients {
 		for _, peer := range allClients {
@@ -259,13 +261,13 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
+	requireNoErrListFQDN(t, err)
 
 	for _, client := range allClients {
 		for _, peer := range allClients {
@@ -317,16 +319,16 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	ssh1Clients, err := scenario.ListTailscaleClients("user1")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	ssh2Clients, err := scenario.ListTailscaleClients("user2")
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	_, err = scenario.ListTailscaleClientsFQDNs()
-	assertNoErrListFQDN(t, err)
+	requireNoErrListFQDN(t, err)
 
 	for _, client := range ssh1Clients {
 		for _, peer := range ssh2Clients {
@@ -422,9 +424,9 @@ func assertSSHHostname(t *testing.T, client TailscaleClient, peer TailscaleClien
 	t.Helper()
 
 	result, _, err := doSSH(t, client, peer)
-	assertNoErr(t, err)
+	require.NoError(t, err)
 
-	assertContains(t, peer.ContainerID(), strings.ReplaceAll(result, "\n", ""))
+	require.Contains(t, peer.ContainerID(), strings.ReplaceAll(result, "\n", ""))
 }
 
 func assertSSHPermissionDenied(t *testing.T, client TailscaleClient, peer TailscaleClient) {
@@ -455,5 +457,86 @@ func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	assert.Error(t, err)
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
+	}
+}
+
+// TestSSHAutogroupSelf tests that SSH with autogroup:self works correctly:
+// - Users can SSH to their own devices
+// - Users cannot SSH to other users' devices
+func TestSSHAutogroupSelf(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := sshScenario(t,
+		&policyv2.Policy{
+			ACLs: []policyv2.ACL{
+				{
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
+				},
+			},
+			SSHs: []policyv2.SSH{
+				{
+					Action: "accept",
+					Sources: policyv2.SSHSrcAliases{
+						ptr.To(policyv2.AutoGroupMember),
+					},
+					Destinations: policyv2.SSHDstAliases{
+						ptr.To(policyv2.AutoGroupSelf),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+				},
+			},
+		},
+		2, // 2 clients per user
+	)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	// Test that user1's devices can SSH to each other
+	for _, client := range user1Clients {
+		for _, peer := range user1Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test that user2's devices can SSH to each other
+	for _, client := range user2Clients {
+		for _, peer := range user2Clients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test that user1 cannot SSH to user2's devices
+	for _, client := range user1Clients {
+		for _, peer := range user2Clients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+
+	// Test that user2 cannot SSH to user1's devices
+	for _, client := range user2Clients {
+		for _, peer := range user1Clients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
 	}
 }

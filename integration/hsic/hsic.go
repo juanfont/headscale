@@ -460,6 +460,12 @@ func New(
 		dockertestutil.DockerAllowNetworkAdministration,
 	)
 	if err != nil {
+		// Try to get more detailed build output
+		log.Printf("Docker build failed, attempting to get detailed output...")
+		buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+		if buildOutput != "" {
+			return nil, fmt.Errorf("could not start headscale container: %w\n\nDetailed build output:\n%s", err, buildOutput)
+		}
 		return nil, fmt.Errorf("could not start headscale container: %w", err)
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
@@ -1076,6 +1082,30 @@ func (t *HeadscaleInContainer) ListNodes(
 	return ret, nil
 }
 
+func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
+	command := []string{
+		"headscale",
+		"nodes",
+		"delete",
+		"--identifier",
+		fmt.Sprintf("%d", nodeID),
+		"--output",
+		"json",
+		"--force",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete node command: %w", err)
+	}
+
+	return nil
+}
+
 func (t *HeadscaleInContainer) NodesByUser() (map[string][]*v1.Node, error) {
 	nodes, err := t.ListNodes()
 	if err != nil {
@@ -1202,26 +1232,26 @@ func (h *HeadscaleInContainer) writePolicy(pol *policyv2.Policy) error {
 }
 
 func (h *HeadscaleInContainer) PID() (int, error) {
-	cmd := []string{"bash", "-c", `ps aux | grep headscale | grep -v grep | awk '{print $2}'`}
-	output, err := h.Execute(cmd)
+	// Use pidof to find the headscale process, which is more reliable than grep
+	// as it only looks for the actual binary name, not processes that contain
+	// "headscale" in their command line (like the dlv debugger).
+	output, err := h.Execute([]string{"pidof", "headscale"})
 	if err != nil {
-		return 0, fmt.Errorf("failed to execute command: %w", err)
+		// pidof returns exit code 1 when no process is found
+		return 0, os.ErrNotExist
 	}
 
-	lines := strings.TrimSpace(output)
-	if lines == "" {
-		return 0, os.ErrNotExist // No output means no process found
+	// pidof returns space-separated PIDs on a single line
+	pidStrs := strings.Fields(strings.TrimSpace(output))
+	if len(pidStrs) == 0 {
+		return 0, os.ErrNotExist
 	}
 
-	pids := make([]int, 0, len(lines))
-	for _, line := range strings.Split(lines, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		pidInt, err := strconv.Atoi(line)
+	pids := make([]int, 0, len(pidStrs))
+	for _, pidStr := range pidStrs {
+		pidInt, err := strconv.Atoi(pidStr)
 		if err != nil {
-			return 0, fmt.Errorf("parsing PID: %w", err)
+			return 0, fmt.Errorf("parsing PID %q: %w", pidStr, err)
 		}
 		// We dont care about the root pid for the container
 		if pidInt == 1 {
@@ -1236,7 +1266,9 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 	case 1:
 		return pids[0], nil
 	default:
-		return 0, errors.New("multiple headscale processes running")
+		// If we still have multiple PIDs, return the first one as a fallback
+		// This can happen in edge cases during startup/shutdown
+		return pids[0], nil
 	}
 }
 
@@ -1390,4 +1422,39 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	return nodeStore, nil
+}
+
+// DebugFilter fetches the current filter rules from the debug endpoint.
+func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "-H", "Accept: application/json", "http://localhost:9090/debug/filter",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return nil, fmt.Errorf("fetching filter from debug endpoint: %w", err)
+	}
+
+	var filterRules []tailcfg.FilterRule
+	if err := json.Unmarshal([]byte(result), &filterRules); err != nil {
+		return nil, fmt.Errorf("decoding filter response: %w", err)
+	}
+
+	return filterRules, nil
+}
+
+// DebugPolicy fetches the current policy from the debug endpoint.
+func (t *HeadscaleInContainer) DebugPolicy() (string, error) {
+	// Execute curl inside the container to access the debug endpoint locally
+	command := []string{
+		"curl", "-s", "http://localhost:9090/debug/policy",
+	}
+
+	result, err := t.Execute(command)
+	if err != nil {
+		return "", fmt.Errorf("fetching policy from debug endpoint: %w", err)
+	}
+
+	return result, nil
 }

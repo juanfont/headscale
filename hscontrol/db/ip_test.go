@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -159,8 +158,6 @@ func TestIPAllocatorSequential(t *testing.T) {
 				types.IPAllocationStrategySequential,
 			)
 
-			spew.Dump(alloc)
-
 			var got4s []netip.Addr
 			var got6s []netip.Addr
 
@@ -262,8 +259,6 @@ func TestIPAllocatorRandom(t *testing.T) {
 			db := tt.dbFunc()
 
 			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategyRandom)
-
-			spew.Dump(alloc)
 
 			for range tt.getCount {
 				got4, got6, err := alloc.Next()

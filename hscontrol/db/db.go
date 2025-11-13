@@ -932,14 +932,100 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Drop all tables that are no longer in use and has existed.
+				// They potentially still present from broken migrations in the past.
+				ID: "202510311551",
+				Migrate: func(tx *gorm.DB) error {
+					for _, oldTable := range []string{"namespaces", "machines", "shared_machines", "kvs", "pre_auth_key_acl_tags", "routes"} {
+						err := tx.Migrator().DropTable(oldTable)
+						if err != nil {
+							log.Trace().Str("table", oldTable).
+								Err(err).
+								Msg("Error dropping old table, continuing...")
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
+			{
+				// Drop all indices that are no longer in use and has existed.
+				// They potentially still present from broken migrations in the past.
+				// They should all be cleaned up by the db engine, but we are a bit
+				// conservative to ensure all our previous mess is cleaned up.
+				ID: "202511101554-drop-old-idx",
+				Migrate: func(tx *gorm.DB) error {
+					for _, oldIdx := range []struct{ name, table string }{
+						{"idx_namespaces_deleted_at", "namespaces"},
+						{"idx_routes_deleted_at", "routes"},
+						{"idx_shared_machines_deleted_at", "shared_machines"},
+					} {
+						err := tx.Migrator().DropIndex(oldIdx.table, oldIdx.name)
+						if err != nil {
+							log.Trace().
+								Str("index", oldIdx.name).
+								Str("table", oldIdx.table).
+								Err(err).
+								Msg("Error dropping old index, continuing...")
+						}
+					}
+
+					return nil
+				},
+				Rollback: func(tx *gorm.DB) error {
+					return nil
+				},
+			},
+
+			// Migrations **above** this points will be REMOVED in version **0.29.0**
+			// This is to clean up a lot of old migrations that is seldom used
+			// and carries a lot of technical debt.
+			// Any new migrations should be added after the comment below and follow
+			// the rules it sets out.
+
 			// From this point, the following rules must be followed:
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
+			{
+				// Add columns for prefix and hash for pre auth keys, implementing
+				// them with the same security model as api keys.
+				ID: "202511011637-preauthkey-bcrypt",
+				Migrate: func(tx *gorm.DB) error {
+					// Check and add prefix column if it doesn't exist
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "prefix") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "prefix")
+						if err != nil {
+							return fmt.Errorf("adding prefix column: %w", err)
+						}
+					}
 
+					// Check and add hash column if it doesn't exist
+					if !tx.Migrator().HasColumn(&types.PreAuthKey{}, "hash") {
+						err := tx.Migrator().AddColumn(&types.PreAuthKey{}, "hash")
+						if err != nil {
+							return fmt.Errorf("adding hash column: %w", err)
+						}
+					}
+
+					// Create partial unique index to allow multiple legacy keys (NULL/empty prefix)
+					// while enforcing uniqueness for new bcrypt-based keys
+					err := tx.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_pre_auth_keys_prefix ON pre_auth_keys(prefix) WHERE prefix IS NOT NULL AND prefix != ''").Error
+					if err != nil {
+						return fmt.Errorf("creating prefix index: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 			// Add wireguard_only_peers table and node_wg_peer_connections table for external WireGuard peer support.
 			{
-				ID: "202510181528",
+				ID: "202511130000",
 				Migrate: func(tx *gorm.DB) error {
 					// Common columns shared between SQLite and PostgreSQL.
 					// Database-specific types are parameterized with %s placeholders.
@@ -1067,7 +1153,17 @@ CREATE TABLE IF NOT EXISTS node_wg_peer_connections(
 		ctx, cancel := context.WithTimeout(context.Background(), contextTimeoutSecs*time.Second)
 		defer cancel()
 
-		if err := squibble.Validate(ctx, sqlConn, dbSchema); err != nil {
+		opts := squibble.DigestOptions{
+			IgnoreTables: []string{
+				// Litestream tables, these are inserted by
+				// litestream and not part of our schema
+				// https://litestream.io/how-it-works
+				"_litestream_lock",
+				"_litestream_seq",
+			},
+		}
+
+		if err := squibble.Validate(ctx, sqlConn, dbSchema, &opts); err != nil {
 			return nil, fmt.Errorf("validating schema: %w", err)
 		}
 	}

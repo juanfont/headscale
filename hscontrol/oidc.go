@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -191,13 +190,6 @@ type oidcCallbackTemplateConfig struct {
 	Verb string
 }
 
-//go:embed assets/oidc_callback_template.html
-var oidcCallbackTemplateContent string
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
-)
-
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
@@ -213,7 +205,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	cookieState, err := req.Cookie("state")
+	stateCookieName := getCookieName("state", state)
+	cookieState, err := req.Cookie(stateCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "state not found", err))
 		return
@@ -235,8 +228,13 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		httpError(writer, err)
 		return
 	}
+	if idToken.Nonce == "" {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found in IDToken", err))
+		return
+	}
 
-	nonce, err := req.Cookie("nonce")
+	nonceCookieName := getCookieName("nonce", idToken.Nonce)
+	nonce, err := req.Cookie(nonceCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found", err))
 		return
@@ -331,6 +329,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		verb := "Reauthenticated"
 		newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
 		if err != nil {
+			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
+				log.Debug().Caller().Str("registration_id", registrationId.String()).Msg("registration session expired before authorization completed")
+				httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", err))
+
+				return
+			}
 			httpError(writer, err)
 			return
 		}
@@ -561,21 +565,17 @@ func (a *AuthProviderOIDC) handleRegistration(
 	return !nodeChange.Empty(), nil
 }
 
-// TODO(kradalby):
-// Rewrite in elem-go.
 func renderOIDCCallbackTemplate(
 	user *types.User,
 	verb string,
 ) (*bytes.Buffer, error) {
-	var content bytes.Buffer
-	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: user.Display(),
-		Verb: verb,
-	}); err != nil {
-		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
-	}
+	html := templates.OIDCCallback(user.Display(), verb).Render()
+	return bytes.NewBufferString(html), nil
+}
 
-	return &content, nil
+// getCookieName generates a unique cookie name based on a cookie value.
+func getCookieName(baseName, value string) string {
+	return fmt.Sprintf("%s_%s", baseName, value[:6])
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
@@ -586,7 +586,7 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string,
 
 	c := &http.Cookie{
 		Path:     "/oidc/callback",
-		Name:     name,
+		Name:     getCookieName(name, val),
 		Value:    val,
 		MaxAge:   int(time.Hour.Seconds()),
 		Secure:   r.TLS != nil,

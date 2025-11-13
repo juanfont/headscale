@@ -127,12 +127,6 @@ var setPolicy = &cobra.Command{
 			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
 		}
 
-		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
-			return
-		}
-
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
 			confirm := false
 			force, _ := cmd.Flags().GetBool("force")
@@ -157,6 +151,17 @@ var setPolicy = &cobra.Command{
 			)
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to open database: %s", err), output)
+			}
+
+			users, err := d.ListUsers()
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Failed to load users for policy validation: %s", err), output)
+			}
+
+			_, err = policy.NewPolicyManager(policyBytes, users, views.Slice[types.NodeView]{})
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
+				return
 			}
 
 			_, err = d.SetPolicy(string(policyBytes))

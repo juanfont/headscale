@@ -73,7 +73,6 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 
 	// Use the worker pool for controlled concurrency instead of direct generation
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
-
 	if err != nil {
 		log.Error().Uint64("node.id", id.Uint64()).Err(err).Msg("Initial map generation failed")
 		nodeConn.removeConnectionByChannel(c)
@@ -602,7 +601,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 	mc.updateCount.Add(1)
 
-	log.Info().Uint64("node.id", mc.id.Uint64()).
+	log.Debug().Uint64("node.id", mc.id.Uint64()).
 		Int("successful_sends", successCount).
 		Int("failed_connections", len(failedConnections)).
 		Int("remaining_connections", len(mc.connections)).

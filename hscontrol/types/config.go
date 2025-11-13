@@ -235,6 +235,8 @@ type Tuning struct {
 	BatchChangeDelay               time.Duration
 	NodeMapSessionBufferedChanSize int
 	BatcherWorkers                 int
+	RegisterCacheCleanup           time.Duration
+	RegisterCacheExpiration        time.Duration
 }
 
 func validatePKCEMethod(method string) error {
@@ -338,7 +340,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
 	if err := viper.ReadInConfig(); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
 			log.Warn().Msg("No config file found, using defaults")
 			return nil
 		}
@@ -1002,6 +1004,8 @@ func LoadServerConfig() (*Config, error) {
 				}
 				return DefaultBatcherWorkers()
 			}(),
+			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
+			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
 		},
 	}, nil
 }

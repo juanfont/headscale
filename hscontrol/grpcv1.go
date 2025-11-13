@@ -237,10 +237,18 @@ func (api headscaleV1APIServer) RegisterNode(
 	ctx context.Context,
 	request *v1.RegisterNodeRequest,
 ) (*v1.RegisterNodeResponse, error) {
+	// Generate ephemeral registration key for tracking this registration flow in logs
+	registrationKey, err := util.GenerateRegistrationKey()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to generate registration key")
+		registrationKey = "" // Continue without key if generation fails
+	}
+
 	log.Trace().
 		Caller().
 		Str("user", request.GetUser()).
 		Str("registration_id", request.GetKey()).
+		Str("registration_key", registrationKey).
 		Msg("Registering node")
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
@@ -260,8 +268,18 @@ func (api headscaleV1APIServer) RegisterNode(
 		util.RegisterMethodCLI,
 	)
 	if err != nil {
+		log.Error().
+			Str("registration_key", registrationKey).
+			Err(err).
+			Msg("Failed to register node")
 		return nil, err
 	}
+
+	log.Info().
+		Str("registration_key", registrationKey).
+		Str("node_id", fmt.Sprintf("%d", node.ID())).
+		Str("hostname", node.Hostname()).
+		Msg("Node registered successfully")
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -430,9 +448,12 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
 ) (*v1.ExpireNodeResponse, error) {
-	now := time.Now()
+	expiry := time.Now()
+	if request.GetExpiry() != nil {
+		expiry = request.GetExpiry().AsTime()
+	}
 
-	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), now)
+	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), expiry)
 	if err != nil {
 		return nil, err
 	}
@@ -780,7 +801,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	hostinfo := tailcfg.Hostinfo{
 		RoutableIPs: routes,
 		OS:          "TestOS",
-		Hostname:    "DebugTestNode",
+		Hostname:    request.GetName(),
 	}
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
@@ -788,8 +809,8 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	newNode := types.RegisterNode{
-		Node: types.Node{
+	newNode := types.NewRegisterNode(
+		types.Node{
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
@@ -800,8 +821,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 
 			Hostinfo: &hostinfo,
 		},
-		Registered: make(chan *types.Node),
-	}
+	)
 
 	log.Debug().
 		Caller().
@@ -1022,6 +1042,26 @@ func (api headscaleV1APIServer) DeleteWireGuardConnection(
 	api.h.Change(changeSet)
 
 	return &v1.DeleteWireGuardConnectionResponse{}, nil
+}
+
+func (api headscaleV1APIServer) Health(
+	ctx context.Context,
+	request *v1.HealthRequest,
+) (*v1.HealthResponse, error) {
+	var healthErr error
+	response := &v1.HealthResponse{}
+
+	if err := api.h.state.PingDB(ctx); err != nil {
+		healthErr = fmt.Errorf("database ping failed: %w", err)
+	} else {
+		response.DatabaseConnectivity = true
+	}
+
+	if healthErr != nil {
+		log.Error().Err(healthErr).Msg("Health check failed")
+	}
+
+	return response, healthErr
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

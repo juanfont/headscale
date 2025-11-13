@@ -164,6 +164,29 @@
         ]
       }
     },
+    "/api/v1/health": {
+      "get": {
+        "summary": "--- Health start ---",
+        "operationId": "HeadscaleService_Health",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1HealthResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node": {
       "get": {
         "operationId": "HeadscaleService_ListNodes",
@@ -383,6 +406,13 @@
             "required": true,
             "type": "string",
             "format": "uint64"
+          },
+          {
+            "name": "expiry",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "date-time"
           }
         ],
         "tags": [
@@ -1229,6 +1259,14 @@
         }
       }
     },
+    "v1HealthResponse": {
+      "type": "object",
+      "properties": {
+        "databaseConnectivity": {
+          "type": "boolean"
+        }
+      }
+    },
     "v1ListApiKeysResponse": {
       "type": "object",
       "properties": {
@@ -1584,7 +1622,7 @@
           "format": "date-time"
         }
       },
-      "description": "WireGuardConnection represents a connection between a regular node and a WireGuard-only peer.\nThis allows each node to have unique masquerade addresses when communicating with the same\nWireGuard peer, enabling proper bidirectional routing."
+      "description": "WireGuardConnection represents a connection between a regular node and a WireGuard-only peer.\nThis allows each node to have unique masquerade addresses when communicating with the same\nWireGuard peer."
     },
     "v1WireGuardOnlyPeer": {
       "type": "object",
@@ -1637,7 +1675,7 @@
           "format": "date-time"
         }
       },
-      "description": "WireGuardOnlyPeer represents an external WireGuard peer that does not run\na Tailscale client. These peers are manually configured and statically defined.\nVisibility and masquerade addresses are now managed through the WireGuardConnection\nmodel (see wireguard_connection.proto)."
+      "description": "WireGuardOnlyPeer represents an external WireGuard peer that does not run\na Tailscale client. These peers are manually configured and statically defined.\nVisibility and masquerade addresses are managed through the WireGuardConnection\nmodel (see wireguard_connection.proto)."
     }
   }
 }

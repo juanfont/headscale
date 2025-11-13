@@ -369,7 +369,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 			},
 			want: Node{
 				GivenName: "manual-test.local",
-				Hostname:  "NewHostName.Local",
+				Hostname:  "newhostname.local",
 			},
 		},
 		{
@@ -383,7 +383,245 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 			},
 			want: Node{
 				GivenName: "newhostname.local",
-				Hostname:  "NewHostName.Local",
+				Hostname:  "newhostname.local",
+			},
+		},
+		{
+			name: "invalid-hostname-with-emoji-rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "hostname-with-💩",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname", // Should reject and keep old hostname
+			},
+		},
+		{
+			name: "invalid-hostname-with-unicode-rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "我的电脑",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname", // Should keep old hostname
+			},
+		},
+		{
+			name: "invalid-hostname-with-special-chars-rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "node-with-special!@#$%",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname", // Should reject and keep old hostname
+			},
+		},
+		{
+			name: "invalid-hostname-too-short-rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "a",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname", // Should keep old hostname
+			},
+		},
+		{
+			name: "invalid-hostname-uppercase-accepted-lowercased",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "ValidHostName",
+			},
+			want: Node{
+				GivenName: "validhostname", // GivenName follows hostname when it changes
+				Hostname:  "validhostname", // Uppercase is lowercased, not rejected
+			},
+		},
+		{
+			name: "uppercase_to_lowercase_accepted",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "User2-Host",
+			},
+			want: Node{
+				GivenName: "user2-host",
+				Hostname:  "user2-host",
+			},
+		},
+		{
+			name: "at_sign_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "Test@Host",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "chinese_chars_with_dash_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "server-北京-01",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "chinese_only_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "我的电脑",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "emoji_with_text_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "laptop-🚀",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "mixed_chinese_emoji_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "测试💻机器",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "only_emojis_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "🎉🎊",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "only_at_signs_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "@@@",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "starts_with_dash_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "-test",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "ends_with_dash_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "test-",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "too_long_hostname_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: strings.Repeat("t", 65),
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+		},
+		{
+			name: "underscore_rejected",
+			nodeBefore: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
+			},
+			change: &tailcfg.Hostinfo{
+				Hostname: "test_node",
+			},
+			want: Node{
+				GivenName: "valid-hostname",
+				Hostname:  "valid-hostname",
 			},
 		},
 	}
@@ -551,6 +789,182 @@ func TestNodeRegisterMethodToV1Enum(t *testing.T) {
 
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("RegisterMethodToV1Enum() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+// TestHasNetworkChanges tests the NodeView method for detecting
+// when a node's network properties have changed.
+func TestHasNetworkChanges(t *testing.T) {
+	mustIPPtr := func(s string) *netip.Addr {
+		ip := netip.MustParseAddr(s)
+		return &ip
+	}
+
+	tests := []struct {
+		name    string
+		old     *Node
+		new     *Node
+		changed bool
+	}{
+		{
+			name: "no changes",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				IPv6:           mustIPPtr("fd7a:115c:a1e0::1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				IPv6:           mustIPPtr("fd7a:115c:a1e0::1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: false,
+		},
+		{
+			name: "IPv4 changed",
+			old: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			new: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.2"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			changed: true,
+		},
+		{
+			name: "IPv6 changed",
+			old: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::1"),
+			},
+			new: &Node{
+				ID:   1,
+				IPv4: mustIPPtr("100.64.0.1"),
+				IPv6: mustIPPtr("fd7a:115c:a1e0::2"),
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs added",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs removed",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			changed: true,
+		},
+		{
+			name: "RoutableIPs changed",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")}},
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes added",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes removed",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{},
+			},
+			changed: true,
+		},
+		{
+			name: "SubnetRoutes changed",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24"), netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/24"), netip.MustParsePrefix("192.168.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/24")},
+			},
+			changed: true,
+		},
+		{
+			name: "irrelevant property changed (Hostname)",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostname: "old-name",
+			},
+			new: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostname: "new-name",
+			},
+			changed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.new.View().HasNetworkChanges(tt.old.View())
+			if got != tt.changed {
+				t.Errorf("HasNetworkChanges() = %v, want %v", got, tt.changed)
 			}
 		})
 	}

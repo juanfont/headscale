@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
 	"tailscale.com/types/ptr"
 )
@@ -24,6 +27,8 @@ const (
 	NodeGivenNameHashLength = 8
 	NodeGivenNameTrimSize   = 2
 )
+
+var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var (
 	ErrNodeNotFound                  = errors.New("node not found")
@@ -228,6 +233,17 @@ func SetApprovedRoutes(
 		return nil
 	}
 
+	// When approving exit routes, ensure both IPv4 and IPv6 are included
+	// If either 0.0.0.0/0 or ::/0 is being approved, both should be approved
+	hasIPv4Exit := slices.Contains(routes, tsaddr.AllIPv4())
+	hasIPv6Exit := slices.Contains(routes, tsaddr.AllIPv6())
+
+	if hasIPv4Exit && !hasIPv6Exit {
+		routes = append(routes, tsaddr.AllIPv6())
+	} else if hasIPv6Exit && !hasIPv4Exit {
+		routes = append(routes, tsaddr.AllIPv4())
+	}
+
 	b, err := json.Marshal(routes)
 	if err != nil {
 		return err
@@ -259,6 +275,10 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
+	if err := util.ValidateHostname(newName); err != nil {
+		return fmt.Errorf("renaming node: %w", err)
+	}
+
 	// Check if the new name is unique
 	var count int64
 	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
@@ -376,6 +396,14 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv4 = ipv4
 	node.IPv6 = ipv6
 
+	var err error
+	node.Hostname, err = util.NormaliseHostname(node.Hostname)
+	if err != nil {
+		newHostname := util.InvalidString()
+		log.Info().Err(err).Str("invalid-hostname", node.Hostname).Str("new-hostname", newHostname).Msgf("Invalid hostname, replacing")
+		node.Hostname = newHostname
+	}
+
 	if node.GivenName == "" {
 		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
 		if err != nil {
@@ -424,15 +452,11 @@ func NodeSetMachineKey(
 	}).Error
 }
 
-// NodeSave saves a node object to the database, prefer to use a specific save method rather
-// than this. It is intended to be used when we are changing or.
-// TODO(kradalby): Remove this func, just use Save.
-func NodeSave(tx *gorm.DB, node *types.Node) error {
-	return tx.Save(node).Error
-}
-
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
-	suppliedName = util.ConvertWithFQDNRules(suppliedName)
+	// Strip invalid DNS characters for givenName
+	suppliedName = strings.ToLower(suppliedName)
+	suppliedName = invalidDNSRegex.ReplaceAllString(suppliedName, "")
+
 	if len(suppliedName) > util.LabelHostnameLength {
 		return "", types.ErrHostnameTooLong
 	}

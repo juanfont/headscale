@@ -23,6 +23,12 @@ jobs:
           - TestPolicyUpdateWhileRunningWithCLIInDatabase
           - TestACLAutogroupMember
           - TestACLAutogroupTagged
+          - TestACLAutogroupSelf
+          - TestACLPolicyPropagationOverTime
+          - TestAPIAuthenticationBypass
+          - TestAPIAuthenticationBypassCurl
+          - TestGRPCAuthenticationBypass
+          - TestCLIWithConfigAuthenticationBypass
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
@@ -31,8 +37,13 @@ jobs:
           - TestOIDC024UserCreation
           - TestOIDCAuthenticationWithPKCE
           - TestOIDCReloginSameNodeNewUser
+          - TestOIDCFollowUpUrl
+          - TestOIDCMultipleOpenedLoginUrls
+          - TestOIDCReloginSameNodeSameUser
+          - TestOIDCExpiryAfterRestart
           - TestAuthWebFlowAuthenticationPingAll
-          - TestAuthWebFlowLogoutAndRelogin
+          - TestAuthWebFlowLogoutAndReloginSameUser
+          - TestAuthWebFlowLogoutAndReloginNewUser
           - TestUserCommand
           - TestPreAuthKeyCommand
           - TestPreAuthKeyCommandWithoutExpiry
@@ -61,6 +72,7 @@ jobs:
           - TestTaildrop
           - TestUpdateHostnameFromClient
           - TestExpireNode
+          - TestSetNodeExpiryInFuture
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
           - Test2118DeletingOnlineNodePanics
@@ -79,6 +91,7 @@ jobs:
           - TestSSHNoSSHConfigured
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
+          - TestSSHAutogroupSelf
     uses: ./.github/workflows/integration-test-template.yml
     with:
       test: ${{ matrix.test }}

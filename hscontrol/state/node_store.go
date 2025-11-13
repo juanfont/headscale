@@ -15,18 +15,19 @@ import (
 )
 
 const (
-	batchSize    = 10
+	batchSize    = 100
 	batchTimeout = 500 * time.Millisecond
 )
 
 const (
-	put           = 1
-	del           = 2
-	update        = 3
-	putWGPeer     = 4
-	delWGPeer     = 5
-	putConnection = 6
-	delConnection = 7
+	put             = 1
+	del             = 2
+	update          = 3
+	rebuildPeerMaps = 4
+	putWGPeer       = 5
+	delWGPeer       = 6
+	putConnection   = 7
+	delConnection   = 8
 )
 
 const prometheusNamespace = "headscale"
@@ -113,12 +114,12 @@ func NewNodeStore(allNodes types.Nodes, allWGPeers types.WireGuardOnlyPeers, all
 		wgPeers[types.NodeID(p.ID)] = *p
 	}
 
-	connections := make(map[types.NodeID]map[types.NodeID]*types.WireGuardConnection)
+	connections := make(map[types.NodeID]map[types.NodeID]types.WireGuardConnection)
 	for _, conn := range allConnections {
 		if connections[conn.NodeID] == nil {
-			connections[conn.NodeID] = make(map[types.NodeID]*types.WireGuardConnection)
+			connections[conn.NodeID] = make(map[types.NodeID]types.WireGuardConnection)
 		}
-		connections[conn.NodeID][conn.WGPeerID] = conn
+		connections[conn.NodeID][conn.WGPeerID] = *conn
 	}
 
 	snap := snapshotFromNodesWGPeersAndConnections(nodes, wgPeers, connections, peersFunc)
@@ -145,16 +146,17 @@ type Snapshot struct {
 	nodesByID map[types.NodeID]types.Node
 
 	// calculated from nodesByID
-	nodesByNodeKey map[key.NodePublic]types.NodeView
-	peersByNode    map[types.NodeID][]types.NodeView
-	nodesByUser    map[types.UserID][]types.NodeView
-	allNodes       []types.NodeView
+	nodesByNodeKey    map[key.NodePublic]types.NodeView
+	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
+	peersByNode       map[types.NodeID][]types.NodeView
+	nodesByUser       map[types.UserID][]types.NodeView
+	allNodes          []types.NodeView
 
 	// for WireGuard-only peers
 	wgPeersByID map[types.NodeID]types.WireGuardOnlyPeer
 	allWGPeers  []*types.WireGuardOnlyPeer
 	// for WireGuard connections (node-to-peer relationships with per-connection masq addresses)
-	connectionsByNode map[types.NodeID]map[types.NodeID]*types.WireGuardConnection
+	connectionsByNode map[types.NodeID]map[types.NodeID]types.WireGuardConnection
 }
 
 // PeersFunc is a function that takes a list of nodes and returns a map
@@ -165,11 +167,14 @@ type PeersFunc func(nodes []types.NodeView) map[types.NodeID][]types.NodeView
 
 // work represents a single operation to be performed on the NodeStore.
 type work struct {
-	op       int
-	nodeID   types.NodeID
-	node     types.Node
-	updateFn UpdateNodeFunc
-	result   chan struct{}
+	op         int
+	nodeID     types.NodeID
+	node       types.Node
+	updateFn   UpdateNodeFunc
+	result     chan struct{}
+	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
+	// For rebuildPeerMaps operation
+	rebuildResult chan struct{}
 
 	// TODO(iridated): Ideally work would be an enum so we don't need to allocate
 	// space for both node and wgPeer. At most one of them is used at a time.
@@ -185,15 +190,17 @@ type work struct {
 // If the node already exists, it will be replaced.
 // If the node does not exist, it will be added.
 // This is a blocking operation that waits for the write to complete.
-func (s *NodeStore) PutNode(n types.Node) {
+// Returns the resulting node after all modifications in the batch have been applied.
+func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("put"))
 	defer timer.ObserveDuration()
 
 	work := work{
-		op:     put,
-		nodeID: n.ID,
-		node:   n,
-		result: make(chan struct{}),
+		op:         put,
+		nodeID:     n.ID,
+		node:       n,
+		result:     make(chan struct{}),
+		nodeResult: make(chan types.NodeView, 1),
 	}
 
 	nodeStoreQueueDepth.Inc()
@@ -201,7 +208,10 @@ func (s *NodeStore) PutNode(n types.Node) {
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
+	resultNode := <-work.nodeResult
 	nodeStoreOperations.WithLabelValues("put").Inc()
+
+	return resultNode
 }
 
 // UpdateNodeFunc is a function type that takes a pointer to a Node and modifies it.
@@ -212,6 +222,7 @@ type UpdateNodeFunc func(n *types.Node)
 // This is analogous to a database "transaction", or, the caller should
 // rather collect all data they want to change, and then call this function.
 // Fewer calls are better.
+// Returns the resulting node after all modifications in the batch have been applied.
 //
 // TODO(kradalby): Technically we could have a version of this that modifies the node
 // in the current snapshot if _we know_ that the change will not affect the peer relationships.
@@ -220,15 +231,16 @@ type UpdateNodeFunc func(n *types.Node)
 // a lock around the nodesByID map to ensure that no other writes are happening
 // while we are modifying the node. Which mean we would need to implement read-write locks
 // on all read operations.
-func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)) {
+func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("update"))
 	defer timer.ObserveDuration()
 
 	work := work{
-		op:       update,
-		nodeID:   nodeID,
-		updateFn: updateFn,
-		result:   make(chan struct{}),
+		op:         update,
+		nodeID:     nodeID,
+		updateFn:   updateFn,
+		result:     make(chan struct{}),
+		nodeResult: make(chan types.NodeView, 1),
 	}
 
 	nodeStoreQueueDepth.Inc()
@@ -236,7 +248,11 @@ func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
+	resultNode := <-work.nodeResult
 	nodeStoreOperations.WithLabelValues("update").Inc()
+
+	// Return the node and whether it exists (is valid)
+	return resultNode, resultNode.Valid()
 }
 
 // DeleteNode removes a node from the store by its ID.
@@ -326,37 +342,54 @@ func (s *NodeStore) applyBatch(batch []work) {
 	wgPeers := make(map[types.NodeID]types.WireGuardOnlyPeer)
 	maps.Copy(wgPeers, prevSnapshot.wgPeersByID)
 
-	connections := make(map[types.NodeID]map[types.NodeID]*types.WireGuardConnection)
+	connections := make(map[types.NodeID]map[types.NodeID]types.WireGuardConnection)
 	for nodeID, peerConns := range prevSnapshot.connectionsByNode {
-		connections[nodeID] = make(map[types.NodeID]*types.WireGuardConnection)
-		for peerID, conn := range peerConns {
-			// Create a copy of the connection pointer
-			connCopy := *conn
-			connections[nodeID][peerID] = &connCopy
-		}
+		connections[nodeID] = make(map[types.NodeID]types.WireGuardConnection)
+		maps.Copy(connections[nodeID], peerConns)
 	}
 
-	for _, w := range batch {
+	// Track which work items need node results
+	nodeResultRequests := make(map[types.NodeID][]*work)
+
+	// Track rebuildPeerMaps operations
+	var rebuildOps []*work
+
+	for i := range batch {
+		w := &batch[i]
 		switch w.op {
 		case put:
 			nodes[w.nodeID] = w.node
+			if w.nodeResult != nil {
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+			}
 		case update:
 			// Update the specific node identified by nodeID
 			if n, exists := nodes[w.nodeID]; exists {
 				w.updateFn(&n)
 				nodes[w.nodeID] = n
 			}
+			if w.nodeResult != nil {
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+			}
 		case del:
 			delete(nodes, w.nodeID)
+			// For delete operations, send an invalid NodeView if requested
+			if w.nodeResult != nil {
+				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
+			}
+		case rebuildPeerMaps:
+			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
+			// below to recalculate peer relationships using the current peersFunc
+			rebuildOps = append(rebuildOps, w)
 		case putWGPeer:
 			wgPeers[w.nodeID] = w.wgPeer
 		case delWGPeer:
 			delete(wgPeers, w.nodeID)
 		case putConnection:
 			if connections[w.nodeID] == nil {
-				connections[w.nodeID] = make(map[types.NodeID]*types.WireGuardConnection)
+				connections[w.nodeID] = make(map[types.NodeID]types.WireGuardConnection)
 			}
-			connections[w.nodeID][w.wgPeerID] = &w.connection
+			connections[w.nodeID][w.wgPeerID] = w.connection
 		case delConnection:
 			delete(connections[w.nodeID], w.wgPeerID)
 			if len(connections[w.nodeID]) == 0 {
@@ -372,8 +405,33 @@ func (s *NodeStore) applyBatch(batch []work) {
 	nodeStoreNodesCount.Set(float64(len(nodes)))
 	nodeStoreWGPeersCount.Set(float64(len(wgPeers)))
 
+	// Send the resulting nodes to all work items that requested them
+	for nodeID, workItems := range nodeResultRequests {
+		if node, exists := nodes[nodeID]; exists {
+			nodeView := node.View()
+			for _, w := range workItems {
+				w.nodeResult <- nodeView
+				close(w.nodeResult)
+			}
+		} else {
+			// Node was deleted or doesn't exist
+			for _, w := range workItems {
+				w.nodeResult <- types.NodeView{} // Send invalid view
+				close(w.nodeResult)
+			}
+		}
+	}
+
+	// Signal completion for rebuildPeerMaps operations
+	for _, w := range rebuildOps {
+		close(w.rebuildResult)
+	}
+
+	// Signal completion for all other work items
 	for _, w := range batch {
-		close(w.result)
+		if w.op != rebuildPeerMaps {
+			close(w.result)
+		}
 	}
 }
 
@@ -385,7 +443,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 func snapshotFromNodesWGPeersAndConnections(
 	nodes map[types.NodeID]types.Node,
 	wgPeers map[types.NodeID]types.WireGuardOnlyPeer,
-	connections map[types.NodeID]map[types.NodeID]*types.WireGuardConnection,
+	connections map[types.NodeID]map[types.NodeID]types.WireGuardConnection,
 	peersFunc PeersFunc,
 ) Snapshot {
 	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
@@ -397,9 +455,10 @@ func snapshotFromNodesWGPeersAndConnections(
 	}
 
 	newSnap := Snapshot{
-		nodesByID:      nodes,
-		allNodes:       allNodes,
-		nodesByNodeKey: make(map[key.NodePublic]types.NodeView),
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView),
+		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
 
 		// peersByNode is most likely the most expensive operation,
 		// it will use the list of all nodes, combined with the
@@ -418,11 +477,19 @@ func snapshotFromNodesWGPeersAndConnections(
 		connectionsByNode: connections,
 	}
 
-	// Build nodesByUser and nodesByNodeKey maps
+	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
 		nodeView := n.View()
-		newSnap.nodesByUser[types.UserID(n.UserID)] = append(newSnap.nodesByUser[types.UserID(n.UserID)], nodeView)
+		userID := types.UserID(n.UserID)
+
+		newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+
+		// Build machine key index
+		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
+			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
+		}
+		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
 	}
 
 	// Build wg-only peer indexes
@@ -466,19 +533,40 @@ func (s *NodeStore) GetNodeByNodeKey(nodeKey key.NodePublic) (types.NodeView, bo
 	return nodeView, exists
 }
 
-// GetNodeByMachineKey returns a node by its machine key. The bool indicates if the node exists.
-func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic) (types.NodeView, bool) {
+// GetNodeByMachineKey returns a node by its machine key and user ID. The bool indicates if the node exists.
+func (s *NodeStore) GetNodeByMachineKey(machineKey key.MachinePublic, userID types.UserID) (types.NodeView, bool) {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key"))
 	defer timer.ObserveDuration()
 
 	nodeStoreOperations.WithLabelValues("get_by_machine_key").Inc()
 
 	snapshot := s.data.Load()
-	// We don't have a byMachineKey map, so we need to iterate
-	// This could be optimized by adding a byMachineKey map if this becomes a hot path
-	for _, node := range snapshot.nodesByID {
-		if node.MachineKey == machineKey {
-			return node.View(), true
+	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
+		if node, exists := userMap[userID]; exists {
+			return node, true
+		}
+	}
+
+	return types.NodeView{}, false
+}
+
+// GetNodeByMachineKeyAnyUser returns the first node with the given machine key,
+// regardless of which user it belongs to. This is useful for scenarios like
+// transferring a node to a different user when re-authenticating with a
+// different user's auth key.
+// If multiple nodes exist with the same machine key (different users), the
+// first one found is returned (order is not guaranteed).
+func (s *NodeStore) GetNodeByMachineKeyAnyUser(machineKey key.MachinePublic) (types.NodeView, bool) {
+	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("get_by_machine_key_any_user"))
+	defer timer.ObserveDuration()
+
+	nodeStoreOperations.WithLabelValues("get_by_machine_key_any_user").Inc()
+
+	snapshot := s.data.Load()
+	if userMap, exists := snapshot.nodesByMachineKey[machineKey]; exists {
+		// Return the first node found (order not guaranteed due to map iteration)
+		for _, node := range userMap {
+			return node, true
 		}
 	}
 
@@ -604,6 +692,22 @@ func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
 	return views.SliceOf(s.data.Load().peersByNode[id])
+}
+
+// RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.
+// This must be called after policy changes because peersFunc uses PolicyManager's
+// filters to determine which nodes can see each other. Without rebuilding, the
+// peer map would use stale filter data until the next node add/delete.
+func (s *NodeStore) RebuildPeerMaps() {
+	result := make(chan struct{})
+
+	w := work{
+		op:            rebuildPeerMaps,
+		rebuildResult: result,
+	}
+
+	s.writeQueue <- w
+	<-result
 }
 
 // ListNodesByUser returns a slice of all nodes for a given user ID.
@@ -772,7 +876,7 @@ func (s *NodeStore) ListAllWireGuardConnections() []*types.WireGuardConnection {
 	var result []*types.WireGuardConnection
 	for _, peerConns := range s.data.Load().connectionsByNode {
 		for _, conn := range peerConns {
-			result = append(result, conn)
+			result = append(result, &conn)
 		}
 	}
 
@@ -805,7 +909,7 @@ func (s *NodeStore) GetWireGuardConnectionWithPeer(nodeID, wgPeerID types.NodeID
 	peer := snapshot.wgPeersByID[wgPeerID]
 
 	return &types.WireGuardConnectionWithPeer{
-		Connection: conn,
+		Connection: &conn,
 		Peer:       &peer,
 	}, true
 }
@@ -830,7 +934,7 @@ func (s *NodeStore) GetWireGuardConnectionsWithPeersForNode(nodeID types.NodeID)
 	for _, conn := range connections {
 		peer := snapshot.wgPeersByID[conn.WGPeerID]
 		result = append(result, &types.WireGuardConnectionWithPeer{
-			Connection: conn,
+			Connection: &conn,
 			Peer:       &peer,
 		})
 	}

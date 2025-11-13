@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -27,6 +28,8 @@ var (
 	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
+
+	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 )
 
 type (
@@ -144,7 +147,10 @@ func (ns Nodes) ViewSlice() views.Slice[NodeView] {
 
 // GivenNameHasBeenChanged returns whether the `givenName` can be automatically changed based on the `Hostname` of the node.
 func (node *Node) GivenNameHasBeenChanged() bool {
-	return node.GivenName == util.ConvertWithFQDNRules(node.Hostname)
+	// Strip invalid DNS characters for givenName comparison
+	normalised := strings.ToLower(node.Hostname)
+	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+	return node.GivenName == normalised
 }
 
 // IsExpired returns whether the node registration has expired.
@@ -263,11 +269,19 @@ func (node *Node) Prefixes() []netip.Prefix {
 // node has any exit routes enabled.
 // If none are enabled, it will return nil.
 func (node *Node) ExitRoutes() []netip.Prefix {
-	if slices.ContainsFunc(node.SubnetRoutes(), tsaddr.IsExitRoute) {
-		return tsaddr.ExitRoutes()
+	var routes []netip.Prefix
+
+	for _, route := range node.AnnouncedRoutes() {
+		if tsaddr.IsExitRoute(route) && slices.Contains(node.ApprovedRoutes, route) {
+			routes = append(routes, route)
+		}
 	}
 
-	return nil
+	return routes
+}
+
+func (node *Node) IsExitNode() bool {
+	return len(node.ExitRoutes()) > 0
 }
 
 func (node *Node) IPsAsString() []string {
@@ -305,7 +319,14 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 			return true
 		}
 
+		// Check if the node has access to routes that might be part of a
+		// smaller subnet that is served from node2 as a subnet router.
 		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
+			return true
+		}
+
+		// If the dst is "the internet" and node2 is an exit node, allow access.
+		if matcher.DestsIsTheInternet() && node2.IsExitNode() {
 			return true
 		}
 	}
@@ -434,16 +455,22 @@ func (node *Node) AnnouncedRoutes() []netip.Prefix {
 	return node.Hostinfo.RoutableIPs
 }
 
-// SubnetRoutes returns the list of routes that the node announces and are approved.
+// SubnetRoutes returns the list of routes (excluding exit routes) that the node
+// announces and are approved.
 //
-// IMPORTANT: This method is used for internal data structures and should NOT be used
-// for the gRPC Proto conversion. For Proto, SubnetRoutes must be populated manually
-// with PrimaryRoutes to ensure it includes only routes actively served by the node.
-// See the comment in Proto() method and the implementation in grpcv1.go/nodesToProto.
+// IMPORTANT: This method is used for internal data structures and should NOT be
+// used for the gRPC Proto conversion. For Proto, SubnetRoutes must be populated
+// manually with PrimaryRoutes to ensure it includes only routes actively served
+// by the node. See the comment in Proto() method and the implementation in
+// grpcv1.go/nodesToProto.
 func (node *Node) SubnetRoutes() []netip.Prefix {
 	var routes []netip.Prefix
 
 	for _, route := range node.AnnouncedRoutes() {
+		if tsaddr.IsExitRoute(route) {
+			continue
+		}
+
 		if slices.Contains(node.ApprovedRoutes, route) {
 			routes = append(routes, route)
 		}
@@ -455,6 +482,11 @@ func (node *Node) SubnetRoutes() []netip.Prefix {
 // IsSubnetRouter reports if the node has any subnet routes.
 func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
+}
+
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
+func (node *Node) AllApprovedRoutes() []netip.Prefix {
+	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
 
 func (node *Node) String() string {
@@ -531,20 +563,34 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		return
 	}
 
-	if node.Hostname != hostInfo.Hostname {
+	newHostname := strings.ToLower(hostInfo.Hostname)
+	if err := util.ValidateHostname(newHostname); err != nil {
+		log.Warn().
+			Str("node.id", node.ID.String()).
+			Str("current_hostname", node.Hostname).
+			Str("rejected_hostname", hostInfo.Hostname).
+			Err(err).
+			Msg("Rejecting invalid hostname update from hostinfo")
+		return
+	}
+
+	if node.Hostname != newHostname {
 		log.Trace().
 			Str("node.id", node.ID.String()).
 			Str("old_hostname", node.Hostname).
-			Str("new_hostname", hostInfo.Hostname).
+			Str("new_hostname", newHostname).
 			Str("old_given_name", node.GivenName).
 			Bool("given_name_changed", node.GivenNameHasBeenChanged()).
 			Msg("Updating hostname from hostinfo")
 
 		if node.GivenNameHasBeenChanged() {
-			node.GivenName = util.ConvertWithFQDNRules(hostInfo.Hostname)
+			// Strip invalid DNS characters for givenName display
+			givenName := strings.ToLower(newHostname)
+			givenName = invalidDNSRegex.ReplaceAllString(givenName, "")
+			node.GivenName = givenName
 		}
 
-		node.Hostname = hostInfo.Hostname
+		node.Hostname = newHostname
 
 		log.Trace().
 			Str("node.id", node.ID.String()).
@@ -633,9 +679,15 @@ func (node Node) DebugString() string {
 	fmt.Fprintf(&sb, "\tApprovedRoutes: %v\n", node.ApprovedRoutes)
 	fmt.Fprintf(&sb, "\tAnnouncedRoutes: %v\n", node.AnnouncedRoutes())
 	fmt.Fprintf(&sb, "\tSubnetRoutes: %v\n", node.SubnetRoutes())
+	fmt.Fprintf(&sb, "\tExitRoutes: %v\n", node.ExitRoutes())
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+func (v NodeView) UserView() UserView {
+	u := v.User()
+	return u.View()
 }
 
 func (v NodeView) IPs() []netip.Addr {
@@ -653,27 +705,11 @@ func (v NodeView) InIPSet(set *netipx.IPSet) bool {
 }
 
 func (v NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
-	if !v.Valid() || !node2.Valid() {
+	if !v.Valid() {
 		return false
 	}
-	src := v.IPs()
-	allowedIPs := node2.IPs()
 
-	for _, matcher := range matchers {
-		if !matcher.SrcsContainsIPs(src...) {
-			continue
-		}
-
-		if matcher.DestsContainsIP(allowedIPs...) {
-			return true
-		}
-
-		if matcher.DestsOverlapsPrefixes(node2.SubnetRoutes()...) {
-			return true
-		}
-	}
-
-	return false
+	return v.ж.CanAccess(matchers, node2.AsStruct())
 }
 
 func (v NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
@@ -703,6 +739,13 @@ func (v NodeView) IsSubnetRouter() bool {
 		return false
 	}
 	return v.ж.IsSubnetRouter()
+}
+
+func (v NodeView) AllApprovedRoutes() []netip.Prefix {
+	if !v.Valid() {
+		return nil
+	}
+	return v.ж.AllApprovedRoutes()
 }
 
 func (v NodeView) AppendToIPSet(build *netipx.IPSetBuilder) {
@@ -783,6 +826,13 @@ func (v NodeView) ExitRoutes() []netip.Prefix {
 	return v.ж.ExitRoutes()
 }
 
+func (v NodeView) IsExitNode() bool {
+	if !v.Valid() {
+		return false
+	}
+	return v.ж.IsExitNode()
+}
+
 // RequestTags returns the ACL tags that the node is requesting.
 func (v NodeView) RequestTags() []string {
 	if !v.Valid() || !v.Hostinfo().Valid() {
@@ -829,4 +879,23 @@ func (v NodeView) IPsAsString() []string {
 		return nil
 	}
 	return v.ж.IPsAsString()
+}
+
+// HasNetworkChanges checks if the node has network-related changes.
+// Returns true if IPs, announced routes, or approved routes changed.
+// This is primarily used for policy cache invalidation.
+func (v NodeView) HasNetworkChanges(other NodeView) bool {
+	if !slices.Equal(v.IPs(), other.IPs()) {
+		return true
+	}
+
+	if !slices.Equal(v.AnnouncedRoutes(), other.AnnouncedRoutes()) {
+		return true
+	}
+
+	if !slices.Equal(v.SubnetRoutes(), other.SubnetRoutes()) {
+		return true
+	}
+
+	return false
 }

@@ -47,6 +47,7 @@ const (
 	HeadscaleService_DeleteApiKey_FullMethodName              = "/headscale.v1.HeadscaleService/DeleteApiKey"
 	HeadscaleService_GetPolicy_FullMethodName                 = "/headscale.v1.HeadscaleService/GetPolicy"
 	HeadscaleService_SetPolicy_FullMethodName                 = "/headscale.v1.HeadscaleService/SetPolicy"
+	HeadscaleService_Health_FullMethodName                    = "/headscale.v1.HeadscaleService/Health"
 )
 
 // HeadscaleServiceClient is the client API for HeadscaleService service.
@@ -87,6 +88,8 @@ type HeadscaleServiceClient interface {
 	// --- Policy start ---
 	GetPolicy(ctx context.Context, in *GetPolicyRequest, opts ...grpc.CallOption) (*GetPolicyResponse, error)
 	SetPolicy(ctx context.Context, in *SetPolicyRequest, opts ...grpc.CallOption) (*SetPolicyResponse, error)
+	// --- Health start ---
+	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 }
 
 type headscaleServiceClient struct {
@@ -377,6 +380,16 @@ func (c *headscaleServiceClient) SetPolicy(ctx context.Context, in *SetPolicyReq
 	return out, nil
 }
 
+func (c *headscaleServiceClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_Health_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HeadscaleServiceServer is the server API for HeadscaleService service.
 // All implementations must embed UnimplementedHeadscaleServiceServer
 // for forward compatibility.
@@ -415,6 +428,8 @@ type HeadscaleServiceServer interface {
 	// --- Policy start ---
 	GetPolicy(context.Context, *GetPolicyRequest) (*GetPolicyResponse, error)
 	SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error)
+	// --- Health start ---
+	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	mustEmbedUnimplementedHeadscaleServiceServer()
 }
 
@@ -508,6 +523,9 @@ func (UnimplementedHeadscaleServiceServer) GetPolicy(context.Context, *GetPolicy
 }
 func (UnimplementedHeadscaleServiceServer) SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SetPolicy not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
 func (UnimplementedHeadscaleServiceServer) testEmbeddedByValue()                          {}
@@ -1034,6 +1052,24 @@ func _HeadscaleService_SetPolicy_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HealthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).Health(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_Health_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).Health(ctx, req.(*HealthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HeadscaleService_ServiceDesc is the grpc.ServiceDesc for HeadscaleService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1152,6 +1188,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetPolicy",
 			Handler:    _HeadscaleService_SetPolicy_Handler,
+		},
+		{
+			MethodName: "Health",
+			Handler:    _HeadscaleService_Health_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

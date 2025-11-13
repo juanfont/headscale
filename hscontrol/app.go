@@ -380,53 +380,45 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 		writer http.ResponseWriter,
 		req *http.Request,
 	) {
-		if err := func() error {
-			log.Trace().
-				Caller().
-				Str("client_address", req.RemoteAddr).
-				Msg("HTTP authentication invoked")
+		log.Trace().
+			Caller().
+			Str("client_address", req.RemoteAddr).
+			Msg("HTTP authentication invoked")
 
-			authHeader := req.Header.Get("Authorization")
+		authHeader := req.Header.Get("Authorization")
 
-			if !strings.HasPrefix(authHeader, AuthPrefix) {
-				log.Error().
-					Caller().
-					Str("client_address", req.RemoteAddr).
-					Msg(`missing "Bearer " prefix in "Authorization" header`)
-				writer.WriteHeader(http.StatusUnauthorized)
-				_, err := writer.Write([]byte("Unauthorized"))
-				return err
+		writeUnauthorized := func(statusCode int) {
+			writer.WriteHeader(statusCode)
+			if _, err := writer.Write([]byte("Unauthorized")); err != nil {
+				log.Error().Err(err).Msg("writing HTTP response failed")
 			}
+		}
 
-			valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
-			if err != nil {
-				log.Error().
-					Caller().
-					Err(err).
-					Str("client_address", req.RemoteAddr).
-					Msg("failed to validate token")
-
-				writer.WriteHeader(http.StatusInternalServerError)
-				_, err := writer.Write([]byte("Unauthorized"))
-				return err
-			}
-
-			if !valid {
-				log.Info().
-					Str("client_address", req.RemoteAddr).
-					Msg("invalid token")
-
-				writer.WriteHeader(http.StatusUnauthorized)
-				_, err := writer.Write([]byte("Unauthorized"))
-				return err
-			}
-
-			return nil
-		}(); err != nil {
+		if !strings.HasPrefix(authHeader, AuthPrefix) {
 			log.Error().
 				Caller().
+				Str("client_address", req.RemoteAddr).
+				Msg(`missing "Bearer " prefix in "Authorization" header`)
+			writeUnauthorized(http.StatusUnauthorized)
+			return
+		}
+
+		valid, err := h.state.ValidateAPIKey(strings.TrimPrefix(authHeader, AuthPrefix))
+		if err != nil {
+			log.Info().
+				Caller().
 				Err(err).
-				Msg("Failed to write HTTP response")
+				Str("client_address", req.RemoteAddr).
+				Msg("failed to validate token")
+			writeUnauthorized(http.StatusUnauthorized)
+			return
+		}
+
+		if !valid {
+			log.Info().
+				Str("client_address", req.RemoteAddr).
+				Msg("invalid token")
+			writeUnauthorized(http.StatusUnauthorized)
 			return
 		}
 
@@ -454,6 +446,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 
 	router.HandleFunc("/robots.txt", h.RobotsHandler).Methods(http.MethodGet)
 	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
+	router.HandleFunc("/version", h.VersionHandler).Methods(http.MethodGet)
 	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
 	router.HandleFunc("/register/{registration_id}", h.authProvider.RegisterHandler).
 		Methods(http.MethodGet)
@@ -483,8 +476,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
-
-	router.PathPrefix("/").HandlerFunc(notFoundHandler)
+	router.HandleFunc("/favicon.ico", FaviconHandler)
+	router.PathPrefix("/").HandlerFunc(BlankHandler)
 
 	return router
 }

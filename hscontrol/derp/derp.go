@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"slices"
 	"sync"
 	"time"
 
@@ -126,7 +127,17 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 		return
 	}
 
-	for id, region := range dm.Regions {
+	// Collect region IDs and sort them to ensure deterministic iteration order.
+	// Map iteration order is non-deterministic in Go, which would cause the
+	// shuffle to be non-deterministic even with a fixed seed.
+	ids := make([]int, 0, len(dm.Regions))
+	for id := range dm.Regions {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	for _, id := range ids {
+		region := dm.Regions[id]
 		if len(region.Nodes) == 0 {
 			continue
 		}

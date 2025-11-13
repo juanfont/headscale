@@ -23,7 +23,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
 - [x] Access control lists ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
     - [x] ACL management via API
     - [x] Some [Autogroups](https://tailscale.com/kb/1396/targets#autogroups), currently: `autogroup:internet`,
-      `autogroup:nonroot`, `autogroup:member`, `autogroup:tagged`
+      `autogroup:nonroot`, `autogroup:member`, `autogroup:tagged`, `autogroup:self`
     - [x] [Auto approvers](https://tailscale.com/kb/1337/acl-syntax#auto-approvers) for [subnet
       routers](../ref/routes.md#automatically-approve-routes-of-a-subnet-router) and [exit
       nodes](../ref/routes.md#automatically-approve-an-exit-node-with-auto-approvers)

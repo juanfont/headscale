@@ -37,17 +37,17 @@ func TestWireGuardOnlyPeerBasicRegistration(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-basic"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 3, "should have 3 clients")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -88,7 +88,7 @@ func TestWireGuardOnlyPeerBasicRegistration(t *testing.T) {
 	// Wait for the peer to appear in network maps
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// Verify node1 can see the WireGuard-only peer
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -158,17 +158,17 @@ func TestWireGuardOnlyPeerDeletion(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-delete"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 2, "should have 2 clients")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -198,7 +198,7 @@ func TestWireGuardOnlyPeerDeletion(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		status, err := allClients[0].Status()
@@ -231,7 +231,7 @@ func TestWireGuardOnlyPeerDeletion(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		status, err := allClients[0].Status()
@@ -265,17 +265,17 @@ func TestWireGuardOnlyPeerIPAllocation(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-ips"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 1, "should have 1 client")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -365,17 +365,17 @@ func TestWireGuardOnlyPeerMasqueradeAddressValidation(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-masq-validation"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 1, "should have 1 client")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -419,17 +419,17 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-mapresponse"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 1, "should have 1 client")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -484,7 +484,7 @@ func TestWireGuardOnlyPeerMapResponse(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nm, err := allClients[0].Netmap()
@@ -579,17 +579,17 @@ func TestWireGuardOnlyPeerDeletionWithConnections(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		nil,
 		hsic.WithTestName("wg-only-delete-with-connections"))
-	assertNoErrHeadscaleEnv(t, err)
+	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
-	assertNoErrListClients(t, err)
+	requireNoErrListClients(t, err)
 	require.Len(t, allClients, 2, "should have 2 clients")
 
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	headscale, err := scenario.Headscale()
-	assertNoErrGetHeadscale(t, err)
+	requireNoErrGetHeadscale(t, err)
 
 	nodes, err := headscale.ListNodes()
 	require.NoError(t, err, "failed to list nodes")
@@ -645,7 +645,7 @@ func TestWireGuardOnlyPeerDeletionWithConnections(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// Verify both nodes can see the peer
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -700,7 +700,7 @@ func TestWireGuardOnlyPeerDeletionWithConnections(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// Verify node2 no longer sees the peer, but node1 still does
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -755,7 +755,7 @@ func TestWireGuardOnlyPeerDeletionWithConnections(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	err = scenario.WaitForTailscaleSync()
-	assertNoErrSync(t, err)
+	requireNoErrSync(t, err)
 
 	// Verify node1 no longer sees the peer
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {

@@ -459,7 +459,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	],
 }
 `,
-			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged]`,
+			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged autogroup:self]`,
 		},
 		{
 			name: "undefined-hostname-errors-2490",
@@ -1880,6 +1880,38 @@ func TestResolvePolicy(t *testing.T) {
 				mp("100.100.101.5/32"), // Multiple requested tags, one allowed
 				mp("100.100.101.7/32"), // Multiple forced tags
 			},
+		},
+		{
+			name:      "autogroup-self",
+			toResolve: ptr.To(AutoGroupSelf),
+			nodes: types.Nodes{
+				{
+					User: users["testuser"],
+					IPv4: ap("100.100.101.1"),
+				},
+				{
+					User: users["testuser2"],
+					IPv4: ap("100.100.101.2"),
+				},
+				{
+					User:       users["testuser"],
+					ForcedTags: []string{"tag:test"},
+					IPv4:       ap("100.100.101.3"),
+				},
+				{
+					User: users["testuser2"],
+					Hostinfo: &tailcfg.Hostinfo{
+						RequestTags: []string{"tag:test"},
+					},
+					IPv4: ap("100.100.101.4"),
+				},
+			},
+			pol: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+				},
+			},
+			wantErr: "autogroup:self requires per-node resolution",
 		},
 		{
 			name:      "autogroup-invalid",

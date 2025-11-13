@@ -64,7 +64,6 @@ fmt-go: check-deps $(GO_SOURCES)
 fmt-prettier: check-deps $(DOC_SOURCES)
 	@echo "Formatting documentation and config files..."
 	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
-	prettier --write --print-width 80 --prose-wrap always CHANGELOG.md
 
 .PHONY: fmt-proto
 fmt-proto: check-deps $(PROTO_SOURCES)
@@ -117,7 +116,7 @@ help:
 	@echo ""
 	@echo "Specific targets:"
 	@echo "  fmt-go       - Format Go code only"
-	@echo "  fmt-prettier - Format documentation only" 
+	@echo "  fmt-prettier - Format documentation only"
 	@echo "  fmt-proto    - Format Protocol Buffer files only"
 	@echo "  lint-go      - Lint Go code only"
 	@echo "  lint-proto   - Lint Protocol Buffer files only"

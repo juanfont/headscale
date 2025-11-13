@@ -104,27 +104,31 @@ func (u *User) profilePicURL() string {
 	return u.ProfilePicURL
 }
 
-func (u *User) TailscaleUser() *tailcfg.User {
-	user := tailcfg.User{
+func (u *User) TailscaleUser() tailcfg.User {
+	return tailcfg.User{
 		ID:            tailcfg.UserID(u.ID),
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 		Created:       u.CreatedAt,
 	}
-
-	return &user
 }
 
-func (u *User) TailscaleLogin() *tailcfg.Login {
-	login := tailcfg.Login{
+func (u UserView) TailscaleUser() tailcfg.User {
+	return u.ж.TailscaleUser()
+}
+
+func (u *User) TailscaleLogin() tailcfg.Login {
+	return tailcfg.Login{
 		ID:            tailcfg.LoginID(u.ID),
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
+}
 
-	return &login
+func (u UserView) TailscaleLogin() tailcfg.Login {
+	return u.ж.TailscaleLogin()
 }
 
 func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
@@ -134,6 +138,10 @@ func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 	}
+}
+
+func (u UserView) TailscaleUserProfile() tailcfg.UserProfile {
+	return u.ж.TailscaleUserProfile()
 }
 
 func (u *User) Proto() *v1.User {
