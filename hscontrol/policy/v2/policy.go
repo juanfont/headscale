@@ -94,13 +94,30 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// This ensures filterHash changes when policy changes, even for autogroup:self
 	// where the compiled filter is always empty. This eliminates the need for
 	// a separate policyHash field.
+	// We create a hashable representation that excludes internal state fields
+	// like 'validated' which shouldn't affect policy comparison.
+	type hashablePolicy struct {
+		Groups        Groups
+		Hosts         Hosts
+		TagOwners     TagOwners
+		ACLs          []ACL
+		AutoApprovers AutoApproverPolicy
+		SSHs          []SSH
+	}
 	type filterAndPolicy struct {
 		Filter []tailcfg.FilterRule
-		Policy *Policy
+		Policy hashablePolicy
 	}
 	filterHash := deephash.Hash(&filterAndPolicy{
 		Filter: filter,
-		Policy: pm.pol,
+		Policy: hashablePolicy{
+			Groups:        pm.pol.Groups,
+			Hosts:         pm.pol.Hosts,
+			TagOwners:     pm.pol.TagOwners,
+			ACLs:          pm.pol.ACLs,
+			AutoApprovers: pm.pol.AutoApprovers,
+			SSHs:          pm.pol.SSHs,
+		},
 	})
 	filterChanged := filterHash != pm.filterHash
 	if filterChanged {
