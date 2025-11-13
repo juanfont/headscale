@@ -34,16 +34,9 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 -- - Cannot create another local user "alice" (blocked by idx_name_no_provider_identifier)
 -- - Cannot create another user with provider_identifier="alice_github" (blocked by idx_provider_identifier)
 -- - Cannot create user "bob" with provider_identifier="alice_github" (blocked by idx_name_provider_identifier)
-CREATE UNIQUE INDEX idx_provider_identifier ON users(
-  provider_identifier
-) WHERE provider_identifier IS NOT NULL;
-CREATE UNIQUE INDEX idx_name_provider_identifier ON users(
-  name,
-  provider_identifier
-);
-CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
-  name
-) WHERE provider_identifier IS NULL;
+CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL;
+CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier);
+CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL;
 
 CREATE TABLE pre_auth_keys(
   id integer PRIMARY KEY AUTOINCREMENT,

@@ -10,6 +10,7 @@ The OIDC callback and device registration web pages have been updated to use the
 Material for MkDocs design system from the official documentation. The templates
 now use consistent typography, spacing, and colours across all registration
 flows. External links are properly secured with noreferrer/noopener attributes.
+
 ### Pre-authentication key security improvements
 
 Pre-authentication keys now use bcrypt hashing for improved security
@@ -19,6 +20,20 @@ at creation time. When listing keys, only the prefix is shown (e.g.,
 `hskey-auth-{prefix}-***`). All new keys use the format
 `hskey-auth-{prefix}-{secret}`. Legacy plaintext keys continue to work for
 backwards compatibility.
+
+### Database migration support removed for pre-0.25.0 databases
+
+Headscale no longer supports direct upgrades from databases created before
+version 0.25.0. Users on older versions must upgrade sequentially through each
+stable release, selecting the latest patch version available for each minor
+release.
+
+### BREAKING
+
+- Database migration support removed for pre-0.25.0 databases [#2883](https://github.com/juanfont/headscale/pull/2883)
+  - If you are running a version older than 0.25.0, you must upgrade to 0.25.1 first, then upgrade to this release
+  - See the [upgrade path documentation](https://headscale.net/stable/about/faq/#what-is-the-recommended-update-path-can-i-skip-multiple-versions-while-updating) for detailed guidance
+  - In version 0.29, all migrations before 0.28.0 will also be removed
 
 ### Changes
 
