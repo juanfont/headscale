@@ -108,16 +108,20 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		Filter []tailcfg.FilterRule
 		Policy hashablePolicy
 	}
-	filterHash := deephash.Hash(&filterAndPolicy{
-		Filter: filter,
-		Policy: hashablePolicy{
+	var hashablePol hashablePolicy
+	if pm.pol != nil {
+		hashablePol = hashablePolicy{
 			Groups:        pm.pol.Groups,
 			Hosts:         pm.pol.Hosts,
 			TagOwners:     pm.pol.TagOwners,
 			ACLs:          pm.pol.ACLs,
 			AutoApprovers: pm.pol.AutoApprovers,
 			SSHs:          pm.pol.SSHs,
-		},
+		}
+	}
+	filterHash := deephash.Hash(&filterAndPolicy{
+		Filter: filter,
+		Policy: hashablePol,
 	})
 	filterChanged := filterHash != pm.filterHash
 	if filterChanged {
