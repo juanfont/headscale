@@ -34,6 +34,8 @@ const (
 	NodeRemove      Change = 23
 	NodeKeyExpiry   Change = 24
 	NodeNewOrUpdate Change = 25
+	NodeEndpoint    Change = 26
+	NodeDERP        Change = 27
 
 	// User changes.
 	UserNewOrUpdate Change = 51
@@ -174,17 +176,19 @@ func NodeRemoved(id types.NodeID) ChangeSet {
 	}
 }
 
-func NodeOnline(id types.NodeID) ChangeSet {
+func NodeOnline(node types.NodeView) ChangeSet {
 	return ChangeSet{
-		Change: NodeCameOnline,
-		NodeID: id,
+		Change:         NodeCameOnline,
+		NodeID:         node.ID(),
+		IsSubnetRouter: node.IsSubnetRouter(),
 	}
 }
 
-func NodeOffline(id types.NodeID) ChangeSet {
+func NodeOffline(node types.NodeView) ChangeSet {
 	return ChangeSet{
-		Change: NodeWentOffline,
-		NodeID: id,
+		Change:         NodeWentOffline,
+		NodeID:         node.ID(),
+		IsSubnetRouter: node.IsSubnetRouter(),
 	}
 }
 
@@ -193,6 +197,20 @@ func KeyExpiry(id types.NodeID, expiry time.Time) ChangeSet {
 		Change:     NodeKeyExpiry,
 		NodeID:     id,
 		NodeExpiry: &expiry,
+	}
+}
+
+func EndpointUpdate(id types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change: NodeEndpoint,
+		NodeID: id,
+	}
+}
+
+func DERPUpdate(id types.NodeID) ChangeSet {
+	return ChangeSet{
+		Change: NodeDERP,
+		NodeID: id,
 	}
 }
 

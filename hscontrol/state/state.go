@@ -459,7 +459,8 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 	if !ok {
 		return nil
 	}
-	c := []change.ChangeSet{change.NodeOnline(id)}
+
+	c := []change.ChangeSet{change.NodeOnline(node)}
 
 	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node connected")
 
@@ -505,7 +506,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.ChangeSet, error) {
 	// announced are served to any nodes.
 	routeChange := s.primaryRoutes.SetRoutes(id)
 
-	cs := []change.ChangeSet{change.NodeOffline(id), c}
+	cs := []change.ChangeSet{change.NodeOffline(node), c}
 
 	// If we have a policy change or route change, return that as it's more comprehensive
 	// Otherwise, return the NodeOffline change to ensure nodes are notified
@@ -1343,7 +1344,6 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Bool("authkey.reusable", pak.Reusable).
 			Bool("nodekey.rotation", isNodeKeyRotation).
 			Msg("Existing node re-registering with same NodeKey and auth key, skipping validation")
-
 	} else {
 		// New node or NodeKey rotation: require valid auth key.
 		err = pak.Validate()
@@ -1631,13 +1631,21 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		Interface("request", req).
 		Msg("Processing MapRequest for node")
 
-	var routeChange bool
-	var hostinfoChanged bool
-	var needsRouteApproval bool
+	var (
+		routeChange        bool
+		hostinfoChanged    bool
+		needsRouteApproval bool
+		endpointChanged    bool
+		derpChanged        bool
+	)
 	// We need to ensure we update the node as it is in the NodeStore at
 	// the time of the request.
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
 		peerChange := currentNode.PeerChangeFromMapRequest(req)
+
+		// Track what specifically changed
+		endpointChanged = peerChange.Endpoints != nil
+		derpChanged = peerChange.DERPRegion != 0
 		hostinfoChanged = !hostinfoEqual(currentNode.View(), req.Hostinfo)
 
 		// Get the correct NetInfo to use
@@ -1785,6 +1793,24 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	}
 	if !nodeRouteChange.Empty() {
 		return nodeRouteChange, nil
+	}
+
+	// Determine the most specific change type based on what actually changed.
+	// This allows us to send lightweight patch updates instead of full map responses.
+	// Hostinfo changes require NodeAdded (full update) as they may affect many fields.
+	if hostinfoChanged {
+		return change.NodeAdded(id), nil
+	}
+
+	// Return specific change types for endpoint and/or DERP updates.
+	// The batcher will query NodeStore for current state and include both in PeerChange if both changed.
+	// Prioritize endpoint changes as they're more common and important for connectivity.
+	if endpointChanged {
+		return change.EndpointUpdate(id), nil
+	}
+
+	if derpChanged {
+		return change.DERPUpdate(id), nil
 	}
 
 	return change.NodeAdded(id), nil
