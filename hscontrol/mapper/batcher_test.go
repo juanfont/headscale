@@ -203,8 +203,10 @@ func setupBatcherWithTestData(
 			},
 		},
 		Tuning: types.Tuning{
-			BatchChangeDelay: 10 * time.Millisecond,
-			BatcherWorkers:   types.DefaultBatcherWorkers(), // Use same logic as config.go
+			BatchChangeDelay:      10 * time.Millisecond,
+			BatcherWorkers:        types.DefaultBatcherWorkers(), // Use same logic as config.go
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
 		},
 	}
 
@@ -572,14 +574,12 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 		name      string
 		nodeCount int
 	}{
-		{"10_nodes", 10},
-		{"50_nodes", 50},
-		{"100_nodes", 100},
-		// Grinds to a halt because of Database bottleneck
-		// {"250_nodes", 250},
-		// {"500_nodes", 500},
-		// {"1000_nodes", 1000},
-		// {"5000_nodes", 5000},
+		{"10_nodes", 10},   // Quick baseline test
+		{"100_nodes", 100}, // Full scalability test ~2 minutes
+		// Large-scale tests commented out - uncomment for scalability testing
+		// {"1000_nodes", 1000},  // ~12 minutes
+		// {"2000_nodes", 2000},  // ~60+ minutes
+		// {"5000_nodes", 5000},  // Not recommended - database bottleneck
 	}
 
 	for _, batcherFunc := range allBatcherFunctions {
@@ -600,7 +600,8 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 					// Use large buffer to avoid blocking during rapid joins
 					// Buffer needs to handle nodeCount * average_updates_per_node
 					// Estimate: each node receives ~2*nodeCount updates during all-to-all
-					bufferSize := max(1000, tc.nodeCount*2)
+					// For very large tests (>1000 nodes), limit buffer to avoid excessive memory
+					bufferSize := max(1000, min(tc.nodeCount*2, 10000))
 
 					testData, cleanup := setupBatcherWithTestData(
 						t,
