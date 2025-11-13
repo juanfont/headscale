@@ -504,6 +504,7 @@ AND auth_key_id NOT IN (
 			// - NEVER use gorm.AutoMigrate, write the exact migration steps needed
 			// - AutoMigrate depends on the struct staying exactly the same, which it won't over time.
 			// - Never write migrations that requires foreign keys to be disabled.
+			// - ALL errors in migrations must be handled properly.
 
 			{
 				// Add columns for prefix and hash for pre auth keys, implementing
