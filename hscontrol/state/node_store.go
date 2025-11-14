@@ -629,8 +629,54 @@ func (s *NodeStore) DebugString() string {
 	if len(snapshot.allWGPeers) > 0 {
 		sb.WriteString("WG Peer Details:\n")
 		for _, peer := range snapshot.allWGPeers {
-			sb.WriteString(fmt.Sprintf("  - ID: %d, Name: \"%s\", User: %d, Endpoints: %d\n",
-				peer.ID, peer.Name, peer.UserID, len(peer.Endpoints)))
+			sb.WriteString(fmt.Sprintf("  - ID: %d\n", peer.ID))
+			sb.WriteString(fmt.Sprintf("    Name: \"%s\"\n", peer.Name))
+			sb.WriteString(fmt.Sprintf("    User: %d\n", peer.UserID))
+			sb.WriteString(fmt.Sprintf("    PublicKey: %s\n", peer.PublicKey.ShortString()))
+
+			var ips []string
+			if peer.IPv4 != nil {
+				ips = append(ips, peer.IPv4.String())
+			}
+			if peer.IPv6 != nil {
+				ips = append(ips, peer.IPv6.String())
+			}
+			if len(ips) > 0 {
+				sb.WriteString(fmt.Sprintf("    IPs: %s\n", strings.Join(ips, ", ")))
+			}
+
+			if len(peer.Endpoints) > 0 {
+				endpointStrs := make([]string, len(peer.Endpoints))
+				for i, ep := range peer.Endpoints {
+					endpointStrs[i] = ep.String()
+				}
+				sb.WriteString(fmt.Sprintf("    Endpoints: %s\n", strings.Join(endpointStrs, ", ")))
+			}
+
+			if len(peer.AllowedIPs) > 0 {
+				allowedIPStrs := make([]string, len(peer.AllowedIPs))
+				for i, prefix := range peer.AllowedIPs {
+					allowedIPStrs[i] = prefix.String()
+				}
+				sb.WriteString(fmt.Sprintf("    AllowedIPs: %s\n", strings.Join(allowedIPStrs, ", ")))
+			}
+
+			if peer.ExtraConfig != nil {
+				sb.WriteString("    ExtraConfig:\n")
+				if len(peer.ExtraConfig.Tags) > 0 {
+					sb.WriteString(fmt.Sprintf("      Tags: %s\n", strings.Join(peer.ExtraConfig.Tags, ", ")))
+				}
+				if len(peer.ExtraConfig.ExitNodeDNSResolvers) > 0 {
+					sb.WriteString(fmt.Sprintf("      ExitNodeDNSResolvers: %s\n", strings.Join(peer.ExtraConfig.ExitNodeDNSResolvers, ", ")))
+				}
+				if peer.ExtraConfig.SuggestExitNode != nil {
+					sb.WriteString(fmt.Sprintf("      SuggestExitNode: %t\n", *peer.ExtraConfig.SuggestExitNode))
+				}
+				if peer.ExtraConfig.Location != nil {
+					sb.WriteString(fmt.Sprintf("      Location: City=%s, Country=%s\n",
+						peer.ExtraConfig.Location.City, peer.ExtraConfig.Location.Country))
+				}
+			}
 		}
 		sb.WriteString("\n")
 	}
