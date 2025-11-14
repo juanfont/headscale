@@ -296,7 +296,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, c, err := a.createOrUpdateUserFromClaim(&claims)
+	user, _, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -314,9 +314,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
-
-	// Send policy update notifications if needed
-	a.h.Change(c)
 
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
