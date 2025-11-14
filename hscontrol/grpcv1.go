@@ -528,9 +528,16 @@ func (api headscaleV1APIServer) ListNodes(
 		wgPeerProtos = wgPeersToProto(wgPeers)
 	}
 
+	connections := api.h.state.ListAllWireGuardConnections()
+	connectionProtos := make([]*v1.WireGuardConnection, len(connections))
+	for i, conn := range connections {
+		connectionProtos[i] = conn.ToProto()
+	}
+
 	return &v1.ListNodesResponse{
-		Nodes:              nodeProtos,
-		WireguardOnlyPeers: wgPeerProtos,
+		Nodes:                nodeProtos,
+		WireguardOnlyPeers:   wgPeerProtos,
+		WireguardConnections: connectionProtos,
 	}, nil
 }
 

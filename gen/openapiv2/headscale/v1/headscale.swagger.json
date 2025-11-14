@@ -1295,6 +1295,13 @@
             "type": "object",
             "$ref": "#/definitions/v1WireGuardOnlyPeer"
           }
+        },
+        "wireguardConnections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1WireGuardConnection"
+          }
         }
       }
     },

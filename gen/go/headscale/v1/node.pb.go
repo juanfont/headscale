@@ -963,11 +963,12 @@ func (x *ListNodesRequest) GetUser() string {
 }
 
 type ListNodesResponse struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	Nodes              []*Node                `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
-	WireguardOnlyPeers []*WireGuardOnlyPeer   `protobuf:"bytes,2,rep,name=wireguard_only_peers,json=wireguardOnlyPeers,proto3" json:"wireguard_only_peers,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state                protoimpl.MessageState `protogen:"open.v1"`
+	Nodes                []*Node                `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	WireguardOnlyPeers   []*WireGuardOnlyPeer   `protobuf:"bytes,2,rep,name=wireguard_only_peers,json=wireguardOnlyPeers,proto3" json:"wireguard_only_peers,omitempty"`
+	WireguardConnections []*WireGuardConnection `protobuf:"bytes,3,rep,name=wireguard_connections,json=wireguardConnections,proto3" json:"wireguard_connections,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
 }
 
 func (x *ListNodesResponse) Reset() {
@@ -1010,6 +1011,13 @@ func (x *ListNodesResponse) GetNodes() []*Node {
 func (x *ListNodesResponse) GetWireguardOnlyPeers() []*WireGuardOnlyPeer {
 	if x != nil {
 		return x.WireguardOnlyPeers
+	}
+	return nil
+}
+
+func (x *ListNodesResponse) GetWireguardConnections() []*WireGuardConnection {
+	if x != nil {
+		return x.WireguardConnections
 	}
 	return nil
 }
@@ -1314,7 +1322,7 @@ var File_headscale_v1_node_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x17headscale/v1/node.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dheadscale/v1/preauthkey.proto\x1a\x17headscale/v1/user.proto\x1a&headscale/v1/wireguard_only_peer.proto\"\x98\x06\n" +
+	"\x17headscale/v1/node.proto\x12\fheadscale.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1dheadscale/v1/preauthkey.proto\x1a\x17headscale/v1/user.proto\x1a&headscale/v1/wireguard_only_peer.proto\x1a'headscale/v1/wireguard_connection.proto\"\x98\x06\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x1f\n" +
 	"\vmachine_key\x18\x02 \x01(\tR\n" +
@@ -1377,10 +1385,11 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x12RenameNodeResponse\x12&\n" +
 	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node\"&\n" +
 	"\x10ListNodesRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\tR\x04user\"\x90\x01\n" +
+	"\x04user\x18\x01 \x01(\tR\x04user\"\xe8\x01\n" +
 	"\x11ListNodesResponse\x12(\n" +
 	"\x05nodes\x18\x01 \x03(\v2\x12.headscale.v1.NodeR\x05nodes\x12Q\n" +
-	"\x14wireguard_only_peers\x18\x02 \x03(\v2\x1f.headscale.v1.WireGuardOnlyPeerR\x12wireguardOnlyPeers\">\n" +
+	"\x14wireguard_only_peers\x18\x02 \x03(\v2\x1f.headscale.v1.WireGuardOnlyPeerR\x12wireguardOnlyPeers\x12V\n" +
+	"\x15wireguard_connections\x18\x03 \x03(\v2!.headscale.v1.WireGuardConnectionR\x14wireguardConnections\">\n" +
 	"\x0fMoveNodeRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x12\n" +
 	"\x04user\x18\x02 \x01(\x04R\x04user\":\n" +
@@ -1446,6 +1455,7 @@ var file_headscale_v1_node_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),     // 25: google.protobuf.Timestamp
 	(*PreAuthKey)(nil),                // 26: headscale.v1.PreAuthKey
 	(*WireGuardOnlyPeer)(nil),         // 27: headscale.v1.WireGuardOnlyPeer
+	(*WireGuardConnection)(nil),       // 28: headscale.v1.WireGuardConnection
 }
 var file_headscale_v1_node_proto_depIdxs = []int32{
 	24, // 0: headscale.v1.Node.user:type_name -> headscale.v1.User
@@ -1463,13 +1473,14 @@ var file_headscale_v1_node_proto_depIdxs = []int32{
 	1,  // 12: headscale.v1.RenameNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 13: headscale.v1.ListNodesResponse.nodes:type_name -> headscale.v1.Node
 	27, // 14: headscale.v1.ListNodesResponse.wireguard_only_peers:type_name -> headscale.v1.WireGuardOnlyPeer
-	1,  // 15: headscale.v1.MoveNodeResponse.node:type_name -> headscale.v1.Node
-	1,  // 16: headscale.v1.DebugCreateNodeResponse.node:type_name -> headscale.v1.Node
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	28, // 15: headscale.v1.ListNodesResponse.wireguard_connections:type_name -> headscale.v1.WireGuardConnection
+	1,  // 16: headscale.v1.MoveNodeResponse.node:type_name -> headscale.v1.Node
+	1,  // 17: headscale.v1.DebugCreateNodeResponse.node:type_name -> headscale.v1.Node
+	18, // [18:18] is the sub-list for method output_type
+	18, // [18:18] is the sub-list for method input_type
+	18, // [18:18] is the sub-list for extension type_name
+	18, // [18:18] is the sub-list for extension extendee
+	0,  // [0:18] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_node_proto_init() }
@@ -1480,6 +1491,7 @@ func file_headscale_v1_node_proto_init() {
 	file_headscale_v1_preauthkey_proto_init()
 	file_headscale_v1_user_proto_init()
 	file_headscale_v1_wireguard_only_peer_proto_init()
+	file_headscale_v1_wireguard_connection_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -5,6 +5,7 @@ import "google/protobuf/timestamp.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
 import "headscale/v1/wireguard_only_peer.proto";
+import "headscale/v1/wireguard_connection.proto";
 
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
@@ -102,6 +103,7 @@ message ListNodesRequest { string user = 1; }
 message ListNodesResponse {
   repeated Node nodes = 1;
   repeated WireGuardOnlyPeer wireguard_only_peers = 2;
+  repeated WireGuardConnection wireguard_connections = 3;
 }
 
 message MoveNodeRequest {

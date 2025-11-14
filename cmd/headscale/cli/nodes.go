@@ -264,7 +264,7 @@ var listNodesCmd = &cobra.Command{
 
 		// Render WG-only peers table if any exist
 		if len(response.GetWireguardOnlyPeers()) > 0 {
-			wgTableData, err := wgOnlyPeersToPtable(user, response.GetWireguardOnlyPeers())
+			wgTableData, err := wgOnlyPeersToPtable(user, response.GetWireguardOnlyPeers(), response.GetNodes(), response.GetWireguardConnections())
 			if err != nil {
 				ErrorOutput(err, fmt.Sprintf("Error converting WG-only peers to table: %s", err), output)
 			}
@@ -764,6 +764,8 @@ func nodesToPtables(
 func wgOnlyPeersToPtable(
 	currentUser string,
 	wgPeers []*v1.WireGuardOnlyPeer,
+	nodes []*v1.Node,
+	connections []*v1.WireGuardConnection,
 ) (pterm.TableData, error) {
 	tableHeader := []string{
 		"ID",
@@ -773,9 +775,28 @@ func wgOnlyPeersToPtable(
 		"IPs",
 		"Allowed IPs",
 		"Endpoints",
+		"Connected Nodes",
 		"Extra Config",
 	}
 	tableData := pterm.TableData{tableHeader}
+
+	nodeIDToName := make(map[uint64]string)
+	for _, node := range nodes {
+		nodeIDToName[node.GetId()] = node.GetGivenName()
+	}
+
+	wgPeerConnections := make(map[uint64][]string)
+	for _, conn := range connections {
+		wgPeerID := conn.GetWgPeerId()
+		nodeID := conn.GetNodeId()
+		connStr := ""
+		if nodeName, ok := nodeIDToName[nodeID]; ok {
+			connStr = fmt.Sprintf("%d(%s)", nodeID, nodeName)
+		} else {
+			connStr = fmt.Sprintf("%d", nodeID)
+		}
+		wgPeerConnections[wgPeerID] = append(wgPeerConnections[wgPeerID], connStr)
+	}
 
 	for _, peer := range wgPeers {
 		var nodeKey key.NodePublic
@@ -791,7 +812,6 @@ func wgOnlyPeersToPtable(
 			user = pterm.LightYellow(peer.GetUser().GetName())
 		}
 
-		// Format IPs
 		var ips []string
 		if peer.GetIpv4() != "" {
 			ips = append(ips, peer.GetIpv4())
@@ -799,6 +819,8 @@ func wgOnlyPeersToPtable(
 		if peer.GetIpv6() != "" {
 			ips = append(ips, peer.GetIpv6())
 		}
+
+		connectedNodes := wgPeerConnections[peer.GetId()]
 
 		extraConfig := peer.GetExtraConfig()
 
@@ -810,6 +832,7 @@ func wgOnlyPeersToPtable(
 			strings.Join(ips, ", "),
 			strings.Join(peer.GetAllowedIps(), ", "),
 			strings.Join(peer.GetEndpoints(), ", "),
+			strings.Join(connectedNodes, ", "),
 			extraConfig,
 		}
 		tableData = append(tableData, peerData)
