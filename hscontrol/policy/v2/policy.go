@@ -47,6 +47,14 @@ type PolicyManager struct {
 	usesAutogroupSelf bool
 }
 
+// filterAndPolicy combines the compiled filter rules with policy content for hashing.
+// This ensures filterHash changes when policy changes, even for autogroup:self where
+// the compiled filter is always empty.
+type filterAndPolicy struct {
+	Filter []tailcfg.FilterRule
+	Policy *Policy
+}
+
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
@@ -94,34 +102,9 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	// This ensures filterHash changes when policy changes, even for autogroup:self
 	// where the compiled filter is always empty. This eliminates the need for
 	// a separate policyHash field.
-	// We create a hashable representation that excludes internal state fields
-	// like 'validated' which shouldn't affect policy comparison.
-	type hashablePolicy struct {
-		Groups        Groups
-		Hosts         Hosts
-		TagOwners     TagOwners
-		ACLs          []ACL
-		AutoApprovers AutoApproverPolicy
-		SSHs          []SSH
-	}
-	type filterAndPolicy struct {
-		Filter []tailcfg.FilterRule
-		Policy hashablePolicy
-	}
-	var hashablePol hashablePolicy
-	if pm.pol != nil {
-		hashablePol = hashablePolicy{
-			Groups:        pm.pol.Groups,
-			Hosts:         pm.pol.Hosts,
-			TagOwners:     pm.pol.TagOwners,
-			ACLs:          pm.pol.ACLs,
-			AutoApprovers: pm.pol.AutoApprovers,
-			SSHs:          pm.pol.SSHs,
-		}
-	}
 	filterHash := deephash.Hash(&filterAndPolicy{
 		Filter: filter,
-		Policy: hashablePol,
+		Policy: pm.pol,
 	})
 	filterChanged := filterHash != pm.filterHash
 	if filterChanged {
@@ -534,9 +517,15 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	// For global policies: the filter must be recompiled to include the new nodes.
 	if nodesChanged {
 		// Recompile filter with the new node list
-		_, err := pm.updateLocked()
+		needsUpdate, err := pm.updateLocked()
 		if err != nil {
 			return false, err
+		}
+		if !needsUpdate {
+			// This ensures fresh filter rules are generated for all nodes
+			clear(pm.sshPolicyMap)
+			clear(pm.compiledFilterRulesMap)
+			clear(pm.filterRulesMap)
 		}
 		// Always return true when nodes changed, even if filter hash didn't change
 		// (can happen with autogroup:self or when nodes are added but don't affect rules)
