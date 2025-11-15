@@ -41,6 +41,25 @@ options, run:
       headscale <COMMAND> --help
     ```
 
+## Manage headscale from another local user
+
+When headscale is used as a native service, then only the user `headscale` will have the necessary permissions to
+access the unix socket (`/var/run/headscale/headscale.sock` by default) that is used to communicate with the service.
+In order to be able to communicate with the headscale service other local users must be added to the `headscale` group.
+To add the current user to the group, run:
+
+```shell
+sudo usermod -a -G headscale $USER
+```
+
+After logging out and in again, you should be able to communicate with the headscale service. To verify, run:
+
+```shell
+headscale users list
+```
+
+You should see an empty table.
+
 ## Manage headscale users
 
 In headscale, a node (also known as machine or device) is always assigned to a
