@@ -27,6 +27,7 @@ import (
 	"tailscale.com/types/views"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -202,12 +203,18 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 		// Expire by key ID
 		preAuthKey, err = api.h.state.GetPreAuthKeyByID(types.UserID(request.GetUser()), request.GetKeyId())
 		if err != nil {
+			if errors.Is(err, db.ErrPreAuthKeyNotFound) {
+				return nil, status.Errorf(codes.NotFound, "preauth key not found")
+			}
 			return nil, fmt.Errorf("failed to get preauth key by ID: %w", err)
 		}
 	} else if request.Key != nil {
 		// Expire by key string (original behavior)
 		preAuthKey, err = api.h.state.GetPreAuthKey(request.GetKey())
 		if err != nil {
+			if errors.Is(err, db.ErrPreAuthKeyNotFound) {
+				return nil, status.Errorf(codes.NotFound, "preauth key not found")
+			}
 			return nil, fmt.Errorf("failed to get preauth key by string: %w", err)
 		}
 
