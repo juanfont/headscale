@@ -12,6 +12,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -19,6 +20,8 @@ import (
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/ipn/ipnstate"
+	"tailscale.com/tailcfg"
 )
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
@@ -1421,4 +1424,247 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 				expiryTime, time.Until(expiryTime))
 		}
 	}, 30*time.Second, 1*time.Second, "validating expiry preservation after restart")
+}
+
+// TestOIDCACLPolicyOnJoin validates that ACL policies are correctly applied
+// to newly joined OIDC nodes without requiring a client restart.
+//
+// This test validates the fix for issue #2888:
+// https://github.com/juanfont/headscale/issues/2888
+//
+// Bug: Nodes joining via OIDC authentication did not get the appropriate ACL
+// policy applied until they restarted their client. This was a regression
+// introduced in v0.27.0.
+//
+// The test scenario:
+// 1. Creates a CLI user (gateway) with a node advertising a route
+// 2. Sets up ACL policy allowing all nodes to access advertised routes
+// 3. OIDC user authenticates and joins with a new node
+// 4. Verifies that the OIDC user's node IMMEDIATELY sees the advertised route
+//
+// Expected behavior:
+// - Without fix: OIDC node cannot see the route (PrimaryRoutes is nil/empty)
+// - With fix: OIDC node immediately sees the route in PrimaryRoutes
+//
+// Root cause: The buggy code called a.h.Change(c) immediately after user
+// creation but BEFORE node registration completed, creating a race condition
+// where policy change notifications were sent asynchronously before the node
+// was fully registered.
+func TestOIDCACLPolicyOnJoin(t *testing.T) {
+	IntegrationSkip(t)
+
+	gatewayUser := "gateway"
+	oidcUser := "oidcuser"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{gatewayUser},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser(oidcUser, true),
+		},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+	}
+
+	// Create headscale environment with ACL policy that allows OIDC user
+	// to access routes advertised by gateway user
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{
+			tsic.WithAcceptRoutes(),
+		},
+		hsic.WithTestName("oidcaclpolicy"),
+		hsic.WithConfigEnv(oidcMap),
+		hsic.WithTLS(),
+		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+		hsic.WithACLPolicy(
+			&policyv2.Policy{
+				ACLs: []policyv2.ACL{
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{prefixp("100.64.0.0/10")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(prefixp("100.64.0.0/10"), tailcfg.PortRangeAny),
+							aliasWithPorts(prefixp("10.33.0.0/24"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+		),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Get the gateway client (CLI user) - only one client at first
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+	require.Len(t, allClients, 1, "Should have exactly 1 client (gateway) before OIDC login")
+
+	gatewayClient := allClients[0]
+
+	// Wait for initial sync (gateway logs in)
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	// Gateway advertises route 10.33.0.0/24
+	advertiseRoute := "10.33.0.0/24"
+	command := []string{
+		"tailscale",
+		"set",
+		"--advertise-routes=" + advertiseRoute,
+	}
+	_, _, err = gatewayClient.Execute(command)
+	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+
+	// Wait for route advertisement to propagate
+	var gatewayNodeID uint64
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 1)
+
+		gatewayNode := nodes[0]
+		gatewayNodeID = gatewayNode.GetId()
+		assert.Len(ct, gatewayNode.GetAvailableRoutes(), 1)
+		assert.Contains(ct, gatewayNode.GetAvailableRoutes(), advertiseRoute)
+	}, 10*time.Second, 500*time.Millisecond, "route advertisement should propagate to headscale")
+
+	// Approve the advertised route
+	_, err = headscale.ApproveRoutes(
+		gatewayNodeID,
+		[]netip.Prefix{netip.MustParsePrefix(advertiseRoute)},
+	)
+	require.NoError(t, err)
+
+	// Wait for route approval to propagate
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 1)
+
+		gatewayNode := nodes[0]
+		assert.Len(ct, gatewayNode.GetApprovedRoutes(), 1)
+		assert.Contains(ct, gatewayNode.GetApprovedRoutes(), advertiseRoute)
+	}, 10*time.Second, 500*time.Millisecond, "route approval should propagate to headscale")
+
+	// NOW create the OIDC user by having them join
+	// This is where issue #2888 manifests - the new OIDC node should immediately
+	// see the gateway's advertised route
+	t.Logf("OIDC user joining at %s", time.Now().Format(TimestampFormat))
+
+	// Create OIDC user's tailscale node
+	oidcClient, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithAcceptRoutes(),
+	)
+	require.NoError(t, err)
+
+	// OIDC login happens automatically via LoginWithURL
+	loginURL, err := oidcClient.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	_, err = doLoginURL(oidcClient.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	t.Logf("OIDC user logged in successfully at %s", time.Now().Format(TimestampFormat))
+
+	// THE CRITICAL TEST: Verify that the OIDC user's node can IMMEDIATELY
+	// see the gateway's advertised route WITHOUT needing a client restart.
+	//
+	// This is where the bug manifests:
+	// - Without fix: PrimaryRoutes will be nil/empty
+	// - With fix: PrimaryRoutes immediately contains the advertised route
+	t.Logf("Verifying OIDC user can immediately see advertised routes at %s", time.Now().Format(TimestampFormat))
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := oidcClient.Status()
+		assert.NoError(ct, err)
+
+		// Find the gateway peer in the OIDC user's peer list
+		var gatewayPeer *ipnstate.PeerStatus
+		for _, peerKey := range status.Peers() {
+			peer := status.Peer[peerKey]
+			// Gateway is the peer that's not the OIDC user
+			if peer.UserID != status.Self.UserID {
+				gatewayPeer = peer
+				break
+			}
+		}
+
+		assert.NotNil(ct, gatewayPeer, "OIDC user should see gateway as peer")
+
+		if gatewayPeer != nil {
+			// This is the critical assertion - PrimaryRoutes should NOT be nil
+			assert.NotNil(ct, gatewayPeer.PrimaryRoutes,
+				"BUG #2888: Gateway peer PrimaryRoutes is nil - ACL policy not applied to new OIDC node!")
+
+			if gatewayPeer.PrimaryRoutes != nil {
+				routes := gatewayPeer.PrimaryRoutes.AsSlice()
+				assert.Contains(ct, routes, netip.MustParsePrefix(advertiseRoute),
+					"OIDC user should immediately see gateway's advertised route %s in PrimaryRoutes", advertiseRoute)
+				t.Logf("SUCCESS: OIDC user can see advertised route %s in gateway's PrimaryRoutes", advertiseRoute)
+			}
+
+			// Also verify AllowedIPs includes the route
+			if gatewayPeer.AllowedIPs != nil && gatewayPeer.AllowedIPs.Len() > 0 {
+				allowedIPs := gatewayPeer.AllowedIPs.AsSlice()
+				t.Logf("Gateway peer AllowedIPs: %v", allowedIPs)
+			}
+		}
+	}, 15*time.Second, 500*time.Millisecond,
+		"OIDC user should immediately see gateway's advertised route without client restart (issue #2888)")
+
+	// Additional validation: Verify nodes in headscale match expectations
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, nodes, 2, "Should have 2 nodes (gateway + oidcuser)")
+
+		// Verify OIDC user was created correctly
+		users, err := headscale.ListUsers()
+		assert.NoError(ct, err)
+		// Note: mockoidc may create additional default users (like jane.doe)
+		// so we check for at least 2 users, not exactly 2
+		assert.GreaterOrEqual(ct, len(users), 2, "Should have at least 2 users (gateway CLI user + oidcuser)")
+
+		// Find gateway CLI user
+		var gatewayUser *v1.User
+		for _, user := range users {
+			if user.GetName() == "gateway" && user.GetProvider() == "" {
+				gatewayUser = user
+				break
+			}
+		}
+		assert.NotNil(ct, gatewayUser, "Should have gateway CLI user")
+		if gatewayUser != nil {
+			assert.Equal(ct, "gateway", gatewayUser.GetName())
+		}
+
+		// Find OIDC user
+		var oidcUserFound *v1.User
+		for _, user := range users {
+			if user.GetName() == "oidcuser" && user.GetProvider() == "oidc" {
+				oidcUserFound = user
+				break
+			}
+		}
+		assert.NotNil(ct, oidcUserFound, "Should have OIDC user")
+		if oidcUserFound != nil {
+			assert.Equal(ct, "oidcuser", oidcUserFound.GetName())
+			assert.Equal(ct, "oidcuser@headscale.net", oidcUserFound.GetEmail())
+		}
+	}, 10*time.Second, 500*time.Millisecond, "headscale should have correct users and nodes")
+
+	t.Logf("Test completed successfully - issue #2888 fix validated")
 }
