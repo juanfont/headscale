@@ -466,10 +466,12 @@ func TestGetPreAuthKeyByID(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create keys for both users
-	key1, err := db.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, []string{"tag:test"})
+	user1ID := types.UserID(user1.ID)
+	key1, err := db.CreatePreAuthKey(&user1ID, true, false, nil, []string{"tag:test"})
 	require.NoError(t, err)
 
-	key2, err := db.CreatePreAuthKey(types.UserID(user2.ID), false, true, nil, []string{"tag:other"})
+	user2ID := types.UserID(user2.ID)
+	key2, err := db.CreatePreAuthKey(&user2ID, false, true, nil, []string{"tag:other"})
 	require.NoError(t, err)
 
 	// Test getting key by ID for the correct user
@@ -491,16 +493,16 @@ func TestGetPreAuthKeyByID(t *testing.T) {
 
 	// Test that user1 cannot access user2's key
 	_, err = db.GetPreAuthKeyByID(types.UserID(user1.ID), key2.ID)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrPreAuthKeyNotFound, err)
 
 	// Test that user2 cannot access user1's key
 	_, err = db.GetPreAuthKeyByID(types.UserID(user2.ID), key1.ID)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrPreAuthKeyNotFound, err)
 
 	// Test non-existent key ID
 	_, err = db.GetPreAuthKeyByID(types.UserID(user1.ID), 99999)
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Equal(t, ErrPreAuthKeyNotFound, err)
 }

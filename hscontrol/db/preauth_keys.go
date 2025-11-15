@@ -304,13 +304,16 @@ func (hsdb *HSDatabase) GetPreAuthKeyByID(uid types.UserID, keyID uint64) (*type
 // GetPreAuthKeyByID returns a PreAuthKey for a given user and key ID.
 func GetPreAuthKeyByID(tx *gorm.DB, uid types.UserID, keyID uint64) (*types.PreAuthKey, error) {
 	var pak types.PreAuthKey
+
 	err := tx.Preload("User").Where("user_id = ? AND id = ?", uid, keyID).First(&pak).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrPreAuthKeyNotFound
 		}
+
 		return nil, err
 	}
+
 	return &pak, nil
 }
 

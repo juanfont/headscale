@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 const (
 	DefaultPreAuthKeyExpiry = "1h"
 )
+
+var errMissingKeyOrID = errors.New("either KEY argument or --id flag must be provided")
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
@@ -205,7 +208,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		// Allow no args if --id flag is provided
 		keyID, _ := cmd.Flags().GetUint64("id")
 		if keyID == 0 && len(args) < 1 {
-			return fmt.Errorf("either KEY argument or --id flag must be provided")
+			return errMissingKeyOrID
 		}
 		return nil
 	},

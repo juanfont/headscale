@@ -464,14 +464,14 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 
 	// test-2 has a router device with tag:node-router
 	test2RouterNode := &types.Node{
-		ID:         2,
-		Hostname:   "test-2-router",
-		IPv4:       ap("100.64.0.2"),
-		IPv6:       ap("fd7a:115c:a1e0::2"),
-		User:       ptr.To(users[1]),
-		UserID:     ptr.To(users[1].ID),
-		Tags:       []string{"tag:node-router"},
-		Hostinfo:   &tailcfg.Hostinfo{},
+		ID:       2,
+		Hostname: "test-2-router",
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		Tags:     []string{"tag:node-router"},
+		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
 	nodes := types.Nodes{test1Node, test2RouterNode}
@@ -537,8 +537,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     users[0],
-		UserID:   users[0].ID,
+		User:     &users[0],
+		UserID:   &users[0].ID,
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -547,8 +547,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-2-device",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     users[1],
-		UserID:   users[1].ID,
+		User:     &users[1],
+		UserID:   &users[1].ID,
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
