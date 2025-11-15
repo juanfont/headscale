@@ -454,3 +454,53 @@ func TestMultipleLegacyKeysAllowed(t *testing.T) {
 	require.Error(t, err, "duplicate non-empty prefix should be rejected")
 	assert.Contains(t, err.Error(), "UNIQUE constraint failed", "should fail with UNIQUE constraint error")
 }
+
+func TestGetPreAuthKeyByID(t *testing.T) {
+	db := dbForTest(t)
+
+	// Create two users
+	user1, err := db.CreateUser(types.User{Name: "user1"})
+	require.NoError(t, err)
+
+	user2, err := db.CreateUser(types.User{Name: "user2"})
+	require.NoError(t, err)
+
+	// Create keys for both users
+	key1, err := db.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, []string{"tag:test"})
+	require.NoError(t, err)
+
+	key2, err := db.CreatePreAuthKey(types.UserID(user2.ID), false, true, nil, []string{"tag:other"})
+	require.NoError(t, err)
+
+	// Test getting key by ID for the correct user
+	retrievedKey, err := db.GetPreAuthKeyByID(types.UserID(user1.ID), key1.ID)
+	require.NoError(t, err)
+	assert.Equal(t, key1.ID, retrievedKey.ID)
+	assert.Equal(t, user1.ID, retrievedKey.User.ID)
+	assert.True(t, retrievedKey.Reusable)
+	assert.False(t, retrievedKey.Ephemeral)
+	assert.Equal(t, []string{"tag:test"}, retrievedKey.Tags)
+
+	// Test getting key2 by ID for user2
+	retrievedKey2, err := db.GetPreAuthKeyByID(types.UserID(user2.ID), key2.ID)
+	require.NoError(t, err)
+	assert.Equal(t, key2.ID, retrievedKey2.ID)
+	assert.Equal(t, user2.ID, retrievedKey2.User.ID)
+	assert.False(t, retrievedKey2.Reusable)
+	assert.True(t, retrievedKey2.Ephemeral)
+
+	// Test that user1 cannot access user2's key
+	_, err = db.GetPreAuthKeyByID(types.UserID(user1.ID), key2.ID)
+	assert.Error(t, err)
+	assert.Equal(t, ErrPreAuthKeyNotFound, err)
+
+	// Test that user2 cannot access user1's key
+	_, err = db.GetPreAuthKeyByID(types.UserID(user2.ID), key1.ID)
+	assert.Error(t, err)
+	assert.Equal(t, ErrPreAuthKeyNotFound, err)
+
+	// Test non-existent key ID
+	_, err = db.GetPreAuthKeyByID(types.UserID(user1.ID), 99999)
+	assert.Error(t, err)
+	assert.Equal(t, ErrPreAuthKeyNotFound, err)
+}

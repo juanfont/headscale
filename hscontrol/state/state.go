@@ -995,6 +995,11 @@ func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
 	return s.db.GetPreAuthKey(id)
 }
 
+// GetPreAuthKeyByID retrieves a pre-authentication key by numeric ID and user ID.
+func (s *State) GetPreAuthKeyByID(userID types.UserID, keyID uint64) (*types.PreAuthKey, error) {
+	return s.db.GetPreAuthKeyByID(userID, keyID)
+}
+
 // ListPreAuthKeys returns all pre-authentication keys for a user.
 func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error) {
 	return s.db.ListPreAuthKeys(userID)
