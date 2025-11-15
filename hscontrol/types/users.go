@@ -22,6 +22,21 @@ type UserID uint64
 
 type Users []User
 
+const (
+	// TaggedDevicesUserID is the special user ID for tagged devices.
+	// This ID is used when rendering tagged nodes in the Tailscale protocol.
+	TaggedDevicesUserID = 2147455555
+)
+
+// TaggedDevices is a special user used in MapResponse for tagged nodes.
+// Tagged nodes don't belong to a real user - the tag is their identity.
+// This special user ID is used when rendering tagged nodes in the Tailscale protocol.
+var TaggedDevices = User{
+	Model:       gorm.Model{ID: TaggedDevicesUserID},
+	Name:        "tagged-devices",
+	DisplayName: "Tagged Devices",
+}
+
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
@@ -75,6 +90,13 @@ func (u *User) StringID() string {
 		return ""
 	}
 	return strconv.FormatUint(uint64(u.ID), 10)
+}
+
+// TypedID returns a pointer to the user's ID as a UserID type.
+// This is a convenience method to avoid ugly casting like ptr.To(types.UserID(user.ID)).
+func (u *User) TypedID() *UserID {
+	uid := UserID(u.ID)
+	return &uid
 }
 
 // Username is the main way to get the username of a user,
