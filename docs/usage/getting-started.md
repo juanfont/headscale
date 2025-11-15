@@ -48,15 +48,15 @@ access the unix socket (`/var/run/headscale/headscale.sock` by default) that is 
 In order to be able to communicate with the headscale service other local users must be added to the `headscale` group.
 To add the current user to the group, run:
 
-    ```shell
-    sudo usermod -a -G headscale $USER
-    ```
+```shell
+sudo usermod -a -G headscale $USER
+```
 
 After logging out and in again, you should be able to communicate with the headscale service. To verify, run:
 
-    ```shell
-    headscale users list
-    ```
+```shell
+headscale users list
+```
 
 You should see an empty table.
 
