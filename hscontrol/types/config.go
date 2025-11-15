@@ -28,6 +28,8 @@ const (
 	maxDuration           time.Duration = 1<<63 - 1
 	PKCEMethodPlain       string        = "plain"
 	PKCEMethodS256        string        = "S256"
+
+	defaultNodeStoreBatchSize = 100
 )
 
 var (
@@ -230,13 +232,63 @@ type LogConfig struct {
 	Level  zerolog.Level
 }
 
+// Tuning contains advanced performance tuning parameters for Headscale.
+// These settings control internal batching, timeouts, and resource allocation.
+// The defaults are carefully chosen for typical deployments and should rarely
+// need adjustment. Changes to these values can significantly impact performance
+// and resource usage.
 type Tuning struct {
-	NotifierSendTimeout            time.Duration
-	BatchChangeDelay               time.Duration
+	// NotifierSendTimeout is the maximum time to wait when sending notifications
+	// to connected clients about network changes.
+	NotifierSendTimeout time.Duration
+
+	// BatchChangeDelay controls how long to wait before sending batched updates
+	// to clients when multiple changes occur in rapid succession.
+	BatchChangeDelay time.Duration
+
+	// NodeMapSessionBufferedChanSize sets the buffer size for the channel that
+	// queues map updates to be sent to connected clients.
 	NodeMapSessionBufferedChanSize int
-	BatcherWorkers                 int
-	RegisterCacheCleanup           time.Duration
-	RegisterCacheExpiration        time.Duration
+
+	// BatcherWorkers controls the number of parallel workers processing map
+	// updates for connected clients.
+	BatcherWorkers int
+
+	// RegisterCacheCleanup is the interval between cleanup operations for
+	// expired registration cache entries.
+	RegisterCacheCleanup time.Duration
+
+	// RegisterCacheExpiration is how long registration cache entries remain
+	// valid before being eligible for cleanup.
+	RegisterCacheExpiration time.Duration
+
+	// NodeStoreBatchSize controls how many write operations are accumulated
+	// before rebuilding the in-memory node snapshot.
+	//
+	// The NodeStore batches write operations (add/update/delete nodes) before
+	// rebuilding its in-memory data structures. Rebuilding involves recalculating
+	// peer relationships between all nodes based on the current ACL policy, which
+	// is computationally expensive and scales with the square of the number of nodes.
+	//
+	// By batching writes, Headscale can process N operations but only rebuild once,
+	// rather than rebuilding N times. This significantly reduces CPU usage during
+	// bulk operations like initial sync or policy updates.
+	//
+	// Trade-off: Higher values reduce CPU usage from rebuilds but increase latency
+	// for individual operations waiting for their batch to complete.
+	NodeStoreBatchSize int
+
+	// NodeStoreBatchTimeout is the maximum time to wait before processing a
+	// partial batch of node operations.
+	//
+	// When NodeStoreBatchSize operations haven't accumulated, this timeout ensures
+	// writes don't wait indefinitely. The batch processes when either the size
+	// threshold is reached OR this timeout expires, whichever comes first.
+	//
+	// Trade-off: Lower values provide faster response for individual operations
+	// but trigger more frequent (expensive) peer map rebuilds. Higher values
+	// optimize for bulk throughput at the cost of individual operation latency.
+	NodeStoreBatchTimeout time.Duration
 }
 
 func validatePKCEMethod(method string) error {
@@ -336,6 +388,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
 	viper.SetDefault("tuning.batch_change_delay", "800ms")
 	viper.SetDefault("tuning.node_mapsession_buffered_chan_size", 30)
+	viper.SetDefault("tuning.node_store_batch_size", defaultNodeStoreBatchSize)
+	viper.SetDefault("tuning.node_store_batch_timeout", "500ms")
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
@@ -435,6 +489,21 @@ func validateServerConfig() error {
 		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
 			errorText += "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true\n"
 		}
+	}
+
+	// Validate tuning parameters
+	if size := viper.GetInt("tuning.node_store_batch_size"); size <= 0 {
+		errorText += fmt.Sprintf(
+			"Fatal config error: tuning.node_store_batch_size must be positive, got %d\n",
+			size,
+		)
+	}
+
+	if timeout := viper.GetDuration("tuning.node_store_batch_timeout"); timeout <= 0 {
+		errorText += fmt.Sprintf(
+			"Fatal config error: tuning.node_store_batch_timeout must be positive, got %s\n",
+			timeout,
+		)
 	}
 
 	if errorText != "" {
@@ -991,7 +1060,6 @@ func LoadServerConfig() (*Config, error) {
 
 		Log: logConfig,
 
-		// TODO(kradalby): Document these settings when more stable
 		Tuning: Tuning{
 			NotifierSendTimeout: viper.GetDuration("tuning.notifier_send_timeout"),
 			BatchChangeDelay:    viper.GetDuration("tuning.batch_change_delay"),
@@ -1006,6 +1074,8 @@ func LoadServerConfig() (*Config, error) {
 			}(),
 			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
 			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
+			NodeStoreBatchSize:      viper.GetInt("tuning.node_store_batch_size"),
+			NodeStoreBatchTimeout:   viper.GetDuration("tuning.node_store_batch_timeout"),
 		},
 	}, nil
 }

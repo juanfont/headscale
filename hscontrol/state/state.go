@@ -134,9 +134,14 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	// PolicyManager.BuildPeerMap handles both global and per-node filter complexity.
 	// This moves the complex peer relationship logic into the policy package where it belongs.
-	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-		return polMan.BuildPeerMap(views.SliceOf(nodes))
-	})
+	nodeStore := NewNodeStore(
+		nodes,
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+			return polMan.BuildPeerMap(views.SliceOf(nodes))
+		},
+		cfg.Tuning.NodeStoreBatchSize,
+		cfg.Tuning.NodeStoreBatchTimeout,
+	)
 	nodeStore.Start()
 
 	return &State{
