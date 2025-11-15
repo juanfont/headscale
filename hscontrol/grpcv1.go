@@ -189,13 +189,34 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
+	var preAuthKey *types.PreAuthKey
+	var err error
+
+	// Ensure only one of key or key_id is provided
+	if request.Key != nil && request.KeyId != nil {
+		return nil, fmt.Errorf("cannot provide both key and key_id, only one must be specified")
 	}
 
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
+	// Support both key string and key ID
+	if request.KeyId != nil {
+		// Expire by key ID
+		preAuthKey, err = api.h.state.GetPreAuthKeyByID(types.UserID(request.GetUser()), request.GetKeyId())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get preauth key by ID: %w", err)
+		}
+	} else if request.Key != nil {
+		// Expire by key string (original behavior)
+		preAuthKey, err = api.h.state.GetPreAuthKey(request.GetKey())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get preauth key by string: %w", err)
+		}
+
+		// Verify user ownership when using key string
+		if uint64(preAuthKey.User.ID) != request.GetUser() {
+			return nil, fmt.Errorf("preauth key does not belong to user")
+		}
+	} else {
+		return nil, fmt.Errorf("either key or key_id must be provided")
 	}
 
 	err = api.h.state.ExpirePreAuthKey(preAuthKey)
