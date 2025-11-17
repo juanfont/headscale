@@ -94,42 +94,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
     curl http://127.0.0.1:8080/health
     ```
 
-1.  Create a headscale user:
-
-    ```shell
-    docker exec -it headscale \
-      headscale users create myfirstuser
-    ```
-
-### Register a machine (normal login)
-
-On a client machine, execute the `tailscale up` command to login:
-
-```shell
-tailscale up --login-server YOUR_HEADSCALE_URL
-```
-
-To register a machine when running headscale in a container, take the headscale command and pass it to the container:
-
-```shell
-docker exec -it headscale \
-  headscale nodes register --user myfirstuser --key <YOUR_MACHINE_KEY>
-```
-
-### Register a machine using a pre authenticated key
-
-Generate a key using the command line for the user with ID 1:
-
-```shell
-docker exec -it headscale \
-  headscale preauthkeys create --user 1 --reusable --expiration 24h
-```
-
-This will return a pre-authenticated key that can be used to connect a node to headscale with the `tailscale up` command:
-
-```shell
-tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
-```
+Continue on the [getting started page](../../usage/getting-started.md) to register your first machine.
 
 ## Debugging headscale running in Docker
 
