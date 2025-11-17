@@ -9,8 +9,8 @@ This page helps you get started with headscale and provides a few usage examples
       installation instructions.
     * The configuration file exists and is adjusted to suit your environment, see
       [Configuration](../ref/configuration.md) for details.
-    * Headscale is reachable from the Internet. Verify this by opening client specific setup instructions in your
-      browser, e.g. https://headscale.example.com/windows
+    * Headscale is reachable from the Internet. Verify this by visiting the health endpoint:
+      https://headscale.example.com/health
     * The Tailscale client is installed, see [Client and operating system support](../about/clients.md) for more
       information.
 
