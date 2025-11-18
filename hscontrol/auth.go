@@ -234,11 +234,7 @@ func isAuthKey(req tailcfg.RegisterRequest) bool {
 }
 
 func nodeToRegisterResponse(node types.NodeView) *tailcfg.RegisterResponse {
-	return &tailcfg.RegisterResponse{
-		// TODO(kradalby): Only send for user-owned nodes
-		// and not tagged nodes when tags is working.
-		User:           node.UserView().TailscaleUser(),
-		Login:          node.UserView().TailscaleLogin(),
+	resp := &tailcfg.RegisterResponse{
 		NodeKeyExpired: node.IsExpired(),
 
 		// Headscale does not implement the concept of machine authorization
@@ -246,6 +242,15 @@ func nodeToRegisterResponse(node types.NodeView) *tailcfg.RegisterResponse {
 		// Revisit this if #2176 gets implemented.
 		MachineAuthorized: true,
 	}
+
+	// For user-owned nodes, include User and Login information
+	// For tagged nodes, these fields should be empty as the node is owned by tags
+	if !node.IsTagged() && node.UserView().Valid() {
+		resp.User = node.UserView().TailscaleUser()
+		resp.Login = node.UserView().TailscaleLogin()
+	}
+
+	return resp
 }
 
 func (h *Headscale) waitForFollowup(

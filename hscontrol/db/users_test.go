@@ -50,7 +50,7 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				user := db.CreateUserForTest("test")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				err = db.DestroyUser(types.UserID(user.ID))
@@ -71,13 +71,13 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             0,
 					Hostname:       "testnode",
-					UserID:         user.ID,
+					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}
@@ -179,19 +179,19 @@ func TestAssignNodeToUser(t *testing.T) {
 				oldUser := db.CreateUserForTest("old")
 				newUser := db.CreateUserForTest("new")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(oldUser.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(oldUser.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             12,
 					Hostname:       "testnode",
-					UserID:         oldUser.ID,
+					UserID:         &oldUser.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)
-				assert.Equal(t, oldUser.ID, node.UserID)
+				assert.Equal(t, oldUser.ID, *node.UserID)
 
 				err = db.Write(func(tx *gorm.DB) error {
 					return AssignNodeToUser(tx, 12, types.UserID(newUser.ID))
@@ -201,7 +201,7 @@ func TestAssignNodeToUser(t *testing.T) {
 				// Reload node from database to see updated values
 				updatedNode, err := db.GetNodeByID(12)
 				require.NoError(t, err)
-				assert.Equal(t, newUser.ID, updatedNode.UserID)
+				assert.Equal(t, newUser.ID, *updatedNode.UserID)
 				assert.Equal(t, newUser.Name, updatedNode.User.Name)
 			},
 		},
@@ -212,13 +212,13 @@ func TestAssignNodeToUser(t *testing.T) {
 
 				oldUser := db.CreateUserForTest("old")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(oldUser.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(oldUser.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             12,
 					Hostname:       "testnode",
-					UserID:         oldUser.ID,
+					UserID:         &oldUser.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}
@@ -238,13 +238,13 @@ func TestAssignNodeToUser(t *testing.T) {
 
 				user := db.CreateUserForTest("user")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             12,
 					Hostname:       "testnode",
-					UserID:         user.ID,
+					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}
@@ -259,7 +259,7 @@ func TestAssignNodeToUser(t *testing.T) {
 				// Reload node from database again to see updated values
 				finalNode, err := db.GetNodeByID(12)
 				require.NoError(t, err)
-				assert.Equal(t, user.ID, finalNode.UserID)
+				assert.Equal(t, user.ID, *finalNode.UserID)
 				assert.Equal(t, user.Name, finalNode.User.Name)
 			},
 		},

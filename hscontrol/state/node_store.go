@@ -405,7 +405,7 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 	// Build nodesByUser, nodesByNodeKey, and nodesByMachineKey maps
 	for _, n := range nodes {
 		nodeView := n.View()
-		userID := types.UserID(n.UserID)
+		userID := types.UserID(*n.UserID)
 
 		newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
@@ -512,7 +512,7 @@ func (s *NodeStore) DebugString() string {
 		if len(nodes) > 0 {
 			userName := "unknown"
 			if len(nodes) > 0 && nodes[0].Valid() {
-				userName = nodes[0].User().Name
+				userName = nodes[0].User().Name()
 			}
 			sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
 		}
