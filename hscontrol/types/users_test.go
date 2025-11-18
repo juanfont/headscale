@@ -291,9 +291,10 @@ func TestCleanIdentifier(t *testing.T) {
 
 func TestOIDCClaimsJSONToUser(t *testing.T) {
 	tests := []struct {
-		name    string
-		jsonstr string
-		want    User
+		name               string
+		jsonstr            string
+		useUnverifiedEmail bool
+		want               User
 	}{
 		{
 			name: "normal-bool",
@@ -344,6 +345,25 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				Provider: util.RegisterMethodOIDC,
 				ProviderIdentifier: sql.NullString{
 					String: "/test3",
+					Valid:  true,
+				},
+			},
+		},
+		{
+			name: "use-unverified-email",
+			jsonstr: `
+{
+  "sub": "test-unverified-email",
+  "email": "test-unverified-email@test.no",
+  "email_verified": "false"
+}
+			`,
+			useUnverifiedEmail: true,
+			want: User{
+				Provider: util.RegisterMethodOIDC,
+				Email:    "test-unverified-email@test.no",
+				ProviderIdentifier: sql.NullString{
+					String: "/test-unverified-email",
 					Valid:  true,
 				},
 			},
@@ -458,7 +478,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 
 			var user User
 
-			user.FromClaim(&got)
+			user.FromClaim(&got, tt.useUnverifiedEmail)
 			if diff := cmp.Diff(user, tt.want); diff != "" {
 				t.Errorf("TestOIDCClaimsJSONToUser() mismatch (-want +got):\n%s", diff)
 			}
