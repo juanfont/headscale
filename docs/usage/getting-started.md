@@ -41,6 +41,23 @@ options, run:
       headscale <COMMAND> --help
     ```
 
+!!! note "Manage headscale from another local user"
+
+    By default only the user `headscale` or `root` will have the necessary permissions to access the unix socket
+    (`/var/run/headscale/headscale.sock`) that is used to communicate with the service. In order to be able to
+    communicate with the headscale service you have to make sure the unix socket is accessible by the user that runs
+    the commands. In general you can achieve this by any of the following methods:
+
+      * using `sudo`
+      * run the commands as user `headscale`
+      * add your user to the `headscale` group
+    
+    To verify you can run the following command using your preferred method:
+
+    ```shell
+    headscale users list
+    ```
+
 ## Manage headscale users
 
 In headscale, a node (also known as machine or device) is always assigned to a
