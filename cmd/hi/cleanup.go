@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -204,4 +207,111 @@ func cleanCacheVolume(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// cleanupSuccessfulTestArtifacts removes artifacts from successful test runs to save disk space.
+// This function removes large artifacts that are mainly useful for debugging failures:
+// - Database dumps (.db files)
+// - Profile data (pprof directories)
+// - MapResponse data (mapresponses directories)
+// - Prometheus metrics files
+//
+// It preserves:
+// - Log files (.log) which are small and useful for verification.
+func cleanupSuccessfulTestArtifacts(logsDir string, verbose bool) error {
+	entries, err := os.ReadDir(logsDir)
+	if err != nil {
+		return fmt.Errorf("failed to read logs directory: %w", err)
+	}
+
+	var (
+		removedFiles, removedDirs int
+		totalSize                 int64
+	)
+
+	for _, entry := range entries {
+		name := entry.Name()
+		fullPath := filepath.Join(logsDir, name)
+
+		if entry.IsDir() {
+			// Remove pprof and mapresponses directories (typically large)
+			// These directories contain artifacts from all containers in the test run
+			if name == "pprof" || name == "mapresponses" {
+				size, sizeErr := getDirSize(fullPath)
+				if sizeErr == nil {
+					totalSize += size
+				}
+
+				err := os.RemoveAll(fullPath)
+				if err != nil {
+					if verbose {
+						log.Printf("Warning: failed to remove directory %s: %v", name, err)
+					}
+				} else {
+					removedDirs++
+
+					if verbose {
+						log.Printf("Removed directory: %s/", name)
+					}
+				}
+			}
+		} else {
+			// Only process test-related files (headscale and tailscale)
+			if !strings.HasPrefix(name, "hs-") && !strings.HasPrefix(name, "ts-") {
+				continue
+			}
+
+			// Remove database, metrics, and status files, but keep logs
+			shouldRemove := strings.HasSuffix(name, ".db") ||
+				strings.HasSuffix(name, "_metrics.txt") ||
+				strings.HasSuffix(name, "_status.json")
+
+			if shouldRemove {
+				info, infoErr := entry.Info()
+				if infoErr == nil {
+					totalSize += info.Size()
+				}
+
+				err := os.Remove(fullPath)
+				if err != nil {
+					if verbose {
+						log.Printf("Warning: failed to remove file %s: %v", name, err)
+					}
+				} else {
+					removedFiles++
+
+					if verbose {
+						log.Printf("Removed file: %s", name)
+					}
+				}
+			}
+		}
+	}
+
+	if removedFiles > 0 || removedDirs > 0 {
+		const bytesPerMB = 1024 * 1024
+		log.Printf("Cleaned up %d files and %d directories (freed ~%.2f MB)",
+			removedFiles, removedDirs, float64(totalSize)/bytesPerMB)
+	}
+
+	return nil
+}
+
+// getDirSize calculates the total size of a directory.
+func getDirSize(path string) (int64, error) {
+	var size int64
+
+	err := filepath.Walk(path, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			size += info.Size()
+		}
+
+		return nil
+	})
+
+	return size, err
 }
