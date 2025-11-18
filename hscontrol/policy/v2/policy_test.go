@@ -519,3 +519,89 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, rules, "test-1 should have filter rules from both ACL rules")
 }
+
+// TestAutogroupSelfPolicyUpdateTriggersMapResponse verifies that when a policy with
+// autogroup:self is updated, SetPolicy returns true to trigger MapResponse updates,
+// even if the global filter hash didn't change (which is always empty for autogroup:self).
+// This fixes the issue where policy updates would clear caches but not trigger updates,
+// leaving nodes with stale filter rules until reconnect.
+func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "test-1", Email: "test-1@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "test-2", Email: "test-2@example.com"},
+	}
+
+	test1Node := &types.Node{
+		ID:       1,
+		Hostname: "test-1-device",
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		User:     users[0],
+		UserID:   users[0].ID,
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	test2Node := &types.Node{
+		ID:       2,
+		Hostname: "test-2-device",
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		User:     users[1],
+		UserID:   users[1].ID,
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{test1Node, test2Node}
+
+	// Initial policy with autogroup:self
+	initialPolicy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(initialPolicy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, pm.usesAutogroupSelf, "policy should use autogroup:self")
+
+	// Get initial filter rules for test-1 (should be cached)
+	rules1, err := pm.FilterForNode(test1Node.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules1, "test-1 should have filter rules")
+
+	// Update policy with a different ACL that still results in empty global filter
+	// (only autogroup:self rules, which compile to empty global filter)
+	// We add a comment/description change by adding groups (which don't affect filter compilation)
+	updatedPolicy := `{
+		"groups": {
+			"group:test": ["test-1@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	// SetPolicy should return true even though global filter hash didn't change
+	policyChanged, err := pm.SetPolicy([]byte(updatedPolicy))
+	require.NoError(t, err)
+	require.True(t, policyChanged, "SetPolicy should return true when policy content changes, even if global filter hash unchanged (autogroup:self)")
+
+	// Verify that caches were cleared and new rules are generated
+	// The cache should be empty, so FilterForNode will recompile
+	rules2, err := pm.FilterForNode(test1Node.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, rules2, "test-1 should have filter rules after policy update")
+
+	// Verify that the policy hash tracking works - a second identical update should return false
+	policyChanged2, err := pm.SetPolicy([]byte(updatedPolicy))
+	require.NoError(t, err)
+	require.False(t, policyChanged2, "SetPolicy should return false when policy content hasn't changed")
+}
