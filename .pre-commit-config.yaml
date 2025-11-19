@@ -10,7 +10,7 @@ repos:
   # prek will use fast-path optimized versions automatically
   # See: https://prek.j178.dev/builtin/
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-case-conflict
