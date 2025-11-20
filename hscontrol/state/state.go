@@ -429,7 +429,11 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 		return change.EmptySet, err
 	}
 
-	s.ipAlloc.FreeIPs(node.IPs())
+	// Only release IP addresses back to the allocator for ephemeral nodes.
+	// Persistent nodes keep their IPs reserved to avoid premature reuse.
+	if node.IsEphemeral() {
+		s.ipAlloc.FreeIPs(node.IPs())
+	}
 
 	c := change.NodeRemoved(node.ID())
 
