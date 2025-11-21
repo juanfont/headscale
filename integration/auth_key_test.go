@@ -9,12 +9,15 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/ptr"
 )
 
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
@@ -539,4 +542,183 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", 120*time.Second)
 
 	t.Logf("✓ Node successfully reconnected after its auth key was deleted")
+}
+
+// TestAuthKeyLogoutAndReloginRoutesPreserved tests that routes remain serving
+// after a node logs out and re-authenticates with the same user.
+//
+// This test validates the fix for issue #2896:
+// https://github.com/juanfont/headscale/issues/2896
+//
+// Bug: When a node with already-approved routes restarts/re-authenticates,
+// the routes show as "Approved" and "Available" but NOT "Serving" (Primary).
+// A headscale restart would fix it, indicating a state management issue.
+//
+// The test scenario:
+// 1. Node registers with auth key and advertises routes
+// 2. Routes are auto-approved and verified as serving
+// 3. Node logs out
+// 4. Node re-authenticates with same auth key
+// 5. Routes should STILL be serving (this is where the bug manifests)
+func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
+	IntegrationSkip(t)
+
+	user := "routeuser"
+	advertiseRoute := "10.55.0.0/24"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{user},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithAcceptRoutes(),
+			// Advertise route on initial login
+			tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + advertiseRoute}),
+		},
+		hsic.WithTestName("routelogout"),
+		hsic.WithTLS(),
+		hsic.WithACLPolicy(
+			&policyv2.Policy{
+				ACLs: []policyv2.ACL{
+					{
+						Action:       "accept",
+						Sources:      []policyv2.Alias{policyv2.Wildcard},
+						Destinations: []policyv2.AliasWithPorts{{Alias: policyv2.Wildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}}},
+					},
+				},
+				AutoApprovers: policyv2.AutoApproverPolicy{
+					Routes: map[netip.Prefix]policyv2.AutoApprovers{
+						netip.MustParsePrefix(advertiseRoute): {ptr.To(policyv2.Username(user + "@test.no"))},
+					},
+				},
+			},
+		),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+	require.Len(t, allClients, 1)
+
+	client := allClients[0]
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Step 1: Verify initial route is advertised, approved, and SERVING
+	t.Logf("Step 1: Verifying initial route is advertised, approved, and SERVING at %s", time.Now().Format(TimestampFormat))
+
+	var initialNode *v1.Node
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "Should have exactly 1 node")
+
+		if len(nodes) == 1 {
+			initialNode = nodes[0]
+			// Check: 1 announced, 1 approved, 1 serving (subnet route)
+			assert.Lenf(c, initialNode.GetAvailableRoutes(), 1,
+				"Node should have 1 available route, got %v", initialNode.GetAvailableRoutes())
+			assert.Lenf(c, initialNode.GetApprovedRoutes(), 1,
+				"Node should have 1 approved route, got %v", initialNode.GetApprovedRoutes())
+			assert.Lenf(c, initialNode.GetSubnetRoutes(), 1,
+				"Node should have 1 serving (subnet) route, got %v - THIS IS THE BUG if empty", initialNode.GetSubnetRoutes())
+			assert.Contains(c, initialNode.GetSubnetRoutes(), advertiseRoute,
+				"Subnet routes should contain %s", advertiseRoute)
+		}
+	}, 30*time.Second, 500*time.Millisecond, "initial route should be serving")
+
+	require.NotNil(t, initialNode, "Initial node should be found")
+	initialNodeID := initialNode.GetId()
+	t.Logf("Initial node ID: %d, Available: %v, Approved: %v, Serving: %v",
+		initialNodeID, initialNode.GetAvailableRoutes(), initialNode.GetApprovedRoutes(), initialNode.GetSubnetRoutes())
+
+	// Step 2: Logout
+	t.Logf("Step 2: Logging out at %s", time.Now().Format(TimestampFormat))
+
+	err = client.Logout()
+	require.NoError(t, err)
+
+	// Wait for logout to complete
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout")
+	}, 30*time.Second, 1*time.Second, "waiting for logout to complete")
+
+	t.Logf("Logout completed, node should still exist in database")
+
+	// Verify node still exists (routes should still be in DB)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "Node should persist in database after logout")
+	}, 10*time.Second, 500*time.Millisecond, "node should persist after logout")
+
+	// Step 3: Re-authenticate with the SAME user (using auth key)
+	t.Logf("Step 3: Re-authenticating with same user at %s", time.Now().Format(TimestampFormat))
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	key, err := scenario.CreatePreAuthKey(userMap[user].GetId(), true, false)
+	require.NoError(t, err)
+
+	// Re-login - the container already has extraLoginArgs with --advertise-routes
+	// from the initial setup, so routes will be advertised on re-login
+	err = scenario.RunTailscaleUp(user, headscale.GetEndpoint(), key.GetKey())
+	require.NoError(t, err)
+
+	// Wait for client to be running
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after relogin")
+	}, 30*time.Second, 1*time.Second, "waiting for relogin to complete")
+
+	t.Logf("Re-authentication completed at %s", time.Now().Format(TimestampFormat))
+
+	// Step 4: THE CRITICAL TEST - Verify routes are STILL SERVING after re-authentication
+	t.Logf("Step 4: Verifying routes are STILL SERVING after re-authentication at %s", time.Now().Format(TimestampFormat))
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "Should still have exactly 1 node after relogin")
+
+		if len(nodes) == 1 {
+			node := nodes[0]
+			t.Logf("After relogin - Available: %v, Approved: %v, Serving: %v",
+				node.GetAvailableRoutes(), node.GetApprovedRoutes(), node.GetSubnetRoutes())
+
+			// This is where issue #2896 manifests:
+			// - Available shows the route (from Hostinfo.RoutableIPs)
+			// - Approved shows the route (from ApprovedRoutes)
+			// - BUT Serving (SubnetRoutes/PrimaryRoutes) is EMPTY!
+			assert.Lenf(c, node.GetAvailableRoutes(), 1,
+				"Node should have 1 available route after relogin, got %v", node.GetAvailableRoutes())
+			assert.Lenf(c, node.GetApprovedRoutes(), 1,
+				"Node should have 1 approved route after relogin, got %v", node.GetApprovedRoutes())
+			assert.Lenf(c, node.GetSubnetRoutes(), 1,
+				"BUG #2896: Node should have 1 SERVING route after relogin, got %v", node.GetSubnetRoutes())
+			assert.Contains(c, node.GetSubnetRoutes(), advertiseRoute,
+				"BUG #2896: Subnet routes should contain %s after relogin", advertiseRoute)
+
+			// Also verify node ID was preserved (same node, not new registration)
+			assert.Equal(c, initialNodeID, node.GetId(),
+				"Node ID should be preserved after same-user relogin")
+		}
+	}, 30*time.Second, 500*time.Millisecond,
+		"BUG #2896: routes should remain SERVING after logout/relogin with same user")
+
+	t.Logf("Test completed - verifying issue #2896 fix")
 }

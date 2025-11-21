@@ -33,6 +33,7 @@ jobs:
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
           - TestAuthKeyDeleteKey
+          - TestAuthKeyLogoutAndReloginRoutesPreserved
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
@@ -42,6 +43,8 @@ jobs:
           - TestOIDCMultipleOpenedLoginUrls
           - TestOIDCReloginSameNodeSameUser
           - TestOIDCExpiryAfterRestart
+          - TestOIDCACLPolicyOnJoin
+          - TestOIDCReloginSameUserRoutesPreserved
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
