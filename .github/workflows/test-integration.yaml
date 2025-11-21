@@ -41,6 +41,7 @@ jobs:
           - TestOIDCMultipleOpenedLoginUrls
           - TestOIDCReloginSameNodeSameUser
           - TestOIDCExpiryAfterRestart
+          - TestOIDCACLPolicyOnJoin
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
@@ -84,6 +85,7 @@ jobs:
           - TestSubnetRouterMultiNetworkExitNode
           - TestAutoApproveMultiNetwork
           - TestSubnetRouteACLFiltering
+          - TestIssue2896_AutoApprovedRoutePrimary
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
