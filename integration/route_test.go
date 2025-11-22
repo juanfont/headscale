@@ -2227,9 +2227,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	// - Both policy modes (database, file)
 	// - Both advertiseDuringUp values (true, false)
 	minimalTestSet := map[string]bool{
-		"authkey-tag-advertiseduringup-false-pol-database":  true, // authkey + database + tag + false
-		"webauth-user-advertiseduringup-true-pol-file":      true, // webauth + file + user + true
-		"authkey-group-advertiseduringup-false-pol-file":    true, // authkey + file + group + false
+		"authkey-tag-advertiseduringup-false-pol-database": true, // authkey + database + tag + false
+		"webauth-user-advertiseduringup-true-pol-file":     true, // webauth + file + user + true
+		"authkey-group-advertiseduringup-false-pol-file":   true, // authkey + file + group + false
 	}
 
 	for _, tt := range tests {
@@ -2323,7 +2323,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					// into a HA node, which isn't something we are testing here.
 					routerUsernet1, err := scenario.CreateTailscaleNode("head", tsOpts...)
 					require.NoError(t, err)
-					defer routerUsernet1.Shutdown()
+
+					defer func() {
+						_, _, err := routerUsernet1.Shutdown()
+						require.NoError(t, err)
+					}()
 
 					if tt.withURL {
 						u, err := routerUsernet1.LoginWithURL(headscale.GetEndpoint())
@@ -2332,7 +2336,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						body, err := doLoginURL(routerUsernet1.Hostname(), u)
 						require.NoError(t, err)
 
-						scenario.runHeadscaleRegister("user1", body)
+						err = scenario.runHeadscaleRegister("user1", body)
+						require.NoError(t, err)
 					} else {
 						userMap, err := headscale.MapUsers()
 						require.NoError(t, err)
@@ -2732,16 +2737,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	}
 }
 
-func assertTracerouteViaIP(t *testing.T, tr util.Traceroute, ip netip.Addr) {
-	t.Helper()
-
-	require.NotNil(t, tr)
-	require.True(t, tr.Success)
-	require.NoError(t, tr.Err)
-	require.NotEmpty(t, tr.Route)
-	require.Equal(t, tr.Route[0].IP, ip)
-}
-
 // assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT.
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
@@ -2752,30 +2747,6 @@ func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip
 	// but assert.NotEmpty above ensures len(tr.Route) > 0
 	if len(tr.Route) > 0 {
 		assert.Equal(c, tr.Route[0].IP.String(), ip.String())
-	}
-}
-
-// requirePeerSubnetRoutes asserts that the peer has the expected subnet routes.
-func requirePeerSubnetRoutes(t *testing.T, status *ipnstate.PeerStatus, expected []netip.Prefix) {
-	t.Helper()
-	if status.AllowedIPs.Len() <= 2 && len(expected) != 0 {
-		t.Fatalf("peer %s (%s) has no subnet routes, expected %v", status.HostName, status.ID, expected)
-		return
-	}
-
-	if len(expected) == 0 {
-		expected = []netip.Prefix{}
-	}
-
-	got := slicesx.Filter(nil, status.AllowedIPs.AsSlice(), func(p netip.Prefix) bool {
-		if tsaddr.IsExitRoute(p) {
-			return true
-		}
-		return !slices.ContainsFunc(status.TailscaleIPs, p.Contains)
-	})
-
-	if diff := cmpdiff.Diff(expected, got, util.PrefixComparer, cmpopts.EquateEmpty()); diff != "" {
-		t.Fatalf("peer %s (%s) subnet routes, unexpected result (-want +got):\n%s", status.HostName, status.ID, diff)
 	}
 }
 
@@ -2821,13 +2792,6 @@ func requirePeerSubnetRoutesWithCollect(c *assert.CollectT, status *ipnstate.Pee
 	if diff := cmpdiff.Diff(expected, got, util.PrefixComparer, cmpopts.EquateEmpty()); diff != "" {
 		assert.Fail(c, fmt.Sprintf("peer %s (%s) subnet routes, unexpected result (-want +got):\n%s", status.HostName, status.ID, diff))
 	}
-}
-
-func requireNodeRouteCount(t *testing.T, node *v1.Node, announced, approved, subnet int) {
-	t.Helper()
-	require.Lenf(t, node.GetAvailableRoutes(), announced, "expected %q announced routes(%v) to have %d route, had %d", node.GetName(), node.GetAvailableRoutes(), announced, len(node.GetAvailableRoutes()))
-	require.Lenf(t, node.GetApprovedRoutes(), approved, "expected %q approved routes(%v) to have %d route, had %d", node.GetName(), node.GetApprovedRoutes(), approved, len(node.GetApprovedRoutes()))
-	require.Lenf(t, node.GetSubnetRoutes(), subnet, "expected %q subnet routes(%v) to have %d route, had %d", node.GetName(), node.GetSubnetRoutes(), subnet, len(node.GetSubnetRoutes()))
 }
 
 func requireNodeRouteCountWithCollect(c *assert.CollectT, node *v1.Node, announced, approved, subnet int) {
