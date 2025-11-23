@@ -794,6 +794,84 @@ func (api headscaleV1APIServer) DebugCreateNode(
 	return &v1.DebugCreateNodeResponse{Node: newNode.Node.Proto()}, nil
 }
 
+func (api headscaleV1APIServer) PingNode(
+	ctx context.Context,
+	request *v1.PingNodeRequest,
+) (*v1.PingNodeResponse, error) {
+	log.Debug().
+		Uint64("node_id", request.GetNodeId()).
+		Str("target_ip", request.GetTargetIp()).
+		Msg("PingNode gRPC called")
+
+	// Get the node to validate it exists
+	node, ok := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
+	}
+
+	// Determine target IP for ping
+	targetIP := request.GetTargetIp()
+	if targetIP == "" {
+		// Use node's primary IP if no target specified
+		ips := node.IPs()
+		if len(ips) == 0 {
+			return nil, status.Errorf(codes.FailedPrecondition, "node has no IP addresses")
+		}
+		targetIP = ips[0].String()
+	}
+
+	// Validate the target IP
+	_, err := netip.ParseAddr(targetIP)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid target IP: %v", err)
+	}
+
+	// Perform the ping
+	pingResponse, err := api.h.CheckNodeOnline(node.ID(), targetIP)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Uint64("node_id", request.GetNodeId()).
+			Str("target_ip", targetIP).
+			Msg("Ping failed")
+
+		return &v1.PingNodeResponse{
+			Success: false,
+			Error:   err.Error(),
+		}, nil
+	}
+
+	// Convert tailcfg.PingResponse to v1.PingNodeResponse
+	response := &v1.PingNodeResponse{
+		Success:  true,
+		PingType: string(pingResponse.Type),
+		NodeIp:   pingResponse.NodeIP,
+	}
+
+	// Add endpoint information if available
+	if pingResponse.Endpoint != "" {
+		response.Endpoint = pingResponse.Endpoint
+	}
+
+	// Add DERP region if available
+	if pingResponse.DERPRegionID > 0 {
+		response.DerpRegionId = int32(pingResponse.DERPRegionID)
+	}
+
+	// Determine if ping was local (not through DERP)
+	response.IsLocal = pingResponse.DERPRegionID == 0
+
+	log.Info().
+		Uint64("node_id", request.GetNodeId()).
+		Str("target_ip", targetIP).
+		Str("ping_type", string(pingResponse.Type)).
+		Int64("latency_ms", response.LatencyMs).
+		Bool("is_local", response.IsLocal).
+		Msg("Ping successful")
+
+	return response, nil
+}
+
 func (api headscaleV1APIServer) Health(
 	ctx context.Context,
 	request *v1.HealthRequest,

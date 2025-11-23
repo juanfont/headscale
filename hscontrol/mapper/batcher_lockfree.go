@@ -449,6 +449,38 @@ func (b *LockFreeBatcher) MapResponseFromChange(id types.NodeID, c change.Change
 	}
 }
 
+// SendDirectUpdate sends a MapResponse directly to a specific node without going through
+// the change broadcast system. This is useful for targeted updates like PingRequests.
+func (b *LockFreeBatcher) SendDirectUpdate(id types.NodeID, resp *tailcfg.MapResponse) error {
+	if resp == nil {
+		return fmt.Errorf("cannot send nil MapResponse to node %d", id)
+	}
+
+	// Look up the node connection
+	nodeConn, exists := b.nodes.Load(id)
+	if !exists {
+		return fmt.Errorf("node %d not found in batcher", id)
+	}
+
+	// Check if node has active connections
+	if !nodeConn.hasActiveConnections() {
+		return fmt.Errorf("node %d has no active connections", id)
+	}
+
+	// Send the MapResponse directly
+	err := nodeConn.send(resp)
+	if err != nil {
+		return fmt.Errorf("failed to send direct update to node %d: %w", id, err)
+	}
+
+	log.Debug().
+		Uint64("node.id", id.Uint64()).
+		Bool("has_ping_request", resp.PingRequest != nil).
+		Msg("Successfully sent direct update to node")
+
+	return nil
+}
+
 // connectionEntry represents a single connection to a node.
 type connectionEntry struct {
 	id       string // unique connection ID
