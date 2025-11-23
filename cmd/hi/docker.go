@@ -201,6 +201,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
+		"DOCKER_API_VERSION=1.44",
 	}
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
@@ -367,10 +368,11 @@ type DockerContext struct {
 func createDockerClient() (*client.Client, error) {
 	contextInfo, err := getCurrentDockerContext()
 	if err != nil {
-		return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+		return client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.44"), client.WithAPIVersionNegotiation())
 	}
 
 	var clientOpts []client.Opt
+	clientOpts = append(clientOpts, client.WithVersion("1.44"))
 	clientOpts = append(clientOpts, client.WithAPIVersionNegotiation())
 
 	if contextInfo != nil {
