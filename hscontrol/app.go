@@ -730,16 +730,27 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	debugHTTPListener, err := net.Listen("tcp", h.cfg.MetricsAddr)
-	if err != nil {
-		return fmt.Errorf("failed to bind to TCP address: %w", err)
+	// Only start debug/metrics server if address is configured
+	var debugHTTPServer *http.Server
+
+	var debugHTTPListener net.Listener
+
+	if h.cfg.MetricsAddr != "" {
+		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", h.cfg.MetricsAddr)
+		if err != nil {
+			return fmt.Errorf("failed to bind to TCP address: %w", err)
+		}
+
+		debugHTTPServer = h.debugHTTPServer()
+
+		errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
+
+		log.Info().
+			Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
+	} else {
+		log.Info().Msg("metrics server disabled (metrics_listen_addr is empty)")
 	}
 
-	debugHTTPServer := h.debugHTTPServer()
-	errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
-
-	log.Info().
-		Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
@@ -795,16 +806,25 @@ func (h *Headscale) Serve() error {
 				h.ephemeralGC.Close()
 
 				// Gracefully shut down servers
-				ctx, cancel := context.WithTimeout(
-					context.Background(),
+				shutdownCtx, cancel := context.WithTimeout(
+					context.WithoutCancel(ctx),
 					types.HTTPShutdownTimeout,
 				)
-				info("shutting down debug http server")
-				if err := debugHTTPServer.Shutdown(ctx); err != nil {
-					log.Error().Err(err).Msg("failed to shutdown prometheus http")
+				defer cancel()
+
+				if debugHTTPServer != nil {
+					info("shutting down debug http server")
+
+					err := debugHTTPServer.Shutdown(shutdownCtx)
+					if err != nil {
+						log.Error().Err(err).Msg("failed to shutdown prometheus http")
+					}
 				}
+
 				info("shutting down main http server")
-				if err := httpServer.Shutdown(ctx); err != nil {
+
+				err := httpServer.Shutdown(shutdownCtx)
+				if err != nil {
 					log.Error().Err(err).Msg("failed to shutdown http")
 				}
 
@@ -830,7 +850,10 @@ func (h *Headscale) Serve() error {
 
 				// Close network listeners
 				info("closing network listeners")
-				debugHTTPListener.Close()
+
+				if debugHTTPListener != nil {
+					debugHTTPListener.Close()
+				}
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
@@ -847,9 +870,6 @@ func (h *Headscale) Serve() error {
 
 				log.Info().
 					Msg("Headscale stopped")
-
-				// And we're done:
-				cancel()
 
 				return
 			}
