@@ -51,7 +51,7 @@ options, run:
       * using `sudo`
       * run the commands as user `headscale`
       * add your user to the `headscale` group
-    
+
     To verify you can run the following command using your preferred method:
 
     ```shell
