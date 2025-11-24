@@ -2,8 +2,8 @@
 # See: https://prek.j178.dev/quickstart/
 # See: https://prek.j178.dev/builtin/
 
-# Global exclusions - ignore docs and generated code
-exclude: ^(docs/|gen/)
+# Global exclusions - ignore generated code
+exclude: ^gen/
 
 repos:
   # Built-in hooks from pre-commit/pre-commit-hooks
@@ -42,6 +42,7 @@ repos:
         name: prettier
         entry: prettier --write --list-different
         language: system
+        exclude: ^docs/
         types_or:
           [
             javascript,
