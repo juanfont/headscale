@@ -845,7 +845,7 @@ func (api headscaleV1APIServer) PingNode(
 	response := &v1.PingNodeResponse{
 		Success:  true,
 		PingType: string(pingResponse.Type),
-		NodeIp:   pingResponse.NodeIP,
+		NodeIp:   targetIP,
 	}
 
 	// Add endpoint information if available

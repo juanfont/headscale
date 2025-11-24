@@ -97,29 +97,38 @@ func TestPingDirect(t *testing.T) {
 		}, 30*time.Second, 2*time.Second, "Waiting for self-ping with explicit target")
 	})
 
-	// Test 3: Ping second node from first node (cross-node ping)
+	// Test 3: Ping second node from first node (cross-node ping) - test both IPv4 and IPv6
 	t.Run("cross-node-ping", func(t *testing.T) {
-		require.Len(t, nodes[1].GetIpAddresses(), 1, "Second node should have IP address")
-		targetIP := nodes[1].GetIpAddresses()[0]
+		require.NotEmpty(t, nodes[1].GetIpAddresses(), "Second node should have IP addresses")
 
-		var pingResp v1.PingNodeResponse
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"ping",
-					"--identifier", strconv.FormatUint(nodes[0].GetId(), 10),
-					"--target", targetIP,
-					"--output", "json",
-				},
-				&pingResp,
-			)
-			assert.NoError(c, err)
-			assert.True(c, pingResp.GetSuccess(), "Cross-node ping should succeed")
-			assert.Equal(c, targetIP, pingResp.GetNodeIp(), "Response should contain target IP")
-			assert.NotEmpty(c, pingResp.GetPingType(), "Ping type should be specified")
-		}, 30*time.Second, 2*time.Second, "Waiting for cross-node ping")
+		// Test each IP address (IPv4 and/or IPv6)
+		for idx, targetIP := range nodes[1].GetIpAddresses() {
+			ipVersion := "IPv4"
+			if len(targetIP) > 15 { // Simple heuristic: IPv6 addresses are longer
+				ipVersion = "IPv6"
+			}
+
+			t.Run(ipVersion, func(t *testing.T) {
+				var pingResp v1.PingNodeResponse
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					err = executeAndUnmarshal(
+						headscale,
+						[]string{
+							"headscale",
+							"ping",
+							"--identifier", strconv.FormatUint(nodes[0].GetId(), 10),
+							"--target", targetIP,
+							"--output", "json",
+						},
+						&pingResp,
+					)
+					assert.NoError(c, err)
+					assert.True(c, pingResp.GetSuccess(), "Cross-node ping to %s should succeed", ipVersion)
+					assert.Equal(c, targetIP, pingResp.GetNodeIp(), "Response should contain target IP for %s", ipVersion)
+					assert.NotEmpty(c, pingResp.GetPingType(), "Ping type should be specified for %s", ipVersion)
+				}, 30*time.Second, 2*time.Second, "Waiting for cross-node ping to %s address %d: %s", ipVersion, idx, targetIP)
+			})
+		}
 	})
 
 	// Test 4: Ping non-existent node should fail gracefully
@@ -807,12 +816,12 @@ func TestPingEdgeCases(t *testing.T) {
 	// Test malformed IP addresses
 	t.Run("ping-with-malformed-ip", func(t *testing.T) {
 		malformedIPs := []string{
-			"999.999.999.999",      // Invalid IPv4
-			"gggg::hhhh::iiii",     // Invalid IPv6
-			"192.168.1",            // Incomplete IPv4
-			"not-an-ip-at-all",     // Not an IP
-			"192.168.1.1.1",        // Too many octets
-			"::ffff:999.1.1.1",     // Invalid IPv4-mapped IPv6
+			"999.999.999.999",  // Invalid IPv4
+			"gggg::hhhh::iiii", // Invalid IPv6
+			"192.168.1",        // Incomplete IPv4
+			"not-an-ip-at-all", // Not an IP
+			"192.168.1.1.1",    // Too many octets
+			"::ffff:999.1.1.1", // Invalid IPv4-mapped IPv6
 		}
 
 		for _, badIP := range malformedIPs {
@@ -834,9 +843,9 @@ func TestPingEdgeCases(t *testing.T) {
 	// Test IP addresses not in the tailnet
 	t.Run("ping-to-ip-outside-tailnet", func(t *testing.T) {
 		externalIPs := []string{
-			"1.1.1.1",           // Cloudflare DNS
-			"8.8.8.8",           // Google DNS
-			"192.168.255.254",   // Unlikely to be in tailnet
+			"1.1.1.1",         // Cloudflare DNS
+			"8.8.8.8",         // Google DNS
+			"192.168.255.254", // Unlikely to be in tailnet
 		}
 
 		for _, externalIP := range externalIPs {
