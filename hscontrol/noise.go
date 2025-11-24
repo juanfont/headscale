@@ -214,7 +214,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	nv, err := ns.getAndValidateNode(mapRequest)
+	nv, err := ns.getAndValidateNode(func() (types.NodeView, bool) {
+		return ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	})
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -321,6 +323,22 @@ func (ns *noiseServer) NoisePingResponseHandler(
 		return
 	}
 
+	// Verify that the node matching the request ID matches the machine key
+	// of the Noise connection.
+	pingReq, ok := ns.headscale.pingManager.GetRequest(requestID)
+	if !ok {
+		httpError(writer, NewHTTPError(http.StatusNotFound, "request not found or expired", nil))
+		return
+	}
+
+	_, err = ns.getAndValidateNode(func() (types.NodeView, bool) {
+		return ns.headscale.state.GetNodeByID(pingReq.NodeID)
+	})
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
 	// Handle the response using the ping manager
 	if err := ns.headscale.pingManager.HandleResponse(requestID, &pingResponse); err != nil {
 		log.Warn().
@@ -348,8 +366,10 @@ func (ns *noiseServer) NoisePingResponseHandler(
 
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
-func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+func (ns *noiseServer) getAndValidateNode(
+	fetcher func() (types.NodeView, bool),
+) (types.NodeView, error) {
+	nv, ok := fetcher()
 	if !ok {
 		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}
