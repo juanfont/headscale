@@ -100,6 +100,7 @@ type Headscale struct {
 	authProvider   AuthProvider
 	mapBatcher     mapper.Batcher
 	pingManager    *PingManager
+	pingScheduler  *PingScheduler
 
 	clientStreamsOpen sync.WaitGroup
 }
@@ -136,6 +137,14 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		state:             s,
 		pingManager:       NewPingManager(cfg.ServerURL),
 	}
+
+	// Initialize ping scheduler for node liveness checks
+	app.pingScheduler = NewPingScheduler(&app, PingSchedulerConfig{
+		Enabled:  cfg.NodeLiveness.EnableScheduler,
+		Interval: cfg.NodeLiveness.PingInterval,
+		Jitter:   cfg.NodeLiveness.PingJitter,
+		Timeout:  cfg.NodeLiveness.PingTimeout,
+	})
 
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
@@ -551,6 +560,9 @@ func (h *Headscale) Serve() error {
 		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
 	}
 
+	// Start the ping scheduler for node liveness checks
+	h.pingScheduler.Start()
+
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {
 		h.extraRecordMan, err = dns.NewExtraRecordsManager(h.cfg.DNSConfig.ExtraRecordsPath)
 		if err != nil {
@@ -794,6 +806,7 @@ func (h *Headscale) Serve() error {
 
 				scheduleCancel()
 				h.ephemeralGC.Close()
+				h.pingScheduler.Stop()
 
 				// Gracefully shut down servers
 				ctx, cancel := context.WithTimeout(
