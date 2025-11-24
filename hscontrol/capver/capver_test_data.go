@@ -30,7 +30,7 @@ var capVerMinimumTailscaleVersionTests = []struct {
 	expected string
 }{
 	{106, "v1.74.0"},
-	{97, "v1.68.1"},
+	{97, "v1.68.2"},
 	{102, "v1.70.0"},
 	{104, "v1.72.0"},
 	{109, "v1.78.0"},

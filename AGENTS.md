@@ -29,8 +29,8 @@ make test
 go test ./...                    # All unit tests
 go test -race ./...              # With race detection
 
-# Run specific integration test
-go run ./cmd/hi run "TestName" --postgres
+# Run specific integration test with incremental output
+go run ./cmd/hi run "TestName" --verbose --postgres
 
 # Code formatting and linting
 make fmt         # Format all code (Go, docs, proto)
@@ -49,9 +49,9 @@ make clean
 
 ```bash
 # Use the hi (Headscale Integration) test runner
-go run ./cmd/hi doctor                    # Check system requirements
-go run ./cmd/hi run "TestPattern"         # Run specific test
-go run ./cmd/hi run "TestPattern" --postgres  # With PostgreSQL backend
+go run ./cmd/hi doctor                            # Check system requirements
+go run ./cmd/hi run "TestPattern" --verbose       # Run specific test with incremental output
+go run ./cmd/hi run "TestPattern" --verbose --postgres  # With PostgreSQL backend and verbose output
 
 # Test artifacts are saved to control_logs/ with logs and debug data
 ```
@@ -382,14 +382,14 @@ Headscale uses Docker-based integration tests with real Tailscale clients to val
 # Check system requirements (always run first)
 go run ./cmd/hi doctor
 
-# Run single test (recommended for development)
-go run ./cmd/hi run "TestName"
+# Run single test with incremental output (recommended for development)
+go run ./cmd/hi run "TestName" --verbose
 
 # Use PostgreSQL for database-heavy tests
-go run ./cmd/hi run "TestName" --postgres
+go run ./cmd/hi run "TestName" --verbose --postgres
 
 # Pattern matching for related tests
-go run ./cmd/hi run "TestPattern*"
+go run ./cmd/hi run "TestPattern*" --verbose
 ```
 
 **Critical Notes**:
