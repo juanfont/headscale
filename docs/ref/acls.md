@@ -65,7 +65,7 @@ servers.
 - billing.internal
 - router.internal
 
-![ACL implementation example](../images/headscale-acl-network.png)
+![ACL implementation example](../assets/images/headscale-acl-network.png)
 
 When [registering the servers](../usage/getting-started.md#register-a-node) we
 will need to add the flag `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user
