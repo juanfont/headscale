@@ -1307,11 +1307,18 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// key was only needed for initial authentication. NodeKey rotation requires validation.
 	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
 
-	// Skip validation only if both the AuthKeyID and NodeKey match (not a rotation).
-	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid() &&
-		existingNodeSameUser.AuthKey().Valid() &&
-		existingNodeSameUser.AuthKeyID().Valid() &&
-		existingNodeSameUser.AuthKeyID().Get() == pak.ID
+	// For existing nodes, skip validation if:
+	// 1. MachineKey matches (cryptographic proof of machine identity)
+	// 2. User matches (from the PAK being used)
+	// 3. Not a NodeKey rotation (rotation requires fresh validation)
+	//
+	// Security: MachineKey is the cryptographic identity. If someone has the MachineKey,
+	// they control the machine. The PAK was only needed to authorize initial join.
+	// We don't check which specific PAK was used originally because:
+	// - Container restarts may use different PAKs (e.g., env var changed)
+	// - Original PAK may be deleted
+	// - MachineKey + User is sufficient to prove this is the same node
+	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid()
 
 	// Check if this is a NodeKey rotation (different NodeKey)
 	isNodeKeyRotation := existsSameUser && existingNodeSameUser.Valid() &&

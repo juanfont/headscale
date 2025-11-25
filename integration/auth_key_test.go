@@ -456,3 +456,124 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 	}
 }
 
+// TestAuthKeyDeleteKey tests Issue #2830: node with deleted auth key should still reconnect.
+// Scenario from user report: "create node, delete the auth key, restart to validate it can connect"
+// Steps:
+// 1. Create node with auth key
+// 2. DELETE the auth key from database (completely remove it)
+// 3. Restart node - should successfully reconnect using MachineKey identity
+func TestAuthKeyDeleteKey(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Create scenario with NO nodes - we'll create the node manually so we can capture the auth key
+	scenario, err := NewScenario(ScenarioSpec{
+		NodesPerUser: 0, // No nodes created automatically
+		Users:        []string{"user1"},
+	})
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("delkey"), hsic.WithTLS(), hsic.WithDERPAsIP())
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Get the user
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+	userID := userMap["user1"].GetId()
+
+	// Create a pre-auth key - we keep the full key string before it gets redacted
+	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
+	require.NoError(t, err)
+	authKeyString := authKey.GetKey()
+	authKeyID := authKey.GetId()
+	t.Logf("Created pre-auth key ID %d: %s", authKeyID, authKeyString)
+
+	// Create a tailscale client and log it in with the auth key
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), authKeyString)
+	require.NoError(t, err)
+
+	// Wait for the node to be registered
+	var user1Nodes []*v1.Node
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		var err error
+		user1Nodes, err = headscale.ListNodes("user1")
+		assert.NoError(c, err)
+		assert.Len(c, user1Nodes, 1)
+	}, 30*time.Second, 500*time.Millisecond, "waiting for node to be registered")
+
+	nodeID := user1Nodes[0].GetId()
+	nodeName := user1Nodes[0].GetName()
+	t.Logf("Node %d (%s) created successfully with auth_key_id=%d", nodeID, nodeName, authKeyID)
+
+	// Verify node is online
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", 120*time.Second)
+
+	// Verify the node has the auth key ID set
+	nodeAuthKeyBefore, err := headscale.Execute([]string{
+		"sqlite3", "/tmp/integration_test_db.sqlite3",
+		fmt.Sprintf("SELECT auth_key_id FROM nodes WHERE id = %d;", nodeID),
+	})
+	require.NoError(t, err)
+	t.Logf("Node auth_key_id before delete: %s", nodeAuthKeyBefore)
+
+	// DELETE the pre-auth key from the database
+	// This simulates the scenario where an admin deletes the auth key record
+	t.Logf("Deleting pre-auth key ID %d from database", authKeyID)
+
+	// First, clear the foreign key reference from the node
+	_, err = headscale.Execute([]string{
+		"sqlite3", "/tmp/integration_test_db.sqlite3",
+		fmt.Sprintf("UPDATE nodes SET auth_key_id = NULL WHERE id = %d;", nodeID),
+	})
+	require.NoError(t, err)
+
+	// Then delete the pre-auth key itself
+	_, err = headscale.Execute([]string{
+		"sqlite3", "/tmp/integration_test_db.sqlite3",
+		fmt.Sprintf("DELETE FROM pre_auth_keys WHERE id = %d;", authKeyID),
+	})
+	require.NoError(t, err)
+	t.Logf("Deleted auth key from database")
+
+	// Verify the node no longer has an auth key reference
+	nodeAuthKeyAfter, err := headscale.Execute([]string{
+		"sqlite3", "/tmp/integration_test_db.sqlite3",
+		fmt.Sprintf("SELECT auth_key_id FROM nodes WHERE id = %d;", nodeID),
+	})
+	require.NoError(t, err)
+	t.Logf("Node auth_key_id after delete: '%s' (should be empty)", nodeAuthKeyAfter)
+
+	// Verify pre-auth key is gone
+	keyCount, err := headscale.Execute([]string{
+		"sqlite3", "/tmp/integration_test_db.sqlite3",
+		fmt.Sprintf("SELECT COUNT(*) FROM pre_auth_keys WHERE id = %d;", authKeyID),
+	})
+	require.NoError(t, err)
+	require.Equal(t, "0\n", keyCount, "Pre-auth key should be deleted")
+
+	// Simulate node restart (down + up)
+	t.Logf("Restarting node after deleting its auth key")
+	err = client.Down()
+	require.NoError(t, err)
+
+	time.Sleep(3 * time.Second)
+
+	err = client.Up()
+	require.NoError(t, err)
+
+	// Verify node comes back online
+	// This will FAIL without the fix because auth key validation will reject deleted key
+	// With the fix, MachineKey identity allows reconnection even with deleted key
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", 120*time.Second)
+
+	t.Logf("✓ Node successfully reconnected after its auth key was deleted")
+}
