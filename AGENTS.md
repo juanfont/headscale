@@ -895,6 +895,133 @@ The tags-as-identity model provides:
 3. **API safety**: Validation prevents invalid ownership states
 4. **Protocol compatibility**: TaggedDevices special user aligns with Tailscale's model
 
+## Logging Patterns
+
+### Incremental Log Event Building
+
+When building log statements with multiple fields, especially with conditional fields, use the **incremental log event pattern** instead of long single-line chains. This improves readability and allows conditional field addition.
+
+**Pattern:**
+
+```go
+// GOOD: Incremental building with conditional fields
+logEvent := log.Debug().
+    Str("node", node.Hostname).
+    Str("machine_key", node.MachineKey.ShortString()).
+    Str("node_key", node.NodeKey.ShortString())
+
+if node.User != nil {
+    logEvent = logEvent.Str("user", node.User.Username())
+} else if node.UserID != nil {
+    logEvent = logEvent.Uint("user_id", *node.UserID)
+} else {
+    logEvent = logEvent.Str("user", "none")
+}
+
+logEvent.Msg("Registering node")
+```
+
+**Key rules:**
+
+1. **Assign chained calls back to the variable**: `logEvent = logEvent.Str(...)` - zerolog methods return a new event, so you must capture the return value
+2. **Use for conditional fields**: When fields depend on runtime conditions, build incrementally
+3. **Use for long log lines**: When a log line exceeds ~100 characters, split it for readability
+4. **Call `.Msg()` at the end**: The final `.Msg()` or `.Msgf()` sends the log event
+
+**Anti-pattern to avoid:**
+
+```go
+// BAD: Long single-line chains are hard to read and can't have conditional fields
+log.Debug().Caller().Str("node", node.Hostname).Str("machine_key", node.MachineKey.ShortString()).Str("node_key", node.NodeKey.ShortString()).Str("user", node.User.Username()).Msg("Registering node")
+
+// BAD: Forgetting to assign the return value (field is lost!)
+logEvent := log.Debug().Str("node", node.Hostname)
+logEvent.Str("user", username)  // This field is LOST - not assigned back
+logEvent.Msg("message")         // Only has "node" field
+```
+
+**When to use this pattern:**
+
+- Log statements with 4+ fields
+- Any log with conditional fields
+- Complex logging in loops or error handling
+- When you need to add context incrementally
+
+**Example from codebase** (`hscontrol/db/node.go`):
+
+```go
+logEvent := log.Debug().
+    Str("node", node.Hostname).
+    Str("machine_key", node.MachineKey.ShortString()).
+    Str("node_key", node.NodeKey.ShortString())
+
+if node.User != nil {
+    logEvent = logEvent.Str("user", node.User.Username())
+} else if node.UserID != nil {
+    logEvent = logEvent.Uint("user_id", *node.UserID)
+} else {
+    logEvent = logEvent.Str("user", "none")
+}
+
+logEvent.Msg("Registering test node")
+```
+
+### Avoiding Log Helper Functions
+
+Prefer the incremental log event pattern over creating helper functions that return multiple logging closures. Helper functions like `logPollFunc` create unnecessary indirection and allocate closures.
+
+**Instead of:**
+
+```go
+// AVOID: Helper function returning closures
+func logPollFunc(req tailcfg.MapRequest, node *types.Node) (
+    func(string, ...any),  // warnf
+    func(string, ...any),  // infof
+    func(string, ...any),  // tracef
+    func(error, string, ...any),  // errf
+) {
+    return func(msg string, a ...any) {
+        log.Warn().
+            Caller().
+            Bool("omitPeers", req.OmitPeers).
+            Bool("stream", req.Stream).
+            Uint64("node.id", node.ID.Uint64()).
+            Str("node.name", node.Hostname).
+            Msgf(msg, a...)
+    },
+    // ... more closures
+}
+```
+
+**Prefer:**
+
+```go
+// BETTER: Build log events inline with shared context
+func (m *mapSession) logTrace(msg string) {
+    log.Trace().
+        Caller().
+        Bool("omitPeers", m.req.OmitPeers).
+        Bool("stream", m.req.Stream).
+        Uint64("node.id", m.node.ID.Uint64()).
+        Str("node.name", m.node.Hostname).
+        Msg(msg)
+}
+
+// Or use incremental building for complex cases
+logEvent := log.Trace().
+    Caller().
+    Bool("omitPeers", m.req.OmitPeers).
+    Bool("stream", m.req.Stream).
+    Uint64("node.id", m.node.ID.Uint64()).
+    Str("node.name", m.node.Hostname)
+
+if additionalContext {
+    logEvent = logEvent.Str("extra", value)
+}
+
+logEvent.Msg("Operation completed")
+```
+
 ## Important Notes
 
 - **Dependencies**: Use `nix develop` for consistent toolchain (Go, buf, protobuf tools, linting)

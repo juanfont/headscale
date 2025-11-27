@@ -11,6 +11,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
 	"tailscale.com/tailcfg"
@@ -42,11 +43,6 @@ type mapSession struct {
 
 	node *types.Node
 	w    http.ResponseWriter
-
-	warnf  func(string, ...any)
-	infof  func(string, ...any)
-	tracef func(string, ...any)
-	errf   func(error, string, ...any)
 }
 
 func (h *Headscale) newMapSession(
@@ -55,8 +51,6 @@ func (h *Headscale) newMapSession(
 	w http.ResponseWriter,
 	node *types.Node,
 ) *mapSession {
-	warnf, infof, tracef, errf := logPollFunc(req, node)
-
 	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
 
 	return &mapSession{
@@ -73,12 +67,6 @@ func (h *Headscale) newMapSession(
 
 		keepAlive:       ka,
 		keepAliveTicker: nil,
-
-		// Loggers
-		warnf:  warnf,
-		infof:  infof,
-		tracef: tracef,
-		errf:   errf,
 	}
 }
 
@@ -366,45 +354,16 @@ func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcf
 	trace.Time("last_seen", *peerChange.LastSeen).Msg("PeerChange received")
 }
 
-func logPollFunc(
-	mapRequest tailcfg.MapRequest,
-	node *types.Node,
-) (func(string, ...any), func(string, ...any), func(string, ...any), func(error, string, ...any)) {
-	return func(msg string, a ...any) {
-			log.Warn().
-				Caller().
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Uint64("node.id", node.ID.Uint64()).
-				Str("node.name", node.Hostname).
-				Msgf(msg, a...)
-		},
-		func(msg string, a ...any) {
-			log.Info().
-				Caller().
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Uint64("node.id", node.ID.Uint64()).
-				Str("node.name", node.Hostname).
-				Msgf(msg, a...)
-		},
-		func(msg string, a ...any) {
-			log.Trace().
-				Caller().
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Uint64("node.id", node.ID.Uint64()).
-				Str("node.name", node.Hostname).
-				Msgf(msg, a...)
-		},
-		func(err error, msg string, a ...any) {
-			log.Error().
-				Caller().
-				Bool("omitPeers", mapRequest.OmitPeers).
-				Bool("stream", mapRequest.Stream).
-				Uint64("node.id", node.ID.Uint64()).
-				Str("node.name", node.Hostname).
-				Err(err).
-				Msgf(msg, a...)
-		}
+// logf adds common mapSession context to a zerolog event.
+func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
+	return event.
+		Bool("omitPeers", m.req.OmitPeers).
+		Bool("stream", m.req.Stream).
+		Uint64("node.id", m.node.ID.Uint64()).
+		Str("node.name", m.node.Hostname)
 }
+
+func (m *mapSession) warnf(msg string, a ...any)            { m.logf(log.Warn().Caller()).Msgf(msg, a...) }
+func (m *mapSession) infof(msg string, a ...any)            { m.logf(log.Info().Caller()).Msgf(msg, a...) }
+func (m *mapSession) tracef(msg string, a ...any)           { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
+func (m *mapSession) errf(err error, msg string, a ...any)  { m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...) }
