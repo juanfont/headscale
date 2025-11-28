@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,10 +117,7 @@ func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.Capabili
 	sort.Strings(majorMinors)
 
 	// Take the latest 10 versions
-	supportedCount := supportedMajorMinorVersions
-	if len(majorMinors) < supportedCount {
-		supportedCount = len(majorMinors)
-	}
+	supportedCount := min(len(majorMinors), supportedMajorMinorVersions)
 
 	if supportedCount == 0 {
 		return fallbackCapVer
@@ -168,9 +166,7 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 	}
 
 	capsSorted := xmaps.Keys(capVarToTailscaleVer)
-	sort.Slice(capsSorted, func(i, j int) bool {
-		return capsSorted[i] < capsSorted[j]
-	})
+	slices.Sort(capsSorted)
 
 	for _, capVer := range capsSorted {
 		fmt.Fprintf(&content, "\t%d:\t\t\"%s\",\n", capVer, capVarToTailscaleVer[capVer])
@@ -223,10 +219,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	sort.Strings(majorMinors)
 
 	// Take latest 10
-	supportedCount := supportedMajorMinorVersions
-	if len(majorMinors) < supportedCount {
-		supportedCount = len(majorMinors)
-	}
+	supportedCount := min(len(majorMinors), supportedMajorMinorVersions)
 
 	latest10 := majorMinors[len(majorMinors)-supportedCount:]
 	latest3 := majorMinors[len(majorMinors)-3:]
@@ -308,9 +301,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	// Add a few more test cases
 	capsSorted := xmaps.Keys(capVerToTailscaleVer)
-	sort.Slice(capsSorted, func(i, j int) bool {
-		return capsSorted[i] < capsSorted[j]
-	})
+	slices.Sort(capsSorted)
 
 	testCount := 0
 	for _, capVer := range capsSorted {

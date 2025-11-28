@@ -872,7 +872,7 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 
 	var wg sync.WaitGroup
 	results := make(chan bool, concurrentOps)
-	for i := 0; i < concurrentOps; i++ {
+	for i := range concurrentOps {
 		wg.Add(1)
 		go func(nodeID int) {
 			defer wg.Done()
@@ -904,7 +904,7 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 
 	var wg sync.WaitGroup
 	results := make(chan bool, ops)
-	for i := 0; i < ops; i++ {
+	for i := range ops {
 		wg.Add(1)
 		go func(nodeID int) {
 			defer wg.Done()
@@ -941,11 +941,12 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines*opsPerGoroutine)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(gid int) {
 			defer wg.Done()
-			for j := 0; j < opsPerGoroutine; j++ {
+
+			for j := range opsPerGoroutine {
 				switch j % 3 {
 				case 0:
 					resultNode, _ := store.UpdateNode(nodeID, func(n *types.Node) {
@@ -993,7 +994,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 	afterStartGoroutines := runtime.NumGoroutine()
 
 	const ops = 100
-	for i := 0; i < ops; i++ {
+	for i := range ops {
 		nodeID := types.NodeID(i + 1)
 		node := createConcurrentTestNode(nodeID, "cleanup-node")
 		resultNode := store.PutNode(node)
@@ -1100,7 +1101,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 
 // --- Edge case: update non-existent node ---
 func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 		store.Start()
 		nonExistentID := types.NodeID(999 + i)
@@ -1124,8 +1125,7 @@ func BenchmarkNodeStoreAllocations(b *testing.B) {
 	store.Start()
 	defer store.Stop()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		nodeID := types.NodeID(i + 1)
 		node := createConcurrentTestNode(nodeID, "bench-node")
 		store.PutNode(node)

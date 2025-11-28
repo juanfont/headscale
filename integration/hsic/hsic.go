@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"net/http"
 	"net/netip"
 	"os"
@@ -132,9 +133,7 @@ func WithCustomTLS(cert, key []byte) Option {
 // can be used to override Headscale configuration.
 func WithConfigEnv(configEnv map[string]string) Option {
 	return func(hsic *HeadscaleInContainer) {
-		for key, value := range configEnv {
-			hsic.env[key] = value
-		}
+		maps.Copy(hsic.env, configEnv)
 	}
 }
 

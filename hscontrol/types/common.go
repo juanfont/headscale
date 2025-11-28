@@ -220,10 +220,12 @@ func DefaultBatcherWorkers() int {
 // DefaultBatcherWorkersFor returns the default number of batcher workers for a given CPU count.
 // Default to 3/4 of CPU cores, minimum 1, no maximum.
 func DefaultBatcherWorkersFor(cpuCount int) int {
-	defaultWorkers := (cpuCount * 3) / 4
-	if defaultWorkers < 1 {
-		defaultWorkers = 1
-	}
+	const (
+		workerNumerator   = 3
+		workerDenominator = 4
+	)
+
+	defaultWorkers := max((cpuCount*workerNumerator)/workerDenominator, 1)
 
 	return defaultWorkers
 }

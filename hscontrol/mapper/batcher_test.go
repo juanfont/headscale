@@ -1136,13 +1136,9 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				// First connection
 				ch1 := make(chan *tailcfg.MapResponse, 1)
 
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100))
-				}()
+				})
 
 				// Add real work during connection chaos
 				if i%10 == 0 {
@@ -1152,24 +1148,17 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				// Rapid second connection - should replace ch1
 				ch2 := make(chan *tailcfg.MapResponse, 1)
 
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					time.Sleep(1 * time.Microsecond)
 					batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
-				}()
+				})
 
 				// Remove second connection
-				wg.Add(1)
 
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					time.Sleep(2 * time.Microsecond)
 					batcher.RemoveNode(testNode.n.ID, ch2)
-				}()
+				})
 
 				wg.Wait()
 
@@ -1789,10 +1778,7 @@ func XTestBatcherScalability(t *testing.T) {
 							// This ensures some nodes stay connected to continue receiving updates
 							startIdx := cycle % len(testNodes)
 
-							endIdx := startIdx + len(testNodes)/4
-							if endIdx > len(testNodes) {
-								endIdx = len(testNodes)
-							}
+							endIdx := min(startIdx+len(testNodes)/4, len(testNodes))
 
 							if startIdx >= endIdx {
 								startIdx = 0
@@ -2313,7 +2299,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			receivedCount := 0
 			timeout := time.After(500 * time.Millisecond)
 
-			for i := 0; i < len(allNodes); i++ {
+			for i := range allNodes {
 				select {
 				case update := <-newChannels[i]:
 					if update != nil {

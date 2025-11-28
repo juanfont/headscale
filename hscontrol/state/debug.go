@@ -200,9 +200,9 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 }
 
 // DebugRegistrationCache returns debug information about the registration cache.
-func (s *State) DebugRegistrationCache() map[string]interface{} {
+func (s *State) DebugRegistrationCache() map[string]any {
 	// The cache doesn't expose internal statistics, so we provide basic info
-	result := map[string]interface{}{
+	result := map[string]any{
 		"type":       "zcache",
 		"expiration": registerCacheExpiration.String(),
 		"cleanup":    registerCacheCleanup.String(),

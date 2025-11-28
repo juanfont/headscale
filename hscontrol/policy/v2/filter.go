@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -178,11 +179,8 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 			for _, ips := range resolvedSrcIPs {
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
-					for _, nodeIP := range n.IPs() {
-						if ips.Contains(nodeIP) {
-							n.AppendToIPSet(&srcIPs)
-							break
-						}
+					if slices.ContainsFunc(n.IPs(), ips.Contains) {
+						n.AppendToIPSet(&srcIPs)
 					}
 				}
 			}
@@ -375,11 +373,8 @@ func (pol *Policy) compileSSHPolicy(
 				var filteredSrcIPs netipx.IPSetBuilder
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
-					for _, nodeIP := range n.IPs() {
-						if srcIPs.Contains(nodeIP) {
-							n.AppendToIPSet(&filteredSrcIPs)
-							break // Found this node, move to next
-						}
+					if slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
+						n.AppendToIPSet(&filteredSrcIPs) // Found this node, move to next
 					}
 				}
 
