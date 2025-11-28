@@ -30,10 +30,14 @@ var capVerMinimumTailscaleVersionTests = []struct {
 	expected string
 }{
 	{106, "v1.74.0"},
+<<<<<<< HEAD
 	{97, "v1.68.2"},
+=======
+>>>>>>> 9368fee1 (generate: add new patches (#2921))
 	{102, "v1.70.0"},
 	{104, "v1.72.0"},
 	{109, "v1.78.0"},
+	{113, "v1.80.0"},
 	{9001, ""}, // Test case for a version higher than any in the map
 	{60, ""},   // Test case for a version lower than any in the map
 }
