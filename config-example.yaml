@@ -295,7 +295,8 @@ dns:
 
     # Split DNS (see https://tailscale.com/kb/1054/dns/),
     # a map of domains and which DNS server to use for each.
-    split: {}
+    split:
+      {}
       # foo.bar.com:
       #   - 1.1.1.1
       # darp.headscale.net:
@@ -407,3 +408,14 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+# Advanced performance tuning parameters.
+# The defaults are carefully chosen and should rarely need adjustment.
+# Only modify these if you have identified a specific performance issue.
+#
+# tuning:
+#   # NodeStore write batching configuration.
+#   # The NodeStore batches write operations before rebuilding peer relationships,
+#   # which is computationally expensive. Batching reduces rebuild frequency.
+#   #
+#   # node_store_batch_size: 100
+#   # node_store_batch_timeout: 500ms

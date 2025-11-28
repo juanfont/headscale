@@ -236,7 +236,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "create empty store and add single node",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, allowAllPeersFunc)
+				return NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -276,7 +276,8 @@ func TestNodeStoreOperations(t *testing.T) {
 			setupFunc: func(t *testing.T) *NodeStore {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				initialNodes := types.Nodes{&node1}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -346,7 +347,7 @@ func TestNodeStoreOperations(t *testing.T) {
 				node3 := createTestNode(3, 2, "user2", "node3")
 				initialNodes := types.Nodes{&node1, &node2, &node3}
 
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -405,7 +406,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -443,7 +445,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "test with odd-even peers filtering",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, oddEvenPeersFunc)
+				return NewNodeStore(nil, oddEvenPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -502,7 +504,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -673,7 +676,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -861,7 +865,8 @@ func createConcurrentTestNode(id types.NodeID, hostname string) types.Node {
 // --- Concurrency: concurrent PutNode operations ---
 func TestNodeStoreConcurrentPutNode(t *testing.T) {
 	const concurrentOps = 20
-	store := NewNodeStore(nil, allowAllPeersFunc)
+
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -892,7 +897,8 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 func TestNodeStoreBatchingEfficiency(t *testing.T) {
 	const batchSize = 10
 	const ops = 15 // more than batchSize
-	store := NewNodeStore(nil, allowAllPeersFunc)
+
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -921,7 +927,7 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 
 // --- Race conditions: many goroutines on same node ---
 func TestNodeStoreRaceConditions(t *testing.T) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -979,7 +985,7 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 // --- Resource cleanup: goroutine leak detection ---
 func TestNodeStoreResourceCleanup(t *testing.T) {
 	// initialGoroutines := runtime.NumGoroutine()
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -1011,7 +1017,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 
 // --- Timeout/deadlock: operations complete within reasonable time ---
 func TestNodeStoreOperationTimeout(t *testing.T) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -1095,7 +1101,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 // --- Edge case: update non-existent node ---
 func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
 	for i := 0; i < 10; i++ {
-		store := NewNodeStore(nil, allowAllPeersFunc)
+		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 		store.Start()
 		nonExistentID := types.NodeID(999 + i)
 		updateCallCount := 0
@@ -1114,7 +1120,7 @@ func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
 
 // --- Allocation benchmark ---
 func BenchmarkNodeStoreAllocations(b *testing.B) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 

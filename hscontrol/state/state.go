@@ -40,6 +40,14 @@ const (
 
 	// registerCacheCleanup defines the interval for cleaning up expired cache entries.
 	registerCacheCleanup = time.Minute * 20
+
+	// defaultNodeStoreBatchSize is the default number of write operations to batch
+	// before rebuilding the in-memory node snapshot.
+	defaultNodeStoreBatchSize = 100
+
+	// defaultNodeStoreBatchTimeout is the default maximum time to wait before
+	// processing a partial batch of node operations.
+	defaultNodeStoreBatchTimeout = 500 * time.Millisecond
 )
 
 // ErrUnsupportedPolicyMode is returned for invalid policy modes. Valid modes are "file" and "db".
@@ -132,11 +140,27 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("init policy manager: %w", err)
 	}
 
+	// Apply defaults for NodeStore batch configuration if not set.
+	// This ensures tests that create Config directly (without viper) still work.
+	batchSize := cfg.Tuning.NodeStoreBatchSize
+	if batchSize == 0 {
+		batchSize = defaultNodeStoreBatchSize
+	}
+	batchTimeout := cfg.Tuning.NodeStoreBatchTimeout
+	if batchTimeout == 0 {
+		batchTimeout = defaultNodeStoreBatchTimeout
+	}
+
 	// PolicyManager.BuildPeerMap handles both global and per-node filter complexity.
 	// This moves the complex peer relationship logic into the policy package where it belongs.
-	nodeStore := NewNodeStore(nodes, func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
-		return polMan.BuildPeerMap(views.SliceOf(nodes))
-	})
+	nodeStore := NewNodeStore(
+		nodes,
+		func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+			return polMan.BuildPeerMap(views.SliceOf(nodes))
+		},
+		batchSize,
+		batchTimeout,
+	)
 	nodeStore.Start()
 
 	return &State{
