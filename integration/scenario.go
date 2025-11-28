@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1159,10 +1160,8 @@ func (s *Scenario) FindTailscaleClientByIP(ip netip.Addr) (TailscaleClient, erro
 
 	for _, client := range clients {
 		ips, _ := client.IPs()
-		for _, ip2 := range ips {
-			if ip == ip2 {
-				return client, nil
-			}
+		if slices.Contains(ips, ip) {
+			return client, nil
 		}
 	}
 

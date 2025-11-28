@@ -370,10 +370,10 @@ func boolToInt(b bool) int {
 
 // DockerContext represents Docker context information.
 type DockerContext struct {
-	Name      string                 `json:"Name"`
-	Metadata  map[string]interface{} `json:"Metadata"`
-	Endpoints map[string]interface{} `json:"Endpoints"`
-	Current   bool                   `json:"Current"`
+	Name      string         `json:"Name"`
+	Metadata  map[string]any `json:"Metadata"`
+	Endpoints map[string]any `json:"Endpoints"`
+	Current   bool           `json:"Current"`
 }
 
 // createDockerClient creates a Docker client with context detection.
@@ -388,7 +388,7 @@ func createDockerClient() (*client.Client, error) {
 
 	if contextInfo != nil {
 		if endpoints, ok := contextInfo.Endpoints["docker"]; ok {
-			if endpointMap, ok := endpoints.(map[string]interface{}); ok {
+			if endpointMap, ok := endpoints.(map[string]any); ok {
 				if host, ok := endpointMap["Host"].(string); ok {
 					if runConfig.Verbose {
 						log.Printf("Using Docker host from context '%s': %s", contextInfo.Name, host)
