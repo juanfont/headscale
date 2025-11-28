@@ -1018,18 +1018,10 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	// Tag:server (as source) should be able to reach tag:database (100.64.0.11)
 	// Check destinations in the rules for this node
 	foundDatabaseDest := false
+
 	for _, rule := range taggedRules {
 		// Check if this rule applies to tag:server as source
-		serverIsSource := false
-
-		for _, srcIP := range rule.SrcIPs {
-			if srcIP == "100.64.0.10/32" {
-				serverIsSource = true
-				break
-			}
-		}
-
-		if !serverIsSource {
+		if !slices.Contains(rule.SrcIPs, "100.64.0.10/32") {
 			continue
 		}
 

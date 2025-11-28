@@ -363,7 +363,13 @@ func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
 		Str("node.name", m.node.Hostname)
 }
 
-func (m *mapSession) warnf(msg string, a ...any)            { m.logf(log.Warn().Caller()).Msgf(msg, a...) }
-func (m *mapSession) infof(msg string, a ...any)            { m.logf(log.Info().Caller()).Msgf(msg, a...) }
-func (m *mapSession) tracef(msg string, a ...any)           { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
-func (m *mapSession) errf(err error, msg string, a ...any)  { m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...) }
+//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+func (m *mapSession) infof(msg string, a ...any) { m.logf(log.Info().Caller()).Msgf(msg, a...) }
+
+//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+func (m *mapSession) tracef(msg string, a ...any) { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
+
+//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+func (m *mapSession) errf(err error, msg string, a ...any) {
+	m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...)
+}
