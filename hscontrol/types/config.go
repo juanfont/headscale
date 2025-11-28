@@ -100,6 +100,8 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	NodeLiveness NodeLivenessConfig
 }
 
 type DNSConfig struct {
@@ -291,6 +293,13 @@ type Tuning struct {
 	NodeStoreBatchTimeout time.Duration
 }
 
+type NodeLivenessConfig struct {
+	EnableScheduler bool
+	PingInterval    time.Duration
+	PingJitter      time.Duration
+	PingTimeout     time.Duration
+}
+
 func validatePKCEMethod(method string) error {
 	if method != PKCEMethodPlain && method != PKCEMethodS256 {
 		return errInvalidPKCEMethod
@@ -392,6 +401,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.node_store_batch_timeout", "500ms")
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
+
+	viper.SetDefault("node_liveness.enable_scheduler", false)
+	viper.SetDefault("node_liveness.ping_interval", "2m")
+	viper.SetDefault("node_liveness.ping_jitter", "30s")
+	viper.SetDefault("node_liveness.ping_timeout", "10s")
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -1076,6 +1090,13 @@ func LoadServerConfig() (*Config, error) {
 			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
 			NodeStoreBatchSize:      viper.GetInt("tuning.node_store_batch_size"),
 			NodeStoreBatchTimeout:   viper.GetDuration("tuning.node_store_batch_timeout"),
+		},
+
+		NodeLiveness: NodeLivenessConfig{
+			EnableScheduler: viper.GetBool("node_liveness.enable_scheduler"),
+			PingInterval:    viper.GetDuration("node_liveness.ping_interval"),
+			PingJitter:      viper.GetDuration("node_liveness.ping_jitter"),
+			PingTimeout:     viper.GetDuration("node_liveness.ping_timeout"),
 		},
 	}, nil
 }

@@ -104,6 +104,8 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// get the node to ensure that the MachineKey matches the Node setting up the
 	// connection.
 	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
+	router.HandleFunc("/machine/ping-response/{request_id}", noiseServer.NoisePingResponseHandler).
+		Methods(http.MethodPost)
 
 	noiseServer.httpBaseConfig = &http.Server{
 		Handler:           router,
@@ -212,7 +214,9 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 		return
 	}
 
-	nv, err := ns.getAndValidateNode(mapRequest)
+	nv, err := ns.getAndValidateNode(func() (types.NodeView, bool) {
+		return ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+	})
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -292,10 +296,80 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	}
 }
 
+// NoisePingResponseHandler handles ping responses over the Noise protocol.
+// This provides authentication via the Noise MachineKey before processing the response.
+func (ns *noiseServer) NoisePingResponseHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	vars := mux.Vars(req)
+	requestID := vars["request_id"]
+
+	log.Debug().
+		Str("request_id", requestID).
+		Str("machine_key", ns.machineKey.ShortString()).
+		Msg("Received ping response over Noise protocol")
+
+	// Read response body
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "cannot read request body", err))
+		return
+	}
+
+	var pingResponse tailcfg.PingResponse
+	if err := json.Unmarshal(body, &pingResponse); err != nil {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid JSON", err))
+		return
+	}
+
+	// Verify that the node matching the request ID matches the machine key
+	// of the Noise connection.
+	pingReq, ok := ns.headscale.pingManager.GetRequest(requestID)
+	if !ok {
+		httpError(writer, NewHTTPError(http.StatusNotFound, "request not found or expired", nil))
+		return
+	}
+
+	_, err = ns.getAndValidateNode(func() (types.NodeView, bool) {
+		return ns.headscale.state.GetNodeByID(pingReq.NodeID)
+	})
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	// Handle the response using the ping manager
+	if err := ns.headscale.pingManager.HandleResponse(requestID, &pingResponse); err != nil {
+		log.Warn().
+			Err(err).
+			Str("request_id", requestID).
+			Str("machine_key", ns.machineKey.ShortString()).
+			Msg("Failed to handle ping response")
+		httpError(writer, NewHTTPError(http.StatusNotFound, "request not found or expired", err))
+		return
+	}
+
+	log.Info().
+		Str("request_id", requestID).
+		Str("type", string(pingResponse.Type)).
+		Str("node_ip", pingResponse.NodeIP).
+		Str("machine_key", ns.machineKey.ShortString()).
+		Msg("Successfully processed ping response via Noise")
+
+	// Return success
+	writer.WriteHeader(http.StatusOK)
+	json.NewEncoder(writer).Encode(map[string]interface{}{
+		"success": true,
+	})
+}
+
 // getAndValidateNode retrieves the node from the database using the NodeKey
 // and validates that it matches the MachineKey from the Noise session.
-func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.NodeView, error) {
-	nv, ok := ns.headscale.state.GetNodeByNodeKey(mapRequest.NodeKey)
+func (ns *noiseServer) getAndValidateNode(
+	fetcher func() (types.NodeView, bool),
+) (types.NodeView, error) {
+	nv, ok := fetcher()
 	if !ok {
 		return types.NodeView{}, NewHTTPError(http.StatusNotFound, "node not found", nil)
 	}

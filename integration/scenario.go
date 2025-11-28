@@ -160,10 +160,14 @@ func (s *Scenario) prefixedNetworkName(name string) string {
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
 func NewScenario(spec ScenarioSpec) (*Scenario, error) {
-	pool, err := dockertest.NewPool("")
+	// dockertest.NewPool("") defaults to an old client version (1.25) which is rejected by newer Docker daemons.
+	// We must force a newer version (1.44) compatible with the host Docker environment.
+	// We construct the client manually using the exposed docker package from dockertest.
+	client, err := docker.NewVersionedClient("unix:///var/run/docker.sock", "1.44")
 	if err != nil {
 		return nil, fmt.Errorf("could not connect to docker: %w", err)
 	}
+	pool := &dockertest.Pool{Client: client}
 
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime

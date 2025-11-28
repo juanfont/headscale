@@ -119,3 +119,19 @@ message DebugCreateNodeResponse { Node node = 1; }
 message BackfillNodeIPsRequest { bool confirmed = 1; }
 
 message BackfillNodeIPsResponse { repeated string changes = 1; }
+
+message PingNodeRequest {
+  uint64 node_id = 1;
+  string target_ip = 2; // IP address to ping (optional, uses node's primary IP if empty)
+}
+
+message PingNodeResponse {
+  bool success = 1;
+  string ping_type = 2; // Type of ping performed (e.g., "disco", "TSMP", "c2n")
+  string node_ip = 3; // IP of the responding node
+  int64 latency_ms = 4; // Latency in milliseconds
+  string error = 5; // Error message if ping failed
+  string endpoint = 6; // Endpoint information from the ping
+  int32 derp_region_id = 7; // DERP region ID if applicable
+  bool is_local = 8; // Whether the ping was local (not through DERP)
+}
