@@ -15,7 +15,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 		{
 			name: "empty nodestore",
 			setupFn: func() *NodeStore {
-				return NewNodeStore(nil, allowAllPeersFunc)
+				return NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			contains: []string{
 				"=== NodeStore Debug Information ===",
@@ -30,7 +30,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 2, "user2", "node2")
 
-				store := NewNodeStore(nil, allowAllPeersFunc)
+				store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 				store.Start()
 
 				_ = store.PutNode(node1)
@@ -66,7 +66,7 @@ func TestNodeStoreDebugString(t *testing.T) {
 
 func TestDebugRegistrationCache(t *testing.T) {
 	// Create a minimal NodeStore for testing debug methods
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 
 	debugStr := store.DebugString()
 

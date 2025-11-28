@@ -19,7 +19,7 @@ func TestEndpointStorageInNodeStore(t *testing.T) {
 	node2 := createTestNode(2, 1, "test-user", "node2")
 
 	// Create NodeStore with allow-all peers function
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 
 	store.Start()
 	defer store.Stop()

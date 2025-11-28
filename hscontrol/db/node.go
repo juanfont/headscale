@@ -749,15 +749,25 @@ func (hsdb *HSDatabase) allocateTestIPs(nodeID types.NodeID) (*netip.Addr, *neti
 	}
 
 	// Use simple sequential allocation for tests
-	// IPv4: 100.64.0.x (where x is nodeID)
-	// IPv6: fd7a:115c:a1e0::x (where x is nodeID)
+	// IPv4: 100.64.x.y (where x = nodeID/256, y = nodeID%256)
+	// IPv6: fd7a:115c:a1e0::x:y (where x = high byte, y = low byte)
+	// This supports up to 65535 nodes
+	const (
+		maxTestNodes    = 65535
+		ipv4ByteDivisor = 256
+	)
 
-	if nodeID > 254 {
-		return nil, nil, fmt.Errorf("test node ID %d too large for simple IP allocation", nodeID)
+	if nodeID > maxTestNodes {
+		return nil, nil, ErrCouldNotAllocateIP
 	}
 
-	ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(nodeID)})
-	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(nodeID)})
+	// Split nodeID into high and low bytes for IPv4 (100.64.high.low)
+	highByte := byte(nodeID / ipv4ByteDivisor)
+	lowByte := byte(nodeID % ipv4ByteDivisor)
+	ipv4 := netip.AddrFrom4([4]byte{100, 64, highByte, lowByte})
+
+	// For IPv6, use the last two bytes of the address (fd7a:115c:a1e0::high:low)
+	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, highByte, lowByte})
 
 	return &ipv4, &ipv6, nil
 }
