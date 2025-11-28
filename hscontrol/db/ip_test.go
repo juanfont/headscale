@@ -95,7 +95,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -123,7 +123,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.2"),
 					IPv6: nap("fd7a:115c:a1e0::2"),
 				})
@@ -309,7 +309,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 				})
 
@@ -334,7 +334,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
 
@@ -359,7 +359,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -383,7 +383,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -407,19 +407,19 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.2"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.3"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.4"),
 				})
 

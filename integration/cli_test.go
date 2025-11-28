@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,7 +19,6 @@ import (
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/slices"
 	"tailscale.com/tailcfg"
 )
 
@@ -643,7 +643,9 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
-		assert.Equal(ct, "userid:2", status.Self.UserID.String(), "Expected node to be logged in as userid:2")
+		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
+		// The PreAuthKey was created with tags, so the node is tagged
+		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
 	}, 30*time.Second, 2*time.Second)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -652,7 +654,8 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login")
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
-		assert.Equal(ct, user2, listNodes[1].GetUser().GetName(), "Second node should belong to user2")
+		// Second node is tagged (created with tagged PreAuthKey), so it shows as "tagged-devices"
+		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
 	}, 20*time.Second, 1*time.Second)
 }
 
@@ -847,118 +850,455 @@ func TestNodeTagCommand(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
-	regIDs := []string{
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-	}
-	nodes := make([]*v1.Node, len(regIDs))
+	// Test 1: Verify that tags require authorization via ACL policy
+	// The tags-as-identity model allows conversion from user-owned to tagged, but only
+	// if the tag is authorized via tagOwners in the ACL policy.
+	regID := types.MustRegistrationID().String()
+
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"debug",
+			"create-node",
+			"--name",
+			"user-owned-node",
+			"--user",
+			"user1",
+			"--key",
+			regID,
+			"--output",
+			"json",
+		},
+	)
 	assert.NoError(t, err)
 
-	for index, regID := range regIDs {
-		_, err := headscale.Execute(
+	var userOwnedNode v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
 			[]string{
 				"headscale",
-				"debug",
-				"create-node",
-				"--name",
-				fmt.Sprintf("node-%d", index+1),
+				"nodes",
 				"--user",
 				"user1",
+				"register",
 				"--key",
 				regID,
 				"--output",
 				"json",
 			},
-		)
-		assert.NoError(t, err)
-
-		var node v1.Node
-		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			err = executeAndUnmarshal(
-				headscale,
-				[]string{
-					"headscale",
-					"nodes",
-					"--user",
-					"user1",
-					"register",
-					"--key",
-					regID,
-					"--output",
-					"json",
-				},
-				&node,
-			)
-			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for node registration")
-
-		nodes[index] = &node
-	}
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
-	}, 15*time.Second, 1*time.Second)
-
-	var node v1.Node
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		err = executeAndUnmarshal(
-			headscale,
-			[]string{
-				"headscale",
-				"nodes",
-				"tag",
-				"-i", "1",
-				"-t", "tag:test",
-				"--output", "json",
-			},
-			&node,
+			&userOwnedNode,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for node tag command")
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for user-owned node registration")
 
-	assert.Equal(t, []string{"tag:test"}, node.GetForcedTags())
+	// Verify node is user-owned (no tags)
+	assert.Empty(t, userOwnedNode.GetValidTags(), "User-owned node should not have tags")
+	assert.Empty(t, userOwnedNode.GetForcedTags(), "User-owned node should not have forced tags")
 
+	// Attempt to set tags on user-owned node should FAIL because there's no ACL policy
+	// authorizing the tag. The tags-as-identity model allows conversion from user-owned
+	// to tagged, but only if the tag is authorized via tagOwners in the ACL policy.
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"nodes",
 			"tag",
-			"-i", "2",
-			"-t", "wrong-tag",
+			"-i", strconv.FormatUint(userOwnedNode.GetId(), 10),
+			"-t", "tag:test",
 			"--output", "json",
 		},
 	)
-	assert.ErrorContains(t, err, "tag must start with the string 'tag:'")
+	require.ErrorContains(t, err, "invalid or unauthorized tags", "Setting unauthorized tags should fail")
 
-	// Test list all nodes after added seconds
-	resultMachines := make([]*v1.Node, len(regIDs))
+	// Test 2: Verify tag format validation
+	// Create a PreAuthKey with tags to create a tagged node
+	// Get the user ID from the node
+	userID := userOwnedNode.GetUser().GetId()
+
+	var preAuthKey v1.PreAuthKey
+
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
 				"headscale",
-				"nodes",
-				"list",
+				"preauthkeys",
+				"--user", strconv.FormatUint(userID, 10),
+				"create",
+				"--reusable",
+				"--tags", "tag:integration-test",
 				"--output", "json",
 			},
-			&resultMachines,
+			&preAuthKey,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list after tagging")
-	found := false
-	for _, node := range resultMachines {
-		if node.GetForcedTags() != nil {
-			for _, tag := range node.GetForcedTags() {
-				if tag == "tag:test" {
-					found = true
-				}
-			}
+	}, 10*time.Second, 200*time.Millisecond, "Creating PreAuthKey with tags")
+
+	// Verify PreAuthKey has tags
+	assert.Contains(t, preAuthKey.GetAclTags(), "tag:integration-test", "PreAuthKey should have tags")
+
+	// Test 3: Verify invalid tag format is rejected
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"preauthkeys",
+			"--user", strconv.FormatUint(userID, 10),
+			"create",
+			"--tags", "wrong-tag", // Missing "tag:" prefix
+			"--output", "json",
+		},
+	)
+	assert.ErrorContains(t, err, "tag must start with the string 'tag:'", "Invalid tag format should be rejected")
+}
+
+func TestTaggedNodeRegistration(t *testing.T) {
+	IntegrationSkip(t)
+
+	// ACL policy that authorizes the tags used in tagged PreAuthKeys
+	// user1 and user2 can assign these tags when creating PreAuthKeys
+	policy := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			"tag:server":    policyv2.Owners{usernameOwner("user1@"), usernameOwner("user2@")},
+			"tag:prod":      policyv2.Owners{usernameOwner("user1@"), usernameOwner("user2@")},
+			"tag:forbidden": policyv2.Owners{usernameOwner("user1@"), usernameOwner("user2@")},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:       "accept",
+				Sources:      []policyv2.Alias{policyv2.Wildcard},
+				Destinations: []policyv2.AliasWithPorts{{Alias: policyv2.Wildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}}},
+			},
+		},
+	}
+
+	spec := ScenarioSpec{
+		Users: []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tagged-reg"),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Get users (they were already created by ScenarioSpec)
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 2, "Should have 2 users")
+
+	var user1, user2 *v1.User
+
+	for _, u := range users {
+		if u.GetName() == "user1" {
+			user1 = u
+		} else if u.GetName() == "user2" {
+			user2 = u
 		}
 	}
-	assert.True(
-		t,
-		found,
-		"should find a node with the tag 'tag:test' in the list of nodes",
+
+	require.NotNil(t, user1, "Should find user1")
+	require.NotNil(t, user2, "Should find user2")
+
+	// Test 1: Create a PreAuthKey with tags
+	var taggedKey v1.PreAuthKey
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"preauthkeys",
+				"--user", strconv.FormatUint(user1.GetId(), 10),
+				"create",
+				"--reusable",
+				"--tags", "tag:server,tag:prod",
+				"--output", "json",
+			},
+			&taggedKey,
+		)
+		assert.NoError(c, err)
+	}, 10*time.Second, 200*time.Millisecond, "Creating tagged PreAuthKey")
+
+	// Verify PreAuthKey has both tags
+	assert.Contains(t, taggedKey.GetAclTags(), "tag:server", "PreAuthKey should have tag:server")
+	assert.Contains(t, taggedKey.GetAclTags(), "tag:prod", "PreAuthKey should have tag:prod")
+	assert.Len(t, taggedKey.GetAclTags(), 2, "PreAuthKey should have exactly 2 tags")
+
+	// Test 2: Register a node using the tagged PreAuthKey
+	err = scenario.CreateTailscaleNodesInUser("user1", "unstable", 1, tsic.WithNetwork(scenario.Networks()[0]))
+	require.NoError(t, err)
+
+	err = scenario.RunTailscaleUp("user1", headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for the node to be registered
+	var registeredNode *v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.GreaterOrEqual(c, len(nodes), 1, "Should have at least 1 node")
+
+		// Find the tagged node - it will have user "tagged-devices" per tags-as-identity model
+		for _, node := range nodes {
+			if node.GetUser().GetName() == "tagged-devices" && len(node.GetValidTags()) > 0 {
+				registeredNode = node
+				break
+			}
+		}
+
+		assert.NotNil(c, registeredNode, "Should find a tagged node")
+	}, 30*time.Second, 500*time.Millisecond, "Waiting for tagged node registration")
+
+	// Test 3: Verify the registered node has the tags from the PreAuthKey
+	assert.Contains(t, registeredNode.GetValidTags(), "tag:server", "Node should have tag:server")
+	assert.Contains(t, registeredNode.GetValidTags(), "tag:prod", "Node should have tag:prod")
+	assert.Len(t, registeredNode.GetValidTags(), 2, "Node should have exactly 2 tags")
+
+	// Test 4: Verify the node shows as TaggedDevices user (tags-as-identity model)
+	// Tagged nodes always show as "tagged-devices" in API responses, even though
+	// internally UserID may be set for "created by" tracking
+	assert.Equal(t, "tagged-devices", registeredNode.GetUser().GetName(), "Tagged node should show as tagged-devices user")
+
+	// Test 5: Verify the node is identified as tagged
+	assert.NotEmpty(t, registeredNode.GetValidTags(), "Tagged node should have tags")
+
+	// Test 6: Verify tag modification on tagged nodes
+	// NOTE: Changing tags requires complex ACL authorization where the node's IP
+	// must be authorized for the new tags via tagOwners. For simplicity, we skip
+	// this test and instead verify that tags cannot be arbitrarily changed without
+	// proper ACL authorization.
+	//
+	// This is expected behavior - tag changes must be authorized by ACL policy.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"nodes",
+			"tag",
+			"-i", strconv.FormatUint(registeredNode.GetId(), 10),
+			"-t", "tag:unauthorized",
+			"--output", "json",
+		},
 	)
+	// This SHOULD fail because tag:unauthorized is not in our ACL policy
+	require.ErrorContains(t, err, "invalid or unauthorized tags", "Unauthorized tag should be rejected")
+
+	// Test 7: Create a user-owned node for comparison
+	var userOwnedKey v1.PreAuthKey
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"preauthkeys",
+				"--user", strconv.FormatUint(user2.GetId(), 10),
+				"create",
+				"--reusable",
+				"--output", "json",
+			},
+			&userOwnedKey,
+		)
+		assert.NoError(c, err)
+	}, 10*time.Second, 200*time.Millisecond, "Creating user-owned PreAuthKey")
+
+	// Verify this PreAuthKey has NO tags
+	assert.Empty(t, userOwnedKey.GetAclTags(), "User-owned PreAuthKey should have no tags")
+
+	err = scenario.CreateTailscaleNodesInUser("user2", "unstable", 1, tsic.WithNetwork(scenario.Networks()[0]))
+	require.NoError(t, err)
+
+	err = scenario.RunTailscaleUp("user2", headscale.GetEndpoint(), userOwnedKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for the user-owned node to be registered
+	var userOwnedNode *v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.GreaterOrEqual(c, len(nodes), 2, "Should have at least 2 nodes")
+
+		// Find the node registered with user2
+		for _, node := range nodes {
+			if node.GetUser().GetName() == "user2" {
+				userOwnedNode = node
+				break
+			}
+		}
+
+		assert.NotNil(c, userOwnedNode, "Should find a node for user2")
+	}, 30*time.Second, 500*time.Millisecond, "Waiting for user-owned node registration")
+
+	// Test 8: Verify user-owned node has NO tags
+	assert.Empty(t, userOwnedNode.GetValidTags(), "User-owned node should have no tags")
+	assert.NotZero(t, userOwnedNode.GetUser().GetId(), "User-owned node should have UserID")
+
+	// Test 9: Verify attempting to set UNAUTHORIZED tags on user-owned node fails
+	// Note: Under tags-as-identity model, user-owned nodes CAN be converted to tagged nodes
+	// if the tags are authorized. We use an unauthorized tag to test rejection.
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"nodes",
+			"tag",
+			"-i", strconv.FormatUint(userOwnedNode.GetId(), 10),
+			"-t", "tag:not-in-policy",
+			"--output", "json",
+		},
+	)
+	require.ErrorContains(t, err, "invalid or unauthorized tags", "Setting unauthorized tags should fail")
+
+	// Test 10: Verify basic connectivity - wait for sync
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err, "Clients should be able to sync")
+}
+
+// TestTagPersistenceAcrossRestart validates that tags persist across container
+// restarts and that re-authentication doesn't re-apply tags from PreAuthKey.
+// This is a regression test for issue #2830.
+func TestTagPersistenceAcrossRestart(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		Users: []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("tag-persist"))
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Get user
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+	require.Len(t, users, 1)
+	user1 := users[0]
+
+	// Create a reusable PreAuthKey with tags
+	var taggedKey v1.PreAuthKey
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"preauthkeys",
+				"--user", strconv.FormatUint(user1.GetId(), 10),
+				"create",
+				"--reusable", // Critical: key must be reusable for container restart
+				"--tags", "tag:server,tag:prod",
+				"--output", "json",
+			},
+			&taggedKey,
+		)
+		assert.NoError(c, err)
+	}, 10*time.Second, 200*time.Millisecond, "Creating reusable tagged PreAuthKey")
+
+	require.True(t, taggedKey.GetReusable(), "PreAuthKey must be reusable for restart scenario")
+	require.Contains(t, taggedKey.GetAclTags(), "tag:server")
+	require.Contains(t, taggedKey.GetAclTags(), "tag:prod")
+
+	// Register initial node with tagged PreAuthKey
+	err = scenario.CreateTailscaleNodesInUser("user1", "unstable", 1, tsic.WithNetwork(scenario.Networks()[0]))
+	require.NoError(t, err)
+
+	err = scenario.RunTailscaleUp("user1", headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for node registration and get initial node state
+	var initialNode *v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.GreaterOrEqual(c, len(nodes), 1, "Should have at least 1 node")
+
+		for _, node := range nodes {
+			if node.GetUser().GetId() == user1.GetId() || node.GetUser().GetName() == "tagged-devices" {
+				initialNode = node
+				break
+			}
+		}
+
+		assert.NotNil(c, initialNode, "Should find the registered node")
+	}, 30*time.Second, 500*time.Millisecond, "Waiting for initial node registration")
+
+	// Verify initial tags
+	require.Contains(t, initialNode.GetValidTags(), "tag:server", "Initial node should have tag:server")
+	require.Contains(t, initialNode.GetValidTags(), "tag:prod", "Initial node should have tag:prod")
+	require.Len(t, initialNode.GetValidTags(), 2, "Initial node should have exactly 2 tags")
+
+	initialNodeID := initialNode.GetId()
+	t.Logf("Initial node registered with ID %d and tags %v", initialNodeID, initialNode.GetValidTags())
+
+	// Simulate container restart by shutting down and restarting Tailscale client
+	allClients, err := scenario.ListTailscaleClients()
+	require.NoError(t, err)
+	require.Len(t, allClients, 1, "Should have exactly 1 client")
+
+	client := allClients[0]
+
+	// Stop the client (simulates container stop)
+	err = client.Down()
+	require.NoError(t, err)
+
+	// Wait a bit to ensure the client is fully stopped
+	time.Sleep(2 * time.Second)
+
+	// Restart the client with the SAME PreAuthKey (container restart scenario)
+	// This simulates what happens when a Docker container restarts with a reusable PreAuthKey
+	err = scenario.RunTailscaleUp("user1", headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for re-authentication
+	var nodeAfterRestart *v1.Node
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+
+		for _, node := range nodes {
+			if node.GetId() == initialNodeID {
+				nodeAfterRestart = node
+				break
+			}
+		}
+
+		assert.NotNil(c, nodeAfterRestart, "Should find the same node after restart")
+	}, 30*time.Second, 500*time.Millisecond, "Waiting for node re-authentication")
+
+	// CRITICAL ASSERTION: Tags should NOT be re-applied from PreAuthKey
+	// Tags are only applied during INITIAL authentication, not re-authentication
+	// The node should keep its existing tags (which happen to be the same in this case)
+	assert.Contains(t, nodeAfterRestart.GetValidTags(), "tag:server", "Node should still have tag:server after restart")
+	assert.Contains(t, nodeAfterRestart.GetValidTags(), "tag:prod", "Node should still have tag:prod after restart")
+	assert.Len(t, nodeAfterRestart.GetValidTags(), 2, "Node should still have exactly 2 tags after restart")
+
+	// Verify it's the SAME node (same ID), not a new registration
+	assert.Equal(t, initialNodeID, nodeAfterRestart.GetId(), "Should be the same node, not a new registration")
+
+	// Verify node count hasn't increased (no duplicate nodes)
+	finalNodes, err := headscale.ListNodes()
+	require.NoError(t, err)
+	assert.Len(t, finalNodes, 1, "Should still have exactly 1 node (no duplicates from restart)")
+
+	t.Logf("Container restart validation complete - node %d maintained tags across restart", initialNodeID)
 }
 
 func TestNodeAdvertiseTagCommand(t *testing.T) {

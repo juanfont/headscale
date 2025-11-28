@@ -231,8 +231,7 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 		name     string
 		dbPath   string
 		wantFunc func(*testing.T, *HSDatabase)
-	}{
-	}
+	}{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
