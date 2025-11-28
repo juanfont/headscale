@@ -327,16 +327,52 @@ func New(
 		if err != nil {
 			// Try to get more detailed build output
 			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
-			buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
-			if buildOutput != "" {
+
+			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
+
+			const maxLines = 100
+
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
+
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				// The diagnostic build also failed - this is the real error
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDetailed build output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
 					hostname,
 					version,
 					err,
-					buildOutput,
+					maxLines,
+					relevantOutput,
 				)
 			}
+
+			if buildOutput != "" {
+				// Build succeeded on retry but container creation still failed
+				return nil, fmt.Errorf(
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+					hostname,
+					version,
+					err,
+					maxLines,
+					relevantOutput,
+				)
+			}
+
+			// No output at all - diagnostic build command may have failed
+			return nil, fmt.Errorf(
+				"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
+				hostname,
+				version,
+				err,
+			)
 		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
@@ -580,7 +616,6 @@ func (t *TailscaleInContainer) Restart() error {
 		}
 		return struct{}{}, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
-
 	if err != nil {
 		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
 	}
