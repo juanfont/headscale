@@ -46,7 +46,7 @@ theme:
         icon: material/brightness-auto
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
-      scheme: default 
+      scheme: default
       primary: white
       toggle:
         icon: material/brightness-7
