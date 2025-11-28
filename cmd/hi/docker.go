@@ -202,6 +202,18 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
+
+	// Pass through all HEADSCALE_INTEGRATION_* environment variables
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
+			// Skip the ones we already set explicitly
+			if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_POSTGRES=") ||
+				strings.HasPrefix(e, "HEADSCALE_INTEGRATION_RUN_ID=") {
+				continue
+			}
+			env = append(env, e)
+		}
+	}
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
