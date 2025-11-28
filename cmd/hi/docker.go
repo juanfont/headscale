@@ -154,6 +154,19 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		if cleanErr := cleanupAfterTest(ctx, cli, resp.ID); cleanErr != nil && config.Verbose {
 			log.Printf("Warning: post-test cleanup failed: %v", cleanErr)
 		}
+
+		// Clean up artifacts from successful tests to save disk space in CI
+		if exitCode == 0 {
+			if config.Verbose {
+				log.Printf("Test succeeded, cleaning up artifacts to save disk space...")
+			}
+
+			cleanErr := cleanupSuccessfulTestArtifacts(logsDir, config.Verbose)
+
+			if cleanErr != nil && config.Verbose {
+				log.Printf("Warning: artifact cleanup failed: %v", cleanErr)
+			}
+		}
 	}
 
 	if err != nil {
