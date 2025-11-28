@@ -5,8 +5,6 @@ package capver
 import "tailscale.com/tailcfg"
 
 var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
-	"v1.68.1": 97,
-	"v1.68.2": 97,
 	"v1.70.0": 102,
 	"v1.72.0": 104,
 	"v1.72.1": 104,
@@ -35,10 +33,11 @@ var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
 	"v1.90.3": 130,
 	"v1.90.4": 130,
 	"v1.90.6": 130,
+	"v1.90.8": 130,
+	"v1.90.9": 130,
 }
 
 var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
-	97:  "v1.68.1",
 	102: "v1.70.0",
 	104: "v1.72.0",
 	106: "v1.74.0",
