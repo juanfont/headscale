@@ -729,34 +729,6 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	return s.persistNodeToDB(n)
 }
 
-// AssignNodeToUser transfers a node to a different user.
-func (s *State) AssignNodeToUser(nodeID types.NodeID, userID types.UserID) (types.NodeView, change.ChangeSet, error) {
-	// Validate that both node and user exist
-	_, found := s.GetNodeByID(nodeID)
-	if !found {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found: %d", nodeID)
-	}
-
-	user, err := s.GetUserByID(userID)
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("user not found: %w", err)
-	}
-
-	// Update NodeStore before database to ensure consistency. The NodeStore update is
-	// blocking and will be the source of truth for the batcher. The database update must
-	// make the exact same change.
-	n, ok := s.nodeStore.UpdateNode(nodeID, func(n *types.Node) {
-		n.User = *user
-		n.UserID = uint(userID)
-	})
-
-	if !ok {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
-	}
-
-	return s.persistNodeToDB(n)
-}
-
 // BackfillNodeIPs assigns IP addresses to nodes that don't have them.
 func (s *State) BackfillNodeIPs() ([]string, error) {
 	changes, err := s.db.BackfillNodeIPs(s.ipAlloc)
