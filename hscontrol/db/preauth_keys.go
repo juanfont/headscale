@@ -126,9 +126,18 @@ func GetPreAuthKey(tx *gorm.DB, key string) (*types.PreAuthKey, error) {
 }
 
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
-// does not exist.
+// does not exist. This also clears the auth_key_id on any nodes that reference
+// this key.
 func DestroyPreAuthKey(tx *gorm.DB, pak types.PreAuthKey) error {
 	return tx.Transaction(func(db *gorm.DB) error {
+		// First, clear the foreign key reference on any nodes using this key
+		if err := db.Model(&types.Node{}).
+			Where("auth_key_id = ?", pak.ID).
+			Update("auth_key_id", nil).Error; err != nil {
+			return fmt.Errorf("failed to clear auth_key_id on nodes: %w", err)
+		}
+
+		// Then delete the pre-auth key
 		if result := db.Unscoped().Delete(pak); result.Error != nil {
 			return result.Error
 		}
@@ -140,6 +149,12 @@ func DestroyPreAuthKey(tx *gorm.DB, pak types.PreAuthKey) error {
 func (hsdb *HSDatabase) ExpirePreAuthKey(k *types.PreAuthKey) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return ExpirePreAuthKey(tx, k)
+	})
+}
+
+func (hsdb *HSDatabase) DeletePreAuthKey(k *types.PreAuthKey) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return DestroyPreAuthKey(tx, *k)
 	})
 }
 
