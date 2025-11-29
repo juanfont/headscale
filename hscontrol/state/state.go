@@ -77,6 +77,17 @@ type State struct {
 	primaryRoutes *routes.PrimaryRoutes
 }
 
+// PendingRegistration represents a pending node registration entry in memory.
+// It is populated from the registrationCache and used by API/gRPC layers.
+// Note: This is an in-memory view only; entries expire automatically from the cache.
+type PendingRegistration struct {
+	ID         types.RegistrationID
+	Hostname   string
+	MachineKey string
+	NodeKey    string
+	Expiry     *time.Time
+}
+
 // NewState creates and initializes a new State instance, setting up the database,
 // IP allocator, DERP map, policy manager, and loading existing users and nodes.
 func NewState(cfg *types.Config) (*State, error) {
@@ -1017,6 +1028,36 @@ func (s *State) GetRegistrationCacheEntry(id types.RegistrationID) (*types.Regis
 // SetRegistrationCacheEntry stores a node registration in cache.
 func (s *State) SetRegistrationCacheEntry(id types.RegistrationID, entry types.RegisterNode) {
 	s.registrationCache.Set(id, entry)
+}
+
+// ListPendingRegistrations returns a snapshot of current pending registrations.
+// It iterates the registrationCache and extracts minimal identifying details.
+func (s *State) ListPendingRegistrations() []PendingRegistration {
+	if s.registrationCache == nil {
+		return nil
+	}
+
+	var regs []PendingRegistration
+
+	// zcache/v2 supports Keys iteration; use Range if available for efficiency.
+	// We use Keys here and then look up to read values.
+	for _, id := range s.registrationCache.Keys() {
+		if rn, ok := s.registrationCache.Get(id); ok {
+			var exp *time.Time
+			if rn.Node.Expiry != nil {
+				exp = rn.Node.Expiry
+			}
+			regs = append(regs, PendingRegistration{
+				ID:         id,
+				Hostname:   rn.Node.Hostname,
+				MachineKey: rn.Node.MachineKey.String(),
+				NodeKey:    rn.Node.NodeKey.String(),
+				Expiry:     exp,
+			})
+		}
+	}
+
+	return regs
 }
 
 // logHostinfoValidation logs warnings when hostinfo is nil or has empty hostname.
