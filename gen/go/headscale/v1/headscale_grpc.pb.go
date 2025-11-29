@@ -35,7 +35,6 @@ const (
 	HeadscaleService_ExpireNode_FullMethodName        = "/headscale.v1.HeadscaleService/ExpireNode"
 	HeadscaleService_RenameNode_FullMethodName        = "/headscale.v1.HeadscaleService/RenameNode"
 	HeadscaleService_ListNodes_FullMethodName         = "/headscale.v1.HeadscaleService/ListNodes"
-	HeadscaleService_MoveNode_FullMethodName          = "/headscale.v1.HeadscaleService/MoveNode"
 	HeadscaleService_BackfillNodeIPs_FullMethodName   = "/headscale.v1.HeadscaleService/BackfillNodeIPs"
 	HeadscaleService_CreateApiKey_FullMethodName      = "/headscale.v1.HeadscaleService/CreateApiKey"
 	HeadscaleService_ExpireApiKey_FullMethodName      = "/headscale.v1.HeadscaleService/ExpireApiKey"
@@ -69,7 +68,6 @@ type HeadscaleServiceClient interface {
 	ExpireNode(ctx context.Context, in *ExpireNodeRequest, opts ...grpc.CallOption) (*ExpireNodeResponse, error)
 	RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error)
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
-	MoveNode(ctx context.Context, in *MoveNodeRequest, opts ...grpc.CallOption) (*MoveNodeResponse, error)
 	BackfillNodeIPs(ctx context.Context, in *BackfillNodeIPsRequest, opts ...grpc.CallOption) (*BackfillNodeIPsResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(ctx context.Context, in *CreateApiKeyRequest, opts ...grpc.CallOption) (*CreateApiKeyResponse, error)
@@ -251,16 +249,6 @@ func (c *headscaleServiceClient) ListNodes(ctx context.Context, in *ListNodesReq
 	return out, nil
 }
 
-func (c *headscaleServiceClient) MoveNode(ctx context.Context, in *MoveNodeRequest, opts ...grpc.CallOption) (*MoveNodeResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MoveNodeResponse)
-	err := c.cc.Invoke(ctx, HeadscaleService_MoveNode_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 func (c *headscaleServiceClient) BackfillNodeIPs(ctx context.Context, in *BackfillNodeIPsRequest, opts ...grpc.CallOption) (*BackfillNodeIPsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BackfillNodeIPsResponse)
@@ -364,7 +352,6 @@ type HeadscaleServiceServer interface {
 	ExpireNode(context.Context, *ExpireNodeRequest) (*ExpireNodeResponse, error)
 	RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error)
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
-	MoveNode(context.Context, *MoveNodeRequest) (*MoveNodeResponse, error)
 	BackfillNodeIPs(context.Context, *BackfillNodeIPsRequest) (*BackfillNodeIPsResponse, error)
 	// --- ApiKeys start ---
 	CreateApiKey(context.Context, *CreateApiKeyRequest) (*CreateApiKeyResponse, error)
@@ -433,9 +420,6 @@ func (UnimplementedHeadscaleServiceServer) RenameNode(context.Context, *RenameNo
 }
 func (UnimplementedHeadscaleServiceServer) ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListNodes not implemented")
-}
-func (UnimplementedHeadscaleServiceServer) MoveNode(context.Context, *MoveNodeRequest) (*MoveNodeResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MoveNode not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) BackfillNodeIPs(context.Context, *BackfillNodeIPsRequest) (*BackfillNodeIPsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method BackfillNodeIPs not implemented")
@@ -770,24 +754,6 @@ func _HeadscaleService_ListNodes_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
-func _HeadscaleService_MoveNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MoveNodeRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(HeadscaleServiceServer).MoveNode(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: HeadscaleService_MoveNode_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HeadscaleServiceServer).MoveNode(ctx, req.(*MoveNodeRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _HeadscaleService_BackfillNodeIPs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(BackfillNodeIPsRequest)
 	if err := dec(in); err != nil {
@@ -1002,10 +968,6 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListNodes",
 			Handler:    _HeadscaleService_ListNodes_Handler,
-		},
-		{
-			MethodName: "MoveNode",
-			Handler:    _HeadscaleService_MoveNode_Handler,
 		},
 		{
 			MethodName: "BackfillNodeIPs",

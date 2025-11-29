@@ -196,26 +196,6 @@ func ListNodesByUser(tx *gorm.DB, uid types.UserID) (types.Nodes, error) {
 	return nodes, nil
 }
 
-// AssignNodeToUser assigns a Node to a user.
-// Note: Validation should be done in the state layer before calling this function.
-func AssignNodeToUser(tx *gorm.DB, nodeID types.NodeID, uid types.UserID) error {
-	// Check if the user exists
-	var userExists bool
-	if err := tx.Model(&types.User{}).Select("count(*) > 0").Where("id = ?", uid).Find(&userExists).Error; err != nil {
-		return fmt.Errorf("failed to check if user exists: %w", err)
-	}
-
-	if !userExists {
-		return ErrUserNotFound
-	}
-
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("user_id", uid).Error; err != nil {
-		return fmt.Errorf("failed to assign node to user: %w", err)
-	}
-
-	return nil
-}
-
 func (hsdb *HSDatabase) CreateUserForTest(name ...string) *types.User {
 	if !testing.Testing() {
 		panic("CreateUserForTest can only be called during tests")

@@ -527,22 +527,6 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	return response
 }
 
-func (api headscaleV1APIServer) MoveNode(
-	ctx context.Context,
-	request *v1.MoveNodeRequest,
-) (*v1.MoveNodeResponse, error) {
-	node, nodeChange, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(kradalby): Ensure the policy is also sent
-	// TODO(kradalby): ensure that both the selfupdate and peer updates are sent
-	api.h.Change(nodeChange)
-
-	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
-}
-
 func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,

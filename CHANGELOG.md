@@ -34,6 +34,10 @@ release.
   - If you are running a version older than 0.25.0, you must upgrade to 0.25.1 first, then upgrade to this release
   - See the [upgrade path documentation](https://headscale.net/stable/about/faq/#what-is-the-recommended-update-path-can-i-skip-multiple-versions-while-updating) for detailed guidance
   - In version 0.29, all migrations before 0.28.0 will also be removed
+- Remove ability to move nodes between users [#2922](https://github.com/juanfont/headscale/pull/2922)
+  - The `headscale nodes move` CLI command has been removed
+  - The `MoveNode` API endpoint has been removed
+  - Nodes are permanently associated with their user at registration time
 
 ### Changes
 
