@@ -3187,6 +3187,94 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 	assert.Error(t, err, "expired pre-auth key should be rejected")
 	assert.Contains(t, err.Error(), "authkey expired", "error should mention key expiration")
 }
+
+// TestIssue2830_ExistingNodeReregistersWithExpiredKey tests the fix for issue #2830.
+// When a node is already registered and the pre-auth key expires, the node should
+// still be able to re-register (e.g., after a container restart) using the same
+// expired key. The key was only needed for initial authentication.
+func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("test-user")
+
+	// Create a valid key (will expire it later)
+	expiry := time.Now().Add(1 * time.Hour)
+	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, &expiry, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Register the node initially (key is still valid)
+	req := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "issue2830-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegister(context.Background(), req, machineKey.Public())
+	require.NoError(t, err, "initial registration should succeed")
+	require.NotNil(t, resp)
+	require.True(t, resp.MachineAuthorized, "node should be authorized after initial registration")
+
+	// Verify node was created
+	allNodes := app.state.ListNodes()
+	require.Equal(t, 1, allNodes.Len())
+	initialNodeID := allNodes.At(0).ID()
+
+	// Now expire the key by updating it in the database to have an expiry in the past.
+	// This simulates the real-world scenario where a key expires after initial registration.
+	pastExpiry := time.Now().Add(-1 * time.Hour)
+	err = app.state.DB().DB.Model(&types.PreAuthKey{}).
+		Where("id = ?", pak.ID).
+		Update("expiration", pastExpiry).Error
+	require.NoError(t, err, "should be able to update key expiration")
+
+	// Reload the key to verify it's now expired
+	expiredPak, err := app.state.GetPreAuthKey(pak.Key)
+	require.NoError(t, err)
+	require.NotNil(t, expiredPak.Expiration)
+	require.True(t, expiredPak.Expiration.Before(time.Now()), "key should be expired")
+
+	// Verify the expired key would fail validation
+	err = expiredPak.Validate()
+	require.Error(t, err, "key should fail validation when expired")
+	require.Contains(t, err.Error(), "authkey expired")
+
+	// Attempt to re-register with the SAME key (now expired).
+	// This should SUCCEED because:
+	// - The node already exists with the same MachineKey and User
+	// - The fix allows existing nodes to re-register even with expired keys
+	// - The key was only needed for initial authentication
+	req2 := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key, // Same key as initial registration (now expired)
+		},
+		NodeKey: nodeKey.Public(), // Same NodeKey as initial registration
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "issue2830-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp2, err := app.handleRegister(context.Background(), req2, machineKey.Public())
+	assert.NoError(t, err, "re-registration should succeed even with expired key for existing node")
+	assert.NotNil(t, resp2)
+	assert.True(t, resp2.MachineAuthorized, "node should remain authorized after re-registration")
+
+	// Verify we still have only one node (re-registered, not created new)
+	allNodes = app.state.ListNodes()
+	require.Equal(t, 1, allNodes.Len(), "should have exactly one node (re-registered)")
+	assert.Equal(t, initialNodeID, allNodes.At(0).ID(), "node ID should not change on re-registration")
+}
+
 // TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey tests that an existing node
 // can re-register using a pre-auth key that's already marked as Used=true, as long as:
 // 1. The node is re-registering with the same MachineKey it originally used
@@ -3196,7 +3284,8 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 //
 // Background: When Docker/Kubernetes containers restart, they keep their persistent state
 // (including the MachineKey), but container entrypoints unconditionally run:
-//   tailscale up --authkey=$TS_AUTHKEY
+//
+//	tailscale up --authkey=$TS_AUTHKEY
 //
 // This caused nodes to be rejected after restart because the pre-auth key was already
 // marked as Used=true from the initial registration. The fix allows re-registration of

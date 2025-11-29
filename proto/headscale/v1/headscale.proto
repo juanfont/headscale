@@ -55,6 +55,13 @@ service HeadscaleService {
     };
   }
 
+  rpc DeletePreAuthKey(DeletePreAuthKeyRequest)
+      returns (DeletePreAuthKeyResponse) {
+    option (google.api.http) = {
+      delete : "/api/v1/preauthkey"
+    };
+  }
+
   rpc ListPreAuthKeys(ListPreAuthKeysRequest)
       returns (ListPreAuthKeysResponse) {
     option (google.api.http) = {

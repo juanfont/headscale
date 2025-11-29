@@ -143,6 +143,12 @@ func (hsdb *HSDatabase) ExpirePreAuthKey(k *types.PreAuthKey) error {
 	})
 }
 
+func (hsdb *HSDatabase) DeletePreAuthKey(k *types.PreAuthKey) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return DestroyPreAuthKey(tx, *k)
+	})
+}
+
 // UsePreAuthKey marks a PreAuthKey as used.
 func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	err := tx.Model(k).Update("used", true).Error

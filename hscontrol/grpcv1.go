@@ -206,6 +206,27 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	return &v1.ExpirePreAuthKeyResponse{}, nil
 }
 
+func (api headscaleV1APIServer) DeletePreAuthKey(
+	ctx context.Context,
+	request *v1.DeletePreAuthKeyRequest,
+) (*v1.DeletePreAuthKeyResponse, error) {
+	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	if uint64(preAuthKey.User.ID) != request.GetUser() {
+		return nil, fmt.Errorf("preauth key does not belong to user")
+	}
+
+	err = api.h.state.DeletePreAuthKey(preAuthKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.DeletePreAuthKeyResponse{}, nil
+}
+
 func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
