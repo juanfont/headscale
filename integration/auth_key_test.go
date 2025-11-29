@@ -517,48 +517,11 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	// Verify node is online
 	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", 120*time.Second)
 
-	// Verify the node has the auth key ID set
-	nodeAuthKeyBefore, err := headscale.Execute([]string{
-		"sqlite3", "/tmp/integration_test_db.sqlite3",
-		fmt.Sprintf("SELECT auth_key_id FROM nodes WHERE id = %d;", nodeID),
-	})
+	// DELETE the pre-auth key using the API
+	t.Logf("Deleting pre-auth key ID %d using API", authKeyID)
+	err = headscale.DeleteAuthKey(userID, authKeyString)
 	require.NoError(t, err)
-	t.Logf("Node auth_key_id before delete: %s", nodeAuthKeyBefore)
-
-	// DELETE the pre-auth key from the database
-	// This simulates the scenario where an admin deletes the auth key record
-	t.Logf("Deleting pre-auth key ID %d from database", authKeyID)
-
-	// First, clear the foreign key reference from the node
-	_, err = headscale.Execute([]string{
-		"sqlite3", "/tmp/integration_test_db.sqlite3",
-		fmt.Sprintf("UPDATE nodes SET auth_key_id = NULL WHERE id = %d;", nodeID),
-	})
-	require.NoError(t, err)
-
-	// Then delete the pre-auth key itself
-	_, err = headscale.Execute([]string{
-		"sqlite3", "/tmp/integration_test_db.sqlite3",
-		fmt.Sprintf("DELETE FROM pre_auth_keys WHERE id = %d;", authKeyID),
-	})
-	require.NoError(t, err)
-	t.Logf("Deleted auth key from database")
-
-	// Verify the node no longer has an auth key reference
-	nodeAuthKeyAfter, err := headscale.Execute([]string{
-		"sqlite3", "/tmp/integration_test_db.sqlite3",
-		fmt.Sprintf("SELECT auth_key_id FROM nodes WHERE id = %d;", nodeID),
-	})
-	require.NoError(t, err)
-	t.Logf("Node auth_key_id after delete: '%s' (should be empty)", nodeAuthKeyAfter)
-
-	// Verify pre-auth key is gone
-	keyCount, err := headscale.Execute([]string{
-		"sqlite3", "/tmp/integration_test_db.sqlite3",
-		fmt.Sprintf("SELECT COUNT(*) FROM pre_auth_keys WHERE id = %d;", authKeyID),
-	})
-	require.NoError(t, err)
-	require.Equal(t, "0\n", keyCount, "Pre-auth key should be deleted")
+	t.Logf("Successfully deleted auth key")
 
 	// Simulate node restart (down + up)
 	t.Logf("Restarting node after deleting its auth key")

@@ -34,6 +34,7 @@ func init() {
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
+	preauthkeysCmd.AddCommand(deletePreAuthKeyCmd)
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().
@@ -230,5 +231,45 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response, "Key expired", output)
+	},
+}
+
+var deletePreAuthKeyCmd = &cobra.Command{
+	Use:     "delete KEY",
+	Short:   "Delete a preauthkey",
+	Aliases: []string{"del", "rm", "d"},
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) < 1 {
+			return errMissingParameter
+		}
+
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+		user, err := cmd.Flags().GetUint64("user")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+		}
+
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		request := &v1.DeletePreAuthKeyRequest{
+			User: user,
+			Key:  args[0],
+		}
+
+		response, err := client.DeletePreAuthKey(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Cannot delete Pre Auth Key: %s\n", err),
+				output,
+			)
+		}
+
+		SuccessOutput(response, "Key deleted", output)
 	},
 }

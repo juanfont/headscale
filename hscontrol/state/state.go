@@ -970,6 +970,11 @@ func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
 	return s.db.ExpirePreAuthKey(preAuthKey)
 }
 
+// DeletePreAuthKey permanently deletes a pre-authentication key.
+func (s *State) DeletePreAuthKey(preAuthKey *types.PreAuthKey) error {
+	return s.db.DeletePreAuthKey(preAuthKey)
+}
+
 // GetRegistrationCacheEntry retrieves a node registration from cache.
 func (s *State) GetRegistrationCacheEntry(id types.RegistrationID) (*types.RegisterNode, bool) {
 	entry, found := s.registrationCache.Get(id)
