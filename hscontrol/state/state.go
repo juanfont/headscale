@@ -827,7 +827,7 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
 // AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
-func (s *State) AutoApproveRoutes(nv types.NodeView) bool {
+func (s *State) AutoApproveRoutes(nv types.NodeView) (change.ChangeSet, error) {
 	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
 	if changed {
 		log.Debug().
@@ -840,7 +840,7 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) bool {
 
 		// Persist the auto-approved routes to database and NodeStore via SetApprovedRoutes
 		// This ensures consistency between database and NodeStore
-		_, _, err := s.SetApprovedRoutes(nv.ID(), approved)
+		_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
 		if err != nil {
 			log.Error().
 				Uint64("node.id", nv.ID().Uint64()).
@@ -848,13 +848,15 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) bool {
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
 
-			return false
+			return change.EmptySet, err
 		}
 
 		log.Info().Uint64("node.id", nv.ID().Uint64()).Str("node.name", nv.Hostname()).Strs("routes.approved", util.PrefixesToString(approved)).Msg("Routes approved")
+
+		return c, nil
 	}
 
-	return changed
+	return change.EmptySet, nil
 }
 
 // GetPolicy retrieves the current policy from the database.
@@ -1637,6 +1639,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	var routeChange bool
 	var hostinfoChanged bool
 	var needsRouteApproval bool
+	var autoApprovedRoutes []netip.Prefix
 	// We need to ensure we update the node as it is in the NodeStore at
 	// the time of the request.
 	updatedNode, ok := s.nodeStore.UpdateNode(id, func(currentNode *types.Node) {
@@ -1661,7 +1664,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		}
 
 		// Calculate route approval before NodeStore update to avoid calling View() inside callback
-		var autoApprovedRoutes []netip.Prefix
 		var hasNewRoutes bool
 		if hi := req.Hostinfo; hi != nil {
 			hasNewRoutes = len(hi.RoutableIPs) > 0
@@ -1727,7 +1729,6 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 					Strs("newApprovedRoutes", util.PrefixesToString(autoApprovedRoutes)).
 					Bool("routeChanged", routeChange).
 					Msg("applying route approval results")
-				currentNode.ApprovedRoutes = autoApprovedRoutes
 			}
 		}
 	})
@@ -1735,6 +1736,24 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	if !ok {
 		return change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", id)
 	}
+
+	if routeChange {
+		log.Debug().
+			Uint64("node.id", id.Uint64()).
+			Strs("autoApprovedRoutes", util.PrefixesToString(autoApprovedRoutes)).
+			Msg("Persisting auto-approved routes from MapRequest")
+
+		// SetApprovedRoutes will update both database and PrimaryRoutes table
+		_, c, err := s.SetApprovedRoutes(id, autoApprovedRoutes)
+		if err != nil {
+			return change.EmptySet, fmt.Errorf("persisting auto-approved routes: %w", err)
+		}
+
+		// If SetApprovedRoutes resulted in a policy change, return it
+		if !c.Empty() {
+			return c, nil
+		}
+	} // Continue with the rest of the processing using the updated node
 
 	nodeRouteChange := change.EmptySet
 
@@ -1750,13 +1769,8 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 			routesChangedButNotApproved = true
 		}
 	}
-	if routeChange {
-		needsRouteUpdate = true
-		log.Debug().
-			Caller().
-			Uint64("node.id", id.Uint64()).
-			Msg("updating routes because approved routes changed")
-	} else if routesChangedButNotApproved {
+
+	if routesChangedButNotApproved {
 		needsRouteUpdate = true
 		log.Debug().
 			Caller().
@@ -1793,25 +1807,26 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	return change.NodeAdded(id), nil
 }
 
-func hostinfoEqual(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {
-	if !oldNode.Valid() && new == nil {
+func hostinfoEqual(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
+	if !oldNode.Valid() && newHI == nil {
 		return true
 	}
-	if !oldNode.Valid() || new == nil {
+
+	if !oldNode.Valid() || newHI == nil {
 		return false
 	}
 	old := oldNode.AsStruct().Hostinfo
 
-	return old.Equal(new)
+	return old.Equal(newHI)
 }
 
-func routesChanged(oldNode types.NodeView, new *tailcfg.Hostinfo) bool {
+func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 	var oldRoutes []netip.Prefix
 	if oldNode.Valid() && oldNode.AsStruct().Hostinfo != nil {
 		oldRoutes = oldNode.AsStruct().Hostinfo.RoutableIPs
 	}
 
-	newRoutes := new.RoutableIPs
+	newRoutes := newHI.RoutableIPs
 	if newRoutes == nil {
 		newRoutes = []netip.Prefix{}
 	}
