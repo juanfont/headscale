@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -2333,6 +2334,12 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						require.NoError(t, err)
 
 						scenario.runHeadscaleRegister("user1", body)
+
+						// Wait for the client to sync with the server after webauth registration.
+						// Unlike authkey login which blocks until complete, webauth registration
+						// happens on the server side and the client needs time to receive the network map.
+						err = routerUsernet1.WaitForRunning(integrationutil.PeerSyncTimeout())
+						require.NoError(t, err, "webauth client failed to reach Running state")
 					} else {
 						userMap, err := headscale.MapUsers()
 						require.NoError(t, err)
