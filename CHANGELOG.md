@@ -53,6 +53,13 @@ release.
     PeerChangedPatch responses instead of full map updates, reducing bandwidth
     and improving performance
 
+## 0.27.2 (2025-xx-xx)
+
+### Changes
+
+- Fix ACL policy not applied to new OIDC nodes until client restart
+  [#2890](https://github.com/juanfont/headscale/pull/2890)
+
 ## 0.27.1 (2025-11-11)
 
 **Minimum supported Tailscale client version: v1.64.0**
