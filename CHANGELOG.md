@@ -10,6 +10,10 @@
 
 - Fix ACL policy not applied to new OIDC nodes until client restart
   [#2890](https://github.com/juanfont/headscale/pull/2890)
+- Fix autogroup:self preventing visibility of nodes matched by other ACL rules
+  [#2882](https://github.com/juanfont/headscale/pull/2882)
+- Fix nodes being rejected after pre-authentication key expiration
+  [#2917](https://github.com/juanfont/headscale/pull/2917)
 
 ## 0.27.1 (2025-11-11)
 
