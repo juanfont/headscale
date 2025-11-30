@@ -47,6 +47,14 @@ type PolicyManager struct {
 	usesAutogroupSelf bool
 }
 
+// filterAndPolicy combines the compiled filter rules with policy content for hashing.
+// This ensures filterHash changes when policy changes, even for autogroup:self where
+// the compiled filter is always empty.
+type filterAndPolicy struct {
+	Filter []tailcfg.FilterRule
+	Policy *Policy
+}
+
 // NewPolicyManager creates a new PolicyManager from a policy file and a list of users and nodes.
 // It returns an error if the policy file is invalid.
 // The policy manager will update the filter rules based on the users and nodes.
@@ -77,14 +85,6 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// Clear the SSH policy map to ensure it's recalculated with the new policy.
-	// TODO(kradalby): This could potentially be optimized by only clearing the
-	// policies for nodes that have changed. Particularly if the only difference is
-	// that nodes has been added or removed.
-	clear(pm.sshPolicyMap)
-	clear(pm.compiledFilterRulesMap)
-	clear(pm.filterRulesMap)
-
 	// Check if policy uses autogroup:self
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
 
@@ -98,7 +98,14 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		return false, fmt.Errorf("compiling filter rules: %w", err)
 	}
 
-	filterHash := deephash.Hash(&filter)
+	// Hash both the compiled filter AND the policy content together.
+	// This ensures filterHash changes when policy changes, even for autogroup:self
+	// where the compiled filter is always empty. This eliminates the need for
+	// a separate policyHash field.
+	filterHash := deephash.Hash(&filterAndPolicy{
+		Filter: filter,
+		Policy: pm.pol,
+	})
 	filterChanged := filterHash != pm.filterHash
 	if filterChanged {
 		log.Debug().
@@ -164,8 +171,27 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.exitSet = exitSet
 	pm.exitSetHash = exitSetHash
 
-	// If neither of the calculated values changed, no need to update nodes
-	if !filterChanged && !tagOwnerChanged && !autoApproveChanged && !exitSetChanged {
+	// Determine if we need to send updates to nodes
+	// filterChanged now includes policy content changes (via combined hash),
+	// so it will detect changes even for autogroup:self where compiled filter is empty
+	needsUpdate := filterChanged || tagOwnerChanged || autoApproveChanged || exitSetChanged
+
+	// Only clear caches if we're actually going to send updates
+	// This prevents clearing caches when nothing changed, which would leave nodes
+	// with stale filters until they reconnect. This is critical for autogroup:self
+	// where even reloading the same policy would clear caches but not send updates.
+	if needsUpdate {
+		// Clear the SSH policy map to ensure it's recalculated with the new policy.
+		// TODO(kradalby): This could potentially be optimized by only clearing the
+		// policies for nodes that have changed. Particularly if the only difference is
+		// that nodes has been added or removed.
+		clear(pm.sshPolicyMap)
+		clear(pm.compiledFilterRulesMap)
+		clear(pm.filterRulesMap)
+	}
+
+	// If nothing changed, no need to update nodes
+	if !needsUpdate {
 		log.Trace().
 			Msg("Policy evaluation detected no changes - all hashes match")
 		return false, nil
@@ -491,9 +517,16 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	// For global policies: the filter must be recompiled to include the new nodes.
 	if nodesChanged {
 		// Recompile filter with the new node list
-		_, err := pm.updateLocked()
+		needsUpdate, err := pm.updateLocked()
 		if err != nil {
 			return false, err
+		}
+
+		if !needsUpdate {
+			// This ensures fresh filter rules are generated for all nodes
+			clear(pm.sshPolicyMap)
+			clear(pm.compiledFilterRulesMap)
+			clear(pm.filterRulesMap)
 		}
 		// Always return true when nodes changed, even if filter hash didn't change
 		// (can happen with autogroup:self or when nodes are added but don't affect rules)
