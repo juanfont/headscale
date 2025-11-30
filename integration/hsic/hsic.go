@@ -1052,6 +1052,34 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
+// DeleteAuthKey deletes an "authorisation key" for a User.
+func (t *HeadscaleInContainer) DeleteAuthKey(
+	user uint64,
+	key string,
+) error {
+	command := []string{
+		"headscale",
+		"--user",
+		strconv.FormatUint(user, 10),
+		"preauthkeys",
+		"delete",
+		key,
+		"--output",
+		"json",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete auth key command: %w", err)
+	}
+
+	return nil
+}
+
 // ListNodes lists the currently registered Nodes in headscale.
 // Optionally a list of usernames can be passed to get users for
 // specific users.

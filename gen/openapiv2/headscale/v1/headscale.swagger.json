@@ -579,6 +579,41 @@
           "HeadscaleService"
         ]
       },
+      "delete": {
+        "operationId": "HeadscaleService_DeletePreAuthKey",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeletePreAuthKeyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "user",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "key",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      },
       "post": {
         "summary": "--- PreAuthKeys start ---",
         "operationId": "HeadscaleService_CreatePreAuthKey",
@@ -979,6 +1014,9 @@
       "type": "object"
     },
     "v1DeleteNodeResponse": {
+      "type": "object"
+    },
+    "v1DeletePreAuthKeyResponse": {
       "type": "object"
     },
     "v1DeleteUserResponse": {

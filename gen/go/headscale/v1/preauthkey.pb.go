@@ -338,6 +338,94 @@ func (*ExpirePreAuthKeyResponse) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{4}
 }
 
+type DeletePreAuthKeyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePreAuthKeyRequest) Reset() {
+	*x = DeletePreAuthKeyRequest{}
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePreAuthKeyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePreAuthKeyRequest) ProtoMessage() {}
+
+func (x *DeletePreAuthKeyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePreAuthKeyRequest.ProtoReflect.Descriptor instead.
+func (*DeletePreAuthKeyRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *DeletePreAuthKeyRequest) GetUser() uint64 {
+	if x != nil {
+		return x.User
+	}
+	return 0
+}
+
+func (x *DeletePreAuthKeyRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type DeletePreAuthKeyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePreAuthKeyResponse) Reset() {
+	*x = DeletePreAuthKeyResponse{}
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePreAuthKeyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePreAuthKeyResponse) ProtoMessage() {}
+
+func (x *DeletePreAuthKeyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePreAuthKeyResponse.ProtoReflect.Descriptor instead.
+func (*DeletePreAuthKeyResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{6}
+}
+
 type ListPreAuthKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
@@ -347,7 +435,7 @@ type ListPreAuthKeysRequest struct {
 
 func (x *ListPreAuthKeysRequest) Reset() {
 	*x = ListPreAuthKeysRequest{}
-	mi := &file_headscale_v1_preauthkey_proto_msgTypes[5]
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +447,7 @@ func (x *ListPreAuthKeysRequest) String() string {
 func (*ListPreAuthKeysRequest) ProtoMessage() {}
 
 func (x *ListPreAuthKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_preauthkey_proto_msgTypes[5]
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +460,7 @@ func (x *ListPreAuthKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPreAuthKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListPreAuthKeysRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{5}
+	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListPreAuthKeysRequest) GetUser() uint64 {
@@ -391,7 +479,7 @@ type ListPreAuthKeysResponse struct {
 
 func (x *ListPreAuthKeysResponse) Reset() {
 	*x = ListPreAuthKeysResponse{}
-	mi := &file_headscale_v1_preauthkey_proto_msgTypes[6]
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -403,7 +491,7 @@ func (x *ListPreAuthKeysResponse) String() string {
 func (*ListPreAuthKeysResponse) ProtoMessage() {}
 
 func (x *ListPreAuthKeysResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_preauthkey_proto_msgTypes[6]
+	mi := &file_headscale_v1_preauthkey_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -416,7 +504,7 @@ func (x *ListPreAuthKeysResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPreAuthKeysResponse.ProtoReflect.Descriptor instead.
 func (*ListPreAuthKeysResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{6}
+	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListPreAuthKeysResponse) GetPreAuthKeys() []*PreAuthKey {
@@ -459,7 +547,11 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"\x17ExpirePreAuthKeyRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"\x1a\n" +
-	"\x18ExpirePreAuthKeyResponse\",\n" +
+	"\x18ExpirePreAuthKeyResponse\"?\n" +
+	"\x17DeletePreAuthKeyRequest\x12\x12\n" +
+	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"\x1a\n" +
+	"\x18DeletePreAuthKeyResponse\",\n" +
 	"\x16ListPreAuthKeysRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\x04R\x04user\"W\n" +
 	"\x17ListPreAuthKeysResponse\x12<\n" +
@@ -477,30 +569,32 @@ func file_headscale_v1_preauthkey_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_preauthkey_proto_rawDescData
 }
 
-var file_headscale_v1_preauthkey_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_headscale_v1_preauthkey_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_headscale_v1_preauthkey_proto_goTypes = []any{
 	(*PreAuthKey)(nil),               // 0: headscale.v1.PreAuthKey
 	(*CreatePreAuthKeyRequest)(nil),  // 1: headscale.v1.CreatePreAuthKeyRequest
 	(*CreatePreAuthKeyResponse)(nil), // 2: headscale.v1.CreatePreAuthKeyResponse
 	(*ExpirePreAuthKeyRequest)(nil),  // 3: headscale.v1.ExpirePreAuthKeyRequest
 	(*ExpirePreAuthKeyResponse)(nil), // 4: headscale.v1.ExpirePreAuthKeyResponse
-	(*ListPreAuthKeysRequest)(nil),   // 5: headscale.v1.ListPreAuthKeysRequest
-	(*ListPreAuthKeysResponse)(nil),  // 6: headscale.v1.ListPreAuthKeysResponse
-	(*User)(nil),                     // 7: headscale.v1.User
-	(*timestamppb.Timestamp)(nil),    // 8: google.protobuf.Timestamp
+	(*DeletePreAuthKeyRequest)(nil),  // 5: headscale.v1.DeletePreAuthKeyRequest
+	(*DeletePreAuthKeyResponse)(nil), // 6: headscale.v1.DeletePreAuthKeyResponse
+	(*ListPreAuthKeysRequest)(nil),   // 7: headscale.v1.ListPreAuthKeysRequest
+	(*ListPreAuthKeysResponse)(nil),  // 8: headscale.v1.ListPreAuthKeysResponse
+	(*User)(nil),                     // 9: headscale.v1.User
+	(*timestamppb.Timestamp)(nil),    // 10: google.protobuf.Timestamp
 }
 var file_headscale_v1_preauthkey_proto_depIdxs = []int32{
-	7, // 0: headscale.v1.PreAuthKey.user:type_name -> headscale.v1.User
-	8, // 1: headscale.v1.PreAuthKey.expiration:type_name -> google.protobuf.Timestamp
-	8, // 2: headscale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
-	8, // 3: headscale.v1.CreatePreAuthKeyRequest.expiration:type_name -> google.protobuf.Timestamp
-	0, // 4: headscale.v1.CreatePreAuthKeyResponse.pre_auth_key:type_name -> headscale.v1.PreAuthKey
-	0, // 5: headscale.v1.ListPreAuthKeysResponse.pre_auth_keys:type_name -> headscale.v1.PreAuthKey
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	9,  // 0: headscale.v1.PreAuthKey.user:type_name -> headscale.v1.User
+	10, // 1: headscale.v1.PreAuthKey.expiration:type_name -> google.protobuf.Timestamp
+	10, // 2: headscale.v1.PreAuthKey.created_at:type_name -> google.protobuf.Timestamp
+	10, // 3: headscale.v1.CreatePreAuthKeyRequest.expiration:type_name -> google.protobuf.Timestamp
+	0,  // 4: headscale.v1.CreatePreAuthKeyResponse.pre_auth_key:type_name -> headscale.v1.PreAuthKey
+	0,  // 5: headscale.v1.ListPreAuthKeysResponse.pre_auth_keys:type_name -> headscale.v1.PreAuthKey
+	6,  // [6:6] is the sub-list for method output_type
+	6,  // [6:6] is the sub-list for method input_type
+	6,  // [6:6] is the sub-list for extension type_name
+	6,  // [6:6] is the sub-list for extension extendee
+	0,  // [0:6] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_preauthkey_proto_init() }
@@ -515,7 +609,7 @@ func file_headscale_v1_preauthkey_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_preauthkey_proto_rawDesc), len(file_headscale_v1_preauthkey_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
