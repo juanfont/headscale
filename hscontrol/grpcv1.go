@@ -312,13 +312,13 @@ func (api headscaleV1APIServer) RegisterNode(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	_ = api.h.state.AutoApproveRoutes(node)
-	_, _, err = api.h.state.SaveNode(node)
+	routeChange, err := api.h.state.AutoApproveRoutes(node)
 	if err != nil {
-		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
+		return nil, fmt.Errorf("auto approving routes: %w", err)
 	}
 
-	api.h.Change(nodeChange)
+	// Send both changes. Empty changes are ignored by Change().
+	api.h.Change(nodeChange, routeChange)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
