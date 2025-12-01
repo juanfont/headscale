@@ -19,31 +19,32 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HeadscaleService_CreateUser_FullMethodName        = "/headscale.v1.HeadscaleService/CreateUser"
-	HeadscaleService_RenameUser_FullMethodName        = "/headscale.v1.HeadscaleService/RenameUser"
-	HeadscaleService_DeleteUser_FullMethodName        = "/headscale.v1.HeadscaleService/DeleteUser"
-	HeadscaleService_ListUsers_FullMethodName         = "/headscale.v1.HeadscaleService/ListUsers"
-	HeadscaleService_CreatePreAuthKey_FullMethodName  = "/headscale.v1.HeadscaleService/CreatePreAuthKey"
-	HeadscaleService_ExpirePreAuthKey_FullMethodName  = "/headscale.v1.HeadscaleService/ExpirePreAuthKey"
-	HeadscaleService_ListPreAuthKeys_FullMethodName   = "/headscale.v1.HeadscaleService/ListPreAuthKeys"
-	HeadscaleService_DebugCreateNode_FullMethodName   = "/headscale.v1.HeadscaleService/DebugCreateNode"
-	HeadscaleService_GetNode_FullMethodName           = "/headscale.v1.HeadscaleService/GetNode"
-	HeadscaleService_SetTags_FullMethodName           = "/headscale.v1.HeadscaleService/SetTags"
-	HeadscaleService_SetApprovedRoutes_FullMethodName = "/headscale.v1.HeadscaleService/SetApprovedRoutes"
-	HeadscaleService_RegisterNode_FullMethodName      = "/headscale.v1.HeadscaleService/RegisterNode"
-	HeadscaleService_DeleteNode_FullMethodName        = "/headscale.v1.HeadscaleService/DeleteNode"
-	HeadscaleService_ExpireNode_FullMethodName        = "/headscale.v1.HeadscaleService/ExpireNode"
-	HeadscaleService_RenameNode_FullMethodName        = "/headscale.v1.HeadscaleService/RenameNode"
-	HeadscaleService_ListNodes_FullMethodName         = "/headscale.v1.HeadscaleService/ListNodes"
-	HeadscaleService_MoveNode_FullMethodName          = "/headscale.v1.HeadscaleService/MoveNode"
-	HeadscaleService_BackfillNodeIPs_FullMethodName   = "/headscale.v1.HeadscaleService/BackfillNodeIPs"
-	HeadscaleService_CreateApiKey_FullMethodName      = "/headscale.v1.HeadscaleService/CreateApiKey"
-	HeadscaleService_ExpireApiKey_FullMethodName      = "/headscale.v1.HeadscaleService/ExpireApiKey"
-	HeadscaleService_ListApiKeys_FullMethodName       = "/headscale.v1.HeadscaleService/ListApiKeys"
-	HeadscaleService_DeleteApiKey_FullMethodName      = "/headscale.v1.HeadscaleService/DeleteApiKey"
-	HeadscaleService_GetPolicy_FullMethodName         = "/headscale.v1.HeadscaleService/GetPolicy"
-	HeadscaleService_SetPolicy_FullMethodName         = "/headscale.v1.HeadscaleService/SetPolicy"
-	HeadscaleService_Health_FullMethodName            = "/headscale.v1.HeadscaleService/Health"
+	HeadscaleService_CreateUser_FullMethodName                 = "/headscale.v1.HeadscaleService/CreateUser"
+	HeadscaleService_RenameUser_FullMethodName                 = "/headscale.v1.HeadscaleService/RenameUser"
+	HeadscaleService_DeleteUser_FullMethodName                 = "/headscale.v1.HeadscaleService/DeleteUser"
+	HeadscaleService_ListUsers_FullMethodName                  = "/headscale.v1.HeadscaleService/ListUsers"
+	HeadscaleService_CreatePreAuthKey_FullMethodName           = "/headscale.v1.HeadscaleService/CreatePreAuthKey"
+	HeadscaleService_ExpirePreAuthKey_FullMethodName           = "/headscale.v1.HeadscaleService/ExpirePreAuthKey"
+	HeadscaleService_ListPreAuthKeys_FullMethodName            = "/headscale.v1.HeadscaleService/ListPreAuthKeys"
+	HeadscaleService_DebugCreateNode_FullMethodName            = "/headscale.v1.HeadscaleService/DebugCreateNode"
+	HeadscaleService_GetNode_FullMethodName                    = "/headscale.v1.HeadscaleService/GetNode"
+	HeadscaleService_SetTags_FullMethodName                    = "/headscale.v1.HeadscaleService/SetTags"
+	HeadscaleService_SetApprovedRoutes_FullMethodName          = "/headscale.v1.HeadscaleService/SetApprovedRoutes"
+	HeadscaleService_RegisterNode_FullMethodName               = "/headscale.v1.HeadscaleService/RegisterNode"
+	HeadscaleService_DeleteNode_FullMethodName                 = "/headscale.v1.HeadscaleService/DeleteNode"
+	HeadscaleService_ExpireNode_FullMethodName                 = "/headscale.v1.HeadscaleService/ExpireNode"
+	HeadscaleService_RenameNode_FullMethodName                 = "/headscale.v1.HeadscaleService/RenameNode"
+	HeadscaleService_ListNodes_FullMethodName                  = "/headscale.v1.HeadscaleService/ListNodes"
+	HeadscaleService_MoveNode_FullMethodName                   = "/headscale.v1.HeadscaleService/MoveNode"
+	HeadscaleService_BackfillNodeIPs_FullMethodName            = "/headscale.v1.HeadscaleService/BackfillNodeIPs"
+	HeadscaleService_CreateApiKey_FullMethodName               = "/headscale.v1.HeadscaleService/CreateApiKey"
+	HeadscaleService_ExpireApiKey_FullMethodName               = "/headscale.v1.HeadscaleService/ExpireApiKey"
+	HeadscaleService_ListApiKeys_FullMethodName                = "/headscale.v1.HeadscaleService/ListApiKeys"
+	HeadscaleService_DeleteApiKey_FullMethodName               = "/headscale.v1.HeadscaleService/DeleteApiKey"
+	HeadscaleService_GetPolicy_FullMethodName                  = "/headscale.v1.HeadscaleService/GetPolicy"
+	HeadscaleService_SetPolicy_FullMethodName                  = "/headscale.v1.HeadscaleService/SetPolicy"
+	HeadscaleService_Health_FullMethodName                     = "/headscale.v1.HeadscaleService/Health"
+	HeadscaleService_ListPendingRegistrations_FullMethodName   = "/headscale.v1.HeadscaleService/ListPendingRegistrations"
 )
 
 // HeadscaleServiceClient is the client API for HeadscaleService service.
@@ -81,6 +82,8 @@ type HeadscaleServiceClient interface {
 	SetPolicy(ctx context.Context, in *SetPolicyRequest, opts ...grpc.CallOption) (*SetPolicyResponse, error)
 	// --- Health start ---
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
+	// --- Pending registrations ---
+	ListPendingRegistrations(ctx context.Context, in *ListPendingRegistrationsRequest, opts ...grpc.CallOption) (*ListPendingRegistrationsResponse, error)
 }
 
 type headscaleServiceClient struct {
@@ -341,6 +344,16 @@ func (c *headscaleServiceClient) Health(ctx context.Context, in *HealthRequest, 
 	return out, nil
 }
 
+func (c *headscaleServiceClient) ListPendingRegistrations(ctx context.Context, in *ListPendingRegistrationsRequest, opts ...grpc.CallOption) (*ListPendingRegistrationsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPendingRegistrationsResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_ListPendingRegistrations_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HeadscaleServiceServer is the server API for HeadscaleService service.
 // All implementations must embed UnimplementedHeadscaleServiceServer
 // for forward compatibility.
@@ -376,6 +389,8 @@ type HeadscaleServiceServer interface {
 	SetPolicy(context.Context, *SetPolicyRequest) (*SetPolicyResponse, error)
 	// --- Health start ---
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
+	// --- Pending registrations ---
+	ListPendingRegistrations(context.Context, *ListPendingRegistrationsRequest) (*ListPendingRegistrationsResponse, error)
 	mustEmbedUnimplementedHeadscaleServiceServer()
 }
 
@@ -460,6 +475,9 @@ func (UnimplementedHeadscaleServiceServer) SetPolicy(context.Context, *SetPolicy
 }
 func (UnimplementedHeadscaleServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) ListPendingRegistrations(context.Context, *ListPendingRegistrationsRequest) (*ListPendingRegistrationsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPendingRegistrations not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
 func (UnimplementedHeadscaleServiceServer) testEmbeddedByValue()                          {}
@@ -932,6 +950,24 @@ func _HeadscaleService_Health_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HeadscaleService_ListPendingRegistrations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPendingRegistrationsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).ListPendingRegistrations(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_ListPendingRegistrations_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).ListPendingRegistrations(ctx, req.(*ListPendingRegistrationsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HeadscaleService_ServiceDesc is the grpc.ServiceDesc for HeadscaleService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1038,6 +1074,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Health",
 			Handler:    _HeadscaleService_Health_Handler,
+		},
+		{
+			MethodName: "ListPendingRegistrations",
+			Handler:    _HeadscaleService_ListPendingRegistrations_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

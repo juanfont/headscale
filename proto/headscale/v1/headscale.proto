@@ -3,6 +3,7 @@ package headscale.v1;
 option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
 
 import "headscale/v1/user.proto";
 import "headscale/v1/preauthkey.proto";
@@ -190,6 +191,14 @@ service HeadscaleService {
   }
   // --- Health end ---
 
+  // --- Pending registrations ---
+  rpc ListPendingRegistrations(ListPendingRegistrationsRequest) returns (ListPendingRegistrationsResponse) {
+    option (google.api.http) = {
+      get : "/api/v1/pending-registrations"
+    };
+  }
+  // --- Pending registrations end ---
+
   // Implement Tailscale API
   // rpc GetDevice(GetDeviceRequest) returns(GetDeviceResponse) {
   //     option(google.api.http) = {
@@ -222,4 +231,18 @@ message HealthRequest {}
 
 message HealthResponse {
   bool database_connectivity = 1;
+}
+
+message PendingRegistration {
+  string id = 1;
+  string hostname = 2;
+  string machine_key = 3;
+  string node_key = 4;
+  google.protobuf.Timestamp expiry = 5;
+}
+
+message ListPendingRegistrationsRequest {}
+
+message ListPendingRegistrationsResponse {
+  repeated PendingRegistration registrations = 1;
 }
