@@ -1007,7 +1007,7 @@ func (g Groups) Contains(group *Group) error {
 // with "group:". If any group name is invalid, an error is returned.
 func (g *Groups) UnmarshalJSON(b []byte) error {
 	// First unmarshal as a generic map to validate group names first
-	var rawMap map[string]interface{}
+	var rawMap map[string]any
 	if err := json.Unmarshal(b, &rawMap); err != nil {
 		return err
 	}
@@ -1024,7 +1024,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 	rawGroups := make(map[string][]string)
 	for key, value := range rawMap {
 		switch v := value.(type) {
-		case []interface{}:
+		case []any:
 			// Convert []interface{} to []string
 			var stringSlice []string
 			for _, item := range v {

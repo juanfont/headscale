@@ -2760,7 +2760,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	require.Equal(t, 2, user2NodesAfter.Len(), "user2 should still have 2 nodes (old nodes from original registration)")
 
 	// Verify original nodes still exist with original users
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		node := nodes[i]
 		// User1's original nodes should still be owned by user1
 		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
@@ -3195,6 +3195,7 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 	assert.Error(t, err, "expired pre-auth key should be rejected")
 	assert.Contains(t, err.Error(), "authkey expired", "error should mention key expiration")
 }
+
 // TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey tests that an existing node
 // can re-register using a pre-auth key that's already marked as Used=true, as long as:
 // 1. The node is re-registering with the same MachineKey it originally used
@@ -3204,7 +3205,8 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 //
 // Background: When Docker/Kubernetes containers restart, they keep their persistent state
 // (including the MachineKey), but container entrypoints unconditionally run:
-//   tailscale up --authkey=$TS_AUTHKEY
+//
+//	tailscale up --authkey=$TS_AUTHKEY
 //
 // This caused nodes to be rejected after restart because the pre-auth key was already
 // marked as Used=true from the initial registration. The fix allows re-registration of

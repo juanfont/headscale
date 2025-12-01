@@ -3,6 +3,7 @@ package v2
 import (
 	"encoding/json"
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -906,14 +907,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	}
 
 	for _, expectedIP := range expectedDestIPs {
-		found := false
-
-		for _, actualIP := range actualDestIPs {
-			if actualIP == expectedIP {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(actualDestIPs, expectedIP)
 
 		if !found {
 			t.Errorf("expected destination IP %s to be included, got: %v", expectedIP, actualDestIPs)

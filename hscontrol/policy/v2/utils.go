@@ -39,9 +39,10 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 	}
 
 	var portRanges []tailcfg.PortRange
-	parts := strings.Split(portDef, ",")
 
-	for _, part := range parts {
+	parts := strings.SplitSeq(portDef, ",")
+
+	for part := range parts {
 		if strings.Contains(part, "-") {
 			rangeParts := strings.Split(part, "-")
 			rangeParts = slices.DeleteFunc(rangeParts, func(e string) bool {
