@@ -168,7 +168,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
 		sameUserNodes := make([]types.NodeView, 0)
 		for _, n := range nodes.All() {
-			if n.User().ID == node.User().ID && !n.IsTagged() {
+			if n.User().ID() == node.User().ID() && !n.IsTagged() {
 				sameUserNodes = append(sameUserNodes, n)
 			}
 		}
@@ -349,7 +349,7 @@ func (pol *Policy) compileSSHPolicy(
 			// Build destination set for autogroup:self (same-user untagged devices only)
 			var dest netipx.IPSetBuilder
 			for _, n := range nodes.All() {
-				if n.User().ID == node.User().ID && !n.IsTagged() {
+				if n.User().ID() == node.User().ID() && !n.IsTagged() {
 					n.AppendToIPSet(&dest)
 				}
 			}
@@ -365,7 +365,7 @@ func (pol *Policy) compileSSHPolicy(
 				// Pre-filter to same-user untagged devices for efficiency
 				sameUserNodes := make([]types.NodeView, 0)
 				for _, n := range nodes.All() {
-					if n.User().ID == node.User().ID && !n.IsTagged() {
+					if n.User().ID() == node.User().ID() && !n.IsTagged() {
 						sameUserNodes = append(sameUserNodes, n)
 					}
 				}

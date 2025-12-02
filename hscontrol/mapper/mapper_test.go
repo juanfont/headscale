@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
+	"tailscale.com/types/ptr"
 )
 
 var iap = func(ipStr string) *netip.Addr {
@@ -50,8 +51,8 @@ func TestDNSConfigMapResponse(t *testing.T) {
 			mach := func(hostname, username string, userid uint) *types.Node {
 				return &types.Node{
 					Hostname: hostname,
-					UserID:   userid,
-					User: types.User{
+					UserID:   ptr.To(userid),
+					User: &types.User{
 						Name: username,
 					},
 				}

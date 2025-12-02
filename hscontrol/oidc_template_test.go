@@ -1,13 +1,10 @@
 package hscontrol
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestOIDCCallbackTemplate(t *testing.T) {
@@ -49,15 +46,6 @@ func TestOIDCCallbackTemplate(t *testing.T) {
 			assert.Contains(t, html, "<svg")
 			assert.Contains(t, html, "class=\"headscale-logo\"")
 			assert.Contains(t, html, "id=\"checkbox\"")
-
-			// Save the output for manual inspection
-			testDataDir := filepath.Join("testdata", "oidc_templates")
-			err := os.MkdirAll(testDataDir, 0o755)
-			require.NoError(t, err)
-
-			outputFile := filepath.Join(testDataDir, tt.name+".html")
-			err = os.WriteFile(outputFile, []byte(html), 0o600)
-			require.NoError(t, err)
 		})
 	}
 }

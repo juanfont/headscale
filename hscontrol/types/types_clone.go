@@ -54,7 +54,13 @@ func (src *Node) Clone() *Node {
 	if dst.IPv6 != nil {
 		dst.IPv6 = ptr.To(*src.IPv6)
 	}
-	dst.ForcedTags = append(src.ForcedTags[:0:0], src.ForcedTags...)
+	if dst.UserID != nil {
+		dst.UserID = ptr.To(*src.UserID)
+	}
+	if dst.User != nil {
+		dst.User = ptr.To(*src.User)
+	}
+	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.AuthKeyID != nil {
 		dst.AuthKeyID = ptr.To(*src.AuthKeyID)
 	}
@@ -87,10 +93,10 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	IPv6           *netip.Addr
 	Hostname       string
 	GivenName      string
-	UserID         uint
-	User           User
+	UserID         *uint
+	User           *User
 	RegisterMethod string
-	ForcedTags     []string
+	Tags           []string
 	AuthKeyID      *uint64
 	AuthKey        *PreAuthKey
 	Expiry         *time.Time
@@ -111,6 +117,12 @@ func (src *PreAuthKey) Clone() *PreAuthKey {
 	dst := new(PreAuthKey)
 	*dst = *src
 	dst.Hash = append(src.Hash[:0:0], src.Hash...)
+	if dst.UserID != nil {
+		dst.UserID = ptr.To(*src.UserID)
+	}
+	if dst.User != nil {
+		dst.User = ptr.To(*src.User)
+	}
 	dst.Tags = append(src.Tags[:0:0], src.Tags...)
 	if dst.CreatedAt != nil {
 		dst.CreatedAt = ptr.To(*src.CreatedAt)
@@ -127,8 +139,8 @@ var _PreAuthKeyCloneNeedsRegeneration = PreAuthKey(struct {
 	Key        string
 	Prefix     string
 	Hash       []byte
-	UserID     uint
-	User       User
+	UserID     *uint
+	User       *User
 	Reusable   bool
 	Ephemeral  bool
 	Used       bool

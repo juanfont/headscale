@@ -81,7 +81,7 @@ CREATE TABLE nodes(
   given_name varchar(63),
   user_id integer,
   register_method text,
-  forced_tags text,
+  tags text,
   auth_key_id integer,
   last_seen datetime,
   expiry datetime,

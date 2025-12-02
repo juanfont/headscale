@@ -55,11 +55,12 @@ jobs:
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
+          - TestTaggedNodeRegistration
+          - TestTagPersistenceAcrossRestart
           - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeExpireCommand
           - TestNodeRenameCommand
-          - TestNodeMoveCommand
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
           - TestDERPVerifyEndpoint

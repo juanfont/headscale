@@ -70,7 +70,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "preauth_key_valid_new_node",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("preauth-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -111,7 +112,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "preauth_key_reusable_multiple_nodes",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("reusable-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -177,7 +179,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "preauth_key_single_use_exhausted",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("single-use-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -264,7 +267,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "preauth_key_ephemeral_node",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("ephemeral-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, true, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -370,7 +374,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "existing_node_logout",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("logout-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -429,7 +434,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "existing_node_machine_key_mismatch",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("mismatch-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -477,7 +483,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "existing_node_key_extension_not_allowed",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("extend-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -525,7 +532,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "existing_node_expired_forces_reauth",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("reauth-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -585,7 +593,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "ephemeral_node_logout_deletion",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("ephemeral-logout-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, true, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -767,7 +776,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "empty_hostname",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("empty-hostname-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -805,7 +815,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "nil_hostinfo",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("nil-hostinfo-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -848,7 +859,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("expired-pak-user")
 				expiry := time.Now().Add(-1 * time.Hour) // Expired 1 hour ago
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, &expiry, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, &expiry, nil)
 				if err != nil {
 					return "", err
 				}
@@ -880,7 +892,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("tagged-pak-user")
 				tags := []string{"tag:server", "tag:database"}
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, tags)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
 				if err != nil {
 					return "", err
 				}
@@ -926,7 +939,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				user := app.state.CreateUserForTest("reauth-user")
 
 				// First, register with initial auth key
-				pak1, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+				pak1, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -953,7 +966,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
 
 				// Create new auth key for re-authentication
-				pak2, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+				pak2, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -992,7 +1005,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "existing_node_reauth_interactive_flow",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("interactive-reauth-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1053,7 +1067,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "node_key_rotation_same_machine",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("rotation-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1081,7 +1096,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
 
 				// Create new auth key for rotation
-				pakRotation, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+				pakRotation, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1129,7 +1144,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "malformed_expiry_zero_time",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("zero-expiry-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1167,7 +1183,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "malformed_hostinfo_invalid_data",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("invalid-hostinfo-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1353,7 +1370,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "preauth_key_usage_count_tracking",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("usage-count-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil) // Single use
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil) // Single use
 				if err != nil {
 					return "", err
 				}
@@ -1432,7 +1450,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "concurrent_registration_same_node_key",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("concurrent-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1473,7 +1492,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				user := app.state.CreateUserForTest("future-expiry-user")
 				// Auth key expires in the future
 				expiry := time.Now().Add(48 * time.Hour)
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, &expiry, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, &expiry, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1517,7 +1537,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				user2 := app.state.CreateUserForTest("user2-context")
 
 				// Register node with user1's auth key
-				pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+				pak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1544,7 +1564,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
 
 				// Return user2's auth key for re-authentication
-				pak2, err := app.state.CreatePreAuthKey(types.UserID(user2.ID), true, false, nil, nil)
+				pak2, err := app.state.CreatePreAuthKey(user2.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1571,15 +1591,15 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify NEW node was created for user2
 				node2, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
 				require.True(t, found, "new node should exist for user2")
-				assert.Equal(t, uint(2), node2.UserID(), "new node should belong to user2")
+				assert.Equal(t, uint(2), node2.UserID().Get(), "new node should belong to user2")
 
 				user := node2.User()
-				assert.Equal(t, "user2-context", user.Username(), "new node should show user2 username")
+				assert.Equal(t, "user2-context", user.Name(), "new node should show user2 username")
 
 				// Verify original node still exists for user1
 				node1, found := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
 				require.True(t, found, "original node should still exist for user1")
-				assert.Equal(t, uint(1), node1.UserID(), "original node should still belong to user1")
+				assert.Equal(t, uint(1), node1.UserID().Get(), "original node should still belong to user1")
 
 				// Verify they are different nodes (different IDs)
 				assert.NotEqual(t, node1.ID(), node2.ID(), "should be different node IDs")
@@ -1595,7 +1615,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				// Create user1 and register a node with auth key
 				user1 := app.state.CreateUserForTest("interactive-user-1")
-				pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+
+				pak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1645,16 +1666,16 @@ func TestAuthenticationFlows(t *testing.T) {
 				// User1's original node should STILL exist (not transferred)
 				node1, found1 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
 				require.True(t, found1, "user1's original node should still exist")
-				assert.Equal(t, uint(1), node1.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, uint(1), node1.UserID().Get(), "user1's node should still belong to user1")
 				assert.Equal(t, nodeKey1.Public(), node1.NodeKey(), "user1's node should have original node key")
 
 				// User2 should have a NEW node created
 				node2, found2 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(2))
 				require.True(t, found2, "user2 should have new node created")
-				assert.Equal(t, uint(2), node2.UserID(), "user2's node should belong to user2")
+				assert.Equal(t, uint(2), node2.UserID().Get(), "user2's node should belong to user2")
 
 				user := node2.User()
-				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should show correct username")
+				assert.Equal(t, "interactive-test-user", user.Name(), "user2's node should show correct username")
 
 				// Both nodes should have the same machine key but different IDs
 				assert.NotEqual(t, node1.ID(), node2.ID(), "should be different nodes (different IDs)")
@@ -1720,7 +1741,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			name: "logout_with_exactly_now_expiry",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				user := app.state.CreateUserForTest("exact-now-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1813,7 +1835,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				// First create a node under user1
 				user1 := app.state.CreateUserForTest("existing-user-1")
-				pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+
+				pak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -1863,7 +1886,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// User1's original node with nodeKey1 should STILL exist
 				node1, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				require.True(t, found1, "user1's original node with nodeKey1 should still exist")
-				assert.Equal(t, uint(1), node1.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, uint(1), node1.UserID().Get(), "user1's node should still belong to user1")
 				assert.Equal(t, uint64(1), node1.ID().Uint64(), "user1's node should be ID=1")
 
 				// User2 should have a NEW node with nodeKey2
@@ -1872,7 +1895,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				assert.Equal(t, "existing-node-user2", node2.Hostname(), "hostname should be from new registration")
 				user := node2.User()
-				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should belong to user2")
+				assert.Equal(t, "interactive-test-user", user.Name(), "user2's node should belong to user2")
 				assert.Equal(t, machineKey1.Public(), node2.MachineKey(), "machine key should be the same")
 
 				// Verify it's a NEW node, not transferred
@@ -2022,7 +2045,8 @@ func TestAuthenticationFlows(t *testing.T) {
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
 				// Register initial node
 				user := app.state.CreateUserForTest("rotation-user")
-				pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
@@ -2072,7 +2096,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// User1's original node with nodeKey1 should STILL exist
 				oldNode, foundOld := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				require.True(t, foundOld, "user1's original node with nodeKey1 should still exist")
-				assert.Equal(t, uint(1), oldNode.UserID(), "user1's node should still belong to user1")
+				assert.Equal(t, uint(1), oldNode.UserID().Get(), "user1's node should still belong to user1")
 				assert.Equal(t, uint64(1), oldNode.ID().Uint64(), "user1's node should be ID=1")
 
 				// User2 should have a NEW node with nodeKey2
@@ -2082,7 +2106,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.Equal(t, machineKey1.Public(), newNode.MachineKey())
 
 				user := newNode.User()
-				assert.Equal(t, "interactive-test-user", user.Username(), "user2's node should belong to user2")
+				assert.Equal(t, "interactive-test-user", user.Name(), "user2's node should belong to user2")
 
 				// Verify it's a NEW node, not transferred
 				assert.NotEqual(t, uint64(1), newNode.ID().Uint64(), "should be a NEW node (different ID)")
@@ -2333,7 +2357,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				assert.True(t, found, "node should be registered")
 				if found {
 					assert.Equal(t, "pending-node-2", node.Hostname())
-					assert.Equal(t, "second-registration-user", node.User().Name)
+					assert.Equal(t, "second-registration-user", node.User().Name())
 				}
 
 				// First registration should still be in cache (not completed)
@@ -2593,7 +2617,7 @@ func TestNodeStoreLookup(t *testing.T) {
 	nodeKey := key.NewNode()
 
 	user := app.state.CreateUserForTest("test-user")
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 
 	// Register a node
@@ -2642,9 +2666,9 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	user2 := app.state.CreateUserForTest("user2")
 
 	// Create pre-auth keys for both users
-	pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	pak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
-	pak2, err := app.state.CreatePreAuthKey(types.UserID(user2.ID), true, false, nil, nil)
+	pak2, err := app.state.CreatePreAuthKey(user2.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 
 	// Create machine and node keys for 4 nodes (2 per user)
@@ -2720,7 +2744,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	t.Logf("All nodes logged out")
 
 	// Create a new pre-auth key for user1 (reusable for all nodes)
-	newPak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	newPak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 
 	// Re-login all nodes using user1's new pre-auth key
@@ -2765,7 +2789,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 		// User1's original nodes should still be owned by user1
 		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
 		require.True(t, found, "User1's original node %s should still exist", node.hostname)
-		require.Equal(t, user1.ID, registeredNode.UserID(), "Node %s should still belong to user1", node.hostname)
+		require.Equal(t, user1.ID, registeredNode.UserID().Get(), "Node %s should still belong to user1", node.hostname)
 		t.Logf("✓ User1's original node %s (ID=%d) still owned by user1", node.hostname, registeredNode.ID().Uint64())
 	}
 
@@ -2774,7 +2798,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 		// User2's original nodes should still be owned by user2
 		registeredNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user2.ID))
 		require.True(t, found, "User2's original node %s should still exist", node.hostname)
-		require.Equal(t, user2.ID, registeredNode.UserID(), "Node %s should still belong to user2", node.hostname)
+		require.Equal(t, user2.ID, registeredNode.UserID().Get(), "Node %s should still belong to user2", node.hostname)
 		t.Logf("✓ User2's original node %s (ID=%d) still owned by user2", node.hostname, registeredNode.ID().Uint64())
 	}
 
@@ -2785,7 +2809,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 		// Should be able to find a node with user1 and this machine key (the new one)
 		newNode, found := app.state.GetNodeByMachineKey(node.machineKey.Public(), types.UserID(user1.ID))
 		require.True(t, found, "Should have created new node for user1 with machine key from %s", node.hostname)
-		require.Equal(t, user1.ID, newNode.UserID(), "New node should belong to user1")
+		require.Equal(t, user1.ID, newNode.UserID().Get(), "New node should belong to user1")
 		t.Logf("✓ New node created for user1 with machine key from %s (ID=%d)", node.hostname, newNode.ID().Uint64())
 	}
 }
@@ -2813,7 +2837,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 
 	// Step 1: Register node for user1 via pre-auth key (simulating initial web flow registration)
 	user1 := app.state.CreateUserForTest("user1")
-	pak1, err := app.state.CreatePreAuthKey(types.UserID(user1.ID), true, false, nil, nil)
+	pak1, err := app.state.CreatePreAuthKey(user1.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 
 	regReq1 := tailcfg.RegisterRequest{
@@ -2834,7 +2858,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	// Verify node exists for user1
 	user1Node, found := app.state.GetNodeByMachineKey(machineKey.Public(), types.UserID(user1.ID))
 	require.True(t, found, "Node should exist for user1")
-	require.Equal(t, user1.ID, user1Node.UserID(), "Node should belong to user1")
+	require.Equal(t, user1.ID, user1Node.UserID().Get(), "Node should belong to user1")
 	user1NodeID := user1Node.ID()
 	t.Logf("✓ User1 node created with ID: %d", user1NodeID)
 
@@ -2896,7 +2920,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 			t.Fatal("User1's node was transferred or deleted - this breaks the integration test!")
 		}
 
-		assert.Equal(t, user1.ID, user1NodeAfter.UserID(), "User1's node should still belong to user1")
+		assert.Equal(t, user1.ID, user1NodeAfter.UserID().Get(), "User1's node should still belong to user1")
 		assert.Equal(t, user1NodeID, user1NodeAfter.ID(), "Should be the same node (same ID)")
 		assert.True(t, user1NodeAfter.IsExpired(), "User1's node should still be expired")
 		t.Logf("✓ User1's original node still exists (ID: %d, expired: %v)", user1NodeAfter.ID(), user1NodeAfter.IsExpired())
@@ -2911,7 +2935,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 			t.Fatal("User2 doesn't have a node - registration failed!")
 		}
 
-		assert.Equal(t, user2.ID, user2Node.UserID(), "User2's node should belong to user2")
+		assert.Equal(t, user2.ID, user2Node.UserID().Get(), "User2's node should belong to user2")
 		assert.NotEqual(t, user1NodeID, user2Node.ID(), "Should be a NEW node (different ID), not transfer!")
 		assert.Equal(t, machineKey.Public(), user2Node.MachineKey(), "Should have same machine key")
 		assert.Equal(t, nodeKey2.Public(), user2Node.NodeKey(), "Should have new node key")
@@ -2921,7 +2945,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 
 	t.Run("returned_node_is_user2_new_node", func(t *testing.T) {
 		// The node returned from HandleNodeFromAuthPath should be user2's NEW node
-		assert.Equal(t, user2.ID, node.UserID(), "Returned node should belong to user2")
+		assert.Equal(t, user2.ID, node.UserID().Get(), "Returned node should belong to user2")
 		assert.NotEqual(t, user1NodeID, node.ID(), "Returned node should be NEW, not transferred from user1")
 		t.Logf("✓ HandleNodeFromAuthPath returned user2's new node (ID: %d)", node.ID())
 	})
@@ -2949,10 +2973,11 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 		user2Nodes := 0
 		for i := 0; i < allNodesSlice.Len(); i++ {
 			n := allNodesSlice.At(i)
-			if n.UserID() == user1.ID {
+			if n.UserID().Get() == user1.ID {
 				user1Nodes++
 			}
-			if n.UserID() == user2.ID {
+
+			if n.UserID().Get() == user2.ID {
 				user2Nodes++
 			}
 		}
@@ -3026,7 +3051,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 
 	// Create user and single-use pre-auth key
 	user := app.state.CreateUserForTest("test-user")
-	pakNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil) // reusable=false
+	pakNew, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil) // reusable=false
 	require.NoError(t, err)
 
 	// Fetch the full pre-auth key to check Reusable field
@@ -3117,7 +3142,7 @@ func TestNodeReregistrationWithReusablePreAuthKey(t *testing.T) {
 	app := createTestApp(t)
 
 	user := app.state.CreateUserForTest("test-user")
-	pakNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil) // reusable=true
+	pakNew, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil) // reusable=true
 	require.NoError(t, err)
 
 	// Fetch the full pre-auth key to check Reusable field
@@ -3173,7 +3198,7 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 
 	user := app.state.CreateUserForTest("test-user")
 	expiry := time.Now().Add(-1 * time.Hour) // Already expired
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), true, false, &expiry, nil)
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, &expiry, nil)
 	require.NoError(t, err)
 
 	machineKey := key.NewMachine()
@@ -3306,7 +3331,7 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 
 	// Create a SINGLE-USE pre-auth key (reusable=false)
 	// This is the type of key that triggers the bug in issue #2830
-	preAuthKeyNew, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	preAuthKeyNew, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
 	// Fetch the full pre-auth key to check Reusable and Used fields

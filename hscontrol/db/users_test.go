@@ -50,7 +50,7 @@ func TestDestroyUserErrors(t *testing.T) {
 
 				user := db.CreateUserForTest("test")
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				err = db.DestroyUser(types.UserID(user.ID))
@@ -71,13 +71,13 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
 				node := types.Node{
 					ID:             0,
 					Hostname:       "testnode",
-					UserID:         user.ID,
+					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					AuthKeyID:      ptr.To(pak.ID),
 				}

@@ -206,7 +206,12 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.
 			continue
 		}
 
-		if node.User().ID == user.ID {
+		// Skip nodes without a user (defensive check for tests)
+		if !node.User().Valid() {
+			continue
+		}
+
+		if node.User().ID() == user.ID {
 			node.AppendToIPSet(&ips)
 		}
 	}
@@ -311,8 +316,8 @@ func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeV
 	}
 
 	for _, node := range nodes.All() {
-		// Check if node has this tag in all tags (ForcedTags + AuthKey.Tags)
-		if slices.Contains(node.Tags(), string(t)) {
+		// Check if node has this tag
+		if node.HasTag(string(t)) {
 			node.AppendToIPSet(&ips)
 		}
 

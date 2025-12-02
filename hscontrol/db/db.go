@@ -577,6 +577,21 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Rename forced_tags column to tags in nodes table.
+				// This must run after migration 202505141324 which creates tables with forced_tags.
+				ID: "202511131445-node-forced-tags-to-tags",
+				Migrate: func(tx *gorm.DB) error {
+					// Rename the column from forced_tags to tags
+					err := tx.Migrator().RenameColumn(&types.Node{}, "forced_tags", "tags")
+					if err != nil {
+						return fmt.Errorf("renaming forced_tags to tags: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 

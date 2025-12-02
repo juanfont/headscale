@@ -196,8 +196,9 @@ func SetTags(
 	tags []string,
 ) error {
 	if len(tags) == 0 {
-		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
+		// if no tags are provided, we remove all tags
+		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", "[]").Error
+		if err != nil {
 			return fmt.Errorf("removing tags: %w", err)
 		}
 
@@ -211,7 +212,8 @@ func SetTags(
 		return err
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
+	err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error
+	if err != nil {
 		return fmt.Errorf("updating tags: %w", err)
 	}
 
@@ -349,12 +351,20 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		panic("RegisterNodeForTest can only be called during tests")
 	}
 
-	log.Debug().
+	logEvent := log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
-		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Username()).
-		Msg("Registering test node")
+		Str("node_key", node.NodeKey.ShortString())
+
+	if node.User != nil {
+		logEvent = logEvent.Str("user", node.User.Username())
+	} else if node.UserID != nil {
+		logEvent = logEvent.Uint("user_id", *node.UserID)
+	} else {
+		logEvent = logEvent.Str("user", "none")
+	}
+
+	logEvent.Msg("Registering test node")
 
 	// If the a new node is registered with the same machine key, to the same user,
 	// update the existing node.
@@ -642,7 +652,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 	}
 
 	// Create a preauth key for the node
-	pak, err := hsdb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	pak, err := hsdb.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create preauth key for test node: %v", err))
 	}
@@ -656,7 +666,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		NodeKey:        nodeKey.Public(),
 		DiscoKey:       discoKey.Public(),
 		Hostname:       nodeName,
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
