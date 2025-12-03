@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -9,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/go-json-experiment/json"
-
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
@@ -33,6 +33,10 @@ var policyJSONOpts = []json.Options{
 const Wildcard = Asterix(0)
 
 var ErrAutogroupSelfRequiresPerNodeResolution = errors.New("autogroup:self requires per-node resolution and cannot be resolved in this context")
+
+var ErrCircularReference = errors.New("circular reference detected")
+
+var ErrUndefinedTagReference = errors.New("references undefined tag")
 
 type Asterix int
 
@@ -338,6 +342,10 @@ func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeV
 }
 
 func (t Tag) CanBeAutoApprover() bool {
+	return true
+}
+
+func (t Tag) CanBeTagOwner() bool {
 	return true
 }
 
@@ -915,6 +923,7 @@ func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
 type Owner interface {
 	CanBeTagOwner() bool
 	UnmarshalJSON([]byte) error
+	String() string
 }
 
 // OwnerEnc is used to deserialize a Owner.
@@ -963,6 +972,8 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 			owners[i] = string(*v)
 		case *Group:
 			owners[i] = string(*v)
+		case *Tag:
+			owners[i] = string(*v)
 		default:
 			return nil, fmt.Errorf("unknown owner type: %T", v)
 		}
@@ -977,6 +988,8 @@ func parseOwner(s string) (Owner, error) {
 		return ptr.To(Username(s)), nil
 	case isGroup(s):
 		return ptr.To(Group(s)), nil
+	case isTag(s):
+		return ptr.To(Tag(s)), nil
 	}
 
 	return nil, fmt.Errorf(`Invalid Owner %q. An alias must be one of the following types:
@@ -1134,6 +1147,8 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 				ownerStrs[i] = string(*v)
 			case *Group:
 				ownerStrs[i] = string(*v)
+			case *Tag:
+				ownerStrs[i] = string(*v)
 			default:
 				return nil, fmt.Errorf("unknown owner type: %T", v)
 			}
@@ -1167,23 +1182,38 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 // It is intended for internal use in a PolicyManager.
 func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
 	if p == nil {
-		return nil, nil
+		return make(map[Tag]*netipx.IPSet), nil
+	}
+
+	if len(p.TagOwners) == 0 {
+		return make(map[Tag]*netipx.IPSet), nil
 	}
 
 	ret := make(map[Tag]*netipx.IPSet)
 
-	for tag, owners := range p.TagOwners {
+	tagOwners, err := flattenTagOwners(p.TagOwners)
+	if err != nil {
+		return nil, err
+	}
+
+	for tag, owners := range tagOwners {
 		var ips netipx.IPSetBuilder
 
 		for _, owner := range owners {
-			o, ok := owner.(Alias)
-			if !ok {
+			switch o := owner.(type) {
+			case *Tag:
+				// After flattening, Tag types should not appear in the owners list.
+				// If they do, skip them as they represent already-resolved references.
+
+			case Alias:
+				// If it does not resolve, that means the tag is not associated with any IP addresses.
+				resolved, _ := o.Resolve(p, users, nodes)
+				ips.AddSet(resolved)
+
+			default:
 				// Should never happen
 				return nil, fmt.Errorf("owner %v is not an Alias", owner)
 			}
-			// If it does not resolve, that means the tag is not associated with any IP addresses.
-			resolved, _ := o.Resolve(p, users, nodes)
-			ips.AddSet(resolved)
 		}
 
 		ipSet, err := ips.IPSet()
@@ -1192,6 +1222,79 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 		}
 
 		ret[tag] = ipSet
+	}
+
+	return ret, nil
+}
+
+// flattenTags flattens the TagOwners by resolving nested tags and detecting cycles.
+// It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
+func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
+	if visiting[tag] {
+		cycleStart := 0
+
+		for i, t := range chain {
+			if t == tag {
+				cycleStart = i
+				break
+			}
+		}
+
+		cycleTags := make([]string, len(chain[cycleStart:]))
+		for i, t := range chain[cycleStart:] {
+			cycleTags[i] = string(t)
+		}
+
+		slices.Sort(cycleTags)
+
+		return nil, fmt.Errorf("%w: %s", ErrCircularReference, strings.Join(cycleTags, " -> "))
+	}
+
+	visiting[tag] = true
+
+	chain = append(chain, tag)
+	defer delete(visiting, tag)
+
+	var result Owners
+
+	for _, owner := range tagOwners[tag] {
+		switch o := owner.(type) {
+		case *Tag:
+			if _, ok := tagOwners[*o]; !ok {
+				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
+			}
+
+			nested, err := flattenTags(tagOwners, *o, visiting, chain)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, nested...)
+		default:
+			result = append(result, owner)
+		}
+	}
+
+	return result, nil
+}
+
+// flattenTagOwners flattens all TagOwners by resolving nested tags and detecting cycles.
+// It will return a new TagOwners map where all the Tag types have been resolved to their underlying Owners.
+func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
+	ret := make(TagOwners)
+
+	for tag := range tagOwners {
+		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		slices.SortFunc(flattened, func(a, b Owner) int {
+			return cmp.Compare(a.String(), b.String())
+		})
+		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
+			return a.String() == b.String()
+		})
 	}
 
 	return ret, nil
