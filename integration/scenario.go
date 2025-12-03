@@ -473,6 +473,27 @@ func (s *Scenario) CreatePreAuthKey(
 	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
+// CreatePreAuthKeyWithTags creates a "pre authorised key" with the specified tags
+// to be created in the Headscale instance on behalf of the Scenario.
+func (s *Scenario) CreatePreAuthKeyWithTags(
+	user uint64,
+	reusable bool,
+	ephemeral bool,
+	tags []string,
+) (*v1.PreAuthKey, error) {
+	headscale, err := s.Headscale()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preauth key with tags: %w", errNoHeadscaleAvailable)
+	}
+
+	key, err := headscale.CreateAuthKeyWithTags(user, reusable, ephemeral, tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preauth key with tags: %w", err)
+	}
+
+	return key, nil
+}
+
 // CreateUser creates a User to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreateUser(user string) (*v1.User, error) {

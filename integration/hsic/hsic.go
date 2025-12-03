@@ -1052,6 +1052,57 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
+// CreateAuthKeyWithTags creates a new "authorisation key" for a User with the specified tags.
+// This is used to create tagged PreAuthKeys for testing the tags-as-identity model.
+func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
+	user uint64,
+	reusable bool,
+	ephemeral bool,
+	tags []string,
+) (*v1.PreAuthKey, error) {
+	command := []string{
+		"headscale",
+		"--user",
+		strconv.FormatUint(user, 10),
+		"preauthkeys",
+		"create",
+		"--expiration",
+		"24h",
+		"--output",
+		"json",
+	}
+
+	if reusable {
+		command = append(command, "--reusable")
+	}
+
+	if ephemeral {
+		command = append(command, "--ephemeral")
+	}
+
+	if len(tags) > 0 {
+		command = append(command, "--tags", strings.Join(tags, ","))
+	}
+
+	result, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute create auth key with tags command: %w", err)
+	}
+
+	var preAuthKey v1.PreAuthKey
+
+	err = json.Unmarshal([]byte(result), &preAuthKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
+	}
+
+	return &preAuthKey, nil
+}
+
 // DeleteAuthKey deletes an "authorisation key" for a User.
 func (t *HeadscaleInContainer) DeleteAuthKey(
 	user uint64,
