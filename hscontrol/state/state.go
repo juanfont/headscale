@@ -1143,6 +1143,35 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	nodeToRegister.IPv4 = ipv4
 	nodeToRegister.IPv6 = ipv6
 
+	// Process RequestTags (from tailscale up --advertise-tags) for user-owned nodes.
+	// PreAuthKey tagged devices get their tags from the PreAuthKey and cannot use advertise-tags.
+	// Tags are validated against policy using the node's allocated IPs.
+	isPreAuthKeyTagged := params.PreAuthKey != nil && params.PreAuthKey.IsTagged()
+	if !isPreAuthKeyTagged && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
+		var approvedTags []string
+
+		for _, tag := range params.Hostinfo.RequestTags {
+			if s.polMan.NodeCanHaveTag(nodeToRegister.View(), tag) {
+				approvedTags = append(approvedTags, tag)
+			} else {
+				log.Debug().
+					Str("node.name", nodeToRegister.Hostname).
+					Str("tag", tag).
+					Msg("advertise-tag not approved by policy during registration")
+			}
+		}
+
+		if len(approvedTags) > 0 {
+			nodeToRegister.Tags = approvedTags
+			slices.Sort(nodeToRegister.Tags)
+			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+			log.Info().
+				Str("node.name", nodeToRegister.Hostname).
+				Strs("tags", nodeToRegister.Tags).
+				Msg("approved advertise-tags during registration")
+		}
+	}
+
 	// Ensure unique given name if not set
 	if nodeToRegister.GivenName == "" {
 		givenName, err := hsdb.EnsureUniqueGivenName(s.db.DB, nodeToRegister.Hostname)
