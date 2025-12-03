@@ -24,6 +24,7 @@ type ControlServer interface {
 	WaitForRunning() error
 	CreateUser(user string) (*v1.User, error)
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
+	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*v1.PreAuthKey, error)
 	DeleteAuthKey(user uint64, key string) error
 	ListNodes(users ...string) ([]*v1.Node, error)
 	DeleteNode(nodeID uint64) error
