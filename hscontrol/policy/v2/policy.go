@@ -2,6 +2,7 @@ package v2
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -18,6 +19,9 @@ import (
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
 )
+
+// ErrInvalidTagOwner is returned when a tag owner is not an Alias type.
+var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
 type PolicyManager struct {
 	mu    sync.Mutex
@@ -833,4 +837,39 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 			delete(pm.filterRulesMap, nodeID)
 		}
 	}
+}
+
+// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
+// The resulting map can be used to quickly look up the IPSet for a given Tag.
+// It is intended for internal use in a PolicyManager.
+func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
+	ret := make(map[Tag]*netipx.IPSet)
+
+	if p == nil {
+		return ret, nil
+	}
+
+	for tag, owners := range p.TagOwners {
+		var ips netipx.IPSetBuilder
+
+		for _, owner := range owners {
+			o, ok := owner.(Alias)
+			if !ok {
+				// Should never happen
+				return nil, fmt.Errorf("%w: %v", ErrInvalidTagOwner, owner)
+			}
+			// If it does not resolve, that means the tag is not associated with any IP addresses.
+			resolved, _ := o.Resolve(p, users, nodes)
+			ips.AddSet(resolved)
+		}
+
+		ipSet, err := ips.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		ret[tag] = ipSet
+	}
+
+	return ret, nil
 }
