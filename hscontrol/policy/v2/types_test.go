@@ -1862,124 +1862,108 @@ func TestResolvePolicy(t *testing.T) {
 			name:      "autogroup-member-comprehensive",
 			toResolve: ptr.To(AutoGroup(AutoGroupMember)),
 			nodes: types.Nodes{
-				// Node with no tags (should be included)
+				// Node with no tags (should be included - is a member)
 				{
 					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
-				// Node with forced tags (should be excluded)
+				// Node with single tag (should be excluded - tagged nodes are not members)
 				{
 					User: ptr.To(testuser),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
-				// Node with allowed requested tag (should be excluded)
+				// Node with multiple tags, all defined in policy (should be excluded)
 				{
 					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:test"},
-					},
+					Tags: []string{"tag:test", "tag:other"},
 					IPv4: ap("100.100.101.3"),
 				},
-				// Node with non-allowed requested tag (should be included)
+				// Node with tag not defined in policy (should be excluded - still tagged)
 				{
 					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:notallowed"},
-					},
+					Tags: []string{"tag:undefined"},
 					IPv4: ap("100.100.101.4"),
 				},
-				// Node with multiple requested tags, one allowed (should be excluded)
+				// Node with mixed tags - some defined, some not (should be excluded)
 				{
 					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:test", "tag:notallowed"},
-					},
+					Tags: []string{"tag:test", "tag:undefined"},
 					IPv4: ap("100.100.101.5"),
 				},
-				// Node with multiple requested tags, none allowed (should be included)
+				// Another untagged node from different user (should be included)
 				{
-					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
-					},
+					User: ptr.To(testuser2),
 					IPv4: ap("100.100.101.6"),
 				},
 			},
 			pol: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:test"):  Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:other"): Owners{ptr.To(Username("testuser@"))},
 				},
 			},
 			want: []netip.Prefix{
-				mp("100.100.101.1/32"), // No tags
-				mp("100.100.101.4/32"), // Non-allowed requested tag
-				mp("100.100.101.6/32"), // Multiple non-allowed requested tags
+				mp("100.100.101.1/32"), // No tags - is a member
+				mp("100.100.101.6/32"), // No tags, different user - is a member
 			},
 		},
 		{
 			name:      "autogroup-tagged",
 			toResolve: ptr.To(AutoGroup(AutoGroupTagged)),
 			nodes: types.Nodes{
-				// Node with no tags (should be excluded)
+				// Node with no tags (should be excluded - not tagged)
 				{
 					User: ptr.To(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
-				// Node with forced tag (should be included)
+				// Node with single tag defined in policy (should be included)
 				{
 					User: ptr.To(testuser),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
-				// Node with allowed requested tag (should be included)
-				{
-					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:test"},
-					},
-					IPv4: ap("100.100.101.3"),
-				},
-				// Node with non-allowed requested tag (should be excluded)
-				{
-					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:notallowed"},
-					},
-					IPv4: ap("100.100.101.4"),
-				},
-				// Node with multiple requested tags, one allowed (should be included)
-				{
-					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:test", "tag:notallowed"},
-					},
-					IPv4: ap("100.100.101.5"),
-				},
-				// Node with multiple requested tags, none allowed (should be excluded)
-				{
-					User: ptr.To(testuser),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:notallowed1", "tag:notallowed2"},
-					},
-					IPv4: ap("100.100.101.6"),
-				},
-				// Node with multiple forced tags (should be included)
+				// Node with multiple tags, all defined in policy (should be included)
 				{
 					User: ptr.To(testuser),
 					Tags: []string{"tag:test", "tag:other"},
+					IPv4: ap("100.100.101.3"),
+				},
+				// Node with tag not defined in policy (should be included - still tagged)
+				{
+					User: ptr.To(testuser),
+					Tags: []string{"tag:undefined"},
+					IPv4: ap("100.100.101.4"),
+				},
+				// Node with mixed tags - some defined, some not (should be included)
+				{
+					User: ptr.To(testuser),
+					Tags: []string{"tag:test", "tag:undefined"},
+					IPv4: ap("100.100.101.5"),
+				},
+				// Another untagged node from different user (should be excluded)
+				{
+					User: ptr.To(testuser2),
+					IPv4: ap("100.100.101.6"),
+				},
+				// Tagged node from different user (should be included)
+				{
+					User: ptr.To(testuser2),
+					Tags: []string{"tag:server"},
 					IPv4: ap("100.100.101.7"),
 				},
 			},
 			pol: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:test"):   Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:other"):  Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:server"): Owners{ptr.To(Username("testuser2@"))},
 				},
 			},
 			want: []netip.Prefix{
-				mp("100.100.101.2/31"), // Forced tag and allowed requested tag consecutive IPs are put in 31 prefix
-				mp("100.100.101.5/32"), // Multiple requested tags, one allowed
-				mp("100.100.101.7/32"), // Multiple forced tags
+				mp("100.100.101.2/31"), // .2, .3 consecutive tagged nodes
+				mp("100.100.101.4/31"), // .4, .5 consecutive tagged nodes
+				mp("100.100.101.7/32"), // Tagged node from different user
 			},
 		},
 		{
@@ -2001,9 +1985,7 @@ func TestResolvePolicy(t *testing.T) {
 				},
 				{
 					User: ptr.To(testuser2),
-					Hostinfo: &tailcfg.Hostinfo{
-						RequestTags: []string{"tag:test"},
-					},
+					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.4"),
 				},
 			},
