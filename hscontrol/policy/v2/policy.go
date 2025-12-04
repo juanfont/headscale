@@ -541,13 +541,27 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 }
 
 func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
-	if pm == nil {
+	if pm == nil || pm.pol == nil {
 		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	// Check if tag exists in policy
+	if _, exists := pm.pol.TagOwners[Tag(tag)]; !exists {
+		return false
+	}
+
+	// Tagged nodes can only keep tags they already have
+	if node.IsTagged() {
+		return node.HasTag(tag)
+	}
+
+	// Check if node's owner can assign this tag via the pre-resolved tagOwnerMap.
+	// The tagOwnerMap contains IP sets built from resolving TagOwners entries
+	// (usernames/groups) to their nodes' IPs, so checking if the node's IP
+	// is in the set answers "does this node's owner own this tag?"
 	if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
 		if slices.ContainsFunc(node.IPs(), ips.Contains) {
 			return true
@@ -555,6 +569,20 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	}
 
 	return false
+}
+
+// TagExists reports whether the given tag is defined in the policy.
+func (pm *PolicyManager) TagExists(tag string) bool {
+	if pm == nil || pm.pol == nil {
+		return false
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	_, exists := pm.pol.TagOwners[Tag(tag)]
+
+	return exists
 }
 
 func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool {

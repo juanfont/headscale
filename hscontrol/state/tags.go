@@ -3,8 +3,6 @@ package state
 import (
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -42,44 +40,6 @@ func validateNodeOwnership(node *types.Node) error {
 	}
 
 	return nil
-}
-
-// validateAndNormalizeTags validates tags against policy and normalizes them.
-// Returns validated and normalized tags, or an error if validation fails.
-func (s *State) validateAndNormalizeTags(node *types.Node, requestedTags []string) ([]string, error) {
-	if len(requestedTags) == 0 {
-		return nil, nil
-	}
-
-	var (
-		validTags   []string
-		invalidTags []string
-	)
-
-	for _, tag := range requestedTags {
-		// Validate format
-		if !strings.HasPrefix(tag, "tag:") {
-			invalidTags = append(invalidTags, tag)
-			continue
-		}
-
-		// Validate against policy
-		nodeView := node.View()
-		if s.polMan.NodeCanHaveTag(nodeView, tag) {
-			validTags = append(validTags, tag)
-		} else {
-			invalidTags = append(invalidTags, tag)
-		}
-	}
-
-	if len(invalidTags) > 0 {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidOrUnauthorizedTags, invalidTags)
-	}
-
-	// Normalize: sort and deduplicate
-	slices.Sort(validTags)
-
-	return slices.Compact(validTags), nil
 }
 
 // logTagOperation logs tag assignment operations for audit purposes.

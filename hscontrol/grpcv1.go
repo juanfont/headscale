@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -556,13 +555,7 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 			resp.User = types.TaggedDevices.Proto()
 		}
 
-		var tags []string
-		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node, tag) {
-				tags = append(tags, tag)
-			}
-		}
-		resp.ValidTags = lo.Uniq(append(tags, node.Tags().AsSlice()...))
+		resp.ValidTags = node.Tags().AsSlice()
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp

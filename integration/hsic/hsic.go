@@ -1420,6 +1420,36 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	return node, nil
 }
 
+// SetNodeTags sets tags on a node via the headscale CLI.
+// This simulates what the Tailscale admin console UI does - it calls the headscale
+// SetTags API which is exposed via the CLI command: headscale nodes tag -i <id> -t <tags>.
+func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
+	command := []string{
+		"headscale", "nodes", "tag",
+		"--identifier", strconv.FormatUint(nodeID, 10),
+		"--output", "json",
+	}
+
+	// Add tags - the CLI expects -t flag for each tag or comma-separated
+	if len(tags) > 0 {
+		command = append(command, "--tags", strings.Join(tags, ","))
+	} else {
+		// Empty tags to clear all tags
+		command = append(command, "--tags", "")
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute set tags command (node %d, tags %v): %w", nodeID, tags, err)
+	}
+
+	return nil
+}
+
 // WriteFile save file inside the Headscale container.
 func (t *HeadscaleInContainer) WriteFile(path string, data []byte) error {
 	return integrationutil.WriteFileToContainer(t.pool, t.container, path, data)

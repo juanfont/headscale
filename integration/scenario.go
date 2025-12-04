@@ -789,6 +789,19 @@ func (s *Scenario) createHeadscaleEnv(
 	tsOpts []tsic.Option,
 	opts ...hsic.Option,
 ) error {
+	return s.createHeadscaleEnvWithTags(withURL, tsOpts, nil, opts...)
+}
+
+// createHeadscaleEnvWithTags starts the headscale environment and the clients
+// according to the ScenarioSpec passed to the Scenario. If preAuthKeyTags is
+// non-empty and withURL is false, the tags will be applied to the PreAuthKey
+// (tags-as-identity model).
+func (s *Scenario) createHeadscaleEnvWithTags(
+	withURL bool,
+	tsOpts []tsic.Option,
+	preAuthKeyTags []string,
+	opts ...hsic.Option,
+) error {
 	headscale, err := s.Headscale(opts...)
 	if err != nil {
 		return err
@@ -818,7 +831,13 @@ func (s *Scenario) createHeadscaleEnv(
 				return err
 			}
 		} else {
-			key, err := s.CreatePreAuthKey(u.GetId(), true, false)
+			// Use tagged PreAuthKey if tags are provided (tags-as-identity model)
+			var key *v1.PreAuthKey
+			if len(preAuthKeyTags) > 0 {
+				key, err = s.CreatePreAuthKeyWithTags(u.GetId(), true, false, preAuthKeyTags)
+			} else {
+				key, err = s.CreatePreAuthKey(u.GetId(), true, false)
+			}
 			if err != nil {
 				return err
 			}
