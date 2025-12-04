@@ -1947,8 +1947,21 @@ func (p *Policy) validate() error {
 				if err := p.Groups.Contains(g); err != nil {
 					errs = append(errs, err)
 				}
+			case *Tag:
+				t := tagOwner
+
+				err := p.TagOwners.Contains(t)
+				if err != nil {
+					errs = append(errs, err)
+				}
 			}
 		}
+	}
+
+	// Validate tag ownership chains for circular references and undefined tags.
+	_, err := flattenTagOwners(p.TagOwners)
+	if err != nil {
+		errs = append(errs, err)
 	}
 
 	for _, approvers := range p.AutoApprovers.Routes {
