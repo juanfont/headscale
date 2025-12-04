@@ -29,7 +29,9 @@ message CreatePreAuthKeyResponse { PreAuthKey pre_auth_key = 1; }
 
 message ExpirePreAuthKeyRequest {
   uint64 user = 1;
-  string key = 2;
+  // Either key or key_id must be provided, but not both
+  optional string key = 2;
+  optional uint64 key_id = 3;
 }
 
 message ExpirePreAuthKeyResponse {}

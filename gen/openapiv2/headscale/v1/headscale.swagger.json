@@ -1049,7 +1049,12 @@
           "format": "uint64"
         },
         "key": {
-          "type": "string"
+          "type": "string",
+          "title": "Either key or key_id must be provided, but not both"
+        },
+        "keyId": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },

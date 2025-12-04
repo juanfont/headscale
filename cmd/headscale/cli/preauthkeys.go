@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ import (
 const (
 	DefaultPreAuthKeyExpiry = "1h"
 )
+
+var errMissingKeyOrID = errors.New("either KEY argument or --id flag must be provided")
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
@@ -35,6 +38,8 @@ func init() {
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(deletePreAuthKeyCmd)
+	expirePreAuthKeyCmd.Flags().
+		Uint64("id", 0, "Expire by key ID instead of key string")
 	createPreAuthKeyCmd.PersistentFlags().
 		Bool("reusable", false, "Make the preauthkey reusable")
 	createPreAuthKeyCmd.PersistentFlags().
@@ -195,14 +200,16 @@ var createPreAuthKeyCmd = &cobra.Command{
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
-	Use:     "expire KEY",
-	Short:   "Expire a preauthkey",
+	Use:     "expire [KEY]",
+	Short:   "Expire a preauthkey by key string or by --id",
+	Long:    "Expire a preauthkey either by providing the KEY as an argument or by using the --id flag with the key ID",
 	Aliases: []string{"revoke", "exp", "e"},
 	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
+		// Allow no args if --id flag is provided
+		keyID, _ := cmd.Flags().GetUint64("id")
+		if keyID == 0 && len(args) < 1 {
+			return errMissingKeyOrID
 		}
-
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -212,13 +219,22 @@ var expirePreAuthKeyCmd = &cobra.Command{
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
 
+		keyID, _ := cmd.Flags().GetUint64("id")
+
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
 			User: user,
-			Key:  args[0],
+		}
+
+		// Use either key ID or key string
+		if keyID != 0 {
+			request.KeyId = &keyID
+		} else {
+			keyStr := args[0]
+			request.Key = &keyStr
 		}
 
 		response, err := client.ExpirePreAuthKey(ctx, request)
