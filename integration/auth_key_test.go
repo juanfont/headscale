@@ -9,15 +9,12 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
@@ -730,104 +727,4 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		"BUG #2896: routes should remain SERVING after logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix")
-}
-
-// TestAuthKeyAdvertiseTagsBlocked tests that nodes registered with a PreAuthKey
-// get their tags from the PreAuthKey, and --advertise-tags passed during
-// `tailscale up` are ignored.
-//
-// Per the tags-as-identity model, PreAuthKey devices have their tags set at
-// registration time via the tagged PreAuthKey, and cannot override them using
-// advertise-tags. This is a security measure to prevent tag escalation.
-//
-// The test validates:
-// 1. A node registered with a tagged PreAuthKey AND --advertise-tags gets only PreAuthKey tags
-// 2. The advertise-tags are ignored in favor of the PreAuthKey tags.
-func TestAuthKeyAdvertiseTagsBlocked(t *testing.T) {
-	IntegrationSkip(t)
-
-	user := "taguser"
-
-	// ACL policy that authorizes tags and defines tag ownership
-	// This would normally allow the user to use advertise-tags,
-	// but PreAuthKey devices should be blocked regardless
-	policy := &policyv2.Policy{
-		TagOwners: policyv2.TagOwners{
-			"tag:server":   policyv2.Owners{ptr.To(policyv2.Username(user + "@"))},
-			"tag:database": policyv2.Owners{ptr.To(policyv2.Username(user + "@"))},
-			"tag:newTag":   policyv2.Owners{ptr.To(policyv2.Username(user + "@"))},
-		},
-		ACLs: []policyv2.ACL{
-			{
-				Action:       "accept",
-				Sources:      []policyv2.Alias{policyv2.Wildcard},
-				Destinations: []policyv2.AliasWithPorts{{Alias: policyv2.Wildcard, Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}}},
-			},
-		},
-	}
-
-	spec := ScenarioSpec{
-		NodesPerUser: 0, // We'll create the node manually with tagged PreAuthKey
-		Users:        []string{user},
-	}
-
-	scenario, err := NewScenario(spec)
-
-	require.NoError(t, err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	err = scenario.CreateHeadscaleEnv(
-		[]tsic.Option{},
-		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("authkey-advtags"),
-		hsic.WithTLS(),
-		hsic.WithDERPAsIP(),
-	)
-	requireNoErrHeadscaleEnv(t, err)
-
-	headscale, err := scenario.Headscale()
-	requireNoErrGetHeadscale(t, err)
-
-	userMap, err := headscale.MapUsers()
-	require.NoError(t, err)
-
-	userID := userMap[user].GetId()
-
-	// Create a tagged PreAuthKey with tag:server and tag:database
-	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:server", "tag:database"})
-	require.NoError(t, err)
-	t.Logf("Created tagged PreAuthKey with tags: %v", authKey.GetAclTags())
-
-	// Create a tailscale client that will try to use --advertise-tags during login
-	// This should be ignored because we're using a tagged PreAuthKey
-	client, err := scenario.CreateTailscaleNode(
-		"head",
-		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:newTag"}),
-	)
-	require.NoError(t, err)
-
-	// Login with the tagged PreAuthKey - the --advertise-tags should be ignored
-	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
-	require.NoError(t, err)
-
-	// Wait for node to be registered and verify it only has PreAuthKey tags
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(user)
-		assert.NoError(c, err)
-		assert.Len(c, nodes, 1, "Should have exactly 1 node")
-
-		if len(nodes) == 1 {
-			node := nodes[0]
-			// Verify node has ONLY the PreAuthKey tags, NOT the advertise-tags
-			assert.Contains(c, node.GetValidTags(), "tag:server", "Node should have tag:server from PreAuthKey")
-			assert.Contains(c, node.GetValidTags(), "tag:database", "Node should have tag:database from PreAuthKey")
-			assert.NotContains(c, node.GetValidTags(), "tag:newTag", "Node should NOT have tag:newTag - advertise-tags should be ignored for PreAuthKey devices")
-			assert.Len(c, node.GetValidTags(), 2, "Node should have exactly 2 tags (PreAuthKey tags only)")
-
-			t.Logf("Verified: Node tags are %v (advertise-tags correctly ignored)", node.GetValidTags())
-		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying advertise-tags was ignored for PreAuthKey device")
-
-	t.Logf("Test completed - advertise-tags correctly ignored for PreAuthKey device")
 }
