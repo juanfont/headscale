@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/crc64"
 	"io"
+	"maps"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -80,10 +81,13 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 	result := tailcfg.DERPMap{
 		OmitDefaultRegions: false,
+		HomeParams:         &tailcfg.DERPHomeParams{},
 		Regions:            map[tailcfg.DERPRegionID]*tailcfg.DERPRegion{},
 	}
 
 	for _, derpMap := range derpMaps {
+		maps.Copy(result.HomeParams.RegionScore, derpMap.HomeParams.RegionScore)
+
 		// Clone each region: copying the pointer would let a later in-place
 		// shuffle alias regions shared with the source map or a previously
 		// served map, racing concurrent readers.
@@ -96,6 +100,12 @@ func mergeDERPMaps(derpMaps []*tailcfg.DERPMap) *tailcfg.DERPMap {
 			}
 
 			result.Regions[id] = region.Clone()
+		}
+	}
+
+	for id, regionScore := range result.HomeParams.RegionScore {
+		if regionScore <= 0 {
+			delete(result.HomeParams.RegionScore, id)
 		}
 	}
 
