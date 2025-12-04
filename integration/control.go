@@ -33,6 +33,7 @@ type ControlServer interface {
 	ListUsers() ([]*v1.User, error)
 	MapUsers() (map[string]*v1.User, error)
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
+	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte
 	GetHostname() string
 	GetIPInNetwork(network *dockertest.Network) string

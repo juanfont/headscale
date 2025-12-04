@@ -5,21 +5,14 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
 
-// NodeCanHaveTagChecker is an interface for checking if a node can have a tag.
-type NodeCanHaveTagChecker interface {
-	NodeCanHaveTag(node types.NodeView, tag string) bool
-}
-
 func tailNodes(
 	nodes views.Slice[types.NodeView],
 	capVer tailcfg.CapabilityVersion,
-	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) ([]*tailcfg.Node, error) {
@@ -29,7 +22,6 @@ func tailNodes(
 		tNode, err := tailNode(
 			node,
 			capVer,
-			checker,
 			primaryRouteFunc,
 			cfg,
 		)
@@ -47,7 +39,6 @@ func tailNodes(
 func tailNode(
 	node types.NodeView,
 	capVer tailcfg.CapabilityVersion,
-	checker NodeCanHaveTagChecker,
 	primaryRouteFunc routeFilterFunc,
 	cfg *types.Config,
 ) (*tailcfg.Node, error) {
@@ -76,18 +67,6 @@ func tailNode(
 	if err != nil {
 		return nil, err
 	}
-
-	var tags []string
-	for _, tag := range node.RequestTagsSlice().All() {
-		if checker.NodeCanHaveTag(node, tag) {
-			tags = append(tags, tag)
-		}
-	}
-
-	for _, tag := range node.Tags().All() {
-		tags = append(tags, tag)
-	}
-	tags = lo.Uniq(tags)
 
 	routes := primaryRouteFunc(node.ID())
 	allowed := append(addrs, routes...)
@@ -118,7 +97,7 @@ func tailNode(
 
 		Online: node.IsOnline().Clone(),
 
-		Tags: tags,
+		Tags: node.Tags().AsSlice(),
 
 		MachineAuthorized: !node.IsExpired(),
 		Expired:           node.IsExpired(),

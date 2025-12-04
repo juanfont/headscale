@@ -1383,27 +1383,31 @@ func TestACLAutogroupTagged(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create users and nodes manually with specific tags
+	// Tags are now set via PreAuthKey (tags-as-identity model), not via --advertise-tags
 	for _, userStr := range spec.Users {
 		user, err := scenario.CreateUser(userStr)
 		require.NoError(t, err)
 
-		// Create a single pre-auth key per user
-		authKey, err := scenario.CreatePreAuthKey(user.GetId(), true, false)
+		// Create two pre-auth keys per user: one tagged, one untagged
+		taggedAuthKey, err := scenario.CreatePreAuthKeyWithTags(user.GetId(), true, false, []string{"tag:test"})
+		require.NoError(t, err)
+
+		untaggedAuthKey, err := scenario.CreatePreAuthKey(user.GetId(), true, false)
 		require.NoError(t, err)
 
 		// Create nodes with proper naming
 		for i := range spec.NodesPerUser {
-			var tags []string
+			var authKey string
 			var version string
 
 			if i == 0 {
-				// First node is tagged
-				tags = []string{"tag:test"}
+				// First node is tagged - use tagged PreAuthKey
+				authKey = taggedAuthKey.GetKey()
 				version = "head"
 				t.Logf("Creating tagged node for %s", userStr)
 			} else {
-				// Second node is untagged
-				tags = nil
+				// Second node is untagged - use untagged PreAuthKey
+				authKey = untaggedAuthKey.GetKey()
 				version = "unstable"
 				t.Logf("Creating untagged node for %s", userStr)
 			}
@@ -1429,11 +1433,6 @@ func TestACLAutogroupTagged(t *testing.T) {
 				tsic.WithDockerWorkdir("/"),
 			}
 
-			// Add tags if this is a tagged node
-			if len(tags) > 0 {
-				opts = append(opts, tsic.WithTags(tags))
-			}
-
 			tsClient, err := tsic.New(
 				scenario.Pool(),
 				version,
@@ -1444,8 +1443,8 @@ func TestACLAutogroupTagged(t *testing.T) {
 			err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 			require.NoError(t, err)
 
-			// Login with the auth key
-			err = tsClient.Login(headscale.GetEndpoint(), authKey.GetKey())
+			// Login with the appropriate auth key (tags come from the PreAuthKey)
+			err = tsClient.Login(headscale.GetEndpoint(), authKey)
 			require.NoError(t, err)
 
 			err = tsClient.WaitForRunning(integrationutil.PeerSyncTimeout())
@@ -1699,17 +1698,17 @@ func TestACLAutogroupSelf(t *testing.T) {
 	routerUser, err := scenario.CreateUser("user-router")
 	require.NoError(t, err)
 
-	authKey, err := scenario.CreatePreAuthKey(routerUser.GetId(), true, false)
+	// Create a tagged PreAuthKey for the router node (tags-as-identity model)
+	authKey, err := scenario.CreatePreAuthKeyWithTags(routerUser.GetId(), true, false, []string{"tag:router-node"})
 	require.NoError(t, err)
 
-	// Create router node (tagged with tag:router-node)
+	// Create router node (tags come from the PreAuthKey)
 	routerClient, err := tsic.New(
 		scenario.Pool(),
 		"unstable",
 		tsic.WithCACert(headscale.GetCert()),
 		tsic.WithHeadscaleName(headscale.GetHostname()),
 		tsic.WithNetwork(network),
-		tsic.WithTags([]string{"tag:router-node"}),
 		tsic.WithNetfilter("off"),
 		tsic.WithDockerEntrypoint([]string{
 			"/bin/sh",

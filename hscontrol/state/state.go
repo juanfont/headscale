@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -669,11 +670,26 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return types.NodeView{}, change.EmptySet, fmt.Errorf("%w: %d", ErrNodeNotFound, nodeID)
 	}
 
-	// Validate tags against policy
-	validatedTags, err := s.validateAndNormalizeTags(existingNode.AsStruct(), tags)
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+	// Validate tags: must have correct format and exist in policy
+	validatedTags := make([]string, 0, len(tags))
+	invalidTags := make([]string, 0)
+
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "tag:") || !s.polMan.TagExists(tag) {
+			invalidTags = append(invalidTags, tag)
+
+			continue
+		}
+
+		validatedTags = append(validatedTags, tag)
 	}
+
+	if len(invalidTags) > 0 {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("%w: %v", ErrInvalidOrUnauthorizedTags, invalidTags)
+	}
+
+	slices.Sort(validatedTags)
+	validatedTags = slices.Compact(validatedTags)
 
 	// Log the operation
 	logTagOperation(existingNode, validatedTags)
@@ -1143,22 +1159,27 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	nodeToRegister.IPv4 = ipv4
 	nodeToRegister.IPv6 = ipv6
 
-	// Process RequestTags (from tailscale up --advertise-tags) for user-owned nodes.
-	// PreAuthKey tagged devices get their tags from the PreAuthKey and cannot use advertise-tags.
-	// Tags are validated against policy using the node's allocated IPs.
-	isPreAuthKeyTagged := params.PreAuthKey != nil && params.PreAuthKey.IsTagged()
-	if !isPreAuthKeyTagged && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
-		var approvedTags []string
+	// Reject advertise-tags for PreAuthKey registrations.
+	// PreAuthKey nodes get their tags from the key itself, not from client requests.
+	if params.PreAuthKey != nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
+		return types.NodeView{}, fmt.Errorf("%w: %v", ErrInvalidOrUnauthorizedTags, params.Hostinfo.RequestTags)
+	}
+
+	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
+	if params.PreAuthKey == nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
+		var approvedTags, rejectedTags []string
 
 		for _, tag := range params.Hostinfo.RequestTags {
 			if s.polMan.NodeCanHaveTag(nodeToRegister.View(), tag) {
 				approvedTags = append(approvedTags, tag)
 			} else {
-				log.Debug().
-					Str("node.name", nodeToRegister.Hostname).
-					Str("tag", tag).
-					Msg("advertise-tag not approved by policy during registration")
+				rejectedTags = append(rejectedTags, tag)
 			}
+		}
+
+		// Reject registration if any requested tags are unauthorized
+		if len(rejectedTags) > 0 {
+			return types.NodeView{}, fmt.Errorf("%w: %v", ErrInvalidOrUnauthorizedTags, rejectedTags)
 		}
 
 		if len(approvedTags) > 0 {

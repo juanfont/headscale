@@ -26,6 +26,9 @@ type PolicyManager interface {
 	// NodeCanHaveTag reports whether the given node can have the given tag.
 	NodeCanHaveTag(types.NodeView, string) bool
 
+	// TagExists reports whether the given tag is defined in the policy.
+	TagExists(tag string) bool
+
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(types.NodeView, netip.Prefix) bool
 

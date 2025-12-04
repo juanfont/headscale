@@ -2268,7 +2268,13 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					route, err := scenario.SubnetOfNetwork("usernet1")
 					require.NoError(t, err)
 
-					err = scenario.createHeadscaleEnv(tt.withURL, tsOpts,
+					// For authkey with tag approver, use tagged PreAuthKeys (tags-as-identity model)
+					var preAuthKeyTags []string
+					if !tt.withURL && strings.HasPrefix(tt.approver, "tag:") {
+						preAuthKeyTags = []string{tt.approver}
+					}
+
+					err = scenario.createHeadscaleEnvWithTags(tt.withURL, tsOpts, preAuthKeyTags,
 						opts...,
 					)
 					requireNoErrHeadscaleEnv(t, err)
@@ -2315,6 +2321,12 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						)
 					}
 
+					// For webauth with tag approver, the node needs to advertise the tag during registration
+					// (tags-as-identity model: webauth nodes can use --advertise-tags if authorized by tagOwners)
+					if tt.withURL && strings.HasPrefix(tt.approver, "tag:") {
+						tsOpts = append(tsOpts, tsic.WithTags([]string{tt.approver}))
+					}
+
 					tsOpts = append(tsOpts, tsic.WithNetwork(usernet1))
 
 					// This whole dance is to add a node _after_ all the other nodes
@@ -2349,7 +2361,14 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						userMap, err := headscale.MapUsers()
 						require.NoError(t, err)
 
-						pak, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+						// If the approver is a tag, create a tagged PreAuthKey
+						// (tags-as-identity model: tags come from PreAuthKey, not --advertise-tags)
+						var pak *v1.PreAuthKey
+						if strings.HasPrefix(tt.approver, "tag:") {
+							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), false, false, []string{tt.approver})
+						} else {
+							pak, err = scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+						}
 						require.NoError(t, err)
 
 						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.GetKey())
