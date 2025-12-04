@@ -69,7 +69,6 @@ func TestTailNode(t *testing.T) {
 				HomeDERP:          0,
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				Tags:              []string{},
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
@@ -184,7 +183,6 @@ func TestTailNode(t *testing.T) {
 				HomeDERP:          0,
 				LegacyDERPString:  "127.3.3.40:0",
 				Hostinfo:          hiview(tailcfg.Hostinfo{}),
-				Tags:              []string{},
 				MachineAuthorized: true,
 
 				CapMap: tailcfg.NodeCapMap{
