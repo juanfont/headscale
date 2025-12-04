@@ -99,6 +99,33 @@ jobs:
           - TestSSHIsBlockedInACL
           - TestSSHUserOnlyIsolation
           - TestSSHAutogroupSelf
+          - TestTagsAuthKeyWithTagRequestDifferentTag
+          - TestTagsAuthKeyWithTagNoAdvertiseFlag
+          - TestTagsAuthKeyWithTagCannotAddViaCLI
+          - TestTagsAuthKeyWithTagCannotChangeViaCLI
+          - TestTagsAuthKeyWithTagAdminOverrideReauthResets
+          - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
+          - TestTagsAuthKeyWithoutTagCannotRequestTags
+          - TestTagsAuthKeyWithoutTagRegisterNoTags
+          - TestTagsAuthKeyWithoutTagCannotAddViaCLI
+          - TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset
+          - TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise
+          - TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag
+          - TestTagsUserLoginOwnedTagAtRegistration
+          - TestTagsUserLoginNonExistentTagAtRegistration
+          - TestTagsUserLoginUnownedTagAtRegistration
+          - TestTagsUserLoginAddTagViaCLIReauth
+          - TestTagsUserLoginRemoveTagViaCLIReauth
+          - TestTagsUserLoginCLINoOpAfterAdminAssignment
+          - TestTagsUserLoginCLICannotRemoveAdminTags
+          - TestTagsAuthKeyWithTagRequestNonExistentTag
+          - TestTagsAuthKeyWithTagRequestUnownedTag
+          - TestTagsAuthKeyWithoutTagRequestNonExistentTag
+          - TestTagsAuthKeyWithoutTagRequestUnownedTag
+          - TestTagsAdminAPICannotSetNonExistentTag
+          - TestTagsAdminAPICanSetUnownedTag
+          - TestTagsAdminAPICannotRemoveAllTags
+          - TestTagsAdminAPICannotSetInvalidFormat
     uses: ./.github/workflows/integration-test-template.yml
     with:
       test: ${{ matrix.test }}
