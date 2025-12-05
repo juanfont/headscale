@@ -97,7 +97,7 @@ jobs:
           - TestTagsAuthKeyWithTagNoAdvertiseFlag
           - TestTagsAuthKeyWithTagCannotAddViaCLI
           - TestTagsAuthKeyWithTagCannotChangeViaCLI
-          - TestTagsAuthKeyWithTagAdminOverrideReauthResets
+          - TestTagsAuthKeyWithTagAdminOverrideReauthPreserves
           - TestTagsAuthKeyWithTagCLICannotModifyAdminTags
           - TestTagsAuthKeyWithoutTagCannotRequestTags
           - TestTagsAuthKeyWithoutTagRegisterNoTags
