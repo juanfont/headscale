@@ -540,6 +540,12 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	return false, nil
 }
 
+// NodeCanHaveTag checks if a node can have the specified tag during client-initiated
+// registration or reauth flows (e.g., tailscale up --advertise-tags).
+//
+// This function is NOT used by the admin API's SetNodeTags - admins can set any
+// existing tag on any node by calling State.SetNodeTags directly, which bypasses
+// this authorization check.
 func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	if pm == nil || pm.pol == nil {
 		return false
@@ -549,11 +555,13 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	defer pm.mu.Unlock()
 
 	// Check if tag exists in policy
-	if _, exists := pm.pol.TagOwners[Tag(tag)]; !exists {
+	owners, exists := pm.pol.TagOwners[Tag(tag)]
+	if !exists {
 		return false
 	}
 
-	// Tagged nodes can only keep tags they already have
+	// Tagged nodes can only keep tags they already have via client requests.
+	// (Admin API bypasses this function entirely and can modify any tags.)
 	if node.IsTagged() {
 		return node.HasTag(tag)
 	}
@@ -568,7 +576,62 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 		}
 	}
 
+	// For new nodes being registered, their IP may not yet be in the tagOwnerMap.
+	// Fall back to checking the node's user directly against the TagOwners.
+	// This handles the case where a user registers a new node with --advertise-tags.
+	if node.User().Valid() {
+		for _, owner := range owners {
+			if pm.userMatchesOwner(node.User(), owner) {
+				return true
+			}
+		}
+	}
+
 	return false
+}
+
+// userMatchesOwner checks if a user matches a tag owner entry.
+// This is used as a fallback when the node's IP is not in the tagOwnerMap.
+func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool {
+	switch o := owner.(type) {
+	case *Username:
+		if o == nil {
+			return false
+		}
+		// Resolve the username to find the user it refers to
+		resolvedUser, err := o.resolveUser(pm.users)
+		if err != nil {
+			return false
+		}
+
+		return user.ID() == resolvedUser.ID
+
+	case *Group:
+		if o == nil || pm.pol == nil {
+			return false
+		}
+		// Resolve the group to get usernames
+		usernames, ok := pm.pol.Groups[*o]
+		if !ok {
+			return false
+		}
+		// Check if the user matches any username in the group
+		for _, uname := range usernames {
+			resolvedUser, err := uname.resolveUser(pm.users)
+			if err != nil {
+				continue
+			}
+
+			if user.ID() == resolvedUser.ID {
+				return true
+			}
+		}
+
+		return false
+
+	default:
+		return false
+	}
 }
 
 // TagExists reports whether the given tag is defined in the policy.
