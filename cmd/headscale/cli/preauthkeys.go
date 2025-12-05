@@ -107,10 +107,10 @@ var listPreAuthKeys = &cobra.Command{
 			aclTags := ""
 
 			for _, tag := range key.GetAclTags() {
-				aclTags += "," + tag
+				aclTags += "\n" + tag
 			}
 
-			aclTags = strings.TrimLeft(aclTags, ",")
+			aclTags = strings.TrimLeft(aclTags, "\n")
 
 			tableData = append(tableData, []string{
 				strconv.FormatUint(key.GetId(), 10),
