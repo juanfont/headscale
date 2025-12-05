@@ -527,7 +527,7 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[type
 				continue
 			}
 
-			// Node is a member if it has no forced tags and no allowed requested tags
+			// Node is a member if it is not tagged
 			node.AppendToIPSet(&build)
 		}
 
