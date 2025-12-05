@@ -2259,12 +2259,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						tsic.WithAcceptRoutes(),
 					}
 
-					if tt.approver == "tag:approve" {
-						tsOpts = append(tsOpts,
-							tsic.WithTags([]string{"tag:approve"}),
-						)
-					}
-
 					route, err := scenario.SubnetOfNetwork("usernet1")
 					require.NoError(t, err)
 
