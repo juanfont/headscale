@@ -933,7 +933,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// TEST: PreAuthKey registration rejects client-provided RequestTags
 		// WHAT: Tests that PreAuthKey registrations cannot use client-provided tags
 		// INPUT: PreAuthKey registration with RequestTags in Hostinfo
-		// EXPECTED: Registration fails with "invalid or unauthorized tags" error
+		// EXPECTED: Registration fails with "requested tags [...] are invalid or not permitted" error
 		// WHY: PreAuthKey nodes get their tags from the key itself, not from client requests
 		{
 			name: "preauth_key_rejects_request_tags",
@@ -3539,8 +3539,8 @@ func TestWebAuthRejectsUnauthorizedRequestTags(t *testing.T) {
 
 	// Expect error due to unauthorized tags
 	require.Error(t, err, "HandleNodeFromAuthPath should reject unauthorized RequestTags")
-	require.Contains(t, err.Error(), "invalid or unauthorized tags",
-		"Error should indicate tags are invalid or unauthorized")
+	require.Contains(t, err.Error(), "requested tags",
+		"Error should indicate requested tags are invalid or not permitted")
 	require.Contains(t, err.Error(), "tag:unauthorized",
 		"Error should mention the rejected tag")
 
