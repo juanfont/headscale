@@ -1206,6 +1206,158 @@ func (x *BackfillNodeIPsResponse) GetChanges() []string {
 	return nil
 }
 
+type PingNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	TargetIp      string                 `protobuf:"bytes,2,opt,name=target_ip,json=targetIp,proto3" json:"target_ip,omitempty"` // IP address to ping (optional, uses node's primary IP if empty)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingNodeRequest) Reset() {
+	*x = PingNodeRequest{}
+	mi := &file_headscale_v1_node_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingNodeRequest) ProtoMessage() {}
+
+func (x *PingNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_node_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingNodeRequest.ProtoReflect.Descriptor instead.
+func (*PingNodeRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_node_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *PingNodeRequest) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *PingNodeRequest) GetTargetIp() string {
+	if x != nil {
+		return x.TargetIp
+	}
+	return ""
+}
+
+type PingNodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	PingType      string                 `protobuf:"bytes,2,opt,name=ping_type,json=pingType,proto3" json:"ping_type,omitempty"`                // Type of ping performed (e.g., "disco", "TSMP", "c2n")
+	NodeIp        string                 `protobuf:"bytes,3,opt,name=node_ip,json=nodeIp,proto3" json:"node_ip,omitempty"`                      // IP of the responding node
+	LatencyMs     int64                  `protobuf:"varint,4,opt,name=latency_ms,json=latencyMs,proto3" json:"latency_ms,omitempty"`            // Latency in milliseconds
+	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`                                      // Error message if ping failed
+	Endpoint      string                 `protobuf:"bytes,6,opt,name=endpoint,proto3" json:"endpoint,omitempty"`                                // Endpoint information from the ping
+	DerpRegionId  int32                  `protobuf:"varint,7,opt,name=derp_region_id,json=derpRegionId,proto3" json:"derp_region_id,omitempty"` // DERP region ID if applicable
+	IsLocal       bool                   `protobuf:"varint,8,opt,name=is_local,json=isLocal,proto3" json:"is_local,omitempty"`                  // Whether the ping was local (not through DERP)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PingNodeResponse) Reset() {
+	*x = PingNodeResponse{}
+	mi := &file_headscale_v1_node_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PingNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PingNodeResponse) ProtoMessage() {}
+
+func (x *PingNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_node_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PingNodeResponse.ProtoReflect.Descriptor instead.
+func (*PingNodeResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_node_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *PingNodeResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *PingNodeResponse) GetPingType() string {
+	if x != nil {
+		return x.PingType
+	}
+	return ""
+}
+
+func (x *PingNodeResponse) GetNodeIp() string {
+	if x != nil {
+		return x.NodeIp
+	}
+	return ""
+}
+
+func (x *PingNodeResponse) GetLatencyMs() int64 {
+	if x != nil {
+		return x.LatencyMs
+	}
+	return 0
+}
+
+func (x *PingNodeResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *PingNodeResponse) GetEndpoint() string {
+	if x != nil {
+		return x.Endpoint
+	}
+	return ""
+}
+
+func (x *PingNodeResponse) GetDerpRegionId() int32 {
+	if x != nil {
+		return x.DerpRegionId
+	}
+	return 0
+}
+
+func (x *PingNodeResponse) GetIsLocal() bool {
+	if x != nil {
+		return x.IsLocal
+	}
+	return false
+}
+
 var File_headscale_v1_node_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_node_proto_rawDesc = "" +
@@ -1286,7 +1438,20 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x16BackfillNodeIPsRequest\x12\x1c\n" +
 	"\tconfirmed\x18\x01 \x01(\bR\tconfirmed\"3\n" +
 	"\x17BackfillNodeIPsResponse\x12\x18\n" +
-	"\achanges\x18\x01 \x03(\tR\achanges*\x82\x01\n" +
+	"\achanges\x18\x01 \x03(\tR\achanges\"G\n" +
+	"\x0fPingNodeRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1b\n" +
+	"\ttarget_ip\x18\x02 \x01(\tR\btargetIp\"\xf4\x01\n" +
+	"\x10PingNodeResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1b\n" +
+	"\tping_type\x18\x02 \x01(\tR\bpingType\x12\x17\n" +
+	"\anode_ip\x18\x03 \x01(\tR\x06nodeIp\x12\x1d\n" +
+	"\n" +
+	"latency_ms\x18\x04 \x01(\x03R\tlatencyMs\x12\x14\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12\x1a\n" +
+	"\bendpoint\x18\x06 \x01(\tR\bendpoint\x12$\n" +
+	"\x0ederp_region_id\x18\a \x01(\x05R\fderpRegionId\x12\x19\n" +
+	"\bis_local\x18\b \x01(\bR\aisLocal*\x82\x01\n" +
 	"\x0eRegisterMethod\x12\x1f\n" +
 	"\x1bREGISTER_METHOD_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18REGISTER_METHOD_AUTH_KEY\x10\x01\x12\x17\n" +
@@ -1306,7 +1471,7 @@ func file_headscale_v1_node_proto_rawDescGZIP() []byte {
 }
 
 var file_headscale_v1_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_headscale_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_headscale_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_headscale_v1_node_proto_goTypes = []any{
 	(RegisterMethod)(0),               // 0: headscale.v1.RegisterMethod
 	(*Node)(nil),                      // 1: headscale.v1.Node
@@ -1330,22 +1495,24 @@ var file_headscale_v1_node_proto_goTypes = []any{
 	(*DebugCreateNodeResponse)(nil),   // 19: headscale.v1.DebugCreateNodeResponse
 	(*BackfillNodeIPsRequest)(nil),    // 20: headscale.v1.BackfillNodeIPsRequest
 	(*BackfillNodeIPsResponse)(nil),   // 21: headscale.v1.BackfillNodeIPsResponse
-	(*User)(nil),                      // 22: headscale.v1.User
-	(*timestamppb.Timestamp)(nil),     // 23: google.protobuf.Timestamp
-	(*PreAuthKey)(nil),                // 24: headscale.v1.PreAuthKey
+	(*PingNodeRequest)(nil),           // 22: headscale.v1.PingNodeRequest
+	(*PingNodeResponse)(nil),          // 23: headscale.v1.PingNodeResponse
+	(*User)(nil),                      // 24: headscale.v1.User
+	(*timestamppb.Timestamp)(nil),     // 25: google.protobuf.Timestamp
+	(*PreAuthKey)(nil),                // 26: headscale.v1.PreAuthKey
 }
 var file_headscale_v1_node_proto_depIdxs = []int32{
-	22, // 0: headscale.v1.Node.user:type_name -> headscale.v1.User
-	23, // 1: headscale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
-	23, // 2: headscale.v1.Node.expiry:type_name -> google.protobuf.Timestamp
-	24, // 3: headscale.v1.Node.pre_auth_key:type_name -> headscale.v1.PreAuthKey
-	23, // 4: headscale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
+	24, // 0: headscale.v1.Node.user:type_name -> headscale.v1.User
+	25, // 1: headscale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
+	25, // 2: headscale.v1.Node.expiry:type_name -> google.protobuf.Timestamp
+	26, // 3: headscale.v1.Node.pre_auth_key:type_name -> headscale.v1.PreAuthKey
+	25, // 4: headscale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: headscale.v1.Node.register_method:type_name -> headscale.v1.RegisterMethod
 	1,  // 6: headscale.v1.RegisterNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 7: headscale.v1.GetNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 8: headscale.v1.SetTagsResponse.node:type_name -> headscale.v1.Node
 	1,  // 9: headscale.v1.SetApprovedRoutesResponse.node:type_name -> headscale.v1.Node
-	23, // 10: headscale.v1.ExpireNodeRequest.expiry:type_name -> google.protobuf.Timestamp
+	25, // 10: headscale.v1.ExpireNodeRequest.expiry:type_name -> google.protobuf.Timestamp
 	1,  // 11: headscale.v1.ExpireNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 12: headscale.v1.RenameNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 13: headscale.v1.ListNodesResponse.nodes:type_name -> headscale.v1.Node
@@ -1370,7 +1537,7 @@ func file_headscale_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_node_proto_rawDesc), len(file_headscale_v1_node_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   21,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

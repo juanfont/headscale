@@ -420,6 +420,45 @@
         ]
       }
     },
+    "/api/v1/node/{nodeId}/ping": {
+      "post": {
+        "operationId": "HeadscaleService_PingNode",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1PingNodeResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/HeadscaleServicePingNodeBody"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/{nodeId}/rename/{newName}": {
       "post": {
         "operationId": "HeadscaleService_RenameNode",
@@ -822,6 +861,15 @@
     }
   },
   "definitions": {
+    "HeadscaleServicePingNodeBody": {
+      "type": "object",
+      "properties": {
+        "targetIp": {
+          "type": "string",
+          "title": "IP address to ping (optional, uses node's primary IP if empty)"
+        }
+      }
+    },
     "HeadscaleServiceSetApprovedRoutesBody": {
       "type": "object",
       "properties": {
@@ -1219,6 +1267,44 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "v1PingNodeResponse": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "pingType": {
+          "type": "string",
+          "title": "Type of ping performed (e.g., \"disco\", \"TSMP\", \"c2n\")"
+        },
+        "nodeIp": {
+          "type": "string",
+          "title": "IP of the responding node"
+        },
+        "latencyMs": {
+          "type": "string",
+          "format": "int64",
+          "title": "Latency in milliseconds"
+        },
+        "error": {
+          "type": "string",
+          "title": "Error message if ping failed"
+        },
+        "endpoint": {
+          "type": "string",
+          "title": "Endpoint information from the ping"
+        },
+        "derpRegionId": {
+          "type": "integer",
+          "format": "int32",
+          "title": "DERP region ID if applicable"
+        },
+        "isLocal": {
+          "type": "boolean",
+          "title": "Whether the ping was local (not through DERP)"
         }
       }
     },
