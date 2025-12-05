@@ -2720,6 +2720,127 @@ func TestNodeCanHaveTag(t *testing.T) {
 			tag:  "tag:dev", // This tag is not defined in tagOwners
 			want: false,
 		},
+		// Test cases for nodes without IPs (new registration scenario)
+		// These test the user-based fallback in NodeCanHaveTag
+		{
+			name: "node-without-ip-user-owns-tag",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node: &types.Node{
+				// No IPv4 or IPv6 - simulates new node registration
+				User:   &users[0],
+				UserID: ptr.To(users[0].ID),
+			},
+			tag:  "tag:test",
+			want: true, // Should succeed via user-based fallback
+		},
+		{
+			name: "node-without-ip-user-does-not-own-tag",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user2@"))},
+				},
+			},
+			node: &types.Node{
+				// No IPv4 or IPv6 - simulates new node registration
+				User:   &users[0], // user1, but tag owned by user2
+				UserID: ptr.To(users[0].ID),
+			},
+			tag:  "tag:test",
+			want: false, // user1 does not own tag:test
+		},
+		{
+			name: "node-without-ip-group-owns-tag",
+			policy: &Policy{
+				Groups: Groups{
+					"group:admins": Usernames{"user1@", "user2@"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:admin"): Owners{ptr.To(Group("group:admins"))},
+				},
+			},
+			node: &types.Node{
+				// No IPv4 or IPv6 - simulates new node registration
+				User:   &users[1], // user2 is in group:admins
+				UserID: ptr.To(users[1].ID),
+			},
+			tag:  "tag:admin",
+			want: true, // Should succeed via group membership
+		},
+		{
+			name: "node-without-ip-not-in-group",
+			policy: &Policy{
+				Groups: Groups{
+					"group:admins": Usernames{"user1@"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:admin"): Owners{ptr.To(Group("group:admins"))},
+				},
+			},
+			node: &types.Node{
+				// No IPv4 or IPv6 - simulates new node registration
+				User:   &users[1], // user2 is NOT in group:admins
+				UserID: ptr.To(users[1].ID),
+			},
+			tag:  "tag:admin",
+			want: false, // user2 is not in group:admins
+		},
+		{
+			name: "node-without-ip-no-user",
+			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+				},
+			},
+			node: &types.Node{
+				// No IPv4, IPv6, or User - edge case
+			},
+			tag:  "tag:test",
+			want: false, // No user means can't authorize via user-based fallback
+		},
+		{
+			name: "node-without-ip-mixed-owners-user-match",
+			policy: &Policy{
+				Groups: Groups{
+					"group:ops": Usernames{"user3@"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{
+						ptr.To(Username("user1@")),
+						ptr.To(Group("group:ops")),
+					},
+				},
+			},
+			node: &types.Node{
+				User:   &users[0], // user1 directly owns the tag
+				UserID: ptr.To(users[0].ID),
+			},
+			tag:  "tag:server",
+			want: true,
+		},
+		{
+			name: "node-without-ip-mixed-owners-group-match",
+			policy: &Policy{
+				Groups: Groups{
+					"group:ops": Usernames{"user3@"},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{
+						ptr.To(Username("user1@")),
+						ptr.To(Group("group:ops")),
+					},
+				},
+			},
+			node: &types.Node{
+				User:   &users[2], // user3 is in group:ops
+				UserID: ptr.To(users[2].ID),
+			},
+			tag:  "tag:server",
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2737,6 +2858,106 @@ func TestNodeCanHaveTag(t *testing.T) {
 			got := pm.NodeCanHaveTag(tt.node.View(), tt.tag)
 			if got != tt.want {
 				t.Errorf("NodeCanHaveTag() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestUserMatchesOwner(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+		{Model: gorm.Model{ID: 3}, Name: "user3"},
+	}
+
+	tests := []struct {
+		name   string
+		policy *Policy
+		user   types.User
+		owner  Owner
+		want   bool
+	}{
+		{
+			name:   "username-match",
+			policy: &Policy{},
+			user:   users[0],
+			owner:  ptr.To(Username("user1@")),
+			want:   true,
+		},
+		{
+			name:   "username-no-match",
+			policy: &Policy{},
+			user:   users[0],
+			owner:  ptr.To(Username("user2@")),
+			want:   false,
+		},
+		{
+			name: "group-match",
+			policy: &Policy{
+				Groups: Groups{
+					"group:admins": Usernames{"user1@", "user2@"},
+				},
+			},
+			user:  users[1], // user2 is in group:admins
+			owner: ptr.To(Group("group:admins")),
+			want:  true,
+		},
+		{
+			name: "group-no-match",
+			policy: &Policy{
+				Groups: Groups{
+					"group:admins": Usernames{"user1@"},
+				},
+			},
+			user:  users[1], // user2 is NOT in group:admins
+			owner: ptr.To(Group("group:admins")),
+			want:  false,
+		},
+		{
+			name: "group-not-defined",
+			policy: &Policy{
+				Groups: Groups{},
+			},
+			user:  users[0],
+			owner: ptr.To(Group("group:undefined")),
+			want:  false,
+		},
+		{
+			name:   "nil-username-owner",
+			policy: &Policy{},
+			user:   users[0],
+			owner:  (*Username)(nil),
+			want:   false,
+		},
+		{
+			name:   "nil-group-owner",
+			policy: &Policy{},
+			user:   users[0],
+			owner:  (*Group)(nil),
+			want:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a minimal PolicyManager for testing
+			// We need nodes with IPs to initialize the tagOwnerMap
+			nodes := types.Nodes{
+				{
+					IPv4: ap("100.64.0.1"),
+					User: &users[0],
+				},
+			}
+
+			b, err := json.Marshal(tt.policy)
+			require.NoError(t, err)
+
+			pm, err := NewPolicyManager(b, users, nodes.ViewSlice())
+			require.NoError(t, err)
+
+			got := pm.userMatchesOwner(tt.user.View(), tt.owner)
+			if got != tt.want {
+				t.Errorf("userMatchesOwner() = %v, want %v", got, tt.want)
 			}
 		})
 	}
