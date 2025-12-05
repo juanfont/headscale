@@ -66,6 +66,35 @@ prefixes:
   # - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
   allocation: sequential
 
+# Node liveness checking configuration.
+# Headscale can periodically ping nodes to verify they are still reachable
+# and detect network failures faster than the default TCP timeout (~16 minutes).
+# This helps with scenarios like subnet router failover and detecting
+# disconnected clients.
+node_liveness:
+  # Enable the periodic ping scheduler for node liveness checks.
+  # When disabled, headscale relies on TCP timeouts to detect offline nodes.
+  # Default: false
+  enable_scheduler: false
+
+  # How often to check all nodes for liveness.
+  # Nodes will be pinged at distributed intervals within this window.
+  # Default: 2m
+  ping_interval: 2m
+
+  # Maximum random jitter to add to ping scheduling.
+  # This prevents all pings from happening at the same time and
+  # distributes the load across the interval window.
+  # Should be less than ping_interval.
+  # Default: 30s
+  ping_jitter: 30s
+
+  # Timeout for each individual ping request.
+  # If a node doesn't respond within this time, it's considered
+  # potentially offline.
+  # Default: 10s
+  ping_timeout: 10s
+
 # DERP is a relay system that Tailscale uses when a direct
 # connection cannot be established.
 # https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp
