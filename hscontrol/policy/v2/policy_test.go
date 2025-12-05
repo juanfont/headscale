@@ -537,8 +537,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     users[0],
-		UserID:   users[0].ID,
+		User:     &users[0],
+		UserID:   &users[0].ID,
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -547,8 +547,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-2-device",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     users[1],
-		UserID:   users[1].ID,
+		User:     &users[1],
+		UserID:   &users[1].ID,
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
