@@ -15,8 +15,9 @@ var (
 	// ErrNodeHasNeitherUserNorTags is returned when a node has neither a user nor tags.
 	ErrNodeHasNeitherUserNorTags = errors.New("node has neither user nor tags - must be owned by user or tagged")
 
-	// ErrInvalidOrUnauthorizedTags is returned when tags are invalid or unauthorized.
-	ErrInvalidOrUnauthorizedTags = errors.New("invalid or unauthorized tags")
+	// ErrRequestedTagsInvalidOrNotPermitted is returned when requested tags are invalid or not permitted.
+	// This message format matches Tailscale SaaS: "requested tags [tag:xxx] are invalid or not permitted".
+	ErrRequestedTagsInvalidOrNotPermitted = errors.New("requested tags")
 )
 
 // validateNodeOwnership ensures proper node ownership model.
