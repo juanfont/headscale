@@ -303,34 +303,10 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
-	// TODO(kradalby): This is currently resolved twice, and should be resolved once.
-	// It is added temporary until we sort out the story on how and when we resolve tags
-	// from the three places they can be "approved":
-	// - As part of a PreAuthKey (handled in HasTag)
-	// - As part of ForcedTags (set via CLI) (handled in HasTag)
-	// - As part of HostInfo.RequestTags and approved by policy (this is happening here)
-	// Part of #2417
-	tagMap, err := resolveTagOwners(p, users, nodes)
-	if err != nil {
-		return nil, err
-	}
-
 	for _, node := range nodes.All() {
 		// Check if node has this tag
 		if node.HasTag(string(t)) {
 			node.AppendToIPSet(&ips)
-		}
-
-		// TODO(kradalby): remove as part of #2417, see comment above
-		if tagMap != nil {
-			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo().Valid() {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if tag == string(t) {
-						node.AppendToIPSet(&ips)
-						break
-					}
-				}
-			}
 		}
 	}
 
@@ -537,61 +513,26 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[type
 		return util.TheInternet(), nil
 
 	case AutoGroupMember:
-		// autogroup:member represents all untagged devices in the tailnet.
-		tagMap, err := resolveTagOwners(p, users, nodes)
-		if err != nil {
-			return nil, err
-		}
-
 		for _, node := range nodes.All() {
 			// Skip if node is tagged
 			if node.IsTagged() {
 				continue
 			}
 
-			// Skip if node has any allowed requested tags
-			hasAllowedTag := false
-			if node.RequestTagsSlice().Len() != 0 {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if _, ok := tagMap[Tag(tag)]; ok {
-						hasAllowedTag = true
-						break
-					}
-				}
-			}
-			if hasAllowedTag {
-				continue
-			}
-
-			// Node is a member if it has no forced tags and no allowed requested tags
+			// Node is a member if it is not tagged
 			node.AppendToIPSet(&build)
 		}
 
 		return build.IPSet()
 
 	case AutoGroupTagged:
-		// autogroup:tagged represents all devices with a tag in the tailnet.
-		tagMap, err := resolveTagOwners(p, users, nodes)
-		if err != nil {
-			return nil, err
-		}
-
 		for _, node := range nodes.All() {
 			// Include if node is tagged
-			if node.IsTagged() {
-				node.AppendToIPSet(&build)
+			if !node.IsTagged() {
 				continue
 			}
 
-			// Include if node has any allowed requested tags
-			if node.RequestTagsSlice().Len() != 0 {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if _, ok := tagMap[Tag(tag)]; ok {
-						node.AppendToIPSet(&build)
-						break
-					}
-				}
-			}
+			node.AppendToIPSet(&build)
 		}
 
 		return build.IPSet()
@@ -1160,41 +1101,6 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 	}
 
 	return fmt.Errorf(`Tag %q is not defined in the Policy, please define or remove the reference to it`, tagOwner)
-}
-
-// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
-// The resulting map can be used to quickly look up the IPSet for a given Tag.
-// It is intended for internal use in a PolicyManager.
-func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
-	if p == nil {
-		return nil, nil
-	}
-
-	ret := make(map[Tag]*netipx.IPSet)
-
-	for tag, owners := range p.TagOwners {
-		var ips netipx.IPSetBuilder
-
-		for _, owner := range owners {
-			o, ok := owner.(Alias)
-			if !ok {
-				// Should never happen
-				return nil, fmt.Errorf("owner %v is not an Alias", owner)
-			}
-			// If it does not resolve, that means the tag is not associated with any IP addresses.
-			resolved, _ := o.Resolve(p, users, nodes)
-			ips.AddSet(resolved)
-		}
-
-		ipSet, err := ips.IPSet()
-		if err != nil {
-			return nil, err
-		}
-
-		ret[tag] = ipSet
-	}
-
-	return ret, nil
 }
 
 type AutoApproverPolicy struct {
