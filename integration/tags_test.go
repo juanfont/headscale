@@ -437,7 +437,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 //  3. Run `tailscale up --auth-key AUTH_KEY_WITH_TAG --force-reauth`
 //
 // Expected: After step 2 tags are ["tag:second"], after step 3 tags remain ["tag:second"].
-func TestTagsAuthKeyWithTagAdminOverrideReauthResets(t *testing.T) {
+func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	IntegrationSkip(t)
 
 	policy := tagsTestPolicy()
@@ -1356,24 +1356,29 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 	body, err := doLoginURL(client.Hostname(), loginURL)
 	require.NoError(t, err)
 
-	// Register the node via headscale CLI - this should fail or tags should be rejected
-	_ = scenario.runHeadscaleRegister(tagTestUser, body)
+	// Register the node via headscale CLI - this should fail due to non-existent tag
+	err = scenario.runHeadscaleRegister(tagTestUser, body)
 
-	// Give some time for registration to complete or fail
-	time.Sleep(5 * time.Second)
-
-	// Check the result - registration with non-existent tag should be rejected
-	nodes, err := headscale.ListNodes(tagTestUser)
-	require.NoError(t, err, "Should be able to list nodes")
-
-	// Either: no nodes registered (ideal), or node registered without the invalid tag
-	if len(nodes) == 0 {
-		t.Logf("Test 1.2 PASS: Registration rejected - no nodes registered")
+	// We expect registration to fail with an error about invalid/unauthorized tags
+	if err != nil {
+		t.Logf("Test 1.2 PASS: Registration correctly rejected with error: %v", err)
+		assert.ErrorContains(t, err, "requested tags")
 	} else {
-		// If a node was registered, it should NOT have the non-existent tag
-		require.NotContains(t, nodes[0].GetValidTags(), "tag:nonexistent",
-			"Non-existent tag should not be applied to node")
-		t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetValidTags())
+		// Give some time for registration to complete
+		time.Sleep(5 * time.Second)
+
+		// Check the result - if registration succeeded, the node should not have the invalid tag
+		nodes, err := headscale.ListNodes(tagTestUser)
+		require.NoError(t, err, "Should be able to list nodes")
+
+		if len(nodes) == 0 {
+			t.Logf("Test 1.2 PASS: Registration rejected - no nodes registered")
+		} else {
+			// If a node was registered, it should NOT have the non-existent tag
+			require.NotContains(t, nodes[0].GetValidTags(), "tag:nonexistent",
+				"Non-existent tag should not be applied to node")
+			t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetValidTags())
+		}
 	}
 }
 
