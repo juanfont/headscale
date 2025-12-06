@@ -3234,7 +3234,7 @@ func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
 
 	// Create a valid key (will expire it later)
 	expiry := time.Now().Add(1 * time.Hour)
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, &expiry, nil)
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, &expiry, nil)
 	require.NoError(t, err)
 
 	machineKey := key.NewMachine()

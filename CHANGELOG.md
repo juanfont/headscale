@@ -58,6 +58,7 @@ release.
   - Detect when only node endpoints or DERP region changed and send
     PeerChangedPatch responses instead of full map updates, reducing bandwidth
     and improving performance
+- Tags can now be tagOwner of other tags [#2930](https://github.com/juanfont/headscale/pull/2930)
 
 ## 0.27.2 (2025-xx-xx)
 
