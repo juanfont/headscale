@@ -125,7 +125,7 @@ kos:
     # bare tells KO to only use the repository
     # for tagging and naming the container.
     bare: true
-    base_image: gcr.io/distroless/base-debian12
+    base_image: gcr.io/distroless/base-debian13
     build: headscale
     main: ./cmd/headscale
     env:
@@ -154,7 +154,7 @@ kos:
       - headscale/headscale
 
     bare: true
-    base_image: gcr.io/distroless/base-debian12:debug
+    base_image: gcr.io/distroless/base-debian13:debug
     build: headscale
     main: ./cmd/headscale
     env:
