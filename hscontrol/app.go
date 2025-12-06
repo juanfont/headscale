@@ -99,6 +99,7 @@ type Headscale struct {
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
 	mapBatcher     mapper.Batcher
+	pingManager    *PingManager
 
 	clientStreamsOpen sync.WaitGroup
 }
@@ -133,6 +134,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		noisePrivateKey:   noisePrivateKey,
 		clientStreamsOpen: sync.WaitGroup{},
 		state:             s,
+		pingManager:       NewPingManager(cfg.ServerURL),
 	}
 
 	// Initialize ephemeral garbage collector
