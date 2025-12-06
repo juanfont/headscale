@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -560,12 +561,6 @@ func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
 		return false
 	}
 
-	// Tagged nodes can only keep tags they already have via client requests.
-	// (Admin API bypasses this function entirely and can modify any tags.)
-	if node.IsTagged() {
-		return node.HasTag(tag)
-	}
-
 	// Check if node's owner can assign this tag via the pre-resolved tagOwnerMap.
 	// The tagOwnerMap contains IP sets built from resolving TagOwners entries
 	// (usernames/groups) to their nodes' IPs, so checking if the node's IP
@@ -930,28 +925,116 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 	}
 }
 
+// flattenTags flattens the TagOwners by resolving nested tags and detecting cycles.
+// It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
+func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
+	if visiting[tag] {
+		cycleStart := 0
+
+		for i, t := range chain {
+			if t == tag {
+				cycleStart = i
+				break
+			}
+		}
+
+		cycleTags := make([]string, len(chain[cycleStart:]))
+		for i, t := range chain[cycleStart:] {
+			cycleTags[i] = string(t)
+		}
+
+		slices.Sort(cycleTags)
+
+		return nil, fmt.Errorf("%w: %s", ErrCircularReference, strings.Join(cycleTags, " -> "))
+	}
+
+	visiting[tag] = true
+
+	chain = append(chain, tag)
+	defer delete(visiting, tag)
+
+	var result Owners
+
+	for _, owner := range tagOwners[tag] {
+		switch o := owner.(type) {
+		case *Tag:
+			if _, ok := tagOwners[*o]; !ok {
+				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
+			}
+
+			nested, err := flattenTags(tagOwners, *o, visiting, chain)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, nested...)
+		default:
+			result = append(result, owner)
+		}
+	}
+
+	return result, nil
+}
+
+// flattenTagOwners flattens all TagOwners by resolving nested tags and detecting cycles.
+// It will return a new TagOwners map where all the Tag types have been resolved to their underlying Owners.
+func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
+	ret := make(TagOwners)
+
+	for tag := range tagOwners {
+		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		slices.SortFunc(flattened, func(a, b Owner) int {
+			return cmp.Compare(a.String(), b.String())
+		})
+		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
+			return a.String() == b.String()
+		})
+	}
+
+	return ret, nil
+}
+
 // resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
 // The resulting map can be used to quickly look up the IPSet for a given Tag.
 // It is intended for internal use in a PolicyManager.
 func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
-	ret := make(map[Tag]*netipx.IPSet)
-
 	if p == nil {
-		return ret, nil
+		return make(map[Tag]*netipx.IPSet), nil
 	}
 
-	for tag, owners := range p.TagOwners {
+	if len(p.TagOwners) == 0 {
+		return make(map[Tag]*netipx.IPSet), nil
+	}
+
+	ret := make(map[Tag]*netipx.IPSet)
+
+	tagOwners, err := flattenTagOwners(p.TagOwners)
+	if err != nil {
+		return nil, err
+	}
+
+	for tag, owners := range tagOwners {
 		var ips netipx.IPSetBuilder
 
 		for _, owner := range owners {
-			o, ok := owner.(Alias)
-			if !ok {
-				// Should never happen
+			switch o := owner.(type) {
+			case *Tag:
+				// After flattening, Tag types should not appear in the owners list.
+				// If they do, skip them as they represent already-resolved references.
+
+			case Alias:
+				// If it does not resolve, that means the tag is not associated with any IP addresses.
+				resolved, _ := o.Resolve(p, users, nodes)
+				ips.AddSet(resolved)
+
+			default:
+				// Should never happen - after flattening, all owners should be Alias types
 				return nil, fmt.Errorf("%w: %v", ErrInvalidTagOwner, owner)
 			}
-			// If it does not resolve, that means the tag is not associated with any IP addresses.
-			resolved, _ := o.Resolve(p, users, nodes)
-			ips.AddSet(resolved)
 		}
 
 		ipSet, err := ips.IPSet()
