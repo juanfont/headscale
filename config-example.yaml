@@ -362,6 +362,17 @@ unix_socket_permission: "0770"
 #   # required "openid" scope.
 #   scope: ["openid", "profile", "email"]
 #
+#   # Enable this setting to accept the user's email address regardless
+#   # if "email_verified: true" is sent by identity provider.
+#   #
+#   # By default, "email_verified: true" must appear in claims or user info
+#   # before Headscale will accept the principal's email address as the user
+#   # account is created after successful authentication.
+#   #
+#   # This setting is useful when claims and their mapping can't be controlled,
+#   # such as when using Cloudflare One-time pin for authentication.
+#   use_unverified_email: false
+#
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
 #   extra_params:
