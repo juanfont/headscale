@@ -185,7 +185,7 @@ type OIDCConfig struct {
 	ClientSecret               string
 	Scope                      []string
 	ExtraParams                map[string]string
-	UseUnverifiedEmail         bool
+	EmailVerifiedRequired      bool
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
@@ -391,13 +391,6 @@ func validateServerConfig() error {
 		if err := validatePKCEMethod(viper.GetString("oidc.pkce.method")); err != nil {
 			return err
 		}
-	}
-
-	if viper.IsSet("oidc.use_unverified_email") {
-		log.Warn().
-			Msg("unverified emails will be accepted during oidc authentication (oidc.use_unverified_email=true)")
-	} else {
-		log.Warn().Msg("only verified emails will be accepted during oidc authentication (oidc.use_unverified_email=false)")
 	}
 
 	depr.Log()
@@ -963,15 +956,15 @@ func LoadServerConfig() (*Config, error) {
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:             viper.GetString("oidc.issuer"),
-			ClientID:           viper.GetString("oidc.client_id"),
-			ClientSecret:       oidcClientSecret,
-			Scope:              viper.GetStringSlice("oidc.scope"),
-			ExtraParams:        viper.GetStringMapString("oidc.extra_params"),
-			UseUnverifiedEmail: viper.GetBool("oidc.use_unverified_email"),
-			AllowedDomains:     viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:       viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:      viper.GetStringSlice("oidc.allowed_groups"),
+			Issuer:                viper.GetString("oidc.issuer"),
+			ClientID:              viper.GetString("oidc.client_id"),
+			ClientSecret:          oidcClientSecret,
+			Scope:                 viper.GetStringSlice("oidc.scope"),
+			ExtraParams:           viper.GetStringMapString("oidc.extra_params"),
+			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
+			AllowedDomains:        viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {

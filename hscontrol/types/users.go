@@ -324,7 +324,7 @@ type OIDCUserInfo struct {
 
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
-func (u *User) FromClaim(claims *OIDCClaims, useUnverifiedEmail bool) {
+func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
@@ -332,7 +332,7 @@ func (u *User) FromClaim(claims *OIDCClaims, useUnverifiedEmail bool) {
 		log.Debug().Caller().Err(err).Msgf("Username %s is not valid", claims.Username)
 	}
 
-	if claims.EmailVerified || FlexibleBoolean(useUnverifiedEmail) {
+	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {
 		_, err = mail.ParseAddress(claims.Email)
 		if err == nil {
 			u.Email = claims.Email
