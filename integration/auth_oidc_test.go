@@ -901,7 +901,8 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	require.NoError(t, err)
 
 	// wait for the registration cache to expire
-	// a little bit more than HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION
+	// a little bit more than HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION (1m30s)
+	//nolint:forbidigo // Intentional delay: must wait for real-time cache expiration (HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION=1m30s)
 	time.Sleep(2 * time.Minute)
 
 	var newUrl *url.URL
