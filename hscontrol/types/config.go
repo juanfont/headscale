@@ -1025,15 +1025,20 @@ func LoadServerConfig() (*Config, error) {
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:                viper.GetString("oidc.issuer"),
-			ClientID:              viper.GetString("oidc.client_id"),
-			ClientSecret:          oidcClientSecret,
-			Scope:                 viper.GetStringSlice("oidc.scope"),
-			ExtraParams:           viper.GetStringMapString("oidc.extra_params"),
-			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
-			AllowedDomains:        viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
+			Issuer:         viper.GetString("oidc.issuer"),
+			ClientID:       viper.GetString("oidc.client_id"),
+			ClientSecret:   oidcClientSecret,
+			Scope:          viper.GetStringSlice("oidc.scope"),
+			ExtraParams:    viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains: viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:   viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:  viper.GetStringSlice("oidc.allowed_groups"),
+			EmailVerifiedRequired: func() bool {
+				if viper.IsSet("oidc.email_verified_required") {
+					return viper.GetBool("oidc.email_verified_required")
+				}
+				return true
+			}(),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {
