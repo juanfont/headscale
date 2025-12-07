@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -20,6 +21,8 @@ import (
 	"tailscale.com/tailcfg"
 	"zgo.at/zcache/v2"
 )
+
+var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
 
 // batcherTestCase defines a batcher function with a descriptive name for testing.
 type batcherTestCase struct {
@@ -50,7 +53,12 @@ func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 
 	// Send the online notification that poll.go would normally send
 	// This ensures other nodes get notified about this node coming online
-	t.AddWork(change.NodeOnline(id))
+	node, ok := t.state.GetNodeByID(id)
+	if !ok {
+		return fmt.Errorf("%w: %d", errNodeNotFoundAfterAdd, id)
+	}
+
+	t.AddWork(change.NodeOnline(node))
 
 	return nil
 }
@@ -65,7 +73,10 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 
 	// Send the offline notification that poll.go would normally send
 	// Do this BEFORE removing from batcher so the change can be processed
-	t.AddWork(change.NodeOffline(id))
+	node, ok := t.state.GetNodeByID(id)
+	if ok {
+		t.AddWork(change.NodeOffline(node))
+	}
 
 	// Finally remove from the real batcher
 	removed := t.Batcher.RemoveNode(id, c)
@@ -192,8 +203,10 @@ func setupBatcherWithTestData(
 			},
 		},
 		Tuning: types.Tuning{
-			BatchChangeDelay: 10 * time.Millisecond,
-			BatcherWorkers:   types.DefaultBatcherWorkers(), // Use same logic as config.go
+			BatchChangeDelay:      10 * time.Millisecond,
+			BatcherWorkers:        types.DefaultBatcherWorkers(), // Use same logic as config.go
+			NodeStoreBatchSize:    state.TestBatchSize,
+			NodeStoreBatchTimeout: state.TestBatchTimeout,
 		},
 	}
 
@@ -561,14 +574,12 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 		name      string
 		nodeCount int
 	}{
-		{"10_nodes", 10},
-		{"50_nodes", 50},
-		{"100_nodes", 100},
-		// Grinds to a halt because of Database bottleneck
-		// {"250_nodes", 250},
-		// {"500_nodes", 500},
-		// {"1000_nodes", 1000},
-		// {"5000_nodes", 5000},
+		{"10_nodes", 10},   // Quick baseline test
+		{"100_nodes", 100}, // Full scalability test ~2 minutes
+		// Large-scale tests commented out - uncomment for scalability testing
+		// {"1000_nodes", 1000},  // ~12 minutes
+		// {"2000_nodes", 2000},  // ~60+ minutes
+		// {"5000_nodes", 5000},  // Not recommended - database bottleneck
 	}
 
 	for _, batcherFunc := range allBatcherFunctions {
@@ -589,7 +600,8 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 					// Use large buffer to avoid blocking during rapid joins
 					// Buffer needs to handle nodeCount * average_updates_per_node
 					// Estimate: each node receives ~2*nodeCount updates during all-to-all
-					bufferSize := max(1000, tc.nodeCount*2)
+					// For very large tests (>1000 nodes), limit buffer to avoid excessive memory
+					bufferSize := max(1000, min(tc.nodeCount*2, 10000))
 
 					testData, cleanup := setupBatcherWithTestData(
 						t,
@@ -1124,13 +1136,9 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				// First connection
 				ch1 := make(chan *tailcfg.MapResponse, 1)
 
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100))
-				}()
+				})
 
 				// Add real work during connection chaos
 				if i%10 == 0 {
@@ -1140,24 +1148,17 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				// Rapid second connection - should replace ch1
 				ch2 := make(chan *tailcfg.MapResponse, 1)
 
-				wg.Add(1)
-
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					time.Sleep(1 * time.Microsecond)
 					batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
-				}()
+				})
 
 				// Remove second connection
-				wg.Add(1)
 
-				go func() {
-					defer wg.Done()
-
+				wg.Go(func() {
 					time.Sleep(2 * time.Microsecond)
 					batcher.RemoveNode(testNode.n.ID, ch2)
-				}()
+				})
 
 				wg.Wait()
 
@@ -1777,10 +1778,7 @@ func XTestBatcherScalability(t *testing.T) {
 							// This ensures some nodes stay connected to continue receiving updates
 							startIdx := cycle % len(testNodes)
 
-							endIdx := startIdx + len(testNodes)/4
-							if endIdx > len(testNodes) {
-								endIdx = len(testNodes)
-							}
+							endIdx := min(startIdx+len(testNodes)/4, len(testNodes))
 
 							if startIdx >= endIdx {
 								startIdx = 0
@@ -2301,7 +2299,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			receivedCount := 0
 			timeout := time.After(500 * time.Millisecond)
 
-			for i := 0; i < len(allNodes); i++ {
+			for i := range allNodes {
 				select {
 				case update := <-newChannels[i]:
 					if update != nil {

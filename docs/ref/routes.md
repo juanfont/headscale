@@ -216,6 +216,39 @@ nodes.
 }
 ```
 
+### Restrict access to exit nodes per user or group
+
+A user can use _any_ of the available exit nodes with `autogroup:internet`. Alternatively, the ACL snippet below assigns
+each user a specific exit node while hiding all other exit nodes. The user `alice` can only use exit node `exit1` while
+user `bob` can only use exit node `exit2`.
+
+```json title="Assign each user a dedicated exit node"
+{
+  "hosts": {
+    "exit1": "100.64.0.1/32",
+    "exit2": "100.64.0.2/32"
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["alice@"],
+      "dst": ["exit1:*"]
+    },
+    {
+      "action": "accept",
+      "src": ["bob@"],
+      "dst": ["exit2:*"]
+    }
+  ]
+}
+```
+
+!!! warning
+
+    - The above implementation is Headscale specific and will likely be removed once [support for
+      `via`](https://github.com/juanfont/headscale/issues/2409) is available.
+    - Beware that a user can also connect to any port of the exit node itself.
+
 ### Automatically approve an exit node with auto approvers
 
 The initial setup of an exit node usually requires manual approval on the control server before it can be used by a node

@@ -83,7 +83,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
@@ -97,7 +97,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 		MachineKey:     machineKey.Public(),
 		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 		Expiry:         &time.Time{},
@@ -124,7 +124,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	c.Assert(err, check.IsNil)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	c.Assert(err, check.IsNil)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
@@ -138,7 +138,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 		MachineKey:     machineKey.Public(),
 		NodeKey:        nodeKey.Public(),
 		Hostname:       "testnode",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
@@ -152,7 +152,7 @@ func (s *Suite) TestSetTags(c *check.C) {
 	c.Assert(err, check.IsNil)
 	node, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
-	c.Assert(node.ForcedTags, check.DeepEquals, sTags)
+	c.Assert(node.Tags, check.DeepEquals, sTags)
 
 	// assign duplicate tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
@@ -161,17 +161,10 @@ func (s *Suite) TestSetTags(c *check.C) {
 	node, err = db.getNode(types.UserID(user.ID), "testnode")
 	c.Assert(err, check.IsNil)
 	c.Assert(
-		node.ForcedTags,
+		node.Tags,
 		check.DeepEquals,
 		[]string{"tag:bar", "tag:test", "tag:unknown"},
 	)
-
-	// test removing tags
-	err = db.SetTags(node.ID, []string{})
-	c.Assert(err, check.IsNil)
-	node, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
-	c.Assert(node.ForcedTags, check.DeepEquals, []string{})
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {
@@ -430,7 +423,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "testnode",
-					UserID:         user.ID,
+					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
@@ -446,12 +439,12 @@ func TestAutoApproveRoutes(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "taggednode",
-					UserID:         taggedUser.ID,
+					UserID:         &taggedUser.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
 					},
-					ForcedTags: []string{"tag:exit"},
+					Tags: []string{"tag:exit"},
 					IPv4:       ptr.To(netip.MustParseAddr("100.64.0.2")),
 				}
 
@@ -593,10 +586,10 @@ func TestListEphemeralNodes(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
-	pak, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
-	pakEph, err := db.CreatePreAuthKey(types.UserID(user.ID), false, true, nil, nil)
+	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
 	node := types.Node{
@@ -604,7 +597,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
@@ -614,7 +607,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "ephemeral",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pakEph.ID),
 	}
@@ -657,7 +650,7 @@ func TestNodeNaming(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -667,7 +660,7 @@ func TestNodeNaming(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test",
-		UserID:         user2.ID,
+		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -680,7 +673,7 @@ func TestNodeNaming(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "我的电脑",
-		UserID:         user2.ID,
+		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 	}
 
@@ -688,7 +681,7 @@ func TestNodeNaming(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "a",
-		UserID:         user2.ID,
+		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 	}
 
@@ -808,7 +801,7 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "testnode",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -931,7 +924,7 @@ func TestListPeers(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test1",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -941,7 +934,7 @@ func TestListPeers(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test2",
-		UserID:         user2.ID,
+		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -1016,7 +1009,7 @@ func TestListNodes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test1",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}
@@ -1026,7 +1019,7 @@ func TestListNodes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test2",
-		UserID:         user2.ID,
+		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo:       &tailcfg.Hostinfo{},
 	}

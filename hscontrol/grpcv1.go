@@ -172,7 +172,7 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		types.UserID(user.ID),
+		user.TypedID(),
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -206,6 +206,27 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	return &v1.ExpirePreAuthKeyResponse{}, nil
 }
 
+func (api headscaleV1APIServer) DeletePreAuthKey(
+	ctx context.Context,
+	request *v1.DeletePreAuthKeyRequest,
+) (*v1.DeletePreAuthKeyResponse, error) {
+	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
+	if err != nil {
+		return nil, err
+	}
+
+	if uint64(preAuthKey.User.ID) != request.GetUser() {
+		return nil, fmt.Errorf("preauth key does not belong to user")
+	}
+
+	err = api.h.state.DeletePreAuthKey(preAuthKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.DeletePreAuthKeyResponse{}, nil
+}
+
 func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
@@ -236,10 +257,18 @@ func (api headscaleV1APIServer) RegisterNode(
 	ctx context.Context,
 	request *v1.RegisterNodeRequest,
 ) (*v1.RegisterNodeResponse, error) {
+	// Generate ephemeral registration key for tracking this registration flow in logs
+	registrationKey, err := util.GenerateRegistrationKey()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to generate registration key")
+		registrationKey = "" // Continue without key if generation fails
+	}
+
 	log.Trace().
 		Caller().
 		Str("user", request.GetUser()).
 		Str("registration_id", request.GetKey()).
+		Str("registration_key", registrationKey).
 		Msg("Registering node")
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
@@ -259,8 +288,18 @@ func (api headscaleV1APIServer) RegisterNode(
 		util.RegisterMethodCLI,
 	)
 	if err != nil {
+		log.Error().
+			Str("registration_key", registrationKey).
+			Err(err).
+			Msg("Failed to register node")
 		return nil, err
 	}
+
+	log.Info().
+		Str("registration_key", registrationKey).
+		Str("node_id", fmt.Sprintf("%d", node.ID())).
+		Str("hostname", node.Hostname()).
+		Msg("Node registered successfully")
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -273,13 +312,13 @@ func (api headscaleV1APIServer) RegisterNode(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	_ = api.h.state.AutoApproveRoutes(node)
-	_, _, err = api.h.state.SaveNode(node)
+	routeChange, err := api.h.state.AutoApproveRoutes(node)
 	if err != nil {
-		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
+		return nil, fmt.Errorf("auto approving routes: %w", err)
 	}
 
-	api.h.Change(nodeChange)
+	// Send both changes. Empty changes are ignored by Change().
+	api.h.Change(nodeChange, routeChange)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
@@ -302,11 +341,32 @@ func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
+	// Validate tags not empty - tagged nodes must have at least one tag
+	if len(request.GetTags()) == 0 {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(
+			codes.InvalidArgument,
+			"cannot remove all tags from a node - tagged nodes must have at least one tag",
+		)
+	}
+
+	// Validate tag format
 	for _, tag := range request.GetTags() {
 		err := validateTag(tag)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// User XOR Tags: nodes are either tagged or user-owned, never both.
+	// Setting tags on a user-owned node converts it to a tagged node.
+	// Once tagged, a node cannot be converted back to user-owned.
+	_, found := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !found {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(codes.NotFound, "node not found")
 	}
 
 	node, nodeChange, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
@@ -490,13 +550,19 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	for index, node := range nodes.All() {
 		resp := node.Proto()
 
+		// Tags-as-identity: tagged nodes show as TaggedDevices user in API responses
+		// (UserID may be set internally for "created by" tracking)
+		if node.IsTagged() {
+			resp.User = types.TaggedDevices.Proto()
+		}
+
 		var tags []string
 		for _, tag := range node.RequestTags() {
 			if state.NodeCanHaveTag(node, tag) {
 				tags = append(tags, tag)
 			}
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
+		resp.ValidTags = lo.Uniq(append(tags, node.Tags().AsSlice()...))
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
@@ -507,22 +573,6 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	})
 
 	return response
-}
-
-func (api headscaleV1APIServer) MoveNode(
-	ctx context.Context,
-	request *v1.MoveNodeRequest,
-) (*v1.MoveNodeResponse, error) {
-	node, nodeChange, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(kradalby): Ensure the policy is also sent
-	// TODO(kradalby): ensure that both the selfupdate and peer updates are sent
-	api.h.Change(nodeChange)
-
-	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) BackfillNodeIPs(
@@ -757,7 +807,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
-			User:       *user,
+			User:       user,
 
 			Expiry:   &time.Time{},
 			LastSeen: &time.Time{},

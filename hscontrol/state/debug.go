@@ -78,7 +78,7 @@ func (s *State) DebugOverview() string {
 	now := time.Now()
 	for _, node := range allNodes.All() {
 		if node.Valid() {
-			userName := node.User().Name
+			userName := node.User().Name()
 			userNodeCounts[userName]++
 
 			if node.IsOnline().Valid() && node.IsOnline().Get() {
@@ -200,9 +200,9 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 }
 
 // DebugRegistrationCache returns debug information about the registration cache.
-func (s *State) DebugRegistrationCache() map[string]interface{} {
+func (s *State) DebugRegistrationCache() map[string]any {
 	// The cache doesn't expose internal statistics, so we provide basic info
-	result := map[string]interface{}{
+	result := map[string]any{
 		"type":       "zcache",
 		"expiration": registerCacheExpiration.String(),
 		"cleanup":    registerCacheCleanup.String(),
@@ -281,7 +281,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 
 	for _, node := range allNodes.All() {
 		if node.Valid() {
-			userName := node.User().Name
+			userName := node.User().Name()
 			info.Users[userName]++
 
 			if node.IsOnline().Valid() && node.IsOnline().Get() {

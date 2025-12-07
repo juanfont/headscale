@@ -476,8 +476,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
-
-	router.PathPrefix("/").HandlerFunc(notFoundHandler)
+	router.HandleFunc("/favicon.ico", FaviconHandler)
+	router.PathPrefix("/").HandlerFunc(BlankHandler)
 
 	return router
 }

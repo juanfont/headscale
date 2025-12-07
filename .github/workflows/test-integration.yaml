@@ -32,13 +32,19 @@ jobs:
           - TestAuthKeyLogoutAndReloginSameUser
           - TestAuthKeyLogoutAndReloginNewUser
           - TestAuthKeyLogoutAndReloginSameUserExpiredKey
+          - TestAuthKeyDeleteKey
+          - TestAuthKeyLogoutAndReloginRoutesPreserved
           - TestOIDCAuthenticationPingAll
           - TestOIDCExpireNodesBasedOnTokenExpiry
           - TestOIDC024UserCreation
           - TestOIDCAuthenticationWithPKCE
           - TestOIDCReloginSameNodeNewUser
           - TestOIDCFollowUpUrl
+          - TestOIDCMultipleOpenedLoginUrls
           - TestOIDCReloginSameNodeSameUser
+          - TestOIDCExpiryAfterRestart
+          - TestOIDCACLPolicyOnJoin
+          - TestOIDCReloginSameUserRoutesPreserved
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser
@@ -49,11 +55,12 @@ jobs:
           - TestPreAuthKeyCorrectUserLoggedInCommand
           - TestApiKeyCommand
           - TestNodeTagCommand
+          - TestTaggedNodeRegistration
+          - TestTagPersistenceAcrossRestart
           - TestNodeAdvertiseTagCommand
           - TestNodeCommand
           - TestNodeExpireCommand
           - TestNodeRenameCommand
-          - TestNodeMoveCommand
           - TestPolicyCommand
           - TestPolicyBrokenConfigCommand
           - TestDERPVerifyEndpoint

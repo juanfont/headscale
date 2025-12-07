@@ -56,13 +56,6 @@ type NodeSystemStatus struct {
 	NodeStore        bool
 }
 
-// requireNotNil validates that an object is not nil and fails the test if it is.
-// This helper provides consistent error messaging for nil checks in integration tests.
-func requireNotNil(t *testing.T, object interface{}) {
-	t.Helper()
-	require.NotNil(t, object)
-}
-
 // requireNoErrHeadscaleEnv validates that headscale environment creation succeeded.
 // Provides specific error context for headscale environment setup failures.
 func requireNoErrHeadscaleEnv(t *testing.T, err error) {

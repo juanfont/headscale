@@ -8,8 +8,7 @@ ENV GOPATH /go
 WORKDIR /go/src/headscale
 
 RUN apt-get --update install --no-install-recommends --yes less jq sqlite3 dnsutils \
-  && rm -rf /var/lib/apt/lists/* \
-  && apt-get clean
+  && apt-get dist-clean
 RUN mkdir -p /var/run/headscale
 
 # Install delve debugger

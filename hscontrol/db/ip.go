@@ -325,7 +325,11 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			}
 
 			if changed {
-				err := tx.Save(node).Error
+				// Use Updates() with Select() to only update IP fields, avoiding overwriting
+				// other fields like Expiry. We need Select() because Updates() alone skips
+				// zero values, but we DO want to update IPv4/IPv6 to nil when removing them.
+				// See issue #2862.
+				err := tx.Model(node).Select("ipv4", "ipv6").Updates(node).Error
 				if err != nil {
 					return fmt.Errorf("saving node(%d) after adding IPs: %w", node.ID, err)
 				}
@@ -336,4 +340,13 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 	})
 
 	return ret, err
+}
+
+func (i *IPAllocator) FreeIPs(ips []netip.Addr) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+
+	for _, ip := range ips {
+		i.usedIPs.Remove(ip)
+	}
 }

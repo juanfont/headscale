@@ -327,16 +327,52 @@ func New(
 		if err != nil {
 			// Try to get more detailed build output
 			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
-			buildOutput := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
-			if buildOutput != "" {
+
+			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
+
+			const maxLines = 100
+
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
+
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				// The diagnostic build also failed - this is the real error
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDetailed build output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
 					hostname,
 					version,
 					err,
-					buildOutput,
+					maxLines,
+					relevantOutput,
 				)
 			}
+
+			if buildOutput != "" {
+				// Build succeeded on retry but container creation still failed
+				return nil, fmt.Errorf(
+					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+					hostname,
+					version,
+					err,
+					maxLines,
+					relevantOutput,
+				)
+			}
+
+			// No output at all - diagnostic build command may have failed
+			return nil, fmt.Errorf(
+				"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
+				hostname,
+				version,
+				err,
+			)
 		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
@@ -553,6 +589,38 @@ func (t *TailscaleInContainer) Logout() error {
 	}
 
 	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
+}
+
+// Restart restarts the Tailscale container using Docker API.
+// This simulates a container restart (e.g., docker restart or Kubernetes pod restart).
+// The container's entrypoint will re-execute, which typically includes running
+// "tailscale up" with any auth keys stored in environment variables.
+func (t *TailscaleInContainer) Restart() error {
+	if t.container == nil {
+		return fmt.Errorf("container not initialized")
+	}
+
+	// Use Docker API to restart the container
+	err := t.pool.Client.RestartContainer(t.container.Container.ID, 30)
+	if err != nil {
+		return fmt.Errorf("failed to restart container %s: %w", t.hostname, err)
+	}
+
+	// Wait for the container to be back up and tailscaled to be ready
+	// We use exponential backoff to poll until we can successfully execute a command
+	_, err = backoff.Retry(context.Background(), func() (struct{}, error) {
+		// Try to execute a simple command to verify the container is responsive
+		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(5*time.Second))
+		if err != nil {
+			return struct{}{}, fmt.Errorf("container not ready: %w", err)
+		}
+		return struct{}{}, nil
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
+	if err != nil {
+		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
+	}
+
+	return nil
 }
 
 // Helper that runs `tailscale up` with no arguments.

@@ -130,7 +130,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 	return ctx, client, conn, cancel
 }
 
-func output(result interface{}, override string, outputFormat string) string {
+func output(result any, override string, outputFormat string) string {
 	var jsonBytes []byte
 	var err error
 	switch outputFormat {
@@ -158,7 +158,7 @@ func output(result interface{}, override string, outputFormat string) string {
 }
 
 // SuccessOutput prints the result to stdout and exits with status code 0.
-func SuccessOutput(result interface{}, override string, outputFormat string) {
+func SuccessOutput(result any, override string, outputFormat string) {
 	fmt.Println(output(result, override, outputFormat))
 	os.Exit(0)
 }

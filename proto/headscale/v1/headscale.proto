@@ -55,6 +55,13 @@ service HeadscaleService {
     };
   }
 
+  rpc DeletePreAuthKey(DeletePreAuthKeyRequest)
+      returns (DeletePreAuthKeyResponse) {
+    option (google.api.http) = {
+      delete : "/api/v1/preauthkey"
+    };
+  }
+
   rpc ListPreAuthKeys(ListPreAuthKeysRequest)
       returns (ListPreAuthKeysResponse) {
     option (google.api.http) = {
@@ -120,13 +127,6 @@ service HeadscaleService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse) {
     option (google.api.http) = {
       get : "/api/v1/node"
-    };
-  }
-
-  rpc MoveNode(MoveNodeRequest) returns (MoveNodeResponse) {
-    option (google.api.http) = {
-      post : "/api/v1/node/{node_id}/user",
-      body : "*"
     };
   }
 

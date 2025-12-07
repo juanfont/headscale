@@ -1288,3 +1288,99 @@ func TestEnsureHostname_Idempotent(t *testing.T) {
 		t.Errorf("hostnames not equal: %v != %v", hostname1, hostname2)
 	}
 }
+
+func TestGenerateRegistrationKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		test func(*testing.T)
+	}{
+		{
+			name: "generates_key_with_correct_prefix",
+			test: func(t *testing.T) {
+				t.Helper()
+
+				key, err := GenerateRegistrationKey()
+				if err != nil {
+					t.Errorf("GenerateRegistrationKey() error = %v", err)
+				}
+
+				if !strings.HasPrefix(key, "hskey-reg-") {
+					t.Errorf("key does not have expected prefix: %s", key)
+				}
+			},
+		},
+		{
+			name: "generates_key_with_correct_length",
+			test: func(t *testing.T) {
+				t.Helper()
+
+				key, err := GenerateRegistrationKey()
+				if err != nil {
+					t.Errorf("GenerateRegistrationKey() error = %v", err)
+				}
+
+				// Expected format: hskey-reg-{64-char-random}
+				// Total length: 10 (prefix) + 64 (random) = 74
+				if len(key) != 74 {
+					t.Errorf("key length = %d, want 74", len(key))
+				}
+			},
+		},
+		{
+			name: "generates_unique_keys",
+			test: func(t *testing.T) {
+				t.Helper()
+
+				key1, err := GenerateRegistrationKey()
+				if err != nil {
+					t.Errorf("GenerateRegistrationKey() error = %v", err)
+				}
+
+				key2, err := GenerateRegistrationKey()
+				if err != nil {
+					t.Errorf("GenerateRegistrationKey() error = %v", err)
+				}
+
+				if key1 == key2 {
+					t.Error("generated keys should be unique")
+				}
+			},
+		},
+		{
+			name: "key_contains_only_valid_chars",
+			test: func(t *testing.T) {
+				t.Helper()
+
+				key, err := GenerateRegistrationKey()
+				if err != nil {
+					t.Errorf("GenerateRegistrationKey() error = %v", err)
+				}
+
+				// Remove prefix
+				_, randomPart, found := strings.Cut(key, "hskey-reg-")
+				if !found {
+					t.Error("key does not contain expected prefix")
+				}
+
+				// Verify base64 URL-safe characters (A-Za-z0-9_-)
+				for _, ch := range randomPart {
+					if (ch < 'A' || ch > 'Z') &&
+						(ch < 'a' || ch > 'z') &&
+						(ch < '0' || ch > '9') &&
+						ch != '_' && ch != '-' {
+						t.Errorf("key contains invalid character: %c", ch)
+					}
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			tt.test(t)
+		})
+	}
+}

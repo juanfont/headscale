@@ -41,20 +41,26 @@ theme:
     - toc.follow
     # - toc.integrate
   palette:
-    - scheme: default
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
       primary: white
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    - scheme: slate
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
       toggle:
         icon: material/brightness-4
-        name: Switch to light mode
+        name: Switch to system preference
   font:
     text: Roboto
     code: Roboto Mono
   favicon: assets/favicon.png
-  logo: ./logo/headscale3-dots.svg
+  logo: assets/logo/headscale3-dots.svg
 
 # Excludes
 exclude_docs: |
@@ -77,11 +83,12 @@ plugins:
         apple-client.md: usage/connect/apple.md
         dns-records.md: ref/dns.md
         exit-node.md: ref/routes.md
-        ref/exit-node.md: ref/routes.md
         faq.md: about/faq.md
         iOS-client.md: usage/connect/apple.md#ios
         oidc.md: ref/oidc.md
-        remote-cli.md: ref/remote-cli.md
+        ref/exit-node.md: ref/routes.md
+        ref/remote-cli.md: ref/api.md#grpc
+        remote-cli.md: ref/api.md#grpc
         reverse-proxy.md: ref/integration/reverse-proxy.md
         tls.md: ref/tls.md
         web-ui.md: ref/integration/web-ui.md
@@ -104,7 +111,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:
-    version: 0.27.0
+    version: 0.27.1
 
 # Extensions
 markdown_extensions:
@@ -182,7 +189,7 @@ nav:
       - ACLs: ref/acls.md
       - DNS: ref/dns.md
       - DERP: ref/derp.md
-      - Remote CLI: ref/remote-cli.md
+      - API: ref/api.md
       - Debug: ref/debug.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md

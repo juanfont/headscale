@@ -100,13 +100,6 @@ message ListNodesRequest { string user = 1; }
 
 message ListNodesResponse { repeated Node nodes = 1; }
 
-message MoveNodeRequest {
-  uint64 node_id = 1;
-  uint64 user = 2;
-}
-
-message MoveNodeResponse { Node node = 1; }
-
 message DebugCreateNodeRequest {
   string user = 1;
   string key = 2;

@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -167,7 +168,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
 		sameUserNodes := make([]types.NodeView, 0)
 		for _, n := range nodes.All() {
-			if n.User().ID == node.User().ID && !n.IsTagged() {
+			if n.User().ID() == node.User().ID() && !n.IsTagged() {
 				sameUserNodes = append(sameUserNodes, n)
 			}
 		}
@@ -178,11 +179,8 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 			for _, ips := range resolvedSrcIPs {
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
-					for _, nodeIP := range n.IPs() {
-						if ips.Contains(nodeIP) {
-							n.AppendToIPSet(&srcIPs)
-							break
-						}
+					if slices.ContainsFunc(n.IPs(), ips.Contains) {
+						n.AppendToIPSet(&srcIPs)
 					}
 				}
 			}
@@ -316,7 +314,6 @@ func (pol *Policy) compileSSHPolicy(
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
-			continue // Skip this rule if we can't resolve sources
 		}
 
 		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
@@ -352,7 +349,7 @@ func (pol *Policy) compileSSHPolicy(
 			// Build destination set for autogroup:self (same-user untagged devices only)
 			var dest netipx.IPSetBuilder
 			for _, n := range nodes.All() {
-				if n.User().ID == node.User().ID && !n.IsTagged() {
+				if n.User().ID() == node.User().ID() && !n.IsTagged() {
 					n.AppendToIPSet(&dest)
 				}
 			}
@@ -368,7 +365,7 @@ func (pol *Policy) compileSSHPolicy(
 				// Pre-filter to same-user untagged devices for efficiency
 				sameUserNodes := make([]types.NodeView, 0)
 				for _, n := range nodes.All() {
-					if n.User().ID == node.User().ID && !n.IsTagged() {
+					if n.User().ID() == node.User().ID() && !n.IsTagged() {
 						sameUserNodes = append(sameUserNodes, n)
 					}
 				}
@@ -376,11 +373,8 @@ func (pol *Policy) compileSSHPolicy(
 				var filteredSrcIPs netipx.IPSetBuilder
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
-					for _, nodeIP := range n.IPs() {
-						if srcIPs.Contains(nodeIP) {
-							n.AppendToIPSet(&filteredSrcIPs)
-							break // Found this node, move to next
-						}
+					if slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
+						n.AppendToIPSet(&filteredSrcIPs) // Found this node, move to next
 					}
 				}
 

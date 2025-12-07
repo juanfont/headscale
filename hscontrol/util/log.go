@@ -49,22 +49,22 @@ func (l *DBLogWrapper) LogMode(gormLogger.LogLevel) gormLogger.Interface {
 	return l
 }
 
-func (l *DBLogWrapper) Info(ctx context.Context, msg string, data ...interface{}) {
+func (l *DBLogWrapper) Info(ctx context.Context, msg string, data ...any) {
 	l.Logger.Info().Msgf(msg, data...)
 }
 
-func (l *DBLogWrapper) Warn(ctx context.Context, msg string, data ...interface{}) {
+func (l *DBLogWrapper) Warn(ctx context.Context, msg string, data ...any) {
 	l.Logger.Warn().Msgf(msg, data...)
 }
 
-func (l *DBLogWrapper) Error(ctx context.Context, msg string, data ...interface{}) {
+func (l *DBLogWrapper) Error(ctx context.Context, msg string, data ...any) {
 	l.Logger.Error().Msgf(msg, data...)
 }
 
 func (l *DBLogWrapper) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
 	elapsed := time.Since(begin)
 	sql, rowsAffected := fc()
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"duration":     elapsed,
 		"sql":          sql,
 		"rowsAffected": rowsAffected,
@@ -83,7 +83,7 @@ func (l *DBLogWrapper) Trace(ctx context.Context, begin time.Time, fc func() (sq
 	l.Logger.Debug().Fields(fields).Msgf("")
 }
 
-func (l *DBLogWrapper) ParamsFilter(ctx context.Context, sql string, params ...interface{}) (string, []interface{}) {
+func (l *DBLogWrapper) ParamsFilter(ctx context.Context, sql string, params ...any) (string, []any) {
 	if l.ParameterizedQueries {
 		return sql, nil
 	}

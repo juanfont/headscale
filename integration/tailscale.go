@@ -29,6 +29,7 @@ type TailscaleClient interface {
 	Login(loginServer, authKey string) error
 	LoginWithURL(loginServer string) (*url.URL, error)
 	Logout() error
+	Restart() error
 	Up() error
 	Down() error
 	IPs() ([]netip.Addr, error)

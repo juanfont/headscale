@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"net/http"
 	"slices"
 	"strings"
@@ -16,6 +14,7 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/db"
+	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -42,10 +41,6 @@ var (
 	errOIDCAllowedUsers  = errors.New(
 		"authenticated principal does not match any allowed user",
 	)
-	errOIDCInvalidNodeState = errors.New(
-		"requested node state key expired before authorisation completed",
-	)
-	errOIDCNodeKeyMissing = errors.New("could not get node key from cache")
 )
 
 // RegistrationInfo contains both machine key and verifier information for OIDC validation.
@@ -108,16 +103,8 @@ func (a *AuthProviderOIDC) AuthURL(registrationID types.RegistrationID) string {
 		registrationID.String())
 }
 
-func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time.Time {
-	if a.cfg.UseExpiryFromToken {
-		return idTokenExpiration
-	}
-
-	return time.Now().Add(a.cfg.Expiry)
-}
-
-// RegisterOIDC redirects to the OIDC provider for authentication
-// Puts NodeKey in cache so the callback can retrieve it using the oidc state param
+// RegisterHandler registers the OIDC callback handler with the given router.
+// It puts NodeKey in cache so the callback can retrieve it using the oidc state param.
 // Listens in /register/:registration_id.
 func (a *AuthProviderOIDC) RegisterHandler(
 	writer http.ResponseWriter,
@@ -195,13 +182,6 @@ type oidcCallbackTemplateConfig struct {
 	Verb string
 }
 
-//go:embed assets/oidc_callback_template.html
-var oidcCallbackTemplateContent string
-
-var oidcCallbackTemplate = template.Must(
-	template.New("oidccallback").Parse(oidcCallbackTemplateContent),
-)
-
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
@@ -217,7 +197,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	cookieState, err := req.Cookie("state")
+	stateCookieName := getCookieName("state", state)
+	cookieState, err := req.Cookie(stateCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "state not found", err))
 		return
@@ -239,8 +220,13 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		httpError(writer, err)
 		return
 	}
+	if idToken.Nonce == "" {
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found in IDToken", err))
+		return
+	}
 
-	nonce, err := req.Cookie("nonce")
+	nonceCookieName := getCookieName("nonce", idToken.Nonce)
+	nonce, err := req.Cookie(nonceCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found", err))
 		return
@@ -304,7 +290,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	user, c, err := a.createOrUpdateUserFromClaim(&claims)
+	user, _, err := a.createOrUpdateUserFromClaim(&claims)
 	if err != nil {
 		log.Error().
 			Err(err).
@@ -322,9 +308,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 		return
 	}
-
-	// Send policy update notifications if needed
-	a.h.Change(c)
 
 	// TODO(kradalby): Is this comment right?
 	// If the node exists, then the node should be reauthenticated,
@@ -376,6 +359,14 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Neither node nor machine key was found in the state cache meaning
 	// that we could not reauth nor register the node.
 	httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+}
+
+func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time.Time {
+	if a.cfg.UseExpiryFromToken {
+		return idTokenExpiration
+	}
+
+	return time.Now().Add(a.cfg.Expiry)
 }
 
 func extractCodeAndStateParamFromRequest(
@@ -530,8 +521,8 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	}
 
 	// if the user is still not found, create a new empty user.
-	// TODO(kradalby): This might cause us to not have an ID below which
-	// is a problem.
+	// TODO(kradalby): This context is not inherited from the request, which is probably not ideal.
+	// However, we need a context to use the OIDC provider.
 	if user == nil {
 		newUser = true
 		user = &types.User{}
@@ -583,37 +574,28 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	_ = a.h.state.AutoApproveRoutes(node)
-	_, policyChange, err := a.h.state.SaveNode(node)
+	routesChange, err := a.h.state.AutoApproveRoutes(node)
 	if err != nil {
-		return false, fmt.Errorf("saving auto approved routes to node: %w", err)
+		return false, fmt.Errorf("auto approving routes: %w", err)
 	}
 
-	// Policy updates are full and take precedence over node changes.
-	if !policyChange.Empty() {
-		a.h.Change(policyChange)
-	} else {
-		a.h.Change(nodeChange)
-	}
+	// Send both changes. Empty changes are ignored by Change().
+	a.h.Change(nodeChange, routesChange)
 
 	return !nodeChange.Empty(), nil
 }
 
-// TODO(kradalby):
-// Rewrite in elem-go.
 func renderOIDCCallbackTemplate(
 	user *types.User,
 	verb string,
 ) (*bytes.Buffer, error) {
-	var content bytes.Buffer
-	if err := oidcCallbackTemplate.Execute(&content, oidcCallbackTemplateConfig{
-		User: user.Display(),
-		Verb: verb,
-	}); err != nil {
-		return nil, fmt.Errorf("rendering OIDC callback template: %w", err)
-	}
+	html := templates.OIDCCallback(user.Display(), verb).Render()
+	return bytes.NewBufferString(html), nil
+}
 
-	return &content, nil
+// getCookieName generates a unique cookie name based on a cookie value.
+func getCookieName(baseName, value string) string {
+	return fmt.Sprintf("%s_%s", baseName, value[:6])
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
@@ -624,7 +606,7 @@ func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string,
 
 	c := &http.Cookie{
 		Path:     "/oidc/callback",
-		Name:     name,
+		Name:     getCookieName(name, val),
 		Value:    val,
 		MaxAge:   int(time.Hour.Seconds()),
 		Secure:   r.TLS != nil,

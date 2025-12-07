@@ -98,7 +98,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 		// Should NOT contain user data after "Unauthorized"
 		// This is the security bypass - if users array is present, auth was bypassed
-		var jsonCheck map[string]interface{}
+		var jsonCheck map[string]any
 		jsonErr := json.Unmarshal(body, &jsonCheck)
 
 		// If we can unmarshal JSON and it contains "users", that's the bypass
@@ -278,8 +278,8 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		var responseBody string
 
 		for _, line := range lines {
-			if strings.HasPrefix(line, "HTTP_CODE:") {
-				httpCode = strings.TrimPrefix(line, "HTTP_CODE:")
+			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
+				httpCode = after
 			} else {
 				responseBody += line
 			}
@@ -324,8 +324,8 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		var responseBody string
 
 		for _, line := range lines {
-			if strings.HasPrefix(line, "HTTP_CODE:") {
-				httpCode = strings.TrimPrefix(line, "HTTP_CODE:")
+			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
+				httpCode = after
 			} else {
 				responseBody += line
 			}
@@ -359,8 +359,8 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		var responseBody string
 
 		for _, line := range lines {
-			if strings.HasPrefix(line, "HTTP_CODE:") {
-				httpCode = strings.TrimPrefix(line, "HTTP_CODE:")
+			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
+				httpCode = after
 			} else {
 				responseBody += line
 			}
@@ -459,9 +459,9 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		outputStr := strings.ToLower(output)
 		assert.True(t,
 			strings.Contains(outputStr, "unauthenticated") ||
-			strings.Contains(outputStr, "invalid token") ||
-			strings.Contains(outputStr, "failed to validate token") ||
-			strings.Contains(outputStr, "authentication"),
+				strings.Contains(outputStr, "invalid token") ||
+				strings.Contains(outputStr, "failed to validate token") ||
+				strings.Contains(outputStr, "authentication"),
 			"Error should indicate authentication failure, got: %s", output)
 
 		// Should NOT leak user data
@@ -609,9 +609,9 @@ cli:
 		outputStr := strings.ToLower(output)
 		assert.True(t,
 			strings.Contains(outputStr, "unauthenticated") ||
-			strings.Contains(outputStr, "invalid token") ||
-			strings.Contains(outputStr, "failed to validate token") ||
-			strings.Contains(outputStr, "authentication"),
+				strings.Contains(outputStr, "invalid token") ||
+				strings.Contains(outputStr, "failed to validate token") ||
+				strings.Contains(outputStr, "authentication"),
 			"Error should indicate authentication failure, got: %s", output)
 
 		// Should NOT leak user data

@@ -9,8 +9,8 @@ This page helps you get started with headscale and provides a few usage examples
       installation instructions.
     * The configuration file exists and is adjusted to suit your environment, see
       [Configuration](../ref/configuration.md) for details.
-    * Headscale is reachable from the Internet. Verify this by opening client specific setup instructions in your
-      browser, e.g. https://headscale.example.com/windows
+    * Headscale is reachable from the Internet. Verify this by visiting the health endpoint:
+      https://headscale.example.com/health
     * The Tailscale client is installed, see [Client and operating system support](../about/clients.md) for more
       information.
 
@@ -39,6 +39,23 @@ options, run:
     # Show help for a specific command
     docker exec -it headscale \
       headscale <COMMAND> --help
+    ```
+
+!!! note "Manage headscale from another local user"
+
+    By default only the user `headscale` or `root` will have the necessary permissions to access the unix socket
+    (`/var/run/headscale/headscale.sock`) that is used to communicate with the service. In order to be able to
+    communicate with the headscale service you have to make sure the unix socket is accessible by the user that runs
+    the commands. In general you can achieve this by any of the following methods:
+
+      * using `sudo`
+      * run the commands as user `headscale`
+      * add your user to the `headscale` group
+
+    To verify you can run the following command using your preferred method:
+
+    ```shell
+    headscale users list
     ```
 
 ## Manage headscale users

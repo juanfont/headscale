@@ -2,6 +2,7 @@ ignored/
 tailscale/
 .vscode/
 .claude/
+logs/
 
 *.prof
 

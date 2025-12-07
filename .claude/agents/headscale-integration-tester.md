@@ -52,7 +52,7 @@ go test ./integration -timeout 45m
 **Timeout Guidelines by Test Type**:
 - **Basic functionality tests**: `--timeout=900s` (15 minutes minimum)
 - **Route/ACL tests**: `--timeout=1200s` (20 minutes)
-- **HA/failover tests**: `--timeout=1800s` (30 minutes)  
+- **HA/failover tests**: `--timeout=1800s` (30 minutes)
 - **Long-running tests**: `--timeout=2100s` (35 minutes)
 - **Full test suite**: `-timeout 45m` (45 minutes)
 
@@ -433,7 +433,7 @@ When you understand a test's purpose through debugging, always add comprehensive
 //
 // The test verifies:
 // - Route announcements are received and tracked
-// - ACL policies control route approval correctly  
+// - ACL policies control route approval correctly
 // - Only approved routes appear in peer network maps
 // - Route state persists correctly in the database
 func TestSubnetRoutes(t *testing.T) {
@@ -535,7 +535,7 @@ var nodeKey key.NodePublic
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
-    
+
     for _, node := range nodes {
         if node.GetName() == "router" {
             routeNode = node
@@ -550,7 +550,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     status, err := client.Status()
     assert.NoError(c, err)
-    
+
     peerStatus, ok := status.Peer[nodeKey]
     assert.True(c, ok, "peer should exist in status")
     requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
@@ -566,7 +566,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
     assert.Len(c, nodes, 2)
-    
+
     // Second unrelated external call - WRONG!
     status, err := client.Status()
     assert.NoError(c, err)
@@ -577,7 +577,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
-    
+
     // NEVER do this!
     assert.EventuallyWithT(t, func(c2 *assert.CollectT) {
         status, _ := client.Status()
@@ -666,11 +666,11 @@ When working within EventuallyWithT blocks where you need to prevent panics:
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     nodes, err := headscale.ListNodes()
     assert.NoError(c, err)
-    
+
     // For array bounds - use require with t to prevent panic
     assert.Len(c, nodes, 6)  // Test expectation
     require.GreaterOrEqual(t, len(nodes), 3, "need at least 3 nodes to avoid panic")
-    
+
     // For nil pointer access - use require with t before dereferencing
     assert.NotNil(c, srs1PeerStatus.PrimaryRoutes)  // Test expectation
     require.NotNil(t, srs1PeerStatus.PrimaryRoutes, "primary routes must be set to avoid panic")
@@ -681,7 +681,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 }, 5*time.Second, 200*time.Millisecond, "checking route state")
 ```
 
-**Key Principle**: 
+**Key Principle**:
 - Use `assert` with `c` (*assert.CollectT) for test expectations that can be retried
 - Use `require` with `t` (*testing.T) for MUST conditions that prevent panics
 - Within EventuallyWithT, both are available - choose based on whether failure would cause a panic
@@ -704,7 +704,7 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
 assert.EventuallyWithT(t, func(c *assert.CollectT) {
     status, err := client.Status()
     assert.NoError(c, err)
-    
+
     // Check all peers have expected routes
     for _, peerKey := range status.Peers() {
         peerStatus := status.Peer[peerKey]

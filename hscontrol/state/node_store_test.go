@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
+	"tailscale.com/types/ptr"
 )
 
 func TestSnapshotFromNodes(t *testing.T) {
@@ -173,8 +174,8 @@ func createTestNode(nodeID types.NodeID, userID uint, username, hostname string)
 		DiscoKey:   discoKey.Public(),
 		Hostname:   hostname,
 		GivenName:  hostname,
-		UserID:     userID,
-		User: types.User{
+		UserID:     ptr.To(userID),
+		User: &types.User{
 			Name:        username,
 			DisplayName: username,
 		},
@@ -236,7 +237,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "create empty store and add single node",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, allowAllPeersFunc)
+				return NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -276,7 +277,8 @@ func TestNodeStoreOperations(t *testing.T) {
 			setupFunc: func(t *testing.T) *NodeStore {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				initialNodes := types.Nodes{&node1}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -346,7 +348,7 @@ func TestNodeStoreOperations(t *testing.T) {
 				node3 := createTestNode(3, 2, "user2", "node3")
 				initialNodes := types.Nodes{&node1, &node2, &node3}
 
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -405,7 +407,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -443,7 +446,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		{
 			name: "test with odd-even peers filtering",
 			setupFunc: func(t *testing.T) *NodeStore {
-				return NewNodeStore(nil, oddEvenPeersFunc)
+				return NewNodeStore(nil, oddEvenPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -502,7 +505,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -624,7 +628,7 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						go func() {
 							resultNode3, ok3 = store.UpdateNode(1, func(n *types.Node) {
-								n.ForcedTags = []string{"tag1", "tag2"}
+								n.Tags = []string{"tag1", "tag2"}
 							})
 							close(done3)
 						}()
@@ -645,24 +649,24 @@ func TestNodeStoreOperations(t *testing.T) {
 						// resultNode1 (from hostname update) should also have the givenname and tags changes
 						assert.Equal(t, "multi-update-hostname", resultNode1.Hostname())
 						assert.Equal(t, "multi-update-givenname", resultNode1.GivenName())
-						assert.Equal(t, []string{"tag1", "tag2"}, resultNode1.ForcedTags().AsSlice())
+						assert.Equal(t, []string{"tag1", "tag2"}, resultNode1.Tags().AsSlice())
 
 						// resultNode2 (from givenname update) should also have the hostname and tags changes
 						assert.Equal(t, "multi-update-hostname", resultNode2.Hostname())
 						assert.Equal(t, "multi-update-givenname", resultNode2.GivenName())
-						assert.Equal(t, []string{"tag1", "tag2"}, resultNode2.ForcedTags().AsSlice())
+						assert.Equal(t, []string{"tag1", "tag2"}, resultNode2.Tags().AsSlice())
 
 						// resultNode3 (from tags update) should also have the hostname and givenname changes
 						assert.Equal(t, "multi-update-hostname", resultNode3.Hostname())
 						assert.Equal(t, "multi-update-givenname", resultNode3.GivenName())
-						assert.Equal(t, []string{"tag1", "tag2"}, resultNode3.ForcedTags().AsSlice())
+						assert.Equal(t, []string{"tag1", "tag2"}, resultNode3.Tags().AsSlice())
 
 						// Verify the snapshot also has all changes
 						snapshot := store.data.Load()
 						finalNode := snapshot.nodesByID[1]
 						assert.Equal(t, "multi-update-hostname", finalNode.Hostname)
 						assert.Equal(t, "multi-update-givenname", finalNode.GivenName)
-						assert.Equal(t, []string{"tag1", "tag2"}, finalNode.ForcedTags)
+						assert.Equal(t, []string{"tag1", "tag2"}, finalNode.Tags)
 					},
 				},
 			},
@@ -673,7 +677,8 @@ func TestNodeStoreOperations(t *testing.T) {
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
-				return NewNodeStore(initialNodes, allowAllPeersFunc)
+
+				return NewNodeStore(initialNodes, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
 				{
@@ -683,7 +688,7 @@ func TestNodeStoreOperations(t *testing.T) {
 						resultNode, ok := store.UpdateNode(1, func(n *types.Node) {
 							n.Hostname = "db-save-hostname"
 							n.GivenName = "db-save-given"
-							n.ForcedTags = []string{"db-tag1", "db-tag2"}
+							n.Tags = []string{"db-tag1", "db-tag2"}
 						})
 
 						assert.True(t, ok, "UpdateNode should succeed")
@@ -692,21 +697,21 @@ func TestNodeStoreOperations(t *testing.T) {
 						// Verify the returned node has all expected values
 						assert.Equal(t, "db-save-hostname", resultNode.Hostname())
 						assert.Equal(t, "db-save-given", resultNode.GivenName())
-						assert.Equal(t, []string{"db-tag1", "db-tag2"}, resultNode.ForcedTags().AsSlice())
+						assert.Equal(t, []string{"db-tag1", "db-tag2"}, resultNode.Tags().AsSlice())
 
 						// Convert to struct as would be done for database save
 						nodePtr := resultNode.AsStruct()
 						assert.NotNil(t, nodePtr)
 						assert.Equal(t, "db-save-hostname", nodePtr.Hostname)
 						assert.Equal(t, "db-save-given", nodePtr.GivenName)
-						assert.Equal(t, []string{"db-tag1", "db-tag2"}, nodePtr.ForcedTags)
+						assert.Equal(t, []string{"db-tag1", "db-tag2"}, nodePtr.Tags)
 
 						// Verify the snapshot also reflects the same state
 						snapshot := store.data.Load()
 						storedNode := snapshot.nodesByID[1]
 						assert.Equal(t, "db-save-hostname", storedNode.Hostname)
 						assert.Equal(t, "db-save-given", storedNode.GivenName)
-						assert.Equal(t, []string{"db-tag1", "db-tag2"}, storedNode.ForcedTags)
+						assert.Equal(t, []string{"db-tag1", "db-tag2"}, storedNode.Tags)
 					},
 				},
 				{
@@ -738,7 +743,7 @@ func TestNodeStoreOperations(t *testing.T) {
 
 						go func() {
 							result3, ok3 = store.UpdateNode(1, func(n *types.Node) {
-								n.ForcedTags = []string{"concurrent-tag"}
+								n.Tags = []string{"concurrent-tag"}
 							})
 							close(done3)
 						}()
@@ -763,22 +768,22 @@ func TestNodeStoreOperations(t *testing.T) {
 						// All should have the complete final state
 						assert.Equal(t, "concurrent-db-hostname", nodePtr1.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr1.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr1.ForcedTags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr1.Tags)
 
 						assert.Equal(t, "concurrent-db-hostname", nodePtr2.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr2.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr2.ForcedTags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr2.Tags)
 
 						assert.Equal(t, "concurrent-db-hostname", nodePtr3.Hostname)
 						assert.Equal(t, "concurrent-db-given", nodePtr3.GivenName)
-						assert.Equal(t, []string{"concurrent-tag"}, nodePtr3.ForcedTags)
+						assert.Equal(t, []string{"concurrent-tag"}, nodePtr3.Tags)
 
 						// Verify consistency with stored state
 						snapshot := store.data.Load()
 						storedNode := snapshot.nodesByID[1]
 						assert.Equal(t, nodePtr1.Hostname, storedNode.Hostname)
 						assert.Equal(t, nodePtr1.GivenName, storedNode.GivenName)
-						assert.Equal(t, nodePtr1.ForcedTags, storedNode.ForcedTags)
+						assert.Equal(t, nodePtr1.Tags, storedNode.Tags)
 					},
 				},
 				{
@@ -851,8 +856,8 @@ func createConcurrentTestNode(id types.NodeID, hostname string) types.Node {
 		Hostname:   hostname,
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey.Public(),
-		UserID:     1,
-		User: types.User{
+		UserID:     ptr.To(uint(1)),
+		User: &types.User{
 			Name: "concurrent-test-user",
 		},
 	}
@@ -861,13 +866,14 @@ func createConcurrentTestNode(id types.NodeID, hostname string) types.Node {
 // --- Concurrency: concurrent PutNode operations ---
 func TestNodeStoreConcurrentPutNode(t *testing.T) {
 	const concurrentOps = 20
-	store := NewNodeStore(nil, allowAllPeersFunc)
+
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
 	var wg sync.WaitGroup
 	results := make(chan bool, concurrentOps)
-	for i := 0; i < concurrentOps; i++ {
+	for i := range concurrentOps {
 		wg.Add(1)
 		go func(nodeID int) {
 			defer wg.Done()
@@ -892,13 +898,14 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 func TestNodeStoreBatchingEfficiency(t *testing.T) {
 	const batchSize = 10
 	const ops = 15 // more than batchSize
-	store := NewNodeStore(nil, allowAllPeersFunc)
+
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
 	var wg sync.WaitGroup
 	results := make(chan bool, ops)
-	for i := 0; i < ops; i++ {
+	for i := range ops {
 		wg.Add(1)
 		go func(nodeID int) {
 			defer wg.Done()
@@ -921,7 +928,7 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 
 // --- Race conditions: many goroutines on same node ---
 func TestNodeStoreRaceConditions(t *testing.T) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -935,11 +942,12 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, numGoroutines*opsPerGoroutine)
 
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(gid int) {
 			defer wg.Done()
-			for j := 0; j < opsPerGoroutine; j++ {
+
+			for j := range opsPerGoroutine {
 				switch j % 3 {
 				case 0:
 					resultNode, _ := store.UpdateNode(nodeID, func(n *types.Node) {
@@ -979,7 +987,7 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 // --- Resource cleanup: goroutine leak detection ---
 func TestNodeStoreResourceCleanup(t *testing.T) {
 	// initialGoroutines := runtime.NumGoroutine()
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -987,7 +995,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 	afterStartGoroutines := runtime.NumGoroutine()
 
 	const ops = 100
-	for i := 0; i < ops; i++ {
+	for i := range ops {
 		nodeID := types.NodeID(i + 1)
 		node := createConcurrentTestNode(nodeID, "cleanup-node")
 		resultNode := store.PutNode(node)
@@ -1011,7 +1019,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 
 // --- Timeout/deadlock: operations complete within reasonable time ---
 func TestNodeStoreOperationTimeout(t *testing.T) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
@@ -1094,8 +1102,8 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 
 // --- Edge case: update non-existent node ---
 func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
-	for i := 0; i < 10; i++ {
-		store := NewNodeStore(nil, allowAllPeersFunc)
+	for i := range 10 {
+		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 		store.Start()
 		nonExistentID := types.NodeID(999 + i)
 		updateCallCount := 0
@@ -1114,12 +1122,11 @@ func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
 
 // --- Allocation benchmark ---
 func BenchmarkNodeStoreAllocations(b *testing.B) {
-	store := NewNodeStore(nil, allowAllPeersFunc)
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 	store.Start()
 	defer store.Stop()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		nodeID := types.NodeID(i + 1)
 		node := createConcurrentTestNode(nodeID, "bench-node")
 		store.PutNode(node)

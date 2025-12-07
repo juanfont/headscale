@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -96,7 +95,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -124,7 +123,7 @@ func TestIPAllocatorSequential(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.2"),
 					IPv6: nap("fd7a:115c:a1e0::2"),
 				})
@@ -158,8 +157,6 @@ func TestIPAllocatorSequential(t *testing.T) {
 				tt.prefix6,
 				types.IPAllocationStrategySequential,
 			)
-
-			spew.Dump(alloc)
 
 			var got4s []netip.Addr
 			var got6s []netip.Addr
@@ -263,8 +260,6 @@ func TestIPAllocatorRandom(t *testing.T) {
 
 			alloc, _ := NewIPAllocator(db, tt.prefix4, tt.prefix6, types.IPAllocationStrategyRandom)
 
-			spew.Dump(alloc)
-
 			for range tt.getCount {
 				got4, got6, err := alloc.Next()
 				if err != nil {
@@ -314,7 +309,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 				})
 
@@ -339,7 +334,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
 
@@ -364,7 +359,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -388,7 +383,7 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 					IPv6: nap("fd7a:115c:a1e0::1"),
 				})
@@ -412,19 +407,19 @@ func TestBackfillIPAddresses(t *testing.T) {
 				db.DB.Save(&user)
 
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.1"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.2"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.3"),
 				})
 				db.DB.Save(&types.Node{
-					User: user,
+					User: &user,
 					IPv4: nap("100.64.0.4"),
 				})
 

@@ -196,8 +196,9 @@ func SetTags(
 	tags []string,
 ) error {
 	if len(tags) == 0 {
-		// if no tags are provided, we remove all forced tags
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", "[]").Error; err != nil {
+		// if no tags are provided, we remove all tags
+		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", "[]").Error
+		if err != nil {
 			return fmt.Errorf("removing tags: %w", err)
 		}
 
@@ -211,7 +212,8 @@ func SetTags(
 		return err
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("forced_tags", string(b)).Error; err != nil {
+	err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("tags", string(b)).Error
+	if err != nil {
 		return fmt.Errorf("updating tags: %w", err)
 	}
 
@@ -349,12 +351,20 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		panic("RegisterNodeForTest can only be called during tests")
 	}
 
-	log.Debug().
+	logEvent := log.Debug().
 		Str("node", node.Hostname).
 		Str("machine_key", node.MachineKey.ShortString()).
-		Str("node_key", node.NodeKey.ShortString()).
-		Str("user", node.User.Username()).
-		Msg("Registering test node")
+		Str("node_key", node.NodeKey.ShortString())
+
+	if node.User != nil {
+		logEvent = logEvent.Str("user", node.User.Username())
+	} else if node.UserID != nil {
+		logEvent = logEvent.Uint("user_id", *node.UserID)
+	} else {
+		logEvent = logEvent.Str("user", "none")
+	}
+
+	logEvent.Msg("Registering test node")
 
 	// If the a new node is registered with the same machine key, to the same user,
 	// update the existing node.
@@ -450,13 +460,6 @@ func NodeSetMachineKey(
 	return tx.Model(node).Updates(types.Node{
 		MachineKey: machineKey,
 	}).Error
-}
-
-// NodeSave saves a node object to the database, prefer to use a specific save method rather
-// than this. It is intended to be used when we are changing or.
-// TODO(kradalby): Remove this func, just use Save.
-func NodeSave(tx *gorm.DB, node *types.Node) error {
-	return tx.Save(node).Error
 }
 
 func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
@@ -649,7 +652,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 	}
 
 	// Create a preauth key for the node
-	pak, err := hsdb.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, nil)
+	pak, err := hsdb.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	if err != nil {
 		panic(fmt.Sprintf("failed to create preauth key for test node: %v", err))
 	}
@@ -663,7 +666,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		NodeKey:        nodeKey.Public(),
 		DiscoKey:       discoKey.Public(),
 		Hostname:       nodeName,
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		AuthKeyID:      ptr.To(pak.ID),
 	}
@@ -756,15 +759,25 @@ func (hsdb *HSDatabase) allocateTestIPs(nodeID types.NodeID) (*netip.Addr, *neti
 	}
 
 	// Use simple sequential allocation for tests
-	// IPv4: 100.64.0.x (where x is nodeID)
-	// IPv6: fd7a:115c:a1e0::x (where x is nodeID)
+	// IPv4: 100.64.x.y (where x = nodeID/256, y = nodeID%256)
+	// IPv6: fd7a:115c:a1e0::x:y (where x = high byte, y = low byte)
+	// This supports up to 65535 nodes
+	const (
+		maxTestNodes    = 65535
+		ipv4ByteDivisor = 256
+	)
 
-	if nodeID > 254 {
-		return nil, nil, fmt.Errorf("test node ID %d too large for simple IP allocation", nodeID)
+	if nodeID > maxTestNodes {
+		return nil, nil, ErrCouldNotAllocateIP
 	}
 
-	ipv4 := netip.AddrFrom4([4]byte{100, 64, 0, byte(nodeID)})
-	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, byte(nodeID)})
+	// Split nodeID into high and low bytes for IPv4 (100.64.high.low)
+	highByte := byte(nodeID / ipv4ByteDivisor)
+	lowByte := byte(nodeID % ipv4ByteDivisor)
+	ipv4 := netip.AddrFrom4([4]byte{100, 64, highByte, lowByte})
+
+	// For IPv6, use the last two bytes of the address (fd7a:115c:a1e0::high:low)
+	ipv6 := netip.AddrFrom16([16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, highByte, lowByte})
 
 	return &ipv4, &ipv6, nil
 }

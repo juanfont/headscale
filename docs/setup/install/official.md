@@ -42,6 +42,8 @@ distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
     sudo systemctl status headscale
     ```
 
+Continue on the [getting started page](../../usage/getting-started.md) to register your first machine.
+
 ## Using standalone binaries (advanced)
 
 !!! warning "Advanced"
@@ -115,3 +117,5 @@ managed by systemd.
     ```shell
     systemctl status headscale
     ```
+
+Continue on the [getting started page](../../usage/getting-started.md) to register your first machine.

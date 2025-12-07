@@ -31,7 +31,7 @@ func decodingError(name string, err error) error {
 // have a type that implements encoding.TextUnmarshaler.
 type TextSerialiser struct{}
 
-func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect.Value, dbValue interface{}) (err error) {
+func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect.Value, dbValue any) error {
 	fieldValue := reflect.New(field.FieldType)
 
 	// If the field is a pointer, we need to dereference it to get the actual type
@@ -77,10 +77,10 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 		}
 	}
 
-	return err
+	return nil
 }
 
-func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflect.Value, fieldValue interface{}) (interface{}, error) {
+func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflect.Value, fieldValue any) (any, error) {
 	switch v := fieldValue.(type) {
 	case encoding.TextMarshaler:
 		// If the value is nil, we return nil, however, go nil values are not

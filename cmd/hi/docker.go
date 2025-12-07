@@ -26,7 +26,92 @@ var (
 	ErrTestFailed              = errors.New("test failed")
 	ErrUnexpectedContainerWait = errors.New("unexpected end of container wait")
 	ErrNoDockerContext         = errors.New("no docker context found")
+	ErrAnotherRunInProgress    = errors.New("another integration test run is already in progress")
 )
+
+// RunningTestInfo contains information about a currently running integration test.
+type RunningTestInfo struct {
+	RunID         string
+	ContainerID   string
+	ContainerName string
+	StartTime     time.Time
+	Duration      time.Duration
+	TestPattern   string
+}
+
+// ErrNoRunningTests indicates that no integration test is currently running.
+var ErrNoRunningTests = errors.New("no running tests found")
+
+// checkForRunningTests checks if there's already an integration test running.
+// Returns ErrNoRunningTests if no test is running, or RunningTestInfo with details about the running test.
+func checkForRunningTests(ctx context.Context) (*RunningTestInfo, error) {
+	cli, err := createDockerClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// List all running containers
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: false, // Only running containers
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	// Look for containers with hi.test-type=test-runner label
+	for _, cont := range containers {
+		if cont.Labels != nil && cont.Labels["hi.test-type"] == "test-runner" {
+			// Found a running test runner container
+			runID := cont.Labels["hi.run-id"]
+
+			containerName := ""
+			for _, name := range cont.Names {
+				containerName = strings.TrimPrefix(name, "/")
+
+				break
+			}
+
+			// Get more details via inspection
+			inspect, err := cli.ContainerInspect(ctx, cont.ID)
+			if err != nil {
+				// Return basic info if inspection fails
+				return &RunningTestInfo{
+					RunID:         runID,
+					ContainerID:   cont.ID,
+					ContainerName: containerName,
+				}, nil
+			}
+
+			startTime, _ := time.Parse(time.RFC3339Nano, inspect.State.StartedAt)
+			duration := time.Since(startTime)
+
+			// Try to extract test pattern from command
+			testPattern := ""
+
+			if len(inspect.Config.Cmd) > 0 {
+				for i, arg := range inspect.Config.Cmd {
+					if arg == "-run" && i+1 < len(inspect.Config.Cmd) {
+						testPattern = inspect.Config.Cmd[i+1]
+
+						break
+					}
+				}
+			}
+
+			return &RunningTestInfo{
+				RunID:         runID,
+				ContainerID:   cont.ID,
+				ContainerName: containerName,
+				StartTime:     startTime,
+				Duration:      duration,
+				TestPattern:   testPattern,
+			}, nil
+		}
+	}
+
+	return nil, ErrNoRunningTests
+}
 
 // runTestContainer executes integration tests in a Docker container.
 func runTestContainer(ctx context.Context, config *RunConfig) error {
@@ -154,6 +239,19 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		if cleanErr := cleanupAfterTest(ctx, cli, resp.ID); cleanErr != nil && config.Verbose {
 			log.Printf("Warning: post-test cleanup failed: %v", cleanErr)
 		}
+
+		// Clean up artifacts from successful tests to save disk space in CI
+		if exitCode == 0 {
+			if config.Verbose {
+				log.Printf("Test succeeded, cleaning up artifacts to save disk space...")
+			}
+
+			cleanErr := cleanupSuccessfulTestArtifacts(logsDir, config.Verbose)
+
+			if cleanErr != nil && config.Verbose {
+				log.Printf("Warning: artifact cleanup failed: %v", cleanErr)
+			}
+		}
 	}
 
 	if err != nil {
@@ -201,6 +299,19 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	env := []string{
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
+	}
+
+	// Pass through all HEADSCALE_INTEGRATION_* environment variables
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
+			// Skip the ones we already set explicitly
+			if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_POSTGRES=") ||
+				strings.HasPrefix(e, "HEADSCALE_INTEGRATION_RUN_ID=") {
+				continue
+			}
+
+			env = append(env, e)
+		}
 	}
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
@@ -357,10 +468,10 @@ func boolToInt(b bool) int {
 
 // DockerContext represents Docker context information.
 type DockerContext struct {
-	Name      string                 `json:"Name"`
-	Metadata  map[string]interface{} `json:"Metadata"`
-	Endpoints map[string]interface{} `json:"Endpoints"`
-	Current   bool                   `json:"Current"`
+	Name      string         `json:"Name"`
+	Metadata  map[string]any `json:"Metadata"`
+	Endpoints map[string]any `json:"Endpoints"`
+	Current   bool           `json:"Current"`
 }
 
 // createDockerClient creates a Docker client with context detection.
@@ -375,7 +486,7 @@ func createDockerClient() (*client.Client, error) {
 
 	if contextInfo != nil {
 		if endpoints, ok := contextInfo.Endpoints["docker"]; ok {
-			if endpointMap, ok := endpoints.(map[string]interface{}); ok {
+			if endpointMap, ok := endpoints.(map[string]any); ok {
 				if host, ok := endpointMap["Host"].(string); ok {
 					if runConfig.Verbose {
 						log.Printf("Using Docker host from context '%s': %s", contextInfo.Name, host)
