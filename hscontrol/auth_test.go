@@ -668,9 +668,10 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 				app.state.SetRegistrationCacheEntry(regID, nodeToRegister)
 
-				// Simulate successful registration
+				// Simulate successful registration - send to buffered channel
+				// The channel is buffered (size 1), so this can complete immediately
+				// and handleRegister will receive the value when it starts waiting
 				go func() {
-					time.Sleep(20 * time.Millisecond)
 					user := app.state.CreateUserForTest("followup-user")
 					node := app.state.CreateNodeForTest(user, "followup-success-node")
 					registered <- node
@@ -1324,8 +1325,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				app.state.SetRegistrationCacheEntry(regID, nodeToRegister)
 
 				// Simulate registration that returns nil (cache expired during auth)
+				// The channel is buffered (size 1), so this can complete immediately
 				go func() {
-					time.Sleep(20 * time.Millisecond)
 					registered <- nil // Nil indicates cache expiry
 				}()
 
@@ -2080,11 +2081,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					}(i)
 				}
 
-				// All should wait since no auth completion happened
-				// After a short delay, they should timeout or be waiting
-				time.Sleep(100 * time.Millisecond)
-
-				// Now complete the authentication to signal one of them
+				// Complete the authentication to signal the waiting goroutines
+				// The goroutines will receive from the buffered channel when ready
 				registrationID, err := extractRegistrationIDFromAuthURL(authURL)
 				require.NoError(t, err)
 
@@ -2408,10 +2406,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					responseChan <- resp
 				}()
 
-				// Give followup time to start waiting
-				time.Sleep(50 * time.Millisecond)
-
 				// Complete authentication for second registration
+				// The goroutine will receive the node from the buffered channel
 				_, _, err = app.state.HandleNodeFromAuthPath(
 					regID2,
 					types.UserID(user.ID),
@@ -2604,10 +2600,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 					responseChan <- resp
 				}()
 
-				// Give the followup request time to start waiting
-				time.Sleep(50 * time.Millisecond)
-
-				// Now complete the authentication - this will signal the waiting followup request
+				// Complete the authentication - the goroutine will receive from the buffered channel
 				user := app.state.CreateUserForTest("interactive-test-user")
 				_, _, err = app.state.HandleNodeFromAuthPath(
 					registrationID,
