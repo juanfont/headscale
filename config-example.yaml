@@ -370,7 +370,7 @@ unix_socket_permission: "0770"
 #   #
 #   # This setting is useful when claims and their mapping can't be controlled,
 #   # such as when using Cloudflare One-time pin for authentication.
-#   use_unverified_email: false
+#   email_verified_required: true
 #
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
