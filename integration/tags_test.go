@@ -1364,21 +1364,20 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 		t.Logf("Test 1.2 PASS: Registration correctly rejected with error: %v", err)
 		assert.ErrorContains(t, err, "requested tags")
 	} else {
-		// Give some time for registration to complete
-		time.Sleep(5 * time.Second)
-
 		// Check the result - if registration succeeded, the node should not have the invalid tag
-		nodes, err := headscale.ListNodes(tagTestUser)
-		require.NoError(t, err, "Should be able to list nodes")
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			nodes, err := headscale.ListNodes(tagTestUser)
+			assert.NoError(c, err, "Should be able to list nodes")
 
-		if len(nodes) == 0 {
-			t.Logf("Test 1.2 PASS: Registration rejected - no nodes registered")
-		} else {
-			// If a node was registered, it should NOT have the non-existent tag
-			require.NotContains(t, nodes[0].GetValidTags(), "tag:nonexistent",
-				"Non-existent tag should not be applied to node")
-			t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetValidTags())
-		}
+			if len(nodes) == 0 {
+				t.Logf("Test 1.2 PASS: Registration rejected - no nodes registered")
+			} else {
+				// If a node was registered, it should NOT have the non-existent tag
+				assert.NotContains(c, nodes[0].GetValidTags(), "tag:nonexistent",
+					"Non-existent tag should not be applied to node")
+				t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetValidTags())
+			}
+		}, 10*time.Second, 500*time.Millisecond, "checking node registration result")
 	}
 }
 
@@ -1433,22 +1432,21 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 	// Register the node - should fail or reject the unowned tag
 	_ = scenario.runHeadscaleRegister(tagTestUser, body)
 
-	// Give some time for registration
-	time.Sleep(5 * time.Second)
-
 	// Check the result - user should NOT be able to claim an unowned tag
-	nodes, err := headscale.ListNodes(tagTestUser)
-	require.NoError(t, err, "Should be able to list nodes")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err, "Should be able to list nodes")
 
-	// Either: no nodes registered (ideal), or node registered without the unowned tag
-	if len(nodes) == 0 {
-		t.Logf("Test 1.3 PASS: Registration rejected - no nodes registered")
-	} else {
-		// If a node was registered, it should NOT have the unowned tag
-		require.NotContains(t, nodes[0].GetValidTags(), "tag:valid-unowned",
-			"Unowned tag should not be applied to node (tag:valid-unowned is owned by other-user)")
-		t.Logf("Test 1.3: Node registered with tags: %v (unowned tag correctly rejected)", nodes[0].GetValidTags())
-	}
+		// Either: no nodes registered (ideal), or node registered without the unowned tag
+		if len(nodes) == 0 {
+			t.Logf("Test 1.3 PASS: Registration rejected - no nodes registered")
+		} else {
+			// If a node was registered, it should NOT have the unowned tag
+			assert.NotContains(c, nodes[0].GetValidTags(), "tag:valid-unowned",
+				"Unowned tag should not be applied to node (tag:valid-unowned is owned by other-user)")
+			t.Logf("Test 1.3: Node registered with tags: %v (unowned tag correctly rejected)", nodes[0].GetValidTags())
+		}
+	}, 10*time.Second, 500*time.Millisecond, "checking node registration result")
 }
 
 // TestTagsUserLoginAddTagViaCLIReauth tests that a user can add tags via CLI reauthentication.
@@ -1526,10 +1524,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 	_, stderr, err := client.Execute(command)
 	t.Logf("CLI result: err=%v, stderr=%s", err, stderr)
 
-	// This might trigger a reauth URL - check and complete it if needed
-	time.Sleep(5 * time.Second)
-
-	// Check final state
+	// Check final state - EventuallyWithT handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes(tagTestUser)
 		assert.NoError(c, err)
@@ -1621,9 +1616,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 	_, stderr, err := client.Execute(command)
 	t.Logf("CLI result: err=%v, stderr=%s", err, stderr)
 
-	time.Sleep(5 * time.Second)
-
-	// Check final state
+	// Check final state - EventuallyWithT handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err := headscale.ListNodes(tagTestUser)
 		assert.NoError(c, err)
