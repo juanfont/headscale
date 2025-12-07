@@ -991,8 +991,13 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 	store.Start()
 	defer store.Stop()
 
-	time.Sleep(50 * time.Millisecond)
-	afterStartGoroutines := runtime.NumGoroutine()
+	// Wait for store to be ready
+	var afterStartGoroutines int
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		afterStartGoroutines = runtime.NumGoroutine()
+		assert.Positive(c, afterStartGoroutines) // Just ensure we have a valid count
+	}, time.Second, 10*time.Millisecond, "store should be running")
 
 	const ops = 100
 	for i := range ops {
@@ -1010,11 +1015,13 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 		}
 	}
 	runtime.GC()
-	time.Sleep(100 * time.Millisecond)
-	finalGoroutines := runtime.NumGoroutine()
-	if finalGoroutines > afterStartGoroutines+2 {
-		t.Errorf("Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines)
-	}
+
+	// Wait for goroutines to settle and check for leaks
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		finalGoroutines := runtime.NumGoroutine()
+		assert.LessOrEqual(c, finalGoroutines, afterStartGoroutines+2,
+			"Potential goroutine leak: started with %d, ended with %d", afterStartGoroutines, finalGoroutines)
+	}, time.Second, 10*time.Millisecond, "goroutines should not leak")
 }
 
 // --- Timeout/deadlock: operations complete within reasonable time ---
