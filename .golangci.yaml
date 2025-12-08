@@ -7,6 +7,7 @@ linters:
     - depguard
     - dupl
     - exhaustruct
+    - funcorder
     - funlen
     - gochecknoglobals
     - gochecknoinits
@@ -28,6 +29,15 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    forbidigo:
+      forbid:
+        # Forbid time.Sleep everywhere with context-appropriate alternatives
+        - pattern: 'time\.Sleep'
+          msg: >-
+            time.Sleep is forbidden.
+            In tests: use assert.EventuallyWithT for polling/waiting patterns.
+            In production code: use a backoff strategy (e.g., cenkalti/backoff) or proper synchronization primitives.
+      analyze-types: true
     gocritic:
       disabled-checks:
         - appendAssign

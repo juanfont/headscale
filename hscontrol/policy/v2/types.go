@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"cmp"
 	"errors"
 	"fmt"
 	"net/netip"
@@ -307,34 +306,10 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 func (t Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
-	// TODO(kradalby): This is currently resolved twice, and should be resolved once.
-	// It is added temporary until we sort out the story on how and when we resolve tags
-	// from the three places they can be "approved":
-	// - As part of a PreAuthKey (handled in HasTag)
-	// - As part of ForcedTags (set via CLI) (handled in HasTag)
-	// - As part of HostInfo.RequestTags and approved by policy (this is happening here)
-	// Part of #2417
-	tagMap, err := resolveTagOwners(p, users, nodes)
-	if err != nil {
-		return nil, err
-	}
-
 	for _, node := range nodes.All() {
 		// Check if node has this tag
 		if node.HasTag(string(t)) {
 			node.AppendToIPSet(&ips)
-		}
-
-		// TODO(kradalby): remove as part of #2417, see comment above
-		if tagMap != nil {
-			if tagips, ok := tagMap[t]; ok && node.InIPSet(tagips) && node.Hostinfo().Valid() {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if tag == string(t) {
-						node.AppendToIPSet(&ips)
-						break
-					}
-				}
-			}
 		}
 	}
 
@@ -545,61 +520,26 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[type
 		return util.TheInternet(), nil
 
 	case AutoGroupMember:
-		// autogroup:member represents all untagged devices in the tailnet.
-		tagMap, err := resolveTagOwners(p, users, nodes)
-		if err != nil {
-			return nil, err
-		}
-
 		for _, node := range nodes.All() {
 			// Skip if node is tagged
 			if node.IsTagged() {
 				continue
 			}
 
-			// Skip if node has any allowed requested tags
-			hasAllowedTag := false
-			if node.RequestTagsSlice().Len() != 0 {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if _, ok := tagMap[Tag(tag)]; ok {
-						hasAllowedTag = true
-						break
-					}
-				}
-			}
-			if hasAllowedTag {
-				continue
-			}
-
-			// Node is a member if it has no forced tags and no allowed requested tags
+			// Node is a member if it is not tagged
 			node.AppendToIPSet(&build)
 		}
 
 		return build.IPSet()
 
 	case AutoGroupTagged:
-		// autogroup:tagged represents all devices with a tag in the tailnet.
-		tagMap, err := resolveTagOwners(p, users, nodes)
-		if err != nil {
-			return nil, err
-		}
-
 		for _, node := range nodes.All() {
 			// Include if node is tagged
-			if node.IsTagged() {
-				node.AppendToIPSet(&build)
+			if !node.IsTagged() {
 				continue
 			}
 
-			// Include if node has any allowed requested tags
-			if node.RequestTagsSlice().Len() != 0 {
-				for _, tag := range node.RequestTagsSlice().All() {
-					if _, ok := tagMap[Tag(tag)]; ok {
-						node.AppendToIPSet(&build)
-						break
-					}
-				}
-			}
+			node.AppendToIPSet(&build)
 		}
 
 		return build.IPSet()
@@ -1175,129 +1115,6 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 	}
 
 	return fmt.Errorf(`Tag %q is not defined in the Policy, please define or remove the reference to it`, tagOwner)
-}
-
-// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
-// The resulting map can be used to quickly look up the IPSet for a given Tag.
-// It is intended for internal use in a PolicyManager.
-func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
-	if p == nil {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
-	if len(p.TagOwners) == 0 {
-		return make(map[Tag]*netipx.IPSet), nil
-	}
-
-	ret := make(map[Tag]*netipx.IPSet)
-
-	tagOwners, err := flattenTagOwners(p.TagOwners)
-	if err != nil {
-		return nil, err
-	}
-
-	for tag, owners := range tagOwners {
-		var ips netipx.IPSetBuilder
-
-		for _, owner := range owners {
-			switch o := owner.(type) {
-			case *Tag:
-				// After flattening, Tag types should not appear in the owners list.
-				// If they do, skip them as they represent already-resolved references.
-
-			case Alias:
-				// If it does not resolve, that means the tag is not associated with any IP addresses.
-				resolved, _ := o.Resolve(p, users, nodes)
-				ips.AddSet(resolved)
-
-			default:
-				// Should never happen
-				return nil, fmt.Errorf("owner %v is not an Alias", owner)
-			}
-		}
-
-		ipSet, err := ips.IPSet()
-		if err != nil {
-			return nil, err
-		}
-
-		ret[tag] = ipSet
-	}
-
-	return ret, nil
-}
-
-// flattenTags flattens the TagOwners by resolving nested tags and detecting cycles.
-// It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
-func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
-	if visiting[tag] {
-		cycleStart := 0
-
-		for i, t := range chain {
-			if t == tag {
-				cycleStart = i
-				break
-			}
-		}
-
-		cycleTags := make([]string, len(chain[cycleStart:]))
-		for i, t := range chain[cycleStart:] {
-			cycleTags[i] = string(t)
-		}
-
-		slices.Sort(cycleTags)
-
-		return nil, fmt.Errorf("%w: %s", ErrCircularReference, strings.Join(cycleTags, " -> "))
-	}
-
-	visiting[tag] = true
-
-	chain = append(chain, tag)
-	defer delete(visiting, tag)
-
-	var result Owners
-
-	for _, owner := range tagOwners[tag] {
-		switch o := owner.(type) {
-		case *Tag:
-			if _, ok := tagOwners[*o]; !ok {
-				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
-			}
-
-			nested, err := flattenTags(tagOwners, *o, visiting, chain)
-			if err != nil {
-				return nil, err
-			}
-
-			result = append(result, nested...)
-		default:
-			result = append(result, owner)
-		}
-	}
-
-	return result, nil
-}
-
-// flattenTagOwners flattens all TagOwners by resolving nested tags and detecting cycles.
-// It will return a new TagOwners map where all the Tag types have been resolved to their underlying Owners.
-func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
-	ret := make(TagOwners)
-
-	for tag := range tagOwners {
-		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
-		if err != nil {
-			return nil, err
-		}
-
-		slices.SortFunc(flattened, func(a, b Owner) int {
-			return cmp.Compare(a.String(), b.String())
-		})
-		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
-			return a.String() == b.String()
-		})
-	}
-
-	return ret, nil
 }
 
 type AutoApproverPolicy struct {

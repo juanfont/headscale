@@ -77,7 +77,7 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 
 	_, matchers := b.mapper.state.Filter()
 	tailnode, err := tailNode(
-		nv, b.capVer, b.mapper.state,
+		nv, b.capVer,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
@@ -252,7 +252,7 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	}
 
 	tailPeers, err := tailNodes(
-		changedViews, b.capVer, b.mapper.state,
+		changedViews, b.capVer,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},

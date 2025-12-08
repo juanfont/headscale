@@ -105,7 +105,7 @@ func TestSetTags_Conversion(t *testing.T) {
 			tags:           []string{"tag:server"},
 			wantErr:        true,
 			wantCode:       codes.InvalidArgument,
-			wantErrMessage: "invalid or unauthorized tags",
+			wantErrMessage: "requested tags",
 		},
 		{
 			// Conversion is allowed, but tag authorization fails without tagOwners
@@ -114,7 +114,7 @@ func TestSetTags_Conversion(t *testing.T) {
 			tags:           []string{"tag:server", "tag:database"},
 			wantErr:        true,
 			wantCode:       codes.InvalidArgument,
-			wantErrMessage: "invalid or unauthorized tags",
+			wantErrMessage: "requested tags",
 		},
 		{
 			name:           "reject non-existent node",

@@ -1,7 +1,9 @@
 package v2
 
 import (
+	"cmp"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -18,6 +20,9 @@ import (
 	"tailscale.com/types/views"
 	"tailscale.com/util/deephash"
 )
+
+// ErrInvalidTagOwner is returned when a tag owner is not an Alias type.
+var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
 type PolicyManager struct {
 	mu    sync.Mutex
@@ -536,21 +541,106 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	return false, nil
 }
 
+// NodeCanHaveTag checks if a node can have the specified tag during client-initiated
+// registration or reauth flows (e.g., tailscale up --advertise-tags).
+//
+// This function is NOT used by the admin API's SetNodeTags - admins can set any
+// existing tag on any node by calling State.SetNodeTags directly, which bypasses
+// this authorization check.
 func (pm *PolicyManager) NodeCanHaveTag(node types.NodeView, tag string) bool {
-	if pm == nil {
+	if pm == nil || pm.pol == nil {
 		return false
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	// Check if tag exists in policy
+	owners, exists := pm.pol.TagOwners[Tag(tag)]
+	if !exists {
+		return false
+	}
+
+	// Check if node's owner can assign this tag via the pre-resolved tagOwnerMap.
+	// The tagOwnerMap contains IP sets built from resolving TagOwners entries
+	// (usernames/groups) to their nodes' IPs, so checking if the node's IP
+	// is in the set answers "does this node's owner own this tag?"
 	if ips, ok := pm.tagOwnerMap[Tag(tag)]; ok {
 		if slices.ContainsFunc(node.IPs(), ips.Contains) {
 			return true
 		}
 	}
 
+	// For new nodes being registered, their IP may not yet be in the tagOwnerMap.
+	// Fall back to checking the node's user directly against the TagOwners.
+	// This handles the case where a user registers a new node with --advertise-tags.
+	if node.User().Valid() {
+		for _, owner := range owners {
+			if pm.userMatchesOwner(node.User(), owner) {
+				return true
+			}
+		}
+	}
+
 	return false
+}
+
+// userMatchesOwner checks if a user matches a tag owner entry.
+// This is used as a fallback when the node's IP is not in the tagOwnerMap.
+func (pm *PolicyManager) userMatchesOwner(user types.UserView, owner Owner) bool {
+	switch o := owner.(type) {
+	case *Username:
+		if o == nil {
+			return false
+		}
+		// Resolve the username to find the user it refers to
+		resolvedUser, err := o.resolveUser(pm.users)
+		if err != nil {
+			return false
+		}
+
+		return user.ID() == resolvedUser.ID
+
+	case *Group:
+		if o == nil || pm.pol == nil {
+			return false
+		}
+		// Resolve the group to get usernames
+		usernames, ok := pm.pol.Groups[*o]
+		if !ok {
+			return false
+		}
+		// Check if the user matches any username in the group
+		for _, uname := range usernames {
+			resolvedUser, err := uname.resolveUser(pm.users)
+			if err != nil {
+				continue
+			}
+
+			if user.ID() == resolvedUser.ID {
+				return true
+			}
+		}
+
+		return false
+
+	default:
+		return false
+	}
+}
+
+// TagExists reports whether the given tag is defined in the policy.
+func (pm *PolicyManager) TagExists(tag string) bool {
+	if pm == nil || pm.pol == nil {
+		return false
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	_, exists := pm.pol.TagOwners[Tag(tag)]
+
+	return exists
 }
 
 func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool {
@@ -833,4 +923,127 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 			delete(pm.filterRulesMap, nodeID)
 		}
 	}
+}
+
+// flattenTags flattens the TagOwners by resolving nested tags and detecting cycles.
+// It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
+func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
+	if visiting[tag] {
+		cycleStart := 0
+
+		for i, t := range chain {
+			if t == tag {
+				cycleStart = i
+				break
+			}
+		}
+
+		cycleTags := make([]string, len(chain[cycleStart:]))
+		for i, t := range chain[cycleStart:] {
+			cycleTags[i] = string(t)
+		}
+
+		slices.Sort(cycleTags)
+
+		return nil, fmt.Errorf("%w: %s", ErrCircularReference, strings.Join(cycleTags, " -> "))
+	}
+
+	visiting[tag] = true
+
+	chain = append(chain, tag)
+	defer delete(visiting, tag)
+
+	var result Owners
+
+	for _, owner := range tagOwners[tag] {
+		switch o := owner.(type) {
+		case *Tag:
+			if _, ok := tagOwners[*o]; !ok {
+				return nil, fmt.Errorf("tag %q %w %q", tag, ErrUndefinedTagReference, *o)
+			}
+
+			nested, err := flattenTags(tagOwners, *o, visiting, chain)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(result, nested...)
+		default:
+			result = append(result, owner)
+		}
+	}
+
+	return result, nil
+}
+
+// flattenTagOwners flattens all TagOwners by resolving nested tags and detecting cycles.
+// It will return a new TagOwners map where all the Tag types have been resolved to their underlying Owners.
+func flattenTagOwners(tagOwners TagOwners) (TagOwners, error) {
+	ret := make(TagOwners)
+
+	for tag := range tagOwners {
+		flattened, err := flattenTags(tagOwners, tag, make(map[Tag]bool), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		slices.SortFunc(flattened, func(a, b Owner) int {
+			return cmp.Compare(a.String(), b.String())
+		})
+		ret[tag] = slices.CompactFunc(flattened, func(a, b Owner) bool {
+			return a.String() == b.String()
+		})
+	}
+
+	return ret, nil
+}
+
+// resolveTagOwners resolves the TagOwners to a map of Tag to netipx.IPSet.
+// The resulting map can be used to quickly look up the IPSet for a given Tag.
+// It is intended for internal use in a PolicyManager.
+func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (map[Tag]*netipx.IPSet, error) {
+	if p == nil {
+		return make(map[Tag]*netipx.IPSet), nil
+	}
+
+	if len(p.TagOwners) == 0 {
+		return make(map[Tag]*netipx.IPSet), nil
+	}
+
+	ret := make(map[Tag]*netipx.IPSet)
+
+	tagOwners, err := flattenTagOwners(p.TagOwners)
+	if err != nil {
+		return nil, err
+	}
+
+	for tag, owners := range tagOwners {
+		var ips netipx.IPSetBuilder
+
+		for _, owner := range owners {
+			switch o := owner.(type) {
+			case *Tag:
+				// After flattening, Tag types should not appear in the owners list.
+				// If they do, skip them as they represent already-resolved references.
+
+			case Alias:
+				// If it does not resolve, that means the tag is not associated with any IP addresses.
+				resolved, _ := o.Resolve(p, users, nodes)
+				ips.AddSet(resolved)
+
+			default:
+				// Should never happen - after flattening, all owners should be Alias types
+				return nil, fmt.Errorf("%w: %v", ErrInvalidTagOwner, owner)
+			}
+		}
+
+		ipSet, err := ips.IPSet()
+		if err != nil {
+			return nil, err
+		}
+
+		ret[tag] = ipSet
+	}
+
+	return ret, nil
 }

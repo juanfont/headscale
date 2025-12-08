@@ -25,6 +25,8 @@ backwards compatibility.
 
 Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based authentication. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
 
+User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy and applied at registration time. Tags can be managed via the CLI or API after registration.
+
 ### Database migration support removed for pre-0.25.0 databases
 
 Headscale no longer supports direct upgrades from databases created before
@@ -35,6 +37,12 @@ release.
 ### BREAKING
 
 - **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node.
+
+- **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
+  - `--advertise-tags` is processed during registration, not on every policy evaluation
+  - PreAuthKey tagged devices ignore `--advertise-tags` from clients
+  - User-owned nodes can use `--advertise-tags` if authorized by `tagOwners` policy
+  - Tags can be managed via CLI (`headscale nodes tag`) or the SetTags API after registration
 
 - Database migration support removed for pre-0.25.0 databases [#2883](https://github.com/juanfont/headscale/pull/2883)
   - If you are running a version older than 0.25.0, you must upgrade to 0.25.1 first, then upgrade to this release

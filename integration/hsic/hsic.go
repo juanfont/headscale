@@ -1052,6 +1052,57 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	return &preAuthKey, nil
 }
 
+// CreateAuthKeyWithTags creates a new "authorisation key" for a User with the specified tags.
+// This is used to create tagged PreAuthKeys for testing the tags-as-identity model.
+func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
+	user uint64,
+	reusable bool,
+	ephemeral bool,
+	tags []string,
+) (*v1.PreAuthKey, error) {
+	command := []string{
+		"headscale",
+		"--user",
+		strconv.FormatUint(user, 10),
+		"preauthkeys",
+		"create",
+		"--expiration",
+		"24h",
+		"--output",
+		"json",
+	}
+
+	if reusable {
+		command = append(command, "--reusable")
+	}
+
+	if ephemeral {
+		command = append(command, "--ephemeral")
+	}
+
+	if len(tags) > 0 {
+		command = append(command, "--tags", strings.Join(tags, ","))
+	}
+
+	result, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute create auth key with tags command: %w", err)
+	}
+
+	var preAuthKey v1.PreAuthKey
+
+	err = json.Unmarshal([]byte(result), &preAuthKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
+	}
+
+	return &preAuthKey, nil
+}
+
 // DeleteAuthKey deletes an "authorisation key" for a User.
 func (t *HeadscaleInContainer) DeleteAuthKey(
 	user uint64,
@@ -1367,6 +1418,36 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	}
 
 	return node, nil
+}
+
+// SetNodeTags sets tags on a node via the headscale CLI.
+// This simulates what the Tailscale admin console UI does - it calls the headscale
+// SetTags API which is exposed via the CLI command: headscale nodes tag -i <id> -t <tags>.
+func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
+	command := []string{
+		"headscale", "nodes", "tag",
+		"--identifier", strconv.FormatUint(nodeID, 10),
+		"--output", "json",
+	}
+
+	// Add tags - the CLI expects -t flag for each tag or comma-separated
+	if len(tags) > 0 {
+		command = append(command, "--tags", strings.Join(tags, ","))
+	} else {
+		// Empty tags to clear all tags
+		command = append(command, "--tags", "")
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute set tags command (node %d, tags %v): %w", nodeID, tags, err)
+	}
+
+	return nil
 }
 
 // WriteFile save file inside the Headscale container.
