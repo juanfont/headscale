@@ -28,9 +28,14 @@ var (
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
+	ErrInvalidNodeView      = errors.New("cannot convert invalid NodeView to tailcfg.Node")
 
 	invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 )
+
+// RouteFunc is a function that takes a node ID and returns a list of
+// netip.Prefixes representing the primary routes for that node.
+type RouteFunc func(id NodeID) []netip.Prefix
 
 type (
 	NodeID  uint64
@@ -945,4 +950,110 @@ func (v NodeView) HasNetworkChanges(other NodeView) bool {
 	}
 
 	return false
+}
+
+// TailNodes converts a slice of NodeViews into Tailscale tailcfg.Nodes.
+func TailNodes(
+	nodes views.Slice[NodeView],
+	capVer tailcfg.CapabilityVersion,
+	primaryRouteFunc RouteFunc,
+	cfg *Config,
+) ([]*tailcfg.Node, error) {
+	tNodes := make([]*tailcfg.Node, 0, nodes.Len())
+
+	for _, node := range nodes.All() {
+		tNode, err := node.TailNode(capVer, primaryRouteFunc, cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		tNodes = append(tNodes, tNode)
+	}
+
+	return tNodes, nil
+}
+
+// TailNode converts a NodeView into a Tailscale tailcfg.Node.
+func (v NodeView) TailNode(
+	capVer tailcfg.CapabilityVersion,
+	primaryRouteFunc RouteFunc,
+	cfg *Config,
+) (*tailcfg.Node, error) {
+	if !v.Valid() {
+		return nil, ErrInvalidNodeView
+	}
+
+	hostname, err := v.GetFQDN(cfg.BaseDomain)
+	if err != nil {
+		return nil, err
+	}
+
+	var derp int
+	// TODO(kradalby): legacyDERP was removed in tailscale/tailscale@2fc4455e6dd9ab7f879d4e2f7cffc2be81f14077
+	// and should be removed after 111 is the minimum capver.
+	legacyDERP := "127.3.3.40:0" // Zero means disconnected or unknown.
+	if v.Hostinfo().Valid() && v.Hostinfo().NetInfo().Valid() {
+		legacyDERP = fmt.Sprintf("127.3.3.40:%d", v.Hostinfo().NetInfo().PreferredDERP())
+		derp = v.Hostinfo().NetInfo().PreferredDERP()
+	}
+
+	var keyExpiry time.Time
+	if v.Expiry().Valid() {
+		keyExpiry = v.Expiry().Get()
+	}
+
+	primaryRoutes := primaryRouteFunc(v.ID())
+	allowedIPs := slices.Concat(v.Prefixes(), primaryRoutes, v.ExitRoutes())
+	tsaddr.SortPrefixes(allowedIPs)
+
+	capMap := tailcfg.NodeCapMap{
+		tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
+		tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
+		tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+	}
+	if cfg.RandomizeClientPort {
+		capMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+	}
+
+	tNode := tailcfg.Node{
+		//nolint:gosec // G115: NodeID values are within int64 range
+		ID:       tailcfg.NodeID(v.ID()),
+		StableID: v.ID().StableID(),
+		Name:     hostname,
+		Cap:      capVer,
+		CapMap:   capMap,
+
+		User: v.TailscaleUserID(),
+
+		Key:       v.NodeKey(),
+		KeyExpiry: keyExpiry.UTC(),
+
+		Machine:          v.MachineKey(),
+		DiscoKey:         v.DiscoKey(),
+		Addresses:        v.Prefixes(),
+		PrimaryRoutes:    primaryRoutes,
+		AllowedIPs:       allowedIPs,
+		Endpoints:        v.Endpoints().AsSlice(),
+		HomeDERP:         derp,
+		LegacyDERPString: legacyDERP,
+		Hostinfo:         v.Hostinfo(),
+		Created:          v.CreatedAt().UTC(),
+
+		Online: v.IsOnline().Clone(),
+
+		Tags: v.Tags().AsSlice(),
+
+		MachineAuthorized: !v.IsExpired(),
+		Expired:           v.IsExpired(),
+	}
+
+	// Set LastSeen only for offline nodes to avoid confusing Tailscale clients
+	// during rapid reconnection cycles. Online nodes should not have LastSeen set
+	// as this can make clients interpret them as "not online" despite Online=true.
+	if v.LastSeen().Valid() && v.IsOnline().Valid() && !v.IsOnline().Get() {
+		lastSeen := v.LastSeen().Get()
+		tNode.LastSeen = &lastSeen
+	}
+
+	return &tNode, nil
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -258,11 +257,6 @@ func writeDebugMapResponse(
 		panic(err)
 	}
 }
-
-// routeFilterFunc is a function that takes a node ID and returns a list of
-// netip.Prefixes that are allowed for that node. It is used to filter routes
-// from the primary route manager to the node.
-type routeFilterFunc func(id types.NodeID) []netip.Prefix
 
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
