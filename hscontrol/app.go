@@ -941,18 +941,6 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	}
 }
 
-func notFoundHandler(
-	writer http.ResponseWriter,
-	req *http.Request,
-) {
-	log.Trace().
-		Interface("header", req.Header).
-		Interface("proto", req.Proto).
-		Interface("url", req.URL).
-		Msg("Request did not match")
-	writer.WriteHeader(http.StatusNotFound)
-}
-
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	dir := filepath.Dir(path)
 	err := util.EnsureDir(dir)

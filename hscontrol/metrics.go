@@ -32,31 +32,16 @@ var (
 		Name:      "mapresponse_sent_total",
 		Help:      "total count of mapresponses sent to clients",
 	}, []string{"status", "type"})
-	mapResponseUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_updates_received_total",
-		Help:      "total count of mapresponse updates received on update channel",
-	}, []string{"type"})
 	mapResponseEndpointUpdates = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_endpoint_updates_total",
 		Help:      "total count of endpoint updates received",
-	}, []string{"status"})
-	mapResponseReadOnly = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_readonly_requests_total",
-		Help:      "total count of readonly requests received",
 	}, []string{"status"})
 	mapResponseEnded = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_ended_total",
 		Help:      "total count of new mapsessions ended",
 	}, []string{"reason"})
-	mapResponseClosed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_closed_total",
-		Help:      "total count of calls to mapresponse close",
-	}, []string{"return"})
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "http_duration_seconds",

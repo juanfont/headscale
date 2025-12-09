@@ -35,7 +35,6 @@ type LockFreeBatcher struct {
 
 	// Metrics
 	totalNodes      atomic.Int64
-	totalUpdates    atomic.Int64
 	workQueuedCount atomic.Int64
 	workProcessed   atomic.Int64
 	workErrors      atomic.Int64
