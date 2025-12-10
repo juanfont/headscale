@@ -211,8 +211,7 @@ func TestTailNode(t *testing.T) {
 			// This is a hack to avoid having a second node to test the primary route.
 			// This should be baked into the test case proper if it is extended in the future.
 			_ = primary.SetRoutes(2, netip.MustParsePrefix("192.168.0.0/24"))
-			got, err := tailNode(
-				tt.node.View(),
+			got, err := tt.node.View().TailNode(
 				0,
 				func(id types.NodeID) []netip.Prefix {
 					return primary.PrimaryRoutes(id)
@@ -221,13 +220,13 @@ func TestTailNode(t *testing.T) {
 			)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("tailNode() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("TailNode() error = %v, wantErr %v", err, tt.wantErr)
 
 				return
 			}
 
 			if diff := cmp.Diff(tt.want, got, cmpopts.EquateEmpty()); diff != "" {
-				t.Errorf("tailNode() unexpected result (-want +got):\n%s", diff)
+				t.Errorf("TailNode() unexpected result (-want +got):\n%s", diff)
 			}
 		})
 	}
@@ -268,8 +267,7 @@ func TestNodeExpiry(t *testing.T) {
 				Expiry:    tt.exp,
 			}
 
-			tn, err := tailNode(
-				node.View(),
+			tn, err := node.View().TailNode(
 				0,
 				func(id types.NodeID) []netip.Prefix {
 					return []netip.Prefix{}
