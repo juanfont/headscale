@@ -364,7 +364,13 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 				return
 			}
 			log.Error().Caller().Err(err).Msgf("STUN ReadFrom")
-			time.Sleep(time.Second)
+
+			// Rate limit error logging - wait before retrying, but respect context cancellation
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+			}
 
 			continue
 		}

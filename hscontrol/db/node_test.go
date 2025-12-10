@@ -6,7 +6,9 @@ import (
 	"math/big"
 	"net/netip"
 	"regexp"
+	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -445,7 +447,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 						RoutableIPs: tt.routes,
 					},
 					Tags: []string{"tag:exit"},
-					IPv4:       ptr.To(netip.MustParseAddr("100.64.0.2")),
+					IPv4: ptr.To(netip.MustParseAddr("100.64.0.2")),
 				}
 
 				err = adb.DB.Save(&nodeTagged).Error
@@ -507,23 +509,48 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	got := []types.NodeID{}
 	var mu sync.Mutex
 
+	deletionCount := make(chan struct{}, 10)
+
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
 		defer mu.Unlock()
 		got = append(got, ni)
+
+		deletionCount <- struct{}{}
 	})
 	go e.Start()
 
-	go e.Schedule(1, 1*time.Second)
-	go e.Schedule(2, 2*time.Second)
-	go e.Schedule(3, 3*time.Second)
-	go e.Schedule(4, 4*time.Second)
+	// Use shorter timeouts for faster tests
+	go e.Schedule(1, 50*time.Millisecond)
+	go e.Schedule(2, 100*time.Millisecond)
+	go e.Schedule(3, 150*time.Millisecond)
+	go e.Schedule(4, 200*time.Millisecond)
 
-	time.Sleep(time.Second)
+	// Wait for first deletion (node 1 at 50ms)
+	select {
+	case <-deletionCount:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for first deletion")
+	}
+
+	// Cancel nodes 2 and 4
 	go e.Cancel(2)
 	go e.Cancel(4)
 
-	time.Sleep(6 * time.Second)
+	// Wait for node 3 to be deleted (at 150ms)
+	select {
+	case <-deletionCount:
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for second deletion")
+	}
+
+	// Give a bit more time for any unexpected deletions
+	select {
+	case <-deletionCount:
+		// Unexpected - more deletions than expected
+	case <-time.After(300 * time.Millisecond):
+		// Expected - no more deletions
+	}
 
 	e.Close()
 
@@ -541,20 +568,30 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	want := 1000
 
+	var deletedCount int64
+
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		time.Sleep(time.Duration(generateRandomNumber(t, 3)) * time.Millisecond)
+		// Yield to other goroutines to introduce variability
+		runtime.Gosched()
 		got = append(got, ni)
+
+		atomic.AddInt64(&deletedCount, 1)
 	})
 	go e.Start()
 
+	// Use shorter expiry for faster tests
 	for i := range want {
-		go e.Schedule(types.NodeID(i), 1*time.Second)
+		go e.Schedule(types.NodeID(i), 100*time.Millisecond) //nolint:gosec // test code, no overflow risk
 	}
 
-	time.Sleep(10 * time.Second)
+	// Wait for all deletions to complete
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		count := atomic.LoadInt64(&deletedCount)
+		assert.Equal(c, int64(want), count, "all nodes should be deleted")
+	}, 10*time.Second, 50*time.Millisecond, "waiting for all deletions")
 
 	e.Close()
 

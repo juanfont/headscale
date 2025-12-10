@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cenkalti/backoff/v5"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
@@ -86,30 +87,28 @@ func killTestContainers(ctx context.Context) error {
 	return nil
 }
 
+const (
+	containerRemoveInitialInterval = 100 * time.Millisecond
+	containerRemoveMaxElapsedTime  = 2 * time.Second
+)
+
 // removeContainerWithRetry attempts to remove a container with exponential backoff retry logic.
 func removeContainerWithRetry(ctx context.Context, cli *client.Client, containerID string) bool {
-	maxRetries := 3
-	baseDelay := 100 * time.Millisecond
+	expBackoff := backoff.NewExponentialBackOff()
+	expBackoff.InitialInterval = containerRemoveInitialInterval
 
-	for attempt := range maxRetries {
+	_, err := backoff.Retry(ctx, func() (struct{}, error) {
 		err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 			Force: true,
 		})
-		if err == nil {
-			return true
+		if err != nil {
+			return struct{}{}, err
 		}
 
-		// If this is the last attempt, don't wait
-		if attempt == maxRetries-1 {
-			break
-		}
+		return struct{}{}, nil
+	}, backoff.WithBackOff(expBackoff), backoff.WithMaxElapsedTime(containerRemoveMaxElapsedTime))
 
-		// Wait with exponential backoff
-		delay := baseDelay * time.Duration(1<<attempt)
-		time.Sleep(delay)
-	}
-
-	return false
+	return err == nil
 }
 
 // pruneDockerNetworks removes unused Docker networks.

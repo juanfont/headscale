@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -502,8 +503,10 @@ func TestEnhancedNodeTracking(t *testing.T) {
 	// Send the data to the node's channel
 	testNode.ch <- &resp
 
-	// Give it time to process
-	time.Sleep(100 * time.Millisecond)
+	// Wait for tracking goroutine to process the update
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assert.GreaterOrEqual(c, atomic.LoadInt64(&testNode.updateCount), int64(1), "should have processed the update")
+	}, time.Second, 10*time.Millisecond, "waiting for update to be processed")
 
 	// Check stats
 	stats := testNode.cleanup()
@@ -533,17 +536,21 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 
 			// Connect the node to the batcher
 			batcher.AddNode(testNode.n.ID, testNode.ch, tailcfg.CapabilityVersion(100))
-			time.Sleep(100 * time.Millisecond) // Let connection settle
 
-			// Generate some work
+			// Wait for connection to be established
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.True(c, batcher.IsConnected(testNode.n.ID), "node should be connected")
+			}, time.Second, 10*time.Millisecond, "waiting for node connection")
+
+			// Generate work and wait for updates to be processed
 			batcher.AddWork(change.FullSet)
-			time.Sleep(100 * time.Millisecond) // Let work be processed
-
 			batcher.AddWork(change.PolicySet)
-			time.Sleep(100 * time.Millisecond)
-
 			batcher.AddWork(change.DERPSet)
-			time.Sleep(100 * time.Millisecond)
+
+			// Wait for updates to be processed (at least 1 update received)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.GreaterOrEqual(c, atomic.LoadInt64(&testNode.updateCount), int64(1), "should have received updates")
+			}, time.Second, 10*time.Millisecond, "waiting for updates to be processed")
 
 			// Check stats
 			stats := testNode.cleanup()
@@ -627,8 +634,8 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						allNodes[i].start()
 					}
 
-					// Give time for tracking goroutines to start
-					time.Sleep(100 * time.Millisecond)
+					// Yield to allow tracking goroutines to start
+					runtime.Gosched()
 
 					startTime := time.Now()
 
@@ -642,28 +649,22 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						// Issue full update after each join to ensure connectivity
 						batcher.AddWork(change.FullSet)
 
-						// Add tiny delay for large node counts to prevent overwhelming
+						// Yield to scheduler for large node counts to prevent overwhelming the work queue
 						if tc.nodeCount > 100 && i%50 == 49 {
-							time.Sleep(10 * time.Millisecond)
+							runtime.Gosched()
 						}
 					}
 
 					joinTime := time.Since(startTime)
 					t.Logf("All nodes joined in %v, waiting for full connectivity...", joinTime)
 
-					// Wait for all updates to propagate - no timeout, continue until all nodes achieve connectivity
-					checkInterval := 5 * time.Second
+					// Wait for all updates to propagate until all nodes achieve connectivity
 					expectedPeers := tc.nodeCount - 1 // Each node should see all others except itself
 
-					for {
-						time.Sleep(checkInterval)
-
-						// Check if all nodes have seen the expected number of peers
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						connectedCount := 0
-
 						for i := range allNodes {
 							node := &allNodes[i]
-							// Check current stats without stopping the tracking
 							currentMaxPeers := node.maxPeersCount
 							if currentMaxPeers >= expectedPeers {
 								connectedCount++
@@ -674,12 +675,10 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						t.Logf("Progress: %d/%d nodes (%.1f%%) have seen %d+ peers",
 							connectedCount, len(allNodes), progress, expectedPeers)
 
-						if connectedCount == len(allNodes) {
-							t.Logf("✅ All nodes achieved full connectivity!")
-							break
-						}
-					}
+						assert.Equal(c, len(allNodes), connectedCount, "all nodes should achieve full connectivity")
+					}, 5*time.Minute, 5*time.Second, "waiting for full connectivity")
 
+					t.Logf("✅ All nodes achieved full connectivity!")
 					totalTime := time.Since(startTime)
 
 					// Disconnect all nodes
@@ -688,8 +687,12 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						batcher.RemoveNode(node.n.ID, node.ch)
 					}
 
-					// Give time for final updates to process
-					time.Sleep(500 * time.Millisecond)
+					// Wait for all nodes to be disconnected
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						for i := range allNodes {
+							assert.False(c, batcher.IsConnected(allNodes[i].n.ID), "node should be disconnected")
+						}
+					}, 5*time.Second, 50*time.Millisecond, "waiting for nodes to disconnect")
 
 					// Collect final statistics
 					totalUpdates := int64(0)
@@ -1149,14 +1152,15 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				ch2 := make(chan *tailcfg.MapResponse, 1)
 
 				wg.Go(func() {
-					time.Sleep(1 * time.Microsecond)
+					runtime.Gosched() // Yield to introduce timing variability
 					batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
 				})
 
 				// Remove second connection
 
 				wg.Go(func() {
-					time.Sleep(2 * time.Microsecond)
+					runtime.Gosched() // Yield to introduce timing variability
+					runtime.Gosched() // Extra yield to offset from AddNode
 					batcher.RemoveNode(testNode.n.ID, ch2)
 				})
 
@@ -1287,11 +1291,13 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 					}
 
 					// Rapid removal creates race between worker and removal
-					time.Sleep(time.Duration(i%3) * 100 * time.Microsecond)
+					for range i % 3 {
+						runtime.Gosched() // Introduce timing variability
+					}
 					batcher.RemoveNode(testNode.n.ID, ch)
 
-					// Give workers time to process and close channels
-					time.Sleep(5 * time.Millisecond)
+					// Yield to allow workers to process and close channels
+					runtime.Gosched()
 				}()
 			}
 
@@ -1471,7 +1477,9 @@ func TestBatcherConcurrentClients(t *testing.T) {
 								wg.Done()
 							}()
 
-							time.Sleep(time.Duration(i%5) * time.Millisecond)
+							for range i % 5 {
+								runtime.Gosched() // Introduce timing variability
+							}
 							churningChannelsMutex.Lock()
 
 							ch, exists := churningChannels[nodeID]
@@ -1503,8 +1511,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 						batcher.AddWork(change.KeyExpiry(node.n.ID, testExpiry))
 					}
 
-					// Small delay to allow some batching
-					time.Sleep(2 * time.Millisecond)
+					// Yield to allow some batching
+					runtime.Gosched()
 				}
 
 				wg.Wait()
@@ -1519,8 +1527,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 				return
 			}
 
-			// Allow final updates to be processed
-			time.Sleep(100 * time.Millisecond)
+			// Yield to allow any in-flight updates to complete
+			runtime.Gosched()
 
 			// Validate results
 			panicMutex.Lock()
@@ -1730,8 +1738,8 @@ func XTestBatcherScalability(t *testing.T) {
 						testNodes[i].start()
 					}
 
-					// Give time for all tracking goroutines to start
-					time.Sleep(100 * time.Millisecond)
+					// Yield to allow tracking goroutines to start
+					runtime.Gosched()
 
 					// Connect all nodes first so they can see each other as peers
 					connectedNodes := make(map[types.NodeID]bool)
@@ -1748,10 +1756,21 @@ func XTestBatcherScalability(t *testing.T) {
 						connectedNodesMutex.Unlock()
 					}
 
-					// Give more time for all connections to be established
-					time.Sleep(500 * time.Millisecond)
+					// Wait for all connections to be established
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						for i := range testNodes {
+							assert.True(c, batcher.IsConnected(testNodes[i].n.ID), "node should be connected")
+						}
+					}, 5*time.Second, 50*time.Millisecond, "waiting for nodes to connect")
+
 					batcher.AddWork(change.FullSet)
-					time.Sleep(500 * time.Millisecond) // Allow initial update to propagate
+
+					// Wait for initial update to propagate
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						for i := range testNodes {
+							assert.GreaterOrEqual(c, atomic.LoadInt64(&testNodes[i].updateCount), int64(1), "should have received initial update")
+						}
+					}, 5*time.Second, 50*time.Millisecond, "waiting for initial update")
 
 					go func() {
 						defer close(done)
@@ -1769,9 +1788,9 @@ func XTestBatcherScalability(t *testing.T) {
 							if cycle%10 == 0 {
 								t.Logf("Cycle %d/%d completed", cycle, tc.cycles)
 							}
-							// Add delays for mixed chaos
+							// Yield for mixed chaos to introduce timing variability
 							if tc.chaosType == "mixed" && cycle%10 == 0 {
-								time.Sleep(time.Duration(cycle%2) * time.Microsecond)
+								runtime.Gosched()
 							}
 
 							// For chaos testing, only disconnect/reconnect a subset of nodes
@@ -1835,9 +1854,12 @@ func XTestBatcherScalability(t *testing.T) {
 											wg.Done()
 										}()
 
-										// Small delay before reconnecting
-										time.Sleep(time.Duration(index%3) * time.Millisecond)
-										batcher.AddNode(
+										// Yield before reconnecting to introduce timing variability
+										for range index % 3 {
+											runtime.Gosched()
+										}
+
+										_ = batcher.AddNode(
 											nodeID,
 											channel,
 											tailcfg.CapabilityVersion(100),
@@ -1941,9 +1963,17 @@ func XTestBatcherScalability(t *testing.T) {
 						}
 					}
 
-					// Give time for batcher workers to process all the work and send updates
-					// BEFORE disconnecting nodes
-					time.Sleep(1 * time.Second)
+					// Wait for batcher workers to process all work and send updates
+					// before disconnecting nodes
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						// Check that at least some updates were processed
+						var totalUpdates int64
+						for i := range testNodes {
+							totalUpdates += atomic.LoadInt64(&testNodes[i].updateCount)
+						}
+
+						assert.Positive(c, totalUpdates, "should have processed some updates")
+					}, 5*time.Second, 50*time.Millisecond, "waiting for updates to be processed")
 
 					// Now disconnect all nodes from batcher to stop new updates
 					for i := range testNodes {
@@ -1951,8 +1981,12 @@ func XTestBatcherScalability(t *testing.T) {
 						batcher.RemoveNode(node.n.ID, node.ch)
 					}
 
-					// Give time for enhanced tracking goroutines to process any remaining data in channels
-					time.Sleep(200 * time.Millisecond)
+					// Wait for nodes to be disconnected
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						for i := range testNodes {
+							assert.False(c, batcher.IsConnected(testNodes[i].n.ID), "node should be disconnected")
+						}
+					}, 5*time.Second, 50*time.Millisecond, "waiting for nodes to disconnect")
 
 					// Cleanup nodes and get their final stats
 					totalUpdates := int64(0)
@@ -2089,17 +2123,24 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 
 			t.Logf("Created %d nodes in database", len(allNodes))
 
-			// Connect nodes one at a time to avoid overwhelming the work queue
+			// Connect nodes one at a time and wait for each to be connected
 			for i, node := range allNodes {
 				batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 				t.Logf("Connected node %d (ID: %d)", i, node.n.ID)
-				// Small delay between connections to allow NodeCameOnline processing
-				time.Sleep(50 * time.Millisecond)
+
+				// Wait for node to be connected
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, batcher.IsConnected(node.n.ID), "node should be connected")
+				}, time.Second, 10*time.Millisecond, "waiting for node connection")
 			}
 
-			// Give additional time for all NodeCameOnline events to be processed
+			// Wait for all NodeCameOnline events to be processed
 			t.Logf("Waiting for NodeCameOnline events to settle...")
-			time.Sleep(500 * time.Millisecond)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				for i := range allNodes {
+					assert.True(c, batcher.IsConnected(allNodes[i].n.ID), "all nodes should be connected")
+				}
+			}, 5*time.Second, 50*time.Millisecond, "waiting for all nodes to connect")
 
 			// Check how many peers each node should see
 			for i, node := range allNodes {
@@ -2111,9 +2152,21 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			t.Logf("Sending FullSet update...")
 			batcher.AddWork(change.FullSet)
 
-			// Give much more time for workers to process the FullSet work items
+			// Wait for FullSet work items to be processed
 			t.Logf("Waiting for FullSet to be processed...")
-			time.Sleep(1 * time.Second)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				// Check that some data is available in at least one channel
+				found := false
+
+				for i := range allNodes {
+					if len(allNodes[i].ch) > 0 {
+						found = true
+						break
+					}
+				}
+
+				assert.True(c, found, "no updates received yet")
+			}, 5*time.Second, 50*time.Millisecond, "waiting for FullSet updates")
 
 			// Check what each node receives - read multiple updates
 			totalUpdates := 0
@@ -2226,7 +2279,12 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				}
 			}
 
-			time.Sleep(100 * time.Millisecond) // Let connections settle
+			// Wait for all connections to settle
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				for i := range allNodes {
+					assert.True(c, batcher.IsConnected(allNodes[i].n.ID), "node should be connected")
+				}
+			}, 5*time.Second, 50*time.Millisecond, "waiting for connections to settle")
 
 			// Phase 2: Rapid disconnect ALL nodes (simulating nodes going down)
 			t.Logf("Phase 2: Rapid disconnect all nodes...")
@@ -2246,7 +2304,12 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				}
 			}
 
-			time.Sleep(100 * time.Millisecond) // Let reconnections settle
+			// Wait for all reconnections to settle
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				for i := range allNodes {
+					assert.True(c, batcher.IsConnected(allNodes[i].n.ID), "node should be reconnected")
+				}
+			}, 5*time.Second, 50*time.Millisecond, "waiting for reconnections to settle")
 
 			// Phase 4: Check debug status - THIS IS WHERE THE BUG SHOULD APPEAR
 			t.Logf("Phase 4: Checking debug status...")
@@ -2347,7 +2410,11 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Fatalf("Failed to add node2: %v", err)
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			// Wait for initial connections
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.True(c, batcher.IsConnected(node1.n.ID), "node1 should be connected")
+				assert.True(c, batcher.IsConnected(node2.n.ID), "node2 should be connected")
+			}, time.Second, 10*time.Millisecond, "waiting for initial connections")
 
 			// Phase 2: Add second connection for node1 (multi-connection scenario)
 			t.Logf("Phase 2: Adding second connection for node 1...")
@@ -2357,7 +2424,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Fatalf("Failed to add second connection for node1: %v", err)
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			// Yield to allow connection to be processed
+			runtime.Gosched()
 
 			// Phase 3: Add third connection for node1
 			t.Logf("Phase 3: Adding third connection for node 1...")
@@ -2367,7 +2435,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Fatalf("Failed to add third connection for node1: %v", err)
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			// Yield to allow connection to be processed
+			runtime.Gosched()
 
 			// Phase 4: Verify debug status shows correct connection count
 			t.Logf("Phase 4: Verifying debug status shows multiple connections...")
@@ -2432,7 +2501,10 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			batcher.AddWork(testChangeSet)
 
-			time.Sleep(100 * time.Millisecond) // Let updates propagate
+			// Wait for updates to propagate to at least one channel
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Positive(c, len(node1.ch)+len(secondChannel)+len(thirdChannel), "should have received updates")
+			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
 			// Verify all three connections for node1 receive the update
 			connection1Received := false
@@ -2479,7 +2551,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 				t.Errorf("Failed to remove second connection for node1")
 			}
 
-			time.Sleep(50 * time.Millisecond)
+			// Yield to allow removal to be processed
+			runtime.Gosched()
 
 			// Verify debug status shows 2 connections now
 			if debugBatcher, ok := batcher.(interface {
@@ -2510,7 +2583,11 @@ func TestBatcherMultiConnection(t *testing.T) {
 			}
 
 			batcher.AddWork(testChangeSet2)
-			time.Sleep(100 * time.Millisecond)
+
+			// Wait for updates to propagate to remaining channels
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				assert.Positive(c, len(node1.ch)+len(thirdChannel), "should have received updates")
+			}, 5*time.Second, 50*time.Millisecond, "waiting for updates to propagate")
 
 			// Verify remaining connections still receive updates
 			remaining1Received := false
