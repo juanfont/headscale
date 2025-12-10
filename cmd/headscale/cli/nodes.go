@@ -562,23 +562,26 @@ func nodesToPtables(
 
 		var forcedTags string
 		for _, tag := range node.GetForcedTags() {
-			forcedTags += "," + tag
+			forcedTags += "\n" + tag
 		}
-		forcedTags = strings.TrimLeft(forcedTags, ",")
+
+		forcedTags = strings.TrimLeft(forcedTags, "\n")
 		var invalidTags string
 		for _, tag := range node.GetInvalidTags() {
 			if !slices.Contains(node.GetForcedTags(), tag) {
-				invalidTags += "," + pterm.LightRed(tag)
+				invalidTags += "\n" + pterm.LightRed(tag)
 			}
 		}
-		invalidTags = strings.TrimLeft(invalidTags, ",")
+
+		invalidTags = strings.TrimLeft(invalidTags, "\n")
 		var validTags string
 		for _, tag := range node.GetValidTags() {
 			if !slices.Contains(node.GetForcedTags(), tag) {
-				validTags += "," + pterm.LightGreen(tag)
+				validTags += "\n" + pterm.LightGreen(tag)
 			}
 		}
-		validTags = strings.TrimLeft(validTags, ",")
+
+		validTags = strings.TrimLeft(validTags, "\n")
 
 		var user string
 		if currentUser == "" || (currentUser == node.GetUser().GetName()) {
@@ -640,9 +643,9 @@ func nodeRoutesToPtables(
 		nodeData := []string{
 			strconv.FormatUint(node.GetId(), util.Base10),
 			node.GetGivenName(),
-			strings.Join(node.GetApprovedRoutes(), ", "),
-			strings.Join(node.GetAvailableRoutes(), ", "),
-			strings.Join(node.GetSubnetRoutes(), ", "),
+			strings.Join(node.GetApprovedRoutes(), "\n"),
+			strings.Join(node.GetAvailableRoutes(), "\n"),
+			strings.Join(node.GetSubnetRoutes(), "\n"),
 		}
 		tableData = append(
 			tableData,
