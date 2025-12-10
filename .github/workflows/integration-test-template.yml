@@ -75,8 +75,8 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always() && steps.changed-files.outputs.files == 'true'
         with:
-          name: ${{ inputs.database_name }}-${{ inputs.test }}-archives
-          path: "control_logs/*/*.tar"
+          name: ${{ inputs.database_name }}-${{ inputs.test }}-artifacts
+          path: control_logs/
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}
         uses: alexellis/block-with-tmux-action@master

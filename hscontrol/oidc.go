@@ -173,11 +173,6 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
 
-type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
-}
-
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities

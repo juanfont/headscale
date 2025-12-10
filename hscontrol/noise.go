@@ -29,9 +29,6 @@ const (
 	// of length. Then that many bytes of JSON-encoded tailcfg.EarlyNoise.
 	// The early payload is optional. Some servers may not send it... But we do!
 	earlyPayloadMagic = "\xff\xff\xffTS"
-
-	// EarlyNoise was added in protocol version 49.
-	earlyNoiseCapabilityVersion = 49
 )
 
 type noiseServer struct {
