@@ -220,10 +220,6 @@ var listNodeRoutesCmd = &cobra.Command{
 			)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetNodes(), "", output)
-		}
-
 		nodes := response.GetNodes()
 		if identifier != 0 {
 			for _, node := range response.GetNodes() {
@@ -237,6 +233,11 @@ var listNodeRoutesCmd = &cobra.Command{
 		nodes = lo.Filter(nodes, func(n *v1.Node, _ int) bool {
 			return (n.GetSubnetRoutes() != nil && len(n.GetSubnetRoutes()) > 0) || (n.GetApprovedRoutes() != nil && len(n.GetApprovedRoutes()) > 0) || (n.GetAvailableRoutes() != nil && len(n.GetAvailableRoutes()) > 0)
 		})
+
+		if output != "" {
+			SuccessOutput(nodes, "", output)
+			return
+		}
 
 		tableData, err := nodeRoutesToPtables(nodes)
 		if err != nil {
