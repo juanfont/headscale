@@ -49,7 +49,11 @@ const (
 	IntegrationTestDockerFileName = "Dockerfile.integration"
 )
 
-var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
+var (
+	errHeadscaleStatusCodeNotOk    = errors.New("headscale status code not ok")
+	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errHeadscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
+)
 
 type fileInContainer struct {
 	path     string
@@ -451,43 +455,72 @@ func New(
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
 
-	container, err := pool.BuildAndRunWithBuildOptions(
-		headscaleBuildOptions,
-		runOptions,
-		dockertestutil.DockerRestartPolicy,
-		dockertestutil.DockerAllowLocalIPv6,
-		dockertestutil.DockerAllowNetworkAdministration,
-	)
-	if err != nil {
-		// Try to get more detailed build output
-		log.Printf("Docker build failed, attempting to get detailed output...")
+	var container *dockertest.Resource
 
-		buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+	// Check if a pre-built image is available via environment variable
+	prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
 
-		// Show the last 100 lines of build output to avoid overwhelming the logs
-		lines := strings.Split(buildOutput, "\n")
-
-		const maxLines = 100
-
-		startLine := 0
-		if len(lines) > maxLines {
-			startLine = len(lines) - maxLines
+	if prebuiltImage != "" {
+		log.Printf("Using pre-built headscale image: %s", prebuiltImage)
+		// Parse image into repository and tag
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok {
+			return nil, errInvalidHeadscaleImageFormat
 		}
 
-		relevantOutput := strings.Join(lines[startLine:], "\n")
+		runOptions.Repository = repo
+		runOptions.Tag = tag
 
-		if buildErr != nil {
-			// The diagnostic build also failed - this is the real error
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+		container, err = pool.RunWithOptions(
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("could not run pre-built headscale container %q: %w", prebuiltImage, err)
 		}
+	} else if util.IsCI() {
+		return nil, errHeadscaleImageRequiredInCI
+	} else {
+		container, err = pool.BuildAndRunWithBuildOptions(
+			headscaleBuildOptions,
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+		if err != nil {
+			// Try to get more detailed build output
+			log.Printf("Docker build/run failed, attempting to get detailed output...")
 
-		if buildOutput != "" {
-			// Build succeeded on retry but container creation still failed
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
+
+			const maxLines = 100
+
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
+
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				// The diagnostic build also failed - this is the real error
+				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+			}
+
+			if buildOutput != "" {
+				// Build succeeded on retry but container creation still failed
+				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+			}
+
+			// No output at all - diagnostic build command may have failed
+			return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 		}
-
-		// No output at all - diagnostic build command may have failed
-		return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
 

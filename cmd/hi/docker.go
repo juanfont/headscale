@@ -301,6 +301,11 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
 
+	// Pass through CI environment variable for CI detection
+	if ci := os.Getenv("CI"); ci != "" {
+		env = append(env, "CI="+ci)
+	}
+
 	// Pass through all HEADSCALE_INTEGRATION_* environment variables
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
