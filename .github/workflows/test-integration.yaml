@@ -36,17 +36,31 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-      - name: Build hi binary
+      - name: Build hi binary and warm Go cache
         if: steps.changed-files.outputs.files == 'true'
         run: |
           nix develop --command -- go build -o hi ./cmd/hi
+          # Build integration test binary to warm the cache with all dependencies
+          nix develop --command -- go test -c ./integration -o /dev/null 2>/dev/null || true
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: hi-binary
           path: hi
-          retention-days: 1
+          retention-days: 10
+      - name: Package Go cache
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          # Package Go module cache and build cache
+          tar -czf go-cache.tar.gz -C ~ go .cache/go-build
+      - name: Upload Go cache
+        if: steps.changed-files.outputs.files == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: go-cache
+          path: go-cache.tar.gz
+          retention-days: 10
       - name: Build headscale image
         if: steps.changed-files.outputs.files == 'true'
         run: |
