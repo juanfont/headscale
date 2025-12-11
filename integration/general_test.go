@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
@@ -366,12 +367,18 @@ func TestPingAllByHostname(t *testing.T) {
 // This might mean we approach setup slightly wrong, but for now, ignore
 // the linter
 // nolint:tparallel
+// TestTaildrop tests the Taildrop file sharing functionality across multiple scenarios:
+// 1. Same-user transfers: Nodes owned by the same user can send files to each other
+// 2. Cross-user transfers: Nodes owned by different users cannot send files to each other
+// 3. Tagged device transfers: Tagged devices cannot send nor receive files
+//
+// Each user gets len(MustTestVersions) nodes to ensure compatibility across all supported versions.
 func TestTaildrop(t *testing.T) {
 	IntegrationSkip(t)
 
 	spec := ScenarioSpec{
-		NodesPerUser: len(MustTestVersions),
-		Users:        []string{"user1"},
+		NodesPerUser: 0, // We'll create nodes manually to control tags
+		Users:        []string{"user1", "user2"},
 	}
 
 	scenario, err := NewScenario(spec)
@@ -385,16 +392,99 @@ func TestTaildrop(t *testing.T) {
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	networks := scenario.Networks()
+	require.NotEmpty(t, networks, "scenario should have at least one network")
+	network := networks[0]
+
+	// Create untagged nodes for user1 using all test versions
+	user1Key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
+	require.NoError(t, err)
+
+	var user1Clients []TailscaleClient
+	for i, version := range MustTestVersions {
+		t.Logf("Creating user1 client %d with version %s", i, version)
+		client, err := scenario.CreateTailscaleNode(
+			version,
+			tsic.WithNetwork(network),
+		)
+		require.NoError(t, err)
+
+		err = client.Login(headscale.GetEndpoint(), user1Key.GetKey())
+		require.NoError(t, err)
+
+		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
+		require.NoError(t, err)
+
+		user1Clients = append(user1Clients, client)
+		scenario.GetOrCreateUser("user1").Clients[client.Hostname()] = client
+	}
+
+	// Create untagged nodes for user2 using all test versions
+	user2Key, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), true, false)
+	require.NoError(t, err)
+
+	var user2Clients []TailscaleClient
+	for i, version := range MustTestVersions {
+		t.Logf("Creating user2 client %d with version %s", i, version)
+		client, err := scenario.CreateTailscaleNode(
+			version,
+			tsic.WithNetwork(network),
+		)
+		require.NoError(t, err)
+
+		err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+		require.NoError(t, err)
+
+		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
+		require.NoError(t, err)
+
+		user2Clients = append(user2Clients, client)
+		scenario.GetOrCreateUser("user2").Clients[client.Hostname()] = client
+	}
+
+	// Create a tagged device (tags-as-identity: tags come from PreAuthKey)
+	// Use "head" version to test latest behavior
+	taggedKey, err := scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), true, false, []string{"tag:server"})
+	require.NoError(t, err)
+
+	taggedClient, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(network),
+	)
+	require.NoError(t, err)
+
+	err = taggedClient.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	err = taggedClient.WaitForRunning(integrationutil.PeerSyncTimeout())
+	require.NoError(t, err)
+
+	// Add tagged client to user1 for tracking (though it's tagged, not user-owned)
+	scenario.GetOrCreateUser("user1").Clients[taggedClient.Hostname()] = taggedClient
+
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
+
+	// Expected: len(MustTestVersions) for user1 + len(MustTestVersions) for user2 + 1 tagged
+	expectedClientCount := len(MustTestVersions)*2 + 1
+	require.Len(t, allClients, expectedClientCount,
+		"should have %d clients: %d user1 + %d user2 + 1 tagged",
+		expectedClientCount, len(MustTestVersions), len(MustTestVersions))
 
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
 
-	// This will essentially fetch and cache all the FQDNs
+	// Cache FQDNs
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
+	// Install curl on all clients
 	for _, client := range allClients {
 		if !strings.Contains(client.Hostname(), "head") {
 			command := []string{"apk", "add", "curl"}
@@ -403,110 +493,269 @@ func TestTaildrop(t *testing.T) {
 				t.Fatalf("failed to install curl on %s, err: %s", client.Hostname(), err)
 			}
 		}
+	}
+
+	// Helper to get FileTargets for a client.
+	getFileTargets := func(client TailscaleClient) ([]apitype.FileTarget, error) {
 		curlCommand := []string{
 			"curl",
 			"--unix-socket",
 			"/var/run/tailscale/tailscaled.sock",
 			"http://local-tailscaled.sock/localapi/v0/file-targets",
 		}
+		result, _, err := client.Execute(curlCommand)
+		if err != nil {
+			return nil, err
+		}
+
+		var fts []apitype.FileTarget
+		if err := json.Unmarshal([]byte(result), &fts); err != nil {
+			return nil, fmt.Errorf("failed to parse file-targets response: %w (response: %s)", err, result)
+		}
+
+		return fts, nil
+	}
+
+	// Helper to check if a client is in the FileTargets list
+	isInFileTargets := func(fts []apitype.FileTarget, targetHostname string) bool {
+		for _, ft := range fts {
+			if strings.Contains(ft.Node.Name, targetHostname) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Test 1: Verify user1 nodes can see each other in FileTargets but not user2 nodes or tagged node
+	t.Run("FileTargets-user1", func(t *testing.T) {
+		for _, client := range user1Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				fts, err := getFileTargets(client)
+				assert.NoError(ct, err)
+
+				// Should see the other user1 clients
+				for _, peer := range user1Clients {
+					if peer.Hostname() == client.Hostname() {
+						continue
+					}
+					assert.True(ct, isInFileTargets(fts, peer.Hostname()),
+						"user1 client %s should see user1 peer %s in FileTargets", client.Hostname(), peer.Hostname())
+				}
+
+				// Should NOT see user2 clients
+				for _, peer := range user2Clients {
+					assert.False(ct, isInFileTargets(fts, peer.Hostname()),
+						"user1 client %s should NOT see user2 peer %s in FileTargets", client.Hostname(), peer.Hostname())
+				}
+
+				// Should NOT see tagged client
+				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
+					"user1 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
+			}, 10*time.Second, 1*time.Second)
+		}
+	})
+
+	// Test 2: Verify user2 nodes can see each other in FileTargets but not user1 nodes or tagged node
+	t.Run("FileTargets-user2", func(t *testing.T) {
+		for _, client := range user2Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+				fts, err := getFileTargets(client)
+				assert.NoError(ct, err)
+
+				// Should see the other user2 clients
+				for _, peer := range user2Clients {
+					if peer.Hostname() == client.Hostname() {
+						continue
+					}
+					assert.True(ct, isInFileTargets(fts, peer.Hostname()),
+						"user2 client %s should see user2 peer %s in FileTargets", client.Hostname(), peer.Hostname())
+				}
+
+				// Should NOT see user1 clients
+				for _, peer := range user1Clients {
+					assert.False(ct, isInFileTargets(fts, peer.Hostname()),
+						"user2 client %s should NOT see user1 peer %s in FileTargets", client.Hostname(), peer.Hostname())
+				}
+
+				// Should NOT see tagged client
+				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
+					"user2 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
+			}, 10*time.Second, 1*time.Second)
+		}
+	})
+
+	// Test 3: Verify tagged device has no FileTargets (empty list)
+	t.Run("FileTargets-tagged", func(t *testing.T) {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			result, _, err := client.Execute(curlCommand)
+			fts, err := getFileTargets(taggedClient)
 			assert.NoError(ct, err)
-
-			var fts []apitype.FileTarget
-			err = json.Unmarshal([]byte(result), &fts)
-			assert.NoError(ct, err)
-
-			if len(fts) != len(allClients)-1 {
-				ftStr := fmt.Sprintf("FileTargets for %s:\n", client.Hostname())
-				for _, ft := range fts {
-					ftStr += fmt.Sprintf("\t%s\n", ft.Node.Name)
-				}
-				assert.Failf(ct, "client %s does not have all its peers as FileTargets",
-					"got %d, want: %d\n%s",
-					len(fts),
-					len(allClients)-1,
-					ftStr,
-				)
-			}
+			assert.Empty(ct, fts, "tagged client %s should have no FileTargets", taggedClient.Hostname())
 		}, 10*time.Second, 1*time.Second)
-	}
+	})
 
-	for _, client := range allClients {
-		command := []string{"touch", fmt.Sprintf("/tmp/file_from_%s", client.Hostname())}
+	// Test 4: Same-user file transfer works (user1 -> user1) for all version combinations
+	t.Run("SameUserTransfer", func(t *testing.T) {
+		for _, sender := range user1Clients {
+			// Create file on sender
+			filename := fmt.Sprintf("file_from_%s", sender.Hostname())
+			command := []string{"touch", fmt.Sprintf("/tmp/%s", filename)}
+			_, _, err := sender.Execute(command)
+			require.NoError(t, err, "failed to create taildrop file on %s", sender.Hostname())
 
-		if _, _, err := client.Execute(command); err != nil {
-			t.Fatalf("failed to create taildrop file on %s, err: %s", client.Hostname(), err)
-		}
+			for _, receiver := range user1Clients {
+				if sender.Hostname() == receiver.Hostname() {
+					continue
+				}
 
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
+				receiverFQDN, _ := receiver.FQDN()
+
+				t.Run(fmt.Sprintf("%s->%s", sender.Hostname(), receiver.Hostname()), func(t *testing.T) {
+					sendCommand := []string{
+						"tailscale", "file", "cp",
+						fmt.Sprintf("/tmp/%s", filename),
+						fmt.Sprintf("%s:", receiverFQDN),
+					}
+
+					assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+						t.Logf("Sending file from %s to %s", sender.Hostname(), receiver.Hostname())
+						_, _, err := sender.Execute(sendCommand)
+						assert.NoError(ct, err)
+					}, 10*time.Second, 1*time.Second)
+				})
 			}
+		}
 
-			// It is safe to ignore this error as we handled it when caching it
-			peerFQDN, _ := peer.FQDN()
+		// Receive files on all user1 clients
+		for _, client := range user1Clients {
+			getCommand := []string{"tailscale", "file", "get", "/tmp/"}
+			_, _, err := client.Execute(getCommand)
+			require.NoError(t, err, "failed to get taildrop file on %s", client.Hostname())
 
-			t.Run(fmt.Sprintf("%s-%s", client.Hostname(), peer.Hostname()), func(t *testing.T) {
-				command := []string{
-					"tailscale", "file", "cp",
-					fmt.Sprintf("/tmp/file_from_%s", client.Hostname()),
-					fmt.Sprintf("%s:", peerFQDN),
+			// Verify files from all other user1 clients exist
+			for _, peer := range user1Clients {
+				if client.Hostname() == peer.Hostname() {
+					continue
 				}
 
-				assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-					t.Logf(
-						"Sending file from %s to %s\n",
-						client.Hostname(),
-						peer.Hostname(),
-					)
-					_, _, err := client.Execute(command)
-					assert.NoError(ct, err)
-				}, 10*time.Second, 1*time.Second)
-			})
-		}
-	}
-
-	for _, client := range allClients {
-		command := []string{
-			"tailscale", "file",
-			"get",
-			"/tmp/",
-		}
-		if _, _, err := client.Execute(command); err != nil {
-			t.Fatalf("failed to get taildrop file on %s, err: %s", client.Hostname(), err)
-		}
-
-		for _, peer := range allClients {
-			if client.Hostname() == peer.Hostname() {
-				continue
+				t.Run(fmt.Sprintf("verify-%s-received-from-%s", client.Hostname(), peer.Hostname()), func(t *testing.T) {
+					lsCommand := []string{"ls", fmt.Sprintf("/tmp/file_from_%s", peer.Hostname())}
+					result, _, err := client.Execute(lsCommand)
+					require.NoErrorf(t, err, "failed to ls taildrop file from %s", peer.Hostname())
+					assert.Equal(t, fmt.Sprintf("/tmp/file_from_%s\n", peer.Hostname()), result)
+				})
 			}
-
-			t.Run(fmt.Sprintf("%s-%s", client.Hostname(), peer.Hostname()), func(t *testing.T) {
-				command := []string{
-					"ls",
-					fmt.Sprintf("/tmp/file_from_%s", peer.Hostname()),
-				}
-				log.Printf(
-					"Checking file in %s from %s\n",
-					client.Hostname(),
-					peer.Hostname(),
-				)
-
-				result, _, err := client.Execute(command)
-				require.NoErrorf(t, err, "failed to execute command to ls taildrop")
-
-				log.Printf("Result for %s: %s\n", peer.Hostname(), result)
-				if fmt.Sprintf("/tmp/file_from_%s\n", peer.Hostname()) != result {
-					t.Fatalf(
-						"taildrop result is not correct %s, wanted %s",
-						result,
-						fmt.Sprintf("/tmp/file_from_%s\n", peer.Hostname()),
-					)
-				}
-			})
 		}
-	}
+	})
+
+	// Test 5: Cross-user file transfer fails (user1 -> user2)
+	t.Run("CrossUserTransferBlocked", func(t *testing.T) {
+		sender := user1Clients[0]
+		receiver := user2Clients[0]
+
+		// Create file on sender
+		filename := fmt.Sprintf("cross_user_file_from_%s", sender.Hostname())
+		command := []string{"touch", fmt.Sprintf("/tmp/%s", filename)}
+		_, _, err := sender.Execute(command)
+		require.NoError(t, err, "failed to create taildrop file on %s", sender.Hostname())
+
+		// Attempt to send file - this should fail
+		receiverFQDN, _ := receiver.FQDN()
+		sendCommand := []string{
+			"tailscale", "file", "cp",
+			fmt.Sprintf("/tmp/%s", filename),
+			fmt.Sprintf("%s:", receiverFQDN),
+		}
+
+		t.Logf("Attempting cross-user file send from %s to %s (should fail)", sender.Hostname(), receiver.Hostname())
+		_, stderr, err := sender.Execute(sendCommand)
+
+		// The file transfer should fail because user2 is not in user1's FileTargets
+		// Either the command errors, or it silently fails (check stderr for error message)
+		if err != nil {
+			t.Logf("Cross-user transfer correctly failed with error: %v", err)
+		} else if strings.Contains(stderr, "not a valid peer") || strings.Contains(stderr, "unknown target") {
+			t.Logf("Cross-user transfer correctly rejected: %s", stderr)
+		} else {
+			// Even if command succeeded, verify the file was NOT received
+			getCommand := []string{"tailscale", "file", "get", "/tmp/"}
+			receiver.Execute(getCommand)
+
+			lsCommand := []string{"ls", fmt.Sprintf("/tmp/%s", filename)}
+			_, _, lsErr := receiver.Execute(lsCommand)
+			assert.Error(t, lsErr, "Cross-user file should NOT have been received")
+		}
+	})
+
+	// Test 6: Tagged device cannot send files
+	t.Run("TaggedCannotSend", func(t *testing.T) {
+		// Create file on tagged client
+		filename := fmt.Sprintf("file_from_tagged_%s", taggedClient.Hostname())
+		command := []string{"touch", fmt.Sprintf("/tmp/%s", filename)}
+		_, _, err := taggedClient.Execute(command)
+		require.NoError(t, err, "failed to create taildrop file on tagged client")
+
+		// Attempt to send to user1 client - should fail because tagged client has no FileTargets
+		receiver := user1Clients[0]
+		receiverFQDN, _ := receiver.FQDN()
+		sendCommand := []string{
+			"tailscale", "file", "cp",
+			fmt.Sprintf("/tmp/%s", filename),
+			fmt.Sprintf("%s:", receiverFQDN),
+		}
+
+		t.Logf("Attempting tagged->user file send from %s to %s (should fail)", taggedClient.Hostname(), receiver.Hostname())
+		_, stderr, err := taggedClient.Execute(sendCommand)
+
+		if err != nil {
+			t.Logf("Tagged client send correctly failed with error: %v", err)
+		} else if strings.Contains(stderr, "not a valid peer") || strings.Contains(stderr, "unknown target") || strings.Contains(stderr, "no matches for") {
+			t.Logf("Tagged client send correctly rejected: %s", stderr)
+		} else {
+			// Verify file was NOT received
+			getCommand := []string{"tailscale", "file", "get", "/tmp/"}
+			receiver.Execute(getCommand)
+
+			lsCommand := []string{"ls", fmt.Sprintf("/tmp/%s", filename)}
+			_, _, lsErr := receiver.Execute(lsCommand)
+			assert.Error(t, lsErr, "Tagged client's file should NOT have been received")
+		}
+	})
+
+	// Test 7: Tagged device cannot receive files (user1 tries to send to tagged)
+	t.Run("TaggedCannotReceive", func(t *testing.T) {
+		sender := user1Clients[0]
+
+		// Create file on sender
+		filename := fmt.Sprintf("file_to_tagged_from_%s", sender.Hostname())
+		command := []string{"touch", fmt.Sprintf("/tmp/%s", filename)}
+		_, _, err := sender.Execute(command)
+		require.NoError(t, err, "failed to create taildrop file on %s", sender.Hostname())
+
+		// Attempt to send to tagged client - should fail because tagged is not in user1's FileTargets
+		taggedFQDN, _ := taggedClient.FQDN()
+		sendCommand := []string{
+			"tailscale", "file", "cp",
+			fmt.Sprintf("/tmp/%s", filename),
+			fmt.Sprintf("%s:", taggedFQDN),
+		}
+
+		t.Logf("Attempting user->tagged file send from %s to %s (should fail)", sender.Hostname(), taggedClient.Hostname())
+		_, stderr, err := sender.Execute(sendCommand)
+
+		if err != nil {
+			t.Logf("Send to tagged client correctly failed with error: %v", err)
+		} else if strings.Contains(stderr, "not a valid peer") || strings.Contains(stderr, "unknown target") || strings.Contains(stderr, "no matches for") {
+			t.Logf("Send to tagged client correctly rejected: %s", stderr)
+		} else {
+			// Verify file was NOT received by tagged client
+			getCommand := []string{"tailscale", "file", "get", "/tmp/"}
+			taggedClient.Execute(getCommand)
+
+			lsCommand := []string{"ls", fmt.Sprintf("/tmp/%s", filename)}
+			_, _, lsErr := taggedClient.Execute(lsCommand)
+			assert.Error(t, lsErr, "File to tagged client should NOT have been received")
+		}
+	})
 }
 
 func TestUpdateHostnameFromClient(t *testing.T) {
