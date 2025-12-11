@@ -40,8 +40,11 @@ jobs:
               - '*.nix'
               - 'go.*'
               - '**/*.go'
-              - 'integration_test/'
+              - 'integration/**'
               - 'config-example.yaml'
+              - '.github/workflows/test-integration.yaml'
+              - '.github/workflows/integration-test-template.yml'
+              - 'Dockerfile.*'
       - name: Tailscale
         if: ${{ env.HAS_TAILSCALE_SECRET }}
         uses: tailscale/github-action@6986d2c82a91fbac2949fe01f5bab95cf21b5102 # v3.2.2
