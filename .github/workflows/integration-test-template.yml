@@ -51,24 +51,22 @@ jobs:
         with:
           name: tailscale-head-image
           path: /tmp/artifacts
-      - name: Load Docker images
+      - name: Download hi binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: hi-binary
+          path: /tmp/artifacts
+      - name: Load Docker images and prepare binary
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
-          rm -rf /tmp/artifacts
+          chmod +x /tmp/artifacts/hi
           docker images
-      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad # v31
-      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
-        with:
-          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix',
-            '**/flake.lock') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
       - name: Run Integration Test
         env:
           HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
           HEADSCALE_INTEGRATION_TAILSCALE_IMAGE: tailscale-head:${{ github.sha }}
-        run:
-          nix develop --command -- hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
+        run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
           --timeout=120m \
           ${{ inputs.postgres_flag }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

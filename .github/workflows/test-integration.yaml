@@ -7,7 +7,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 jobs:
-  build-images:
+  build:
     runs-on: ubuntu-latest
     outputs:
       files-changed: ${{ steps.changed-files.outputs.files }}
@@ -29,6 +29,24 @@ jobs:
               - '.github/workflows/test-integration.yaml'
               - '.github/workflows/integration-test-template.yml'
               - 'Dockerfile.*'
+      - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad # v31
+        if: steps.changed-files.outputs.files == 'true'
+      - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
+        if: steps.changed-files.outputs.files == 'true'
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
+      - name: Build hi binary
+        if: steps.changed-files.outputs.files == 'true'
+        run: |
+          nix develop --command -- go build -o hi ./cmd/hi
+      - name: Upload hi binary
+        if: steps.changed-files.outputs.files == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hi-binary
+          path: hi
+          retention-days: 1
       - name: Build headscale image
         if: steps.changed-files.outputs.files == 'true'
         run: |
@@ -60,8 +78,8 @@ jobs:
           path: tailscale-head-image.tar.gz
           retention-days: 10
   sqlite:
-    needs: build-images
-    if: needs.build-images.outputs.files-changed == 'true'
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -181,8 +199,8 @@ jobs:
       postgres_flag: "--postgres=0"
       database_name: "sqlite"
   postgres:
-    needs: build-images
-    if: needs.build-images.outputs.files-changed == 'true'
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
       matrix:
