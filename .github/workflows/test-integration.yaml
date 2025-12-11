@@ -9,6 +9,8 @@ concurrency:
 jobs:
   build-images:
     runs-on: ubuntu-latest
+    outputs:
+      files-changed: ${{ steps.changed-files.outputs.files }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -66,6 +68,7 @@ jobs:
           retention-days: 1
   sqlite:
     needs: build-images
+    if: needs.build-images.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -185,6 +188,7 @@ jobs:
       database_name: "sqlite"
   postgres:
     needs: build-images
+    if: needs.build-images.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
       matrix:
