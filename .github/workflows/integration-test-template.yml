@@ -90,6 +90,9 @@ jobs:
             --cache-from type=local,src=/tmp/cache/tailscale-head \
             --load \
             .
+
+          # Clean up cache files to free disk space
+          rm -rf /tmp/cache /tmp/artifacts
       - uses: nixbuild/nix-quick-install-action@889f3180bb5f064ee9e3201428d04ae9e41d54ad # v31
         if: steps.changed-files.outputs.files == 'true'
       - uses: nix-community/cache-nix-action@135667ec418502fa5a3598af6fb9eb733888ce6a # v6.1.3
