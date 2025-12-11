@@ -205,6 +205,7 @@ func TestTailNode(t *testing.T) {
 				BaseDomain:          tt.baseDomain,
 				TailcfgDNSConfig:    tt.dnsConfig,
 				RandomizeClientPort: false,
+				Taildrop:            types.TaildropConfig{Enabled: true},
 			}
 			_ = primary.SetRoutes(tt.node.ID, tt.node.SubnetRoutes()...)
 
@@ -272,7 +273,7 @@ func TestNodeExpiry(t *testing.T) {
 				func(id types.NodeID) []netip.Prefix {
 					return []netip.Prefix{}
 				},
-				&types.Config{},
+				&types.Config{Taildrop: types.TaildropConfig{Enabled: true}},
 			)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)

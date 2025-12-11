@@ -1028,12 +1028,15 @@ func (nv NodeView) TailNode(
 	tsaddr.SortPrefixes(allowedIPs)
 
 	capMap := tailcfg.NodeCapMap{
-		tailcfg.CapabilityFileSharing: []tailcfg.RawMessage{},
-		tailcfg.CapabilityAdmin:       []tailcfg.RawMessage{},
-		tailcfg.CapabilitySSH:         []tailcfg.RawMessage{},
+		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
+		tailcfg.CapabilitySSH:   []tailcfg.RawMessage{},
 	}
 	if cfg.RandomizeClientPort {
 		capMap[tailcfg.NodeAttrRandomizeClientPort] = []tailcfg.RawMessage{}
+	}
+
+	if cfg.Taildrop.Enabled {
+		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
 
 	tNode := tailcfg.Node{

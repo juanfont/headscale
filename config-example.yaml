@@ -295,8 +295,7 @@ dns:
 
     # Split DNS (see https://tailscale.com/kb/1054/dns/),
     # a map of domains and which DNS server to use for each.
-    split:
-      {}
+    split: {}
       # foo.bar.com:
       #   - 1.1.1.1
       # darp.headscale.net:
@@ -408,6 +407,15 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+
+# Taildrop configuration
+# Taildrop is the file sharing feature of Tailscale, allowing nodes to send files to each other.
+# https://tailscale.com/kb/1106/taildrop/
+taildrop:
+  # Enable or disable Taildrop for all nodes.
+  # When enabled, nodes can send files to other nodes owned by the same user.
+  # Tagged devices and cross-user transfers are not permitted by Tailscale clients.
+  enabled: true
 # Advanced performance tuning parameters.
 # The defaults are carefully chosen and should rarely need adjustment.
 # Only modify these if you have identified a specific performance issue.
