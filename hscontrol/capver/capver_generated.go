@@ -5,8 +5,6 @@ package capver
 import "tailscale.com/tailcfg"
 
 var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
-	"v1.70.0": 102,
-	"v1.72.0": 104,
 	"v1.72.1": 104,
 	"v1.74.0": 106,
 	"v1.74.1": 106,
@@ -35,11 +33,12 @@ var tailscaleToCapVer = map[string]tailcfg.CapabilityVersion{
 	"v1.90.6": 130,
 	"v1.90.8": 130,
 	"v1.90.9": 130,
+	"v1.92.1": 131,
+	"v1.92.2": 131,
 }
 
 var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
-	102: "v1.70.0",
-	104: "v1.72.0",
+	104: "v1.72.1",
 	106: "v1.74.0",
 	109: "v1.78.0",
 	113: "v1.80.0",
@@ -49,10 +48,11 @@ var capVerToTailscaleVer = map[tailcfg.CapabilityVersion]string{
 	123: "v1.86.2",
 	125: "v1.88.1",
 	130: "v1.90.1",
+	131: "v1.92.1",
 }
 
 // SupportedMajorMinorVersions is the number of major.minor Tailscale versions supported.
-const SupportedMajorMinorVersions = 9
+const SupportedMajorMinorVersions = 10
 
 // MinSupportedCapabilityVersion represents the minimum capability version
 // supported by this Headscale instance (latest 10 minor versions)
