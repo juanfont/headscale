@@ -38,6 +38,7 @@ type Batcher interface {
 	ConnectedMap() *xsync.Map[types.NodeID, bool]
 	AddWork(c ...change.ChangeSet)
 	MapResponseFromChange(id types.NodeID, c change.ChangeSet) (*tailcfg.MapResponse, error)
+	SendDirectUpdate(id types.NodeID, resp *tailcfg.MapResponse) error
 	DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error)
 }
 
