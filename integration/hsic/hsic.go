@@ -53,6 +53,7 @@ var (
 	errHeadscaleStatusCodeNotOk    = errors.New("headscale status code not ok")
 	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
 	errHeadscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
+	errInvalidPostgresImageFormat  = errors.New("invalid HEADSCALE_INTEGRATION_POSTGRES_IMAGE format, expected repository:tag")
 )
 
 type fileInContainer struct {
@@ -363,10 +364,24 @@ func New(
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
+		// Determine postgres image - use prebuilt if available, otherwise pull from registry
+		pgRepo := "postgres"
+		pgTag := "latest"
+
+		if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_POSTGRES_IMAGE"); prebuiltImage != "" {
+			repo, tag, found := strings.Cut(prebuiltImage, ":")
+			if !found {
+				return nil, errInvalidPostgresImageFormat
+			}
+
+			pgRepo = repo
+			pgTag = tag
+		}
+
 		pgRunOptions := &dockertest.RunOptions{
 			Name:       "postgres-" + hash,
-			Repository: "postgres",
-			Tag:        "latest",
+			Repository: pgRepo,
+			Tag:        pgTag,
 			Networks:   networks,
 			Env: []string{
 				"POSTGRES_USER=headscale",

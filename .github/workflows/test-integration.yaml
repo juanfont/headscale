@@ -91,6 +91,22 @@ jobs:
           name: tailscale-head-image
           path: tailscale-head-image.tar.gz
           retention-days: 10
+  build-postgres:
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.build.outputs.files-changed == 'true'
+    steps:
+      - name: Pull and save postgres image
+        run: |
+          docker pull postgres:latest
+          docker tag postgres:latest postgres:${{ github.sha }}
+          docker save postgres:${{ github.sha }} | gzip > postgres-image.tar.gz
+      - name: Upload postgres image
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: postgres-image
+          path: postgres-image.tar.gz
+          retention-days: 10
   sqlite:
     needs: build
     if: needs.build.outputs.files-changed == 'true'
@@ -213,7 +229,7 @@ jobs:
       postgres_flag: "--postgres=0"
       database_name: "sqlite"
   postgres:
-    needs: build
+    needs: [build, build-postgres]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false

@@ -61,10 +61,19 @@ jobs:
         with:
           name: go-cache
           path: /tmp/artifacts
+      - name: Download postgres image
+        if: ${{ inputs.postgres_flag == '--postgres=1' }}
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: postgres-image
+          path: /tmp/artifacts
       - name: Load Docker images, Go cache, and prepare binary
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
+          if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
+            gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
+          fi
           chmod +x /tmp/artifacts/hi
           docker images
           # Extract Go cache to host directories for bind mounting
@@ -75,6 +84,7 @@ jobs:
         env:
           HEADSCALE_INTEGRATION_HEADSCALE_IMAGE: headscale:${{ github.sha }}
           HEADSCALE_INTEGRATION_TAILSCALE_IMAGE: tailscale-head:${{ github.sha }}
+          HEADSCALE_INTEGRATION_POSTGRES_IMAGE: ${{ inputs.postgres_flag == '--postgres=1' && format('postgres:{0}', github.sha) || '' }}
           HEADSCALE_INTEGRATION_GO_CACHE: /tmp/go-cache/go
           HEADSCALE_INTEGRATION_GO_BUILD_CACHE: /tmp/go-cache/.cache/go-build
         run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
