@@ -36,12 +36,16 @@ jobs:
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-      - name: Build hi binary and warm Go cache
+      - name: Build binaries and warm Go cache
         if: steps.changed-files.outputs.files == 'true'
         run: |
-          nix develop --command -- go build -o hi ./cmd/hi
-          # Build integration test binary to warm the cache with all dependencies
-          nix develop --command -- go test -c ./integration -o /dev/null 2>/dev/null || true
+          # Build all Go binaries in one nix shell to maximize cache reuse
+          nix develop --command -- bash -c '
+            go build -o hi ./cmd/hi
+            CGO_ENABLED=0 GOOS=linux go build -o headscale ./cmd/headscale
+            # Build integration test binary to warm the cache with all dependencies
+            go test -c ./integration -o /dev/null 2>/dev/null || true
+          '
       - name: Upload hi binary
         if: steps.changed-files.outputs.files == 'true'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
@@ -65,7 +69,7 @@ jobs:
         if: steps.changed-files.outputs.files == 'true'
         run: |
           docker build \
-            --file Dockerfile.integration \
+            --file Dockerfile.integration-ci \
             --tag headscale:${{ github.sha }} \
             .
           docker save headscale:${{ github.sha }} | gzip > headscale-image.tar.gz
