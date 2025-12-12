@@ -28,8 +28,7 @@ const (
 	minVersionParts = 2
 	fallbackCapVer  = 90
 	maxTestCases    = 4
-	// TODO(https://github.com/tailscale/tailscale/issues/12849): Restore to 10 when v1.92 is released.
-	supportedMajorMinorVersions = 9
+	supportedMajorMinorVersions = 10
 	filePermissions             = 0o600
 )
 
