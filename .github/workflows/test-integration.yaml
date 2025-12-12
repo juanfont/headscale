@@ -183,6 +183,7 @@ jobs:
           - TestTaildrop
           - TestUpdateHostnameFromClient
           - TestExpireNode
+          - TestDisableNodeExpiry
           - TestSetNodeExpiryInFuture
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown

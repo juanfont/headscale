@@ -1068,6 +1068,103 @@ func TestExpireNode(t *testing.T) {
 	}
 }
 
+// TestDisableNodeExpiry tests disabling key expiry for a node
+// Node should have nil expiry and never expire
+func TestDisableNodeExpiry(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: len(MustTestVersions),
+		Users:        []string{"user1"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("disableexpiry"))
+	requireNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// First set an expiry on the node
+	result, err := headscale.Execute(
+		[]string{
+			"headscale", "nodes", "expire",
+			"--identifier", "1",
+			"--output", "json",
+			"--expiry", time.Now().Add(time.Hour).Format(time.RFC3339),
+		},
+	)
+	require.NoError(t, err)
+
+	var node v1.Node
+	err = json.Unmarshal([]byte(result), &node)
+	require.NoError(t, err)
+	require.NotNil(t, node.GetExpiry(), "node should have an expiry set")
+
+	// Now disable the expiry
+	result, err = headscale.Execute(
+		[]string{
+			"headscale", "nodes", "expire",
+			"--identifier", "1",
+			"--output", "json",
+			"--disable",
+		},
+	)
+	require.NoError(t, err)
+
+	var nodeDisabled v1.Node
+	err = json.Unmarshal([]byte(result), &nodeDisabled)
+	require.NoError(t, err)
+
+	// Expiry should be nil (or zero time) when disabled
+	if nodeDisabled.GetExpiry() != nil {
+		require.True(t, nodeDisabled.GetExpiry().AsTime().IsZero(),
+			"node expiry should be zero/nil after disabling")
+	}
+
+	var nodeKey key.NodePublic
+	err = nodeKey.UnmarshalText([]byte(nodeDisabled.GetNodeKey()))
+	require.NoError(t, err)
+
+	// Verify peers see the node as not expired
+	for _, client := range allClients {
+		if client.Hostname() == nodeDisabled.GetName() {
+			continue
+		}
+
+		assert.EventuallyWithT(
+			t, func(ct *assert.CollectT) {
+				status, err := client.Status()
+				assert.NoError(ct, err)
+
+				peerStatus, ok := status.Peer[nodeKey]
+				assert.True(ct, ok, "node key should be present in peer list")
+
+				if !ok {
+					return
+				}
+
+				// Node should not be expired
+				assert.Falsef(
+					ct,
+					peerStatus.Expired,
+					"node %q should not be marked as expired after disabling expiry",
+					peerStatus.HostName,
+				)
+			}, 3*time.Minute, 5*time.Second, "Waiting for disabled expiry to propagate",
+		)
+	}
+}
+
 // TestSetNodeExpiryInFuture tests setting arbitrary expiration date
 // New expiration date should be stored in the db and propagated to all peers
 func TestSetNodeExpiryInFuture(t *testing.T) {
