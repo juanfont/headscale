@@ -54,6 +54,8 @@ var (
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
 	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
 	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
+	errInvalidTailscaleImageFormat     = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
+	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
 )
 
 const (
@@ -299,80 +301,119 @@ func New(
 
 	switch version {
 	case VersionHead:
-		buildOptions := &dockertest.BuildOptions{
-			Dockerfile: "Dockerfile.tailscale-HEAD",
-			ContextDir: dockerContextPath,
-			BuildArgs:  []docker.BuildArg{},
+		// Check if a pre-built image is available via environment variable
+		prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
+
+		// If custom build tags are required (e.g., for websocket DERP), we cannot use
+		// the pre-built image as it won't have the necessary code compiled in.
+		hasBuildTags := len(tsic.buildConfig.tags) > 0
+		if hasBuildTags && prebuiltImage != "" {
+			log.Printf("Ignoring pre-built image %s because custom build tags are required: %v",
+				prebuiltImage, tsic.buildConfig.tags)
+			prebuiltImage = ""
 		}
 
-		buildTags := strings.Join(tsic.buildConfig.tags, ",")
-		if len(buildTags) > 0 {
-			buildOptions.BuildArgs = append(
-				buildOptions.BuildArgs,
-				docker.BuildArg{
-					Name:  "BUILD_TAGS",
-					Value: buildTags,
-				},
-			)
-		}
+		if prebuiltImage != "" {
+			log.Printf("Using pre-built tailscale image: %s", prebuiltImage)
 
-		container, err = pool.BuildAndRunWithBuildOptions(
-			buildOptions,
-			tailscaleOptions,
-			dockertestutil.DockerRestartPolicy,
-			dockertestutil.DockerAllowLocalIPv6,
-			dockertestutil.DockerAllowNetworkAdministration,
-			dockertestutil.DockerMemoryLimit,
-		)
-		if err != nil {
-			// Try to get more detailed build output
-			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
-
-			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
-
-			// Show the last 100 lines of build output to avoid overwhelming the logs
-			lines := strings.Split(buildOutput, "\n")
-
-			const maxLines = 100
-
-			startLine := 0
-			if len(lines) > maxLines {
-				startLine = len(lines) - maxLines
+			// Parse image into repository and tag
+			repo, tag, ok := strings.Cut(prebuiltImage, ":")
+			if !ok {
+				return nil, errInvalidTailscaleImageFormat
 			}
 
-			relevantOutput := strings.Join(lines[startLine:], "\n")
+			tailscaleOptions.Repository = repo
+			tailscaleOptions.Tag = tag
 
-			if buildErr != nil {
-				// The diagnostic build also failed - this is the real error
-				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
-					hostname,
-					version,
-					err,
-					maxLines,
-					relevantOutput,
+			container, err = pool.RunWithOptions(
+				tailscaleOptions,
+				dockertestutil.DockerRestartPolicy,
+				dockertestutil.DockerAllowLocalIPv6,
+				dockertestutil.DockerAllowNetworkAdministration,
+				dockertestutil.DockerMemoryLimit,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("could not run pre-built tailscale container %q: %w", prebuiltImage, err)
+			}
+		} else if util.IsCI() && !hasBuildTags {
+			// In CI, we require a pre-built image unless custom build tags are needed
+			return nil, errTailscaleImageRequiredInCI
+		} else {
+			buildOptions := &dockertest.BuildOptions{
+				Dockerfile: "Dockerfile.tailscale-HEAD",
+				ContextDir: dockerContextPath,
+				BuildArgs:  []docker.BuildArg{},
+			}
+
+			buildTags := strings.Join(tsic.buildConfig.tags, ",")
+			if len(buildTags) > 0 {
+				buildOptions.BuildArgs = append(
+					buildOptions.BuildArgs,
+					docker.BuildArg{
+						Name:  "BUILD_TAGS",
+						Value: buildTags,
+					},
 				)
 			}
 
-			if buildOutput != "" {
-				// Build succeeded on retry but container creation still failed
+			container, err = pool.BuildAndRunWithBuildOptions(
+				buildOptions,
+				tailscaleOptions,
+				dockertestutil.DockerRestartPolicy,
+				dockertestutil.DockerAllowLocalIPv6,
+				dockertestutil.DockerAllowNetworkAdministration,
+				dockertestutil.DockerMemoryLimit,
+			)
+			if err != nil {
+				// Try to get more detailed build output
+				log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
+
+				buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+
+				// Show the last 100 lines of build output to avoid overwhelming the logs
+				lines := strings.Split(buildOutput, "\n")
+
+				const maxLines = 100
+
+				startLine := 0
+				if len(lines) > maxLines {
+					startLine = len(lines) - maxLines
+				}
+
+				relevantOutput := strings.Join(lines[startLine:], "\n")
+
+				if buildErr != nil {
+					// The diagnostic build also failed - this is the real error
+					return nil, fmt.Errorf(
+						"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
+						hostname,
+						version,
+						err,
+						maxLines,
+						relevantOutput,
+					)
+				}
+
+				if buildOutput != "" {
+					// Build succeeded on retry but container creation still failed
+					return nil, fmt.Errorf(
+						"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+						hostname,
+						version,
+						err,
+						maxLines,
+						relevantOutput,
+					)
+				}
+
+				// No output at all - diagnostic build command may have failed
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
 					hostname,
 					version,
 					err,
-					maxLines,
-					relevantOutput,
 				)
 			}
-
-			// No output at all - diagnostic build command may have failed
-			return nil, fmt.Errorf(
-				"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
-				hostname,
-				version,
-				err,
-			)
 		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"

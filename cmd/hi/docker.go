@@ -301,6 +301,11 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
 
+	// Pass through CI environment variable for CI detection
+	if ci := os.Getenv("CI"); ci != "" {
+		env = append(env, "CI="+ci)
+	}
+
 	// Pass through all HEADSCALE_INTEGRATION_* environment variables
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
@@ -313,6 +318,10 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 			env = append(env, e)
 		}
 	}
+
+	// Set GOCACHE to a known location (used by both bind mount and volume cases)
+	env = append(env, "GOCACHE=/cache/go-build")
+
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
@@ -332,20 +341,43 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
 
+	binds := []string{
+		fmt.Sprintf("%s:%s", projectRoot, projectRoot),
+		dockerSocketPath + ":/var/run/docker.sock",
+		logsDir + ":/tmp/control",
+	}
+
+	// Use bind mounts for Go cache if provided via environment variables,
+	// otherwise fall back to Docker volumes for local development
+	var mounts []mount.Mount
+
+	goCache := os.Getenv("HEADSCALE_INTEGRATION_GO_CACHE")
+	goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
+
+	if goCache != "" {
+		binds = append(binds, goCache+":/go")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-cache",
+			Target: "/go",
+		})
+	}
+
+	if goBuildCache != "" {
+		binds = append(binds, goBuildCache+":/cache/go-build")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-build-cache",
+			Target: "/cache/go-build",
+		})
+	}
+
 	hostConfig := &container.HostConfig{
 		AutoRemove: false, // We'll remove manually for better control
-		Binds: []string{
-			fmt.Sprintf("%s:%s", projectRoot, projectRoot),
-			dockerSocketPath + ":/var/run/docker.sock",
-			logsDir + ":/tmp/control",
-		},
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: "hs-integration-go-cache",
-				Target: "/go",
-			},
-		},
+		Binds:      binds,
+		Mounts:     mounts,
 	}
 
 	return cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)

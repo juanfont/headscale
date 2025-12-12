@@ -33,7 +33,6 @@ import (
 	"github.com/ory/dockertest/v3"
 	"github.com/ory/dockertest/v3/docker"
 	"gopkg.in/yaml.v3"
-	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/mak"
 )
@@ -49,7 +48,12 @@ const (
 	IntegrationTestDockerFileName = "Dockerfile.integration"
 )
 
-var errHeadscaleStatusCodeNotOk = errors.New("headscale status code not ok")
+var (
+	errHeadscaleStatusCodeNotOk    = errors.New("headscale status code not ok")
+	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
+	errHeadscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
+	errInvalidPostgresImageFormat  = errors.New("invalid HEADSCALE_INTEGRATION_POSTGRES_IMAGE format, expected repository:tag")
+)
 
 type fileInContainer struct {
 	path     string
@@ -70,7 +74,6 @@ type HeadscaleInContainer struct {
 	// optional config
 	port             int
 	extraPorts       []string
-	debugPort        int
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
@@ -281,24 +284,9 @@ func WithDERPAsIP() Option {
 	}
 }
 
-// WithDebugPort sets the debug port for delve debugging.
-func WithDebugPort(port int) Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.debugPort = port
-	}
-}
-
 // buildEntrypoint builds the container entrypoint command based on configuration.
 func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
-	debugCmd := fmt.Sprintf(
-		"/go/bin/dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /go/bin/headscale --continue -- serve",
-		hsic.debugPort,
-	)
-
-	entrypoint := fmt.Sprintf(
-		"/bin/sleep 3 ; update-ca-certificates ; %s ; /bin/sleep 30",
-		debugCmd,
-	)
+	entrypoint := "/bin/sleep 3 ; update-ca-certificates ; /usr/local/bin/headscale serve ; /bin/sleep 30"
 
 	return []string{"/bin/bash", "-c", entrypoint}
 }
@@ -316,18 +304,9 @@ func New(
 
 	hostname := "hs-" + hash
 
-	// Get debug port from environment or use default
-	debugPort := 40000
-	if envDebugPort := envknob.String("HEADSCALE_DEBUG_PORT"); envDebugPort != "" {
-		if port, err := strconv.Atoi(envDebugPort); err == nil {
-			debugPort = port
-		}
-	}
-
 	hsic := &HeadscaleInContainer{
-		hostname:  hostname,
-		port:      headscaleDefaultPort,
-		debugPort: debugPort,
+		hostname: hostname,
+		port:     headscaleDefaultPort,
 
 		pool:     pool,
 		networks: networks,
@@ -344,7 +323,6 @@ func New(
 	log.Println("NAME: ", hsic.hostname)
 
 	portProto := fmt.Sprintf("%d/tcp", hsic.port)
-	debugPortProto := fmt.Sprintf("%d/tcp", hsic.debugPort)
 
 	headscaleBuildOptions := &dockertest.BuildOptions{
 		Dockerfile: IntegrationTestDockerFileName,
@@ -359,10 +337,24 @@ func New(
 		hsic.env["HEADSCALE_DATABASE_POSTGRES_NAME"] = "headscale"
 		delete(hsic.env, "HEADSCALE_DATABASE_SQLITE_PATH")
 
+		// Determine postgres image - use prebuilt if available, otherwise pull from registry
+		pgRepo := "postgres"
+		pgTag := "latest"
+
+		if prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_POSTGRES_IMAGE"); prebuiltImage != "" {
+			repo, tag, found := strings.Cut(prebuiltImage, ":")
+			if !found {
+				return nil, errInvalidPostgresImageFormat
+			}
+
+			pgRepo = repo
+			pgTag = tag
+		}
+
 		pgRunOptions := &dockertest.RunOptions{
 			Name:       "postgres-" + hash,
-			Repository: "postgres",
-			Tag:        "latest",
+			Repository: pgRepo,
+			Tag:        pgTag,
 			Networks:   networks,
 			Env: []string{
 				"POSTGRES_USER=headscale",
@@ -409,7 +401,7 @@ func New(
 
 	runOptions := &dockertest.RunOptions{
 		Name:         hsic.hostname,
-		ExposedPorts: append([]string{portProto, debugPortProto, "9090/tcp"}, hsic.extraPorts...),
+		ExposedPorts: append([]string{portProto, "9090/tcp"}, hsic.extraPorts...),
 		Networks:     networks,
 		// Cmd:          []string{"headscale", "serve"},
 		// TODO(kradalby): Get rid of this hack, we currently need to give us some
@@ -418,12 +410,9 @@ func New(
 		Env:        env,
 	}
 
-	// Always bind debug port and metrics port to predictable host ports
+	// Bind metrics port to predictable host port
 	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
-	}
-	runOptions.PortBindings[docker.Port(debugPortProto)] = []docker.PortBinding{
-		{HostPort: strconv.Itoa(hsic.debugPort)},
 	}
 	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
 		{HostPort: "49090"},
@@ -451,52 +440,80 @@ func New(
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(runOptions, "headscale")
 
-	container, err := pool.BuildAndRunWithBuildOptions(
-		headscaleBuildOptions,
-		runOptions,
-		dockertestutil.DockerRestartPolicy,
-		dockertestutil.DockerAllowLocalIPv6,
-		dockertestutil.DockerAllowNetworkAdministration,
-	)
-	if err != nil {
-		// Try to get more detailed build output
-		log.Printf("Docker build failed, attempting to get detailed output...")
+	var container *dockertest.Resource
 
-		buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+	// Check if a pre-built image is available via environment variable
+	prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE")
 
-		// Show the last 100 lines of build output to avoid overwhelming the logs
-		lines := strings.Split(buildOutput, "\n")
-
-		const maxLines = 100
-
-		startLine := 0
-		if len(lines) > maxLines {
-			startLine = len(lines) - maxLines
+	if prebuiltImage != "" {
+		log.Printf("Using pre-built headscale image: %s", prebuiltImage)
+		// Parse image into repository and tag
+		repo, tag, ok := strings.Cut(prebuiltImage, ":")
+		if !ok {
+			return nil, errInvalidHeadscaleImageFormat
 		}
 
-		relevantOutput := strings.Join(lines[startLine:], "\n")
+		runOptions.Repository = repo
+		runOptions.Tag = tag
 
-		if buildErr != nil {
-			// The diagnostic build also failed - this is the real error
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+		container, err = pool.RunWithOptions(
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("could not run pre-built headscale container %q: %w", prebuiltImage, err)
 		}
+	} else if util.IsCI() {
+		return nil, errHeadscaleImageRequiredInCI
+	} else {
+		container, err = pool.BuildAndRunWithBuildOptions(
+			headscaleBuildOptions,
+			runOptions,
+			dockertestutil.DockerRestartPolicy,
+			dockertestutil.DockerAllowLocalIPv6,
+			dockertestutil.DockerAllowNetworkAdministration,
+		)
+		if err != nil {
+			// Try to get more detailed build output
+			log.Printf("Docker build/run failed, attempting to get detailed output...")
 
-		if buildOutput != "" {
-			// Build succeeded on retry but container creation still failed
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, IntegrationTestDockerFileName)
+
+			// Show the last 100 lines of build output to avoid overwhelming the logs
+			lines := strings.Split(buildOutput, "\n")
+
+			const maxLines = 100
+
+			startLine := 0
+			if len(lines) > maxLines {
+				startLine = len(lines) - maxLines
+			}
+
+			relevantOutput := strings.Join(lines[startLine:], "\n")
+
+			if buildErr != nil {
+				// The diagnostic build also failed - this is the real error
+				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+			}
+
+			if buildOutput != "" {
+				// Build succeeded on retry but container creation still failed
+				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+			}
+
+			// No output at all - diagnostic build command may have failed
+			return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 		}
-
-		// No output at all - diagnostic build command may have failed
-		return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
 
 	log.Printf(
-		"Debug ports for %s: delve=%s, metrics/pprof=49090\n",
+		"Ports for %s: metrics/pprof=49090\n",
 		hsic.hostname,
-		hsic.GetHostDebugPort(),
 	)
 
 	// Write the CA certificates to the container
@@ -884,16 +901,6 @@ func (t *HeadscaleInContainer) Execute(
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return strconv.Itoa(t.port)
-}
-
-// GetDebugPort returns the debug port as a string.
-func (t *HeadscaleInContainer) GetDebugPort() string {
-	return strconv.Itoa(t.debugPort)
-}
-
-// GetHostDebugPort returns the host port mapped to the debug port.
-func (t *HeadscaleInContainer) GetHostDebugPort() string {
-	return strconv.Itoa(t.debugPort)
 }
 
 // GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
