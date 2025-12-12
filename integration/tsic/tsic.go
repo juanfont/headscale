@@ -304,6 +304,15 @@ func New(
 		// Check if a pre-built image is available via environment variable
 		prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
 
+		// If custom build tags are required (e.g., for websocket DERP), we cannot use
+		// the pre-built image as it won't have the necessary code compiled in.
+		hasBuildTags := len(tsic.buildConfig.tags) > 0
+		if hasBuildTags && prebuiltImage != "" {
+			log.Printf("Ignoring pre-built image %s because custom build tags are required: %v",
+				prebuiltImage, tsic.buildConfig.tags)
+			prebuiltImage = ""
+		}
+
 		if prebuiltImage != "" {
 			log.Printf("Using pre-built tailscale image: %s", prebuiltImage)
 
@@ -326,7 +335,8 @@ func New(
 			if err != nil {
 				return nil, fmt.Errorf("could not run pre-built tailscale container %q: %w", prebuiltImage, err)
 			}
-		} else if util.IsCI() {
+		} else if util.IsCI() && !hasBuildTags {
+			// In CI, we require a pre-built image unless custom build tags are needed
 			return nil, errTailscaleImageRequiredInCI
 		} else {
 			buildOptions := &dockertest.BuildOptions{
