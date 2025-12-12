@@ -31,8 +31,6 @@ all: lint test build
 .PHONY: check-deps
 check-deps:
 	$(call check_tool,go)
-	$(call check_tool,golangci-lint)
-	$(call check_tool,gofumpt)
 	$(call check_tool,prettier)
 	$(call check_tool,clang-format)
 	$(call check_tool,buf)
@@ -57,8 +55,8 @@ fmt: fmt-go fmt-prettier fmt-proto
 .PHONY: fmt-go
 fmt-go: check-deps $(GO_SOURCES)
 	@echo "Formatting Go code..."
-	gofumpt -l -w .
-	golangci-lint run --fix
+	go tool gofumpt -l -w .
+	go tool golangci-lint run --fix
 
 .PHONY: fmt-prettier
 fmt-prettier: check-deps $(DOC_SOURCES)
@@ -77,7 +75,7 @@ lint: lint-go lint-proto
 .PHONY: lint-go
 lint-go: check-deps $(GO_SOURCES) go.mod go.sum
 	@echo "Linting Go code..."
-	golangci-lint run --timeout 10m
+	go tool golangci-lint run --timeout 10m
 
 .PHONY: lint-proto
 lint-proto: check-deps $(PROTO_SOURCES)

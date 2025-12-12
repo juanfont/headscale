@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
           buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-VOi4PGZ8I+2MiwtzxpKc/4smsL5KcH/pHVkjJfAFPJ0=";
+          vendorHash = "sha256-qQwCMa3TIvWBX358/PxzLJOEV6O0hgfh1PpZ96rs9eU=";
         in
         {
           headscale = buildGo {
@@ -60,24 +60,6 @@
             subPackages = [ "cmd/hi" ];
           };
 
-          protoc-gen-grpc-gateway = buildGo rec {
-            pname = "grpc-gateway";
-            version = "2.24.0";
-
-            src = pkgs.fetchFromGitHub {
-              owner = "grpc-ecosystem";
-              repo = "grpc-gateway";
-              rev = "v${version}";
-              sha256 = "sha256-lUEoqXJF1k4/il9bdDTinkUV5L869njZNYqObG/mHyA=";
-            };
-
-            vendorHash = "sha256-Ttt7bPKU+TMKRg5550BS6fsPwYp0QJqcZ7NLrhttSdw=";
-
-            nativeBuildInputs = [ pkgs.installShellFiles ];
-
-            subPackages = [ "protoc-gen-grpc-gateway" "protoc-gen-openapiv2" ];
-          };
-
           protobuf-language-server = buildGo rec {
             pname = "protobuf-language-server";
             version = "2546944";
@@ -93,36 +75,6 @@
 
             subPackages = [ "." ];
           };
-
-          # Upstream does not override buildGoModule properly,
-          # importing a specific module, so comment out for now.
-          # golangci-lint = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
-          # golangci-lint-langserver = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
-
-          # The package uses buildGo125Module, not the convention.
-          # goreleaser = prev.goreleaser.override {
-          #   buildGoModule = buildGo;
-          # };
-
-          gotestsum = prev.gotestsum.override {
-            buildGoModule = buildGo;
-          };
-
-          gotests = prev.gotests.override {
-            buildGoModule = buildGo;
-          };
-
-          gofumpt = prev.gofumpt.override {
-            buildGoModule = buildGo;
-          };
-
-          # gopls = prev.gopls.override {
-          #   buildGoModule = buildGo;
-          # };
         };
     }
     // flake-utils.lib.eachDefaultSystem
@@ -136,20 +88,13 @@
         devDeps = with pkgs;
           buildDeps
           ++ [
-            golangci-lint
-            golangci-lint-langserver
-            golines
             nodePackages.prettier
             nixpkgs-fmt
             goreleaser
             nfpm
-            gotestsum
-            gotests
-            gofumpt
             gopls
             ksh
             ko
-            yq-go
             ripgrep
             postgresql
             prek
@@ -160,15 +105,9 @@
 
             # Protobuf dependencies
             protobuf
-            protoc-gen-go
-            protoc-gen-go-grpc
-            protoc-gen-grpc-gateway
             buf
             clang-tools # clang-format
             protobuf-language-server
-
-            # Add hi to make it even easier to use ci runner.
-            hi
           ]
           ++ lib.optional pkgs.stdenv.isLinux [ traceroute ];
 
