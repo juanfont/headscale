@@ -41,4 +41,4 @@ WORKDIR /go/src/headscale
 # Need to reset the entrypoint or everything will run as a busybox script
 ENTRYPOINT []
 EXPOSE 8080/tcp 40000/tcp
-CMD ["/go/bin/dlv", "--listen=0.0.0.0:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/go/bin/headscale", "--"]
+CMD ["dlv", "--listen=0.0.0.0:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/usr/local/bin/headscale", "--"]

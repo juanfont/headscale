@@ -296,7 +296,7 @@ func WithDebugPort(port int) Option {
 // buildEntrypoint builds the container entrypoint command based on configuration.
 func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
 	debugCmd := fmt.Sprintf(
-		"/go/bin/dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /go/bin/headscale --continue -- serve",
+		"dlv --listen=0.0.0.0:%d --headless=true --api-version=2 --accept-multiclient --allow-non-terminal-interactive=true exec /usr/local/bin/headscale --continue -- serve",
 		hsic.debugPort,
 	)
 
