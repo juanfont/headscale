@@ -355,7 +355,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
 
 	if goCache != "" {
-		binds = append(binds, goCache+":/go:ro")
+		binds = append(binds, goCache+":/go")
 	} else {
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeVolume,
@@ -365,7 +365,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	}
 
 	if goBuildCache != "" {
-		binds = append(binds, goBuildCache+":/cache/go-build:ro")
+		binds = append(binds, goBuildCache+":/cache/go-build")
 	} else {
 		mounts = append(mounts, mount.Mount{
 			Type:   mount.TypeVolume,
