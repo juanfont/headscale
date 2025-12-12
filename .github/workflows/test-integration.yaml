@@ -7,6 +7,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 jobs:
+  # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
+  # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
+  # sqlite: Runs all integration tests with SQLite backend.
+  # postgres: Runs a subset of tests with PostgreSQL to verify database compatibility.
   build:
     runs-on: ubuntu-latest
     outputs:
