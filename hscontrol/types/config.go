@@ -94,6 +94,7 @@ type Config struct {
 
 	LogTail             LogTailConfig
 	RandomizeClientPort bool
+	Taildrop            TaildropConfig
 
 	CLI CLIConfig
 
@@ -208,6 +209,10 @@ type DERPConfig struct {
 }
 
 type LogTailConfig struct {
+	Enabled bool
+}
+
+type TaildropConfig struct {
 	Enabled bool
 }
 
@@ -382,6 +387,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
+	viper.SetDefault("taildrop.enabled", true)
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
@@ -1048,6 +1054,9 @@ func LoadServerConfig() (*Config, error) {
 
 		LogTail:             logTailConfig,
 		RandomizeClientPort: randomizeClientPort,
+		Taildrop: TaildropConfig{
+			Enabled: viper.GetBool("taildrop.enabled"),
+		},
 
 		Policy: policyConfig(),
 

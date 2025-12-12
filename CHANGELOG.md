@@ -67,6 +67,7 @@ release.
     PeerChangedPatch responses instead of full map updates, reducing bandwidth
     and improving performance
 - Tags can now be tagOwner of other tags [#2930](https://github.com/juanfont/headscale/pull/2930)
+- Add `taildrop.enabled` configuration option to enable/disable Taildrop file sharing [#2955](https://github.com/juanfont/headscale/pull/2955)
 
 ## 0.27.2 (2025-xx-xx)
 
