@@ -815,10 +815,18 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.Proxied = dns.MagicDNS
 	cfg.ExtraRecords = dns.ExtraRecords
-	if dns.OverrideLocalDNS {
-		cfg.Resolvers = dns.globalResolvers()
-	} else {
-		cfg.FallbackResolvers = dns.globalResolvers()
+
+	globalResolvers := dns.globalResolvers()
+	if len(globalResolvers) > 0 {
+		// MagicDNS supersedes override_local_dns setting.
+		// If MagicDNS is enabled, always send Resolvers.
+		// If MagicDNS is disabled, only send Resolvers when override_local_dns is true.
+		// When override_local_dns is false/unset (default), no resolvers are sent unless MagicDNS is enabled.
+		// See: https://github.com/juanfont/headscale/issues/2899
+		if dns.MagicDNS || dns.OverrideLocalDNS {
+			cfg.Resolvers = globalResolvers
+		}
+		// If neither MagicDNS nor OverrideLocalDNS is true, we don't send any resolvers
 	}
 
 	routes := dns.splitResolvers()

@@ -72,7 +72,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: true,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				FallbackResolvers: []*dnstype.Resolver{
+				Resolvers: []*dnstype.Resolver{
 					{Addr: "1.1.1.1"},
 					{Addr: "1.0.0.1"},
 					{Addr: "2606:4700:4700::1111"},
@@ -125,7 +125,7 @@ func TestReadConfig(t *testing.T) {
 			},
 		},
 		{
-			name:       "dns-to-tailcfg.DNSConfig",
+			name:       "dns-to-tailcfg.DNSConfig-no-magic-no-override",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) {
 				dns, err := dns()
@@ -138,13 +138,7 @@ func TestReadConfig(t *testing.T) {
 			want: &tailcfg.DNSConfig{
 				Proxied: false,
 				Domains: []string{"example.com", "test.com", "bar.com"},
-				FallbackResolvers: []*dnstype.Resolver{
-					{Addr: "1.1.1.1"},
-					{Addr: "1.0.0.1"},
-					{Addr: "2606:4700:4700::1111"},
-					{Addr: "2606:4700:4700::1001"},
-					{Addr: "https://dns.nextdns.io/abc123"},
-				},
+				// No Resolvers - MagicDNS is false and override_local_dns is false
 				Routes: map[string][]*dnstype.Resolver{
 					"darp.headscale.net": {{Addr: "1.1.1.1"}, {Addr: "8.8.8.8"}},
 					"foo.bar.com":        {{Addr: "1.1.1.1"}},
