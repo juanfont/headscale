@@ -18,6 +18,31 @@ nix develop
 make dev  # runs fmt + lint + test + build
 ```
 
+### Go Tool Dependencies
+
+This project uses Go 1.24+'s `tool` directive to manage Go-based development tools. These tools are defined in `go.mod` and can be run with `go tool <toolname>`:
+
+```bash
+# Available Go tools (run with go tool <name>):
+go tool golangci-lint    # Go linter
+go tool gofumpt          # Go code formatter (stricter than gofmt)
+go tool gotestsum        # Enhanced test runner with better output
+go tool gotests          # Generate table-driven test boilerplate
+go tool golines          # Fix long lines in Go code
+go tool stress           # Stress testing for catching sporadic failures
+go tool yq               # YAML/JSON processor
+go tool protoc-gen-go    # Protocol buffer Go code generator
+go tool protoc-gen-go-grpc           # gRPC Go code generator
+go tool protoc-gen-grpc-gateway      # gRPC-Gateway code generator
+go tool protoc-gen-openapiv2         # OpenAPI v2 spec generator
+```
+
+Tools NOT managed via `go tool` (provided by Nix):
+
+- `buf` - Protocol buffer toolchain (vendor recommends against go tool)
+- `gopls` - Go language server
+- `prettier`, `clang-format`, `nixpkgs-fmt` - Non-Go formatters
+
 ### Essential Commands
 
 ```bash
@@ -428,6 +453,7 @@ HEADSCALE_INTEGRATION_FULL_MATRIX=1 go run ./cmd/hi run "TestAutoApproveMultiNet
 ```
 
 **Full Matrix Dimensions:**
+
 - **Base scenarios (6):** All combinations of:
   - Auth methods: `authkey`, `webauth`
   - Approver types: `tag`, `user`, `group`
@@ -436,17 +462,20 @@ HEADSCALE_INTEGRATION_FULL_MATRIX=1 go run ./cmd/hi run "TestAutoApproveMultiNet
 - **Total combinations:** 6 × 2 × 2 = **24 tests**
 
 **Default (minimal) mode:** Runs only 3 representative tests covering all dimensions:
+
 - `authkey-tag-advertiseduringup-false-pol-database`
 - `webauth-user-advertiseduringup-true-pol-file`
 - `authkey-group-advertiseduringup-false-pol-file`
 
 **Full Matrix Requirements:**
+
 - **Time:** Up to 2 hours for complete execution
 - **Disk space:** ~2-3GB for all test artifacts
 - **Environment:** Clean Docker state before starting
 - **Timeout:** Use `--timeout=7200s` (2 hours) minimum
 
 **When to use full matrix:**
+
 - Before major releases or merges to main
 - After changes to route management, ACL evaluation, or policy engine
 - When debugging flaky tests or cross-scenario issues
@@ -1064,8 +1093,10 @@ logEvent.Msg("Operation completed")
 ## Important Notes
 
 - **Dependencies**: Use `nix develop` for consistent toolchain (Go, buf, protobuf tools, linting)
+- **Go Tools**: Many Go development tools are managed via Go 1.24+ `tool` directive in `go.mod`. Run with `go tool <name>` (e.g., `go tool gofumpt`, `go tool gotestsum`)
+- **Integration Test Runner**: Run integration tests with `go run ./cmd/hi` (not installed globally)
 - **Protocol Buffers**: Changes to `proto/` require `make generate` and should be committed separately
-- **Code Style**: Enforced via golangci-lint with golines (width 88) and gofumpt formatting
+- **Code Style**: Enforced via golangci-lint with golines (width 88) and gofumpt formatting. Use `go tool gofumpt -l -w .` to format
 - **Linting**: ALL code must pass `golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix` before commit
 - **Database**: Supports both SQLite (development) and PostgreSQL (production/testing)
 - **Integration Tests**: Require Docker and can consume significant disk space - use headscale-integration-tester agent
