@@ -41,6 +41,7 @@ var (
 	errOIDCAllowedUsers  = errors.New(
 		"authenticated principal does not match any allowed user",
 	)
+	errOIDCUnverifiedEmail = errors.New("authenticated principal has an unverified email")
 )
 
 // RegistrationInfo contains both machine key and verifier information for OIDC validation.
@@ -154,7 +155,11 @@ func (a *AuthProviderOIDC) RegisterHandler(
 			extras = append(extras, oauth2.S256ChallengeOption(verifier))
 		case types.PKCEMethodPlain:
 			// oauth2 does not have a plain challenge option, so we add it manually
-			extras = append(extras, oauth2.SetAuthURLParam("code_challenge_method", "plain"), oauth2.SetAuthURLParam("code_challenge", verifier))
+			extras = append(
+				extras,
+				oauth2.SetAuthURLParam("code_challenge_method", "plain"),
+				oauth2.SetAuthURLParam("code_challenge", verifier),
+			)
 		}
 	}
 
@@ -264,17 +269,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// The user claims are now updated from the userinfo endpoint so we can verify the user
 	// against allowed emails, email domains, and groups.
-	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, &claims); err != nil {
-		httpError(writer, err)
-		return
-	}
-
-	if err := validateOIDCAllowedGroups(a.cfg.AllowedGroups, &claims); err != nil {
-		httpError(writer, err)
-		return
-	}
-
-	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
+	if err := doOIDCAuthorization(a.cfg, &claims); err != nil {
 		httpError(writer, err)
 		return
 	}
@@ -310,8 +305,14 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
 		if err != nil {
 			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
-				log.Debug().Caller().Str("registration_id", registrationId.String()).Msg("registration session expired before authorization completed")
-				httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", err))
+				log.Debug().
+					Caller().
+					Str("registration_id", registrationId.String()).
+					Msg("registration session expired before authorization completed")
+				httpError(
+					writer,
+					NewHTTPError(http.StatusGone, "login session expired, try again", err),
+				)
 
 				return
 			}
@@ -359,7 +360,11 @@ func extractCodeAndStateParamFromRequest(
 	state := req.URL.Query().Get("state")
 
 	if code == "" || state == "" {
-		return "", "", NewHTTPError(http.StatusBadRequest, "missing code or state parameter", errEmptyOIDCCallbackParams)
+		return "", "", NewHTTPError(
+			http.StatusBadRequest,
+			"missing code or state parameter",
+			errEmptyOIDCCallbackParams,
+		)
 	}
 
 	return code, state, nil
@@ -376,7 +381,11 @@ func (a *AuthProviderOIDC) getOauth2Token(
 	if a.cfg.PKCE.Enabled {
 		regInfo, ok := a.registrationCache.Get(state)
 		if !ok {
-			return nil, NewHTTPError(http.StatusNotFound, "registration not found", errNoOIDCRegistrationInfo)
+			return nil, NewHTTPError(
+				http.StatusNotFound,
+				"registration not found",
+				errNoOIDCRegistrationInfo,
+			)
 		}
 		if regInfo.Verifier != nil {
 			exchangeOpts = []oauth2.AuthCodeOption{oauth2.VerifierOption(*regInfo.Verifier)}
@@ -385,7 +394,11 @@ func (a *AuthProviderOIDC) getOauth2Token(
 
 	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, exchangeOpts...)
 	if err != nil {
-		return nil, NewHTTPError(http.StatusForbidden, "invalid code", fmt.Errorf("could not exchange code for token: %w", err))
+		return nil, NewHTTPError(
+			http.StatusForbidden,
+			"invalid code",
+			fmt.Errorf("could not exchange code for token: %w", err),
+		)
 	}
 
 	return oauth2Token, err
@@ -404,7 +417,11 @@ func (a *AuthProviderOIDC) extractIDToken(
 	verifier := a.oidcProvider.Verifier(&oidc.Config{ClientID: a.cfg.ClientID})
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return nil, NewHTTPError(http.StatusForbidden, "failed to verify id_token", fmt.Errorf("failed to verify ID token: %w", err))
+		return nil, NewHTTPError(
+			http.StatusForbidden,
+			"failed to verify id_token",
+			fmt.Errorf("failed to verify ID token: %w", err),
+		)
 	}
 
 	return idToken, nil
@@ -416,11 +433,13 @@ func validateOIDCAllowedDomains(
 	allowedDomains []string,
 	claims *types.OIDCClaims,
 ) error {
-	if len(allowedDomains) > 0 {
-		if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
-			!slices.Contains(allowedDomains, claims.Email[at+1:]) {
-			return NewHTTPError(http.StatusUnauthorized, "unauthorised domain", errOIDCAllowedDomains)
-		}
+	if at := strings.LastIndex(claims.Email, "@"); at < 0 ||
+		!slices.Contains(allowedDomains, claims.Email[at+1:]) {
+		return NewHTTPError(
+			http.StatusUnauthorized,
+			"unauthorised domain",
+			errOIDCAllowedDomains,
+		)
 	}
 
 	return nil
@@ -434,11 +453,9 @@ func validateOIDCAllowedGroups(
 	allowedGroups []string,
 	claims *types.OIDCClaims,
 ) error {
-	if len(allowedGroups) > 0 {
-		for _, group := range allowedGroups {
-			if slices.Contains(claims.Groups, group) {
-				return nil
-			}
+	for _, group := range allowedGroups {
+		if slices.Contains(claims.Groups, group) {
+			return nil
 		}
 
 		return NewHTTPError(http.StatusUnauthorized, "unauthorised group", errOIDCAllowedGroups)
@@ -453,9 +470,52 @@ func validateOIDCAllowedUsers(
 	allowedUsers []string,
 	claims *types.OIDCClaims,
 ) error {
-	if len(allowedUsers) > 0 &&
-		!slices.Contains(allowedUsers, claims.Email) {
+	if !slices.Contains(allowedUsers, claims.Email) {
 		return NewHTTPError(http.StatusUnauthorized, "unauthorised user", errOIDCAllowedUsers)
+	}
+
+	return nil
+}
+
+// doOIDCAuthorization applies authorization tests to claims.
+//
+// The following tests are always applied:
+//
+// - validateOIDCAllowedGroups
+//
+// The following tests are applied if cfg.EmailVerifiedRequired=false
+// or claims.email_verified=true:
+//
+// - validateOIDCAllowedDomains
+// - validateOIDCAllowedUsers
+//
+// NOTE that, contrary to the function name, validateOIDCAllowedUsers
+// only checks the email address -- not the username.
+func doOIDCAuthorization(
+	cfg *types.OIDCConfig,
+	claims *types.OIDCClaims,
+) error {
+	if len(cfg.AllowedGroups) > 0 {
+		if err := validateOIDCAllowedGroups(cfg.AllowedGroups, claims); err != nil {
+			return err
+		}
+	}
+
+	trustEmail := !cfg.EmailVerifiedRequired || bool(claims.EmailVerified)
+	hasEmailTests := len(cfg.AllowedDomains) > 0 || len(cfg.AllowedUsers) > 0
+	if !trustEmail && hasEmailTests {
+		return errOIDCUnverifiedEmail
+	}
+
+	if len(cfg.AllowedDomains) > 0 {
+		if err := validateOIDCAllowedDomains(cfg.AllowedDomains, claims); err != nil {
+			return err
+		}
+	}
+	if len(cfg.AllowedUsers) > 0 {
+		if err := validateOIDCAllowedUsers(cfg.AllowedUsers, claims); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -491,7 +551,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		user = &types.User{}
 	}
 
-	user.FromClaim(claims)
+	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
 
 	if newUser {
 		user, c, err = a.h.state.CreateUser(*user)
