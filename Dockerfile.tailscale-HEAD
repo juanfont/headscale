@@ -37,7 +37,9 @@ RUN GOARCH=$TARGETARCH go install -tags="${BUILD_TAGS}" -ldflags="\
       -v ./cmd/tailscale ./cmd/tailscaled ./cmd/containerboot
 
 FROM alpine:3.22
-RUN apk add --no-cache ca-certificates iptables iproute2 ip6tables curl
+# Upstream: ca-certificates ip6tables iptables iproute2
+# Tests: curl python3 (traceroute via BusyBox)
+RUN apk add --no-cache ca-certificates curl ip6tables iptables iproute2 python3
 
 COPY --from=build-env /go/bin/* /usr/local/bin/
 # For compat with the previous run.sh, although ideally you should be
