@@ -23,6 +23,7 @@ func TestResolveMagicDNS(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -79,6 +80,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -94,11 +96,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	b, _ := json.Marshal(extraRecords)
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh",
-			"-c",
-			"/bin/sleep 3 ; apk add python3 curl bind-tools ; update-ca-certificates ; tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("python3", "curl", "bind-tools"),
 	},
 		hsic.WithTestName("extrarecords"),
 		hsic.WithConfigEnv(map[string]string{

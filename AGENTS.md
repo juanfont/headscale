@@ -139,19 +139,19 @@ git commit -m "feat: add new feature"
 # Fix the issues and try committing again
 ```
 
-### Manual golangci-lint (Optional)
+### Manual golangci-lint
 
 While golangci-lint runs automatically via prek, you can also run it manually:
 
 ```bash
-# Use the same logic as the pre-commit hook (recommended)
-./.golangci-lint-hook.sh
-
-# Or manually specify a base reference
+# If you have upstream remote configured (recommended)
 golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
+
+# If you only have origin remote
+golangci-lint run --new-from-rev=main --timeout=5m --fix
 ```
 
-The `.golangci-lint-hook.sh` script automatically finds where your branch diverged from the main branch by checking `upstream/main`, `origin/main`, or `main` in that order.
+**Important**: Always use `--new-from-rev` to only lint changed files. This prevents formatting the entire repository and keeps changes focused on your actual modifications.
 
 ### Skipping Hooks (Not Recommended)
 
@@ -428,6 +428,7 @@ HEADSCALE_INTEGRATION_FULL_MATRIX=1 go run ./cmd/hi run "TestAutoApproveMultiNet
 ```
 
 **Full Matrix Dimensions:**
+
 - **Base scenarios (6):** All combinations of:
   - Auth methods: `authkey`, `webauth`
   - Approver types: `tag`, `user`, `group`
@@ -436,17 +437,20 @@ HEADSCALE_INTEGRATION_FULL_MATRIX=1 go run ./cmd/hi run "TestAutoApproveMultiNet
 - **Total combinations:** 6 × 2 × 2 = **24 tests**
 
 **Default (minimal) mode:** Runs only 3 representative tests covering all dimensions:
+
 - `authkey-tag-advertiseduringup-false-pol-database`
 - `webauth-user-advertiseduringup-true-pol-file`
 - `authkey-group-advertiseduringup-false-pol-file`
 
 **Full Matrix Requirements:**
+
 - **Time:** Up to 2 hours for complete execution
 - **Disk space:** ~2-3GB for all test artifacts
 - **Environment:** Clean Docker state before starting
 - **Timeout:** Use `--timeout=7200s` (2 hours) minimum
 
 **When to use full matrix:**
+
 - Before major releases or merges to main
 - After changes to route management, ACL evaluation, or policy engine
 - When debugging flaky tests or cross-scenario issues

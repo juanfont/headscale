@@ -285,10 +285,38 @@ func WithDERPAsIP() Option {
 }
 
 // buildEntrypoint builds the container entrypoint command based on configuration.
+// It constructs proper wait conditions instead of fixed sleeps:
+// 1. Wait for network to be ready
+// 2. Wait for config.yaml (always written after container start)
+// 3. Wait for CA certs if configured
+// 4. Update CA certificates
+// 5. Run headscale serve
+// 6. Sleep at end to keep container alive for log collection on shutdown.
 func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
-	entrypoint := "/bin/sleep 3 ; update-ca-certificates ; /usr/local/bin/headscale serve ; /bin/sleep 30"
+	var commands []string
 
-	return []string{"/bin/bash", "-c", entrypoint}
+	// Wait for network to be ready
+	commands = append(commands, "while ! ip route show default >/dev/null 2>&1; do sleep 0.1; done")
+
+	// Wait for config.yaml to be written (always written after container start)
+	commands = append(commands, "while [ ! -f /etc/headscale/config.yaml ]; do sleep 0.1; done")
+
+	// If CA certs are configured, wait for them to be written
+	if len(hsic.caCerts) > 0 {
+		commands = append(commands,
+			fmt.Sprintf("while [ ! -f %s/user-0.crt ]; do sleep 0.1; done", caCertRoot))
+	}
+
+	// Update CA certificates
+	commands = append(commands, "update-ca-certificates")
+
+	// Run headscale serve
+	commands = append(commands, "/usr/local/bin/headscale serve")
+
+	// Keep container alive after headscale exits for log collection
+	commands = append(commands, "/bin/sleep 30")
+
+	return []string{"/bin/bash", "-c", strings.Join(commands, " ; ")}
 }
 
 // New returns a new HeadscaleInContainer instance.
@@ -414,6 +442,7 @@ func New(
 	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 	}
+
 	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
 		{HostPort: "49090"},
 	}
