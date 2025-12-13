@@ -973,6 +973,23 @@ func (nv NodeView) HasNetworkChanges(other NodeView) bool {
 	return false
 }
 
+// HasPolicyChange reports whether the node has changes that affect policy evaluation.
+func (nv NodeView) HasPolicyChange(other NodeView) bool {
+	if nv.UserID() != other.UserID() {
+		return true
+	}
+
+	if !views.SliceEqual(nv.Tags(), other.Tags()) {
+		return true
+	}
+
+	if !slices.Equal(nv.IPs(), other.IPs()) {
+		return true
+	}
+
+	return false
+}
+
 // TailNodes converts a slice of NodeViews into Tailscale tailcfg.Nodes.
 func TailNodes(
 	nodes views.Slice[NodeView],

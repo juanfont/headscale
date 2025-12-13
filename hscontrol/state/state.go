@@ -1675,6 +1675,9 @@ func (s *State) updatePolicyManagerNodes() (change.ChangeSet, error) {
 	}
 
 	if changed {
+		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)
+		// affect ACL visibility. Without this, cached peer relationships use stale data.
+		s.nodeStore.RebuildPeerMaps()
 		return change.PolicyChange(), nil
 	}
 
