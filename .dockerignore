@@ -21,10 +21,3 @@ LICENSE
 node_modules/
 package-lock.json
 package.json
-
-# Ignore test artifacts and build outputs
-control_logs/
-headscale
-hi
-cmd/hi/hi
-logs/
