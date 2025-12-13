@@ -204,7 +204,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.
 	}
 
 	for _, node := range nodes.All() {
-		// Skip tagged nodes
+		// Skip tagged nodes - they are identified by tags, not users
 		if node.IsTagged() {
 			continue
 		}

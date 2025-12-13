@@ -414,6 +414,7 @@ func New(
 	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 	}
+
 	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
 		{HostPort: "49090"},
 	}
