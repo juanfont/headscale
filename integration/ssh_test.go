@@ -42,11 +42,8 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Sce
 			// tailscaled to stop configuring the wgengine, causing it
 			// to not configure DNS.
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add openssh ; adduser ssh-it-user ; update-ca-certificates ; tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("openssh"),
+			tsic.WithExtraCommands("adduser ssh-it-user"),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
@@ -395,8 +392,10 @@ func doSSHWithRetry(t *testing.T, client TailscaleClient, peer TailscaleClient, 
 	log.Printf("Running from %s to %s", client.Hostname(), peer.Hostname())
 	log.Printf("Command: %s", strings.Join(command, " "))
 
-	var result, stderr string
-	var err error
+	var (
+		result, stderr string
+		err            error
+	)
 
 	if retry {
 		// Use assert.EventuallyWithT to retry SSH connections for success cases
@@ -455,6 +454,7 @@ func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient
 func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	t.Helper()
 	assert.Error(t, err)
+
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
 	}
@@ -462,7 +462,7 @@ func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 
 // TestSSHAutogroupSelf tests that SSH with autogroup:self works correctly:
 // - Users can SSH to their own devices
-// - Users cannot SSH to other users' devices
+// - Users cannot SSH to other users' devices.
 func TestSSHAutogroupSelf(t *testing.T) {
 	IntegrationSkip(t)
 
