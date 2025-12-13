@@ -498,7 +498,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	policyChanged := pm.nodesPolicyChanged(nodes)
+	policyChanged := pm.nodesHavePolicyAffectingChanges(nodes)
 
 	// Invalidate cache entries for nodes that changed.
 	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
@@ -538,26 +538,19 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	return false, nil
 }
 
-// nodesPolicyChanged checks if any policy-affecting node properties have changed.
-// This includes node additions, removals, and changes to tags, user ownership, or IPs.
-// Returns true early on first detected change for efficiency.
-func (pm *PolicyManager) nodesPolicyChanged(newNodes views.Slice[types.NodeView]) bool {
-	// Different count means nodes were added or removed
+func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[types.NodeView]) bool {
 	if pm.nodes.Len() != newNodes.Len() {
 		return true
 	}
 
-	// Build map of old nodes for O(1) lookup
 	oldNodes := make(map[types.NodeID]types.NodeView, pm.nodes.Len())
 	for _, node := range pm.nodes.All() {
 		oldNodes[node.ID()] = node
 	}
 
-	// Check each new node: must exist in old set with same policy properties
 	for _, newNode := range newNodes.All() {
 		oldNode, exists := oldNodes[newNode.ID()]
 		if !exists {
-			// Node was added (and since counts match, another was removed)
 			return true
 		}
 

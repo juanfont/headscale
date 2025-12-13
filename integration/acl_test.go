@@ -2620,6 +2620,57 @@ func TestACLTagPropagation(t *testing.T) {
 			tagChange:     []string{"tag:internal"}, // remove tag:web, keep tag:internal
 			finalAccess:   false,                    // user2 cannot access (no ACL for tag:internal)
 		},
+		{
+			name: "tag-change-updates-peer-identity",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:server": policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:server"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:server")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 1,
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				require.NoError(t, err)
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Clients[0], user1Clients[0], nodes[0].GetId()
+			},
+			initialAccess: false,                  // user2 cannot access user1 (no tag yet)
+			tagChange:     []string{"tag:server"}, // assign tag:server
+			finalAccess:   true,                   // user2 can now access via tag:server
+		},
 	}
 
 	for _, tt := range tests {
@@ -2771,4 +2822,189 @@ func TestACLTagPropagation(t *testing.T) {
 			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
 		})
 	}
+}
+
+// TestACLTagPropagationPortSpecific validates that tag changes correctly update
+// port-specific ACLs. When a tag change restricts access to specific ports,
+// the peer should remain visible but only the allowed ports should be accessible.
+func TestACLTagPropagationPortSpecific(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Policy: tag:webserver allows port 80, tag:sshonly allows port 22
+	// When we change from tag:webserver to tag:sshonly, HTTP should fail but ping should still work
+	policy := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			"tag:webserver": policyv2.Owners{usernameOwner("user1@")},
+			"tag:sshonly":   policyv2.Owners{usernameOwner("user1@")},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+				},
+			},
+			// user2 can access tag:webserver on port 80 only
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:webserver"), tailcfg.PortRange{First: 80, Last: 80}),
+				},
+			},
+			// user2 can access tag:sshonly on port 22 only
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:sshonly"), tailcfg.PortRange{First: 22, Last: 22}),
+				},
+			},
+			// Allow ICMP for ping tests
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:webserver"), tailcfg.PortRangeAny),
+					aliasWithPorts(tagp("tag:sshonly"), tailcfg.PortRangeAny),
+				},
+				Protocol: "icmp",
+			},
+			// Return path
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{tagp("tag:webserver"), tagp("tag:sshonly")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/sh", "-c",
+				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+			}),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("acl-tag-port-specific"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	// Create user1's node WITH tag:webserver
+	taggedKey, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["user1"].GetId(), false, false, []string{"tag:webserver"},
+	)
+	require.NoError(t, err)
+
+	user1Node, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh", "-c",
+			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+		}),
+		tsic.WithDockerWorkdir("/"),
+		tsic.WithNetfilter("off"),
+	)
+	require.NoError(t, err)
+
+	err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	// Create user2's node
+	untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+	require.NoError(t, err)
+
+	user2Node, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh", "-c",
+			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; tailscaled --tun=tsdev",
+		}),
+		tsic.WithDockerWorkdir("/"),
+		tsic.WithNetfilter("off"),
+	)
+	require.NoError(t, err)
+
+	err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	nodes, err := headscale.ListNodes("user1")
+	require.NoError(t, err)
+
+	targetNodeID := nodes[0].GetId()
+
+	targetFQDN, err := user1Node.FQDN()
+	require.NoError(t, err)
+
+	targetURL := fmt.Sprintf("http://%s/etc/hostname", targetFQDN)
+
+	// Step 1: Verify initial state - HTTP on port 80 should work with tag:webserver
+	t.Log("Step 1: Verifying HTTP access with tag:webserver (should succeed)")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := user2Node.Curl(targetURL)
+		assert.NoError(c, err, "HTTP should work with tag:webserver")
+		assert.NotEmpty(c, result)
+	}, 30*time.Second, 500*time.Millisecond, "initial HTTP access with tag:webserver")
+
+	// Step 2: Change tag from webserver to sshonly
+	t.Logf("Step 2: Changing tag from webserver to sshonly on node %d", targetNodeID)
+	err = headscale.SetNodeTags(targetNodeID, []string{"tag:sshonly"})
+	require.NoError(t, err)
+
+	// Step 3: Verify peer is still visible in NetMap (partial access, not full removal)
+	t.Log("Step 3: Verifying peer remains visible in NetMap after tag change")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2Node.Status()
+		assert.NoError(c, err)
+
+		targetHostname := user1Node.Hostname()
+		found := false
+
+		for _, peer := range status.Peer {
+			if strings.Contains(peer.HostName, targetHostname) {
+				found = true
+				break
+			}
+		}
+
+		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
+	}, 30*time.Second, 500*time.Millisecond, "peer visibility after tag change")
+
+	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
+	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, err := user2Node.Curl(targetURL)
+		assert.Error(c, err, "HTTP should fail with tag:sshonly (only port 22 allowed)")
+	}, 30*time.Second, 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
+
+	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
 }

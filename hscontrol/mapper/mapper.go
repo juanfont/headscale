@@ -143,30 +143,6 @@ func (m *mapper) fullMapResponse(
 ) (*tailcfg.MapResponse, error) {
 	peers := m.state.ListPeers(nodeID)
 
-	// Build a set of current peer IDs for quick lookup
-	peerIDs := make(map[types.NodeID]bool, peers.Len())
-	for _, peer := range peers.All() {
-		peerIDs[peer.ID()] = true
-	}
-
-	// Calculate removed peers: all nodes except self and current peers.
-	// The Tailscale client only removes peers from its state if they are in PeersRemoved.
-	// When sending an empty Peers list (len(Peers) == 0), the client doesn't clear existing
-	// peers because it interprets empty list as "no change" (delta mode).
-	// By including all non-peer nodes in PeersRemoved, we ensure the client removes
-	// any previously visible peers that are no longer accessible.
-	allNodes := m.state.ListNodes()
-	removedPeerIDs := make([]types.NodeID, 0, allNodes.Len())
-
-	for _, node := range allNodes.All() {
-		// Skip self and current peers
-		if node.ID() == nodeID || peerIDs[node.ID()] {
-			continue
-		}
-
-		removedPeerIDs = append(removedPeerIDs, node.ID())
-	}
-
 	return m.NewMapResponseBuilder(nodeID).
 		WithDebugType(fullResponseDebug).
 		WithCapabilityVersion(capVer).
@@ -180,7 +156,6 @@ func (m *mapper) fullMapResponse(
 		WithUserProfiles(peers).
 		WithPacketFilters().
 		WithPeers(peers).
-		WithPeersRemoved(removedPeerIDs...).
 		Build()
 }
 
