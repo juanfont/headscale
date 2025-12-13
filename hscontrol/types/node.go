@@ -973,6 +973,25 @@ func (nv NodeView) HasNetworkChanges(other NodeView) bool {
 	return false
 }
 
+// HasPolicyChange returns true if the node has changes that affect policy evaluation.
+// This includes user ownership, tags, and IPs - properties used in ACL rule matching.
+// Used to detect when policy filters need recompilation after node updates.
+func (nv NodeView) HasPolicyChange(other NodeView) bool {
+	if nv.UserID() != other.UserID() {
+		return true
+	}
+
+	if !slices.Equal(nv.Tags().AsSlice(), other.Tags().AsSlice()) {
+		return true
+	}
+
+	if !slices.Equal(nv.IPs(), other.IPs()) {
+		return true
+	}
+
+	return false
+}
+
 // TailNodes converts a slice of NodeViews into Tailscale tailcfg.Nodes.
 func TailNodes(
 	nodes views.Slice[NodeView],

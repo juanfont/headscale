@@ -135,6 +135,7 @@ jobs:
           - TestACLAutogroupTagged
           - TestACLAutogroupSelf
           - TestACLPolicyPropagationOverTime
+          - TestACLTagPropagation
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass
