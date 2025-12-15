@@ -77,11 +77,8 @@ func aclScenario(
 			// tailscaled to stop configuring the wgengine, causing it
 			// to not configure DNS.
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
@@ -311,6 +308,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 				[]tsic.Option{},
 				hsic.WithACLPolicy(&testCase.policy),
 			)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
@@ -759,6 +757,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 
 			test1fqdn, err := test1.FQDN()
 			require.NoError(t, err)
+
 			test1ip4URL := fmt.Sprintf("http://%s/etc/hostname", test1ip4.String())
 			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
 			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
@@ -770,6 +769,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 
 			test2fqdn, err := test2.FQDN()
 			require.NoError(t, err)
+
 			test2ip4URL := fmt.Sprintf("http://%s/etc/hostname", test2ip4.String())
 			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
 			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
@@ -781,6 +781,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 
 			test3fqdn, err := test3.FQDN()
 			require.NoError(t, err)
+
 			test3ip4URL := fmt.Sprintf("http://%s/etc/hostname", test3ip4.String())
 			test3ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test3ip6.String())
 			test3fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test3fqdn)
@@ -1055,6 +1056,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 			test1fqdn, err := test1.FQDN()
 			require.NoError(t, err)
+
 			test1ipURL := fmt.Sprintf("http://%s/etc/hostname", test1ip.String())
 			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
 			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
@@ -1067,6 +1069,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 			test2fqdn, err := test2.FQDN()
 			require.NoError(t, err)
+
 			test2ipURL := fmt.Sprintf("http://%s/etc/hostname", test2ip.String())
 			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
 			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
@@ -1142,6 +1145,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -1151,11 +1155,8 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			// tailscaled to stop configuring the wgengine, causing it
 			// to not configure DNS.
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
@@ -1221,6 +1222,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 		// Get the current policy and check
 		// if it is the same as the one we set.
 		var output *policyv2.Policy
+
 		err = executeAndUnmarshal(
 			headscale,
 			[]string{
@@ -1302,9 +1304,11 @@ func TestACLAutogroupMember(t *testing.T) {
 	// Test that untagged nodes can access each other
 	for _, client := range allClients {
 		var clientIsUntagged bool
+
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			status, err := client.Status()
 			assert.NoError(c, err)
+
 			clientIsUntagged = status.Self.Tags == nil || status.Self.Tags.Len() == 0
 			assert.True(c, clientIsUntagged, "Expected client %s to be untagged for autogroup:member test", client.Hostname())
 		}, 10*time.Second, 200*time.Millisecond, "Waiting for client %s to be untagged", client.Hostname())
@@ -1319,9 +1323,11 @@ func TestACLAutogroupMember(t *testing.T) {
 			}
 
 			var peerIsUntagged bool
+
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := peer.Status()
 				assert.NoError(c, err)
+
 				peerIsUntagged = status.Self.Tags == nil || status.Self.Tags.Len() == 0
 				assert.True(c, peerIsUntagged, "Expected peer %s to be untagged for autogroup:member test", peer.Hostname())
 			}, 10*time.Second, 200*time.Millisecond, "Waiting for peer %s to be untagged", peer.Hostname())
@@ -1355,6 +1361,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -1397,23 +1404,28 @@ func TestACLAutogroupTagged(t *testing.T) {
 
 		// Create nodes with proper naming
 		for i := range spec.NodesPerUser {
-			var authKey string
-			var version string
+			var (
+				authKey string
+				version string
+			)
 
 			if i == 0 {
 				// First node is tagged - use tagged PreAuthKey
 				authKey = taggedAuthKey.GetKey()
 				version = "head"
+
 				t.Logf("Creating tagged node for %s", userStr)
 			} else {
 				// Second node is untagged - use untagged PreAuthKey
 				authKey = untaggedAuthKey.GetKey()
 				version = "unstable"
+
 				t.Logf("Creating untagged node for %s", userStr)
 			}
 
 			// Get the network for this scenario
 			networks := scenario.Networks()
+
 			var network *dockertest.Network
 			if len(networks) > 0 {
 				network = networks[0]
@@ -1425,11 +1437,8 @@ func TestACLAutogroupTagged(t *testing.T) {
 				tsic.WithHeadscaleName(headscale.GetHostname()),
 				tsic.WithNetwork(network),
 				tsic.WithNetfilter("off"),
-				tsic.WithDockerEntrypoint([]string{
-					"/bin/sh",
-					"-c",
-					"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-				}),
+				tsic.WithPackages("curl"),
+				tsic.WithWebserver(80),
 				tsic.WithDockerWorkdir("/"),
 			}
 
@@ -1463,10 +1472,13 @@ func TestACLAutogroupTagged(t *testing.T) {
 	// Wait for nodes to see only their allowed peers
 	// Tagged nodes should see each other (2 tagged nodes total)
 	// Untagged nodes should see no one
-	var taggedClients []TailscaleClient
-	var untaggedClients []TailscaleClient
+	var (
+		taggedClients   []TailscaleClient
+		untaggedClients []TailscaleClient
+	)
 
 	// First, categorize nodes by checking their tags
+
 	for _, client := range allClients {
 		hostname := client.Hostname()
 
@@ -1480,12 +1492,14 @@ func TestACLAutogroupTagged(t *testing.T) {
 
 				// Add to tagged list only once we've verified it
 				found := false
+
 				for _, tc := range taggedClients {
 					if tc.Hostname() == hostname {
 						found = true
 						break
 					}
 				}
+
 				if !found {
 					taggedClients = append(taggedClients, client)
 				}
@@ -1495,12 +1509,14 @@ func TestACLAutogroupTagged(t *testing.T) {
 
 				// Add to untagged list only once we've verified it
 				found := false
+
 				for _, uc := range untaggedClients {
 					if uc.Hostname() == hostname {
 						found = true
 						break
 					}
 				}
+
 				if !found {
 					untaggedClients = append(untaggedClients, client)
 				}
@@ -1527,6 +1543,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			status, err := client.Status()
 			assert.NoError(c, err)
+
 			if status.Self.Tags != nil {
 				assert.Equal(c, 0, status.Self.Tags.Len(), "untagged node %s should have no tags", client.Hostname())
 			}
@@ -1544,6 +1561,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+
 			t.Logf("Testing connection from tagged node %s to tagged node %s", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1562,6 +1580,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+
 			t.Logf("Testing connection from untagged node %s to tagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1581,6 +1600,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+
 			t.Logf("Testing connection from untagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1598,6 +1618,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			require.NoError(t, err)
 
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+
 			t.Logf("Testing connection from tagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1613,7 +1634,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 // Test structure:
 // - user1: 2 regular nodes (tests autogroup:self for same-user access)
 // - user2: 2 regular nodes (tests autogroup:self for same-user access and cross-user isolation)
-// - user-router: 1 node with tag:router-node (tests that autogroup:self doesn't interfere with other rules)
+// - user-router: 1 node with tag:router-node (tests that autogroup:self doesn't interfere with other rules).
 func TestACLAutogroupSelf(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1665,17 +1686,15 @@ func TestACLAutogroupSelf(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
@@ -1687,6 +1706,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 
 	// Add router node for user-router (single shared router node)
 	networks := scenario.Networks()
+
 	var network *dockertest.Network
 	if len(networks) > 0 {
 		network = networks[0]
@@ -1710,11 +1730,8 @@ func TestACLAutogroupSelf(t *testing.T) {
 		tsic.WithHeadscaleName(headscale.GetHostname()),
 		tsic.WithNetwork(network),
 		tsic.WithNetfilter("off"),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh",
-			"-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
+		tsic.WithWebserver(80),
 		tsic.WithDockerWorkdir("/"),
 	)
 	require.NoError(t, err)
@@ -1737,16 +1754,20 @@ func TestACLAutogroupSelf(t *testing.T) {
 	require.NoError(t, err)
 
 	var user1Regular, user2Regular []TailscaleClient
+
 	for _, client := range user1Clients {
 		status, err := client.Status()
 		require.NoError(t, err)
+
 		if status.Self != nil && (status.Self.Tags == nil || status.Self.Tags.Len() == 0) {
 			user1Regular = append(user1Regular, client)
 		}
 	}
+
 	for _, client := range user2Clients {
 		status, err := client.Status()
 		require.NoError(t, err)
+
 		if status.Self != nil && (status.Self.Tags == nil || status.Self.Tags.Len() == 0) {
 			user2Regular = append(user2Regular, client)
 		}
@@ -1764,10 +1785,12 @@ func TestACLAutogroupSelf(t *testing.T) {
 		err := client.WaitForPeers(2, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 		require.NoError(t, err, "user1 regular device %s should see 2 peers (1 same-user peer + 1 router)", client.Hostname())
 	}
+
 	for _, client := range user2Regular {
 		err := client.WaitForPeers(2, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 		require.NoError(t, err, "user2 regular device %s should see 2 peers (1 same-user peer + 1 router)", client.Hostname())
 	}
+
 	err = routerClient.WaitForPeers(4, integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 	require.NoError(t, err, "router should see 4 peers (all group:home regular nodes)")
 
@@ -1817,6 +1840,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	for _, client := range user1Regular {
 		fqdn, err := routerClient.FQDN()
 		require.NoError(t, err)
+
 		url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 		t.Logf("url from %s (user1) to %s (router-node) - should SUCCEED", client.Hostname(), fqdn)
 
@@ -1831,6 +1855,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	for _, client := range user2Regular {
 		fqdn, err := routerClient.FQDN()
 		require.NoError(t, err)
+
 		url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 		t.Logf("url from %s (user2) to %s (router-node) - should SUCCEED", client.Hostname(), fqdn)
 
@@ -1880,6 +1905,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -1887,11 +1913,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		[]tsic.Option{
 			// Install iptables to enable packet filtering for ACL tests.
 			// Packet filters are essential for testing autogroup:self and other ACL policies.
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add python3 curl iptables ip6tables ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl", "iptables", "ip6tables"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("aclpropagation"),
@@ -1960,11 +1983,13 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Phase 1: Allow all policy
 		t.Logf("Iteration %d: Setting allow-all policy", iteration)
+
 		err = headscale.SetPolicy(allowAllPolicy)
 		require.NoError(t, err)
 
 		// Wait for peer lists to sync with allow-all policy
 		t.Logf("Iteration %d: Phase 1 - Waiting for peer lists to sync with allow-all policy", iteration)
+
 		err = scenario.WaitForTailscaleSync()
 		require.NoError(t, err, "iteration %d: Phase 1 - failed to sync after allow-all policy", iteration)
 
@@ -1992,11 +2017,13 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
+
 		err = headscale.SetPolicy(autogroupSelfPolicy)
 		require.NoError(t, err)
 
 		// Wait for peer lists to sync with autogroup:self - ensures cross-user peers are removed
 		t.Logf("Iteration %d: Phase 2 - Waiting for peer lists to sync with autogroup:self", iteration)
+
 		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
 
@@ -2082,11 +2109,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		newClient := scenario.MustAddAndLoginClient(t, "user1", "all", headscale,
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh",
-				"-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 			tsic.WithNetwork(networks[0]),
 		)
@@ -2094,6 +2118,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Wait for peer lists to sync after new node addition (now 3 user1 nodes, still autogroup:self)
 		t.Logf("Iteration %d: Phase 2b - Waiting for peer lists to sync after new node addition", iteration)
+
 		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2b - failed to sync after new node addition", iteration)
 
@@ -2144,8 +2169,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		t.Logf("Iteration %d: Phase 2b - Deleting the newly added node from user1", iteration)
 
 		// Get the node list and find the newest node (highest ID)
-		var nodeList []*v1.Node
-		var nodeToDeleteID uint64
+		var (
+			nodeList       []*v1.Node
+			nodeToDeleteID uint64
+		)
+
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			nodeList, err = headscale.ListNodes("user1")
 			assert.NoError(ct, err)
@@ -2167,15 +2195,19 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Remove the deleted client from the scenario's user.Clients map
 		// This is necessary for WaitForTailscaleSyncPerUser to calculate correct peer counts
 		t.Logf("Iteration %d: Phase 2b - Removing deleted client from scenario", iteration)
+
 		for clientName, client := range scenario.users["user1"].Clients {
 			status := client.MustStatus()
+
 			nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
 			if err != nil {
 				continue
 			}
+
 			if nodeID == nodeToDeleteID {
 				delete(scenario.users["user1"].Clients, clientName)
 				t.Logf("Iteration %d: Phase 2b - Removed client %s (node ID %d) from scenario", iteration, clientName, nodeToDeleteID)
+
 				break
 			}
 		}
@@ -2192,6 +2224,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Use WaitForTailscaleSyncPerUser because autogroup:self is still active,
 		// so nodes only see same-user peers, not all nodes
 		t.Logf("Iteration %d: Phase 2b - Waiting for sync after node deletion (with autogroup:self)", iteration)
+
 		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: failed to sync after node deletion", iteration)
 
@@ -2209,6 +2242,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 		// Phase 3: User1 can access user2 but not reverse
 		t.Logf("Iteration %d: Phase 3 - Setting user1->user2 directional policy", iteration)
+
 		err = headscale.SetPolicy(user1ToUser2Policy)
 		require.NoError(t, err)
 
