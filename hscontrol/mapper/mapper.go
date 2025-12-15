@@ -14,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -179,52 +180,108 @@ func (m *mapper) selfMapResponse(
 	return ma, err
 }
 
-func (m *mapper) derpMapResponse(
-	nodeID types.NodeID,
-) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(derpResponseDebug).
-		WithDERPMap().
-		Build()
-}
-
-// PeerChangedPatchResponse creates a patch MapResponse with
-// incoming update from a state change.
-func (m *mapper) peerChangedPatchResponse(
-	nodeID types.NodeID,
-	changed []*tailcfg.PeerChange,
-) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(patchResponseDebug).
-		WithPeerChangedPatch(changed).
-		Build()
-}
-
-// peerChangeResponse returns a MapResponse with changed or added nodes.
-func (m *mapper) peerChangeResponse(
+// policyChangeResponse creates a MapResponse for policy changes.
+// It sends:
+// - PeersRemoved for peers that are no longer visible after the policy change
+// - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
+// - Updated PacketFilters
+// - Updated SSHPolicy (SSH rules may reference users/groups that changed)
+// This avoids the issue where an empty Peers slice is interpreted by Tailscale
+// clients as "no change" rather than "no peers".
+func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	changedNodeID types.NodeID,
+	removedPeers []tailcfg.NodeID,
+	currentPeers views.Slice[types.NodeView],
 ) (*tailcfg.MapResponse, error) {
-	peers := m.state.ListPeers(nodeID, changedNodeID)
-
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(changeResponseDebug).
+	builder := m.NewMapResponseBuilder(nodeID).
+		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithUserProfiles(peers).
-		WithPeerChanges(peers).
-		Build()
+		WithPacketFilters().
+		WithSSHPolicy()
+
+	if len(removedPeers) > 0 {
+		// Convert tailcfg.NodeID to types.NodeID for WithPeersRemoved
+		removedIDs := make([]types.NodeID, len(removedPeers))
+		for i, id := range removedPeers {
+			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
+		}
+
+		builder.WithPeersRemoved(removedIDs...)
+	}
+
+	// Send remaining peers in PeersChanged - their AllowedIPs may have
+	// changed due to the policy update (e.g., different routes allowed).
+	if currentPeers.Len() > 0 {
+		builder.WithPeerChanges(currentPeers)
+	}
+
+	return builder.Build()
 }
 
-// peerRemovedResponse creates a MapResponse indicating that a peer has been removed.
-func (m *mapper) peerRemovedResponse(
+// buildFromChange builds a MapResponse from a change.Change specification.
+// This provides fine-grained control over what gets included in the response.
+func (m *mapper) buildFromChange(
 	nodeID types.NodeID,
-	removedNodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+	resp *change.Change,
 ) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(removeResponseDebug).
-		WithPeersRemoved(removedNodeID).
-		Build()
+	if resp.IsEmpty() {
+		return nil, nil //nolint:nilnil // Empty response means nothing to send, not an error
+	}
+
+	// If this is a self-update (the changed node is the receiving node),
+	// send a self-update response to ensure the node sees its own changes.
+	if resp.OriginNode != 0 && resp.OriginNode == nodeID {
+		return m.selfMapResponse(nodeID, capVer)
+	}
+
+	builder := m.NewMapResponseBuilder(nodeID).
+		WithCapabilityVersion(capVer).
+		WithDebugType(changeResponseDebug)
+
+	if resp.IncludeSelf {
+		builder.WithSelfNode()
+	}
+
+	if resp.IncludeDERPMap {
+		builder.WithDERPMap()
+	}
+
+	if resp.IncludeDNS {
+		builder.WithDNSConfig()
+	}
+
+	if resp.IncludeDomain {
+		builder.WithDomain()
+	}
+
+	if resp.IncludePolicy {
+		builder.WithPacketFilters()
+		builder.WithSSHPolicy()
+	}
+
+	if resp.SendAllPeers {
+		peers := m.state.ListPeers(nodeID)
+		builder.WithUserProfiles(peers)
+		builder.WithPeers(peers)
+	} else {
+		if len(resp.PeersChanged) > 0 {
+			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
+			builder.WithUserProfiles(peers)
+			builder.WithPeerChanges(peers)
+		}
+
+		if len(resp.PeersRemoved) > 0 {
+			builder.WithPeersRemoved(resp.PeersRemoved...)
+		}
+	}
+
+	if len(resp.PeerPatches) > 0 {
+		builder.WithPeerChangedPatch(resp.PeerPatches)
+	}
+
+	return builder.Build()
 }
 
 func writeDebugMapResponse(

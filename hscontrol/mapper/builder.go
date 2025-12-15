@@ -29,10 +29,8 @@ type debugType string
 const (
 	fullResponseDebug   debugType = "full"
 	selfResponseDebug   debugType = "self"
-	patchResponseDebug  debugType = "patch"
-	removeResponseDebug debugType = "remove"
 	changeResponseDebug debugType = "change"
-	derpResponseDebug   debugType = "derp"
+	policyResponseDebug debugType = "policy"
 )
 
 // NewMapResponseBuilder creates a new builder with basic fields set.

@@ -271,7 +271,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-expireTicker.C:
-			var expiredNodeChanges []change.ChangeSet
+			var expiredNodeChanges []change.Change
 			var changed bool
 
 			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
@@ -305,7 +305,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.state.SetDERPMap(derpMap)
 
-			h.Change(change.DERPSet)
+			h.Change(change.DERPMap())
 
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
@@ -313,7 +313,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			h.Change(change.ExtraRecordsSet)
+			h.Change(change.ExtraRecords())
 		}
 	}
 }
@@ -988,7 +988,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // Change is used to send changes to nodes.
 // All change should be enqueued here and empty will be automatically
 // ignored.
-func (h *Headscale) Change(cs ...change.ChangeSet) {
+func (h *Headscale) Change(cs ...change.Change) {
 	h.mapBatcher.AddWork(cs...)
 }
 

@@ -1,241 +1,445 @@
-//go:generate go tool stringer -type=Change
 package change
 
 import (
-	"errors"
+	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"tailscale.com/tailcfg"
 )
 
-type (
-	NodeID = types.NodeID
-	UserID = types.UserID
-)
+// Change declares what should be included in a MapResponse.
+// The mapper uses this to build the response without guessing.
+type Change struct {
+	// Reason is a human-readable description for logging/debugging.
+	Reason string
 
-type Change int
+	// TargetNode, if set, means this response should only be sent to this node.
+	TargetNode types.NodeID
 
-const (
-	ChangeUnknown Change = 0
+	// OriginNode is the node that triggered this change.
+	// Used for self-update detection and filtering.
+	OriginNode types.NodeID
 
-	// Deprecated: Use specific change instead
-	// Full is a legacy change to ensure places where we
-	// have not yet determined the specific update, can send.
-	Full Change = 9
+	// Content flags - what to include in the MapResponse.
+	IncludeSelf    bool
+	IncludeDERPMap bool
+	IncludeDNS     bool
+	IncludeDomain  bool
+	IncludePolicy  bool // PacketFilters and SSHPolicy - always sent together
 
-	// Server changes.
-	Policy       Change = 11
-	DERP         Change = 12
-	ExtraRecords Change = 13
+	// Peer changes.
+	PeersChanged []types.NodeID
+	PeersRemoved []types.NodeID
+	PeerPatches  []*tailcfg.PeerChange
+	SendAllPeers bool
 
-	// Node changes.
-	NodeCameOnline  Change = 21
-	NodeWentOffline Change = 22
-	NodeRemove      Change = 23
-	NodeKeyExpiry   Change = 24
-	NodeNewOrUpdate Change = 25
-	NodeEndpoint    Change = 26
-	NodeDERP        Change = 27
+	// RequiresRuntimePeerComputation indicates that peer visibility
+	// must be computed at runtime per-node. Used for policy changes
+	// where each node may have different peer visibility.
+	RequiresRuntimePeerComputation bool
+}
 
-	// User changes.
-	UserNewOrUpdate Change = 51
-	UserRemove      Change = 52
-)
+// boolFieldNames returns all boolean field names for exhaustive testing.
+// When adding a new boolean field to Change, add it here.
+// Tests use reflection to verify this matches the struct.
+func (r Change) boolFieldNames() []string {
+	return []string{
+		"IncludeSelf",
+		"IncludeDERPMap",
+		"IncludeDNS",
+		"IncludeDomain",
+		"IncludePolicy",
+		"SendAllPeers",
+		"RequiresRuntimePeerComputation",
+	}
+}
 
-// AlsoSelf reports whether this change should also be sent to the node itself.
-func (c Change) AlsoSelf() bool {
-	switch c {
-	case NodeRemove, NodeKeyExpiry, NodeNewOrUpdate:
-		return true
+func (r Change) Merge(other Change) Change {
+	merged := r
+
+	merged.IncludeSelf = r.IncludeSelf || other.IncludeSelf
+	merged.IncludeDERPMap = r.IncludeDERPMap || other.IncludeDERPMap
+	merged.IncludeDNS = r.IncludeDNS || other.IncludeDNS
+	merged.IncludeDomain = r.IncludeDomain || other.IncludeDomain
+	merged.IncludePolicy = r.IncludePolicy || other.IncludePolicy
+	merged.SendAllPeers = r.SendAllPeers || other.SendAllPeers
+	merged.RequiresRuntimePeerComputation = r.RequiresRuntimePeerComputation || other.RequiresRuntimePeerComputation
+
+	merged.PeersChanged = uniqueNodeIDs(append(r.PeersChanged, other.PeersChanged...))
+	merged.PeersRemoved = uniqueNodeIDs(append(r.PeersRemoved, other.PeersRemoved...))
+	merged.PeerPatches = append(r.PeerPatches, other.PeerPatches...)
+
+	if r.Reason != "" && other.Reason != "" && r.Reason != other.Reason {
+		merged.Reason = r.Reason + "; " + other.Reason
+	} else if other.Reason != "" {
+		merged.Reason = other.Reason
 	}
 
-	return false
+	return merged
 }
 
-type ChangeSet struct {
-	Change Change
-
-	// SelfUpdateOnly indicates that this change should only be sent
-	// to the node itself, and not to other nodes.
-	// This is used for changes that are not relevant to other nodes.
-	// NodeID must be set if this is true.
-	SelfUpdateOnly bool
-
-	// NodeID if set, is the ID of the node that is being changed.
-	// It must be set if this is a node change.
-	NodeID types.NodeID
-
-	// UserID if set, is the ID of the user that is being changed.
-	// It must be set if this is a user change.
-	UserID types.UserID
-
-	// IsSubnetRouter indicates whether the node is a subnet router.
-	IsSubnetRouter bool
-
-	// NodeExpiry is set if the change is NodeKeyExpiry.
-	NodeExpiry *time.Time
-}
-
-func (c *ChangeSet) Validate() error {
-	if c.Change >= NodeCameOnline || c.Change <= NodeNewOrUpdate {
-		if c.NodeID == 0 {
-			return errors.New("ChangeSet.NodeID must be set for node updates")
-		}
+func (r Change) IsEmpty() bool {
+	if r.IncludeSelf || r.IncludeDERPMap || r.IncludeDNS ||
+		r.IncludeDomain || r.IncludePolicy || r.SendAllPeers {
+		return false
 	}
 
-	if c.Change >= UserNewOrUpdate || c.Change <= UserRemove {
-		if c.UserID == 0 {
-			return errors.New("ChangeSet.UserID must be set for user updates")
-		}
+	if r.RequiresRuntimePeerComputation {
+		return false
 	}
 
-	return nil
+	return len(r.PeersChanged) == 0 &&
+		len(r.PeersRemoved) == 0 &&
+		len(r.PeerPatches) == 0
 }
 
-// Empty reports whether the ChangeSet is empty, meaning it does not
-// represent any change.
-func (c ChangeSet) Empty() bool {
-	return c.Change == ChangeUnknown && c.NodeID == 0 && c.UserID == 0
+func (r Change) IsSelfOnly() bool {
+	if r.TargetNode == 0 || !r.IncludeSelf {
+		return false
+	}
+
+	if r.SendAllPeers || len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || len(r.PeerPatches) > 0 {
+		return false
+	}
+
+	return true
 }
 
-// IsFull reports whether the ChangeSet represents a full update.
-func (c ChangeSet) IsFull() bool {
-	return c.Change == Full || c.Change == Policy
+// IsTargetedToNode returns true if this response should only be sent to TargetNode.
+func (r Change) IsTargetedToNode() bool {
+	return r.TargetNode != 0
 }
 
-func HasFull(cs []ChangeSet) bool {
-	for _, c := range cs {
-		if c.IsFull() {
+// IsFull reports whether this is a full update response.
+func (r Change) IsFull() bool {
+	return r.SendAllPeers && r.IncludeSelf && r.IncludeDERPMap &&
+		r.IncludeDNS && r.IncludeDomain && r.IncludePolicy
+}
+
+// Type returns a categorized type string for metrics.
+// This provides a bounded set of values suitable for Prometheus labels,
+// unlike Reason which is free-form text for logging.
+func (r Change) Type() string {
+	if r.IsFull() {
+		return "full"
+	}
+
+	if r.IsSelfOnly() {
+		return "self"
+	}
+
+	if r.RequiresRuntimePeerComputation {
+		return "policy"
+	}
+
+	if len(r.PeerPatches) > 0 && len(r.PeersChanged) == 0 && len(r.PeersRemoved) == 0 && !r.SendAllPeers {
+		return "patch"
+	}
+
+	if len(r.PeersChanged) > 0 || len(r.PeersRemoved) > 0 || r.SendAllPeers {
+		return "peers"
+	}
+
+	if r.IncludeDERPMap || r.IncludeDNS || r.IncludeDomain || r.IncludePolicy {
+		return "config"
+	}
+
+	return "unknown"
+}
+
+// ShouldSendToNode determines if this response should be sent to nodeID.
+// It handles self-only targeting and filtering out self-updates for non-origin nodes.
+func (r Change) ShouldSendToNode(nodeID types.NodeID) bool {
+	// If targeted to a specific node, only send to that node
+	if r.TargetNode != 0 {
+		return r.TargetNode == nodeID
+	}
+
+	return true
+}
+
+// HasFull returns true if any response in the slice is a full update.
+func HasFull(rs []Change) bool {
+	for _, r := range rs {
+		if r.IsFull() {
 			return true
 		}
 	}
+
 	return false
 }
 
-func SplitAllAndSelf(cs []ChangeSet) (all []ChangeSet, self []ChangeSet) {
-	for _, c := range cs {
-		if c.SelfUpdateOnly {
-			self = append(self, c)
+// SplitTargetedAndBroadcast separates responses into targeted (to specific node) and broadcast.
+func SplitTargetedAndBroadcast(rs []Change) ([]Change, []Change) {
+	var broadcast, targeted []Change
+
+	for _, r := range rs {
+		if r.IsTargetedToNode() {
+			targeted = append(targeted, r)
 		} else {
-			all = append(all, c)
+			broadcast = append(broadcast, r)
 		}
 	}
-	return all, self
+
+	return broadcast, targeted
 }
 
-func RemoveUpdatesForSelf(id types.NodeID, cs []ChangeSet) (ret []ChangeSet) {
-	for _, c := range cs {
-		if c.NodeID != id || c.Change.AlsoSelf() {
-			ret = append(ret, c)
+// FilterForNode returns responses that should be sent to the given node.
+func FilterForNode(nodeID types.NodeID, rs []Change) []Change {
+	var result []Change
+
+	for _, r := range rs {
+		if r.ShouldSendToNode(nodeID) {
+			result = append(result, r)
 		}
 	}
-	return ret
+
+	return result
 }
 
-// IsSelfUpdate reports whether this ChangeSet represents an update to the given node itself.
-func (c ChangeSet) IsSelfUpdate(nodeID types.NodeID) bool {
-	return c.NodeID == nodeID
-}
-
-func (c ChangeSet) AlsoSelf() bool {
-	// If NodeID is 0, it means this ChangeSet is not related to a specific node,
-	// so we consider it as a change that should be sent to all nodes.
-	if c.NodeID == 0 {
-		return true
+func uniqueNodeIDs(ids []types.NodeID) []types.NodeID {
+	if len(ids) == 0 {
+		return nil
 	}
-	return c.Change.AlsoSelf() || c.SelfUpdateOnly
+
+	slices.Sort(ids)
+
+	return slices.Compact(ids)
 }
 
-var (
-	EmptySet        = ChangeSet{Change: ChangeUnknown}
-	FullSet         = ChangeSet{Change: Full}
-	DERPSet         = ChangeSet{Change: DERP}
-	PolicySet       = ChangeSet{Change: Policy}
-	ExtraRecordsSet = ChangeSet{Change: ExtraRecords}
-)
+// Constructor functions
 
-func FullSelf(id types.NodeID) ChangeSet {
-	return ChangeSet{
-		Change:         Full,
-		SelfUpdateOnly: true,
-		NodeID:         id,
+func FullUpdate() Change {
+	return Change{
+		Reason:         "full update",
+		IncludeSelf:    true,
+		IncludeDERPMap: true,
+		IncludeDNS:     true,
+		IncludeDomain:  true,
+		IncludePolicy:  true,
+		SendAllPeers:   true,
 	}
 }
 
-func NodeAdded(id types.NodeID) ChangeSet {
-	return ChangeSet{
-		Change: NodeNewOrUpdate,
-		NodeID: id,
+// FullSelf returns a full update targeted at a specific node.
+func FullSelf(nodeID types.NodeID) Change {
+	return Change{
+		Reason:         "full self update",
+		TargetNode:     nodeID,
+		IncludeSelf:    true,
+		IncludeDERPMap: true,
+		IncludeDNS:     true,
+		IncludeDomain:  true,
+		IncludePolicy:  true,
+		SendAllPeers:   true,
 	}
 }
 
-func NodeRemoved(id types.NodeID) ChangeSet {
-	return ChangeSet{
-		Change: NodeRemove,
-		NodeID: id,
+func SelfUpdate(nodeID types.NodeID) Change {
+	return Change{
+		Reason:      "self update",
+		TargetNode:  nodeID,
+		IncludeSelf: true,
 	}
 }
 
-func NodeOnline(node types.NodeView) ChangeSet {
-	return ChangeSet{
-		Change:         NodeCameOnline,
-		NodeID:         node.ID(),
-		IsSubnetRouter: node.IsSubnetRouter(),
+func PolicyOnly() Change {
+	return Change{
+		Reason:        "policy update",
+		IncludePolicy: true,
 	}
 }
 
-func NodeOffline(node types.NodeView) ChangeSet {
-	return ChangeSet{
-		Change:         NodeWentOffline,
-		NodeID:         node.ID(),
-		IsSubnetRouter: node.IsSubnetRouter(),
+func PolicyAndPeers(changedPeers ...types.NodeID) Change {
+	return Change{
+		Reason:        "policy and peers update",
+		IncludePolicy: true,
+		PeersChanged:  changedPeers,
 	}
 }
 
-func KeyExpiry(id types.NodeID, expiry time.Time) ChangeSet {
-	return ChangeSet{
-		Change:     NodeKeyExpiry,
-		NodeID:     id,
-		NodeExpiry: &expiry,
+func VisibilityChange(reason string, added, removed []types.NodeID) Change {
+	return Change{
+		Reason:        reason,
+		IncludePolicy: true,
+		PeersChanged:  added,
+		PeersRemoved:  removed,
 	}
 }
 
-func EndpointUpdate(id types.NodeID) ChangeSet {
-	return ChangeSet{
-		Change: NodeEndpoint,
-		NodeID: id,
+func PeersChanged(reason string, peerIDs ...types.NodeID) Change {
+	return Change{
+		Reason:       reason,
+		PeersChanged: peerIDs,
 	}
 }
 
-func DERPUpdate(id types.NodeID) ChangeSet {
-	return ChangeSet{
-		Change: NodeDERP,
-		NodeID: id,
+func PeersRemoved(peerIDs ...types.NodeID) Change {
+	return Change{
+		Reason:       "peers removed",
+		PeersRemoved: peerIDs,
 	}
 }
 
-func UserAdded(id types.UserID) ChangeSet {
-	return ChangeSet{
-		Change: UserNewOrUpdate,
-		UserID: id,
+func PeerPatched(reason string, patches ...*tailcfg.PeerChange) Change {
+	return Change{
+		Reason:      reason,
+		PeerPatches: patches,
 	}
 }
 
-func UserRemoved(id types.UserID) ChangeSet {
-	return ChangeSet{
-		Change: UserRemove,
-		UserID: id,
+func DERPMap() Change {
+	return Change{
+		Reason:         "DERP map update",
+		IncludeDERPMap: true,
 	}
 }
 
-func PolicyChange() ChangeSet {
-	return ChangeSet{
-		Change: Policy,
+// PolicyChange creates a response for policy changes.
+// Policy changes require runtime peer visibility computation.
+func PolicyChange() Change {
+	return Change{
+		Reason:                         "policy change",
+		IncludePolicy:                  true,
+		RequiresRuntimePeerComputation: true,
 	}
 }
 
-func DERPChange() ChangeSet {
-	return ChangeSet{
-		Change: DERP,
+// DNSConfig creates a response for DNS configuration updates.
+func DNSConfig() Change {
+	return Change{
+		Reason:     "DNS config update",
+		IncludeDNS: true,
 	}
+}
+
+// NodeOnline creates a patch response for a node coming online.
+func NodeOnline(nodeID types.NodeID) Change {
+	return Change{
+		Reason: "node online",
+		PeerPatches: []*tailcfg.PeerChange{
+			{
+				NodeID: nodeID.NodeID(),
+				Online: ptrTo(true),
+			},
+		},
+	}
+}
+
+// NodeOffline creates a patch response for a node going offline.
+func NodeOffline(nodeID types.NodeID) Change {
+	return Change{
+		Reason: "node offline",
+		PeerPatches: []*tailcfg.PeerChange{
+			{
+				NodeID: nodeID.NodeID(),
+				Online: ptrTo(false),
+			},
+		},
+	}
+}
+
+// KeyExpiry creates a patch response for a node's key expiry change.
+func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
+	return Change{
+		Reason: "key expiry",
+		PeerPatches: []*tailcfg.PeerChange{
+			{
+				NodeID:    nodeID.NodeID(),
+				KeyExpiry: expiry,
+			},
+		},
+	}
+}
+
+// ptrTo returns a pointer to the given value.
+func ptrTo[T any](v T) *T {
+	return &v
+}
+
+// High-level change constructors
+
+// NodeAdded returns a Change for when a node is added or updated.
+// The OriginNode field enables self-update detection by the mapper.
+func NodeAdded(id types.NodeID) Change {
+	c := PeersChanged("node added", id)
+	c.OriginNode = id
+
+	return c
+}
+
+// NodeRemoved returns a Change for when a node is removed.
+func NodeRemoved(id types.NodeID) Change {
+	return PeersRemoved(id)
+}
+
+// NodeOnlineFor returns a Change for when a node comes online.
+// If the node is a subnet router, a full update is sent instead of a patch.
+func NodeOnlineFor(node types.NodeView) Change {
+	if node.IsSubnetRouter() {
+		c := FullUpdate()
+		c.Reason = "subnet router online"
+
+		return c
+	}
+
+	return NodeOnline(node.ID())
+}
+
+// NodeOfflineFor returns a Change for when a node goes offline.
+// If the node is a subnet router, a full update is sent instead of a patch.
+func NodeOfflineFor(node types.NodeView) Change {
+	if node.IsSubnetRouter() {
+		c := FullUpdate()
+		c.Reason = "subnet router offline"
+
+		return c
+	}
+
+	return NodeOffline(node.ID())
+}
+
+// KeyExpiryFor returns a Change for when a node's key expiry changes.
+// The OriginNode field enables self-update detection by the mapper.
+func KeyExpiryFor(id types.NodeID, expiry time.Time) Change {
+	c := KeyExpiry(id, &expiry)
+	c.OriginNode = id
+
+	return c
+}
+
+// EndpointOrDERPUpdate returns a Change for when a node's endpoints or DERP region changes.
+// The OriginNode field enables self-update detection by the mapper.
+func EndpointOrDERPUpdate(id types.NodeID, patch *tailcfg.PeerChange) Change {
+	c := PeerPatched("endpoint/DERP update", patch)
+	c.OriginNode = id
+
+	return c
+}
+
+// UserAdded returns a Change for when a user is added or updated.
+// A full update is sent to refresh user profiles on all nodes.
+func UserAdded() Change {
+	c := FullUpdate()
+	c.Reason = "user added"
+
+	return c
+}
+
+// UserRemoved returns a Change for when a user is removed.
+// A full update is sent to refresh user profiles on all nodes.
+func UserRemoved() Change {
+	c := FullUpdate()
+	c.Reason = "user removed"
+
+	return c
+}
+
+// ExtraRecords returns a Change for when DNS extra records change.
+func ExtraRecords() Change {
+	c := DNSConfig()
+	c.Reason = "extra records update"
+
+	return c
 }
