@@ -1152,3 +1152,92 @@ func TestNodeStoreAllocationStats(t *testing.T) {
 	allocs := res.AllocsPerOp()
 	t.Logf("NodeStore allocations per op: %.2f", float64(allocs))
 }
+
+// TestRebuildPeerMapsWithChangedPeersFunc tests that RebuildPeerMaps correctly
+// rebuilds the peer map when the peersFunc behavior changes.
+// This simulates what happens when SetNodeTags changes node tags and the
+// PolicyManager's matchers are updated, requiring the peer map to be rebuilt.
+func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
+	// Create a peersFunc that can be controlled via a channel
+	// Initially it returns all nodes as peers, then we change it to return no peers
+	allowPeers := true
+
+	// This simulates how PolicyManager.BuildPeerMap works - it reads state
+	// that can change between calls
+	dynamicPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+		if allowPeers {
+			// Allow all peers
+			for _, node := range nodes {
+				var peers []types.NodeView
+
+				for _, n := range nodes {
+					if n.ID() != node.ID() {
+						peers = append(peers, n)
+					}
+				}
+
+				ret[node.ID()] = peers
+			}
+		} else {
+			// Allow no peers
+			for _, node := range nodes {
+				ret[node.ID()] = []types.NodeView{}
+			}
+		}
+
+		return ret
+	}
+
+	// Create nodes
+	node1 := createTestNode(1, 1, "user1", "node1")
+	node2 := createTestNode(2, 2, "user2", "node2")
+	initialNodes := types.Nodes{&node1, &node2}
+
+	// Create store with dynamic peersFunc
+	store := NewNodeStore(initialNodes, dynamicPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	store.Start()
+	defer store.Stop()
+
+	// Initially, nodes should see each other as peers
+	snapshot := store.data.Load()
+	require.Len(t, snapshot.peersByNode[1], 1, "node1 should have 1 peer initially")
+	require.Len(t, snapshot.peersByNode[2], 1, "node2 should have 1 peer initially")
+	require.Equal(t, types.NodeID(2), snapshot.peersByNode[1][0].ID())
+	require.Equal(t, types.NodeID(1), snapshot.peersByNode[2][0].ID())
+
+	// Now "change the policy" by disabling peers
+	allowPeers = false
+
+	// Call RebuildPeerMaps to rebuild with the new behavior
+	store.RebuildPeerMaps()
+
+	// After rebuild, nodes should have no peers
+	snapshot = store.data.Load()
+	assert.Empty(t, snapshot.peersByNode[1], "node1 should have no peers after rebuild")
+	assert.Empty(t, snapshot.peersByNode[2], "node2 should have no peers after rebuild")
+
+	// Verify that ListPeers returns the correct result
+	peers1 := store.ListPeers(1)
+	peers2 := store.ListPeers(2)
+
+	assert.Equal(t, 0, peers1.Len(), "ListPeers for node1 should return empty")
+	assert.Equal(t, 0, peers2.Len(), "ListPeers for node2 should return empty")
+
+	// Now re-enable peers and rebuild again
+	allowPeers = true
+
+	store.RebuildPeerMaps()
+
+	// Nodes should see each other again
+	snapshot = store.data.Load()
+	require.Len(t, snapshot.peersByNode[1], 1, "node1 should have 1 peer after re-enabling")
+	require.Len(t, snapshot.peersByNode[2], 1, "node2 should have 1 peer after re-enabling")
+
+	peers1 = store.ListPeers(1)
+	peers2 = store.ListPeers(2)
+
+	assert.Equal(t, 1, peers1.Len(), "ListPeers for node1 should return 1")
+	assert.Equal(t, 1, peers2.Len(), "ListPeers for node2 should return 1")
+}

@@ -498,8 +498,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	oldNodeCount := pm.nodes.Len()
-	newNodeCount := nodes.Len()
+	policyChanged := pm.nodesHavePolicyAffectingChanges(nodes)
 
 	// Invalidate cache entries for nodes that changed.
 	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
@@ -508,19 +507,17 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 
 	pm.nodes = nodes
 
-	nodesChanged := oldNodeCount != newNodeCount
-
-	// When nodes are added/removed, we must recompile filters because:
+	// When policy-affecting node properties change, we must recompile filters because:
 	// 1. User/group aliases (like "user1@") resolve to node IPs
-	// 2. Filter compilation needs nodes to generate rules
-	// 3. Without nodes, filters compile to empty (0 rules)
+	// 2. Tag aliases (like "tag:server") match nodes based on their tags
+	// 3. Filter compilation needs nodes to generate rules
 	//
 	// For autogroup:self: return true when nodes change even if the global filter
 	// hash didn't change. The global filter is empty for autogroup:self (each node
 	// has its own filter), so the hash never changes. But peer relationships DO
 	// change when nodes are added/removed, so we must signal this to trigger updates.
 	// For global policies: the filter must be recompiled to include the new nodes.
-	if nodesChanged {
+	if policyChanged {
 		// Recompile filter with the new node list
 		needsUpdate, err := pm.updateLocked()
 		if err != nil {
@@ -539,6 +536,30 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, erro
 	}
 
 	return false, nil
+}
+
+func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[types.NodeView]) bool {
+	if pm.nodes.Len() != newNodes.Len() {
+		return true
+	}
+
+	oldNodes := make(map[types.NodeID]types.NodeView, pm.nodes.Len())
+	for _, node := range pm.nodes.All() {
+		oldNodes[node.ID()] = node
+	}
+
+	for _, newNode := range newNodes.All() {
+		oldNode, exists := oldNodes[newNode.ID()]
+		if !exists {
+			return true
+		}
+
+		if newNode.HasPolicyChange(oldNode) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NodeCanHaveTag checks if a node can have the specified tag during client-initiated
