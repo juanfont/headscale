@@ -139,19 +139,19 @@ git commit -m "feat: add new feature"
 # Fix the issues and try committing again
 ```
 
-### Manual golangci-lint (Optional)
+### Manual golangci-lint
 
 While golangci-lint runs automatically via prek, you can also run it manually:
 
 ```bash
-# Use the same logic as the pre-commit hook (recommended)
-./.golangci-lint-hook.sh
-
-# Or manually specify a base reference
+# If you have upstream remote configured (recommended)
 golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
+
+# If you only have origin remote
+golangci-lint run --new-from-rev=main --timeout=5m --fix
 ```
 
-The `.golangci-lint-hook.sh` script automatically finds where your branch diverged from the main branch by checking `upstream/main`, `origin/main`, or `main` in that order.
+**Important**: Always use `--new-from-rev` to only lint changed files. This prevents formatting the entire repository and keeps changes focused on your actual modifications.
 
 ### Skipping Hooks (Not Recommended)
 
@@ -412,45 +412,6 @@ go run ./cmd/hi run "TestPattern*"
 - Only ONE test can run at a time (Docker port conflicts)
 - Tests generate ~100MB of logs per run in `control_logs/`
 - Clean environment before each test: `sudo rm -rf control_logs/202* && docker system prune -f`
-
-### Full Matrix Testing
-
-Some integration tests support **full matrix mode** that tests all combinations of test dimensions. This is critical for comprehensive validation but can take up to 2 hours to complete.
-
-**Example: TestAutoApproveMultiNetwork Full Matrix**
-
-```bash
-# Set GOPATH to avoid environment issues
-export GOPATH=$HOME/go
-
-# Enable full matrix mode and run with generous timeout
-HEADSCALE_INTEGRATION_FULL_MATRIX=1 go run ./cmd/hi run "TestAutoApproveMultiNetwork" --timeout=7200s
-```
-
-**Full Matrix Dimensions:**
-- **Base scenarios (6):** All combinations of:
-  - Auth methods: `authkey`, `webauth`
-  - Approver types: `tag`, `user`, `group`
-- **Policy modes (2):** `database`, `file`
-- **Advertisement timing (2):** `advertiseduringup-true`, `advertiseduringup-false`
-- **Total combinations:** 6 × 2 × 2 = **24 tests**
-
-**Default (minimal) mode:** Runs only 3 representative tests covering all dimensions:
-- `authkey-tag-advertiseduringup-false-pol-database`
-- `webauth-user-advertiseduringup-true-pol-file`
-- `authkey-group-advertiseduringup-false-pol-file`
-
-**Full Matrix Requirements:**
-- **Time:** Up to 2 hours for complete execution
-- **Disk space:** ~2-3GB for all test artifacts
-- **Environment:** Clean Docker state before starting
-- **Timeout:** Use `--timeout=7200s` (2 hours) minimum
-
-**When to use full matrix:**
-- Before major releases or merges to main
-- After changes to route management, ACL evaluation, or policy engine
-- When debugging flaky tests or cross-scenario issues
-- For comprehensive validation of tags-as-identity changes
 
 ### Test Artifacts Location
 
