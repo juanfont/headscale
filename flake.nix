@@ -166,9 +166,6 @@
             buf
             clang-tools # clang-format
             protobuf-language-server
-
-            # Add hi to make it even easier to use ci runner.
-            hi
           ]
           ++ lib.optional pkgs.stdenv.isLinux [ traceroute ];
 
