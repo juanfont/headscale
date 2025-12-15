@@ -473,14 +473,16 @@ func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.Regis
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, change.ChangeSet, error) {
-	var user *types.User
-	var err error
-	var newUser bool
-	var c change.ChangeSet
+) (*types.User, change.Change, error) {
+	var (
+		user    *types.User
+		err     error
+		newUser bool
+		c       change.Change
+	)
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, change.EmptySet, fmt.Errorf("creating or updating user: %w", err)
+		return nil, change.Change{}, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -496,7 +498,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	if newUser {
 		user, c, err = a.h.state.CreateUser(*user)
 		if err != nil {
-			return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
 		_, c, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
@@ -504,7 +506,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 			return nil
 		})
 		if err != nil {
-			return nil, change.EmptySet, fmt.Errorf("updating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
@@ -545,7 +547,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// Send both changes. Empty changes are ignored by Change().
 	a.h.Change(nodeChange, routesChange)
 
-	return !nodeChange.Empty(), nil
+	return !nodeChange.IsEmpty(), nil
 }
 
 func renderOIDCCallbackTemplate(

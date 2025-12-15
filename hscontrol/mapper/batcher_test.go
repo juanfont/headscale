@@ -59,7 +59,7 @@ func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 		return fmt.Errorf("%w: %d", errNodeNotFoundAfterAdd, id)
 	}
 
-	t.AddWork(change.NodeOnline(node))
+	t.AddWork(change.NodeOnlineFor(node))
 
 	return nil
 }
@@ -76,7 +76,7 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 	// Do this BEFORE removing from batcher so the change can be processed
 	node, ok := t.state.GetNodeByID(id)
 	if ok {
-		t.AddWork(change.NodeOffline(node))
+		t.AddWork(change.NodeOfflineFor(node))
 	}
 
 	// Finally remove from the real batcher
@@ -557,9 +557,9 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 			}, time.Second, 10*time.Millisecond, "waiting for node connection")
 
 			// Generate work and wait for updates to be processed
-			batcher.AddWork(change.FullSet)
-			batcher.AddWork(change.PolicySet)
-			batcher.AddWork(change.DERPSet)
+			batcher.AddWork(change.FullUpdate())
+			batcher.AddWork(change.PolicyChange())
+			batcher.AddWork(change.DERPMap())
 
 			// Wait for updates to be processed (at least 1 update received)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -661,7 +661,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 
 						// Issue full update after each join to ensure connectivity
-						batcher.AddWork(change.FullSet)
+						batcher.AddWork(change.FullUpdate())
 
 						// Yield to scheduler for large node counts to prevent overwhelming the work queue
 						if tc.nodeCount > 100 && i%50 == 49 {
@@ -832,7 +832,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			}
 
 			// Test work processing with DERP change
-			batcher.AddWork(change.DERPChange())
+			batcher.AddWork(change.DERPMap())
 
 			// Wait for update and validate content
 			select {
@@ -959,31 +959,31 @@ func drainChannelTimeout(ch <-chan *tailcfg.MapResponse, name string, timeout ti
 // 			}{
 // 				{
 // 					name:        "DERP change",
-// 					changeSet:   change.DERPSet,
+// 					changeSet:   change.DERPMapResponse(),
 // 					expectData:  true,
 // 					description: "DERP changes should generate map updates",
 // 				},
 // 				{
 // 					name:        "Node key expiry",
-// 					changeSet:   change.KeyExpiry(testNodes[1].n.ID),
+// 					changeSet:   change.KeyExpiryFor(testNodes[1].n.ID),
 // 					expectData:  true,
 // 					description: "Node key expiry with real node data",
 // 				},
 // 				{
 // 					name:        "Node new registration",
-// 					changeSet:   change.NodeAdded(testNodes[1].n.ID),
+// 					changeSet:   change.NodeAddedResponse(testNodes[1].n.ID),
 // 					expectData:  true,
 // 					description: "New node registration with real data",
 // 				},
 // 				{
 // 					name:        "Full update",
-// 					changeSet:   change.FullSet,
+// 					changeSet:   change.FullUpdateResponse(),
 // 					expectData:  true,
 // 					description: "Full updates with real node data",
 // 				},
 // 				{
 // 					name:        "Policy change",
-// 					changeSet:   change.PolicySet,
+// 					changeSet:   change.PolicyChangeResponse(),
 // 					expectData:  true,
 // 					description: "Policy updates with real node data",
 // 				},
@@ -1057,13 +1057,13 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 			var receivedUpdates []*tailcfg.MapResponse
 
 			// Add multiple changes rapidly to test batching
-			batcher.AddWork(change.DERPSet)
+			batcher.AddWork(change.DERPMap())
 			// Use a valid expiry time for testing since test nodes don't have expiry set
 			testExpiry := time.Now().Add(24 * time.Hour)
-			batcher.AddWork(change.KeyExpiry(testNodes[1].n.ID, testExpiry))
-			batcher.AddWork(change.DERPSet)
+			batcher.AddWork(change.KeyExpiryFor(testNodes[1].n.ID, testExpiry))
+			batcher.AddWork(change.DERPMap())
 			batcher.AddWork(change.NodeAdded(testNodes[1].n.ID))
-			batcher.AddWork(change.DERPSet)
+			batcher.AddWork(change.DERPMap())
 
 			// Collect updates with timeout
 			updateCount := 0
@@ -1087,8 +1087,8 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 						t.Logf("Update %d: nil update", updateCount)
 					}
 				case <-timeout:
-					// Expected: 5 changes should generate 6 updates (no batching in current implementation)
-					expectedUpdates := 6
+					// Expected: 5 explicit changes + 1 initial from AddNode + 1 NodeOnline from wrapper = 7 updates
+					expectedUpdates := 7
 					t.Logf("Received %d updates from %d changes (expected %d)",
 						updateCount, 5, expectedUpdates)
 
@@ -1160,7 +1160,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 
 				// Add real work during connection chaos
 				if i%10 == 0 {
-					batcher.AddWork(change.DERPSet)
+					batcher.AddWork(change.DERPMap())
 				}
 
 				// Rapid second connection - should replace ch1
@@ -1260,7 +1260,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 
 					// Add node and immediately queue real work
 					batcher.AddNode(testNode.n.ID, ch, tailcfg.CapabilityVersion(100))
-					batcher.AddWork(change.DERPSet)
+					batcher.AddWork(change.DERPMap())
 
 					// Consumer goroutine to validate data and detect channel issues
 					go func() {
@@ -1302,7 +1302,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 					if i%10 == 0 {
 						// Use a valid expiry time for testing since test nodes don't have expiry set
 						testExpiry := time.Now().Add(24 * time.Hour)
-						batcher.AddWork(change.KeyExpiry(testNode.n.ID, testExpiry))
+						batcher.AddWork(change.KeyExpiryFor(testNode.n.ID, testExpiry))
 					}
 
 					// Rapid removal creates race between worker and removal
@@ -1510,12 +1510,12 @@ func TestBatcherConcurrentClients(t *testing.T) {
 					// Generate various types of work during racing
 					if i%3 == 0 {
 						// DERP changes
-						batcher.AddWork(change.DERPSet)
+						batcher.AddWork(change.DERPMap())
 					}
 
 					if i%5 == 0 {
 						// Full updates using real node data
-						batcher.AddWork(change.FullSet)
+						batcher.AddWork(change.FullUpdate())
 					}
 
 					if i%7 == 0 && len(allNodes) > 0 {
@@ -1523,7 +1523,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 						node := allNodes[i%len(allNodes)]
 						// Use a valid expiry time for testing since test nodes don't have expiry set
 						testExpiry := time.Now().Add(24 * time.Hour)
-						batcher.AddWork(change.KeyExpiry(node.n.ID, testExpiry))
+						batcher.AddWork(change.KeyExpiryFor(node.n.ID, testExpiry))
 					}
 
 					// Yield to allow some batching
@@ -1778,7 +1778,7 @@ func XTestBatcherScalability(t *testing.T) {
 						}
 					}, 5*time.Second, 50*time.Millisecond, "waiting for nodes to connect")
 
-					batcher.AddWork(change.FullSet)
+					batcher.AddWork(change.FullUpdate())
 
 					// Wait for initial update to propagate
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1887,7 +1887,7 @@ func XTestBatcherScalability(t *testing.T) {
 
 										// Add work to create load
 										if index%5 == 0 {
-											batcher.AddWork(change.FullSet)
+											batcher.AddWork(change.FullUpdate())
 										}
 									}(
 										node.n.ID,
@@ -1914,11 +1914,11 @@ func XTestBatcherScalability(t *testing.T) {
 									// Generate different types of work to ensure updates are sent
 									switch index % 4 {
 									case 0:
-										batcher.AddWork(change.FullSet)
+										batcher.AddWork(change.FullUpdate())
 									case 1:
-										batcher.AddWork(change.PolicySet)
+										batcher.AddWork(change.PolicyChange())
 									case 2:
-										batcher.AddWork(change.DERPSet)
+										batcher.AddWork(change.DERPMap())
 									default:
 										// Pick a random node and generate a node change
 										if len(testNodes) > 0 {
@@ -1927,7 +1927,7 @@ func XTestBatcherScalability(t *testing.T) {
 												change.NodeAdded(testNodes[nodeIdx].n.ID),
 											)
 										} else {
-											batcher.AddWork(change.FullSet)
+											batcher.AddWork(change.FullUpdate())
 										}
 									}
 								}(i)
@@ -2165,7 +2165,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 
 			// Send a full update - this should generate full peer lists
 			t.Logf("Sending FullSet update...")
-			batcher.AddWork(change.FullSet)
+			batcher.AddWork(change.FullUpdate())
 
 			// Wait for FullSet work items to be processed
 			t.Logf("Waiting for FullSet to be processed...")
@@ -2261,7 +2261,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			t.Logf("Total updates received across all nodes: %d", totalUpdates)
 
 			if !foundFullUpdate {
-				t.Errorf("CRITICAL: No FULL updates received despite sending change.FullSet!")
+				t.Errorf("CRITICAL: No FULL updates received despite sending change.FullUpdateResponse()!")
 				t.Errorf(
 					"This confirms the bug - FullSet updates are not generating full peer responses",
 				)
@@ -2372,7 +2372,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			t.Logf("Phase 5: Testing if nodes can receive updates despite debug status...")
 
 			// Send a change that should reach all nodes
-			batcher.AddWork(change.DERPChange())
+			batcher.AddWork(change.DERPMap())
 
 			receivedCount := 0
 			timeout := time.After(500 * time.Millisecond)
@@ -2508,11 +2508,7 @@ func TestBatcherMultiConnection(t *testing.T) {
 			clearChannel(node2.ch)
 
 			// Send a change notification from node2 (so node1 should receive it on all connections)
-			testChangeSet := change.ChangeSet{
-				NodeID:         node2.n.ID,
-				Change:         change.NodeNewOrUpdate,
-				SelfUpdateOnly: false,
-			}
+			testChangeSet := change.NodeAdded(node2.n.ID)
 
 			batcher.AddWork(testChangeSet)
 
@@ -2591,11 +2587,7 @@ func TestBatcherMultiConnection(t *testing.T) {
 			clearChannel(node1.ch)
 			clearChannel(thirdChannel)
 
-			testChangeSet2 := change.ChangeSet{
-				NodeID:         node2.n.ID,
-				Change:         change.NodeNewOrUpdate,
-				SelfUpdateOnly: false,
-			}
+			testChangeSet2 := change.NodeAdded(node2.n.ID)
 
 			batcher.AddWork(testChangeSet2)
 
@@ -2629,7 +2621,11 @@ func TestBatcherMultiConnection(t *testing.T) {
 					remaining1Received, remaining3Received)
 			}
 
-			// Verify second channel no longer receives updates (should be closed/removed)
+			// Drain secondChannel of any messages received before removal
+			// (the test wrapper sends NodeOffline before removal, which may have reached this channel)
+			clearChannel(secondChannel)
+
+			// Verify second channel no longer receives new updates after being removed
 			select {
 			case <-secondChannel:
 				t.Errorf("Removed connection still received update - this should not happen")
