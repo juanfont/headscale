@@ -2255,3 +2255,756 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 	t.Log("All 5 iterations completed successfully - ACL propagation is working correctly")
 }
+
+// TestACLTagPropagation validates that tag changes propagate immediately
+// to ACLs without requiring a Headscale restart.
+// This is the primary test for GitHub issue #2389.
+func TestACLTagPropagation(t *testing.T) {
+	IntegrationSkip(t)
+
+	tests := []struct {
+		name   string
+		policy *policyv2.Policy
+		spec   ScenarioSpec
+		// setup returns clients and any initial state needed
+		setup func(t *testing.T, scenario *Scenario, headscale ControlServer) (
+			sourceClient TailscaleClient,
+			targetClient TailscaleClient,
+			targetNodeID uint64,
+		)
+		// initialAccess: should source be able to reach target before tag change?
+		initialAccess bool
+		// tagChange: what tags to set on target node (nil = test uses custom logic)
+		tagChange []string
+		// finalAccess: should source be able to reach target after tag change?
+		finalAccess bool
+	}{
+		{
+			name: "add-tag-grants-access",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:shared": policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					// user1 self-access
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user1@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user1@"), tailcfg.PortRangeAny),
+						},
+					},
+					// user2 self-access
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					// user2 can access tag:shared
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:shared"), tailcfg.PortRangeAny),
+						},
+					},
+					// tag:shared can respond to user2 (return path)
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:shared")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 1,
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				require.NoError(t, err)
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Clients[0], user1Clients[0], nodes[0].GetId()
+			},
+			initialAccess: false,                  // user2 cannot access user1 (no tag)
+			tagChange:     []string{"tag:shared"}, // add tag:shared
+			finalAccess:   true,                   // user2 can now access user1
+		},
+		{
+			name: "remove-tag-revokes-access",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:shared": policyv2.Owners{usernameOwner("user1@")},
+					"tag:other":  policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					// user2 self-access
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					// user2 can access tag:shared only
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:shared"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:shared")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 0, // manual creation for tagged node
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				userMap, err := headscale.MapUsers()
+				require.NoError(t, err)
+
+				// Create user1's node WITH tag:shared via PreAuthKey
+				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
+					userMap["user1"].GetId(), false, false, []string{"tag:shared"},
+				)
+				require.NoError(t, err)
+
+				user1Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				require.NoError(t, err)
+
+				// Create user2's node (untagged)
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				require.NoError(t, err)
+
+				user2Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				require.NoError(t, err)
+
+				err = scenario.WaitForTailscaleSync()
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Node, user1Node, nodes[0].GetId()
+			},
+			initialAccess: true,                  // user2 can access user1 (has tag:shared)
+			tagChange:     []string{"tag:other"}, // replace with tag:other
+			finalAccess:   false,                 // user2 cannot access (no ACL for tag:other)
+		},
+		{
+			name: "change-tag-changes-access",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:team-a": policyv2.Owners{usernameOwner("user1@")},
+					"tag:team-b": policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					// user2 self-access
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					// user2 can access tag:team-b only (NOT tag:team-a)
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:team-b"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:team-b")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 0,
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				userMap, err := headscale.MapUsers()
+				require.NoError(t, err)
+
+				// Create user1's node with tag:team-a (user2 has NO ACL for this)
+				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
+					userMap["user1"].GetId(), false, false, []string{"tag:team-a"},
+				)
+				require.NoError(t, err)
+
+				user1Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				require.NoError(t, err)
+
+				// Create user2's node
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				require.NoError(t, err)
+
+				user2Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				require.NoError(t, err)
+
+				err = scenario.WaitForTailscaleSync()
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Node, user1Node, nodes[0].GetId()
+			},
+			initialAccess: false,                  // user2 cannot access (tag:team-a not in ACL)
+			tagChange:     []string{"tag:team-b"}, // change to tag:team-b
+			finalAccess:   true,                   // user2 can now access (tag:team-b in ACL)
+		},
+		{
+			name: "multiple-tags-partial-removal",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:web":      policyv2.Owners{usernameOwner("user1@")},
+					"tag:internal": policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					// user2 self-access
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					// user2 can access tag:web
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:web"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:web")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 0,
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				userMap, err := headscale.MapUsers()
+				require.NoError(t, err)
+
+				// Create user1's node with BOTH tags
+				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
+					userMap["user1"].GetId(), false, false, []string{"tag:web", "tag:internal"},
+				)
+				require.NoError(t, err)
+
+				user1Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+				require.NoError(t, err)
+
+				// Create user2's node
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				require.NoError(t, err)
+
+				user2Node, err := scenario.CreateTailscaleNode(
+					"head",
+					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+					tsic.WithNetfilter("off"),
+				)
+				require.NoError(t, err)
+				err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+				require.NoError(t, err)
+
+				err = scenario.WaitForTailscaleSync()
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Node, user1Node, nodes[0].GetId()
+			},
+			initialAccess: true,                     // user2 can access (has tag:web)
+			tagChange:     []string{"tag:internal"}, // remove tag:web, keep tag:internal
+			finalAccess:   false,                    // user2 cannot access (no ACL for tag:internal)
+		},
+		{
+			name: "tag-change-updates-peer-identity",
+			policy: &policyv2.Policy{
+				TagOwners: policyv2.TagOwners{
+					"tag:server": policyv2.Owners{usernameOwner("user1@")},
+				},
+				ACLs: []policyv2.ACL{
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{usernamep("user2@")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(tagp("tag:server"), tailcfg.PortRangeAny),
+						},
+					},
+					{
+						Action:  "accept",
+						Sources: []policyv2.Alias{tagp("tag:server")},
+						Destinations: []policyv2.AliasWithPorts{
+							aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+			},
+			spec: ScenarioSpec{
+				NodesPerUser: 1,
+				Users:        []string{"user1", "user2"},
+			},
+			setup: func(t *testing.T, scenario *Scenario, headscale ControlServer) (TailscaleClient, TailscaleClient, uint64) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				require.NoError(t, err)
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				require.NoError(t, err)
+
+				nodes, err := headscale.ListNodes("user1")
+				require.NoError(t, err)
+
+				return user2Clients[0], user1Clients[0], nodes[0].GetId()
+			},
+			initialAccess: false,                  // user2 cannot access user1 (no tag yet)
+			tagChange:     []string{"tag:server"}, // assign tag:server
+			finalAccess:   true,                   // user2 can now access via tag:server
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			scenario, err := NewScenario(tt.spec)
+			require.NoError(t, err)
+
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			err = scenario.CreateHeadscaleEnv(
+				[]tsic.Option{
+					tsic.WithNetfilter("off"),
+					tsic.WithDockerEntrypoint([]string{
+						"/bin/sh", "-c",
+						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+					}),
+					tsic.WithDockerWorkdir("/"),
+				},
+				hsic.WithACLPolicy(tt.policy),
+				hsic.WithTestName("acl-tag-"+tt.name),
+				hsic.WithEmbeddedDERPServerOnly(),
+				hsic.WithTLS(),
+			)
+			require.NoError(t, err)
+
+			headscale, err := scenario.Headscale()
+			require.NoError(t, err)
+
+			// Run test-specific setup
+			sourceClient, targetClient, targetNodeID := tt.setup(t, scenario, headscale)
+
+			targetFQDN, err := targetClient.FQDN()
+			require.NoError(t, err)
+
+			targetURL := fmt.Sprintf("http://%s/etc/hostname", targetFQDN)
+
+			// Step 1: Verify initial access state
+			t.Logf("Step 1: Verifying initial access (expect success=%v)", tt.initialAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				result, err := sourceClient.Curl(targetURL)
+				if tt.initialAccess {
+					assert.NoError(c, err, "Initial access should succeed")
+					assert.NotEmpty(c, result, "Initial access should return content")
+				} else {
+					assert.Error(c, err, "Initial access should fail")
+				}
+			}, 30*time.Second, 500*time.Millisecond, "verifying initial access state")
+
+			// Step 1b: Verify initial NetMap visibility
+			t.Logf("Step 1b: Verifying initial NetMap visibility (expect visible=%v)", tt.initialAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := sourceClient.Status()
+				assert.NoError(c, err)
+
+				targetHostname := targetClient.Hostname()
+				found := false
+
+				for _, peer := range status.Peer {
+					if strings.Contains(peer.HostName, targetHostname) {
+						found = true
+						break
+					}
+				}
+
+				if tt.initialAccess {
+					assert.True(c, found, "Target should be visible in NetMap initially")
+				} else {
+					assert.False(c, found, "Target should NOT be visible in NetMap initially")
+				}
+			}, 30*time.Second, 500*time.Millisecond, "verifying initial NetMap visibility")
+
+			// Step 2: Apply tag change
+			t.Logf("Step 2: Setting tags on node %d to %v", targetNodeID, tt.tagChange)
+			err = headscale.SetNodeTags(targetNodeID, tt.tagChange)
+			require.NoError(t, err)
+
+			// Verify tag was applied
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				// List nodes by iterating through all users since tagged nodes may "move"
+				var node *v1.Node
+
+				for _, user := range tt.spec.Users {
+					nodes, err := headscale.ListNodes(user)
+					if err != nil {
+						continue
+					}
+
+					for _, n := range nodes {
+						if n.GetId() == targetNodeID {
+							node = n
+							break
+						}
+					}
+				}
+				// Also check nodes without user filter
+				if node == nil {
+					// Try listing all nodes
+					allNodes, _ := headscale.ListNodes("")
+					for _, n := range allNodes {
+						if n.GetId() == targetNodeID {
+							node = n
+							break
+						}
+					}
+				}
+
+				assert.NotNil(c, node, "Node should still exist")
+
+				if node != nil {
+					assert.ElementsMatch(c, tt.tagChange, node.GetValidTags(), "Tags should be updated")
+				}
+			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
+
+			// Step 3: Verify final access state (this is the key test for #2389)
+			t.Logf("Step 3: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				result, err := sourceClient.Curl(targetURL)
+				if tt.finalAccess {
+					assert.NoError(c, err, "Final access should succeed after tag change")
+					assert.NotEmpty(c, result, "Final access should return content")
+				} else {
+					assert.Error(c, err, "Final access should fail after tag change")
+				}
+			}, 30*time.Second, 500*time.Millisecond, "verifying access propagated after tag change")
+
+			// Step 3b: Verify final NetMap visibility
+			t.Logf("Step 3b: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				status, err := sourceClient.Status()
+				assert.NoError(c, err)
+
+				targetHostname := targetClient.Hostname()
+				found := false
+
+				for _, peer := range status.Peer {
+					if strings.Contains(peer.HostName, targetHostname) {
+						found = true
+						break
+					}
+				}
+
+				if tt.finalAccess {
+					assert.True(c, found, "Target should be visible in NetMap after tag change")
+				} else {
+					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
+				}
+			}, 60*time.Second, 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+
+			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
+		})
+	}
+}
+
+// TestACLTagPropagationPortSpecific validates that tag changes correctly update
+// port-specific ACLs. When a tag change restricts access to specific ports,
+// the peer should remain visible but only the allowed ports should be accessible.
+func TestACLTagPropagationPortSpecific(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Policy: tag:webserver allows port 80, tag:sshonly allows port 22
+	// When we change from tag:webserver to tag:sshonly, HTTP should fail but ping should still work
+	policy := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			"tag:webserver": policyv2.Owners{usernameOwner("user1@")},
+			"tag:sshonly":   policyv2.Owners{usernameOwner("user1@")},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+				},
+			},
+			// user2 can access tag:webserver on port 80 only
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:webserver"), tailcfg.PortRange{First: 80, Last: 80}),
+				},
+			},
+			// user2 can access tag:sshonly on port 22 only
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:sshonly"), tailcfg.PortRange{First: 22, Last: 22}),
+				},
+			},
+			// Allow ICMP for ping tests
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{usernamep("user2@")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(tagp("tag:webserver"), tailcfg.PortRangeAny),
+					aliasWithPorts(tagp("tag:sshonly"), tailcfg.PortRangeAny),
+				},
+				Protocol: "icmp",
+			},
+			// Return path
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{tagp("tag:webserver"), tagp("tag:sshonly")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(usernamep("user2@"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithDockerEntrypoint([]string{
+				"/bin/sh", "-c",
+				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+			}),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("acl-tag-port-specific"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	// Create user1's node WITH tag:webserver
+	taggedKey, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["user1"].GetId(), false, false, []string{"tag:webserver"},
+	)
+	require.NoError(t, err)
+
+	user1Node, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh", "-c",
+			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
+		}),
+		tsic.WithDockerWorkdir("/"),
+		tsic.WithNetfilter("off"),
+	)
+	require.NoError(t, err)
+
+	err = user1Node.Login(headscale.GetEndpoint(), taggedKey.GetKey())
+	require.NoError(t, err)
+
+	// Create user2's node
+	untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+	require.NoError(t, err)
+
+	user2Node, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithDockerEntrypoint([]string{
+			"/bin/sh", "-c",
+			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; tailscaled --tun=tsdev",
+		}),
+		tsic.WithDockerWorkdir("/"),
+		tsic.WithNetfilter("off"),
+	)
+	require.NoError(t, err)
+
+	err = user2Node.Login(headscale.GetEndpoint(), untaggedKey.GetKey())
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	nodes, err := headscale.ListNodes("user1")
+	require.NoError(t, err)
+
+	targetNodeID := nodes[0].GetId()
+
+	targetFQDN, err := user1Node.FQDN()
+	require.NoError(t, err)
+
+	targetURL := fmt.Sprintf("http://%s/etc/hostname", targetFQDN)
+
+	// Step 1: Verify initial state - HTTP on port 80 should work with tag:webserver
+	t.Log("Step 1: Verifying HTTP access with tag:webserver (should succeed)")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := user2Node.Curl(targetURL)
+		assert.NoError(c, err, "HTTP should work with tag:webserver")
+		assert.NotEmpty(c, result)
+	}, 30*time.Second, 500*time.Millisecond, "initial HTTP access with tag:webserver")
+
+	// Step 2: Change tag from webserver to sshonly
+	t.Logf("Step 2: Changing tag from webserver to sshonly on node %d", targetNodeID)
+	err = headscale.SetNodeTags(targetNodeID, []string{"tag:sshonly"})
+	require.NoError(t, err)
+
+	// Step 3: Verify peer is still visible in NetMap (partial access, not full removal)
+	t.Log("Step 3: Verifying peer remains visible in NetMap after tag change")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2Node.Status()
+		assert.NoError(c, err)
+
+		targetHostname := user1Node.Hostname()
+		found := false
+
+		for _, peer := range status.Peer {
+			if strings.Contains(peer.HostName, targetHostname) {
+				found = true
+				break
+			}
+		}
+
+		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
+	}, 60*time.Second, 500*time.Millisecond, "peer visibility after tag change")
+
+	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
+	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, err := user2Node.Curl(targetURL)
+		assert.Error(c, err, "HTTP should fail with tag:sshonly (only port 22 allowed)")
+	}, 60*time.Second, 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
+
+	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
+}
