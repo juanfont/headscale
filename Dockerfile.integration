@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -gcflags="all=-N -l" -o /go/bin/headscale 
 FROM debian:trixie-slim
 
 RUN apt-get --update install --no-install-recommends --yes \
-    less jq sqlite3 dnsutils ca-certificates procps bash findutils curl traceroute python3 \
+    bash ca-certificates curl dnsutils findutils iproute2 jq less procps python3 sqlite3 \
   && apt-get dist-clean
 
 RUN mkdir -p /var/run/headscale
