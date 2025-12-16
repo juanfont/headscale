@@ -285,9 +285,38 @@ func (b *LockFreeBatcher) queueWork(w work) {
 	}
 }
 
-// addToBatch adds a response to the pending batch.
-func (b *LockFreeBatcher) addToBatch(responses ...change.Change) {
-	// Short circuit if any of the responses is a full update, which
+// addToBatch adds changes to the pending batch.
+func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
+	// Clean up any nodes being permanently removed from the system.
+	//
+	// This handles the case where a node is deleted from state but the batcher
+	// still has it registered. By cleaning up here, we prevent "node not found"
+	// errors when workers try to generate map responses for deleted nodes.
+	//
+	// Safety: change.Change.PeersRemoved is ONLY populated when nodes are actually
+	// deleted from the system (via change.NodeRemoved in state.DeleteNode). Policy
+	// changes that affect peer visibility do NOT use this field - they set
+	// RequiresRuntimePeerComputation=true and compute removed peers at runtime,
+	// putting them in tailcfg.MapResponse.PeersRemoved (a different struct).
+	// Therefore, this cleanup only removes nodes that are truly being deleted,
+	// not nodes that are still connected but have lost visibility of certain peers.
+	//
+	// See: https://github.com/juanfont/headscale/issues/2924
+	for _, ch := range changes {
+		for _, removedID := range ch.PeersRemoved {
+			if _, existed := b.nodes.LoadAndDelete(removedID); existed {
+				b.totalNodes.Add(-1)
+				log.Debug().
+					Uint64("node.id", removedID.Uint64()).
+					Msg("Removed deleted node from batcher")
+			}
+
+			b.connected.Delete(removedID)
+			b.pendingChanges.Delete(removedID)
+		}
+	}
+
+	// Short circuit if any of the changes is a full update, which
 	// means we can skip sending individual changes.
 	if change.HasFull(responses) {
 		b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
@@ -788,4 +817,10 @@ func (b *LockFreeBatcher) Debug() map[types.NodeID]DebugNodeInfo {
 
 func (b *LockFreeBatcher) DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	return b.mapper.debugMapResponses()
+}
+
+// WorkErrors returns the count of work errors encountered.
+// This is primarily useful for testing and debugging.
+func (b *LockFreeBatcher) WorkErrors() int64 {
+	return b.workErrors.Load()
 }
