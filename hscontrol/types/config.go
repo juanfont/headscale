@@ -98,6 +98,9 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	// StaticNodes defines custom IP addresses for specific nodes by hostname/shortname
+	StaticNodes StaticNodesConfig
 }
 
 type DNSConfig struct {
@@ -237,6 +240,15 @@ type Tuning struct {
 	BatcherWorkers                 int
 	RegisterCacheCleanup           time.Duration
 	RegisterCacheExpiration        time.Duration
+}
+
+// StaticNodesConfig maps node hostname/shortname to their static IP addresses
+type StaticNodesConfig map[string]StaticNodeIPs
+
+// StaticNodeIPs defines static IP addresses for a node
+type StaticNodeIPs struct {
+	IPv4 []string `mapstructure:"ipv4"`
+	IPv6 []string `mapstructure:"ipv6"`
 }
 
 func validatePKCEMethod(method string) error {
@@ -573,6 +585,24 @@ func logConfig() LogConfig {
 		Format: logFormat,
 		Level:  logLevel,
 	}
+}
+
+func staticNodesConfig() StaticNodesConfig {
+	if !viper.IsSet("static_nodes") {
+		return make(StaticNodesConfig)
+	}
+
+	var staticNodes StaticNodesConfig
+	err := viper.UnmarshalKey("static_nodes", &staticNodes)
+	if err != nil {
+		log.Warn().
+			Caller().
+			Err(err).
+			Msg("Failed to parse static_nodes configuration, ignoring")
+		return make(StaticNodesConfig)
+	}
+
+	return staticNodes
 }
 
 func databaseConfig() DatabaseConfig {
@@ -1007,6 +1037,8 @@ func LoadServerConfig() (*Config, error) {
 			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
 			RegisterCacheExpiration: viper.GetDuration("tuning.register_cache_expiration"),
 		},
+
+		StaticNodes: staticNodesConfig(),
 	}, nil
 }
 

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/netip"
@@ -104,6 +105,19 @@ func init() {
 	nodeCmd.AddCommand(approveRoutesCmd)
 
 	nodeCmd.AddCommand(backfillNodeIPsCmd)
+
+	setNodeIPCmd.Flags().StringP("identifier", "i", "", "Node identifier (ID or hostname)")
+	setNodeIPCmd.Flags().StringP("ipv4", "4", "", "IPv4 address (required)")
+	setNodeIPCmd.Flags().StringP("ipv6", "6", "", "IPv6 address (optional, auto-generated if not provided)")
+	err = setNodeIPCmd.MarkFlagRequired("identifier")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	err = setNodeIPCmd.MarkFlagRequired("ipv4")
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	nodeCmd.AddCommand(setNodeIPCmd)
 }
 
 var nodeCmd = &cobra.Command{
@@ -556,6 +570,125 @@ be assigned to nodes.`,
 
 			SuccessOutput(changes, "Node IPs backfilled successfully", output)
 		}
+	},
+}
+
+var setNodeIPCmd = &cobra.Command{
+	Use:   "set-ip",
+	Short: "Set custom IP addresses for a node",
+	Long: `
+Set custom IP addresses for a specific node. The node can be identified
+by its ID or hostname/shortname. IPv4 is required, and IPv6 will be
+auto-generated from the IPv4 address if not provided.
+
+The IP addresses must be within the configured prefix ranges:
+- IPv4 must be in the prefixes.v4 range (default: 100.64.0.0/10)
+- IPv6 must be in the prefixes.v6 range (default: fd7a:115c:a1e0::/48)
+
+Examples:
+  # Set IP using node ID
+  headscale nodes set-ip --identifier 1 --ipv4 100.64.0.10
+
+  # Set IP using hostname with custom IPv6
+  headscale nodes set-ip --identifier mynode --ipv4 100.64.0.20 --ipv6 fd7a:115c:a1e0::20
+
+  # Set IP using short flags
+  headscale nodes set-ip -i 2 -4 100.64.0.30`,
+	Run: func(cmd *cobra.Command, args []string) {
+		output, _ := cmd.Flags().GetString("output")
+
+		identifier, err := cmd.Flags().GetString("identifier")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting identifier: %s", err),
+				output,
+			)
+		}
+
+		ipv4Str, err := cmd.Flags().GetString("ipv4")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting IPv4: %s", err),
+				output,
+			)
+		}
+
+		ipv6Str, err := cmd.Flags().GetString("ipv6")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting IPv6: %s", err),
+				output,
+			)
+		}
+
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		// Resolve node identifier (could be ID or hostname)
+		var nodeID uint64
+		if id, err := strconv.ParseUint(identifier, 10, 64); err == nil {
+			// It's a numeric ID
+			nodeID = id
+		} else {
+			// It's a hostname, need to find the node
+			listReq := &v1.ListNodesRequest{}
+			listResp, err := client.ListNodes(ctx, listReq)
+			if err != nil {
+				ErrorOutput(
+					err,
+					"Error listing nodes: "+status.Convert(err).Message(),
+					output,
+				)
+			}
+
+			found := false
+			for _, node := range listResp.GetNodes() {
+				if node.GetName() == identifier || node.GetGivenName() == identifier {
+					nodeID = node.GetId()
+					found = true
+					break
+				}
+			}
+
+			if !found {
+				ErrorOutput(
+					errors.New("node not found"),
+					fmt.Sprintf("Node with identifier '%s' not found", identifier),
+					output,
+				)
+			}
+		}
+
+		// Build request
+		request := &v1.SetNodeIPRequest{
+			NodeId: nodeID,
+			Ipv4:   ipv4Str,
+		}
+		if ipv6Str != "" {
+			request.Ipv6 = ipv6Str
+		}
+
+		response, err := client.SetNodeIP(ctx, request)
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf(
+					"Cannot set node IP: %s\n",
+					status.Convert(err).Message(),
+				),
+				output,
+			)
+		}
+
+		SuccessOutput(
+			response.GetNode(),
+			fmt.Sprintf("Node IP addresses updated successfully"),
+			output,
+		)
 	},
 }
 

@@ -1302,6 +1302,110 @@ func (x *BackfillNodeIPsResponse) GetChanges() []string {
 	return nil
 }
 
+type SetNodeIPRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
+	Ipv4          string                 `protobuf:"bytes,2,opt,name=ipv4,proto3" json:"ipv4,omitempty"` // IPv4 address (required)
+	Ipv6          string                 `protobuf:"bytes,3,opt,name=ipv6,proto3" json:"ipv6,omitempty"` // IPv6 address (optional, will be auto-generated if not provided)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNodeIPRequest) Reset() {
+	*x = SetNodeIPRequest{}
+	mi := &file_headscale_v1_node_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNodeIPRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNodeIPRequest) ProtoMessage() {}
+
+func (x *SetNodeIPRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_node_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNodeIPRequest.ProtoReflect.Descriptor instead.
+func (*SetNodeIPRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_node_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *SetNodeIPRequest) GetNodeId() uint64 {
+	if x != nil {
+		return x.NodeId
+	}
+	return 0
+}
+
+func (x *SetNodeIPRequest) GetIpv4() string {
+	if x != nil {
+		return x.Ipv4
+	}
+	return ""
+}
+
+func (x *SetNodeIPRequest) GetIpv6() string {
+	if x != nil {
+		return x.Ipv6
+	}
+	return ""
+}
+
+type SetNodeIPResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Node          *Node                  `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetNodeIPResponse) Reset() {
+	*x = SetNodeIPResponse{}
+	mi := &file_headscale_v1_node_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetNodeIPResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetNodeIPResponse) ProtoMessage() {}
+
+func (x *SetNodeIPResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_node_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetNodeIPResponse.ProtoReflect.Descriptor instead.
+func (*SetNodeIPResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_node_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *SetNodeIPResponse) GetNode() *Node {
+	if x != nil {
+		return x.Node
+	}
+	return nil
+}
+
 var File_headscale_v1_node_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_node_proto_rawDesc = "" +
@@ -1387,7 +1491,13 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x16BackfillNodeIPsRequest\x12\x1c\n" +
 	"\tconfirmed\x18\x01 \x01(\bR\tconfirmed\"3\n" +
 	"\x17BackfillNodeIPsResponse\x12\x18\n" +
-	"\achanges\x18\x01 \x03(\tR\achanges*\x82\x01\n" +
+	"\achanges\x18\x01 \x03(\tR\achanges\"S\n" +
+	"\x10SetNodeIPRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x12\n" +
+	"\x04ipv4\x18\x02 \x01(\tR\x04ipv4\x12\x12\n" +
+	"\x04ipv6\x18\x03 \x01(\tR\x04ipv6\";\n" +
+	"\x11SetNodeIPResponse\x12&\n" +
+	"\x04node\x18\x01 \x01(\v2\x12.headscale.v1.NodeR\x04node*\x82\x01\n" +
 	"\x0eRegisterMethod\x12\x1f\n" +
 	"\x1bREGISTER_METHOD_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18REGISTER_METHOD_AUTH_KEY\x10\x01\x12\x17\n" +
@@ -1407,7 +1517,7 @@ func file_headscale_v1_node_proto_rawDescGZIP() []byte {
 }
 
 var file_headscale_v1_node_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_headscale_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_headscale_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_headscale_v1_node_proto_goTypes = []any{
 	(RegisterMethod)(0),               // 0: headscale.v1.RegisterMethod
 	(*Node)(nil),                      // 1: headscale.v1.Node
@@ -1433,32 +1543,35 @@ var file_headscale_v1_node_proto_goTypes = []any{
 	(*DebugCreateNodeResponse)(nil),   // 21: headscale.v1.DebugCreateNodeResponse
 	(*BackfillNodeIPsRequest)(nil),    // 22: headscale.v1.BackfillNodeIPsRequest
 	(*BackfillNodeIPsResponse)(nil),   // 23: headscale.v1.BackfillNodeIPsResponse
-	(*User)(nil),                      // 24: headscale.v1.User
-	(*timestamppb.Timestamp)(nil),     // 25: google.protobuf.Timestamp
-	(*PreAuthKey)(nil),                // 26: headscale.v1.PreAuthKey
+	(*SetNodeIPRequest)(nil),          // 24: headscale.v1.SetNodeIPRequest
+	(*SetNodeIPResponse)(nil),         // 25: headscale.v1.SetNodeIPResponse
+	(*User)(nil),                      // 26: headscale.v1.User
+	(*timestamppb.Timestamp)(nil),     // 27: google.protobuf.Timestamp
+	(*PreAuthKey)(nil),                // 28: headscale.v1.PreAuthKey
 }
 var file_headscale_v1_node_proto_depIdxs = []int32{
-	24, // 0: headscale.v1.Node.user:type_name -> headscale.v1.User
-	25, // 1: headscale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
-	25, // 2: headscale.v1.Node.expiry:type_name -> google.protobuf.Timestamp
-	26, // 3: headscale.v1.Node.pre_auth_key:type_name -> headscale.v1.PreAuthKey
-	25, // 4: headscale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
+	26, // 0: headscale.v1.Node.user:type_name -> headscale.v1.User
+	27, // 1: headscale.v1.Node.last_seen:type_name -> google.protobuf.Timestamp
+	27, // 2: headscale.v1.Node.expiry:type_name -> google.protobuf.Timestamp
+	28, // 3: headscale.v1.Node.pre_auth_key:type_name -> headscale.v1.PreAuthKey
+	27, // 4: headscale.v1.Node.created_at:type_name -> google.protobuf.Timestamp
 	0,  // 5: headscale.v1.Node.register_method:type_name -> headscale.v1.RegisterMethod
 	1,  // 6: headscale.v1.RegisterNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 7: headscale.v1.GetNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 8: headscale.v1.SetTagsResponse.node:type_name -> headscale.v1.Node
 	1,  // 9: headscale.v1.SetApprovedRoutesResponse.node:type_name -> headscale.v1.Node
-	25, // 10: headscale.v1.ExpireNodeRequest.expiry:type_name -> google.protobuf.Timestamp
+	27, // 10: headscale.v1.ExpireNodeRequest.expiry:type_name -> google.protobuf.Timestamp
 	1,  // 11: headscale.v1.ExpireNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 12: headscale.v1.RenameNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 13: headscale.v1.ListNodesResponse.nodes:type_name -> headscale.v1.Node
 	1,  // 14: headscale.v1.MoveNodeResponse.node:type_name -> headscale.v1.Node
 	1,  // 15: headscale.v1.DebugCreateNodeResponse.node:type_name -> headscale.v1.Node
-	16, // [16:16] is the sub-list for method output_type
-	16, // [16:16] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	1,  // 16: headscale.v1.SetNodeIPResponse.node:type_name -> headscale.v1.Node
+	17, // [17:17] is the sub-list for method output_type
+	17, // [17:17] is the sub-list for method input_type
+	17, // [17:17] is the sub-list for extension type_name
+	17, // [17:17] is the sub-list for extension extendee
+	0,  // [0:17] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_node_proto_init() }
@@ -1474,7 +1587,7 @@ func file_headscale_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_node_proto_rawDesc), len(file_headscale_v1_node_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   23,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -135,6 +135,22 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		state:             s,
 	}
 
+	// Apply static node IPs from configuration on startup
+	if len(cfg.StaticNodes) > 0 {
+		changes, err := s.ApplyStaticNodes()
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to apply some static node IP addresses")
+		}
+		if len(changes) > 0 {
+			log.Info().
+				Int("count", len(changes)).
+				Msg("Applied static IP addresses to nodes from configuration")
+			for _, change := range changes {
+				log.Debug().Str("change", change).Msg("Static IP assignment")
+			}
+		}
+	}
+
 	// Initialize ephemeral garbage collector
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		node, ok := app.state.GetNodeByID(ni)

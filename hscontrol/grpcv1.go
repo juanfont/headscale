@@ -380,6 +380,95 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	return &v1.SetApprovedRoutesResponse{Node: proto}, nil
 }
 
+func (api headscaleV1APIServer) SetNodeIP(
+	ctx context.Context,
+	request *v1.SetNodeIPRequest,
+) (*v1.SetNodeIPResponse, error) {
+	log.Debug().
+		Caller().
+		Uint64("node.id", request.GetNodeId()).
+		Str("ipv4", request.GetIpv4()).
+		Str("ipv6", request.GetIpv6()).
+		Msg("gRPC SetNodeIP called")
+
+	// Validate and parse IPv4 (required)
+	if request.GetIpv4() == "" {
+		return nil, status.Error(codes.InvalidArgument, "IPv4 address is required")
+	}
+
+	ipv4, err := util.ValidateIPAddress(request.GetIpv4())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid IPv4 address: %v", err))
+	}
+
+	if !ipv4.Is4() {
+		return nil, status.Error(codes.InvalidArgument, "provided IPv4 address is not a valid IPv4 address")
+	}
+
+	// Validate IPv4 is in configured range
+	if api.h.cfg.PrefixV4 != nil {
+		if err := util.ValidateIPInRange(ipv4, api.h.cfg.PrefixV4); err != nil {
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
+
+	var ipv6 *netip.Addr
+	// Parse IPv6 if provided
+	if request.GetIpv6() != "" {
+		parsedIPv6, err := util.ValidateIPAddress(request.GetIpv6())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid IPv6 address: %v", err))
+		}
+		if !parsedIPv6.Is6() {
+			return nil, status.Error(codes.InvalidArgument, "provided IPv6 address is not a valid IPv6 address")
+		}
+
+		// Validate IPv6 is in configured range
+		if api.h.cfg.PrefixV6 != nil {
+			if err := util.ValidateIPInRange(parsedIPv6, api.h.cfg.PrefixV6); err != nil {
+				return nil, status.Error(codes.InvalidArgument, err.Error())
+			}
+		}
+		ipv6 = &parsedIPv6
+	} else {
+		// Generate IPv6 from IPv4 if not provided
+		if api.h.cfg.PrefixV6 != nil {
+			generatedIPv6, err := util.GenerateIPv6FromIPv4(ipv4, api.h.cfg.PrefixV6)
+			if err != nil {
+				return nil, status.Error(codes.Internal, fmt.Sprintf("failed to generate IPv6 from IPv4: %v", err))
+			}
+			ipv6 = &generatedIPv6
+			log.Debug().
+				Str("ipv4", ipv4.String()).
+				Str("generated_ipv6", generatedIPv6.String()).
+				Msg("Auto-generated IPv6 address from IPv4")
+		}
+	}
+
+	// Set the IPs via state layer (which handles validation and conflict checking)
+	nodeView, nodeChange, err := api.h.state.SetNodeIPs(types.NodeID(request.GetNodeId()), &ipv4, ipv6)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// Propagate the change to notify all peers
+	api.h.Change(nodeChange)
+
+	log.Debug().
+		Caller().
+		Uint64("node.id", request.GetNodeId()).
+		Str("ipv4", ipv4.String()).
+		Str("ipv6", func() string {
+			if ipv6 != nil {
+				return ipv6.String()
+			}
+			return "none"
+		}()).
+		Msg("gRPC SetNodeIP completed")
+
+	return &v1.SetNodeIPResponse{Node: nodeView.Proto()}, nil
+}
+
 func validateTag(tag string) error {
 	if strings.Index(tag, "tag:") != 0 {
 		return errors.New("tag must start with the string 'tag:'")

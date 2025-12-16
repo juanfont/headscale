@@ -673,6 +673,34 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	return nodeView, c, nil
 }
 
+// SetNodeIPs sets the IPv4 and IPv6 addresses for a node.
+// It validates that the IPs are in the configured ranges and checks for conflicts.
+func (s *State) SetNodeIPs(nodeID types.NodeID, ipv4 *netip.Addr, ipv6 *netip.Addr) (types.NodeView, change.ChangeSet, error) {
+	// First validate and update in database (this includes conflict checking)
+	err := s.db.SetNodeIPs(nodeID, ipv4, ipv6, s.cfg.PrefixV4, s.cfg.PrefixV6)
+	if err != nil {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("setting node IPs: %w", err)
+	}
+
+	// Update NodeStore to reflect the changes
+	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
+		if ipv4 != nil {
+			node.IPv4 = ipv4
+		}
+		if ipv6 != nil {
+			node.IPv6 = ipv6
+		}
+	})
+
+	if !ok {
+		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+	}
+
+	// n is already a NodeView from UpdateNode
+	// IP changes require a full update to notify all peers
+	return n, change.NodeAdded(nodeID), nil
+}
+
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
 	if err := util.ValidateHostname(newName); err != nil {
@@ -762,6 +790,177 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 			// We should avoid PutNode here.
 			_ = s.nodeStore.PutNode(*node)
 		}
+	}
+
+	return changes, nil
+}
+
+// ApplyStaticNodes applies static IP addresses from configuration to matching nodes.
+// This is called on server startup to apply static_nodes configuration.
+func (s *State) ApplyStaticNodes() ([]string, error) {
+	if len(s.cfg.StaticNodes) == 0 {
+		return nil, nil
+	}
+
+	var changes []string
+	var errors []string
+
+	// Get all nodes to match against
+	allNodes, err := s.db.ListNodes()
+	if err != nil {
+		return nil, fmt.Errorf("listing nodes for static IP assignment: %w", err)
+	}
+
+	// Process each static node configuration
+	for hostname, staticIPs := range s.cfg.StaticNodes {
+		// Find node by hostname or given name
+		var targetNode *types.Node
+		for _, node := range allNodes {
+			if node.Hostname == hostname || node.GivenName == hostname {
+				targetNode = node
+				break
+			}
+		}
+
+		if targetNode == nil {
+			log.Warn().
+				Str("hostname", hostname).
+				Msg("Static node configuration found but node not found in database, skipping")
+			errors = append(errors, fmt.Sprintf("node '%s' not found", hostname))
+			continue
+		}
+
+		// Parse and validate IPv4
+		if len(staticIPs.IPv4) == 0 {
+			log.Warn().
+				Str("hostname", hostname).
+				Msg("Static node configuration has no IPv4 addresses, skipping")
+			errors = append(errors, fmt.Sprintf("node '%s': no IPv4 addresses configured", hostname))
+			continue
+		}
+
+		ipv4Str := staticIPs.IPv4[0] // Use first IPv4 if multiple provided
+		ipv4, err := util.ValidateIPAddress(ipv4Str)
+		if err != nil {
+			log.Warn().
+				Str("hostname", hostname).
+				Str("ipv4", ipv4Str).
+				Err(err).
+				Msg("Invalid IPv4 address in static node configuration, skipping")
+			errors = append(errors, fmt.Sprintf("node '%s': invalid IPv4 address '%s': %v", hostname, ipv4Str, err))
+			continue
+		}
+
+		if !ipv4.Is4() {
+			log.Warn().
+				Str("hostname", hostname).
+				Str("ipv4", ipv4Str).
+				Msg("IPv4 address is not a valid IPv4 address, skipping")
+			errors = append(errors, fmt.Sprintf("node '%s': '%s' is not a valid IPv4 address", hostname, ipv4Str))
+			continue
+		}
+
+		// Validate IPv4 is in configured range
+		if s.cfg.PrefixV4 != nil {
+			if err := util.ValidateIPInRange(ipv4, s.cfg.PrefixV4); err != nil {
+				log.Warn().
+					Str("hostname", hostname).
+					Str("ipv4", ipv4Str).
+					Err(err).
+					Msg("IPv4 address is outside configured prefix range, skipping")
+				errors = append(errors, fmt.Sprintf("node '%s': %v", hostname, err))
+				continue
+			}
+		}
+
+		// Parse and validate IPv6, or generate if not provided
+		var ipv6 *netip.Addr
+		if len(staticIPs.IPv6) > 0 {
+			ipv6Str := staticIPs.IPv6[0] // Use first IPv6 if multiple provided
+			parsedIPv6, err := util.ValidateIPAddress(ipv6Str)
+			if err != nil {
+				log.Warn().
+					Str("hostname", hostname).
+					Str("ipv6", ipv6Str).
+					Err(err).
+					Msg("Invalid IPv6 address in static node configuration, will generate from IPv4")
+			} else if !parsedIPv6.Is6() {
+				log.Warn().
+					Str("hostname", hostname).
+					Str("ipv6", ipv6Str).
+					Msg("IPv6 address is not a valid IPv6 address, will generate from IPv4")
+			} else {
+				// Validate IPv6 is in configured range
+				if s.cfg.PrefixV6 != nil {
+					if err := util.ValidateIPInRange(parsedIPv6, s.cfg.PrefixV6); err != nil {
+						log.Warn().
+							Str("hostname", hostname).
+							Str("ipv6", ipv6Str).
+							Err(err).
+							Msg("IPv6 address is outside configured prefix range, will generate from IPv4")
+					} else {
+						ipv6 = &parsedIPv6
+					}
+				} else {
+					ipv6 = &parsedIPv6
+				}
+			}
+		}
+
+		// Generate IPv6 from IPv4 if not provided or invalid
+		if ipv6 == nil && s.cfg.PrefixV6 != nil {
+			generatedIPv6, err := util.GenerateIPv6FromIPv4(ipv4, s.cfg.PrefixV6)
+			if err != nil {
+				log.Warn().
+					Str("hostname", hostname).
+					Str("ipv4", ipv4Str).
+					Err(err).
+					Msg("Failed to generate IPv6 from IPv4, skipping IPv6 assignment")
+				errors = append(errors, fmt.Sprintf("node '%s': failed to generate IPv6: %v", hostname, err))
+			} else {
+				ipv6 = &generatedIPv6
+				log.Info().
+					Str("hostname", hostname).
+					Str("ipv4", ipv4Str).
+					Str("generated_ipv6", generatedIPv6.String()).
+					Msg("Auto-generated IPv6 address from IPv4 for static node")
+			}
+		}
+
+		// Apply the IPs using the state layer (which handles validation and conflict checking)
+		_, _, err = s.SetNodeIPs(targetNode.ID, &ipv4, ipv6)
+		if err != nil {
+			log.Error().
+				Str("hostname", hostname).
+				Str("ipv4", ipv4Str).
+				Err(err).
+				Msg("Failed to apply static IP addresses to node")
+			errors = append(errors, fmt.Sprintf("node '%s': %v", hostname, err))
+			continue
+		}
+
+		changeMsg := fmt.Sprintf("assigned static IPv4 %q", ipv4Str)
+		if ipv6 != nil {
+			changeMsg += fmt.Sprintf(" and IPv6 %q", ipv6.String())
+		}
+		changeMsg += fmt.Sprintf(" to Node(%d) %q", targetNode.ID, hostname)
+		changes = append(changes, changeMsg)
+		log.Info().
+			Str("hostname", hostname).
+			Str("ipv4", ipv4Str).
+			Str("ipv6", func() string {
+				if ipv6 != nil {
+					return ipv6.String()
+				}
+				return "none"
+			}()).
+			Msg("Applied static IP addresses to node")
+	}
+
+	if len(errors) > 0 {
+		log.Warn().
+			Strs("errors", errors).
+			Msg("Some static node IP assignments failed")
 	}
 
 	return changes, nil

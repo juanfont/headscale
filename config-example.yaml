@@ -66,6 +66,18 @@ prefixes:
   # - random: assigns the next free IP from a pseudo-random IP generator (crypto/rand).
   allocation: sequential
 
+# Static node IP assignments
+# Allows you to assign custom IP addresses to specific nodes by hostname/shortname.
+# These IPs are applied on server startup for existing nodes, or during registration for new nodes.
+# If IPv6 is not provided, it will be automatically generated from the IPv4 address
+# within the Tailscale IPv6 subnet (fd7a:115c:a1e0::/48).
+# static_nodes:
+#   foo:  # Node shortname/hostname
+#     ipv4:
+#       - 100.64.0.10
+#     ipv6:
+#       - fd7a:115c:a1e0::10  # Optional, auto-generated if missing
+
 # DERP is a relay system that Tailscale uses when a direct
 # connection cannot be established.
 # https://tailscale.com/blog/how-tailscale-works/#encrypted-tcp-relays-derp

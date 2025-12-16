@@ -137,6 +137,13 @@ service HeadscaleService {
     };
   }
 
+  rpc SetNodeIP(SetNodeIPRequest) returns (SetNodeIPResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/node/{node_id}/ip"
+      body : "*"
+    };
+  }
+
   // --- Node end ---
 
   // --- ApiKeys start ---

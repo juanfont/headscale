@@ -119,3 +119,11 @@ message DebugCreateNodeResponse { Node node = 1; }
 message BackfillNodeIPsRequest { bool confirmed = 1; }
 
 message BackfillNodeIPsResponse { repeated string changes = 1; }
+
+message SetNodeIPRequest {
+  uint64 node_id = 1;
+  string ipv4 = 2;  // IPv4 address (required)
+  string ipv6 = 3;  // IPv6 address (optional, will be auto-generated if not provided)
+}
+
+message SetNodeIPResponse { Node node = 1; }

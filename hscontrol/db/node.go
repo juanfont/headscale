@@ -218,6 +218,110 @@ func SetTags(
 	return nil
 }
 
+// SetNodeIPs sets the IPv4 and IPv6 addresses for a node.
+// It validates that the IPs are in the configured ranges and checks for conflicts.
+func (hsdb *HSDatabase) SetNodeIPs(
+	nodeID types.NodeID,
+	ipv4 *netip.Addr,
+	ipv6 *netip.Addr,
+	prefix4 *netip.Prefix,
+	prefix6 *netip.Prefix,
+) error {
+	return hsdb.Write(func(tx *gorm.DB) error {
+		return SetNodeIPs(tx, nodeID, ipv4, ipv6, prefix4, prefix6)
+	})
+}
+
+// SetNodeIPs sets the IPv4 and IPv6 addresses for a node in a transaction.
+// It validates that the IPs are in the configured ranges and checks for conflicts.
+// Returns clear error messages for:
+// - Node not found
+// - IP address format invalid
+// - IP address outside configured range
+// - IP address conflict (already assigned to another node)
+// - Database update failure
+func SetNodeIPs(
+	tx *gorm.DB,
+	nodeID types.NodeID,
+	ipv4 *netip.Addr,
+	ipv6 *netip.Addr,
+	prefix4 *netip.Prefix,
+	prefix6 *netip.Prefix,
+) error {
+	// Verify node exists
+	_, err := GetNodeByID(tx, nodeID)
+	if err != nil {
+		return fmt.Errorf("node not found (ID: %d): %w", nodeID, err)
+	}
+
+	// Validate IPv4 if provided
+	if ipv4 != nil {
+		if prefix4 != nil {
+			if !prefix4.Contains(*ipv4) {
+				return fmt.Errorf("IPv4 address %s is outside configured prefix range %s. Please use an address within %s", ipv4, prefix4, prefix4)
+			}
+		}
+		// Check for conflicts
+		var conflictingNode types.Node
+		if err := tx.Model(&types.Node{}).
+			Where("(ipv4 = ? OR ipv6 = ?) AND id != ?", ipv4.String(), ipv4.String(), nodeID).
+			First(&conflictingNode).Error; err == nil {
+			return fmt.Errorf("IPv4 address %s is already assigned to node %d (%s). Please choose a different address", ipv4, conflictingNode.ID, conflictingNode.Hostname)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("database error while checking for IP conflicts: %w", err)
+		}
+	}
+
+	// Validate IPv6 if provided
+	if ipv6 != nil {
+		if prefix6 != nil {
+			if !prefix6.Contains(*ipv6) {
+				return fmt.Errorf("IPv6 address %s is outside configured prefix range %s. Please use an address within %s", ipv6, prefix6, prefix6)
+			}
+		}
+		// Check for conflicts
+		var conflictingNode types.Node
+		if err := tx.Model(&types.Node{}).
+			Where("(ipv4 = ? OR ipv6 = ?) AND id != ?", ipv6.String(), ipv6.String(), nodeID).
+			First(&conflictingNode).Error; err == nil {
+			return fmt.Errorf("IPv6 address %s is already assigned to node %d (%s). Please choose a different address", ipv6, conflictingNode.ID, conflictingNode.Hostname)
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return fmt.Errorf("database error while checking for IP conflicts: %w", err)
+		}
+	}
+
+	// Update the node
+	updates := make(map[string]interface{})
+	if ipv4 != nil {
+		updates["ipv4"] = ipv4.String()
+	}
+	if ipv6 != nil {
+		updates["ipv6"] = ipv6.String()
+	}
+
+	if len(updates) > 0 {
+		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Updates(updates).Error; err != nil {
+			return fmt.Errorf("failed to update node IP addresses in database: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// GetNodeByHostname finds a node by hostname or given name across all users.
+func GetNodeByHostname(tx *gorm.DB, hostname string) (*types.Node, error) {
+	var node types.Node
+	if err := tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Where("hostname = ? OR given_name = ?", hostname, hostname).
+		First(&node).Error; err != nil {
+		return nil, fmt.Errorf("node not found: %w", err)
+	}
+	return &node, nil
+}
+
 // SetTags takes a Node struct pointer and update the forced tags.
 func SetApprovedRoutes(
 	tx *gorm.DB,
