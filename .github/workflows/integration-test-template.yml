@@ -90,15 +90,22 @@ jobs:
         run: /tmp/artifacts/hi run --stats --ts-memory-limit=300 --hs-memory-limit=1500 "^${{ inputs.test }}$" \
           --timeout=120m \
           ${{ inputs.postgres_flag }}
+      # Sanitize test name for artifact upload (replace invalid characters: " : < > | * ? \ / with -)
+      - name: Sanitize test name for artifacts
+        if: always()
+        id: sanitize
+        run: echo "name=${TEST_NAME//[\":<>|*?\\\/]/-}" >> $GITHUB_OUTPUT
+        env:
+          TEST_NAME: ${{ inputs.test }}
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: always()
         with:
-          name: ${{ inputs.database_name }}-${{ inputs.test }}-logs
+          name: ${{ inputs.database_name }}-${{ steps.sanitize.outputs.name }}-logs
           path: "control_logs/*/*.log"
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         if: always()
         with:
-          name: ${{ inputs.database_name }}-${{ inputs.test }}-artifacts
+          name: ${{ inputs.database_name }}-${{ steps.sanitize.outputs.name }}-artifacts
           path: control_logs/
       - name: Setup a blocking tmux session
         if: ${{ env.HAS_TAILSCALE_SECRET }}

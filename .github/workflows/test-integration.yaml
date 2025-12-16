@@ -195,7 +195,12 @@ jobs:
           - TestEnablingExitRoutes
           - TestSubnetRouterMultiNetwork
           - TestSubnetRouterMultiNetworkExitNode
-          - TestAutoApproveMultiNetwork
+          - TestAutoApproveMultiNetwork/authkey-tag.*
+          - TestAutoApproveMultiNetwork/authkey-user.*
+          - TestAutoApproveMultiNetwork/authkey-group.*
+          - TestAutoApproveMultiNetwork/webauth-tag.*
+          - TestAutoApproveMultiNetwork/webauth-user.*
+          - TestAutoApproveMultiNetwork/webauth-group.*
           - TestSubnetRouteACLFiltering
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
