@@ -1,21 +1,17 @@
-version: v1
+version: v2
 plugins:
-  - name: go
+  - local: ["go", "tool", "protoc-gen-go"]
     out: gen/go
     opt:
       - paths=source_relative
-  - name: go-grpc
+  - local: ["go", "tool", "protoc-gen-go-grpc"]
     out: gen/go
     opt:
       - paths=source_relative
-  - name: grpc-gateway
+  - local: ["go", "tool", "protoc-gen-grpc-gateway"]
     out: gen/go
     opt:
       - paths=source_relative
       - generate_unbound_methods=true
-  # - name: gorm
-  #   out: gen/go
-  #   opt:
-  #     - paths=source_relative,enums=string,gateway=true
-  - name: openapiv2
+  - local: ["go", "tool", "protoc-gen-openapiv2"]
     out: gen/openapiv2
