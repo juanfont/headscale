@@ -749,6 +749,32 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			canApprove: true,
 		},
 		{
+			// Tags-as-identity: Tagged nodes are identified by their tags, not by the
+			// user who created them. Group membership of the creator is irrelevant.
+			// A tagged node can only be auto-approved via tag-based autoApprovers,
+			// not group-based ones (even if the creator is in the group).
+			name:  "tagged-node-with-group-autoapprover-not-approved",
+			node:  taggedNode, // Has tag:router, owned by user3
+			route: p("10.30.0.0/16"),
+			policy: `{
+				"tagOwners": {
+					"tag:router": ["user3@"]
+				},
+				"groups": {
+					"group:ops": ["user3@"]
+				},
+				"acls": [
+					{"action": "accept", "src": ["*"], "dst": ["*:*"]}
+				],
+				"autoApprovers": {
+					"routes": {
+						"10.30.0.0/16": ["group:ops"]
+					}
+				}
+			}`,
+			canApprove: false, // Tagged nodes don't inherit group membership for auto-approval
+		},
+		{
 			name:  "small-subnet-with-exitnode-only-approval",
 			node:  normalNode,
 			route: p("192.168.1.1/32"),
