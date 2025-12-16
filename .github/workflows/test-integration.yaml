@@ -232,6 +232,7 @@ jobs:
           - TestTagsAdminAPICanSetUnownedTag
           - TestTagsAdminAPICannotRemoveAllTags
           - TestTagsAdminAPICannotSetInvalidFormat
+          - TestTagsMultiNodeSameTagDifferentNodes
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:

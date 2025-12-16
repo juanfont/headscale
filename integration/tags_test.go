@@ -2463,3 +2463,156 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 		}
 	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
 }
+
+// =============================================================================
+// Test Suite 5: Multi-Node Tag Independence (Issue #2615)
+// =============================================================================
+
+// TestTagsMultiNodeSameTagDifferentNodes tests that multiple nodes can have
+// the same tag without interfering with each other.
+//
+// This is a regression test for GitHub issue #2615:
+// https://github.com/juanfont/headscale/issues/2615
+//
+// Scenario:
+//  1. Node 1 registers with --advertise-tags=tag:valid-owned
+//  2. Node 2 registers with --advertise-tags=tag:valid-owned
+//  3. Admin assigns tag:second to Node 1
+//
+// Expected:
+//   - After step 2: Both nodes have tag:valid-owned
+//   - After step 3: Node 1 has tag:second, Node 2 still has tag:valid-owned
+func TestTagsMultiNodeSameTagDifferentNodes(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-multinode-same"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Step 1: Register Node 1 with tag:valid-owned
+	t.Log("Step 1: Registering Node 1 with --advertise-tags=tag:valid-owned")
+
+	client1, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+	)
+	require.NoError(t, err)
+
+	loginURL1, err := client1.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	body1, err := doLoginURL(client1.Hostname(), loginURL1)
+	require.NoError(t, err)
+
+	err = scenario.runHeadscaleRegister(tagTestUser, body1)
+	require.NoError(t, err)
+
+	err = client1.WaitForRunning(120 * time.Second)
+	require.NoError(t, err)
+
+	var node1ID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			node1ID = nodes[0].GetId()
+			t.Logf("Step 1: Node 1 (ID=%d) registered with tags: %v", node1ID, nodes[0].GetValidTags())
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, 30*time.Second, 500*time.Millisecond, "waiting for Node 1 registration")
+
+	// Step 2: Register Node 2 with the same tag
+	t.Log("Step 2: Registering Node 2 with --advertise-tags=tag:valid-owned")
+
+	client2, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+	)
+	require.NoError(t, err)
+
+	loginURL2, err := client2.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	body2, err := doLoginURL(client2.Hostname(), loginURL2)
+	require.NoError(t, err)
+
+	err = scenario.runHeadscaleRegister(tagTestUser, body2)
+	require.NoError(t, err)
+
+	err = client2.WaitForRunning(120 * time.Second)
+	require.NoError(t, err)
+
+	var node2ID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		if len(nodes) == 2 {
+			for _, n := range nodes {
+				if n.GetId() == node1ID {
+					t.Logf("Step 2: Node 1 (ID=%d) tags: %v", n.GetId(), n.GetValidTags())
+					assertNodeHasTagsWithCollect(c, n, []string{"tag:valid-owned"})
+				} else {
+					node2ID = n.GetId()
+					t.Logf("Step 2: Node 2 (ID=%d) registered with tags: %v", n.GetId(), n.GetValidTags())
+					assertNodeHasTagsWithCollect(c, n, []string{"tag:valid-owned"})
+				}
+			}
+		}
+	}, 30*time.Second, 500*time.Millisecond, "verifying both nodes have tag:valid-owned")
+
+	// Step 3: Admin assigns different tag to Node 1
+	t.Log("Step 3: Admin assigning tag:second to Node 1 via SetNodeTags")
+
+	err = headscale.SetNodeTags(node1ID, []string{"tag:second"})
+	require.NoError(t, err)
+
+	// Verify Node 1 has new tag, Node 2 is unchanged
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		if len(nodes) == 2 {
+			for _, n := range nodes {
+				if n.GetId() == node1ID {
+					t.Logf("Step 3: Node 1 (ID=%d) tags after SetNodeTags: %v", n.GetId(), n.GetValidTags())
+					// Node 1 should have only tag:second (SetNodeTags REPLACES)
+					assertNodeHasTagsWithCollect(c, n, []string{"tag:second"})
+				} else if n.GetId() == node2ID {
+					t.Logf("Step 3: Node 2 (ID=%d) tags (should be unchanged): %v", n.GetId(), n.GetValidTags())
+					// Node 2 should still have tag:valid-owned (unaffected by Node 1's SetNodeTags)
+					assertNodeHasTagsWithCollect(c, n, []string{"tag:valid-owned"})
+				}
+			}
+		}
+	}, 10*time.Second, 500*time.Millisecond, "verifying SetNodeTags only affected Node 1")
+
+	t.Log("Test PASS: Multiple nodes can share tags, and SetNodeTags on one node does not affect others")
+}
