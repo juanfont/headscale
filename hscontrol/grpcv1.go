@@ -343,11 +343,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format
@@ -475,12 +475,29 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
 ) (*v1.ExpireNodeResponse, error) {
+	// Handle disable expiry request - node will never expire
+	if request.GetDisableExpiry() {
+		node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		api.h.Change(nodeChange)
+
+		log.Trace().
+			Caller().
+			Str("node", node.Hostname()).
+			Msg("node expiry disabled")
+
+		return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
+	}
+
 	expiry := time.Now()
 	if request.GetExpiry() != nil {
 		expiry = request.GetExpiry().AsTime()
 	}
 
-	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), expiry)
+	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), &expiry)
 	if err != nil {
 		return nil, err
 	}

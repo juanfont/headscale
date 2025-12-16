@@ -113,7 +113,7 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	c.Assert(nodeFromDB.IsExpired(), check.Equals, false)
 
 	now := time.Now()
-	err = db.NodeSetExpiry(nodeFromDB.ID, now)
+	err = db.NodeSetExpiry(nodeFromDB.ID, &now)
 	c.Assert(err, check.IsNil)
 
 	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
