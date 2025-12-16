@@ -1,0 +1,156 @@
+name: Sync with Upstream
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # Run daily at 6:00 AM UTC
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-upstream:
+    if: github.repository == 'skitzo2000/headscale'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full git history
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream \
+            https://github.com/juanfont/headscale.git || true
+          git fetch upstream --tags
+
+      - name: Get latest upstream stable release
+        id: latest-release
+        run: |
+          # Get all tags that match stable version pattern
+          LATEST_TAG=$(git tag -l | \
+            grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | \
+            sort -V | tail -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No stable release tags found"
+            exit 1
+          fi
+
+          echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+          echo "version=${LATEST_TAG#v}" >> $GITHUB_OUTPUT
+          echo "Latest stable release: $LATEST_TAG"
+
+      - name: Check if tag exists locally
+        id: check-tag
+        run: |
+          TAG="${{ steps.latest-release.outputs.latest_tag }}"
+
+          # Check if this tag already exists on a branch
+          if git branch -r --contains "refs/tags/$TAG" | \
+            grep -q origin/main; then
+            echo "Tag $TAG already exists in main branch"
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Tag $TAG is new and needs to be synced"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create branch and merge
+        id: merge
+        if: steps.check-tag.outputs.exists == 'false'
+        run: |
+          TAG="${{ steps.latest-release.outputs.latest_tag }}"
+          VERSION="${{ steps.latest-release.outputs.version }}"
+          BRANCH_NAME="upstream-sync-$VERSION"
+
+          # Create and checkout new branch
+          git checkout -b "$BRANCH_NAME"
+
+          # Attempt to merge the upstream tag
+          if git merge "$TAG" --no-edit \
+            -m "Merge upstream release $TAG"; then
+            echo "Merge successful"
+            echo "success=true" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH_NAME" >> $GITHUB_OUTPUT
+            echo "conflicts=false" >> $GITHUB_OUTPUT
+          else
+            echo "Merge conflicts detected"
+            git merge --abort
+            echo "success=false" >> $GITHUB_OUTPUT
+            echo "conflicts=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push branch
+        if: |
+          steps.check-tag.outputs.exists == 'false' &&
+          steps.merge.outputs.success == 'true'
+        run: |
+          BRANCH_NAME="${{ steps.merge.outputs.branch }}"
+          git push origin "$BRANCH_NAME"
+
+      - name: Create Pull Request
+        if: |
+          steps.check-tag.outputs.exists == 'false' &&
+          steps.merge.outputs.success == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.latest-release.outputs.latest_tag }}"
+          VERSION="${{ steps.latest-release.outputs.version }}"
+          BRANCH_NAME="${{ steps.merge.outputs.branch }}"
+
+          # Create PR body
+          cat > pr_body.txt << 'EOF'
+          ## Upstream Sync: Release $TAG
+
+          This pull request syncs the fork with upstream release [$TAG].
+
+          [$TAG]: https://github.com/juanfont/headscale/releases/tag/$TAG
+
+          ### Changes
+          This PR merges all changes from the upstream repository up to
+          release $TAG.
+
+          ### Release Notes
+          For detailed release notes, see the [upstream release][$TAG].
+
+          ### Review Checklist
+          - [ ] Review upstream changes for compatibility
+          - [ ] Check for fork-specific modifications that may be affected
+          - [ ] Verify CI/CD pipeline passes
+          - [ ] Test critical functionality
+
+          ---
+          *This PR was automatically created by the sync-upstream workflow.*
+          EOF
+
+          # Replace variables in PR body
+          sed -i "s/\$TAG/$TAG/g" pr_body.txt
+          sed -i "s/\$VERSION/$VERSION/g" pr_body.txt
+
+          # Create the pull request
+          gh pr create \
+            --title "Sync with upstream release $TAG" \
+            --body-file pr_body.txt \
+            --base main \
+            --head "$BRANCH_NAME"
+
+      - name: Report merge conflicts
+        if: |
+          steps.check-tag.outputs.exists == 'false' &&
+          steps.merge.outputs.conflicts == 'true'
+        run: |
+          TAG="${{ steps.latest-release.outputs.latest_tag }}"
+          echo "::warning::Automatic merge of upstream release $TAG \
+            failed due to conflicts. Manual intervention required."
+          echo "::warning::Please manually merge the upstream changes \
+            and resolve conflicts."
