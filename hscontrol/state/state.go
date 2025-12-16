@@ -478,7 +478,9 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 	}
 
 	if !policyChange.IsEmpty() {
-		c = policyChange
+		// Merge policy change with NodeRemoved to preserve PeersRemoved info
+		// This ensures the batcher cleans up the deleted node from its state
+		c = c.Merge(policyChange)
 	}
 
 	return c, nil
