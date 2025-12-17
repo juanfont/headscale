@@ -113,8 +113,9 @@ type DNSConfig struct {
 }
 
 type Nameservers struct {
-	Global []string
-	Split  map[string][]string
+	Global        []string
+	Split         map[string][]string
+	SplitFallback []string
 }
 
 type SqliteConfig struct {
@@ -485,9 +486,34 @@ func validateServerConfig() error {
 		)
 	}
 
+	// Validate override_local_dns configuration
 	if viper.GetBool("dns.override_local_dns") {
 		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
 			errorText += "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true\n"
+		}
+	}
+
+	// Validate split DNS configuration
+	splitDNS := viper.GetStringMapStringSlice("dns.nameservers.split")
+	if len(splitDNS) > 0 {
+		// Check if fallback resolvers are available
+		fallbackResolvers := viper.GetStringSlice("dns.split_dns_fallback_resolvers")
+		globalResolvers := viper.GetStringSlice("dns.nameservers.global")
+		if len(fallbackResolvers) == 0 && len(globalResolvers) == 0 {
+			errorText += "Fatal config error: when dns.nameservers.split is configured, either dns.split_dns_fallback_resolvers or dns.nameservers.global must be set\n"
+		}
+
+		// Log info if fallback resolvers will be derived from global resolvers
+		if len(fallbackResolvers) == 0 && len(globalResolvers) > 0 {
+			log.Info().
+				Msg("dns.split_dns_fallback_resolvers not configured - using dns.nameservers.global as fallback resolvers for split DNS")
+		}
+	}
+
+	// Validate MagicDNS configuration
+	if viper.GetBool("dns.magic_dns") {
+		if global := viper.GetStringSlice("dns.nameservers.global"); len(global) == 0 {
+			errorText += "Fatal config error: dns.nameservers.global must be set when dns.magic_dns is true\n"
 		}
 	}
 
@@ -712,6 +738,7 @@ func dns() (DNSConfig, error) {
 	dns.OverrideLocalDNS = viper.GetBool("dns.override_local_dns")
 	dns.Nameservers.Global = viper.GetStringSlice("dns.nameservers.global")
 	dns.Nameservers.Split = viper.GetStringMapStringSlice("dns.nameservers.split")
+	dns.Nameservers.SplitFallback = viper.GetStringSlice("dns.nameservers.split_fallback")
 	dns.SearchDomains = viper.GetStringSlice("dns.search_domains")
 	dns.ExtraRecordsPath = viper.GetString("dns.extra_records_path")
 
@@ -806,6 +833,37 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 	return routes
 }
 
+// splitDNSFallbackResolvers returns the fallback DNS resolvers for split DNS
+// defined in the config file.
+// If a nameserver is a valid IP, it will be used as a Fallback Regular resolver.
+// If a nameserver is a valid URL, it will be used as a Fallback DoH resolver.
+// If a nameserver is neither a valid URL nor a valid IP, it will be ignored.
+func (d *DNSConfig) splitDNSFallbackResolvers() []*dnstype.Resolver {
+	var resolvers []*dnstype.Resolver
+
+	for _, nsStr := range d.Nameservers.SplitFallback {
+		if _, err := netip.ParseAddr(nsStr); err == nil {
+			resolvers = append(resolvers, &dnstype.Resolver{
+				Addr: nsStr,
+			})
+
+			continue
+		}
+
+		if _, err := url.Parse(nsStr); err == nil {
+			resolvers = append(resolvers, &dnstype.Resolver{
+				Addr: nsStr,
+			})
+
+			continue
+		}
+
+		log.Warn().Msgf("Invalid split DNS fallback resolver %q - must be a valid IP address or URL, ignoring", nsStr)
+	}
+
+	return resolvers
+}
+
 func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	cfg := tailcfg.DNSConfig{}
 
@@ -815,14 +873,37 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 
 	cfg.Proxied = dns.MagicDNS
 	cfg.ExtraRecords = dns.ExtraRecords
-	if dns.OverrideLocalDNS {
-		cfg.Resolvers = dns.globalResolvers()
-	} else {
-		cfg.FallbackResolvers = dns.globalResolvers()
+
+	globalResolvers := dns.globalResolvers()
+
+	// Only populate main Resolvers field if:
+	// 1. MagicDNS is enabled (MagicDNS supersedes override_local_dns), OR
+	// 2. override_local_dns is explicitly enabled
+	//
+	// This prevents leaking DNS configuration to clients when neither
+	// MagicDNS nor override_local_dns are enabled.
+	// See: https://github.com/juanfont/headscale/issues/2899
+	if dns.MagicDNS || dns.OverrideLocalDNS {
+		cfg.Resolvers = globalResolvers
 	}
 
 	routes := dns.splitResolvers()
 	cfg.Routes = routes
+
+	// Populate FallbackResolvers when split DNS is configured.
+	// FallbackResolvers are used when a split DNS query doesn't match any route.
+	// They are needed even when override_local_dns=false because the Magic DNS Forwarder
+	// requires fallback resolvers to function properly.
+	if len(routes) > 0 {
+		fallbackResolvers := dns.splitDNSFallbackResolvers()
+		if len(fallbackResolvers) > 0 {
+			cfg.FallbackResolvers = fallbackResolvers
+		} else if len(globalResolvers) > 0 {
+			// Backwards compatibility measure
+			cfg.FallbackResolvers = globalResolvers
+		}
+	}
+
 	if dns.BaseDomain != "" {
 		cfg.Domains = []string{dns.BaseDomain}
 	}

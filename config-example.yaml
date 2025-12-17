@@ -294,7 +294,10 @@ dns:
       # - https://dns.nextdns.io/abc123
 
     # Split DNS (see https://tailscale.com/kb/1054/dns/),
-    # a map of domains and which DNS server to use for each.
+    # It uses TS's "MagicDNS" Quad 100 functionality internally.
+    # Provides a map of domains and which DNS server to use for each.
+    # Queries for domains listed here will be forwarded to the
+    # specified DNS servers instead of the global nameservers.
     split:
       {}
       # foo.bar.com:
@@ -302,6 +305,16 @@ dns:
       # darp.headscale.net:
       #   - 1.1.1.1
       #   - 8.8.8.8
+
+    # Split DNS - Fallback resolvers.
+    # These resolvers are used when split DNS is configured and a query doesn't
+    # match any of the split DNS domains. As a fall through. 
+    # If not specified, the global nameservers will be used.
+    # Different clients may treat these subtly differently
+    # variably including them in their internal resolver list.
+    split_fallback: []
+    #   - 1.1.1.1
+    #   - 8.8.8.8
 
   # Set custom DNS search domains. With MagicDNS enabled,
   # your tailnet base_domain is always the first search domain.

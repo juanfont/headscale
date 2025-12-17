@@ -125,7 +125,7 @@ func TestReadConfig(t *testing.T) {
 			},
 		},
 		{
-			name:       "dns-to-tailcfg.DNSConfig",
+			name:       "dns-to-tailcfg.DNSConfig-no-magic-no-override",
 			configPath: "testdata/dns_full_no_magic.yaml",
 			setup: func(t *testing.T) (any, error) {
 				dns, err := dns()
@@ -235,6 +235,133 @@ func TestReadConfig(t *testing.T) {
 			want: map[string]string{
 				"policy.mode": "file",
 				"policy.path": "/etc/policy.hujson",
+			},
+		},
+		{
+			name:       "dns-override-false-with-split-dns",
+			configPath: "testdata/dns_override_false_with_split.yaml",
+			setup: func(t *testing.T) (any, error) {
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: false,
+				Domains: []string{"example.com", "test.com"},
+				// No Resolvers - override_local_dns is false
+				Routes: map[string][]*dnstype.Resolver{
+					"foo.bar.com":        {{Addr: "1.1.1.1"}},
+					"darp.headscale.net": {{Addr: "8.8.8.8"}},
+				},
+				FallbackResolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1"},
+					{Addr: "1.0.0.1"},
+				},
+			},
+		},
+		{
+			name:       "dns-split-with-explicit-fallback-resolvers",
+			configPath: "testdata/dns_split_with_fallback.yaml",
+			setup: func(t *testing.T) (any, error) {
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: false,
+				Domains: []string{"example.com"},
+				Resolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1"},
+					{Addr: "1.0.0.1"},
+				},
+				Routes: map[string][]*dnstype.Resolver{
+					"foo.bar.com":        {{Addr: "1.1.1.1"}},
+					"darp.headscale.net": {{Addr: "8.8.8.8"}},
+				},
+				FallbackResolvers: []*dnstype.Resolver{
+					{Addr: "9.9.9.9"},
+					{Addr: "8.8.4.4"},
+				},
+			},
+		},
+		{
+			name:       "dns-split-without-explicit-fallback-uses-global",
+			configPath: "testdata/dns_split_without_fallback.yaml",
+			setup: func(t *testing.T) (any, error) {
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: false,
+				Domains: []string{"example.com"},
+				Resolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1"},
+					{Addr: "1.0.0.1"},
+				},
+				Routes: map[string][]*dnstype.Resolver{
+					"foo.bar.com":        {{Addr: "1.1.1.1"}},
+					"darp.headscale.net": {{Addr: "8.8.8.8"}},
+				},
+				FallbackResolvers: []*dnstype.Resolver{
+					{Addr: "1.1.1.1"},
+					{Addr: "1.0.0.1"},
+				},
+			},
+		},
+		{
+			name:       "dns-split-no-fallback-source-error",
+			configPath: "testdata/dns_split_no_fallback_error.yaml",
+			setup: func(t *testing.T) (any, error) {
+				return LoadServerConfig()
+			},
+			wantErr: "Fatal config error: when dns.nameservers.split is configured, either dns.nameservers.split_fallback or dns.nameservers.global must be set",
+		},
+		{
+			name:       "dns-global-without-override-warning",
+			configPath: "testdata/dns_global_without_override.yaml",
+			setup: func(t *testing.T) (any, error) {
+				_, err := LoadServerConfig()
+				if err != nil {
+					return nil, err
+				}
+
+				dns, err := dns()
+				if err != nil {
+					return nil, err
+				}
+
+				return dnsToTailcfgDNS(dns), nil
+			},
+			want: &tailcfg.DNSConfig{
+				Proxied: false,
+				Domains: []string{"example.com"},
+				// No Resolvers - override_local_dns is false
+				Routes: map[string][]*dnstype.Resolver{},
 			},
 		},
 	}
