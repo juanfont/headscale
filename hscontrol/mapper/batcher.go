@@ -162,7 +162,7 @@ type workResult struct {
 
 // work represents a unit of work to be processed by workers.
 type work struct {
-	r        change.Change
+	c        change.Change
 	nodeID   types.NodeID
 	resultCh chan<- workResult // optional channel for synchronous operations
 }
