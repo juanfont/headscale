@@ -18,7 +18,7 @@ Pre-authentication keys now use bcrypt hashing for improved security
 prefix and bcrypt hash instead of plaintext. The full key is only displayed once
 at creation time. When listing keys, only the prefix is shown (e.g.,
 `hskey-auth-{prefix}-***`). All new keys use the format
-`hskey-auth-{prefix}-{secret}`. Legacy plaintext keys continue to work for
+`{secret}`. Legacy plaintext keys continue to work for
 backwards compatibility.
 
 ### Tags
