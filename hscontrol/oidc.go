@@ -429,11 +429,9 @@ func validateOIDCAllowedGroups(
 		if slices.Contains(claims.Groups, group) {
 			return nil
 		}
-
-		return NewHTTPError(http.StatusUnauthorized, "unauthorised group", errOIDCAllowedGroups)
 	}
 
-	return nil
+	return NewHTTPError(http.StatusUnauthorized, "unauthorised group", errOIDCAllowedGroups)
 }
 
 // validateOIDCAllowedUsers checks that if AllowedUsers is provided,
