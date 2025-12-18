@@ -2,27 +2,43 @@
 # and are in no way endorsed by Headscale's maintainers as an
 # official nor supported release or distribution.
 
-FROM docker.io/golang:1.25-trixie
+FROM docker.io/golang:1.25-trixie AS builder
 ARG VERSION=dev
 ENV GOPATH /go
 WORKDIR /go/src/headscale
 
-RUN apt-get --update install --no-install-recommends --yes less jq sqlite3 dnsutils \
-  && apt-get dist-clean
-RUN mkdir -p /var/run/headscale
-
-# Install delve debugger
+# Install delve debugger first - rarely changes, good cache candidate
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
+# Download dependencies - only invalidated when go.mod/go.sum change
 COPY go.mod go.sum /go/src/headscale/
 RUN go mod download
 
+# Copy source and build - invalidated on any source change
 COPY . .
 
 # Build debug binary with debug symbols for delve
 RUN CGO_ENABLED=0 GOOS=linux go build -gcflags="all=-N -l" -o /go/bin/headscale ./cmd/headscale
 
+# Runtime stage
+FROM debian:trixie-slim
+
+RUN apt-get --update install --no-install-recommends --yes \
+    bash ca-certificates curl dnsutils findutils iproute2 jq less procps python3 sqlite3 \
+  && apt-get dist-clean
+
+RUN mkdir -p /var/run/headscale
+
+# Copy binaries from builder
+COPY --from=builder /go/bin/headscale /usr/local/bin/headscale
+COPY --from=builder /go/bin/dlv /usr/local/bin/dlv
+
+# Copy source code for delve source-level debugging
+COPY --from=builder /go/src/headscale /go/src/headscale
+
+WORKDIR /go/src/headscale
+
 # Need to reset the entrypoint or everything will run as a busybox script
 ENTRYPOINT []
 EXPOSE 8080/tcp 40000/tcp
-CMD ["/go/bin/dlv", "--listen=0.0.0.0:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/go/bin/headscale", "--"]
+CMD ["dlv", "--listen=0.0.0.0:40000", "--headless=true", "--api-version=2", "--accept-multiclient", "exec", "/usr/local/bin/headscale", "--"]

@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -59,14 +58,9 @@ func (api headscaleV1APIServer) CreateUser(
 		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
 	}
 
-	c := change.UserAdded(types.UserID(user.ID))
-
-	// TODO(kradalby): Both of these might be policy changes, find a better way to merge.
-	if !policyChanged.Empty() {
-		c.Change = change.Policy
-	}
-
-	api.h.Change(c)
+	// CreateUser returns a policy change response if the user creation affected policy.
+	// This triggers a full policy re-evaluation for all connected nodes.
+	api.h.Change(policyChanged)
 
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
@@ -110,7 +104,8 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	api.h.Change(change.UserRemoved(types.UserID(user.ID)))
+	// User deletion may affect policy, trigger a full policy re-evaluation.
+	api.h.Change(change.UserRemoved())
 
 	return &v1.DeleteUserResponse{}, nil
 }
@@ -556,13 +551,7 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 			resp.User = types.TaggedDevices.Proto()
 		}
 
-		var tags []string
-		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node, tag) {
-				tags = append(tags, tag)
-			}
-		}
-		resp.ValidTags = lo.Uniq(append(tags, node.Tags().AsSlice()...))
+		resp.ValidTags = node.Tags().AsSlice()
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp

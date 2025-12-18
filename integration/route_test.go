@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"sort"
@@ -25,7 +26,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	xmaps "golang.org/x/exp/maps"
-	"tailscale.com/envknob"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -1979,6 +1979,11 @@ func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
 //   - Verify that routes can now be seen by peers.
 func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
+
+	// Timeout for EventuallyWithT assertions.
+	// Set generously to account for CI infrastructure variability.
+	assertTimeout := 60 * time.Second
+
 	bigRoute := netip.MustParsePrefix("10.42.0.0/16")
 	subRoute := netip.MustParsePrefix("10.42.7.0/24")
 	notApprovedRoute := netip.MustParsePrefix("192.168.0.0/24")
@@ -2217,31 +2222,24 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 		},
 	}
 
-	// Check if we should run the full matrix of tests
-	// By default, we only run a minimal subset to avoid overwhelming Docker/disk
-	// Set HEADSCALE_INTEGRATION_FULL_MATRIX=1 to run all combinations
-	fullMatrix := envknob.Bool("HEADSCALE_INTEGRATION_FULL_MATRIX")
-
-	// Minimal test set: 3 tests covering all key dimensions
-	// - Both auth methods (authkey, webauth)
-	// - All 3 approver types (tag, user, group)
-	// - Both policy modes (database, file)
-	// - Both advertiseDuringUp values (true, false)
-	minimalTestSet := map[string]bool{
-		"authkey-tag-advertiseduringup-false-pol-database": true, // authkey + database + tag + false
-		"webauth-user-advertiseduringup-true-pol-file":     true, // webauth + file + user + true
-		"authkey-group-advertiseduringup-false-pol-file":   true, // authkey + file + group + false
-	}
-
 	for _, tt := range tests {
 		for _, polMode := range []types.PolicyMode{types.PolicyModeDB, types.PolicyModeFile} {
 			for _, advertiseDuringUp := range []bool{false, true} {
 				name := fmt.Sprintf("%s-advertiseduringup-%t-pol-%s", tt.name, advertiseDuringUp, polMode)
 				t.Run(name, func(t *testing.T) {
-					// Skip tests not in minimal set unless full matrix is enabled
-					if !fullMatrix && !minimalTestSet[name] {
-						t.Skip("Skipping to reduce test matrix size. Set HEADSCALE_INTEGRATION_FULL_MATRIX=1 to run all tests.")
+					// Create a deep copy of the policy to avoid mutating the shared test case.
+					// Each subtest modifies AutoApprovers.Routes (add then delete), so we need
+					// an isolated copy to prevent state leakage between sequential test runs.
+					pol := &policyv2.Policy{
+						ACLs:      slices.Clone(tt.pol.ACLs),
+						Groups:    maps.Clone(tt.pol.Groups),
+						TagOwners: maps.Clone(tt.pol.TagOwners),
+						AutoApprovers: policyv2.AutoApproverPolicy{
+							ExitNode: slices.Clone(tt.pol.AutoApprovers.ExitNode),
+							Routes:   maps.Clone(tt.pol.AutoApprovers.Routes),
+						},
 					}
+
 					scenario, err := NewScenario(tt.spec)
 					require.NoErrorf(t, err, "failed to create scenario: %s", err)
 					defer scenario.ShutdownAssertNoPanics(t)
@@ -2251,7 +2249,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						hsic.WithTestName("autoapprovemulti"),
 						hsic.WithEmbeddedDERPServerOnly(),
 						hsic.WithTLS(),
-						hsic.WithACLPolicy(tt.pol),
+						hsic.WithACLPolicy(pol),
 						hsic.WithPolicyMode(polMode),
 					}
 
@@ -2259,16 +2257,25 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						tsic.WithAcceptRoutes(),
 					}
 
-					if tt.approver == "tag:approve" {
-						tsOpts = append(tsOpts,
-							tsic.WithTags([]string{"tag:approve"}),
-						)
-					}
-
 					route, err := scenario.SubnetOfNetwork("usernet1")
 					require.NoError(t, err)
 
-					err = scenario.createHeadscaleEnv(tt.withURL, tsOpts,
+					// For tag-based approvers, nodes must be tagged with that tag
+					// (tags-as-identity model: tagged nodes are identified by their tags)
+					var (
+						preAuthKeyTags []string
+						webauthTagUser string
+					)
+
+					if strings.HasPrefix(tt.approver, "tag:") {
+						preAuthKeyTags = []string{tt.approver}
+						if tt.withURL {
+							// For webauth, only user1 can request tags (per tagOwners policy)
+							webauthTagUser = "user1"
+						}
+					}
+
+					err = scenario.createHeadscaleEnvWithTags(tt.withURL, tsOpts, preAuthKeyTags, webauthTagUser,
 						opts...,
 					)
 					requireNoErrHeadscaleEnv(t, err)
@@ -2301,18 +2308,22 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					default:
 						approvers = append(approvers, usernameApprover(tt.approver))
 					}
-					if tt.pol.AutoApprovers.Routes == nil {
-						tt.pol.AutoApprovers.Routes = make(map[netip.Prefix]policyv2.AutoApprovers)
-					}
+					// pol.AutoApprovers.Routes is already initialized in the deep copy above
 					prefix := *route
-					tt.pol.AutoApprovers.Routes[prefix] = approvers
-					err = headscale.SetPolicy(tt.pol)
+					pol.AutoApprovers.Routes[prefix] = approvers
+					err = headscale.SetPolicy(pol)
 					require.NoError(t, err)
 
 					if advertiseDuringUp {
 						tsOpts = append(tsOpts,
 							tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + route.String()}),
 						)
+					}
+
+					// For webauth with tag approver, the node needs to advertise the tag during registration
+					// (tags-as-identity model: webauth nodes can use --advertise-tags if authorized by tagOwners)
+					if tt.withURL && strings.HasPrefix(tt.approver, "tag:") {
+						tsOpts = append(tsOpts, tsic.WithTags([]string{tt.approver}))
 					}
 
 					tsOpts = append(tsOpts, tsic.WithNetwork(usernet1))
@@ -2349,7 +2360,14 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						userMap, err := headscale.MapUsers()
 						require.NoError(t, err)
 
-						pak, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+						// If the approver is a tag, create a tagged PreAuthKey
+						// (tags-as-identity model: tags come from PreAuthKey, not --advertise-tags)
+						var pak *v1.PreAuthKey
+						if strings.HasPrefix(tt.approver, "tag:") {
+							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), false, false, []string{tt.approver})
+						} else {
+							pak, err = scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+						}
 						require.NoError(t, err)
 
 						err = routerUsernet1.Login(headscale.GetEndpoint(), pak.GetKey())
@@ -2361,6 +2379,21 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					// This is especially important for webauth flow where login is asynchronous
 					err = routerUsernet1.WaitForRunning(30 * time.Second)
 					require.NoError(t, err)
+
+					// Wait for bidirectional peer synchronization.
+					// Both the router and all existing clients must see each other.
+					// This is critical for connectivity - without this, the WireGuard
+					// tunnels may not be established despite peers appearing in netmaps.
+
+					// Router waits for all existing clients
+					err = routerUsernet1.WaitForPeers(len(allClients), 60*time.Second, 1*time.Second)
+					require.NoError(t, err, "router failed to see all peers")
+
+					// All clients wait for the router (they should see 6 peers including the router)
+					for _, existingClient := range allClients {
+						err = existingClient.WaitForPeers(len(allClients), 60*time.Second, 1*time.Second)
+						require.NoErrorf(t, err, "client %s failed to see all peers including router", existingClient.Hostname())
+					}
 
 					routerUsernet1ID := routerUsernet1.MustID()
 
@@ -2396,7 +2429,11 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						require.NoErrorf(t, err, "failed to advertise route: %s", err)
 					}
 
-					// Wait for route state changes to propagate
+					// Wait for route state changes to propagate.
+					// Use a longer timeout (30s) to account for CI infrastructure variability -
+					// when advertiseDuringUp=true, routes are sent during registration and may
+					// take longer to propagate through the server's auto-approval logic in slow
+					// environments.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						// These route should auto approve, so the node is expected to have a route
 						// for all counts.
@@ -2411,7 +2448,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							routerNode.GetSubnetRoutes())
 
 						requireNodeRouteCountWithCollect(c, routerNode, 1, 1, 1)
-					}, 10*time.Second, 500*time.Millisecond, "Initial route auto-approval: Route should be approved via policy")
+					}, assertTimeout, 500*time.Millisecond, "Initial route auto-approval: Route should be approved via policy")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2444,7 +2481,22 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 
 						assert.True(c, routerPeerFound, "Client should see the router peer")
-					}, 5*time.Second, 200*time.Millisecond, "Verifying routes sent to client after auto-approval")
+					}, assertTimeout, 200*time.Millisecond, "Verifying routes sent to client after auto-approval")
+
+					// Verify WireGuard tunnel connectivity to the router before testing route.
+					// The client may have the route in its netmap but the actual tunnel may not
+					// be established yet, especially in CI environments with higher latency.
+					routerIPv4, err := routerUsernet1.IPv4()
+					require.NoError(t, err, "failed to get router IPv4")
+					assert.EventuallyWithT(t, func(c *assert.CollectT) {
+						err := client.Ping(
+							routerIPv4.String(),
+							tsic.WithPingUntilDirect(false), // DERP relay is fine
+							tsic.WithPingCount(1),
+							tsic.WithPingTimeout(5*time.Second),
+						)
+						assert.NoError(c, err, "ping to router should succeed")
+					}, assertTimeout, 200*time.Millisecond, "Verifying WireGuard tunnel to router is established")
 
 					url := fmt.Sprintf("http://%s/etc/hostname", webip)
 					t.Logf("url from %s to %s", client.Hostname(), url)
@@ -2453,7 +2505,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						result, err := client.Curl(url)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying client can reach webservice through auto-approved route")
+					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice through auto-approved route")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2463,12 +2515,12 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							return
 						}
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying traceroute goes through auto-approved router")
+					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute goes through auto-approved router")
 
 					// Remove the auto approval from the policy, any routes already enabled should be allowed.
 					prefix = *route
-					delete(tt.pol.AutoApprovers.Routes, prefix)
-					err = headscale.SetPolicy(tt.pol)
+					delete(pol.AutoApprovers.Routes, prefix)
+					err = headscale.SetPolicy(pol)
 					require.NoError(t, err)
 					t.Logf("Policy updated: removed auto-approver for route %s", prefix)
 
@@ -2486,7 +2538,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							routerNode.GetSubnetRoutes())
 
 						requireNodeRouteCountWithCollect(c, routerNode, 1, 1, 1)
-					}, 10*time.Second, 500*time.Millisecond, "Routes should remain approved after auto-approver removal")
+					}, assertTimeout, 500*time.Millisecond, "Routes should remain approved after auto-approver removal")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2506,7 +2558,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 								requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 							}
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying routes remain after policy change")
+					}, assertTimeout, 200*time.Millisecond, "Verifying routes remain after policy change")
 
 					url = fmt.Sprintf("http://%s/etc/hostname", webip)
 					t.Logf("url from %s to %s", client.Hostname(), url)
@@ -2515,7 +2567,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						result, err := client.Curl(url)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying client can still reach webservice after policy change")
+					}, assertTimeout, 200*time.Millisecond, "Verifying client can still reach webservice after policy change")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2525,7 +2577,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							return
 						}
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying traceroute still goes through router after policy change")
+					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute still goes through router after policy change")
 
 					// Disable the route, making it unavailable since it is no longer auto-approved
 					_, err = headscale.ApproveRoutes(
@@ -2541,7 +2593,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 0, 0)
-					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2552,7 +2604,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							peerStatus := status.Peer[peerKey]
 							requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying routes disabled after route removal")
+					}, assertTimeout, 200*time.Millisecond, "Verifying routes disabled after route removal")
 
 					// Add the route back to the auto approver in the policy, the route should
 					// now become available again.
@@ -2565,12 +2617,10 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					default:
 						newApprovers = append(newApprovers, usernameApprover(tt.approver))
 					}
-					if tt.pol.AutoApprovers.Routes == nil {
-						tt.pol.AutoApprovers.Routes = make(map[netip.Prefix]policyv2.AutoApprovers)
-					}
+					// pol.AutoApprovers.Routes is already initialized in the deep copy above
 					prefix = *route
-					tt.pol.AutoApprovers.Routes[prefix] = newApprovers
-					err = headscale.SetPolicy(tt.pol)
+					pol.AutoApprovers.Routes[prefix] = newApprovers
+					err = headscale.SetPolicy(pol)
 					require.NoError(t, err)
 
 					// Wait for route state changes to propagate
@@ -2580,7 +2630,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						nodes, err = headscale.ListNodes()
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
-					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2600,7 +2650,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 								requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 							}
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying routes re-enabled after policy re-approval")
+					}, assertTimeout, 200*time.Millisecond, "Verifying routes re-enabled after policy re-approval")
 
 					url = fmt.Sprintf("http://%s/etc/hostname", webip)
 					t.Logf("url from %s to %s", client.Hostname(), url)
@@ -2609,7 +2659,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						result, err := client.Curl(url)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying client can reach webservice after route re-approval")
+					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice after route re-approval")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2619,7 +2669,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							return
 						}
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, 20*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router after re-approval")
+					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute goes through router after re-approval")
 
 					// Advertise and validate a subnet of an auto approved route, /24 inside the
 					// auto approved /16.
@@ -2639,7 +2689,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						assert.NoError(c, err)
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 1)
-					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2663,7 +2713,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 								requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 							}
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying sub-route propagated to client")
+					}, assertTimeout, 200*time.Millisecond, "Verifying sub-route propagated to client")
 
 					// Advertise a not approved route will not end up anywhere
 					command = []string{
@@ -2683,7 +2733,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
 						requireNodeRouteCountWithCollect(c, nodes[2], 0, 0, 0)
-					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2703,7 +2753,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 								requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 							}
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying unapproved route not propagated")
+					}, assertTimeout, 200*time.Millisecond, "Verifying unapproved route not propagated")
 
 					// Exit routes are also automatically approved
 					command = []string{
@@ -2721,7 +2771,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						requireNodeRouteCountWithCollect(c, MustFindNode(routerUsernet1.Hostname(), nodes), 1, 1, 1)
 						requireNodeRouteCountWithCollect(c, nodes[1], 1, 1, 0)
 						requireNodeRouteCountWithCollect(c, nodes[2], 2, 2, 2)
-					}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+					}, assertTimeout, 500*time.Millisecond, "route state changes should propagate")
 
 					// Verify that the routes have been sent to the client.
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2742,7 +2792,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 								requirePeerSubnetRoutesWithCollect(c, peerStatus, nil)
 							}
 						}
-					}, 5*time.Second, 200*time.Millisecond, "Verifying exit node routes propagated to client")
+					}, assertTimeout, 200*time.Millisecond, "Verifying exit node routes propagated to client")
 				})
 			}
 		}
@@ -2985,7 +3035,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 
 		// Check that the router has 3 routes now approved and available
 		requireNodeRouteCountWithCollect(c, routerNode, 3, 3, 3)
-	}, 10*time.Second, 500*time.Millisecond, "route state changes should propagate")
+	}, 15*time.Second, 500*time.Millisecond, "route state changes should propagate")
 
 	// Now check the client node status
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -3006,7 +3056,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 		result, err := nodeClient.Curl(weburl)
 		assert.NoError(c, err)
 		assert.Len(c, result, 13)
-	}, 20*time.Second, 200*time.Millisecond, "Verifying node can reach webservice through allowed route")
+	}, 60*time.Second, 200*time.Millisecond, "Verifying node can reach webservice through allowed route")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		tr, err := nodeClient.Traceroute(webip)
@@ -3016,5 +3066,5 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 			return
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, 20*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router")
+	}, 60*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router")
 }

@@ -41,6 +41,7 @@ var (
 	errOIDCAllowedUsers  = errors.New(
 		"authenticated principal does not match any allowed user",
 	)
+	errOIDCUnverifiedEmail = errors.New("authenticated principal has an unverified email")
 )
 
 // RegistrationInfo contains both machine key and verifier information for OIDC validation.
@@ -173,11 +174,6 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
 
-type oidcCallbackTemplateConfig struct {
-	User string
-	Verb string
-}
-
 // OIDCCallbackHandler handles the callback from the OIDC endpoint
 // Retrieves the nkey from the state cache and adds the node to the users email user
 // TODO: A confirmation page for new nodes should be added to avoid phishing vulnerabilities
@@ -269,17 +265,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// The user claims are now updated from the userinfo endpoint so we can verify the user
 	// against allowed emails, email domains, and groups.
-	if err := validateOIDCAllowedDomains(a.cfg.AllowedDomains, &claims); err != nil {
-		httpError(writer, err)
-		return
-	}
-
-	if err := validateOIDCAllowedGroups(a.cfg.AllowedGroups, &claims); err != nil {
-		httpError(writer, err)
-		return
-	}
-
-	if err := validateOIDCAllowedUsers(a.cfg.AllowedUsers, &claims); err != nil {
+	err = doOIDCAuthorization(a.cfg, &claims)
+	if err != nil {
 		httpError(writer, err)
 		return
 	}
@@ -439,17 +426,13 @@ func validateOIDCAllowedGroups(
 	allowedGroups []string,
 	claims *types.OIDCClaims,
 ) error {
-	if len(allowedGroups) > 0 {
-		for _, group := range allowedGroups {
-			if slices.Contains(claims.Groups, group) {
-				return nil
-			}
+	for _, group := range allowedGroups {
+		if slices.Contains(claims.Groups, group) {
+			return nil
 		}
-
-		return NewHTTPError(http.StatusUnauthorized, "unauthorised group", errOIDCAllowedGroups)
 	}
 
-	return nil
+	return NewHTTPError(http.StatusUnauthorized, "unauthorised group", errOIDCAllowedGroups)
 }
 
 // validateOIDCAllowedUsers checks that if AllowedUsers is provided,
@@ -458,9 +441,57 @@ func validateOIDCAllowedUsers(
 	allowedUsers []string,
 	claims *types.OIDCClaims,
 ) error {
-	if len(allowedUsers) > 0 &&
-		!slices.Contains(allowedUsers, claims.Email) {
+	if !slices.Contains(allowedUsers, claims.Email) {
 		return NewHTTPError(http.StatusUnauthorized, "unauthorised user", errOIDCAllowedUsers)
+	}
+
+	return nil
+}
+
+// doOIDCAuthorization applies authorization tests to claims.
+//
+// The following tests are always applied:
+//
+// - validateOIDCAllowedGroups
+//
+// The following tests are applied if cfg.EmailVerifiedRequired=false
+// or claims.email_verified=true:
+//
+// - validateOIDCAllowedDomains
+// - validateOIDCAllowedUsers
+//
+// NOTE that, contrary to the function name, validateOIDCAllowedUsers
+// only checks the email address -- not the username.
+func doOIDCAuthorization(
+	cfg *types.OIDCConfig,
+	claims *types.OIDCClaims,
+) error {
+	if len(cfg.AllowedGroups) > 0 {
+		err := validateOIDCAllowedGroups(cfg.AllowedGroups, claims)
+		if err != nil {
+			return err
+		}
+	}
+
+	trustEmail := !cfg.EmailVerifiedRequired || bool(claims.EmailVerified)
+
+	hasEmailTests := len(cfg.AllowedDomains) > 0 || len(cfg.AllowedUsers) > 0
+	if !trustEmail && hasEmailTests {
+		return NewHTTPError(http.StatusUnauthorized, "unverified email", errOIDCUnverifiedEmail)
+	}
+
+	if len(cfg.AllowedDomains) > 0 {
+		err := validateOIDCAllowedDomains(cfg.AllowedDomains, claims)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(cfg.AllowedUsers) > 0 {
+		err := validateOIDCAllowedUsers(cfg.AllowedUsers, claims)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -478,14 +509,16 @@ func (a *AuthProviderOIDC) getRegistrationIDFromState(state string) *types.Regis
 
 func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 	claims *types.OIDCClaims,
-) (*types.User, change.ChangeSet, error) {
-	var user *types.User
-	var err error
-	var newUser bool
-	var c change.ChangeSet
+) (*types.User, change.Change, error) {
+	var (
+		user    *types.User
+		err     error
+		newUser bool
+		c       change.Change
+	)
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
-		return nil, change.EmptySet, fmt.Errorf("creating or updating user: %w", err)
+		return nil, change.Change{}, fmt.Errorf("creating or updating user: %w", err)
 	}
 
 	// if the user is still not found, create a new empty user.
@@ -496,12 +529,12 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		user = &types.User{}
 	}
 
-	user.FromClaim(claims)
+	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
 
 	if newUser {
 		user, c, err = a.h.state.CreateUser(*user)
 		if err != nil {
-			return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 		}
 	} else {
 		_, c, err = a.h.state.UpdateUser(types.UserID(user.ID), func(u *types.User) error {
@@ -509,7 +542,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 			return nil
 		})
 		if err != nil {
-			return nil, change.EmptySet, fmt.Errorf("updating user: %w", err)
+			return nil, change.Change{}, fmt.Errorf("updating user: %w", err)
 		}
 	}
 
@@ -550,7 +583,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 	// Send both changes. Empty changes are ignored by Change().
 	a.h.Change(nodeChange, routesChange)
 
-	return !nodeChange.Empty(), nil
+	return !nodeChange.IsEmpty(), nil
 }
 
 func renderOIDCCallbackTemplate(

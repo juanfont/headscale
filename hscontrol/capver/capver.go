@@ -12,6 +12,14 @@ import (
 	"tailscale.com/util/set"
 )
 
+const (
+	// minVersionParts is the minimum number of version parts needed for major.minor.
+	minVersionParts = 2
+
+	// legacyDERPCapVer is the capability version when LegacyDERP can be cleaned up.
+	legacyDERPCapVer = 111
+)
+
 // CanOldCodeBeCleanedUp is intended to be called on startup to see if
 // there are old code that can ble cleaned up, entries should contain
 // a CapVer where something can be cleaned up and a panic if it can.
@@ -19,7 +27,7 @@ import (
 //
 // All uses of Capability version checks should be listed here.
 func CanOldCodeBeCleanedUp() {
-	if MinSupportedCapabilityVersion >= 111 {
+	if MinSupportedCapabilityVersion >= legacyDERPCapVer {
 		panic("LegacyDERP can be cleaned up in tail.go")
 	}
 }
@@ -44,12 +52,25 @@ func TailscaleVersion(ver tailcfg.CapabilityVersion) string {
 }
 
 // CapabilityVersion returns the CapabilityVersion for the given Tailscale version.
+// It accepts both full versions (v1.90.1) and minor versions (v1.90).
 func CapabilityVersion(ver string) tailcfg.CapabilityVersion {
 	if !strings.HasPrefix(ver, "v") {
 		ver = "v" + ver
 	}
 
-	return tailscaleToCapVer[ver]
+	// Try direct lookup first (works for minor versions like v1.90)
+	if cv, ok := tailscaleToCapVer[ver]; ok {
+		return cv
+	}
+
+	// Try extracting minor version from full version (v1.90.1 -> v1.90)
+	parts := strings.Split(strings.TrimPrefix(ver, "v"), ".")
+	if len(parts) >= minVersionParts {
+		minor := "v" + parts[0] + "." + parts[1]
+		return tailscaleToCapVer[minor]
+	}
+
+	return 0
 }
 
 // TailscaleLatest returns the n latest Tailscale versions.

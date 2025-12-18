@@ -301,6 +301,11 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
 
+	// Pass through CI environment variable for CI detection
+	if ci := os.Getenv("CI"); ci != "" {
+		env = append(env, "CI="+ci)
+	}
+
 	// Pass through all HEADSCALE_INTEGRATION_* environment variables
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
@@ -313,6 +318,10 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 			env = append(env, e)
 		}
 	}
+
+	// Set GOCACHE to a known location (used by both bind mount and volume cases)
+	env = append(env, "GOCACHE=/cache/go-build")
+
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
@@ -332,20 +341,43 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
 
+	binds := []string{
+		fmt.Sprintf("%s:%s", projectRoot, projectRoot),
+		dockerSocketPath + ":/var/run/docker.sock",
+		logsDir + ":/tmp/control",
+	}
+
+	// Use bind mounts for Go cache if provided via environment variables,
+	// otherwise fall back to Docker volumes for local development
+	var mounts []mount.Mount
+
+	goCache := os.Getenv("HEADSCALE_INTEGRATION_GO_CACHE")
+	goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
+
+	if goCache != "" {
+		binds = append(binds, goCache+":/go")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-cache",
+			Target: "/go",
+		})
+	}
+
+	if goBuildCache != "" {
+		binds = append(binds, goBuildCache+":/cache/go-build")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-build-cache",
+			Target: "/cache/go-build",
+		})
+	}
+
 	hostConfig := &container.HostConfig{
 		AutoRemove: false, // We'll remove manually for better control
-		Binds: []string{
-			fmt.Sprintf("%s:%s", projectRoot, projectRoot),
-			dockerSocketPath + ":/var/run/docker.sock",
-			logsDir + ":/tmp/control",
-		},
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: "hs-integration-go-cache",
-				Target: "/go",
-			},
-		},
+		Binds:      binds,
+		Mounts:     mounts,
 	}
 
 	return cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
@@ -810,65 +842,5 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Files are now extracted directly by the integration tests
 	// This function is kept for potential future use or other file types
-	return nil
-}
-
-// logExtractionError logs extraction errors with appropriate level based on error type.
-func logExtractionError(artifactType, containerName string, err error, verbose bool) {
-	if errors.Is(err, ErrFileNotFoundInTar) {
-		// File not found is expected and only logged in verbose mode
-		if verbose {
-			log.Printf("No %s found in container %s", artifactType, containerName)
-		}
-	} else {
-		// Other errors are actual failures and should be logged as warnings
-		log.Printf("Warning: failed to extract %s from %s: %v", artifactType, containerName, err)
-	}
-}
-
-// extractSingleFile copies a single file from a container.
-func extractSingleFile(ctx context.Context, cli *client.Client, containerID, sourcePath, fileName, logsDir string, verbose bool) error {
-	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
-	}
-	defer tarReader.Close()
-
-	// Extract the single file from the tar
-	filePath := filepath.Join(logsDir, fileName)
-	if err := extractFileFromTar(tarReader, filepath.Base(sourcePath), filePath); err != nil {
-		return fmt.Errorf("failed to extract file from tar: %w", err)
-	}
-
-	if verbose {
-		log.Printf("Extracted %s from %s", fileName, containerID[:12])
-	}
-
-	return nil
-}
-
-// extractDirectory copies a directory from a container and extracts its contents.
-func extractDirectory(ctx context.Context, cli *client.Client, containerID, sourcePath, dirName, logsDir string, verbose bool) error {
-	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
-	}
-	defer tarReader.Close()
-
-	// Create target directory
-	targetDir := filepath.Join(logsDir, dirName)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
-	}
-
-	// Extract the directory from the tar
-	if err := extractDirectoryFromTar(tarReader, targetDir); err != nil {
-		return fmt.Errorf("failed to extract directory from tar: %w", err)
-	}
-
-	if verbose {
-		log.Printf("Extracted %s/ from %s", dirName, containerID[:12])
-	}
-
 	return nil
 }

@@ -291,12 +291,14 @@ func TestCleanIdentifier(t *testing.T) {
 
 func TestOIDCClaimsJSONToUser(t *testing.T) {
 	tests := []struct {
-		name    string
-		jsonstr string
-		want    User
+		name                  string
+		jsonstr               string
+		emailVerifiedRequired bool
+		want                  User
 	}{
 		{
-			name: "normal-bool",
+			name:                  "normal-bool",
+			emailVerifiedRequired: true,
 			jsonstr: `
 {
   "sub": "test",
@@ -314,7 +316,8 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
-			name: "string-bool-true",
+			name:                  "string-bool-true",
+			emailVerifiedRequired: true,
 			jsonstr: `
 {
   "sub": "test2",
@@ -332,7 +335,8 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
-			name: "string-bool-false",
+			name:                  "string-bool-false",
+			emailVerifiedRequired: true,
 			jsonstr: `
 {
   "sub": "test3",
@@ -349,8 +353,28 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
+			name:                  "allow-unverified-email",
+			emailVerifiedRequired: false,
+			jsonstr: `
+{
+  "sub": "test4",
+  "email": "test4@test.no",
+  "email_verified": "false"
+}
+			`,
+			want: User{
+				Provider: util.RegisterMethodOIDC,
+				Email:    "test4@test.no",
+				ProviderIdentifier: sql.NullString{
+					String: "/test4",
+					Valid:  true,
+				},
+			},
+		},
+		{
 			// From https://github.com/juanfont/headscale/issues/2333
-			name: "okta-oidc-claim-20250121",
+			name:                  "okta-oidc-claim-20250121",
+			emailVerifiedRequired: true,
 			jsonstr: `
 {
   "sub": "00u7dr4qp7XXXXXXXXXX",
@@ -375,6 +399,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			want: User{
 				Provider:    util.RegisterMethodOIDC,
 				DisplayName: "Tim Horton",
+				Email:       "",
 				Name:        "tim.horton@company.com",
 				ProviderIdentifier: sql.NullString{
 					String: "https://sso.company.com/oauth2/default/00u7dr4qp7XXXXXXXXXX",
@@ -384,7 +409,8 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 		},
 		{
 			// From https://github.com/juanfont/headscale/issues/2333
-			name: "okta-oidc-claim-20250121",
+			name:                  "okta-oidc-claim-20250121",
+			emailVerifiedRequired: true,
 			jsonstr: `
 {
   "aud": "79xxxxxx-xxxx-xxxx-xxxx-892146xxxxxx",
@@ -409,6 +435,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				Provider:    util.RegisterMethodOIDC,
 				DisplayName: "XXXXXX XXXX",
 				Name:        "user@domain.com",
+				Email:       "",
 				ProviderIdentifier: sql.NullString{
 					String: "https://login.microsoftonline.com/v2.0/I-70OQnj3TogrNSfkZQqB3f7dGwyBWSm1dolHNKrMzQ",
 					Valid:  true,
@@ -417,7 +444,8 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 		},
 		{
 			// From https://github.com/juanfont/headscale/issues/2333
-			name: "casby-oidc-claim-20250513",
+			name:                  "casby-oidc-claim-20250513",
+			emailVerifiedRequired: true,
 			jsonstr: `
 			{
   "sub": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
@@ -458,7 +486,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 
 			var user User
 
-			user.FromClaim(&got)
+			user.FromClaim(&got, tt.emailVerifiedRequired)
 			if diff := cmp.Diff(user, tt.want); diff != "" {
 				t.Errorf("TestOIDCClaimsJSONToUser() mismatch (-want +got):\n%s", diff)
 			}

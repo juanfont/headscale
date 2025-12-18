@@ -22,10 +22,7 @@ const (
 	LabelHostnameLength = 63
 )
 
-var (
-	invalidDNSRegex         = regexp.MustCompile("[^a-z0-9-.]+")
-	invalidCharsInUserRegex = regexp.MustCompile("[^a-z0-9-.]+")
-)
+var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidHostName = errors.New("invalid hostname")
 

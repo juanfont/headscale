@@ -126,6 +126,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
+				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
 				time.Sleep(5 * time.Minute)
 			}
 
@@ -427,6 +428,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
+				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
 				time.Sleep(5 * time.Minute)
 			}
 
@@ -538,7 +540,12 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	err = client.Down()
 	require.NoError(t, err)
 
-	time.Sleep(3 * time.Second)
+	// Wait for client to fully stop before bringing it back up
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(c, err)
+		assert.Equal(c, "Stopped", status.BackendState)
+	}, 10*time.Second, 200*time.Millisecond, "client should be stopped")
 
 	err = client.Up()
 	require.NoError(t, err)

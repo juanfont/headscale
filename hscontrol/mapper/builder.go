@@ -29,10 +29,8 @@ type debugType string
 const (
 	fullResponseDebug   debugType = "full"
 	selfResponseDebug   debugType = "self"
-	patchResponseDebug  debugType = "patch"
-	removeResponseDebug debugType = "remove"
 	changeResponseDebug debugType = "change"
-	derpResponseDebug   debugType = "derp"
+	policyResponseDebug debugType = "policy"
 )
 
 // NewMapResponseBuilder creates a new builder with basic fields set.
@@ -76,8 +74,9 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	}
 
 	_, matchers := b.mapper.state.Filter()
-	tailnode, err := tailNode(
-		nv, b.capVer, b.mapper.state,
+
+	tailnode, err := nv.TailNode(
+		b.capVer,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},
@@ -251,8 +250,8 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		changedViews = peers
 	}
 
-	tailPeers, err := tailNodes(
-		changedViews, b.capVer, b.mapper.state,
+	tailPeers, err := types.TailNodes(
+		changedViews, b.capVer,
 		func(id types.NodeID) []netip.Prefix {
 			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
 		},

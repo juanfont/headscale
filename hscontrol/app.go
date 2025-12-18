@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // nolint
@@ -270,7 +271,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-expireTicker.C:
-			var expiredNodeChanges []change.ChangeSet
+			var expiredNodeChanges []change.Change
 			var changed bool
 
 			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
@@ -304,7 +305,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.state.SetDERPMap(derpMap)
 
-			h.Change(change.DERPSet)
+			h.Change(change.DERPMap())
 
 		case records, ok := <-extraRecordsUpdate:
 			if !ok {
@@ -312,7 +313,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
-			h.Change(change.ExtraRecordsSet)
+			h.Change(change.ExtraRecords())
 		}
 	}
 }
@@ -729,16 +730,27 @@ func (h *Headscale) Serve() error {
 	log.Info().
 		Msgf("listening and serving HTTP on: %s", h.cfg.Addr)
 
-	debugHTTPListener, err := net.Listen("tcp", h.cfg.MetricsAddr)
-	if err != nil {
-		return fmt.Errorf("failed to bind to TCP address: %w", err)
+	// Only start debug/metrics server if address is configured
+	var debugHTTPServer *http.Server
+
+	var debugHTTPListener net.Listener
+
+	if h.cfg.MetricsAddr != "" {
+		debugHTTPListener, err = (&net.ListenConfig{}).Listen(ctx, "tcp", h.cfg.MetricsAddr)
+		if err != nil {
+			return fmt.Errorf("failed to bind to TCP address: %w", err)
+		}
+
+		debugHTTPServer = h.debugHTTPServer()
+
+		errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
+
+		log.Info().
+			Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
+	} else {
+		log.Info().Msg("metrics server disabled (metrics_listen_addr is empty)")
 	}
 
-	debugHTTPServer := h.debugHTTPServer()
-	errorGroup.Go(func() error { return debugHTTPServer.Serve(debugHTTPListener) })
-
-	log.Info().
-		Msgf("listening and serving debug and metrics on: %s", h.cfg.MetricsAddr)
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
@@ -794,16 +806,25 @@ func (h *Headscale) Serve() error {
 				h.ephemeralGC.Close()
 
 				// Gracefully shut down servers
-				ctx, cancel := context.WithTimeout(
-					context.Background(),
+				shutdownCtx, cancel := context.WithTimeout(
+					context.WithoutCancel(ctx),
 					types.HTTPShutdownTimeout,
 				)
-				info("shutting down debug http server")
-				if err := debugHTTPServer.Shutdown(ctx); err != nil {
-					log.Error().Err(err).Msg("failed to shutdown prometheus http")
+				defer cancel()
+
+				if debugHTTPServer != nil {
+					info("shutting down debug http server")
+
+					err := debugHTTPServer.Shutdown(shutdownCtx)
+					if err != nil {
+						log.Error().Err(err).Msg("failed to shutdown prometheus http")
+					}
 				}
+
 				info("shutting down main http server")
-				if err := httpServer.Shutdown(ctx); err != nil {
+
+				err := httpServer.Shutdown(shutdownCtx)
+				if err != nil {
 					log.Error().Err(err).Msg("failed to shutdown http")
 				}
 
@@ -829,7 +850,10 @@ func (h *Headscale) Serve() error {
 
 				// Close network listeners
 				info("closing network listeners")
-				debugHTTPListener.Close()
+
+				if debugHTTPListener != nil {
+					debugHTTPListener.Close()
+				}
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
@@ -846,9 +870,6 @@ func (h *Headscale) Serve() error {
 
 				log.Info().
 					Msg("Headscale stopped")
-
-				// And we're done:
-				cancel()
 
 				return
 			}
@@ -877,6 +898,11 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			Cache:      autocert.DirCache(h.cfg.TLS.LetsEncrypt.CacheDir),
 			Client: &acme.Client{
 				DirectoryURL: h.cfg.ACMEURL,
+				HTTPClient: &http.Client{
+					Transport: &acmeLogger{
+						rt: http.DefaultTransport,
+					},
+				},
 			},
 			Email: h.cfg.ACMEEmail,
 		}
@@ -935,18 +961,6 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	}
 }
 
-func notFoundHandler(
-	writer http.ResponseWriter,
-	req *http.Request,
-) {
-	log.Trace().
-		Interface("header", req.Header).
-		Interface("proto", req.Proto).
-		Interface("url", req.URL).
-		Msg("Request did not match")
-	writer.WriteHeader(http.StatusNotFound)
-}
-
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	dir := filepath.Dir(path)
 	err := util.EnsureDir(dir)
@@ -994,6 +1008,31 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // Change is used to send changes to nodes.
 // All change should be enqueued here and empty will be automatically
 // ignored.
-func (h *Headscale) Change(cs ...change.ChangeSet) {
+func (h *Headscale) Change(cs ...change.Change) {
 	h.mapBatcher.AddWork(cs...)
+}
+
+// Provide some middleware that can inspect the ACME/autocert https calls
+// and log when things are failing.
+type acmeLogger struct {
+	rt http.RoundTripper
+}
+
+// RoundTrip will log when ACME/autocert failures happen either when err != nil OR
+// when http status codes indicate a failure has occurred.
+func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := l.rt.RoundTrip(req)
+	if err != nil {
+		log.Error().Err(err).Str("url", req.URL.String()).Msg("ACME request failed")
+		return nil, err
+	}
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		defer resp.Body.Close()
+
+		body, _ := io.ReadAll(resp.Body)
+		log.Error().Int("status_code", resp.StatusCode).Str("url", req.URL.String()).Bytes("body", body).Msg("ACME request returned error")
+	}
+
+	return resp, nil
 }

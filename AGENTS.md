@@ -139,19 +139,19 @@ git commit -m "feat: add new feature"
 # Fix the issues and try committing again
 ```
 
-### Manual golangci-lint (Optional)
+### Manual golangci-lint
 
 While golangci-lint runs automatically via prek, you can also run it manually:
 
 ```bash
-# Use the same logic as the pre-commit hook (recommended)
-./.golangci-lint-hook.sh
-
-# Or manually specify a base reference
+# If you have upstream remote configured (recommended)
 golangci-lint run --new-from-rev=upstream/main --timeout=5m --fix
+
+# If you only have origin remote
+golangci-lint run --new-from-rev=main --timeout=5m --fix
 ```
 
-The `.golangci-lint-hook.sh` script automatically finds where your branch diverged from the main branch by checking `upstream/main`, `origin/main`, or `main` in that order.
+**Important**: Always use `--new-from-rev` to only lint changed files. This prevents formatting the entire repository and keeps changes focused on your actual modifications.
 
 ### Skipping Hooks (Not Recommended)
 
@@ -411,7 +411,7 @@ go run ./cmd/hi run "TestPattern*"
 
 - Only ONE test can run at a time (Docker port conflicts)
 - Tests generate ~100MB of logs per run in `control_logs/`
-- Clean environment before each test: `rm -rf control_logs/202507* && docker system prune -f`
+- Clean environment before each test: `sudo rm -rf control_logs/202* && docker system prune -f`
 
 ### Test Artifacts Location
 

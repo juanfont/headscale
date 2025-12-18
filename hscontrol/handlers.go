@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chasefleming/elem-go/styles"
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
@@ -226,13 +225,6 @@ func (h *Headscale) VersionHandler(
 			Err(err).
 			Msg("Failed to write version response")
 	}
-}
-
-var codeStyleRegisterWebAPI = styles.Props{
-	styles.Display:         "block",
-	styles.Padding:         "20px",
-	styles.Border:          "1px solid #bbb",
-	styles.BackgroundColor: "#eee",
 }
 
 type AuthProviderWeb struct {

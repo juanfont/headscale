@@ -668,9 +668,10 @@ func TestAuthenticationFlows(t *testing.T) {
 				}
 				app.state.SetRegistrationCacheEntry(regID, nodeToRegister)
 
-				// Simulate successful registration
+				// Simulate successful registration - send to buffered channel
+				// The channel is buffered (size 1), so this can complete immediately
+				// and handleRegister will receive the value when it starts waiting
 				go func() {
-					time.Sleep(20 * time.Millisecond)
 					user := app.state.CreateUserForTest("followup-user")
 					node := app.state.CreateNodeForTest(user, "followup-success-node")
 					registered <- node
@@ -925,6 +926,82 @@ func TestAuthenticationFlows(t *testing.T) {
 					assert.NotEmpty(t, node.AuthKey().Tags())
 				}
 			},
+		},
+
+		// === ADVERTISE-TAGS (RequestTags) SCENARIOS ===
+		// Tests for client-provided tags via --advertise-tags flag
+
+		// TEST: PreAuthKey registration rejects client-provided RequestTags
+		// WHAT: Tests that PreAuthKey registrations cannot use client-provided tags
+		// INPUT: PreAuthKey registration with RequestTags in Hostinfo
+		// EXPECTED: Registration fails with "requested tags [...] are invalid or not permitted" error
+		// WHY: PreAuthKey nodes get their tags from the key itself, not from client requests
+		{
+			name: "preauth_key_rejects_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+				t.Helper()
+
+				user := app.state.CreateUserForTest("pak-requesttags-user")
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+				if err != nil {
+					return "", err
+				}
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "pak-requesttags-node",
+						RequestTags: []string{"tag:unauthorized"},
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantError:  true,
+		},
+
+		// TEST: Tagged PreAuthKey ignores client-provided RequestTags
+		// WHAT: Tests that tagged PreAuthKey uses key tags, not client RequestTags
+		// INPUT: Tagged PreAuthKey registration with different RequestTags
+		// EXPECTED: Registration fails because RequestTags are rejected for PreAuthKey
+		// WHY: Tags-as-identity: PreAuthKey tags are authoritative, client cannot override
+		{
+			name: "tagged_preauth_key_rejects_client_request_tags",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+				t.Helper()
+
+				user := app.state.CreateUserForTest("tagged-pak-clienttags-user")
+				keyTags := []string{"tag:authorized"}
+
+				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, keyTags)
+				if err != nil {
+					return "", err
+				}
+
+				return pak.Key, nil
+			},
+			request: func(authKey string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					Auth: &tailcfg.RegisterResponseAuth{
+						AuthKey: authKey,
+					},
+					NodeKey: nodeKey1.Public(),
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname:    "tagged-pak-clienttags-node",
+						RequestTags: []string{"tag:client-wants-this"}, // Should be rejected
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey: machineKey1.Public,
+			wantError:  true, // RequestTags rejected for PreAuthKey registrations
 		},
 
 		// === RE-AUTHENTICATION SCENARIOS ===
@@ -1202,8 +1279,9 @@ func TestAuthenticationFlows(t *testing.T) {
 						OS:           "unknown-os",
 						OSVersion:    "999.999.999",
 						DeviceModel:  "test-device-model",
-						RequestTags:  []string{"invalid:tag", "another!tag"},
-						Services:     []tailcfg.Service{{Proto: "tcp", Port: 65535}},
+						// Note: RequestTags are not included for PreAuthKey registrations
+						// since tags come from the key itself, not client requests.
+						Services: []tailcfg.Service{{Proto: "tcp", Port: 65535}},
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
@@ -1247,8 +1325,8 @@ func TestAuthenticationFlows(t *testing.T) {
 				app.state.SetRegistrationCacheEntry(regID, nodeToRegister)
 
 				// Simulate registration that returns nil (cache expired during auth)
+				// The channel is buffered (size 1), so this can complete immediately
 				go func() {
-					time.Sleep(20 * time.Millisecond)
 					registered <- nil // Nil indicates cache expiry
 				}()
 
@@ -1315,9 +1393,13 @@ func TestAuthenticationFlows(t *testing.T) {
 		// === AUTH PROVIDER EDGE CASES ===
 		// TEST: Interactive workflow preserves custom hostinfo
 		// WHAT: Tests that custom hostinfo fields are preserved through interactive flow
-		// INPUT: Interactive registration with detailed hostinfo (OS, version, model, etc.)
+		// INPUT: Interactive registration with detailed hostinfo (OS, version, model)
 		// EXPECTED: Node registers with all hostinfo fields preserved
 		// WHY: Ensures interactive flow doesn't lose custom hostinfo data
+		// NOTE: RequestTags are NOT tested here because tag authorization via
+		// advertise-tags requires the user to have existing nodes (for IP-based
+		// ownership verification). New users registering their first node cannot
+		// claim tags via RequestTags - they must use a tagged PreAuthKey instead.
 		{
 			name: "interactive_workflow_with_custom_hostinfo",
 			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
@@ -1331,7 +1413,6 @@ func TestAuthenticationFlows(t *testing.T) {
 						OS:          "linux",
 						OSVersion:   "20.04",
 						DeviceModel: "server",
-						RequestTags: []string{"tag:server"},
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
@@ -1353,7 +1434,6 @@ func TestAuthenticationFlows(t *testing.T) {
 					assert.Equal(t, "linux", node.Hostinfo().OS())
 					assert.Equal(t, "20.04", node.Hostinfo().OSVersion())
 					assert.Equal(t, "server", node.Hostinfo().DeviceModel())
-					assert.Contains(t, node.Hostinfo().RequestTags().AsSlice(), "tag:server")
 				}
 			},
 		},
@@ -2001,11 +2081,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					}(i)
 				}
 
-				// All should wait since no auth completion happened
-				// After a short delay, they should timeout or be waiting
-				time.Sleep(100 * time.Millisecond)
-
-				// Now complete the authentication to signal one of them
+				// Complete the authentication to signal the waiting goroutines
+				// The goroutines will receive from the buffered channel when ready
 				registrationID, err := extractRegistrationIDFromAuthURL(authURL)
 				require.NoError(t, err)
 
@@ -2329,10 +2406,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					responseChan <- resp
 				}()
 
-				// Give followup time to start waiting
-				time.Sleep(50 * time.Millisecond)
-
 				// Complete authentication for second registration
+				// The goroutine will receive the node from the buffered channel
 				_, _, err = app.state.HandleNodeFromAuthPath(
 					regID2,
 					types.UserID(user.ID),
@@ -2525,10 +2600,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 					responseChan <- resp
 				}()
 
-				// Give the followup request time to start waiting
-				time.Sleep(50 * time.Millisecond)
-
-				// Now complete the authentication - this will signal the waiting followup request
+				// Complete the authentication - the goroutine will receive from the buffered channel
 				user := app.state.CreateUserForTest("interactive-test-user")
 				_, _, err = app.state.HandleNodeFromAuthPath(
 					registrationID,
@@ -3234,7 +3306,7 @@ func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
 
 	// Create a valid key (will expire it later)
 	expiry := time.Now().Add(1 * time.Hour)
-	pak, err := app.state.CreatePreAuthKey(types.UserID(user.ID), false, false, &expiry, nil)
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, &expiry, nil)
 	require.NoError(t, err)
 
 	machineKey := key.NewMachine()
@@ -3422,4 +3494,50 @@ func TestGitHubIssue2830_ExistingNodeCanReregisterWithUsedPreAuthKey(t *testing.
 	// Verify still only one node (the original one)
 	nodesAfterAttack := app.state.ListNodesByUser(types.UserID(user.ID))
 	require.Equal(t, 1, nodesAfterAttack.Len(), "Should still have exactly one node (attack prevented)")
+}
+
+// TestWebAuthRejectsUnauthorizedRequestTags tests that web auth registrations
+// validate RequestTags against policy and reject unauthorized tags.
+func TestWebAuthRejectsUnauthorizedRequestTags(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create a user that will authenticate via web auth
+	user := app.state.CreateUserForTest("webauth-tags-user")
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Simulate a registration cache entry (as would be created during web auth)
+	registrationID := types.MustRegistrationID()
+	regEntry := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey.Public(),
+		Hostname:   "webauth-tags-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "webauth-tags-node",
+			RequestTags: []string{"tag:unauthorized"}, // This tag is not in policy
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID, regEntry)
+
+	// Complete the web auth - should fail because tag is unauthorized
+	_, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID,
+		types.UserID(user.ID),
+		nil, // no expiry
+		"webauth",
+	)
+
+	// Expect error due to unauthorized tags
+	require.Error(t, err, "HandleNodeFromAuthPath should reject unauthorized RequestTags")
+	require.Contains(t, err.Error(), "requested tags",
+		"Error should indicate requested tags are invalid or not permitted")
+	require.Contains(t, err.Error(), "tag:unauthorized",
+		"Error should mention the rejected tag")
+
+	// Verify no node was created
+	_, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.False(t, found, "Node should not be created when tags are unauthorized")
 }

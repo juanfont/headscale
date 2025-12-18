@@ -103,6 +103,38 @@ func WithExtraHosts(hosts []string) Option {
 	}
 }
 
+// buildEntrypoint builds the container entrypoint command based on configuration.
+// It constructs proper wait conditions instead of fixed sleeps:
+// 1. Wait for network to be ready
+// 2. Wait for TLS cert to be written (always written after container start)
+// 3. Wait for CA certs if configured
+// 4. Update CA certificates
+// 5. Run derper with provided arguments.
+func (dsic *DERPServerInContainer) buildEntrypoint(derperArgs string) []string {
+	var commands []string
+
+	// Wait for network to be ready
+	commands = append(commands, "while ! ip route show default >/dev/null 2>&1; do sleep 0.1; done")
+
+	// Wait for TLS cert to be written (always written after container start)
+	commands = append(commands,
+		fmt.Sprintf("while [ ! -f %s/%s.crt ]; do sleep 0.1; done", DERPerCertRoot, dsic.hostname))
+
+	// If CA certs are configured, wait for them to be written
+	if len(dsic.caCerts) > 0 {
+		commands = append(commands,
+			fmt.Sprintf("while [ ! -f %s/user-0.crt ]; do sleep 0.1; done", caCertRoot))
+	}
+
+	// Update CA certificates
+	commands = append(commands, "update-ca-certificates")
+
+	// Run derper
+	commands = append(commands, "derper "+derperArgs)
+
+	return []string{"/bin/sh", "-c", strings.Join(commands, " ; ")}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -150,8 +182,7 @@ func New(
 		Name:       hostname,
 		Networks:   dsic.networks,
 		ExtraHosts: dsic.withExtraHosts,
-		// we currently need to give us some time to inject the certificate further down.
-		Entrypoint: []string{"/bin/sh", "-c", "/bin/sleep 3 ; update-ca-certificates ; derper " + cmdArgs.String()},
+		Entrypoint: dsic.buildEntrypoint(cmdArgs.String()),
 		ExposedPorts: []string{
 			"80/tcp",
 			fmt.Sprintf("%d/tcp", dsic.derpPort),

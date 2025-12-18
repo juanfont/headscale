@@ -1,8 +1,8 @@
 package mapper
 
 import (
-	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -16,6 +16,8 @@ import (
 	"tailscale.com/types/ptr"
 )
 
+var errConnectionClosed = errors.New("connection channel already closed")
+
 // LockFreeBatcher uses atomic operations and concurrent maps to eliminate mutex contention.
 type LockFreeBatcher struct {
 	tick    *time.Ticker
@@ -26,16 +28,16 @@ type LockFreeBatcher struct {
 	connected *xsync.Map[types.NodeID, *time.Time]
 
 	// Work queue channel
-	workCh chan work
-	ctx    context.Context
-	cancel context.CancelFunc
+	workCh     chan work
+	workChOnce sync.Once // Ensures workCh is only closed once
+	done       chan struct{}
+	doneOnce   sync.Once // Ensures done is only closed once
 
 	// Batching state
-	pendingChanges *xsync.Map[types.NodeID, []change.ChangeSet]
+	pendingChanges *xsync.Map[types.NodeID, []change.Change]
 
 	// Metrics
 	totalNodes      atomic.Int64
-	totalUpdates    atomic.Int64
 	workQueuedCount atomic.Int64
 	workProcessed   atomic.Int64
 	workErrors      atomic.Int64
@@ -140,28 +142,27 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 }
 
 // AddWork queues a change to be processed by the batcher.
-func (b *LockFreeBatcher) AddWork(c ...change.ChangeSet) {
-	b.addWork(c...)
+func (b *LockFreeBatcher) AddWork(r ...change.Change) {
+	b.addWork(r...)
 }
 
 func (b *LockFreeBatcher) Start() {
-	b.ctx, b.cancel = context.WithCancel(context.Background())
+	b.done = make(chan struct{})
 	go b.doWork()
 }
 
 func (b *LockFreeBatcher) Close() {
-	if b.cancel != nil {
-		b.cancel()
-		b.cancel = nil
-	}
+	// Signal shutdown to all goroutines, only once
+	b.doneOnce.Do(func() {
+		if b.done != nil {
+			close(b.done)
+		}
+	})
 
-	// Only close workCh once
-	select {
-	case <-b.workCh:
-		// Channel is already closed
-	default:
+	// Only close workCh once using sync.Once to prevent races
+	b.workChOnce.Do(func() {
 		close(b.workCh)
-	}
+	})
 
 	// Close the underlying channels supplying the data to the clients.
 	b.nodes.Range(func(nodeID types.NodeID, conn *multiChannelNodeConn) bool {
@@ -187,8 +188,8 @@ func (b *LockFreeBatcher) doWork() {
 		case <-cleanupTicker.C:
 			// Clean up nodes that have been offline for too long
 			b.cleanupOfflineNodes()
-		case <-b.ctx.Done():
-			log.Info().Msg("batcher context done, stopping to feed workers")
+		case <-b.done:
+			log.Info().Msg("batcher done channel closed, stopping to feed workers")
 			return
 		}
 	}
@@ -213,15 +214,19 @@ func (b *LockFreeBatcher) worker(workerID int) {
 				var result workResult
 				if nc, exists := b.nodes.Load(w.nodeID); exists {
 					var err error
-					result.mapResponse, err = generateMapResponse(nc.nodeID(), nc.version(), b.mapper, w.c)
+
+					result.mapResponse, err = generateMapResponse(nc, b.mapper, w.c)
 					result.err = err
 					if result.err != nil {
 						b.workErrors.Add(1)
 						log.Error().Err(result.err).
 							Int("worker.id", workerID).
 							Uint64("node.id", w.nodeID.Uint64()).
-							Str("change", w.c.Change.String()).
+							Str("reason", w.c.Reason).
 							Msg("failed to generate map response for synchronous work")
+					} else if result.mapResponse != nil {
+						// Update peer tracking for synchronous responses too
+						nc.updateSentPeers(result.mapResponse)
 					}
 				} else {
 					result.err = fmt.Errorf("node %d not found", w.nodeID)
@@ -236,7 +241,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 				// Send result
 				select {
 				case w.resultCh <- result:
-				case <-b.ctx.Done():
+				case <-b.done:
 					return
 				}
 
@@ -254,20 +259,20 @@ func (b *LockFreeBatcher) worker(workerID int) {
 					b.workErrors.Add(1)
 					log.Error().Err(err).
 						Int("worker.id", workerID).
-						Uint64("node.id", w.c.NodeID.Uint64()).
-						Str("change", w.c.Change.String()).
+						Uint64("node.id", w.nodeID.Uint64()).
+						Str("reason", w.c.Reason).
 						Msg("failed to apply change")
 				}
 			}
-		case <-b.ctx.Done():
-			log.Debug().Int("workder.id", workerID).Msg("batcher context is done, exiting worker")
+		case <-b.done:
+			log.Debug().Int("worker.id", workerID).Msg("batcher shutting down, exiting worker")
 			return
 		}
 	}
 }
 
-func (b *LockFreeBatcher) addWork(c ...change.ChangeSet) {
-	b.addToBatch(c...)
+func (b *LockFreeBatcher) addWork(r ...change.Change) {
+	b.addToBatch(r...)
 }
 
 // queueWork safely queues work.
@@ -277,44 +282,78 @@ func (b *LockFreeBatcher) queueWork(w work) {
 	select {
 	case b.workCh <- w:
 		// Successfully queued
-	case <-b.ctx.Done():
+	case <-b.done:
 		// Batcher is shutting down
 		return
 	}
 }
 
-// addToBatch adds a change to the pending batch.
-func (b *LockFreeBatcher) addToBatch(c ...change.ChangeSet) {
+// addToBatch adds changes to the pending batch.
+func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
+	// Clean up any nodes being permanently removed from the system.
+	//
+	// This handles the case where a node is deleted from state but the batcher
+	// still has it registered. By cleaning up here, we prevent "node not found"
+	// errors when workers try to generate map responses for deleted nodes.
+	//
+	// Safety: change.Change.PeersRemoved is ONLY populated when nodes are actually
+	// deleted from the system (via change.NodeRemoved in state.DeleteNode). Policy
+	// changes that affect peer visibility do NOT use this field - they set
+	// RequiresRuntimePeerComputation=true and compute removed peers at runtime,
+	// putting them in tailcfg.MapResponse.PeersRemoved (a different struct).
+	// Therefore, this cleanup only removes nodes that are truly being deleted,
+	// not nodes that are still connected but have lost visibility of certain peers.
+	//
+	// See: https://github.com/juanfont/headscale/issues/2924
+	for _, ch := range changes {
+		for _, removedID := range ch.PeersRemoved {
+			if _, existed := b.nodes.LoadAndDelete(removedID); existed {
+				b.totalNodes.Add(-1)
+				log.Debug().
+					Uint64("node.id", removedID.Uint64()).
+					Msg("Removed deleted node from batcher")
+			}
+
+			b.connected.Delete(removedID)
+			b.pendingChanges.Delete(removedID)
+		}
+	}
+
 	// Short circuit if any of the changes is a full update, which
 	// means we can skip sending individual changes.
-	if change.HasFull(c) {
+	if change.HasFull(changes) {
 		b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
-			b.pendingChanges.Store(nodeID, []change.ChangeSet{{Change: change.Full}})
+			b.pendingChanges.Store(nodeID, []change.Change{change.FullUpdate()})
 
 			return true
 		})
-		return
-	}
-
-	all, self := change.SplitAllAndSelf(c)
-
-	for _, changeSet := range self {
-		changes, _ := b.pendingChanges.LoadOrStore(changeSet.NodeID, []change.ChangeSet{})
-		changes = append(changes, changeSet)
-		b.pendingChanges.Store(changeSet.NodeID, changes)
 
 		return
 	}
 
-	b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
-		rel := change.RemoveUpdatesForSelf(nodeID, all)
+	broadcast, targeted := change.SplitTargetedAndBroadcast(changes)
 
-		changes, _ := b.pendingChanges.LoadOrStore(nodeID, []change.ChangeSet{})
-		changes = append(changes, rel...)
-		b.pendingChanges.Store(nodeID, changes)
+	// Handle targeted changes - send only to the specific node
+	for _, ch := range targeted {
+		pending, _ := b.pendingChanges.LoadOrStore(ch.TargetNode, []change.Change{})
+		pending = append(pending, ch)
+		b.pendingChanges.Store(ch.TargetNode, pending)
+	}
 
-		return true
-	})
+	// Handle broadcast changes - send to all nodes, filtering as needed
+	if len(broadcast) > 0 {
+		b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
+			filtered := change.FilterForNode(nodeID, broadcast)
+
+			if len(filtered) > 0 {
+				pending, _ := b.pendingChanges.LoadOrStore(nodeID, []change.Change{})
+				pending = append(pending, filtered...)
+				b.pendingChanges.Store(nodeID, pending)
+			}
+
+			return true
+		})
+	}
 }
 
 // processBatchedChanges processes all pending batched changes.
@@ -324,14 +363,14 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 	}
 
 	// Process all pending changes
-	b.pendingChanges.Range(func(nodeID types.NodeID, changes []change.ChangeSet) bool {
-		if len(changes) == 0 {
+	b.pendingChanges.Range(func(nodeID types.NodeID, pending []change.Change) bool {
+		if len(pending) == 0 {
 			return true
 		}
 
 		// Send all batched changes for this node
-		for _, c := range changes {
-			b.queueWork(work{c: c, nodeID: nodeID, resultCh: nil})
+		for _, ch := range pending {
+			b.queueWork(work{c: ch, nodeID: nodeID, resultCh: nil})
 		}
 
 		// Clear the pending changes for this node
@@ -434,17 +473,17 @@ func (b *LockFreeBatcher) ConnectedMap() *xsync.Map[types.NodeID, bool] {
 
 // MapResponseFromChange queues work to generate a map response and waits for the result.
 // This allows synchronous map generation using the same worker pool.
-func (b *LockFreeBatcher) MapResponseFromChange(id types.NodeID, c change.ChangeSet) (*tailcfg.MapResponse, error) {
+func (b *LockFreeBatcher) MapResponseFromChange(id types.NodeID, ch change.Change) (*tailcfg.MapResponse, error) {
 	resultCh := make(chan workResult, 1)
 
 	// Queue the work with a result channel using the safe queueing method
-	b.queueWork(work{c: c, nodeID: id, resultCh: resultCh})
+	b.queueWork(work{c: ch, nodeID: id, resultCh: resultCh})
 
 	// Wait for the result
 	select {
 	case result := <-resultCh:
 		return result.mapResponse, result.err
-	case <-b.ctx.Done():
+	case <-b.done:
 		return nil, fmt.Errorf("batcher shutting down while generating map response for node %d", id)
 	}
 }
@@ -456,6 +495,7 @@ type connectionEntry struct {
 	version  tailcfg.CapabilityVersion
 	created  time.Time
 	lastUsed atomic.Int64 // Unix timestamp of last successful send
+	closed   atomic.Bool  // Indicates if this connection has been closed
 }
 
 // multiChannelNodeConn manages multiple concurrent connections for a single node.
@@ -467,6 +507,12 @@ type multiChannelNodeConn struct {
 	connections []*connectionEntry
 
 	updateCount atomic.Int64
+
+	// lastSentPeers tracks which peers were last sent to this node.
+	// This enables computing diffs for policy changes instead of sending
+	// full peer lists (which clients interpret as "no change" when empty).
+	// Using xsync.Map for lock-free concurrent access.
+	lastSentPeers *xsync.Map[tailcfg.NodeID, struct{}]
 }
 
 // generateConnectionID generates a unique connection identifier.
@@ -479,8 +525,9 @@ func generateConnectionID() string {
 // newMultiChannelNodeConn creates a new multi-channel node connection.
 func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeConn {
 	return &multiChannelNodeConn{
-		id:     id,
-		mapper: mapper,
+		id:            id,
+		mapper:        mapper,
+		lastSentPeers: xsync.NewMap[tailcfg.NodeID, struct{}](),
 	}
 }
 
@@ -489,6 +536,9 @@ func (mc *multiChannelNodeConn) close() {
 	defer mc.mutex.Unlock()
 
 	for _, conn := range mc.connections {
+		// Mark as closed before closing the channel to prevent
+		// send on closed channel panics from concurrent workers
+		conn.closed.Store(true)
 		close(conn.c)
 	}
 }
@@ -621,6 +671,12 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 		return nil
 	}
 
+	// Check if the connection has been closed to prevent send on closed channel panic.
+	// This can happen during shutdown when Close() is called while workers are still processing.
+	if entry.closed.Load() {
+		return fmt.Errorf("connection %s: %w", entry.id, errConnectionClosed)
+	}
+
 	// Use a short timeout to detect stale connections where the client isn't reading the channel.
 	// This is critical for detecting Docker containers that are forcefully terminated
 	// but still have channels that appear open.
@@ -654,9 +710,59 @@ func (mc *multiChannelNodeConn) version() tailcfg.CapabilityVersion {
 	return mc.connections[0].version
 }
 
+// updateSentPeers updates the tracked peer state based on a sent MapResponse.
+// This must be called after successfully sending a response to keep track of
+// what the client knows about, enabling accurate diffs for future updates.
+func (mc *multiChannelNodeConn) updateSentPeers(resp *tailcfg.MapResponse) {
+	if resp == nil {
+		return
+	}
+
+	// Full peer list replaces tracked state entirely
+	if resp.Peers != nil {
+		mc.lastSentPeers.Clear()
+
+		for _, peer := range resp.Peers {
+			mc.lastSentPeers.Store(peer.ID, struct{}{})
+		}
+	}
+
+	// Incremental additions
+	for _, peer := range resp.PeersChanged {
+		mc.lastSentPeers.Store(peer.ID, struct{}{})
+	}
+
+	// Incremental removals
+	for _, id := range resp.PeersRemoved {
+		mc.lastSentPeers.Delete(id)
+	}
+}
+
+// computePeerDiff compares the current peer list against what was last sent
+// and returns the peers that were removed (in lastSentPeers but not in current).
+func (mc *multiChannelNodeConn) computePeerDiff(currentPeers []tailcfg.NodeID) []tailcfg.NodeID {
+	currentSet := make(map[tailcfg.NodeID]struct{}, len(currentPeers))
+	for _, id := range currentPeers {
+		currentSet[id] = struct{}{}
+	}
+
+	var removed []tailcfg.NodeID
+
+	// Find removed: in lastSentPeers but not in current
+	mc.lastSentPeers.Range(func(id tailcfg.NodeID, _ struct{}) bool {
+		if _, exists := currentSet[id]; !exists {
+			removed = append(removed, id)
+		}
+
+		return true
+	})
+
+	return removed
+}
+
 // change applies a change to all active connections for the node.
-func (mc *multiChannelNodeConn) change(c change.ChangeSet) error {
-	return handleNodeChange(mc, mc.mapper, c)
+func (mc *multiChannelNodeConn) change(r change.Change) error {
+	return handleNodeChange(mc, mc.mapper, r)
 }
 
 // DebugNodeInfo contains debug information about a node's connections.
@@ -714,4 +820,10 @@ func (b *LockFreeBatcher) Debug() map[types.NodeID]DebugNodeInfo {
 
 func (b *LockFreeBatcher) DebugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	return b.mapper.debugMapResponses()
+}
+
+// WorkErrors returns the count of work errors encountered.
+// This is primarily useful for testing and debugging.
+func (b *LockFreeBatcher) WorkErrors() int64 {
+	return b.workErrors.Load()
 }

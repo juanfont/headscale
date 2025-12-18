@@ -178,7 +178,8 @@ func derpServerScenario(
 	t.Logf("Run 1: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
 
 	// Let the DERP updater run a couple of times to ensure it does not
-	// break the DERPMap.
+	// break the DERPMap. The updater runs on a 10s interval by default.
+	//nolint:forbidigo // Intentional delay: must wait for DERP updater to run multiple times (interval-based)
 	time.Sleep(30 * time.Second)
 
 	success = pingDerpAllHelper(t, allClients, allHostnames)

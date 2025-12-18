@@ -1,41 +1,49 @@
 # CHANGELOG
 
-## Next
+## 0.28.0 (202x-xx-xx)
 
 **Minimum supported Tailscale client version: v1.74.0**
 
-### Web registration templates redesign
+### Tags as identity
 
-The OIDC callback and device registration web pages have been updated to use the
-Material for MkDocs design system from the official documentation. The templates
-now use consistent typography, spacing, and colours across all registration
-flows. External links are properly secured with noreferrer/noopener attributes.
+Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either
+user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from
+tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based
+ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
+
+User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
+and applied at registration time. Tags can be managed via the CLI or API after registration.
+
+### Smarter map updates
+
+The map update system has been rewritten to send smaller, partial updates instead of full network maps whenever possible. This reduces bandwidth usage and improves performance, especially for large networks. The system now properly tracks peer
+changes and can send removal notifications when nodes are removed due to policy changes.
+[#2856](https://github.com/juanfont/headscale/pull/2856) [#2961](https://github.com/juanfont/headscale/pull/2961)
 
 ### Pre-authentication key security improvements
 
-Pre-authentication keys now use bcrypt hashing for improved security
-[#2853](https://github.com/juanfont/headscale/pull/2853). Keys are stored as a
-prefix and bcrypt hash instead of plaintext. The full key is only displayed once
-at creation time. When listing keys, only the prefix is shown (e.g.,
-`hskey-auth-{prefix}-***`). All new keys use the format
-`hskey-auth-{prefix}-{secret}`. Legacy plaintext keys continue to work for
-backwards compatibility.
+Pre-authentication keys now use bcrypt hashing for improved security [#2853](https://github.com/juanfont/headscale/pull/2853). Keys
+are stored as a prefix and bcrypt hash instead of plaintext. The full key is only displayed once at creation time. When listing keys,
+only the prefix is shown (e.g., `hskey-auth-{prefix}-***`). All new keys use the format `hskey-auth-{prefix}-{secret}`. Legacy plaintext keys in the format `{secret}` will continue to work for backwards compatibility.
 
-### Tags
+### Web registration templates redesign
 
-Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based authentication. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
+The OIDC callback and device registration web pages have been updated to use the Material for MkDocs design system from the official
+documentation. The templates now use consistent typography, spacing, and colours across all registration flows.
 
 ### Database migration support removed for pre-0.25.0 databases
 
-Headscale no longer supports direct upgrades from databases created before
-version 0.25.0. Users on older versions must upgrade sequentially through each
-stable release, selecting the latest patch version available for each minor
-release.
+Headscale no longer supports direct upgrades from databases created before version 0.25.0. Users on older versions must upgrade
+sequentially through each stable release, selecting the latest patch version available for each minor release.
 
 ### BREAKING
 
-- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node.
-
+- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node. [#2885](https://github.com/juanfont/headscale/pull/2885)
+- **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
+  - `--advertise-tags` is processed during registration, not on every policy evaluation
+  - PreAuthKey tagged devices ignore `--advertise-tags` from clients
+  - User-owned nodes can use `--advertise-tags` if authorized by `tagOwners` policy
+  - Tags can be managed via CLI (`headscale nodes tag`) or the SetTags API after registration
 - Database migration support removed for pre-0.25.0 databases [#2883](https://github.com/juanfont/headscale/pull/2883)
   - If you are running a version older than 0.25.0, you must upgrade to 0.25.1 first, then upgrade to this release
   - See the [upgrade path documentation](https://headscale.net/stable/about/faq/#what-is-the-recommended-update-path-can-i-skip-multiple-versions-while-updating) for detailed guidance
@@ -47,28 +55,28 @@ release.
 
 ### Changes
 
+- Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
+  - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC with `allowed_domains` or `allowed_users`
+  - When `false`, unverified emails are allowed for OIDC authentication
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
 - Reclaim IPs from the IP allocator when nodes are deleted [#2831](https://github.com/juanfont/headscale/pull/2831)
 - Add bcrypt hashing for pre-authentication keys [#2853](https://github.com/juanfont/headscale/pull/2853)
-- Add structured prefix format for API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
-- Add registration keys for web authentication tracking (`hskey-reg-{random}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
-- Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
-  - Detect when only node endpoints or DERP region changed and send
-    PeerChangedPatch responses instead of full map updates, reducing bandwidth
-    and improving performance
-
-## 0.27.2 (2025-xx-xx)
-
-### Changes
-
-- Fix ACL policy not applied to new OIDC nodes until client restart
-  [#2890](https://github.com/juanfont/headscale/pull/2890)
-- Fix autogroup:self preventing visibility of nodes matched by other ACL rules
-  [#2882](https://github.com/juanfont/headscale/pull/2882)
-- Fix nodes being rejected after pre-authentication key expiration
-  [#2917](https://github.com/juanfont/headscale/pull/2917)
+- Add prefix to API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Add prefix to registration keys for web authentication tracking (`hskey-reg-{random}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Tags can now be tagOwner of other tags [#2930](https://github.com/juanfont/headscale/pull/2930)
+- Add `taildrop.enabled` configuration option to enable/disable Taildrop file sharing [#2955](https://github.com/juanfont/headscale/pull/2955)
+- Allow disabling the metrics server by setting empty `metrics_listen_addr` [#2914](https://github.com/juanfont/headscale/pull/2914)
+- Log ACME/autocert errors for easier debugging [#2933](https://github.com/juanfont/headscale/pull/2933)
+- Improve CLI list output formatting [#2951](https://github.com/juanfont/headscale/pull/2951)
+- Use Debian 13 distroless base images for containers [#2944](https://github.com/juanfont/headscale/pull/2944)
+- Fix ACL policy not applied to new OIDC nodes until client restart [#2890](https://github.com/juanfont/headscale/pull/2890)
+- Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
+- Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
+- Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
 
 ## 0.27.1 (2025-11-11)
 

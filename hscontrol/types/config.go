@@ -94,6 +94,7 @@ type Config struct {
 
 	LogTail             LogTailConfig
 	RandomizeClientPort bool
+	Taildrop            TaildropConfig
 
 	CLI CLIConfig
 
@@ -185,6 +186,7 @@ type OIDCConfig struct {
 	AllowedDomains             []string
 	AllowedUsers               []string
 	AllowedGroups              []string
+	EmailVerifiedRequired      bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
@@ -209,6 +211,10 @@ type DERPConfig struct {
 }
 
 type LogTailConfig struct {
+	Enabled bool
+}
+
+type TaildropConfig struct {
 	Enabled bool
 }
 
@@ -380,9 +386,11 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.use_expiry_from_token", false)
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
+	viper.SetDefault("oidc.email_verified_required", true)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
+	viper.SetDefault("taildrop.enabled", true)
 
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
@@ -1097,14 +1105,15 @@ func LoadServerConfig() (*Config, error) {
 			OnlyStartIfOIDCIsAvailable: viper.GetBool(
 				"oidc.only_start_if_oidc_is_available",
 			),
-			Issuer:         viper.GetString("oidc.issuer"),
-			ClientID:       viper.GetString("oidc.client_id"),
-			ClientSecret:   oidcClientSecret,
-			Scope:          viper.GetStringSlice("oidc.scope"),
-			ExtraParams:    viper.GetStringMapString("oidc.extra_params"),
-			AllowedDomains: viper.GetStringSlice("oidc.allowed_domains"),
-			AllowedUsers:   viper.GetStringSlice("oidc.allowed_users"),
-			AllowedGroups:  viper.GetStringSlice("oidc.allowed_groups"),
+			Issuer:                viper.GetString("oidc.issuer"),
+			ClientID:              viper.GetString("oidc.client_id"),
+			ClientSecret:          oidcClientSecret,
+			Scope:                 viper.GetStringSlice("oidc.scope"),
+			ExtraParams:           viper.GetStringMapString("oidc.extra_params"),
+			AllowedDomains:        viper.GetStringSlice("oidc.allowed_domains"),
+			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
+			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
+			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {
@@ -1129,6 +1138,9 @@ func LoadServerConfig() (*Config, error) {
 
 		LogTail:             logTailConfig,
 		RandomizeClientPort: randomizeClientPort,
+		Taildrop: TaildropConfig{
+			Enabled: viper.GetBool("taildrop.enabled"),
+		},
 
 		Policy: policyConfig(),
 

@@ -14,6 +14,7 @@ import (
 	"os"
 	"reflect"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +55,10 @@ var (
 	errTailscaleNotConnected           = errors.New("tailscale not connected")
 	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
 	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
+	errInvalidTailscaleImageFormat     = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
+	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
+	errContainerNotInitialized         = errors.New("container not initialized")
+	errFQDNNotYetAvailable             = errors.New("FQDN not yet available")
 )
 
 const (
@@ -90,6 +95,9 @@ type TailscaleInContainer struct {
 	netfilter         string
 	extraLoginArgs    []string
 	withAcceptRoutes  bool
+	withPackages      []string // Alpine packages to install at container start
+	withWebserverPort int      // Port for built-in HTTP server (0 = disabled)
+	withExtraCommands []string // Extra shell commands to run before tailscaled
 
 	// build options, solely for HEAD
 	buildConfig TailscaleInContainerBuildConfig
@@ -212,6 +220,82 @@ func WithAcceptRoutes() Option {
 	}
 }
 
+// WithPackages specifies Alpine packages to install when the container starts.
+// This requires internet access and uses `apk add`. Common packages:
+// - "python3" for HTTP server
+// - "curl" for HTTP client
+// - "bind-tools" for dig command
+// - "iptables", "ip6tables" for firewall rules
+// Note: Tests using this option require internet access and cannot use
+// the built-in DERP server in offline mode.
+func WithPackages(packages ...string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withPackages = append(tsic.withPackages, packages...)
+	}
+}
+
+// WithWebserver starts a Python HTTP server on the specified port
+// alongside tailscaled. This is useful for testing subnet routing
+// and ACL connectivity. Automatically adds "python3" to packages if needed.
+// The server serves files from the root directory (/).
+func WithWebserver(port int) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withWebserverPort = port
+	}
+}
+
+// WithExtraCommands adds extra shell commands to run before tailscaled starts.
+// Commands are run after package installation and CA certificate updates.
+func WithExtraCommands(commands ...string) Option {
+	return func(tsic *TailscaleInContainer) {
+		tsic.withExtraCommands = append(tsic.withExtraCommands, commands...)
+	}
+}
+
+// buildEntrypoint constructs the container entrypoint command based on
+// configured options (packages, webserver, etc.).
+func (t *TailscaleInContainer) buildEntrypoint() []string {
+	var commands []string
+
+	// Wait for network to be ready
+	commands = append(commands, "while ! ip route show default >/dev/null 2>&1; do sleep 0.1; done")
+
+	// If CA certs are configured, wait for them to be written by the Go code
+	// (certs are written after container start via tsic.WriteFile)
+	if len(t.caCerts) > 0 {
+		commands = append(commands,
+			fmt.Sprintf("while [ ! -f %s/user-0.crt ]; do sleep 0.1; done", caCertRoot))
+	}
+
+	// Install packages if requested (requires internet access)
+	packages := t.withPackages
+	if t.withWebserverPort > 0 && !slices.Contains(packages, "python3") {
+		packages = append(packages, "python3")
+	}
+
+	if len(packages) > 0 {
+		commands = append(commands, "apk add --no-cache "+strings.Join(packages, " "))
+	}
+
+	// Update CA certificates
+	commands = append(commands, "update-ca-certificates")
+
+	// Run extra commands if any
+	commands = append(commands, t.withExtraCommands...)
+
+	// Start webserver in background if requested
+	// Use subshell to avoid & interfering with command joining
+	if t.withWebserverPort > 0 {
+		commands = append(commands,
+			fmt.Sprintf("(python3 -m http.server --bind :: %d &)", t.withWebserverPort))
+	}
+
+	// Start tailscaled (must be last as it's the foreground process)
+	commands = append(commands, "tailscaled --tun=tsdev --verbose=10")
+
+	return []string{"/bin/sh", "-c", strings.Join(commands, " ; ")}
+}
+
 // New returns a new TailscaleInContainer instance.
 func New(
 	pool *dockertest.Pool,
@@ -230,16 +314,16 @@ func New(
 		hostname: hostname,
 
 		pool: pool,
-
-		withEntrypoint: []string{
-			"/bin/sh",
-			"-c",
-			"/bin/sleep 3 ; update-ca-certificates ; tailscaled --tun=tsdev --verbose=10",
-		},
 	}
 
 	for _, opt := range opts {
 		opt(tsic)
+	}
+
+	// Build the entrypoint command dynamically based on options.
+	// Only build if no custom entrypoint was provided via WithDockerEntrypoint.
+	if len(tsic.withEntrypoint) == 0 {
+		tsic.withEntrypoint = tsic.buildEntrypoint()
 	}
 
 	if tsic.network == nil {
@@ -291,6 +375,7 @@ func New(
 		// build options are not meaningful with pre-existing images,
 		// let's not lead anyone astray by pretending otherwise.
 		defaultBuildConfig := TailscaleInContainerBuildConfig{}
+
 		hasBuildConfig := !reflect.DeepEqual(defaultBuildConfig, tsic.buildConfig)
 		if hasBuildConfig {
 			return tsic, errInvalidClientConfig
@@ -299,80 +384,119 @@ func New(
 
 	switch version {
 	case VersionHead:
-		buildOptions := &dockertest.BuildOptions{
-			Dockerfile: "Dockerfile.tailscale-HEAD",
-			ContextDir: dockerContextPath,
-			BuildArgs:  []docker.BuildArg{},
+		// Check if a pre-built image is available via environment variable
+		prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
+
+		// If custom build tags are required (e.g., for websocket DERP), we cannot use
+		// the pre-built image as it won't have the necessary code compiled in.
+		hasBuildTags := len(tsic.buildConfig.tags) > 0
+		if hasBuildTags && prebuiltImage != "" {
+			log.Printf("Ignoring pre-built image %s because custom build tags are required: %v",
+				prebuiltImage, tsic.buildConfig.tags)
+			prebuiltImage = ""
 		}
 
-		buildTags := strings.Join(tsic.buildConfig.tags, ",")
-		if len(buildTags) > 0 {
-			buildOptions.BuildArgs = append(
-				buildOptions.BuildArgs,
-				docker.BuildArg{
-					Name:  "BUILD_TAGS",
-					Value: buildTags,
-				},
-			)
-		}
+		if prebuiltImage != "" {
+			log.Printf("Using pre-built tailscale image: %s", prebuiltImage)
 
-		container, err = pool.BuildAndRunWithBuildOptions(
-			buildOptions,
-			tailscaleOptions,
-			dockertestutil.DockerRestartPolicy,
-			dockertestutil.DockerAllowLocalIPv6,
-			dockertestutil.DockerAllowNetworkAdministration,
-			dockertestutil.DockerMemoryLimit,
-		)
-		if err != nil {
-			// Try to get more detailed build output
-			log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
-
-			buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
-
-			// Show the last 100 lines of build output to avoid overwhelming the logs
-			lines := strings.Split(buildOutput, "\n")
-
-			const maxLines = 100
-
-			startLine := 0
-			if len(lines) > maxLines {
-				startLine = len(lines) - maxLines
+			// Parse image into repository and tag
+			repo, tag, ok := strings.Cut(prebuiltImage, ":")
+			if !ok {
+				return nil, errInvalidTailscaleImageFormat
 			}
 
-			relevantOutput := strings.Join(lines[startLine:], "\n")
+			tailscaleOptions.Repository = repo
+			tailscaleOptions.Tag = tag
 
-			if buildErr != nil {
-				// The diagnostic build also failed - this is the real error
-				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
-					hostname,
-					version,
-					err,
-					maxLines,
-					relevantOutput,
+			container, err = pool.RunWithOptions(
+				tailscaleOptions,
+				dockertestutil.DockerRestartPolicy,
+				dockertestutil.DockerAllowLocalIPv6,
+				dockertestutil.DockerAllowNetworkAdministration,
+				dockertestutil.DockerMemoryLimit,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("could not run pre-built tailscale container %q: %w", prebuiltImage, err)
+			}
+		} else if util.IsCI() && !hasBuildTags {
+			// In CI, we require a pre-built image unless custom build tags are needed
+			return nil, errTailscaleImageRequiredInCI
+		} else {
+			buildOptions := &dockertest.BuildOptions{
+				Dockerfile: "Dockerfile.tailscale-HEAD",
+				ContextDir: dockerContextPath,
+				BuildArgs:  []docker.BuildArg{},
+			}
+
+			buildTags := strings.Join(tsic.buildConfig.tags, ",")
+			if len(buildTags) > 0 {
+				buildOptions.BuildArgs = append(
+					buildOptions.BuildArgs,
+					docker.BuildArg{
+						Name:  "BUILD_TAGS",
+						Value: buildTags,
+					},
 				)
 			}
 
-			if buildOutput != "" {
-				// Build succeeded on retry but container creation still failed
+			container, err = pool.BuildAndRunWithBuildOptions(
+				buildOptions,
+				tailscaleOptions,
+				dockertestutil.DockerRestartPolicy,
+				dockertestutil.DockerAllowLocalIPv6,
+				dockertestutil.DockerAllowNetworkAdministration,
+				dockertestutil.DockerMemoryLimit,
+			)
+			if err != nil {
+				// Try to get more detailed build output
+				log.Printf("Docker build failed for %s, attempting to get detailed output...", hostname)
+
+				buildOutput, buildErr := dockertestutil.RunDockerBuildForDiagnostics(dockerContextPath, "Dockerfile.tailscale-HEAD")
+
+				// Show the last 100 lines of build output to avoid overwhelming the logs
+				lines := strings.Split(buildOutput, "\n")
+
+				const maxLines = 100
+
+				startLine := 0
+				if len(lines) > maxLines {
+					startLine = len(lines) - maxLines
+				}
+
+				relevantOutput := strings.Join(lines[startLine:], "\n")
+
+				if buildErr != nil {
+					// The diagnostic build also failed - this is the real error
+					return nil, fmt.Errorf(
+						"%s could not start tailscale container (version: %s): %w\n\nDocker build failed. Last %d lines of output:\n%s",
+						hostname,
+						version,
+						err,
+						maxLines,
+						relevantOutput,
+					)
+				}
+
+				if buildOutput != "" {
+					// Build succeeded on retry but container creation still failed
+					return nil, fmt.Errorf(
+						"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+						hostname,
+						version,
+						err,
+						maxLines,
+						relevantOutput,
+					)
+				}
+
+				// No output at all - diagnostic build command may have failed
 				return nil, fmt.Errorf(
-					"%s could not start tailscale container (version: %s): %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s",
+					"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
 					hostname,
 					version,
 					err,
-					maxLines,
-					relevantOutput,
 				)
 			}
-
-			// No output at all - diagnostic build command may have failed
-			return nil, fmt.Errorf(
-				"%s could not start tailscale container (version: %s): %w\n\nUnable to get diagnostic build output (command may have failed silently)",
-				hostname,
-				version,
-				err,
-			)
 		}
 	case "unstable":
 		tailscaleOptions.Repository = "tailscale/tailscale"
@@ -412,6 +536,7 @@ func New(
 			err,
 		)
 	}
+
 	log.Printf("Created %s container\n", hostname)
 
 	tsic.container = container
@@ -471,7 +596,6 @@ func (t *TailscaleInContainer) Execute(
 	if err != nil {
 		// log.Printf("command issued: %s", strings.Join(command, " "))
 		// log.Printf("command stderr: %s\n", stderr)
-
 		if stdout != "" {
 			log.Printf("command stdout: %s\n", stdout)
 		}
@@ -597,7 +721,7 @@ func (t *TailscaleInContainer) Logout() error {
 // "tailscale up" with any auth keys stored in environment variables.
 func (t *TailscaleInContainer) Restart() error {
 	if t.container == nil {
-		return fmt.Errorf("container not initialized")
+		return errContainerNotInitialized
 	}
 
 	// Use Docker API to restart the container
@@ -614,6 +738,7 @@ func (t *TailscaleInContainer) Restart() error {
 		if err != nil {
 			return struct{}{}, fmt.Errorf("container not ready: %w", err)
 		}
+
 		return struct{}{}, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
 	if err != nil {
@@ -680,15 +805,18 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		}
 
 		ips := make([]netip.Addr, 0)
+
 		for address := range strings.SplitSeq(result, "\n") {
 			address = strings.TrimSuffix(address, "\n")
 			if len(address) < 1 {
 				continue
 			}
+
 			ip, err := netip.ParseAddr(address)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse IP %s: %w", address, err)
 			}
+
 			ips = append(ips, ip)
 		}
 
@@ -710,6 +838,7 @@ func (t *TailscaleInContainer) MustIPs() []netip.Addr {
 	if err != nil {
 		panic(err)
 	}
+
 	return ips
 }
 
@@ -734,6 +863,7 @@ func (t *TailscaleInContainer) MustIPv4() netip.Addr {
 	if err != nil {
 		panic(err)
 	}
+
 	return ip
 }
 
@@ -743,6 +873,7 @@ func (t *TailscaleInContainer) MustIPv6() netip.Addr {
 			return ip
 		}
 	}
+
 	panic("no ipv6 found")
 }
 
@@ -760,6 +891,7 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 	}
 
 	var status ipnstate.Status
+
 	err = json.Unmarshal([]byte(result), &status)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale status: %w", err)
@@ -819,6 +951,7 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 	}
 
 	var nm netmap.NetworkMap
+
 	err = json.Unmarshal([]byte(result), &nm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale netmap: %w", err)
@@ -864,6 +997,7 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 		notify *ipn.Notify
 		err    error
 	}
+
 	resultChan := make(chan result, 1)
 
 	// There is no good way to kill the goroutine with watch-ipn,
@@ -895,7 +1029,9 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 		decoder := json.NewDecoder(pr)
 		for decoder.More() {
 			var notify ipn.Notify
-			if err := decoder.Decode(&notify); err != nil {
+
+			err := decoder.Decode(&notify)
+			if err != nil {
 				resultChan <- result{nil, fmt.Errorf("parse notify: %w", err)}
 			}
 
@@ -942,6 +1078,7 @@ func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDE
 	}
 
 	var report ipnstate.DebugDERPRegionReport
+
 	err = json.Unmarshal([]byte(result), &report)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale derp region report: %w", err)
@@ -965,6 +1102,7 @@ func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
 	}
 
 	var nm netcheck.Report
+
 	err = json.Unmarshal([]byte(result), &nm)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal tailscale netcheck: %w", err)
@@ -987,7 +1125,7 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 		}
 
 		if status.Self.DNSName == "" {
-			return "", fmt.Errorf("FQDN not yet available")
+			return "", errFQDNNotYetAvailable
 		}
 
 		return status.Self.DNSName, nil
@@ -1005,6 +1143,7 @@ func (t *TailscaleInContainer) MustFQDN() string {
 	if err != nil {
 		panic(err)
 	}
+
 	return fqdn
 }
 
@@ -1098,12 +1237,14 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 	defer cancel()
 
 	var lastErrs []error
+
 	for {
 		select {
 		case <-ctx.Done():
 			if len(lastErrs) > 0 {
 				return fmt.Errorf("timeout waiting for %d peers on %s after %v, errors: %w", expected, t.hostname, timeout, multierr.New(lastErrs...))
 			}
+
 			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout)
 		case <-ticker.C:
 			status, err := t.Status()
@@ -1127,6 +1268,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 			// Verify that the peers of a given node is Online
 			// has a hostname and a DERP relay.
 			var peerErrors []error
+
 			for _, peerKey := range status.Peers() {
 				peer := status.Peer[peerKey]
 
@@ -1320,6 +1462,7 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	var result string
+
 	result, _, err := t.Execute(command)
 	if err != nil {
 		log.Printf(
@@ -1353,6 +1496,7 @@ func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error
 	}
 
 	var result util.Traceroute
+
 	stdout, stderr, err := t.Execute(command)
 	if err != nil {
 		return result, err
@@ -1398,12 +1542,14 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 	}
 
 	var out bytes.Buffer
+
 	tr := tar.NewReader(bytes.NewReader(tarBytes))
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break // End of archive
 		}
+
 		if err != nil {
 			return nil, fmt.Errorf("reading tar header: %w", err)
 		}
@@ -1432,6 +1578,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read state file: %w", err)
 	}
+
 	store := &mem.Store{}
 	if err = store.LoadFromJSON(state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state file: %w", err)
@@ -1441,6 +1588,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read current profile state key: %w", err)
 	}
+
 	currentProfile, err := store.ReadState(ipn.StateKey(currentProfileKey))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read current profile state: %w", err)

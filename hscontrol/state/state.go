@@ -12,6 +12,7 @@ import (
 	"net/netip"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -55,6 +56,15 @@ var ErrUnsupportedPolicyMode = errors.New("unsupported policy mode")
 
 // ErrNodeNotFound is returned when a node cannot be found by its ID.
 var ErrNodeNotFound = errors.New("node not found")
+
+// ErrInvalidNodeView is returned when an invalid node view is provided.
+var ErrInvalidNodeView = errors.New("invalid node view provided")
+
+// ErrNodeNotInNodeStore is returned when a node no longer exists in the NodeStore.
+var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
+
+// ErrNodeNameNotUnique is returned when a node name is not unique.
+var ErrNodeNameNotUnique = errors.New("node name is not unique")
 
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
@@ -242,7 +252,7 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
-func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
+func (s *State) ReloadPolicy() ([]change.Change, error) {
 	pol, err := policyBytes(s.db, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
@@ -259,7 +269,7 @@ func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
 	// propagate correctly when switching between policy types.
 	s.nodeStore.RebuildPeerMaps()
 
-	cs := []change.ChangeSet{change.PolicyChange()}
+	cs := []change.Change{change.PolicyChange()}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether
 	// the policy content has changed. This ensures that routes are re-evaluated
@@ -288,16 +298,16 @@ func (s *State) ReloadPolicy() ([]change.ChangeSet, error) {
 
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
-func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, error) {
+func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) {
 	if err := s.db.DB.Save(&user).Error; err != nil {
-		return nil, change.EmptySet, fmt.Errorf("creating user: %w", err)
+		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
 		// Log the error but don't fail the user creation
-		return &user, change.EmptySet, fmt.Errorf("failed to update policy manager after user creation: %w", err)
+		return &user, change.Change{}, fmt.Errorf("failed to update policy manager after user creation: %w", err)
 	}
 
 	// Even if the policy manager doesn't detect a filter change, SSH policies
@@ -305,7 +315,7 @@ func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, erro
 	// nodes, we should send a policy change to ensure they get updated SSH policies.
 	// TODO(kradalby): detect this, or rebuild all SSH policies so we can determine
 	// this upstream.
-	if c.Empty() {
+	if c.IsEmpty() {
 		c = change.PolicyChange()
 	}
 
@@ -316,7 +326,7 @@ func (s *State) CreateUser(user types.User) (*types.User, change.ChangeSet, erro
 
 // UpdateUser modifies an existing user using the provided update function within a transaction.
 // Returns the updated user, change set, and any error.
-func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.ChangeSet, error) {
+func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error) (*types.User, change.Change, error) {
 	user, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.User, error) {
 		user, err := hsdb.GetUserByID(tx, userID)
 		if err != nil {
@@ -336,13 +346,13 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 		return user, nil
 	})
 	if err != nil {
-		return nil, change.EmptySet, err
+		return nil, change.Change{}, err
 	}
 
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return user, change.EmptySet, fmt.Errorf("failed to update policy manager after user update: %w", err)
+		return user, change.Change{}, fmt.Errorf("failed to update policy manager after user update: %w", err)
 	}
 
 	// TODO(kradalby): We might want to update nodestore with the user data
@@ -357,7 +367,7 @@ func (s *State) DeleteUser(userID types.UserID) error {
 }
 
 // RenameUser changes a user's name. The new name must be unique.
-func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, change.ChangeSet, error) {
+func (s *State) RenameUser(userID types.UserID, newName string) (*types.User, change.Change, error) {
 	return s.UpdateUser(userID, func(user *types.User) error {
 		user.Name = newName
 		return nil
@@ -394,9 +404,9 @@ func (s *State) ListAllUsers() ([]types.User, error) {
 // NodeStore and the database. It verifies the node still exists in NodeStore to prevent
 // race conditions where a node might be deleted between UpdateNode returning and
 // persistNodeToDB being called.
-func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
+func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Change, error) {
 	if !node.Valid() {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("invalid node view provided")
+		return types.NodeView{}, change.Change{}, ErrInvalidNodeView
 	}
 
 	// Verify the node still exists in NodeStore before persisting to database.
@@ -410,7 +420,8 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 			Str("node.name", node.Hostname()).
 			Bool("is_ephemeral", node.IsEphemeral()).
 			Msg("Node no longer exists in NodeStore, skipping database persist to prevent race condition")
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node %d no longer exists in NodeStore, skipping database persist", node.ID())
+
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, node.ID())
 	}
 
 	nodePtr := node.AsStruct()
@@ -420,23 +431,23 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	// See: https://github.com/juanfont/headscale/issues/2862
 	err := s.db.DB.Omit("expiry").Updates(nodePtr).Error
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("saving node: %w", err)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
 
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return nodePtr.View(), change.EmptySet, fmt.Errorf("failed to update policy manager after node save: %w", err)
+		return nodePtr.View(), change.Change{}, fmt.Errorf("failed to update policy manager after node save: %w", err)
 	}
 
-	if c.Empty() {
+	if c.IsEmpty() {
 		c = change.NodeAdded(node.ID())
 	}
 
 	return node, c, nil
 }
 
-func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.ChangeSet, error) {
+func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.Change, error) {
 	// Update NodeStore first
 	nodePtr := node.AsStruct()
 
@@ -448,12 +459,12 @@ func (s *State) SaveNode(node types.NodeView) (types.NodeView, change.ChangeSet,
 
 // DeleteNode permanently removes a node and cleans up associated resources.
 // Returns whether policies changed and any error. This operation is irreversible.
-func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
+func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 	s.nodeStore.DeleteNode(node.ID())
 
 	err := s.db.DeleteNode(node.AsStruct())
 	if err != nil {
-		return change.EmptySet, err
+		return change.Change{}, err
 	}
 
 	s.ipAlloc.FreeIPs(node.IPs())
@@ -463,18 +474,20 @@ func (s *State) DeleteNode(node types.NodeView) (change.ChangeSet, error) {
 	// Check if policy manager needs updating after node deletion
 	policyChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+		return change.Change{}, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
 	}
 
-	if !policyChange.Empty() {
-		c = policyChange
+	if !policyChange.IsEmpty() {
+		// Merge policy change with NodeRemoved to preserve PeersRemoved info
+		// This ensures the batcher cleans up the deleted node from its state
+		c = c.Merge(policyChange)
 	}
 
 	return c, nil
 }
 
 // Connect marks a node as connected and updates its primary routes in the state.
-func (s *State) Connect(id types.NodeID) []change.ChangeSet {
+func (s *State) Connect(id types.NodeID) []change.Change {
 	// CRITICAL FIX: Update the online status in NodeStore BEFORE creating change notification
 	// This ensures that when the NodeCameOnline change is distributed and processed by other nodes,
 	// the NodeStore already reflects the correct online status for full map generation.
@@ -487,7 +500,7 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 		return nil
 	}
 
-	c := []change.ChangeSet{change.NodeOnline(node)}
+	c := []change.Change{change.NodeOnlineFor(node)}
 
 	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node connected")
 
@@ -504,7 +517,7 @@ func (s *State) Connect(id types.NodeID) []change.ChangeSet {
 }
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
-func (s *State) Disconnect(id types.NodeID) ([]change.ChangeSet, error) {
+func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 	now := time.Now()
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
@@ -526,14 +539,15 @@ func (s *State) Disconnect(id types.NodeID) ([]change.ChangeSet, error) {
 		// Log error but don't fail the disconnection - NodeStore is already updated
 		// and we need to send change notifications to peers
 		log.Error().Err(err).Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Failed to update last seen in database")
-		c = change.EmptySet
+
+		c = change.Change{}
 	}
 
 	// The node is disconnecting so make sure that none of the routes it
 	// announced are served to any nodes.
 	routeChange := s.primaryRoutes.SetRoutes(id)
 
-	cs := []change.ChangeSet{change.NodeOffline(node), c}
+	cs := []change.Change{change.NodeOfflineFor(node), c}
 
 	// If we have a policy change or route change, return that as it's more comprehensive
 	// Otherwise, return the NodeOffline change to ensure nodes are notified
@@ -636,7 +650,7 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.ChangeSet, error) {
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.Change, error) {
 	// Update NodeStore before database to ensure consistency. The NodeStore update is
 	// blocking and will be the source of truth for the batcher. The database update must
 	// make the exact same change. If the database update fails, the NodeStore change will
@@ -648,7 +662,7 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 	})
 
 	if !ok {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
 	return s.persistNodeToDB(n)
@@ -657,23 +671,38 @@ func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.Node
 // SetNodeTags assigns tags to a node, making it a "tagged node".
 // Once a node is tagged, it cannot be un-tagged (only tags can be changed).
 // The UserID is preserved as "created by" information.
-func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.ChangeSet, error) {
+func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.Change, error) {
 	// CANNOT REMOVE ALL TAGS
 	if len(tags) == 0 {
-		return types.NodeView{}, change.EmptySet, types.ErrCannotRemoveAllTags
+		return types.NodeView{}, change.Change{}, types.ErrCannotRemoveAllTags
 	}
 
 	// Get node for validation
 	existingNode, exists := s.nodeStore.GetNode(nodeID)
 	if !exists {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("%w: %d", ErrNodeNotFound, nodeID)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotFound, nodeID)
 	}
 
-	// Validate tags against policy
-	validatedTags, err := s.validateAndNormalizeTags(existingNode.AsStruct(), tags)
-	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+	// Validate tags: must have correct format and exist in policy
+	validatedTags := make([]string, 0, len(tags))
+	invalidTags := make([]string, 0)
+
+	for _, tag := range tags {
+		if !strings.HasPrefix(tag, "tag:") || !s.polMan.TagExists(tag) {
+			invalidTags = append(invalidTags, tag)
+
+			continue
+		}
+
+		validatedTags = append(validatedTags, tag)
 	}
+
+	if len(invalidTags) > 0 {
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, invalidTags)
+	}
+
+	slices.Sort(validatedTags)
+	validatedTags = slices.Compact(validatedTags)
 
 	// Log the operation
 	logTagOperation(existingNode, validatedTags)
@@ -687,14 +716,14 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 	})
 
 	if !ok {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
 	return s.persistNodeToDB(n)
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
-func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.ChangeSet, error) {
+func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (types.NodeView, change.Change, error) {
 	// TODO(kradalby): In principle we should call the AutoApprove logic here
 	// because even if the CLI removes an auto-approved route, it will be added
 	// back automatically.
@@ -703,13 +732,13 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 	})
 
 	if !ok {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
 	// Persist the node changes to the database
 	nodeView, c, err := s.persistNodeToDB(n)
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+		return types.NodeView{}, change.Change{}, err
 	}
 
 	// Update primary routes table based on SubnetRoutes (intersection of announced and approved).
@@ -727,9 +756,9 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 }
 
 // RenameNode changes the display name of a node.
-func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.ChangeSet, error) {
+func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
 	if err := util.ValidateHostname(newName); err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("renaming node: %w", err)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
 	}
 
 	// Check name uniqueness against NodeStore
@@ -737,7 +766,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	for i := 0; i < allNodes.Len(); i++ {
 		node := allNodes.At(i)
 		if node.ID() != nodeID && node.AsStruct().GivenName == newName {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("name is not unique: %s", newName)
+			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %s", ErrNodeNameNotUnique, newName)
 		}
 	}
 
@@ -749,7 +778,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 	})
 
 	if !ok {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", nodeID)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
 	return s.persistNodeToDB(n)
@@ -794,12 +823,12 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 
 // ExpireExpiredNodes finds and processes expired nodes since the last check.
 // Returns next check time, state update with expired nodes, and whether any were found.
-func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.ChangeSet, bool) {
+func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Change, bool) {
 	// Why capture start time: We need to ensure we don't miss nodes that expire
 	// while this function is running by using a consistent timestamp for the next check
 	started := time.Now()
 
-	var updates []change.ChangeSet
+	var updates []change.Change
 
 	for _, node := range s.nodeStore.ListNodes().All() {
 		if !node.Valid() {
@@ -809,7 +838,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 		// Why check After(lastCheck): We only want to notify about nodes that
 		// expired since the last check to avoid duplicate notifications
 		if node.IsExpired() && node.Expiry().Valid() && node.Expiry().Get().After(lastCheck) {
-			updates = append(updates, change.KeyExpiry(node.ID(), node.Expiry().Get()))
+			updates = append(updates, change.KeyExpiryFor(node.ID(), node.Expiry().Get()))
 		}
 	}
 
@@ -852,7 +881,7 @@ func (s *State) SetPolicy(pol []byte) (bool, error) {
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
 // AutoApproveRoutes checks if any routes should be auto-approved for a node and updates them.
-func (s *State) AutoApproveRoutes(nv types.NodeView) (change.ChangeSet, error) {
+func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
 	if changed {
 		log.Debug().
@@ -873,7 +902,7 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.ChangeSet, error) {
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
 
-			return change.EmptySet, err
+			return change.Change{}, err
 		}
 
 		log.Info().Uint64("node.id", nv.ID().Uint64()).Str("node.name", nv.Hostname()).Strs("routes.approved", util.PrefixesToString(approved)).Msg("Routes approved")
@@ -881,7 +910,7 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.ChangeSet, error) {
 		return c, nil
 	}
 
-	return change.EmptySet, nil
+	return change.Change{}, nil
 }
 
 // GetPolicy retrieves the current policy from the database.
@@ -895,14 +924,14 @@ func (s *State) SetPolicyInDB(data string) (*types.Policy, error) {
 }
 
 // SetNodeRoutes sets the primary routes for a node.
-func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) change.ChangeSet {
+func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) change.Change {
 	if s.primaryRoutes.SetRoutes(nodeID, routes...) {
 		// Route changes affect packet filters for all nodes, so trigger a policy change
 		// to ensure filters are regenerated across the entire network
 		return change.PolicyChange()
 	}
 
-	return change.EmptySet
+	return change.Change{}
 }
 
 // GetNodePrimaryRoutes returns the primary routes for a node.
@@ -1128,6 +1157,41 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		nodeToRegister.Tags = nil
 	}
 
+	// Reject advertise-tags for PreAuthKey registrations early, before any resource allocation.
+	// PreAuthKey nodes get their tags from the key itself, not from client requests.
+	if params.PreAuthKey != nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
+		return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, params.Hostinfo.RequestTags)
+	}
+
+	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
+	// Validate early before IP allocation to avoid resource leaks on failure.
+	if params.PreAuthKey == nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
+		var approvedTags, rejectedTags []string
+
+		for _, tag := range params.Hostinfo.RequestTags {
+			if s.polMan.NodeCanHaveTag(nodeToRegister.View(), tag) {
+				approvedTags = append(approvedTags, tag)
+			} else {
+				rejectedTags = append(rejectedTags, tag)
+			}
+		}
+
+		// Reject registration if any requested tags are unauthorized
+		if len(rejectedTags) > 0 {
+			return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
+		}
+
+		if len(approvedTags) > 0 {
+			nodeToRegister.Tags = approvedTags
+			slices.Sort(nodeToRegister.Tags)
+			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+			log.Info().
+				Str("node.name", nodeToRegister.Hostname).
+				Strs("tags", nodeToRegister.Tags).
+				Msg("approved advertise-tags during registration")
+		}
+	}
+
 	// Validate before saving
 	err := validateNodeOwnership(&nodeToRegister)
 	if err != nil {
@@ -1181,17 +1245,17 @@ func (s *State) HandleNodeFromAuthPath(
 	userID types.UserID,
 	expiry *time.Time,
 	registrationMethod string,
-) (types.NodeView, change.ChangeSet, error) {
+) (types.NodeView, change.Change, error) {
 	// Get the registration entry from cache
 	regEntry, ok := s.GetRegistrationCacheEntry(registrationID)
 	if !ok {
-		return types.NodeView{}, change.EmptySet, hsdb.ErrNodeNotFoundRegistrationCache
+		return types.NodeView{}, change.Change{}, hsdb.ErrNodeNotFoundRegistrationCache
 	}
 
 	// Get the user
 	user, err := s.db.GetUserByID(userID)
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, fmt.Errorf("failed to find user: %w", err)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("failed to find user: %w", err)
 	}
 
 	// Ensure we have a valid hostname from the registration cache entry
@@ -1255,7 +1319,7 @@ func (s *State) HandleNodeFromAuthPath(
 		})
 
 		if !ok {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
+			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -1267,7 +1331,7 @@ func (s *State) HandleNodeFromAuthPath(
 			return nil, nil
 		})
 		if err != nil {
-			return types.NodeView{}, change.EmptySet, err
+			return types.NodeView{}, change.Change{}, err
 		}
 
 		log.Trace().
@@ -1325,7 +1389,7 @@ func (s *State) HandleNodeFromAuthPath(
 			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
 		})
 		if err != nil {
-			return types.NodeView{}, change.EmptySet, err
+			return types.NodeView{}, change.Change{}, err
 		}
 	}
 
@@ -1346,8 +1410,8 @@ func (s *State) HandleNodeFromAuthPath(
 		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
 	}
 
-	var c change.ChangeSet
-	if !usersChange.Empty() || !nodesChange.Empty() {
+	var c change.Change
+	if !usersChange.IsEmpty() || !nodesChange.IsEmpty() {
 		c = change.PolicyChange()
 	} else {
 		c = change.NodeAdded(finalNode.ID())
@@ -1360,10 +1424,10 @@ func (s *State) HandleNodeFromAuthPath(
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
-) (types.NodeView, change.ChangeSet, error) {
+) (types.NodeView, change.Change, error) {
 	pak, err := s.GetPreAuthKey(regReq.Auth.AuthKey)
 	if err != nil {
-		return types.NodeView{}, change.EmptySet, err
+		return types.NodeView{}, change.Change{}, err
 	}
 
 	// Check if node exists with same machine key before validating the key.
@@ -1410,7 +1474,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// New node or NodeKey rotation: require valid auth key.
 		err = pak.Validate()
 		if err != nil {
-			return types.NodeView{}, change.EmptySet, err
+			return types.NodeView{}, change.Change{}, err
 		}
 	}
 
@@ -1484,7 +1548,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		})
 
 		if !ok {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", existingNodeSameUser.ID())
+			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -1504,7 +1568,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			return nil, nil
 		})
 		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("writing node to database: %w", err)
+			return types.NodeView{}, change.Change{}, fmt.Errorf("writing node to database: %w", err)
 		}
 
 		log.Trace().
@@ -1556,7 +1620,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
 		})
 		if err != nil {
-			return types.NodeView{}, change.EmptySet, fmt.Errorf("creating new node: %w", err)
+			return types.NodeView{}, change.Change{}, fmt.Errorf("creating new node: %w", err)
 		}
 	}
 
@@ -1571,8 +1635,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
 	}
 
-	var c change.ChangeSet
-	if !usersChange.Empty() || !nodesChange.Empty() {
+	var c change.Change
+	if !usersChange.IsEmpty() || !nodesChange.IsEmpty() {
 		c = change.PolicyChange()
 	} else {
 		c = change.NodeAdded(finalNode.ID())
@@ -1587,17 +1651,17 @@ func (s *State) HandleNodeFromPreAuthKey(
 // have the list already available so it could go much quicker. Alternatively
 // the policy manager could have a remove or add list for users.
 // updatePolicyManagerUsers refreshes the policy manager with current user data.
-func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
+func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	users, err := s.ListAllUsers()
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("listing users for policy update: %w", err)
+		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)
 	}
 
 	log.Debug().Caller().Int("user.count", len(users)).Msg("Policy manager user update initiated because user list modification detected")
 
 	changed, err := s.polMan.SetUsers(users)
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("updating policy manager users: %w", err)
+		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
 
 	log.Debug().Caller().Bool("policy.changed", changed).Msg("Policy manager user update completed because SetUsers operation finished")
@@ -1606,7 +1670,7 @@ func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
 		return change.PolicyChange(), nil
 	}
 
-	return change.EmptySet, nil
+	return change.Change{}, nil
 }
 
 // updatePolicyManagerNodes updates the policy manager with current nodes.
@@ -1615,19 +1679,22 @@ func (s *State) updatePolicyManagerUsers() (change.ChangeSet, error) {
 // have the list already available so it could go much quicker. Alternatively
 // the policy manager could have a remove or add list for nodes.
 // updatePolicyManagerNodes refreshes the policy manager with current node data.
-func (s *State) updatePolicyManagerNodes() (change.ChangeSet, error) {
+func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
 	changed, err := s.polMan.SetNodes(nodes)
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("updating policy manager nodes: %w", err)
+		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
 	if changed {
+		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)
+		// affect ACL visibility. Without this, cached peer relationships use stale data.
+		s.nodeStore.RebuildPeerMaps()
 		return change.PolicyChange(), nil
 	}
 
-	return change.EmptySet, nil
+	return change.Change{}, nil
 }
 
 // PingDB checks if the database connection is healthy.
@@ -1641,14 +1708,16 @@ func (s *State) PingDB(ctx context.Context) error {
 // TODO(kradalby): This is kind of messy, maybe this is another +1
 // for an event bus. See example comments here.
 // autoApproveNodes automatically approves nodes based on policy rules.
-func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
+func (s *State) autoApproveNodes() ([]change.Change, error) {
 	nodes := s.ListNodes()
 
 	// Approve routes concurrently, this should make it likely
 	// that the writes end in the same batch in the nodestore write.
-	var errg errgroup.Group
-	var cs []change.ChangeSet
-	var mu sync.Mutex
+	var (
+		errg errgroup.Group
+		cs   []change.Change
+		mu   sync.Mutex
+	)
 	for _, nv := range nodes.All() {
 		errg.Go(func() error {
 			approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
@@ -1689,7 +1758,7 @@ func (s *State) autoApproveNodes() ([]change.ChangeSet, error) {
 // - node.PeerChangeFromMapRequest
 // - node.ApplyPeerChange
 // - logTracePeerChange in poll.go.
-func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.ChangeSet, error) {
+func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest) (change.Change, error) {
 	log.Trace().
 		Caller().
 		Uint64("node.id", id.Uint64()).
@@ -1802,7 +1871,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 	})
 
 	if !ok {
-		return change.EmptySet, fmt.Errorf("node not found in NodeStore: %d", id)
+		return change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, id)
 	}
 
 	if routeChange {
@@ -1814,80 +1883,67 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		// SetApprovedRoutes will update both database and PrimaryRoutes table
 		_, c, err := s.SetApprovedRoutes(id, autoApprovedRoutes)
 		if err != nil {
-			return change.EmptySet, fmt.Errorf("persisting auto-approved routes: %w", err)
+			return change.Change{}, fmt.Errorf("persisting auto-approved routes: %w", err)
 		}
 
 		// If SetApprovedRoutes resulted in a policy change, return it
-		if !c.Empty() {
+		if !c.IsEmpty() {
 			return c, nil
 		}
 	} // Continue with the rest of the processing using the updated node
 
-	nodeRouteChange := change.EmptySet
-
-	// Handle route changes after NodeStore update
-	// We need to update node routes if either:
-	// 1. The approved routes changed (routeChange is true), OR
-	// 2. The announced routes changed (even if approved routes stayed the same)
-	// This is because SubnetRoutes is the intersection of announced AND approved routes.
-	needsRouteUpdate := false
-	var routesChangedButNotApproved bool
-	if hostinfoChanged && needsRouteApproval && !routeChange {
-		if hi := req.Hostinfo; hi != nil {
-			routesChangedButNotApproved = true
-		}
-	}
-
-	if routesChangedButNotApproved {
-		needsRouteUpdate = true
-		log.Debug().
-			Caller().
-			Uint64("node.id", id.Uint64()).
-			Msg("updating routes because announced routes changed but approved routes did not")
-	}
-
-	if needsRouteUpdate {
-		// SetNodeRoutes sets the active/distributed routes, so we must use AllApprovedRoutes()
-		// which returns only the intersection of announced AND approved routes.
-		// Using AnnouncedRoutes() would bypass the security model and auto-approve everything.
-		log.Debug().
-			Caller().
-			Uint64("node.id", id.Uint64()).
-			Strs("announcedRoutes", util.PrefixesToString(updatedNode.AnnouncedRoutes())).
-			Strs("approvedRoutes", util.PrefixesToString(updatedNode.ApprovedRoutes().AsSlice())).
-			Strs("allApprovedRoutes", util.PrefixesToString(updatedNode.AllApprovedRoutes())).
-			Msg("updating node routes for distribution")
-		nodeRouteChange = s.SetNodeRoutes(id, updatedNode.AllApprovedRoutes()...)
-	}
+	// Handle route changes after NodeStore update.
+	// Update routes if announced routes changed (even if approved routes stayed the same)
+	// because SubnetRoutes is the intersection of announced AND approved routes.
+	nodeRouteChange := s.maybeUpdateNodeRoutes(id, updatedNode, hostinfoChanged, needsRouteApproval, routeChange, req.Hostinfo)
 
 	_, policyChange, err := s.persistNodeToDB(updatedNode)
 	if err != nil {
-		return change.EmptySet, fmt.Errorf("saving to database: %w", err)
+		return change.Change{}, fmt.Errorf("saving to database: %w", err)
 	}
 
 	if policyChange.IsFull() {
 		return policyChange, nil
 	}
-	if !nodeRouteChange.Empty() {
+
+	if !nodeRouteChange.IsEmpty() {
 		return nodeRouteChange, nil
 	}
 
 	// Determine the most specific change type based on what actually changed.
 	// This allows us to send lightweight patch updates instead of full map responses.
+	return buildMapRequestChangeResponse(id, updatedNode, hostinfoChanged, endpointChanged, derpChanged)
+}
+
+// buildMapRequestChangeResponse determines the appropriate response type for a MapRequest update.
+// Hostinfo changes require a full update, while endpoint/DERP changes can use lightweight patches.
+func buildMapRequestChangeResponse(
+	id types.NodeID,
+	node types.NodeView,
+	hostinfoChanged, endpointChanged, derpChanged bool,
+) (change.Change, error) {
 	// Hostinfo changes require NodeAdded (full update) as they may affect many fields.
 	if hostinfoChanged {
 		return change.NodeAdded(id), nil
 	}
 
 	// Return specific change types for endpoint and/or DERP updates.
-	// The batcher will query NodeStore for current state and include both in PeerChange if both changed.
-	// Prioritize endpoint changes as they're more common and important for connectivity.
-	if endpointChanged {
-		return change.EndpointUpdate(id), nil
-	}
+	if endpointChanged || derpChanged {
+		patch := &tailcfg.PeerChange{NodeID: id.NodeID()}
 
-	if derpChanged {
-		return change.DERPUpdate(id), nil
+		if endpointChanged {
+			patch.Endpoints = node.Endpoints().AsSlice()
+		}
+
+		if derpChanged {
+			if hi := node.Hostinfo(); hi.Valid() {
+				if ni := hi.NetInfo(); ni.Valid() {
+					patch.DERPRegion = ni.PreferredDERP()
+				}
+			}
+		}
+
+		return change.EndpointOrDERPUpdate(id, patch), nil
 	}
 
 	return change.NodeAdded(id), nil
@@ -1931,4 +1987,35 @@ func peerChangeEmpty(peerChange tailcfg.PeerChange) bool {
 		peerChange.DERPRegion == 0 &&
 		peerChange.LastSeen == nil &&
 		peerChange.KeyExpiry == nil
+}
+
+// maybeUpdateNodeRoutes updates node routes if announced routes changed but approved routes didn't.
+// This is needed because SubnetRoutes is the intersection of announced AND approved routes.
+func (s *State) maybeUpdateNodeRoutes(
+	id types.NodeID,
+	node types.NodeView,
+	hostinfoChanged, needsRouteApproval, routeChange bool,
+	hostinfo *tailcfg.Hostinfo,
+) change.Change {
+	// Only update if announced routes changed without approval change
+	if !hostinfoChanged || !needsRouteApproval || routeChange || hostinfo == nil {
+		return change.Change{}
+	}
+
+	log.Debug().
+		Caller().
+		Uint64("node.id", id.Uint64()).
+		Msg("updating routes because announced routes changed but approved routes did not")
+
+	// SetNodeRoutes sets the active/distributed routes using AllApprovedRoutes()
+	// which returns only the intersection of announced AND approved routes.
+	log.Debug().
+		Caller().
+		Uint64("node.id", id.Uint64()).
+		Strs("announcedRoutes", util.PrefixesToString(node.AnnouncedRoutes())).
+		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
+		Strs("allApprovedRoutes", util.PrefixesToString(node.AllApprovedRoutes())).
+		Msg("updating node routes for distribution")
+
+	return s.SetNodeRoutes(id, node.AllApprovedRoutes()...)
 }

@@ -12,16 +12,14 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639 # v9.1.0
+      - uses: actions/stale@997185467fa4f803885201cee163a9f38240193d # v10.1.1
         with:
           days-before-issue-stale: 90
           days-before-issue-close: 7
           stale-issue-label: "stale"
-          stale-issue-message:
-            "This issue is stale because it has been open for 90 days with no
+          stale-issue-message: "This issue is stale because it has been open for 90 days with no
             activity."
-          close-issue-message:
-            "This issue was closed because it has been inactive for 14 days
+          close-issue-message: "This issue was closed because it has been inactive for 14 days
             since being marked as stale."
           days-before-pr-stale: -1
           days-before-pr-close: -1

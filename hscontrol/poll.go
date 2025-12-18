@@ -319,41 +319,6 @@ var keepAlive = tailcfg.MapResponse{
 	KeepAlive: true,
 }
 
-func logTracePeerChange(hostname string, hostinfoChange bool, peerChange *tailcfg.PeerChange) {
-	trace := log.Trace().Caller().Uint64("node.id", uint64(peerChange.NodeID)).Str("hostname", hostname)
-
-	if peerChange.Key != nil {
-		trace = trace.Str("node.key", peerChange.Key.ShortString())
-	}
-
-	if peerChange.DiscoKey != nil {
-		trace = trace.Str("disco.key", peerChange.DiscoKey.ShortString())
-	}
-
-	if peerChange.Online != nil {
-		trace = trace.Bool("online", *peerChange.Online)
-	}
-
-	if peerChange.Endpoints != nil {
-		eps := make([]string, len(peerChange.Endpoints))
-		for idx, ep := range peerChange.Endpoints {
-			eps[idx] = ep.String()
-		}
-
-		trace = trace.Strs("endpoints", eps)
-	}
-
-	if hostinfoChange {
-		trace = trace.Bool("hostinfo_changed", hostinfoChange)
-	}
-
-	if peerChange.DERPRegion != 0 {
-		trace = trace.Int("derp_region", peerChange.DERPRegion)
-	}
-
-	trace.Time("last_seen", *peerChange.LastSeen).Msg("PeerChange received")
-}
-
 // logf adds common mapSession context to a zerolog event.
 func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
 	return event.
