@@ -121,6 +121,34 @@ func TestDoOIDCAuthorization(t *testing.T) {
 			},
 			claims: &types.OIDCClaims{Groups: []string{"test group"}, Email: "user@test.com", EmailVerified: false},
 		},
+		{
+			name:    "unverified email user only",
+			wantErr: true,
+			cfg: &types.OIDCConfig{
+				EmailVerifiedRequired: true,
+				AllowedDomains:        []string{},
+				AllowedUsers:          []string{"user@test.com"},
+				AllowedGroups:         []string{},
+			},
+			claims: &types.OIDCClaims{
+				Email:         "user@test.com",
+				EmailVerified: false,
+			},
+		},
+		{
+			name:    "no filters configured",
+			wantErr: false,
+			cfg: &types.OIDCConfig{
+				EmailVerifiedRequired: true,
+				AllowedDomains:        []string{},
+				AllowedUsers:          []string{},
+				AllowedGroups:         []string{},
+			},
+			claims: &types.OIDCClaims{
+				Email:         "anyone@anywhere.com",
+				EmailVerified: false,
+			},
+		},
 	}
 
 	for _, tC := range testCases {
