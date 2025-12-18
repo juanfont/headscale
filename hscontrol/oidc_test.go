@@ -164,7 +164,8 @@ func TestDoOIDCAuthorization(t *testing.T) {
 
 	for _, tC := range testCases {
 		t.Run(tC.name, func(t *testing.T) {
-			if err := doOIDCAuthorization(tC.cfg, tC.claims); ((err != nil) && !tC.wantErr) || ((err == nil) && tC.wantErr) {
+			err := doOIDCAuthorization(tC.cfg, tC.claims)
+			if ((err != nil) && !tC.wantErr) || ((err == nil) && tC.wantErr) {
 				t.Errorf("bad authorization: %s > want=%v | got=%v", tC.name, tC.wantErr, err)
 			}
 		})

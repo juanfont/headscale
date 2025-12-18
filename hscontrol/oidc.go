@@ -265,7 +265,8 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// The user claims are now updated from the userinfo endpoint so we can verify the user
 	// against allowed emails, email domains, and groups.
-	if err := doOIDCAuthorization(a.cfg, &claims); err != nil {
+	err = doOIDCAuthorization(a.cfg, &claims)
+	if err != nil {
 		httpError(writer, err)
 		return
 	}
@@ -466,24 +467,29 @@ func doOIDCAuthorization(
 	claims *types.OIDCClaims,
 ) error {
 	if len(cfg.AllowedGroups) > 0 {
-		if err := validateOIDCAllowedGroups(cfg.AllowedGroups, claims); err != nil {
+		err := validateOIDCAllowedGroups(cfg.AllowedGroups, claims)
+		if err != nil {
 			return err
 		}
 	}
 
 	trustEmail := !cfg.EmailVerifiedRequired || bool(claims.EmailVerified)
+
 	hasEmailTests := len(cfg.AllowedDomains) > 0 || len(cfg.AllowedUsers) > 0
 	if !trustEmail && hasEmailTests {
 		return NewHTTPError(http.StatusUnauthorized, "unverified email", errOIDCUnverifiedEmail)
 	}
 
 	if len(cfg.AllowedDomains) > 0 {
-		if err := validateOIDCAllowedDomains(cfg.AllowedDomains, claims); err != nil {
+		err := validateOIDCAllowedDomains(cfg.AllowedDomains, claims)
+		if err != nil {
 			return err
 		}
 	}
+
 	if len(cfg.AllowedUsers) > 0 {
-		if err := validateOIDCAllowedUsers(cfg.AllowedUsers, claims); err != nil {
+		err := validateOIDCAllowedUsers(cfg.AllowedUsers, claims)
+		if err != nil {
 			return err
 		}
 	}
