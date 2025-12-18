@@ -149,6 +149,17 @@ func TestDoOIDCAuthorization(t *testing.T) {
 				EmailVerified: false,
 			},
 		},
+		{
+			name:    "multiple allowed groups second matches",
+			wantErr: false,
+			cfg: &types.OIDCConfig{
+				EmailVerifiedRequired: true,
+				AllowedDomains:        []string{},
+				AllowedUsers:          []string{},
+				AllowedGroups:         []string{"group1", "group2", "group3"},
+			},
+			claims: &types.OIDCClaims{Groups: []string{"group2"}},
+		},
 	}
 
 	for _, tC := range testCases {
