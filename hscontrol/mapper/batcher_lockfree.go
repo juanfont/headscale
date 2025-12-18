@@ -31,6 +31,7 @@ type LockFreeBatcher struct {
 	workCh     chan work
 	workChOnce sync.Once // Ensures workCh is only closed once
 	done       chan struct{}
+	doneOnce   sync.Once // Ensures done is only closed once
 
 	// Batching state
 	pendingChanges *xsync.Map[types.NodeID, []change.Change]
@@ -151,10 +152,12 @@ func (b *LockFreeBatcher) Start() {
 }
 
 func (b *LockFreeBatcher) Close() {
-	// Signal shutdown to all goroutines
-	if b.done != nil {
-		close(b.done)
-	}
+	// Signal shutdown to all goroutines, only once
+	b.doneOnce.Do(func() {
+		if b.done != nil {
+			close(b.done)
+		}
+	})
 
 	// Only close workCh once using sync.Once to prevent races
 	b.workChOnce.Do(func() {
