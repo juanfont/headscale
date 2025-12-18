@@ -57,6 +57,9 @@ sequentially through each stable release, selecting the latest patch version ava
 
 - Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
   - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC with `allowed_domains` or `allowed_users`
+  - When `false`, unverified emails are allowed for OIDC authentication
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
