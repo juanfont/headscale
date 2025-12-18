@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
@@ -190,7 +190,7 @@ func (u *User) Proto() *v1.User {
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
-// https://github.com/juanfont/headscale/issues/2293
+// https://github.com/skitzo2000/headscale/issues/2293
 type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {

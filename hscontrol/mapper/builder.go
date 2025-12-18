@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/policy"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"

@@ -1,8 +1,8 @@
 package policyutil
 
 import (
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 )
 

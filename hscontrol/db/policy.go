@@ -3,7 +3,7 @@ package db
 import (
 	"errors"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

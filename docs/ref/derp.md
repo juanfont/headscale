@@ -54,7 +54,7 @@ derp:
 ### Customize DERP map
 
 The DERP map offered to clients can be customized with a [dedicated YAML-configuration
-file](https://github.com/juanfont/headscale/blob/main/derp-example.yaml). This allows to modify previously loaded DERP
+file](https://github.com/skitzo2000/headscale/blob/main/derp-example.yaml). This allows to modify previously loaded DERP
 maps fetched via URL or to offer your own, custom DERP servers to nodes.
 
 === "Remove specific DERP regions"

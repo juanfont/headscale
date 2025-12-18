@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/mapper"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -3103,7 +3103,7 @@ func createTestApp(t *testing.T) *Headscale {
 }
 
 // TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey tests the scenario reported in
-// https://github.com/juanfont/headscale/issues/2830
+// https://github.com/skitzo2000/headscale/issues/2830
 //
 // Scenario:
 // 1. Node registers successfully with a single-use pre-auth key
@@ -3385,7 +3385,7 @@ func TestIssue2830_ExistingNodeReregistersWithExpiredKey(t *testing.T) {
 // 1. The node is re-registering with the same MachineKey it originally used
 // 2. The node is using the same pre-auth key it was originally registered with (AuthKeyID matches)
 //
-// This is the fix for GitHub issue #2830: https://github.com/juanfont/headscale/issues/2830
+// This is the fix for GitHub issue #2830: https://github.com/skitzo2000/headscale/issues/2830
 //
 // Background: When Docker/Kubernetes containers restart, they keep their persistent state
 // (including the MachineKey), but container entrypoints unconditionally run:

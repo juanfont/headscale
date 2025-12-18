@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/tailcfg"
 )

@@ -9,7 +9,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/gorilla/mux"
-	"github.com/juanfont/headscale/hscontrol/templates"
+	"github.com/skitzo2000/headscale/hscontrol/templates"
 )
 
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
@@ -124,7 +124,7 @@ var commonTemplate = textTemplate.Must(
     <key>PayloadDescription</key>
     <string>Configure Tailscale login server to: {{.URL}}</string>
     <key>PayloadIdentifier</key>
-    <string>com.github.juanfont.headscale</string>
+    <string>com.github.skitzo2000.headscale</string>
     <key>PayloadRemovalDisallowed</key>
     <false/>
     <key>PayloadType</key>
@@ -146,7 +146,7 @@ var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.juanfont.headscale</string>
+        <string>com.github.skitzo2000.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>
@@ -164,7 +164,7 @@ var macosAppStoreTemplate = template.Must(template.New("macosTemplate").Parse(`
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.juanfont.headscale</string>
+        <string>com.github.skitzo2000.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>
@@ -181,7 +181,7 @@ var macosStandaloneTemplate = template.Must(template.New("macosStandaloneTemplat
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.juanfont.headscale</string>
+        <string>com.github.skitzo2000.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>

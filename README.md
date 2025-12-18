@@ -1,8 +1,15 @@
 ![headscale logo](./docs/assets/logo/headscale3_header_stacked_left.png)
 
-![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
+![ci](https://github.com/skitzo2000/headscale/actions/workflows/test.yml/badge.svg)
 
 An open source, self-hosted implementation of the Tailscale control server.
+
+## Fork Information
+
+This is a custom fork of headscale (originally from juanfont/headscale) streamlined for:
+- AMD64 architecture only
+- Simplified Docker packaging
+- Minimal testing infrastructure for faster builds
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for a chat.
 
@@ -167,8 +174,8 @@ The Makefile will warn you if any required tools are missing and suggest running
 
 ## Contributors
 
-<a href="https://github.com/juanfont/headscale/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=juanfont/headscale" />
+<a href="https://github.com/skitzo2000/headscale/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=skitzo2000/headscale" />
 </a>
 
 Made with [contrib.rocks](https://contrib.rocks).

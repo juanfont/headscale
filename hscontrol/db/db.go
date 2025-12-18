@@ -14,9 +14,9 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
-	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/db/sqliteconfig"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"

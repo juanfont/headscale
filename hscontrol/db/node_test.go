@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/policy"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/check.v1"
@@ -705,7 +705,7 @@ func TestNodeNaming(t *testing.T) {
 	// Using non-ASCII characters in the hostname can
 	// break your network, so they should be replaced when registering
 	// a node.
-	// https://github.com/juanfont/headscale/issues/2343
+	// https://github.com/skitzo2000/headscale/issues/2343
 	nodeInvalidHostname := types.Node{
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),

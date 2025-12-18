@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/arl/statsviz"
-	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/mapper"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tsweb"
 )

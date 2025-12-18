@@ -221,7 +221,7 @@ const file_headscale_v1_policy_proto_rawDesc = "" +
 	"\x11GetPolicyResponse\x12\x16\n" +
 	"\x06policy\x18\x01 \x01(\tR\x06policy\x129\n" +
 	"\n" +
-	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
+	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB)Z'github.com/skitzo2000/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_policy_proto_rawDescOnce sync.Once

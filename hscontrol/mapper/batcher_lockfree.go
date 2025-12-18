@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
@@ -301,7 +301,7 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 	// Therefore, this cleanup only removes nodes that are truly being deleted,
 	// not nodes that are still connected but have lost visibility of certain peers.
 	//
-	// See: https://github.com/juanfont/headscale/issues/2924
+	// See: https://github.com/skitzo2000/headscale/issues/2924
 	for _, ch := range changes {
 		for _, removedID := range ch.PeersRemoved {
 			if _, existed := b.nodes.LoadAndDelete(removedID); existed {

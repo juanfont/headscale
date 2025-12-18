@@ -17,13 +17,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	hsdb "github.com/juanfont/headscale/hscontrol/db"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-	"github.com/juanfont/headscale/hscontrol/routes"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/juanfont/headscale/hscontrol/util"
+	hsdb "github.com/skitzo2000/headscale/hscontrol/db"
+	"github.com/skitzo2000/headscale/hscontrol/policy"
+	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
+	"github.com/skitzo2000/headscale/hscontrol/routes"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
@@ -428,7 +428,7 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 
 	// Use Omit("expiry") to prevent overwriting expiry during MapRequest updates.
 	// Expiry should only be updated through explicit SetNodeExpiry calls or re-registration.
-	// See: https://github.com/juanfont/headscale/issues/2862
+	// See: https://github.com/skitzo2000/headscale/issues/2862
 	err := s.db.DB.Omit("expiry").Updates(nodePtr).Error
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)

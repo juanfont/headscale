@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -75,16 +75,16 @@ func initConfig() {
 		versionInfo := types.GetVersionInfo()
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {
-			githubTag := &latest.GithubTag{
-				Owner:         "juanfont",
-				Repository:    "headscale",
+		githubTag := &latest.GithubTag{
+			Owner:         "skitzo2000",
+			Repository:    "headscale",
 				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
 				log.Warn().Msgf(
-					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
+					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/skitzo2000/headscale/releases\n",
 					res.Current,
 					versionInfo.Version,
 				)
@@ -136,7 +136,7 @@ var rootCmd = &cobra.Command{
 	Long: `
 headscale is an open source implementation of the Tailscale control server
 
-https://github.com/juanfont/headscale`,
+https://github.com/skitzo2000/headscale`,
 }
 
 func Execute() {

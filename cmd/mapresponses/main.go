@@ -7,8 +7,8 @@ import (
 
 	"github.com/creachadair/command"
 	"github.com/creachadair/flax"
-	"github.com/juanfont/headscale/hscontrol/mapper"
-	"github.com/juanfont/headscale/integration/integrationutil"
+	"github.com/skitzo2000/headscale/hscontrol/mapper"
+	"github.com/skitzo2000/headscale/integration/integrationutil"
 )
 
 type MapConfig struct {

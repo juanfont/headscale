@@ -50,7 +50,7 @@ Please follow the steps outlined in the [upgrade guide](../setup/upgrade.md) to 
 installation. Its best to update from one stable version to the next (e.g. 0.24.0 &rarr; 0.25.1 &rarr; 0.26.1) in case
 you are multiple releases behind. You should always pick the latest available patch release.
 
-Be sure to check the [changelog](https://github.com/juanfont/headscale/blob/main/CHANGELOG.md) for version specific
+Be sure to check the [changelog](https://github.com/skitzo2000/headscale/blob/main/CHANGELOG.md) for version specific
 upgrade instructions and breaking changes.
 
 ## Scaling / How many clients does Headscale support?

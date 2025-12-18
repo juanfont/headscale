@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

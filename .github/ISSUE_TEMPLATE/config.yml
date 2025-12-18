@@ -4,7 +4,7 @@ blank_issues_enabled: false
 # Contact links
 contact_links:
   - name: "headscale usage documentation"
-    url: "https://github.com/juanfont/headscale/blob/main/docs"
+    url: "https://github.com/skitzo2000/headscale/blob/main/docs"
     about: "Find documentation about how to configure and run headscale."
   - name: "headscale Discord community"
     url: "https://discord.gg/xGj2TuqyxY"

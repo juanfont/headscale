@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    if: github.repository == 'juanfont/headscale'
+    if: github.repository == 'skitzo2000/headscale'
     runs-on: ubuntu-latest
 
     steps:

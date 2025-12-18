@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -349,7 +349,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
-			// From https://github.com/juanfont/headscale/issues/2333
+			// From https://github.com/skitzo2000/headscale/issues/2333
 			name: "okta-oidc-claim-20250121",
 			jsonstr: `
 {
@@ -383,7 +383,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
-			// From https://github.com/juanfont/headscale/issues/2333
+			// From https://github.com/skitzo2000/headscale/issues/2333
 			name: "okta-oidc-claim-20250121",
 			jsonstr: `
 {
@@ -416,7 +416,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			},
 		},
 		{
-			// From https://github.com/juanfont/headscale/issues/2333
+			// From https://github.com/skitzo2000/headscale/issues/2333
 			name: "casby-oidc-claim-20250513",
 			jsonstr: `
 			{

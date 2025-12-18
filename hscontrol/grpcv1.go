@@ -25,11 +25,11 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/state"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/juanfont/headscale/hscontrol/util"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
+	"github.com/skitzo2000/headscale/hscontrol/state"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer

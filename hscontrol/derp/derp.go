@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"

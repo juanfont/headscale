@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -609,7 +609,7 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 
 // TestTagPropagationToPeerMap tests that when a node's tags change,
 // the peer map is correctly updated. This is a regression test for
-// https://github.com/juanfont/headscale/issues/2389
+// https://github.com/skitzo2000/headscale/issues/2389
 func TestTagPropagationToPeerMap(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},

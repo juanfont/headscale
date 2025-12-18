@@ -21,7 +21,7 @@ aim to be upstreamed to nixpkgs.
 Add to your flake inputs:
 
 ```nix
-inputs.headscale.url = "github:juanfont/headscale";
+inputs.headscale.url = "github:skitzo2000/headscale";
 ```
 
 Then import the module:

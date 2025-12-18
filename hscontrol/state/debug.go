@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/routes"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/routes"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
 

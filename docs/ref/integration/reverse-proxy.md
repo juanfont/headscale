@@ -13,11 +13,11 @@ Running headscale behind a reverse proxy is useful when running multiple applica
 
 The reverse proxy MUST be configured to support WebSockets to communicate with Tailscale clients.
 
-WebSockets support is also required when using the Headscale [embedded DERP server](../derp.md). In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/juanfont/headscale/blob/main/config-example.yaml).
+WebSockets support is also required when using the Headscale [embedded DERP server](../derp.md). In this case, you will also need to expose the UDP port used for STUN (by default, udp/3478). Please check our [config-example.yaml](https://github.com/skitzo2000/headscale/blob/main/config-example.yaml).
 
 ### Cloudflare
 
-Running headscale behind a cloudflare proxy or cloudflare tunnel is not supported and will not work as Cloudflare does not support WebSocket POSTs as required by the Tailscale protocol. See [this issue](https://github.com/juanfont/headscale/issues/1468)
+Running headscale behind a cloudflare proxy or cloudflare tunnel is not supported and will not work as Cloudflare does not support WebSocket POSTs as required by the Tailscale protocol. See [this issue](https://github.com/skitzo2000/headscale/issues/1468)
 
 ### TLS
 
