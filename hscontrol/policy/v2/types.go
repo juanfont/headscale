@@ -1092,7 +1092,7 @@ func (h *Hosts) UnmarshalJSON(b []byte) error {
 		}
 
 		var prefix Prefix
-		err := prefix.parseString(value)
+		err = prefix.parseString(value)
 		if err != nil {
 			return fmt.Errorf(`Hostname "%s" contains an invalid IP address: "%s"`, key, value)
 		}
@@ -1705,7 +1705,7 @@ func (p *Policy) validate() error {
 					continue
 				}
 
-				err := validateAutogroupForSrc(ag)
+				err = validateAutogroupForSrc(ag)
 				if err != nil {
 					errs = append(errs, err)
 					continue
@@ -1741,7 +1741,7 @@ func (p *Policy) validate() error {
 					continue
 				}
 
-				err := validateAutogroupForDst(ag)
+				err = validateAutogroupForDst(ag)
 				if err != nil {
 					errs = append(errs, err)
 					continue
@@ -1791,7 +1791,7 @@ func (p *Policy) validate() error {
 					continue
 				}
 
-				err := validateAutogroupForSSHSrc(ag)
+				err = validateAutogroupForSSHSrc(ag)
 				if err != nil {
 					errs = append(errs, err)
 					continue
@@ -1821,7 +1821,7 @@ func (p *Policy) validate() error {
 					continue
 				}
 
-				err := validateAutogroupForSSHDst(ag)
+				err = validateAutogroupForSSHDst(ag)
 				if err != nil {
 					errs = append(errs, err)
 					continue
