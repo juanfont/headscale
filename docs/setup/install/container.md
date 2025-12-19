@@ -71,7 +71,7 @@ Registry](https://github.com/skitzo2000/headscale/pkgs/container/headscale). The
           - <HEADSCALE_PATH>/lib:/var/lib/headscale
         command: serve
         healthcheck:
-            test: ["CMD", "headscale", "health"]
+          test: ["CMD", "headscale", "health"]
     ```
 
 1.  Verify headscale is running:

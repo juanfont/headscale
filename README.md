@@ -7,6 +7,7 @@ An open source, self-hosted implementation of the Tailscale control server.
 ## Fork Information
 
 This is a custom fork of headscale (originally from juanfont/headscale) streamlined for:
+
 - AMD64 architecture only
 - Simplified Docker packaging
 - Minimal testing infrastructure for faster builds

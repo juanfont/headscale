@@ -26,4 +26,3 @@ jobs:
           git add gen/
           git commit -m "Regenerate protobuf files" || echo "No changes to commit"
           git push
-

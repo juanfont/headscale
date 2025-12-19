@@ -15,23 +15,23 @@ The ports in use vary with the intended scenario and enabled features. Some of t
 [configuration file](../ref/configuration.md) but we recommend to stick with the default values.
 
 - tcp/80
-    - Expose publicly: yes
-    - HTTP, used by Let's Encrypt to verify ownership via the HTTP-01 challenge.
-    - Only required if the built-in Let's Enrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md) for
-      details.
+  - Expose publicly: yes
+  - HTTP, used by Let's Encrypt to verify ownership via the HTTP-01 challenge.
+  - Only required if the built-in Let's Enrypt client with the HTTP-01 challenge is used. See [TLS](../ref/tls.md) for
+    details.
 - tcp/443
-    - Expose publicly: yes
-    - HTTPS, required to make Headscale available to Tailscale clients[^1]
-    - Required if the [embedded DERP server](../ref/derp.md) is enabled
+  - Expose publicly: yes
+  - HTTPS, required to make Headscale available to Tailscale clients[^1]
+  - Required if the [embedded DERP server](../ref/derp.md) is enabled
 - udp/3478
-    - Expose publicly: yes
-    - STUN, required if the [embedded DERP server](../ref/derp.md) is enabled
+  - Expose publicly: yes
+  - STUN, required if the [embedded DERP server](../ref/derp.md) is enabled
 - tcp/50443
-    - Expose publicly: yes
-    - Only required if the gRPC interface is used to [remote-control Headscale](../ref/api.md#grpc).
+  - Expose publicly: yes
+  - Only required if the gRPC interface is used to [remote-control Headscale](../ref/api.md#grpc).
 - tcp/9090
-    - Expose publicly: no
-    - [Metrics and debug endpoint](../ref/debug.md#metrics-and-debug-endpoint)
+  - Expose publicly: no
+  - [Metrics and debug endpoint](../ref/debug.md#metrics-and-debug-endpoint)
 
 ## Assumptions
 

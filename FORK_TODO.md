@@ -1,7 +1,9 @@
 # Headscale Fork Customization Todo List
 
 ## Overview
+
 Streamline the headscale repository for personal use:
+
 - Remove unnecessary testing infrastructure
 - Focus on amd64 builds only
 - Simplify Docker packaging
@@ -15,6 +17,7 @@ The fork is **90% complete** but requires protobuf file regeneration before it c
 ## Completed Tasks ✅
 
 ### 1. Repository Analysis
+
 - [x] Create task list and reference file
 - [x] Identify all references to juanfont/headscale (158 files)
 - [x] Map testing infrastructure files
@@ -22,6 +25,7 @@ The fork is **90% complete** but requires protobuf file regeneration before it c
 - [x] Identify Docker build configurations
 
 ### 2. Remove Original Repo References
+
 - [x] Update go.mod module path to skitzo2000/headscale
 - [x] Update import statements across all Go files (194 files)
 - [x] Update documentation references (all .md files)
@@ -31,20 +35,23 @@ The fork is **90% complete** but requires protobuf file regeneration before it c
 - [x] Update proto/buf.yaml module references (7 proto files)
 
 ### 3. Simplify Testing Infrastructure
+
 - [x] Remove integration test runner (cmd/hi)
 - [x] Remove integration test suite (integration/)
 - [x] Keep essential unit tests only
-- [x] Remove test-specific Dockerfiles (Dockerfile.integration*)
+- [x] Remove test-specific Dockerfiles (Dockerfile.integration\*)
 - [x] Remove integration test workflows
 - [x] Remove cmd/mapresponses (depended on integration utils)
 
 ### 4. Streamline Build System
+
 - [x] Simplify .goreleaser.yml for amd64 only
 - [x] Update build targets to linux/amd64 only
 - [x] Update Docker images for amd64 only
 - [x] Remove unnecessary build targets (darwin, arm64, freebsd)
 
 ### 5. Clean Up GitHub Actions
+
 - [x] Simplify CI workflow for amd64 only
 - [x] Remove integration test workflows (3 workflow files)
 - [x] Keep only Docker build and release workflows
@@ -53,6 +60,7 @@ The fork is **90% complete** but requires protobuf file regeneration before it c
 - [x] Add regenerate-proto.yml workflow for convenience
 
 ### 6. Documentation Updates
+
 - [x] Update README with fork information
 - [x] Update all documentation files (20+ markdown files)
 - [x] Update YAML configuration files
@@ -60,12 +68,14 @@ The fork is **90% complete** but requires protobuf file regeneration before it c
 - [x] Create REGENERATE_PROTO.md instructions
 
 ### 7. Final Cleanup
+
 - [x] Updated all Go imports (automated with sed)
 - [x] Removed integration test infrastructure
 - [x] Removed generated protobuf files (need regeneration)
 - [x] All references updated successfully
 
 ### 8. Git Operations
+
 - [x] Create new branch 0.28.007
 - [x] Commit all changes (179 files changed initially)
 - [x] Update remote to skitzo2000/headscale
@@ -122,6 +132,7 @@ See `REGENERATE_PROTO.md` for detailed troubleshooting.
 Once protobuf files are regenerated, you can:
 
 1. **Test the build:**
+
    ```bash
    nix develop
    make test
@@ -129,10 +140,12 @@ Once protobuf files are regenerated, you can:
    ```
 
 2. **Create a release:**
+
    ```bash
    git tag v0.28.007
    git push origin v0.28.007
    ```
+
    GitHub Actions will automatically build and publish Docker images.
 
 3. **Docker images will be available at:**
@@ -143,10 +156,12 @@ Once protobuf files are regenerated, you can:
 ## Summary of Changes
 
 **Files Modified:** 180+ files
+
 - ~700 insertions
 - ~27,000 deletions (integration tests removed)
 
 **Major Changes:**
+
 1. Module path: `github.com/juanfont/headscale` → `github.com/skitzo2000/headscale`
 2. Removed: `cmd/hi/`, `integration/`, `cmd/mapresponses/`
 3. Removed Dockerfiles: `Dockerfile.integration*`, `Dockerfile.tailscale-HEAD`
@@ -161,6 +176,7 @@ Once protobuf files are regenerated, you can:
 **Progress:** 90% complete
 
 ## Notes
+
 - Core headscale functionality intact
 - Unit tests preserved (integration tests removed)
 - All documentation and references updated

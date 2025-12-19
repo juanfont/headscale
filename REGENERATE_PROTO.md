@@ -5,6 +5,7 @@ The generated protobuf files in `gen/go/headscale/v1/` need to be regenerated af
 ## Prerequisites
 
 You need either:
+
 1. **Nix environment** (recommended): `nix develop`
 2. **Manual install**: Go, buf, protoc-gen-go, protoc-gen-go-grpc, protoc-gen-grpc-gateway
 
@@ -37,6 +38,7 @@ This will regenerate the proto files and commit them automatically.
 ## What Was Changed
 
 After forking from `juanfont/headscale` to `skitzo2000/headscale`, we changed:
+
 - Module path in `go.mod`
 - All Go import statements
 - Proto package path in `proto/headscale/v1/*.proto` files
@@ -46,4 +48,3 @@ The generated files contain embedded binary descriptors that reference the old p
 ## Current Status
 
 The generated files have been removed from the repository and need to be regenerated. This is intentional - the old generated files had corrupted binary descriptors after the package path changes.
-

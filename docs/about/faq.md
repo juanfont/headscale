@@ -69,12 +69,10 @@ describe two scenarios in an effort to explain what is the central bottleneck
 of Headscale:
 
 1. An environment with 1000 servers
-
    - they rarely "move" (change their endpoints)
    - new nodes are added rarely
 
 2. An environment with 80 laptops/phones (end user devices)
-
    - nodes move often, e.g. switching from home to office
 
 Headscale calculates a map of all nodes that need to talk to each other,
