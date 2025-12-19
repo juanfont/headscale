@@ -143,7 +143,7 @@ func NormaliseHostname(name string) (string, error) {
 	}
 
 	// Validate result after transformation
-	err := ValidateHostname(name)
+	err = ValidateHostname(name)
 	if err != nil {
 		return "", fmt.Errorf(
 			"hostname invalid after normalisation: %w",
