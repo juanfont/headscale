@@ -39,7 +39,7 @@ func init() {
 
 	deleteAPIKeyCmd.Flags().StringP("prefix", "p", "", "ApiKey prefix")
 
-	err := deleteAPIKeyCmd.MarkFlagRequired("prefix")
+	err = deleteAPIKeyCmd.MarkFlagRequired("prefix")
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
