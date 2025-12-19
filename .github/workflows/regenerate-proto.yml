@@ -8,17 +8,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: nixbuild/nix-quick-install-action@v34
-      
+
       - uses: nix-community/cache-nix-action@v6
         with:
           primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}
-      
+
       - name: Generate protobuf files
         run: nix develop --command -- make generate
-      
+
       - name: Commit generated files
         run: |
           git config user.name "GitHub Actions"
