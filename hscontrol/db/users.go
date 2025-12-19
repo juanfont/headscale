@@ -30,7 +30,7 @@ func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
 	if err != nil {
 		return nil, err
 	}
-	err := tx.Create(&user).Error
+	err = tx.Create(&user).Error
 	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
 	}

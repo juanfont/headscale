@@ -289,7 +289,7 @@ func RenameNode(tx *gorm.DB,
 
 	// Check if the new name is unique
 	var count int64
-	err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
+	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
 	if err != nil {
 		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
@@ -298,7 +298,7 @@ func RenameNode(tx *gorm.DB,
 		return errors.New("name is not unique")
 	}
 
-	err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error
+	err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error
 	if err != nil {
 		return fmt.Errorf("failed to rename node in the database: %w", err)
 	}
