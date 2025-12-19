@@ -29,6 +29,7 @@ headscale apikeys expire --prefix <PREFIX>
 
 - API endpoint: `/api/v1`, e.g. `https://headscale.example.com/api/v1`
 - Documentation: `/swagger`, e.g. `https://headscale.example.com/swagger`
+- Headscale Version: `/version`, e.g. `https://headscale.example.com/version`
 - Authenticate using HTTP Bearer authentication by sending the [API key](#api) with the HTTP `Authorization: Bearer
   <API_KEY>` header.
 
