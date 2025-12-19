@@ -55,14 +55,17 @@ sequentially through each stable release, selecting the latest patch version ava
   - The `headscale nodes move` CLI command has been removed
   - The `MoveNode` API endpoint has been removed
   - Nodes are permanently associated with their user at registration time
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC in conjunction with `oidc.allowed_domains` or
+    `oidc.allowed_users`. Previous versions allowed to authenticate with an unverified email but did not store the email
+    address in the user profile. This is now rejected during authentication with an `unverified email` error.
+  - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
+    profile regardless of its verification state.
 
 ### Changes
 
 - Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
   - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
-- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
-  - When `true` (default), only verified emails can authenticate via OIDC with `allowed_domains` or `allowed_users`
-  - When `false`, unverified emails are allowed for OIDC authentication
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
