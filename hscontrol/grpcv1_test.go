@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -17,6 +17,7 @@ func Test_validateTag(t *testing.T) {
 	type args struct {
 		tag string
 	}
+
 	tests := []struct {
 		name    string
 		args    args
@@ -45,7 +46,8 @@ func Test_validateTag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateTag(tt.args.tag); (err != nil) != tt.wantErr {
+			err := validateTag(tt.args.tag)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("validateTag() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})

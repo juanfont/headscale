@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"os"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
+	"github.com/skitzo2000/headscale/hscontrol"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -81,6 +81,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 					Msgf("Unable to read/write to headscale socket, do you have the correct permissions?")
 			}
 		}
+
 		socket.Close()
 
 		grpcOptions = append(
@@ -94,6 +95,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		if apiKey == "" {
 			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
 		}
+
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
 				token: apiKey,
@@ -119,6 +121,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 	}
 
 	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
+
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
 		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)
@@ -131,8 +134,11 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 }
 
 func output(result any, override string, outputFormat string) string {
-	var jsonBytes []byte
-	var err error
+	var (
+		jsonBytes []byte
+		err       error
+	)
+
 	switch outputFormat {
 	case "json":
 		jsonBytes, err = json.MarshalIndent(result, "", "\t")

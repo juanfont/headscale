@@ -29,6 +29,7 @@ func Test_parseIPSet(t *testing.T) {
 		arg  string
 		bits *int
 	}
+
 	tests := []struct {
 		name    string
 		args    args
@@ -111,6 +112,7 @@ func Test_parseIPSet(t *testing.T) {
 
 				return
 			}
+
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("parseIPSet() = (-want +got):\n%s", diff)
 			}

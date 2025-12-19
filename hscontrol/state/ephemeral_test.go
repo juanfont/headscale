@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/ptr"
@@ -21,6 +21,7 @@ func TestEphemeralNodeDeleteWithConcurrentUpdate(t *testing.T) {
 
 	// Create NodeStore
 	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -44,20 +45,26 @@ func TestEphemeralNodeDeleteWithConcurrentUpdate(t *testing.T) {
 	// 6. If DELETE came after UPDATE, the returned node should be invalid
 
 	done := make(chan bool, 2)
-	var updatedNode types.NodeView
-	var updateOk bool
+
+	var (
+		updatedNode types.NodeView
+		updateOk    bool
+	)
 
 	// Goroutine 1: UpdateNode (simulates UpdateNodeFromMapRequest)
+
 	go func() {
 		updatedNode, updateOk = store.UpdateNode(node.ID, func(n *types.Node) {
 			n.LastSeen = ptr.To(time.Now())
 		})
+
 		done <- true
 	}()
 
 	// Goroutine 2: DeleteNode (simulates handleLogout for ephemeral node)
 	go func() {
 		store.DeleteNode(node.ID)
+
 		done <- true
 	}()
 
@@ -91,6 +98,7 @@ func TestUpdateNodeReturnsInvalidWhenDeletedInSameBatch(t *testing.T) {
 
 	// Use batch size of 2 to guarantee UpdateNode and DeleteNode batch together
 	store := NewNodeStore(nil, allowAllPeersFunc, 2, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -148,6 +156,7 @@ func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 	node := createTestNode(3, 1, "test-user", "test-node-3")
 
 	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -204,6 +213,7 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 
 	// Use batch size of 2 to guarantee UpdateNode and DeleteNode batch together
 	store := NewNodeStore(nil, allowAllPeersFunc, 2, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -214,8 +224,11 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 	// 1. UpdateNode (from UpdateNodeFromMapRequest during polling)
 	// 2. DeleteNode (from handleLogout when client sends logout request)
 
-	var updatedNode types.NodeView
-	var updateOk bool
+	var (
+		updatedNode types.NodeView
+		updateOk    bool
+	)
+
 	done := make(chan bool, 2)
 
 	// Goroutine 1: UpdateNode (simulates UpdateNodeFromMapRequest)
@@ -223,12 +236,14 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 		updatedNode, updateOk = store.UpdateNode(ephemeralNode.ID, func(n *types.Node) {
 			n.LastSeen = ptr.To(time.Now())
 		})
+
 		done <- true
 	}()
 
 	// Goroutine 2: DeleteNode (simulates handleLogout for ephemeral node)
 	go func() {
 		store.DeleteNode(ephemeralNode.ID)
+
 		done <- true
 	}()
 
@@ -267,7 +282,7 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 // 5. UpdateNode and DeleteNode batch together
 // 6. UpdateNode returns a valid node (from before delete in batch)
 // 7. persistNodeToDB is called with the stale valid node
-// 8. Node gets re-inserted into database instead of staying deleted
+// 8. Node gets re-inserted into database instead of staying deleted.
 func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 	ephemeralNode := createTestNode(5, 1, "test-user", "ephemeral-node-5")
 	ephemeralNode.AuthKey = &types.PreAuthKey{
@@ -279,6 +294,7 @@ func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 	// Use batch size of 2 to guarantee UpdateNode and DeleteNode batch together
 	// Use batch size of 2 to guarantee UpdateNode and DeleteNode batch together
 	store := NewNodeStore(nil, allowAllPeersFunc, 2, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -349,6 +365,7 @@ func TestUpdateNodeDeletedInSameBatchReturnsInvalid(t *testing.T) {
 
 	// Use batch size of 2 to guarantee UpdateNode and DeleteNode batch together
 	store := NewNodeStore(nil, allowAllPeersFunc, 2, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 
@@ -399,7 +416,7 @@ func TestUpdateNodeDeletedInSameBatchReturnsInvalid(t *testing.T) {
 // 3. UpdateNode and DeleteNode batch together
 // 4. UpdateNode returns a valid node (from before delete in batch)
 // 5. UpdateNodeFromMapRequest calls persistNodeToDB with the stale node
-// 6. persistNodeToDB must detect the node is deleted and refuse to persist
+// 6. persistNodeToDB must detect the node is deleted and refuse to persist.
 func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 	ephemeralNode := createTestNode(7, 1, "test-user", "ephemeral-node-7")
 	ephemeralNode.AuthKey = &types.PreAuthKey{
@@ -409,6 +426,7 @@ func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 	}
 
 	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+
 	store.Start()
 	defer store.Stop()
 

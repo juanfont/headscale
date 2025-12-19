@@ -7,11 +7,11 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/skitzo2000/headscale/hscontrol/policy"
+	"github.com/skitzo2000/headscale/hscontrol/policy/policyutil"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -824,10 +824,14 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range policy.PolicyManagerFuncsForTest([]byte(tt.pol)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm policy.PolicyManager
-				var err error
+				var (
+					pm  policy.PolicyManager
+					err error
+				)
+
 				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
+
 				got, _ := pm.Filter()
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = policyutil.ReduceFilterRules(tt.node.View(), got)

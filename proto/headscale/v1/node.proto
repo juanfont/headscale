@@ -5,7 +5,7 @@ import "google/protobuf/timestamp.proto";
 import "headscale/v1/preauthkey.proto";
 import "headscale/v1/user.proto";
 
-option go_package = "github.com/juanfont/headscale/gen/go/v1";
+option go_package = "github.com/skitzo2000/headscale/gen/go/v1";
 
 enum RegisterMethod {
   REGISTER_METHOD_UNSPECIFIED = 0;

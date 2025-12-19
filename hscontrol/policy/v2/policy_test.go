@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -57,6 +57,7 @@ func TestPolicyManager(t *testing.T) {
 			if diff := cmp.Diff(tt.wantFilter, filter); diff != "" {
 				t.Errorf("Filter() filter mismatch (-want +got):\n%s", diff)
 			}
+
 			if diff := cmp.Diff(
 				tt.wantMatchers,
 				matchers,
@@ -107,7 +108,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.Equal(t, len(initialNodes), len(pm.filterRulesMap))
+	require.Len(t, pm.filterRulesMap, len(initialNodes))
 
 	tests := []struct {
 		name            string
@@ -177,13 +178,16 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			for i, n := range tt.newNodes {
 				found := false
+
 				for _, origNode := range initialNodes {
 					if n.Hostname == origNode.Hostname {
 						n.ID = origNode.ID
 						found = true
+
 						break
 					}
 				}
+
 				if !found {
 					n.ID = types.NodeID(len(initialNodes) + i + 1)
 				}
@@ -370,7 +374,7 @@ func TestInvalidateGlobalPolicyCache(t *testing.T) {
 
 // TestAutogroupSelfReducedVsUnreducedRules verifies that:
 // 1. BuildPeerMap uses unreduced compiled rules for determining peer relationships
-// 2. FilterForNode returns reduced compiled rules for packet filters
+// 2. FilterForNode returns reduced compiled rules for packet filters.
 func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 	user1 := types.User{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"}
 	user2 := types.User{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@headscale.net"}
@@ -410,6 +414,7 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 	// FilterForNode should return reduced rules - verify they only contain the node's own IPs as destinations
 	// For node1, destinations should only be node1's IPs
 	node1IPs := []string{"100.64.0.1/32", "100.64.0.1", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::1"}
+
 	for _, rule := range filterNode1 {
 		for _, dst := range rule.DstPorts {
 			require.Contains(t, node1IPs, dst.IP,
@@ -419,6 +424,7 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 
 	// For node2, destinations should only be node2's IPs
 	node2IPs := []string{"100.64.0.2/32", "100.64.0.2", "fd7a:115c:a1e0::2/128", "fd7a:115c:a1e0::2"}
+
 	for _, rule := range filterNode2 {
 		for _, dst := range rule.DstPorts {
 			require.Contains(t, node2IPs, dst.IP,
@@ -609,7 +615,7 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 
 // TestTagPropagationToPeerMap tests that when a node's tags change,
 // the peer map is correctly updated. This is a regression test for
-// https://github.com/juanfont/headscale/issues/2389
+// https://github.com/skitzo2000/headscale/issues/2389
 func TestTagPropagationToPeerMap(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@headscale.net"},

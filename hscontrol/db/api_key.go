@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -87,7 +87,8 @@ func (hsdb *HSDatabase) CreateAPIKey(
 // ListAPIKeys returns the list of ApiKeys for a user.
 func (hsdb *HSDatabase) ListAPIKeys() ([]types.APIKey, error) {
 	keys := []types.APIKey{}
-	if err := hsdb.DB.Find(&keys).Error; err != nil {
+	err := hsdb.DB.Find(&keys).Error
+	if err != nil {
 		return nil, err
 	}
 
@@ -126,7 +127,8 @@ func (hsdb *HSDatabase) DestroyAPIKey(key types.APIKey) error {
 
 // ExpireAPIKey marks a ApiKey as expired.
 func (hsdb *HSDatabase) ExpireAPIKey(key *types.APIKey) error {
-	if err := hsdb.DB.Model(&key).Update("Expiration", time.Now()).Error; err != nil {
+	err := hsdb.DB.Model(&key).Update("Expiration", time.Now()).Error
+	if err != nil {
 		return err
 	}
 

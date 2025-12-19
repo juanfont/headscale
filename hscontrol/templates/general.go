@@ -4,7 +4,7 @@ import (
 	"github.com/chasefleming/elem-go"
 	"github.com/chasefleming/elem-go/attrs"
 	"github.com/chasefleming/elem-go/styles"
-	"github.com/juanfont/headscale/hscontrol/assets"
+	"github.com/skitzo2000/headscale/hscontrol/assets"
 )
 
 // mdTypesetBody creates a body element with md-typeset styling
@@ -140,7 +140,7 @@ func pageFooter() *elem.Element {
 	return elem.Div(attrs.Props{attrs.Style: footerStyle.ToInline()},
 		elem.Text("Powered by "),
 		elem.A(attrs.Props{
-			attrs.Href:   "https://github.com/juanfont/headscale",
+			attrs.Href:   "https://github.com/skitzo2000/headscale",
 			attrs.Rel:    "noreferrer noopener",
 			attrs.Target: "_blank",
 			attrs.Style:  linkStyle.ToInline(),

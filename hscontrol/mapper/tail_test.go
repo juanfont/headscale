@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/routes"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/routes"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -19,6 +19,7 @@ import (
 func TestTailNode(t *testing.T) {
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -26,6 +27,7 @@ func TestTailNode(t *testing.T) {
 
 	mustDK := func(str string) key.DiscoPublic {
 		var k key.DiscoPublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -33,6 +35,7 @@ func TestTailNode(t *testing.T) {
 
 	mustMK := func(str string) key.MachinePublic {
 		var k key.MachinePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -284,7 +287,9 @@ func TestNodeExpiry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
 			}
+
 			var deseri tailcfg.Node
+
 			err = json.Unmarshal(seri, &deseri)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)

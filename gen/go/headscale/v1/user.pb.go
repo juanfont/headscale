@@ -551,7 +551,7 @@ const file_headscale_v1_user_proto_rawDesc = "" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
 	"\x05email\x18\x03 \x01(\tR\x05email\"=\n" +
 	"\x11ListUsersResponse\x12(\n" +
-	"\x05users\x18\x01 \x03(\v2\x12.headscale.v1.UserR\x05usersB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
+	"\x05users\x18\x01 \x03(\v2\x12.headscale.v1.UserR\x05usersB+Z)github.com/skitzo2000/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_user_proto_rawDescOnce sync.Once

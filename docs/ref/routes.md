@@ -246,7 +246,7 @@ user `bob` can only use exit node `exit2`.
 !!! warning
 
     - The above implementation is Headscale specific and will likely be removed once [support for
-      `via`](https://github.com/juanfont/headscale/issues/2409) is available.
+      `via`](https://github.com/skitzo2000/headscale/issues/2409) is available.
     - Beware that a user can also connect to any port of the exit node itself.
 
 ### Automatically approve an exit node with auto approvers
@@ -293,7 +293,7 @@ availability](https://tailscale.com/kb/1115/high-availability#subnet-router-high
 
     In certain situations it might take up to 16 minutes for Headscale to detect a node as offline. A failover node
     might not be selected fast enough, if such a node is used as subnet router or exit node causing service
-    interruptions for clients. See [issue 2129](https://github.com/juanfont/headscale/issues/2129) for more information.
+    interruptions for clients. See [issue 2129](https://github.com/skitzo2000/headscale/issues/2129) for more information.
 
 ## Troubleshooting
 

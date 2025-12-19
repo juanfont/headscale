@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 )
 
@@ -177,6 +177,7 @@ func RegistrationIDFromString(str string) (RegistrationID, error) {
 	if len(str) != RegistrationIDLength {
 		return "", fmt.Errorf("registration ID must be %d characters long", RegistrationIDLength)
 	}
+
 	return RegistrationID(str), nil
 }
 

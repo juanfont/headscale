@@ -298,7 +298,8 @@ func (c *Config) Validate() error {
 // ToURL builds a properly encoded SQLite connection string using _pragma parameters
 // compatible with modernc.org/sqlite driver.
 func (c *Config) ToURL() (string, error) {
-	if err := c.Validate(); err != nil {
+	err := c.Validate()
+	if err != nil {
 		return "", fmt.Errorf("invalid config: %w", err)
 	}
 
@@ -308,18 +309,23 @@ func (c *Config) ToURL() (string, error) {
 	if c.BusyTimeout > 0 {
 		pragmas = append(pragmas, fmt.Sprintf("busy_timeout=%d", c.BusyTimeout))
 	}
+
 	if c.JournalMode != "" {
 		pragmas = append(pragmas, fmt.Sprintf("journal_mode=%s", c.JournalMode))
 	}
+
 	if c.AutoVacuum != "" {
 		pragmas = append(pragmas, fmt.Sprintf("auto_vacuum=%s", c.AutoVacuum))
 	}
+
 	if c.WALAutocheckpoint >= 0 {
 		pragmas = append(pragmas, fmt.Sprintf("wal_autocheckpoint=%d", c.WALAutocheckpoint))
 	}
+
 	if c.Synchronous != "" {
 		pragmas = append(pragmas, fmt.Sprintf("synchronous=%s", c.Synchronous))
 	}
+
 	if c.ForeignKeys {
 		pragmas = append(pragmas, "foreign_keys=ON")
 	}
@@ -338,6 +344,7 @@ func (c *Config) ToURL() (string, error) {
 		for _, pragma := range pragmas {
 			queryParts = append(queryParts, "_pragma="+pragma)
 		}
+
 		baseURL += "?" + strings.Join(queryParts, "&")
 	}
 

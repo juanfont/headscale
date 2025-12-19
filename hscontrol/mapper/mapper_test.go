@@ -8,10 +8,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/juanfont/headscale/hscontrol/policy"
-	"github.com/juanfont/headscale/hscontrol/policy/matcher"
-	"github.com/juanfont/headscale/hscontrol/routes"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/policy"
+	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
+	"github.com/skitzo2000/headscale/hscontrol/routes"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
 	"tailscale.com/types/ptr"
@@ -99,6 +99,7 @@ func (m *mockState) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	if m.polMan == nil {
 		return tailcfg.FilterAllowAll, nil
 	}
+
 	return m.polMan.Filter()
 }
 
@@ -106,6 +107,7 @@ func (m *mockState) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	if m.polMan == nil {
 		return nil, nil
 	}
+
 	return m.polMan.SSHPolicy(node)
 }
 
@@ -113,6 +115,7 @@ func (m *mockState) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	if m.polMan == nil {
 		return false
 	}
+
 	return m.polMan.NodeCanHaveTag(node, tag)
 }
 
@@ -120,6 +123,7 @@ func (m *mockState) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	if m.primary == nil {
 		return nil
 	}
+
 	return m.primary.PrimaryRoutes(nodeID)
 }
 
@@ -127,6 +131,7 @@ func (m *mockState) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (typ
 	if len(peerIDs) > 0 {
 		// Filter peers by the provided IDs
 		var filtered types.Nodes
+
 		for _, peer := range m.peers {
 			if slices.Contains(peerIDs, peer.ID) {
 				filtered = append(filtered, peer)
@@ -137,6 +142,7 @@ func (m *mockState) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) (typ
 	}
 	// Return all peers except the node itself
 	var filtered types.Nodes
+
 	for _, peer := range m.peers {
 		if peer.ID != nodeID {
 			filtered = append(filtered, peer)
@@ -150,6 +156,7 @@ func (m *mockState) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) {
 	if len(nodeIDs) > 0 {
 		// Filter nodes by the provided IDs
 		var filtered types.Nodes
+
 		for _, node := range m.nodes {
 			if slices.Contains(nodeIDs, node.ID) {
 				filtered = append(filtered, node)

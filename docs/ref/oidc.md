@@ -208,7 +208,7 @@ endpoint.
 - A user's email address is only synchronized to the local user profile when the identity provider marks the email
   address as verified (`email_verified: true`).
 
-Please see the [GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC) for OIDC related issues.
+Please see the [GitHub label "OIDC"](https://github.com/skitzo2000/headscale/labels/OIDC) for OIDC related issues.
 
 ## Identity provider specific configuration
 
@@ -233,7 +233,7 @@ Authelia is fully supported by Headscale.
 ### Authentik
 
 - Authentik is fully supported by Headscale.
-- [Headscale does not JSON Web Encryption](https://github.com/juanfont/headscale/issues/2446). Leave the field
+- [Headscale does not JSON Web Encryption](https://github.com/skitzo2000/headscale/issues/2446). Leave the field
   `Encryption Key` in the providers section unset.
 
 ### Google OAuth

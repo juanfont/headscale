@@ -25,11 +25,11 @@ import (
 	"tailscale.com/types/key"
 	"tailscale.com/types/views"
 
-	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/state"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
-	"github.com/juanfont/headscale/hscontrol/util"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
+	"github.com/skitzo2000/headscale/hscontrol/state"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -339,11 +339,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format

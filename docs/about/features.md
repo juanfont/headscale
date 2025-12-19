@@ -20,7 +20,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
 - [x] Dual stack (IPv4 and IPv6)
 - [x] Ephemeral nodes
 - [x] Embedded [DERP server](../ref/derp.md)
-- [x] Access control lists ([GitHub label "policy"](https://github.com/juanfont/headscale/labels/policy%20%F0%9F%93%9D))
+- [x] Access control lists ([GitHub label "policy"](https://github.com/skitzo2000/headscale/labels/policy%20%F0%9F%93%9D))
     - [x] ACL management via API
     - [x] Some [Autogroups](https://tailscale.com/kb/1396/targets#autogroups), currently: `autogroup:internet`,
       `autogroup:nonroot`, `autogroup:member`, `autogroup:tagged`, `autogroup:self`
@@ -28,10 +28,10 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
       routers](../ref/routes.md#automatically-approve-routes-of-a-subnet-router) and [exit
       nodes](../ref/routes.md#automatically-approve-an-exit-node-with-auto-approvers)
     - [x] [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
-* [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
+* [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/skitzo2000/headscale/labels/OIDC))
     - [x] Basic registration
     - [x] Update user profile from identity provider
     - [ ] OIDC groups cannot be used in ACLs
-- [ ] [Funnel](https://tailscale.com/kb/1223/funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
-- [ ] [Serve](https://tailscale.com/kb/1312/serve) ([#1234](https://github.com/juanfont/headscale/issues/1921))
-- [ ] [Network flow logs](https://tailscale.com/kb/1219/network-flow-logs) ([#1687](https://github.com/juanfont/headscale/issues/1687))
+- [ ] [Funnel](https://tailscale.com/kb/1223/funnel) ([#1040](https://github.com/skitzo2000/headscale/issues/1040))
+- [ ] [Serve](https://tailscale.com/kb/1312/serve) ([#1234](https://github.com/skitzo2000/headscale/issues/1921))
+- [ ] [Network flow logs](https://tailscale.com/kb/1219/network-flow-logs) ([#1687](https://github.com/skitzo2000/headscale/issues/1687))

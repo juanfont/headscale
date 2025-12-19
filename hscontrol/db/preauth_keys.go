@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"tailscale.com/util/set"
@@ -337,6 +337,7 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	}
 
 	k.Used = true
+
 	return nil
 }
 

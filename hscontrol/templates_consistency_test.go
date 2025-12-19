@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/juanfont/headscale/hscontrol/templates"
-	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/templates"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -119,7 +119,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 			name: "OIDC Callback",
 			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
 			externalURLs: []string{
-				"https://github.com/juanfont/headscale/tree/main/docs",
+				"https://github.com/skitzo2000/headscale/tree/main/docs",
 				"https://tailscale.com/kb/",
 			},
 		},

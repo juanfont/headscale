@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/juanfont/headscale/hscontrol/state"
-	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
+	"github.com/skitzo2000/headscale/hscontrol/state"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"tailscale.com/tailcfg"
 )
 
@@ -162,7 +162,7 @@ type workResult struct {
 
 // work represents a unit of work to be processed by workers.
 type work struct {
-	r        change.Change
+	c        change.Change
 	nodeID   types.NodeID
 	resultCh chan<- workResult // optional channel for synchronous operations
 }

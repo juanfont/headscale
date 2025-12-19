@@ -555,7 +555,7 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"\x16ListPreAuthKeysRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\x04R\x04user\"W\n" +
 	"\x17ListPreAuthKeysResponse\x12<\n" +
-	"\rpre_auth_keys\x18\x01 \x03(\v2\x18.headscale.v1.PreAuthKeyR\vpreAuthKeysB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
+	"\rpre_auth_keys\x18\x01 \x03(\v2\x18.headscale.v1.PreAuthKeyR\vpreAuthKeysB+Z)github.com/skitzo2000/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_preauthkey_proto_rawDescOnce sync.Once

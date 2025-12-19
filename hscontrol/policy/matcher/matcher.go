@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -21,10 +21,13 @@ func (m Match) DebugString() string {
 
 	sb.WriteString("Match:\n")
 	sb.WriteString("  Sources:\n")
+
 	for _, prefix := range m.srcs.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
+
 	sb.WriteString("  Destinations:\n")
+
 	for _, prefix := range m.dests.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}

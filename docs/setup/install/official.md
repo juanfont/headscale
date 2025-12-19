@@ -1,7 +1,7 @@
 # Official releases
 
 Official releases for headscale are available as binaries for various platforms and DEB packages for Debian and Ubuntu.
-Both are available on the [GitHub releases page](https://github.com/juanfont/headscale/releases).
+Both are available on the [GitHub releases page](https://github.com/skitzo2000/headscale/releases).
 
 ## Using packages for Debian/Ubuntu (recommended)
 
@@ -9,13 +9,13 @@ It is recommended to use our DEB packages to install headscale on a Debian based
 local user to run headscale, provide a default configuration and ship with a systemd service file. Supported
 distributions are Ubuntu 22.04 or newer, Debian 12 or newer.
 
-1.  Download the [latest headscale package](https://github.com/juanfont/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
+1.  Download the [latest headscale package](https://github.com/skitzo2000/headscale/releases/latest) for your platform (`.deb` for Ubuntu and Debian).
 
     ```shell
     HEADSCALE_VERSION="" # See above URL for latest version, e.g. "X.Y.Z" (NOTE: do not add the "v" prefix!)
     HEADSCALE_ARCH="" # Your system architecture, e.g. "amd64"
     wget --output-document=headscale.deb \
-     "https://github.com/juanfont/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
+     "https://github.com/skitzo2000/headscale/releases/download/v${HEADSCALE_VERSION}/headscale_${HEADSCALE_VERSION}_linux_${HEADSCALE_ARCH}.deb"
     ```
 
 1.  Install headscale:
@@ -56,11 +56,11 @@ This section describes the installation of headscale according to the [Requireme
 assumptions](../requirements.md#assumptions). Headscale is run by a dedicated local user and the service itself is
 managed by systemd.
 
-1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/juanfont/headscale/releases):
+1.  Download the latest [`headscale` binary from GitHub's release page](https://github.com/skitzo2000/headscale/releases):
 
     ```shell
     sudo wget --output-document=/usr/bin/headscale \
-    https://github.com/juanfont/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
+    https://github.com/skitzo2000/headscale/releases/download/v<HEADSCALE VERSION>/headscale_<HEADSCALE VERSION>_linux_<ARCH>
     ```
 
 1.  Make `headscale` executable:
@@ -89,7 +89,7 @@ managed by systemd.
     sudo nano /etc/headscale/config.yaml
     ```
 
-1.  Copy [headscale's systemd service file](https://github.com/juanfont/headscale/blob/main/packaging/systemd/headscale.service)
+1.  Copy [headscale's systemd service file](https://github.com/skitzo2000/headscale/blob/main/packaging/systemd/headscale.service)
     to `/etc/systemd/system/headscale.service` and adjust it to suit your local setup. The following parameters likely need
     to be modified: `ExecStart`, `WorkingDirectory`, `ReadWritePaths`.
 
