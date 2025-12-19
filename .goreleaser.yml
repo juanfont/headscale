@@ -44,6 +44,7 @@ builds:
       - CGO_ENABLED=0
     targets:
       - linux_amd64
+      - linux_arm64
     flags:
       - -mod=readonly
     tags:
@@ -127,6 +128,7 @@ kos:
       - CGO_ENABLED=0
     platforms:
       - linux/amd64
+      - linux/arm64
     tags:
       - "{{ if not .Prerelease }}latest{{ end }}"
       - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}{{ end }}"
@@ -154,6 +156,7 @@ kos:
       - CGO_ENABLED=0
     platforms:
       - linux/amd64
+      - linux/arm64
     tags:
       - "{{ if not .Prerelease }}latest-debug{{ end }}"
       - "{{ if not .Prerelease }}{{ .Major }}.{{ .Minor }}.{{ .Patch }}-debug{{ end }}"
