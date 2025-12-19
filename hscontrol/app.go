@@ -22,6 +22,11 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/mux"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	zerolog "github.com/philip-bui/grpc-zerolog"
+	"github.com/pkg/profile"
+	zl "github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	"github.com/sasha-s/go-deadlock"
 	"github.com/skitzo2000/headscale"
 	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
 	"github.com/skitzo2000/headscale/hscontrol/capver"
@@ -34,11 +39,6 @@ import (
 	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"github.com/skitzo2000/headscale/hscontrol/util"
-	zerolog "github.com/philip-bui/grpc-zerolog"
-	"github.com/pkg/profile"
-	zl "github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/sync/errgroup"
@@ -115,6 +115,7 @@ var (
 
 func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	var err error
+
 	if profilingEnabled {
 		runtime.SetBlockProfileRate(1)
 	}
@@ -142,6 +143,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		if !ok {
 			log.Error().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed")
 			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed because node not found in NodeStore")
+
 			return
 		}
 
@@ -157,10 +159,12 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	app.ephemeralGC = ephemeralGC
 
 	var authProvider AuthProvider
+
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+
 		oidcProvider, err := NewAuthProviderOIDC(
 			ctx,
 			&app,
@@ -177,17 +181,18 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			authProvider = oidcProvider
 		}
 	}
+
 	app.authProvider = authProvider
 
 	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
 		// TODO(kradalby): revisit why this takes a list.
-
 		var magicDNSDomains []dnsname.FQDN
 		if cfg.PrefixV4 != nil {
 			magicDNSDomains = append(
 				magicDNSDomains,
 				util.GenerateIPv4DNSRootDomain(*cfg.PrefixV4)...)
 		}
+
 		if cfg.PrefixV6 != nil {
 			magicDNSDomains = append(
 				magicDNSDomains,
@@ -198,6 +203,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		if app.cfg.TailcfgDNSConfig.Routes == nil {
 			app.cfg.TailcfgDNSConfig.Routes = make(map[string][]*dnstype.Resolver)
 		}
+
 		for _, d := range magicDNSDomains {
 			app.cfg.TailcfgDNSConfig.Routes[d.WithoutTrailingDot()] = nil
 		}
@@ -232,6 +238,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		app.DERPServer = embeddedDERPServer
 	}
 
@@ -254,6 +261,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
 		derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
 		defer derpTicker.Stop()
+
 		derpTickerChan = derpTicker.C
 	}
 
@@ -271,8 +279,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-expireTicker.C:
-			var expiredNodeChanges []change.Change
-			var changed bool
+			var (
+				expiredNodeChanges []change.Change
+				changed            bool
+			)
 
 			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
 
@@ -287,11 +297,13 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 		case <-derpTickerChan:
 			log.Info().Msg("Fetching DERPMap updates")
+
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
 				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
 				if err != nil {
 					return nil, err
 				}
+
 				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
 					region, _ := h.DERPServer.GenerateRegion()
 					derpMap.Regions[region.RegionID] = &region
@@ -303,6 +315,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				log.Error().Err(err).Msg("failed to build new DERPMap, retrying later")
 				continue
 			}
+
 			h.state.SetDERPMap(derpMap)
 
 			h.Change(change.DERPMap())
@@ -311,6 +324,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			if !ok {
 				continue
 			}
+
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
 			h.Change(change.ExtraRecords())
@@ -390,6 +404,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 
 		writeUnauthorized := func(statusCode int) {
 			writer.WriteHeader(statusCode)
+
 			if _, err := writer.Write([]byte("Unauthorized")); err != nil {
 				log.Error().Err(err).Msg("writing HTTP response failed")
 			}
@@ -401,6 +416,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Str("client_address", req.RemoteAddr).
 				Msg(`missing "Bearer " prefix in "Authorization" header`)
 			writeUnauthorized(http.StatusUnauthorized)
+
 			return
 		}
 
@@ -412,6 +428,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Str("client_address", req.RemoteAddr).
 				Msg("failed to validate token")
 			writeUnauthorized(http.StatusUnauthorized)
+
 			return
 		}
 
@@ -420,6 +437,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 				Str("client_address", req.RemoteAddr).
 				Msg("invalid token")
 			writeUnauthorized(http.StatusUnauthorized)
+
 			return
 		}
 
@@ -455,6 +473,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
 		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)
 	}
+
 	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
 	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
 		Methods(http.MethodGet)
@@ -486,6 +505,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
 	var err error
+
 	capver.CanOldCodeBeCleanedUp()
 
 	if profilingEnabled {
@@ -512,6 +532,7 @@ func (h *Headscale) Serve() error {
 		Msg("Clients with a lower minimum version will be rejected")
 
 	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
+
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
 
@@ -545,6 +566,7 @@ func (h *Headscale) Serve() error {
 	// around between restarts, they will reconnect and the GC will
 	// be cancelled.
 	go h.ephemeralGC.Start()
+
 	ephmNodes := h.state.ListEphemeralNodes()
 	for _, node := range ephmNodes.All() {
 		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
@@ -555,7 +577,9 @@ func (h *Headscale) Serve() error {
 		if err != nil {
 			return fmt.Errorf("setting up extrarecord manager: %w", err)
 		}
+
 		h.cfg.TailcfgDNSConfig.ExtraRecords = h.extraRecordMan.Records()
+
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
 	}
@@ -564,6 +588,7 @@ func (h *Headscale) Serve() error {
 	// records updates
 	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
 	defer scheduleCancel()
+
 	go h.scheduledTasks(scheduleCtx)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
@@ -576,6 +601,7 @@ func (h *Headscale) Serve() error {
 	errorGroup := new(errgroup.Group)
 
 	ctx := context.Background()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -590,6 +616,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	socketDir := filepath.Dir(h.cfg.UnixSocket)
+
 	err = util.EnsureDir(socketDir)
 	if err != nil {
 		return fmt.Errorf("setting up unix socket: %w", err)
@@ -659,8 +686,11 @@ func (h *Headscale) Serve() error {
 	// https://github.com/soheilhy/cmux/issues/68
 	// https://github.com/soheilhy/cmux/issues/91
 
-	var grpcServer *grpc.Server
-	var grpcListener net.Listener
+	var (
+		grpcServer   *grpc.Server
+		grpcListener net.Listener
+	)
+
 	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
 		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
@@ -715,12 +745,14 @@ func (h *Headscale) Serve() error {
 	}
 
 	var httpListener net.Listener
+
 	if tlsConfig != nil {
 		httpServer.TLSConfig = tlsConfig
 		httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
 	} else {
 		httpListener, err = net.Listen("tcp", h.cfg.Addr)
 	}
+
 	if err != nil {
 		return fmt.Errorf("failed to bind to TCP address: %w", err)
 	}
@@ -751,18 +783,21 @@ func (h *Headscale) Serve() error {
 		log.Info().Msg("metrics server disabled (metrics_listen_addr is empty)")
 	}
 
-
 	var tailsqlContext context.Context
+
 	if tailsqlEnabled {
 		if h.cfg.Database.Type != types.DatabaseSqlite {
 			log.Fatal().
 				Str("type", h.cfg.Database.Type).
 				Msgf("tailsql only support %q", types.DatabaseSqlite)
 		}
+
 		if tailsqlTSKey == "" {
 			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
 		}
+
 		tailsqlContext = context.Background()
+
 		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path)
 	}
 
@@ -774,6 +809,7 @@ func (h *Headscale) Serve() error {
 		syscall.SIGTERM,
 		syscall.SIGQUIT,
 		syscall.SIGHUP)
+
 	sigFunc := func(c chan os.Signal) {
 		// Wait for a SIGINT or SIGKILL:
 		for {
@@ -798,6 +834,7 @@ func (h *Headscale) Serve() error {
 
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
+
 				log.Info().
 					Str("signal", sig.String()).
 					Msg("Received signal to stop, shutting down gracefully")
@@ -854,6 +891,7 @@ func (h *Headscale) Serve() error {
 				if debugHTTPListener != nil {
 					debugHTTPListener.Close()
 				}
+
 				httpListener.Close()
 				grpcGatewayConn.Close()
 
@@ -863,6 +901,7 @@ func (h *Headscale) Serve() error {
 
 				// Close state connections
 				info("closing state and database")
+
 				err = h.state.Close()
 				if err != nil {
 					log.Error().Err(err).Msg("failed to close state")
@@ -875,6 +914,7 @@ func (h *Headscale) Serve() error {
 			}
 		}
 	}
+
 	errorGroup.Go(func() error {
 		sigFunc(sigc)
 
@@ -886,6 +926,7 @@ func (h *Headscale) Serve() error {
 
 func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 	var err error
+
 	if h.cfg.TLS.LetsEncrypt.Hostname != "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
 			log.Warn().
@@ -918,7 +959,6 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 			// Configuration via autocert with HTTP-01. This requires listening on
 			// port 80 for the certificate validation in addition to the headscale
 			// service, which can be configured to run on any other port.
-
 			server := &http.Server{
 				Addr:        h.cfg.TLS.LetsEncrypt.Listen,
 				Handler:     certManager.HTTPHandler(http.HandlerFunc(h.redirect)),
@@ -963,6 +1003,7 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	dir := filepath.Dir(path)
+
 	err := util.EnsureDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("ensuring private key directory: %w", err)
@@ -981,6 +1022,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 				err,
 			)
 		}
+
 		err = os.WriteFile(path, machineKeyStr, privateKeyFileMode)
 		if err != nil {
 			return nil, fmt.Errorf(

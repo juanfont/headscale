@@ -313,8 +313,11 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 				nodes := types.Nodes{&node}
 
 				// Create policy manager or use nil if specified
-				var pm PolicyManager
-				var err error
+				var (
+					pm  PolicyManager
+					err error
+				)
+
 				if tt.name != "nil_policy_manager" {
 					pm, err = pmf(users, nodes.ViewSlice())
 					assert.NoError(t, err)

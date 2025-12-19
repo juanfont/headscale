@@ -177,6 +177,7 @@ func RegistrationIDFromString(str string) (RegistrationID, error) {
 	if len(str) != RegistrationIDLength {
 		return "", fmt.Errorf("registration ID must be %d characters long", RegistrationIDLength)
 	}
+
 	return RegistrationID(str), nil
 }
 

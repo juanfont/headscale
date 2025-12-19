@@ -43,6 +43,7 @@ func ValidateUsername(username string) error {
 	}
 
 	atCount := 0
+
 	for _, char := range username {
 		switch {
 		case unicode.IsLetter(char),
@@ -74,12 +75,14 @@ func ValidateHostname(name string) error {
 			name,
 		)
 	}
+
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
 			"hostname %q is too long, must not exceed 63 characters",
 			name,
 		)
 	}
+
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
 			"hostname %q must be lowercase (try %q)",
@@ -87,18 +90,21 @@ func ValidateHostname(name string) error {
 			strings.ToLower(name),
 		)
 	}
+
 	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") {
 		return fmt.Errorf(
 			"hostname %q cannot start or end with a hyphen",
 			name,
 		)
 	}
+
 	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
 		return fmt.Errorf(
 			"hostname %q cannot start or end with a dot",
 			name,
 		)
 	}
+
 	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
 			"hostname %q contains invalid characters, only lowercase letters, numbers, hyphens and dots are allowed",
@@ -120,7 +126,8 @@ func ValidateHostname(name string) error {
 // After transformation, validates the result.
 func NormaliseHostname(name string) (string, error) {
 	// Early return if already valid
-	if err := ValidateHostname(name); err == nil {
+	err := ValidateHostname(name)
+	if err == nil {
 		return name, nil
 	}
 
@@ -136,7 +143,8 @@ func NormaliseHostname(name string) (string, error) {
 	}
 
 	// Validate result after transformation
-	if err := ValidateHostname(name); err != nil {
+	err := ValidateHostname(name)
+	if err != nil {
 		return "", fmt.Errorf(
 			"hostname invalid after normalisation: %w",
 			err,
@@ -187,6 +195,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	for i := lastOctet - 1; i >= 0; i-- {
 		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(netRange.IP[i]), 10))
 	}
+
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
 	rdnsBase := strings.Join(rdnsSlice, ".")
 
@@ -196,6 +205,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 		if err != nil {
 			continue
 		}
+
 		fqdns = append(fqdns, fqdn)
 	}
 
@@ -253,18 +263,22 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	}
 
 	var fqdns []dnsname.FQDN
+
 	if maskBits%4 == 0 {
 		dom, _ := makeDomain()
 		fqdns = append(fqdns, dom)
 	} else {
 		domCount := 1 << (maskBits % nibbleLen)
+
 		fqdns = make([]dnsname.FQDN, 0, domCount)
 		for i := range domCount {
 			varNibble := fmt.Sprintf("%x", i)
+
 			dom, err := makeDomain(varNibble)
 			if err != nil {
 				continue
 			}
+
 			fqdns = append(fqdns, dom)
 		}
 	}

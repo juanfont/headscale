@@ -11,13 +11,12 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/samber/lo"
+	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/types/key"
-
-	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 )
 
 func init() {
@@ -29,6 +28,7 @@ func init() {
 	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
 	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	listNodesNamespaceFlag.Hidden = true
+
 	nodeCmd.AddCommand(listNodesCmd)
 
 	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
@@ -45,33 +45,42 @@ func init() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
+
 	err = registerNodeCmd.MarkFlagRequired("key")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(registerNodeCmd)
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
+
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(expireNodeCmd)
 
 	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
 	err = renameNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(renameNodeCmd)
 
 	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
@@ -507,6 +516,7 @@ func nodesToPtables(
 			"ValidTags",
 		}...)
 	}
+
 	tableData := pterm.TableData{tableHeader}
 
 	for _, node := range nodes {
@@ -515,15 +525,21 @@ func nodesToPtables(
 			ephemeral = true
 		}
 
-		var lastSeen time.Time
-		var lastSeenTime string
+		var (
+			lastSeen     time.Time
+			lastSeenTime string
+		)
+
 		if node.GetLastSeen() != nil {
 			lastSeen = node.GetLastSeen().AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 
-		var expiry time.Time
-		var expiryTime string
+		var (
+			expiry     time.Time
+			expiryTime string
+		)
+
 		if node.GetExpiry() != nil {
 			expiry = node.GetExpiry().AsTime()
 			expiryTime = expiry.Format("2006-01-02 15:04:05")
@@ -532,6 +548,7 @@ func nodesToPtables(
 		}
 
 		var machineKey key.MachinePublic
+
 		err := machineKey.UnmarshalText(
 			[]byte(node.GetMachineKey()),
 		)
@@ -540,6 +557,7 @@ func nodesToPtables(
 		}
 
 		var nodeKey key.NodePublic
+
 		err = nodeKey.UnmarshalText(
 			[]byte(node.GetNodeKey()),
 		)
@@ -567,7 +585,9 @@ func nodesToPtables(
 		}
 
 		forcedTags = strings.TrimLeft(forcedTags, "\n")
+
 		var invalidTags string
+
 		for _, tag := range node.GetInvalidTags() {
 			if !slices.Contains(node.GetForcedTags(), tag) {
 				invalidTags += "\n" + pterm.LightRed(tag)
@@ -575,7 +595,9 @@ func nodesToPtables(
 		}
 
 		invalidTags = strings.TrimLeft(invalidTags, "\n")
+
 		var validTags string
+
 		for _, tag := range node.GetValidTags() {
 			if !slices.Contains(node.GetForcedTags(), tag) {
 				validTags += "\n" + pterm.LightGreen(tag)
@@ -592,8 +614,11 @@ func nodesToPtables(
 			user = pterm.LightYellow(node.GetUser().GetName())
 		}
 
-		var IPV4Address string
-		var IPV6Address string
+		var (
+			IPV4Address string
+			IPV6Address string
+		)
+
 		for _, addr := range node.GetIpAddresses() {
 			if netip.MustParseAddr(addr).Is4() {
 				IPV4Address = addr
@@ -619,6 +644,7 @@ func nodesToPtables(
 		if showTags {
 			nodeData = append(nodeData, []string{forcedTags, invalidTags, validTags}...)
 		}
+
 		tableData = append(
 			tableData,
 			nodeData,

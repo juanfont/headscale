@@ -15,7 +15,8 @@ func (hsdb *HSDatabase) SetPolicy(policy string) (*types.Policy, error) {
 		Data: policy,
 	}
 
-	if err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error; err != nil {
+	err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error
+	if err != nil {
 		return nil, err
 	}
 
@@ -28,10 +29,11 @@ func (hsdb *HSDatabase) GetPolicy() (*types.Policy, error) {
 
 	// Query:
 	// SELECT * FROM policies ORDER BY id DESC LIMIT 1;
-	if err := hsdb.DB.
+	err := hsdb.DB.
 		Order("id DESC").
 		Limit(1).
-		First(&p).Error; err != nil {
+		First(&p).Error
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, types.ErrPolicyNotFound
 		}

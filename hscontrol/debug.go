@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/arl/statsviz"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/skitzo2000/headscale/hscontrol/mapper"
 	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"tailscale.com/tsweb"
 )
 
@@ -25,17 +25,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if wantsJSON {
 			overview := h.state.DebugOverviewJSON()
+
 			overviewJSON, err := json.MarshalIndent(overview, "", "  ")
 			if err != nil {
 				httpError(w, err)
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write(overviewJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			overview := h.state.DebugOverview()
+
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(overview))
@@ -45,11 +48,13 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	// Configuration endpoint
 	debug.Handle("config", "Current configuration", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		config := h.state.DebugConfig()
+
 		configJSON, err := json.MarshalIndent(config, "", "  ")
 		if err != nil {
 			httpError(w, err)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(configJSON)
@@ -70,6 +75,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		} else {
 			w.Header().Set("Content-Type", "text/plain")
 		}
+
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(policy))
 	}))
@@ -81,11 +87,13 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
+
 		filterJSON, err := json.MarshalIndent(filter, "", "  ")
 		if err != nil {
 			httpError(w, err)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(filterJSON)
@@ -94,11 +102,13 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	// SSH policies endpoint
 	debug.Handle("ssh", "SSH policies per node", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sshPolicies := h.state.DebugSSHPolicies()
+
 		sshJSON, err := json.MarshalIndent(sshPolicies, "", "  ")
 		if err != nil {
 			httpError(w, err)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(sshJSON)
@@ -112,17 +122,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if wantsJSON {
 			derpInfo := h.state.DebugDERPJSON()
+
 			derpJSON, err := json.MarshalIndent(derpInfo, "", "  ")
 			if err != nil {
 				httpError(w, err)
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write(derpJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			derpInfo := h.state.DebugDERPMap()
+
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(derpInfo))
@@ -137,17 +150,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if wantsJSON {
 			nodeStoreNodes := h.state.DebugNodeStoreJSON()
+
 			nodeStoreJSON, err := json.MarshalIndent(nodeStoreNodes, "", "  ")
 			if err != nil {
 				httpError(w, err)
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write(nodeStoreJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			nodeStoreInfo := h.state.DebugNodeStore()
+
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(nodeStoreInfo))
@@ -157,11 +173,13 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 	// Registration cache endpoint
 	debug.Handle("registration-cache", "Registration cache information", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cacheInfo := h.state.DebugRegistrationCache()
+
 		cacheJSON, err := json.MarshalIndent(cacheInfo, "", "  ")
 		if err != nil {
 			httpError(w, err)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(cacheJSON)
@@ -175,17 +193,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if wantsJSON {
 			routes := h.state.DebugRoutes()
+
 			routesJSON, err := json.MarshalIndent(routes, "", "  ")
 			if err != nil {
 				httpError(w, err)
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write(routesJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			routes := h.state.DebugRoutesString()
+
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(routes))
@@ -200,17 +221,20 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if wantsJSON {
 			policyManagerInfo := h.state.DebugPolicyManagerJSON()
+
 			policyManagerJSON, err := json.MarshalIndent(policyManagerInfo, "", "  ")
 			if err != nil {
 				httpError(w, err)
 				return
 			}
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			w.Write(policyManagerJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			policyManagerInfo := h.state.DebugPolicyManager()
+
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(policyManagerInfo))
@@ -227,6 +251,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		if res == nil {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH not set"))
+
 			return
 		}
 
@@ -235,6 +260,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 			httpError(w, err)
 			return
 		}
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(resJSON)
@@ -313,6 +339,7 @@ func (h *Headscale) debugBatcher() string {
 				activeConnections: info.ActiveConnections,
 			})
 			totalNodes++
+
 			if info.Connected {
 				connectedCount++
 			}
@@ -327,9 +354,11 @@ func (h *Headscale) debugBatcher() string {
 				activeConnections: 0,
 			})
 			totalNodes++
+
 			if connected {
 				connectedCount++
 			}
+
 			return true
 		})
 	}
@@ -400,6 +429,7 @@ func (h *Headscale) debugBatcherJSON() DebugBatcherInfo {
 				ActiveConnections: 0,
 			}
 			info.TotalNodes++
+
 			return true
 		})
 	}

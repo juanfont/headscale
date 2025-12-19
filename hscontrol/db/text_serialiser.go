@@ -55,6 +55,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 			maybeInstantiatePtr(fieldValue)
 			f := fieldValue.MethodByName("UnmarshalText")
 			args := []reflect.Value{reflect.ValueOf(bytes)}
+
 			ret := f.Call(args)
 			if !ret[0].IsNil() {
 				return decodingError(field.Name, ret[0].Interface().(error))
@@ -89,6 +90,7 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 		if v == nil || (reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil()) {
 			return nil, nil
 		}
+
 		b, err := v.MarshalText()
 		if err != nil {
 			return nil, err

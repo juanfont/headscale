@@ -18,9 +18,11 @@ func splitDestinationAndPort(input string) (string, string, error) {
 	if lastColonIndex == -1 {
 		return "", "", errors.New("input must contain a colon character separating destination and port")
 	}
+
 	if lastColonIndex == 0 {
 		return "", "", errors.New("input cannot start with a colon character")
 	}
+
 	if lastColonIndex == len(input)-1 {
 		return "", "", errors.New("input cannot end with a colon character")
 	}
@@ -45,6 +47,7 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 	for part := range parts {
 		if strings.Contains(part, "-") {
 			rangeParts := strings.Split(part, "-")
+
 			rangeParts = slices.DeleteFunc(rangeParts, func(e string) bool {
 				return e == ""
 			})

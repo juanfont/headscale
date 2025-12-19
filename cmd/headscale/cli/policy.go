@@ -5,12 +5,12 @@ import (
 	"io"
 	"os"
 
+	"github.com/rs/zerolog/log"
 	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
 	"github.com/skitzo2000/headscale/hscontrol/db"
 	"github.com/skitzo2000/headscale/hscontrol/policy"
 	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/skitzo2000/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/views"
 )
@@ -26,16 +26,20 @@ func init() {
 	policyCmd.AddCommand(getPolicy)
 
 	setPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	if err := setPolicy.MarkFlagRequired("file"); err != nil {
+	err := setPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	if err := checkPolicy.MarkFlagRequired("file"); err != nil {
+	err := checkPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	policyCmd.AddCommand(checkPolicy)
 }
 

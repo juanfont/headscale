@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/skitzo2000/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/util/set"
@@ -108,9 +108,11 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 					Msg("Current primary no longer available")
 			}
 		}
+
 		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
+
 			log.Debug().
 				Caller().
 				Str("prefix", prefix.String()).
@@ -127,6 +129,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 				Str("prefix", prefix.String()).
 				Msg("Cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
+
 			changed = true
 		}
 	}
@@ -162,14 +165,18 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {
 		wasPresent := false
+
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
+
 			wasPresent = true
+
 			log.Debug().
 				Caller().
 				Uint64("node.id", node.Uint64()).
 				Msg("Removed node from primary routes (no prefixes)")
 		}
+
 		changed := pr.updatePrimaryLocked()
 		log.Debug().
 			Caller().
@@ -255,12 +262,14 @@ func (pr *PrimaryRoutes) stringLocked() string {
 
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
 	sort.Sort(ids)
+
 	for _, id := range ids {
 		prefixes := pr.routes[id]
 		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
 	}
 
 	fmt.Fprintln(&sb, "\n\nCurrent primary routes:")
+
 	for route, nodeID := range pr.primaries {
 		fmt.Fprintf(&sb, "\nRoute %s: %d", route, nodeID)
 	}

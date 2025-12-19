@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/util"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/zstdframe"
 )
@@ -152,6 +152,7 @@ func (m *mapSession) serveLongPoll() {
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+
 		disconnected := true
 		// Wait up to 10 seconds for the node to reconnect.
 		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
@@ -160,6 +161,7 @@ func (m *mapSession) serveLongPoll() {
 				disconnected = false
 				break
 			}
+
 			<-ticker.C
 		}
 
@@ -215,8 +217,10 @@ func (m *mapSession) serveLongPoll() {
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
+
 		return
 	}
+
 	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("AddNode succeeded in poll session because node added to batcher")
 
 	m.h.Change(mapReqChange)
@@ -230,22 +234,26 @@ func (m *mapSession) serveLongPoll() {
 		case <-m.cancelCh:
 			m.tracef("poll cancelled received")
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
+
 			return
 
 		case <-ctx.Done():
 			m.tracef("poll context done chan:%p", m.ch)
 			mapResponseEnded.WithLabelValues("done").Inc()
+
 			return
 
 		// Consume updates sent to node
 		case update, ok := <-m.ch:
 			m.tracef("received update from channel, ok: %t", ok)
+
 			if !ok {
 				m.tracef("update channel closed, streaming session is likely being replaced")
 				return
 			}
 
-			if err := m.writeMap(update); err != nil {
+			err := m.writeMap(update)
+			if err != nil {
 				m.errf(err, "cannot write update to client")
 				return
 			}
@@ -254,7 +262,8 @@ func (m *mapSession) serveLongPoll() {
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
-			if err := m.writeMap(&keepAlive); err != nil {
+			err := m.writeMap(&keepAlive)
+			if err != nil {
 				m.errf(err, "cannot write keep alive")
 				return
 			}
@@ -262,6 +271,7 @@ func (m *mapSession) serveLongPoll() {
 			if debugHighCardinalityMetrics {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
 			}
+
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 			m.resetKeepAlive()
 		}

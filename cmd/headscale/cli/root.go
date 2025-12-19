@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
@@ -45,6 +45,7 @@ func initConfig() {
 	if cfgFile == "" {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
+
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
@@ -75,11 +76,12 @@ func initConfig() {
 		versionInfo := types.GetVersionInfo()
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {
-		githubTag := &latest.GithubTag{
-			Owner:         "skitzo2000",
-			Repository:    "headscale",
+			githubTag := &latest.GithubTag{
+				Owner:         "skitzo2000",
+				Repository:    "headscale",
 				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
+
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
@@ -101,6 +103,7 @@ func isPreReleaseVersion(version string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -140,7 +143,8 @@ https://github.com/skitzo2000/headscale`,
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

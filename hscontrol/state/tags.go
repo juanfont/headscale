@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
+	"github.com/skitzo2000/headscale/hscontrol/types"
 )
 
 var (

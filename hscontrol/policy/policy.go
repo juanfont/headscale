@@ -4,11 +4,11 @@ import (
 	"net/netip"
 	"slices"
 
+	"github.com/rs/zerolog/log"
+	"github.com/samber/lo"
 	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
 	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/skitzo2000/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/views"
 )
@@ -126,6 +126,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	if !slices.Equal(sortedCurrent, newApproved) {
 		// Log what changed
 		var added, kept []netip.Prefix
+
 		for _, route := range newApproved {
 			if !slices.Contains(sortedCurrent, route) {
 				added = append(added, route)

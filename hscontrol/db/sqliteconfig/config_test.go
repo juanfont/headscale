@@ -192,6 +192,7 @@ func TestConfigToURL(t *testing.T) {
 				t.Errorf("Config.ToURL() error = %v", err)
 				return
 			}
+
 			if got != tt.want {
 				t.Errorf("Config.ToURL() = %q, want %q", got, tt.want)
 			}
@@ -204,6 +205,7 @@ func TestConfigToURLInvalid(t *testing.T) {
 		Path:        "",
 		BusyTimeout: -1,
 	}
+
 	_, err := config.ToURL()
 	if err == nil {
 		t.Error("Config.ToURL() with invalid config should return error")

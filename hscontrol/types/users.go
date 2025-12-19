@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
 	"github.com/skitzo2000/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -40,9 +40,11 @@ var TaggedDevices = User{
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
+
 	for _, user := range u {
 		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
 	}
+
 	sb.WriteString(" ]")
 
 	return sb.String()
@@ -89,6 +91,7 @@ func (u *User) StringID() string {
 	if u == nil {
 		return ""
 	}
+
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
@@ -195,6 +198,7 @@ type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
+
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal data: %w", err)
@@ -208,6 +212,7 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
 		}
+
 		*bit = FlexibleBoolean(pv)
 
 	default:
@@ -245,9 +250,11 @@ func (c *OIDCClaims) Identifier() string {
 	if c.Iss == "" && c.Sub == "" {
 		return ""
 	}
+
 	if c.Iss == "" {
 		return CleanIdentifier(c.Sub)
 	}
+
 	if c.Sub == "" {
 		return CleanIdentifier(c.Iss)
 	}
@@ -332,6 +339,7 @@ func CleanIdentifier(identifier string) string {
 			cleanParts = append(cleanParts, trimmed)
 		}
 	}
+
 	if len(cleanParts) == 0 {
 		return ""
 	}
@@ -374,6 +382,7 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
 		identifier = "/" + identifier
 	}
+
 	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL

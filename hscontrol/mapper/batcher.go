@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/state"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
+	"github.com/skitzo2000/headscale/hscontrol/state"
+	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"tailscale.com/tailcfg"
 )
 
