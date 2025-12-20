@@ -111,7 +111,7 @@ type TailscaleInContainerBuildConfig struct {
 // Tailscale instance.
 type Option = func(c *TailscaleInContainer)
 
-// WithCACert adds it to the trusted surtificate of the Tailscale container.
+// WithCACert adds it to the trusted certificate of the Tailscale container.
 func WithCACert(cert []byte) Option {
 	return func(tsic *TailscaleInContainer) {
 		tsic.caCerts = append(tsic.caCerts, cert)
@@ -1562,7 +1562,7 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 			return nil, fmt.Errorf("copying file to buffer: %w", err)
 		}
 
-		// Only support reading the first tile
+		// Only support reading the first file
 		break
 	}
 
