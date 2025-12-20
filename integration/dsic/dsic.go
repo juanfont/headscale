@@ -51,7 +51,7 @@ type DERPServerInContainer struct {
 // DERPer instance.
 type Option = func(c *DERPServerInContainer)
 
-// WithCACert adds it to the trusted surtificate of the Tailscale container.
+// WithCACert adds it to the trusted certificate of the Tailscale container.
 func WithCACert(cert []byte) Option {
 	return func(dsic *DERPServerInContainer) {
 		dsic.caCerts = append(dsic.caCerts, cert)
