@@ -26,17 +26,17 @@ process. Headscale logs the result of ACL policy processing after each reload.
 
 - [**Allow All**](https://tailscale.com/kb/1192/acl-samples#allow-all-default-acl): If you define an ACL file but completely omit the `"acls"` field from its content, Headscale will default to an "allow all" policy. This means all devices connected to your tailnet will be able to communicate freely with each other.
 
-  ```json
-  {}
-  ```
+    ```json
+    {}
+    ```
 
 - [**Deny All**](https://tailscale.com/kb/1192/acl-samples#deny-all): To prevent all communication within your tailnet, you can include an empty array for the `"acls"` field in your policy file.
 
-  ```json
-  {
-    "acls": []
-  }
-  ```
+    ```json
+    {
+      "acls": []
+    }
+    ```
 
 ## Complex Example
 
@@ -158,7 +158,11 @@ Here are the ACL's to implement the same permissions as above:
     {
       "action": "accept",
       "src": ["group:dev"],
-      "dst": ["tag:dev-databases:*", "tag:dev-app-servers:*", "tag:prod-app-servers:80,443"]
+      "dst": [
+        "tag:dev-databases:*",
+        "tag:dev-app-servers:*",
+        "tag:prod-app-servers:80,443"
+      ]
     },
     // developers have access to the internal network through the router.
     // the internal network is composed of HTTPS endpoints and Postgresql
@@ -241,7 +245,6 @@ Includes all devices that have at least one tag.
 ```
 
 ### `autogroup:self`
-
 **(EXPERIMENTAL)**
 
 !!! warning "The current implementation of `autogroup:self` is inefficient"
@@ -255,11 +258,9 @@ Includes devices where the same user is authenticated on both the source and des
   "dst": ["autogroup:self:*"]
 }
 ```
-
-_Using `autogroup:self` may cause performance degradation on the Headscale coordinator server in large deployments, as filter rules must be compiled per-node rather than globally and the current implementation is not very efficient._
+*Using `autogroup:self` may cause performance degradation on the Headscale coordinator server in large deployments, as filter rules must be compiled per-node rather than globally and the current implementation is not very efficient.*
 
 If you experience performance issues, consider using more specific ACL rules or limiting the use of `autogroup:self`.
-
 ```json
 {
   // The following rules allow internal users to communicate with their

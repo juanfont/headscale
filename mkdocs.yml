@@ -1,14 +1,14 @@
 ---
 site_name: Headscale
-site_url: https://skitzo2000.github.io/headscale/
+site_url: https://juanfont.github.io/headscale/
 edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
 
 # Repository
-repo_name: skitzo2000/headscale
-repo_url: https://github.com/skitzo2000/headscale
+repo_name: juanfont/headscale
+repo_url: https://github.com/juanfont/headscale
 
 # Copyright
 copyright: Copyright &copy; 2025 Headscale authors
@@ -103,11 +103,11 @@ extra:
     json: [.s2]
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/skitzo2000/headscale
+      link: https://github.com/juanfont/headscale
     - icon: material/coffee
       link: https://ko-fi.com/headscale
     - icon: fontawesome/brands/docker
-      link: https://github.com/skitzo2000/headscale/pkgs/container/headscale
+      link: https://github.com/juanfont/headscale/pkgs/container/headscale
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:

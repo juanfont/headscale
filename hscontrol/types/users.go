@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
@@ -40,11 +40,9 @@ var TaggedDevices = User{
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
-
 	for _, user := range u {
 		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
 	}
-
 	sb.WriteString(" ]")
 
 	return sb.String()
@@ -91,7 +89,6 @@ func (u *User) StringID() string {
 	if u == nil {
 		return ""
 	}
-
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
@@ -193,12 +190,11 @@ func (u *User) Proto() *v1.User {
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
-// https://github.com/skitzo2000/headscale/issues/2293
+// https://github.com/juanfont/headscale/issues/2293
 type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
-
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal data: %w", err)
@@ -212,7 +208,6 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
 		}
-
 		*bit = FlexibleBoolean(pv)
 
 	default:
@@ -250,11 +245,9 @@ func (c *OIDCClaims) Identifier() string {
 	if c.Iss == "" && c.Sub == "" {
 		return ""
 	}
-
 	if c.Iss == "" {
 		return CleanIdentifier(c.Sub)
 	}
-
 	if c.Sub == "" {
 		return CleanIdentifier(c.Iss)
 	}
@@ -339,7 +332,6 @@ func CleanIdentifier(identifier string) string {
 			cleanParts = append(cleanParts, trimmed)
 		}
 	}
-
 	if len(cleanParts) == 0 {
 		return ""
 	}
@@ -361,7 +353,7 @@ type OIDCUserInfo struct {
 
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
-func (u *User) FromClaim(claims *OIDCClaims) {
+func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	err := util.ValidateUsername(claims.Username)
 	if err == nil {
 		u.Name = claims.Username
@@ -369,7 +361,7 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 		log.Debug().Caller().Err(err).Msgf("Username %s is not valid", claims.Username)
 	}
 
-	if claims.EmailVerified {
+	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {
 		_, err = mail.ParseAddress(claims.Email)
 		if err == nil {
 			u.Email = claims.Email
@@ -382,7 +374,6 @@ func (u *User) FromClaim(claims *OIDCClaims) {
 	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
 		identifier = "/" + identifier
 	}
-
 	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL

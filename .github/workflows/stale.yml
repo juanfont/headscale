@@ -6,7 +6,7 @@ on:
 
 jobs:
   close-issues:
-    if: github.repository == 'skitzo2000/headscale'
+    if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
     permissions:
       issues: write

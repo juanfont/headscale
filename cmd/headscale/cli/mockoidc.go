@@ -46,29 +46,24 @@ func mockOIDC() error {
 	if clientID == "" {
 		return errMockOidcClientIDNotDefined
 	}
-
 	clientSecret := os.Getenv("MOCKOIDC_CLIENT_SECRET")
 	if clientSecret == "" {
 		return errMockOidcClientSecretNotDefined
 	}
-
 	addrStr := os.Getenv("MOCKOIDC_ADDR")
 	if addrStr == "" {
 		return errMockOidcPortNotDefined
 	}
-
 	portStr := os.Getenv("MOCKOIDC_PORT")
 	if portStr == "" {
 		return errMockOidcPortNotDefined
 	}
-
 	accessTTLOverride := os.Getenv("MOCKOIDC_ACCESS_TTL")
 	if accessTTLOverride != "" {
 		newTTL, err := time.ParseDuration(accessTTLOverride)
 		if err != nil {
 			return err
 		}
-
 		accessTTL = newTTL
 	}
 
@@ -78,7 +73,6 @@ func mockOIDC() error {
 	}
 
 	var users []mockoidc.MockUser
-
 	err := json.Unmarshal([]byte(userStr), &users)
 	if err != nil {
 		return fmt.Errorf("unmarshalling users: %w", err)
@@ -107,10 +101,8 @@ func mockOIDC() error {
 	if err != nil {
 		return err
 	}
-
 	log.Info().Msgf("Mock OIDC server listening on %s", listener.Addr().String())
 	log.Info().Msgf("Issuer: %s", mock.Issuer())
-
 	c := make(chan struct{})
 	<-c
 
@@ -145,7 +137,6 @@ func getMockOIDC(clientID string, clientSecret string, users []mockoidc.MockUser
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Info().Msgf("Request: %+v", r)
 			h.ServeHTTP(w, r)
-
 			if r.Response != nil {
 				log.Info().Msgf("Response: %+v", r.Response)
 			}

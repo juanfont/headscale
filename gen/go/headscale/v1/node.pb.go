@@ -1291,7 +1291,7 @@ const file_headscale_v1_node_proto_rawDesc = "" +
 	"\x1bREGISTER_METHOD_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18REGISTER_METHOD_AUTH_KEY\x10\x01\x12\x17\n" +
 	"\x13REGISTER_METHOD_CLI\x10\x02\x12\x18\n" +
-	"\x14REGISTER_METHOD_OIDC\x10\x03B+Z)github.com/skitzo2000/headscale/gen/go/v1b\x06proto3"
+	"\x14REGISTER_METHOD_OIDC\x10\x03B)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_node_proto_rawDescOnce sync.Once

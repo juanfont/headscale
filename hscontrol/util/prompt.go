@@ -15,12 +15,10 @@ func YesNo(msg string) bool {
 
 	var resp string
 	fmt.Scanln(&resp)
-
 	resp = strings.ToLower(resp)
 	switch resp {
 	case "y", "yes", "sure":
 		return true
 	}
-
 	return false
 }

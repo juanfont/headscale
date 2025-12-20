@@ -1,4 +1,4 @@
-module github.com/skitzo2000/headscale
+module github.com/juanfont/headscale
 
 go 1.25
 
@@ -61,7 +61,7 @@ require (
 // chain and it is important that they are updated
 // in lockstep to ensure that they do not break
 // some architectures and similar at runtime:
-// https://github.com/skitzo2000/headscale/issues/2188
+// https://github.com/juanfont/headscale/issues/2188
 //
 // Fragile libc dependency:
 // https://pkg.go.dev/modernc.org/sqlite#hdr-Fragile_modernc_org_libc_dependency

@@ -6,7 +6,7 @@ on:
 
 jobs:
   lockfile:
-    if: github.repository == 'skitzo2000/headscale'
+    if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

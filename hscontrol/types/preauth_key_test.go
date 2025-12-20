@@ -111,7 +111,6 @@ func TestCanUsePreAuthKey(t *testing.T) {
 					t.Errorf("expected error but got none")
 				} else {
 					var httpErr PAKError
-
 					ok := errors.As(err, &httpErr)
 					if !ok {
 						t.Errorf("expected HTTPError but got %T", err)

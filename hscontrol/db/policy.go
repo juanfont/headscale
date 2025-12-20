@@ -3,7 +3,7 @@ package db
 import (
 	"errors"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -15,8 +15,7 @@ func (hsdb *HSDatabase) SetPolicy(policy string) (*types.Policy, error) {
 		Data: policy,
 	}
 
-	err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error
-	if err != nil {
+	if err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error; err != nil {
 		return nil, err
 	}
 
@@ -29,11 +28,10 @@ func (hsdb *HSDatabase) GetPolicy() (*types.Policy, error) {
 
 	// Query:
 	// SELECT * FROM policies ORDER BY id DESC LIMIT 1;
-	err := hsdb.DB.
+	if err := hsdb.DB.
 		Order("id DESC").
 		Limit(1).
-		First(&p).Error
-	if err != nil {
+		First(&p).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, types.ErrPolicyNotFound
 		}

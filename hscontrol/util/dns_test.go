@@ -14,7 +14,6 @@ func TestNormaliseHostname(t *testing.T) {
 	type args struct {
 		name string
 	}
-
 	tests := []struct {
 		name    string
 		args    args
@@ -91,7 +90,6 @@ func TestNormaliseHostname(t *testing.T) {
 				t.Errorf("NormaliseHostname() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
 			if !tt.wantErr && got != tt.want {
 				t.Errorf("NormaliseHostname() = %v, want %v", got, tt.want)
 			}
@@ -174,7 +172,6 @@ func TestValidateHostname(t *testing.T) {
 				t.Errorf("ValidateHostname() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
 			if tt.wantErr && tt.errorContains != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.errorContains) {
 					t.Errorf("ValidateHostname() error = %v, should contain %q", err, tt.errorContains)

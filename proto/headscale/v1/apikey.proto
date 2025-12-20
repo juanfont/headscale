@@ -1,6 +1,6 @@
 syntax = "proto3";
 package headscale.v1;
-option go_package = "github.com/skitzo2000/headscale/gen/go/v1";
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
 
 import "google/protobuf/timestamp.proto";
 

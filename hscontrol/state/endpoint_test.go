@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -12,7 +12,7 @@ import (
 
 // TestEndpointStorageInNodeStore verifies that endpoints sent in MapRequest via ApplyPeerChange
 // are correctly stored in the NodeStore and can be retrieved for sending to peers.
-// This test reproduces the issue reported in https://github.com/skitzo2000/headscale/issues/2846
+// This test reproduces the issue reported in https://github.com/juanfont/headscale/issues/2846
 func TestEndpointStorageInNodeStore(t *testing.T) {
 	// Create two test nodes
 	node1 := createTestNode(1, 1, "test-user", "node1")

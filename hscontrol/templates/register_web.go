@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/chasefleming/elem-go"
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 )
 
 func RegisterWeb(registrationID types.RegistrationID) *elem.Element {

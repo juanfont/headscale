@@ -10,32 +10,32 @@
     - the environment variable `HEADSCALE_CONFIG`
 - Validate the configuration file with: `headscale configtest`
 
-!!! example "Get the [example configuration from the GitHub repository](https://github.com/skitzo2000/headscale/blob/main/config-example.yaml)"
+!!! example "Get the [example configuration from the GitHub repository](https://github.com/juanfont/headscale/blob/main/config-example.yaml)"
 
-    Always select the [same GitHub tag](https://github.com/skitzo2000/headscale/tags) as the released version you use to
+    Always select the [same GitHub tag](https://github.com/juanfont/headscale/tags) as the released version you use to
     ensure you have the correct example configuration. The `main` branch might contain unreleased changes.
 
     === "View on GitHub"
 
-        * Development version: <https://github.com/skitzo2000/headscale/blob/main/config-example.yaml>
-        * Version {{ headscale.version }}: <https://github.com/skitzo2000/headscale/blob/v{{ headscale.version }}/config-example.yaml>
+        * Development version: <https://github.com/juanfont/headscale/blob/main/config-example.yaml>
+        * Version {{ headscale.version }}: <https://github.com/juanfont/headscale/blob/v{{ headscale.version }}/config-example.yaml>
 
     === "Download with `wget`"
 
         ```shell
         # Development version
-        wget -O config.yaml https://raw.githubusercontent.com/skitzo2000/headscale/main/config-example.yaml
+        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 
         # Version {{ headscale.version }}
-        wget -O config.yaml https://raw.githubusercontent.com/skitzo2000/headscale/v{{ headscale.version }}/config-example.yaml
+        wget -O config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
         ```
 
     === "Download with `curl`"
 
         ```shell
         # Development version
-        curl -o config.yaml https://raw.githubusercontent.com/skitzo2000/headscale/main/config-example.yaml
+        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/main/config-example.yaml
 
         # Version {{ headscale.version }}
-        curl -o config.yaml https://raw.githubusercontent.com/skitzo2000/headscale/v{{ headscale.version }}/config-example.yaml
+        curl -o config.yaml https://raw.githubusercontent.com/juanfont/headscale/v{{ headscale.version }}/config-example.yaml
         ```

@@ -3,7 +3,7 @@ package types
 import (
 	"testing"
 
-	"github.com/skitzo2000/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"tailscale.com/types/ptr"

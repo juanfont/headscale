@@ -9,7 +9,7 @@ import (
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/gorilla/mux"
-	"github.com/skitzo2000/headscale/hscontrol/templates"
+	"github.com/juanfont/headscale/hscontrol/templates"
 )
 
 // WindowsConfigMessage shows a simple message in the browser for how to configure the Windows Tailscale client.
@@ -37,7 +37,6 @@ func (h *Headscale) ApplePlatformConfig(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
-
 	platform, ok := vars["platform"]
 	if !ok {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "no platform specified", nil))
@@ -65,20 +64,17 @@ func (h *Headscale) ApplePlatformConfig(
 
 	switch platform {
 	case "macos-standalone":
-		err := macosStandaloneTemplate.Execute(&payload, platformConfig)
-		if err != nil {
+		if err := macosStandaloneTemplate.Execute(&payload, platformConfig); err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "macos-app-store":
-		err := macosAppStoreTemplate.Execute(&payload, platformConfig)
-		if err != nil {
+		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "ios":
-		err := iosTemplate.Execute(&payload, platformConfig)
-		if err != nil {
+		if err := iosTemplate.Execute(&payload, platformConfig); err != nil {
 			httpError(writer, err)
 			return
 		}
@@ -128,7 +124,7 @@ var commonTemplate = textTemplate.Must(
     <key>PayloadDescription</key>
     <string>Configure Tailscale login server to: {{.URL}}</string>
     <key>PayloadIdentifier</key>
-    <string>com.github.skitzo2000.headscale</string>
+    <string>com.github.juanfont.headscale</string>
     <key>PayloadRemovalDisallowed</key>
     <false/>
     <key>PayloadType</key>
@@ -150,7 +146,7 @@ var iosTemplate = textTemplate.Must(textTemplate.New("iosTemplate").Parse(`
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.skitzo2000.headscale</string>
+        <string>com.github.juanfont.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>
@@ -168,7 +164,7 @@ var macosAppStoreTemplate = template.Must(template.New("macosTemplate").Parse(`
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.skitzo2000.headscale</string>
+        <string>com.github.juanfont.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>
@@ -185,7 +181,7 @@ var macosStandaloneTemplate = template.Must(template.New("macosStandaloneTemplat
         <key>PayloadUUID</key>
         <string>{{.UUID}}</string>
         <key>PayloadIdentifier</key>
-        <string>com.github.skitzo2000.headscale</string>
+        <string>com.github.juanfont.headscale</string>
         <key>PayloadVersion</key>
         <integer>1</integer>
         <key>PayloadEnabled</key>

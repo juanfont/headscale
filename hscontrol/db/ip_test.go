@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/net/tsaddr"
@@ -158,10 +158,8 @@ func TestIPAllocatorSequential(t *testing.T) {
 				types.IPAllocationStrategySequential,
 			)
 
-			var (
-				got4s []netip.Addr
-				got6s []netip.Addr
-			)
+			var got4s []netip.Addr
+			var got6s []netip.Addr
 
 			for range tt.getCount {
 				got4, got6, err := alloc.Next()
@@ -177,7 +175,6 @@ func TestIPAllocatorSequential(t *testing.T) {
 					got6s = append(got6s, *got6)
 				}
 			}
-
 			if diff := cmp.Diff(tt.want4, got4s, util.Comparers...); diff != "" {
 				t.Errorf("IPAllocator 4s unexpected result (-want +got):\n%s", diff)
 			}
@@ -291,7 +288,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 	fullNodeP := func(i int) *types.Node {
 		v4 := fmt.Sprintf("100.64.0.%d", i)
 		v6 := fmt.Sprintf("fd7a:115c:a1e0::%d", i)
-
 		return &types.Node{
 			IPv4: nap(v4),
 			IPv6: nap(v6),
@@ -488,7 +484,6 @@ func TestBackfillIPAddresses(t *testing.T) {
 func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 	db, err := newSQLiteTestDB()
 	require.NoError(t, err)
-
 	defer db.Close()
 
 	alloc, err := NewIPAllocator(

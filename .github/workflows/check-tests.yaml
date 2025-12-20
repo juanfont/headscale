@@ -36,5 +36,10 @@ jobs:
       - name: Generate and check integration tests
         if: steps.changed-files.outputs.files == 'true'
         run: |
-          echo "Integration tests have been removed from this fork"
-          echo "This workflow is no longer needed"
+          nix develop --command bash -c "cd .github/workflows && go generate"
+          git diff --exit-code .github/workflows/test-integration.yaml
+
+      - name: Show missing tests
+        if: failure()
+        run: |
+          git diff .github/workflows/test-integration.yaml

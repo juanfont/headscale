@@ -7,9 +7,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/skitzo2000/headscale/hscontrol/types"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
@@ -45,7 +45,6 @@ func initConfig() {
 	if cfgFile == "" {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
-
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
@@ -77,16 +76,15 @@ func initConfig() {
 		if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") &&
 			!versionInfo.Dirty {
 			githubTag := &latest.GithubTag{
-				Owner:         "skitzo2000",
+				Owner:         "juanfont",
 				Repository:    "headscale",
 				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
-
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
 				log.Warn().Msgf(
-					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/skitzo2000/headscale/releases\n",
+					"An updated version of Headscale has been found (%s vs. your current %s). Check it out https://github.com/juanfont/headscale/releases\n",
 					res.Current,
 					versionInfo.Version,
 				)
@@ -103,7 +101,6 @@ func isPreReleaseVersion(version string) bool {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -139,12 +136,11 @@ var rootCmd = &cobra.Command{
 	Long: `
 headscale is an open source implementation of the Tailscale control server
 
-https://github.com/skitzo2000/headscale`,
+https://github.com/juanfont/headscale`,
 }
 
 func Execute() {
-	err := rootCmd.Execute()
-	if err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
