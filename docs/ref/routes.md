@@ -111,9 +111,9 @@ approval of routes served with a subnet router.
 
 The ACL snippet below defines the tag `tag:router` owned by the user `alice`. This tag is used for `routes` in the
 `autoApprovers` section. The IPv4 route `192.168.0.0/24` is automatically approved once announced by a subnet router
-owned by the user `alice` and that also advertises the tag `tag:router`.
+that advertises the tag `tag:router`.
 
-```json title="Subnet routers owned by alice and tagged with tag:router are automatically approved"
+```json title="Subnet routers tagged with tag:router are automatically approved"
 {
   "tagOwners": {
     "tag:router": ["alice@"]
@@ -260,10 +260,9 @@ in a tailnet. Headscale supports the `autoApprovers` section of an ACL to automa
 soon as it joins the tailnet.
 
 The ACL snippet below defines the tag `tag:exit` owned by the user `alice`. This tag is used for `exitNode` in the
-`autoApprovers` section. A new exit node which is owned by the user `alice` and that also advertises the tag `tag:exit`
-is automatically approved:
+`autoApprovers` section. A new exit node that advertises the tag `tag:exit` is automatically approved:
 
-```json title="Exit nodes owned by alice and tagged with tag:exit are automatically approved"
+```json title="Exit nodes tagged with tag:exit are automatically approved"
 {
   "tagOwners": {
     "tag:exit": ["alice@"]
