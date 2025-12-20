@@ -82,7 +82,7 @@ func TestDoOIDCAuthorization(t *testing.T) {
 			wantErr: true,
 			cfg: &types.OIDCConfig{
 				EmailVerifiedRequired: true,
-				AllowedDomains:        []string{"user@good.com"},
+				AllowedDomains:        []string{"good.com"},
 				AllowedUsers:          []string{},
 				AllowedGroups:         []string{"test group"},
 			},

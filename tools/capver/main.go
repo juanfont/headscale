@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/tailcfg"
@@ -52,7 +53,7 @@ type GHCRTagsResponse struct {
 
 // getGHCRToken fetches an anonymous token from GHCR for accessing public container images.
 func getGHCRToken(ctx context.Context) (string, error) {
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTokenURL, nil)
 	if err != nil {
@@ -91,7 +92,7 @@ func getGHCRTags(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to get GHCR token: %w", err)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTagsURL, nil)
 	if err != nil {
@@ -201,7 +202,7 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 	re := regexp.MustCompile(`const CurrentCapabilityVersion CapabilityVersion = (\d+)`)
 
 	versions := make(map[string]tailcfg.CapabilityVersion)
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 
 	for minorVer, patchVer := range minorVersions {
 		// Fetch the raw Go file for the patch version
@@ -218,14 +219,15 @@ func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVe
 			log.Printf("Warning: failed to fetch %s: %v", patchVer, err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
 			log.Printf("Warning: got status %d for %s", resp.StatusCode, patchVer)
+			resp.Body.Close()
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		if err != nil {
 			log.Printf("Warning: failed to read response for %s: %v", patchVer, err)
 			continue
@@ -458,7 +460,8 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 }
 
 func main() {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 
 	versions, err := getCapabilityVersions(ctx)
 	if err != nil {
