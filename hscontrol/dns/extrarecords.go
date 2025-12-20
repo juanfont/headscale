@@ -85,15 +85,12 @@ func (e *ExtraRecordsMan) Run() {
 				log.Error().Caller().Msgf("file watcher event channel closing")
 				return
 			}
-
 			switch event.Op {
 			case fsnotify.Create, fsnotify.Write, fsnotify.Chmod:
 				log.Trace().Caller().Str("path", event.Name).Str("op", event.Op.String()).Msg("extra records received filewatch event")
-
 				if event.Name != e.path {
 					continue
 				}
-
 				e.updateRecords()
 
 				// If a file is removed or renamed, fsnotify will loose track of it
@@ -126,7 +123,6 @@ func (e *ExtraRecordsMan) Run() {
 				log.Error().Caller().Msgf("file watcher error channel closing")
 				return
 			}
-
 			log.Error().Caller().Err(err).Msgf("extra records filewatcher returned error: %q", err)
 		}
 	}
@@ -169,7 +165,6 @@ func (e *ExtraRecordsMan) updateRecords() {
 	e.hashes[e.path] = newHash
 
 	log.Trace().Caller().Interface("records", e.records).Msgf("extra records updated from path, count old: %d, new: %d", oldCount, e.records.Len())
-
 	e.updateCh <- e.records.Slice()
 }
 
@@ -188,7 +183,6 @@ func readExtraRecordsFromPath(path string) ([]tailcfg.DNSRecord, [32]byte, error
 	}
 
 	var records []tailcfg.DNSRecord
-
 	err = json.Unmarshal(b, &records)
 	if err != nil {
 		return nil, [32]byte{}, fmt.Errorf("unmarshalling records, content: %q: %w", string(b), err)

@@ -6,10 +6,10 @@ import (
 	"net/url"
 	"strconv"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
-	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
 )
@@ -23,7 +23,6 @@ func usernameAndIDFlag(cmd *cobra.Command) {
 // If both are empty, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 	username, _ := cmd.Flags().GetString("name")
-
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
 		err := errors.New("--name or --identifier flag is required")

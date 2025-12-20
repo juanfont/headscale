@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
-	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/net/tsaddr"
@@ -160,7 +160,6 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 	// Strip invalid DNS characters for givenName comparison
 	normalised := strings.ToLower(node.Hostname)
 	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
-
 	return node.GivenName == normalised
 }
 
@@ -479,7 +478,7 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
@@ -587,15 +586,13 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	newHostname := strings.ToLower(hostInfo.Hostname)
-	err := util.ValidateHostname(newHostname)
-	if err != nil {
+	if err := util.ValidateHostname(newHostname); err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
 			Str("current_hostname", node.Hostname).
 			Str("rejected_hostname", hostInfo.Hostname).
 			Err(err).
 			Msg("Rejecting invalid hostname update from hostinfo")
-
 		return
 	}
 
@@ -687,7 +684,6 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 func (nodes Nodes) DebugString() string {
 	var sb strings.Builder
 	sb.WriteString("Nodes:\n")
-
 	for _, node := range nodes {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")

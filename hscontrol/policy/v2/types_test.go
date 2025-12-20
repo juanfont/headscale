@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
@@ -82,7 +82,6 @@ func TestMarshalJSON(t *testing.T) {
 
 	// Unmarshal back to verify round trip
 	var roundTripped Policy
-
 	err = json.Unmarshal(marshalled, &roundTripped)
 	require.NoError(t, err)
 
@@ -2022,7 +2021,6 @@ func TestResolvePolicy(t *testing.T) {
 			}
 
 			var prefs []netip.Prefix
-
 			if ips != nil {
 				if p := ips.Prefixes(); len(p) > 0 {
 					prefs = p
@@ -2194,11 +2192,9 @@ func TestResolveAutoApprovers(t *testing.T) {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
 			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
 				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
 			}
-
 			if tt.wantAllIPRoutes != nil {
 				if gotAllIPRoutes == nil {
 					t.Error("resolveAutoApprovers() expected non-nil allIPRoutes, got nil")
@@ -2345,7 +2341,6 @@ func mustIPSet(prefixes ...string) *netipx.IPSet {
 	for _, p := range prefixes {
 		builder.AddPrefix(mp(p))
 	}
-
 	ipSet, _ := builder.IPSet()
 
 	return ipSet
@@ -2355,7 +2350,6 @@ func ipSetComparer(x, y *netipx.IPSet) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
-
 	return cmp.Equal(x.Prefixes(), y.Prefixes(), util.Comparers...)
 }
 
@@ -2584,7 +2578,6 @@ func TestResolveTagOwners(t *testing.T) {
 				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-
 			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
 				t.Errorf("resolveTagOwners() mismatch (-want +got):\n%s", diff)
 			}
@@ -2860,7 +2853,6 @@ func TestNodeCanHaveTag(t *testing.T) {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
-
 			require.NoError(t, err)
 
 			got := pm.NodeCanHaveTag(tt.node.View(), tt.tag)
@@ -3121,7 +3113,6 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var acl ACL
-
 			err := json.Unmarshal([]byte(tt.input), &acl)
 
 			if tt.wantErr {
@@ -3132,8 +3123,8 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected.Action, acl.Action)
 			assert.Equal(t, tt.expected.Protocol, acl.Protocol)
-			assert.Len(t, acl.Sources, len(tt.expected.Sources))
-			assert.Len(t, acl.Destinations, len(tt.expected.Destinations))
+			assert.Equal(t, len(tt.expected.Sources), len(acl.Sources))
+			assert.Equal(t, len(tt.expected.Destinations), len(acl.Destinations))
 
 			// Compare sources
 			for i, expectedSrc := range tt.expected.Sources {
@@ -3173,15 +3164,14 @@ func TestACL_UnmarshalJSON_Roundtrip(t *testing.T) {
 
 	// Unmarshal back
 	var unmarshaled ACL
-
 	err = json.Unmarshal(jsonBytes, &unmarshaled)
 	require.NoError(t, err)
 
 	// Should be equal
 	assert.Equal(t, original.Action, unmarshaled.Action)
 	assert.Equal(t, original.Protocol, unmarshaled.Protocol)
-	assert.Len(t, unmarshaled.Sources, len(original.Sources))
-	assert.Len(t, unmarshaled.Destinations, len(original.Destinations))
+	assert.Equal(t, len(original.Sources), len(unmarshaled.Sources))
+	assert.Equal(t, len(original.Destinations), len(unmarshaled.Destinations))
 }
 
 func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {
@@ -3252,13 +3242,12 @@ func TestACL_UnmarshalJSON_InvalidAction(t *testing.T) {
 	assert.Contains(t, err.Error(), `invalid action "deny"`)
 }
 
-// Helper function to parse aliases for testing.
+// Helper function to parse aliases for testing
 func mustParseAlias(s string) Alias {
 	alias, err := parseAlias(s)
 	if err != nil {
 		panic(err)
 	}
-
 	return alias
 }
 

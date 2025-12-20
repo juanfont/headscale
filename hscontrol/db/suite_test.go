@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
-	"github.com/skitzo2000/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 	"zombiezen.com/go/postgrestest"
 )
@@ -39,8 +39,8 @@ func (s *Suite) ResetDB(c *check.C) {
 	// if len(tmpDir) != 0 {
 	// 	os.RemoveAll(tmpDir)
 	// }
-	var err error
 
+	var err error
 	db, err = newSQLiteTestDB()
 	if err != nil {
 		c.Fatal(err)
@@ -51,7 +51,6 @@ func (s *Suite) ResetDB(c *check.C) {
 // on check test framework.
 func newSQLiteTestDB() (*HSDatabase, error) {
 	var err error
-
 	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
 	if err != nil {
 		return nil, err
@@ -87,19 +86,16 @@ func newPostgresDBForTest(t *testing.T) *url.URL {
 	t.Helper()
 
 	ctx := t.Context()
-
 	srv, err := postgrestest.Start(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Cleanup(srv.Cleanup)
 
 	u, err := srv.CreateDatabase(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	t.Logf("created local postgres: %s", u)
 	pu, _ := url.Parse(u)
 

@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/rs/zerolog/log"
-	"github.com/skitzo2000/headscale/hscontrol/state"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/types/change"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/dnstype"
@@ -60,6 +60,7 @@ func newMapper(
 	state *state.State,
 ) *mapper {
 	// uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
+
 	return &mapper{
 		state: state,
 		cfg:   cfg,
@@ -78,7 +79,6 @@ func generateUserProfiles(
 	userID := user.Model().ID
 	userMap[userID] = &user
 	ids = append(ids, userID)
-
 	for _, peer := range peers.All() {
 		peerUser := peer.User()
 		peerUserID := peerUser.Model().ID
@@ -88,9 +88,7 @@ func generateUserProfiles(
 
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
-
 	var profiles []tailcfg.UserProfile
-
 	for _, id := range ids {
 		if userMap[id] != nil {
 			profiles = append(profiles, userMap[id].TailscaleUserProfile())
@@ -298,7 +296,6 @@ func writeDebugMapResponse(
 
 	perms := fs.FileMode(debugMapResponsePerm)
 	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", nodeID))
-
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -312,7 +309,6 @@ func writeDebugMapResponse(
 	)
 
 	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
-
 	err = os.WriteFile(mapResponsePath, body, perms)
 	if err != nil {
 		panic(err)
@@ -334,7 +330,6 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 	}
 
 	result := make(map[types.NodeID][]tailcfg.MapResponse)
-
 	for _, node := range nodes {
 		if !node.IsDir() {
 			continue
@@ -370,7 +365,6 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 			}
 
 			var resp tailcfg.MapResponse
-
 			err = json.Unmarshal(body, &resp)
 			if err != nil {
 				log.Error().Err(err).Msgf("Unmarshalling file %s", file.Name())

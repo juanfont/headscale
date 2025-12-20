@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
+	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
-	v1 "github.com/skitzo2000/headscale/gen/go/headscale/v1"
-	"github.com/skitzo2000/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -29,21 +29,15 @@ func init() {
 	apiKeysCmd.AddCommand(createAPIKeyCmd)
 
 	expireAPIKeyCmd.Flags().StringP("prefix", "p", "", "ApiKey prefix")
-
-	err := expireAPIKeyCmd.MarkFlagRequired("prefix")
-	if err != nil {
+	if err := expireAPIKeyCmd.MarkFlagRequired("prefix"); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-
 	apiKeysCmd.AddCommand(expireAPIKeyCmd)
 
 	deleteAPIKeyCmd.Flags().StringP("prefix", "p", "", "ApiKey prefix")
-
-	err = deleteAPIKeyCmd.MarkFlagRequired("prefix")
-	if err != nil {
+	if err := deleteAPIKeyCmd.MarkFlagRequired("prefix"); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
-
 	apiKeysCmd.AddCommand(deleteAPIKeyCmd)
 }
 

@@ -3,8 +3,8 @@ package db
 import (
 	"testing"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

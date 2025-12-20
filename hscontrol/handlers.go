@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/assets"
+	"github.com/juanfont/headscale/hscontrol/templates"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
-	"github.com/skitzo2000/headscale/hscontrol/assets"
-	"github.com/skitzo2000/headscale/hscontrol/templates"
-	"github.com/skitzo2000/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
 
@@ -182,7 +182,6 @@ func (h *Headscale) HealthHandler(
 
 		json.NewEncoder(writer).Encode(res)
 	}
-
 	err := h.state.PingDB(req.Context())
 	if err != nil {
 		respond(err)
@@ -219,7 +218,6 @@ func (h *Headscale) VersionHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	versionInfo := types.GetVersionInfo()
-
 	err := json.NewEncoder(writer).Encode(versionInfo)
 	if err != nil {
 		log.Error().

@@ -33,7 +33,6 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 	b, err := GenerateRandomBytes(n)
 
 	uenc := base64.RawURLEncoding.EncodeToString(b)
-
 	return uenc[:n], err
 }
 
@@ -43,17 +42,13 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 // number generator fails to function correctly, in which
 // case the caller should not continue.
 func GenerateRandomStringDNSSafe(size int) (string, error) {
-	var (
-		str string
-		err error
-	)
-
+	var str string
+	var err error
 	for len(str) < size {
 		str, err = GenerateRandomStringURLSafe(size)
 		if err != nil {
 			return "", err
 		}
-
 		str = strings.ToLower(
 			strings.ReplaceAll(strings.ReplaceAll(str, "_", ""), "-", ""),
 		)
@@ -104,7 +99,6 @@ func TailcfgFilterRulesToString(rules []tailcfg.FilterRule) string {
   DstIPs: %v
 }
 `, rule.SrcIPs, rule.DstPorts))
-
 		if index < len(rules)-1 {
 			sb.WriteString(", ")
 		}

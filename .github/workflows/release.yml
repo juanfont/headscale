@@ -7,19 +7,21 @@ on:
       - "*" # triggers only if push new tag version
   workflow_dispatch:
 
-permissions:
-  contents: write  # For creating GitHub releases
-  packages: write  # For publishing container images to GHCR
-
 jobs:
   goreleaser:
-    if: github.repository == 'skitzo2000/headscale'
+    if: github.repository == 'juanfont/headscale'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           fetch-depth: 0
+
+      - name: Login to DockerHub
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Login to GHCR
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0

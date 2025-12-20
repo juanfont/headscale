@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"gopkg.in/check.v1"
 )
 
@@ -33,14 +33,11 @@ func (s *Suite) ResetDB(c *check.C) {
 	if len(tmpDir) != 0 {
 		os.RemoveAll(tmpDir)
 	}
-
 	var err error
-
 	tmpDir, err = os.MkdirTemp("", "autoygg-client-test2")
 	if err != nil {
 		c.Fatal(err)
 	}
-
 	cfg := types.Config{
 		NoisePrivateKeyPath: tmpDir + "/noise_private.key",
 		Database: types.DatabaseConfig{

@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
           buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-On2sIlzFcQLrGq1QIyv1PsBPp633uum/1UYq0VSLk+I=";
+          vendorHash = "sha256-VOi4PGZ8I+2MiwtzxpKc/4smsL5KcH/pHVkjJfAFPJ0=";
         in
         {
           headscale = buildGo {
@@ -47,6 +47,17 @@
             meta = {
               mainProgram = "headscale";
             };
+          };
+
+          hi = buildGo {
+            pname = "hi";
+            version = headscaleVersion;
+            src = pkgs.lib.cleanSource self;
+
+            checkFlags = [ "-short" ];
+            inherit vendorHash;
+
+            subPackages = [ "cmd/hi" ];
           };
 
           protoc-gen-grpc-gateway = buildGo rec {

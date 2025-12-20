@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 	"tailscale.com/tailcfg"
@@ -28,14 +28,11 @@ func loadDERPMapFromPath(path string) (*tailcfg.DERPMap, error) {
 		return nil, err
 	}
 	defer derpFile.Close()
-
 	var derpMap tailcfg.DERPMap
-
 	b, err := io.ReadAll(derpFile)
 	if err != nil {
 		return nil, err
 	}
-
 	err = yaml.Unmarshal(b, &derpMap)
 
 	return &derpMap, err
@@ -60,14 +57,12 @@ func loadDERPMapFromURL(addr url.URL) (*tailcfg.DERPMap, error) {
 	}
 
 	defer resp.Body.Close()
-
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	var derpMap tailcfg.DERPMap
-
 	err = json.Unmarshal(body, &derpMap)
 
 	return &derpMap, err
@@ -139,7 +134,6 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 	for id := range dm.Regions {
 		ids = append(ids, id)
 	}
-
 	slices.Sort(ids)
 
 	for _, id := range ids {
@@ -170,14 +164,12 @@ func derpRandom() *rand.Rand {
 		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table)))
 		derpRandomInst = rnd
 	})
-
 	return derpRandomInst
 }
 
 func resetDerpRandomForTesting() {
 	derpRandomMu.Lock()
 	defer derpRandomMu.Unlock()
-
 	derpRandomOnce = sync.Once{}
 	derpRandomInst = nil
 }

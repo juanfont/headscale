@@ -141,7 +141,7 @@ const file_headscale_v1_headscale_proto_rawDesc = "" +
 	"\fDeleteApiKey\x12!.headscale.v1.DeleteApiKeyRequest\x1a\".headscale.v1.DeleteApiKeyResponse\"\x1f\x82\xd3\xe4\x93\x02\x19*\x17/api/v1/apikey/{prefix}\x12d\n" +
 	"\tGetPolicy\x12\x1e.headscale.v1.GetPolicyRequest\x1a\x1f.headscale.v1.GetPolicyResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/api/v1/policy\x12g\n" +
 	"\tSetPolicy\x12\x1e.headscale.v1.SetPolicyRequest\x1a\x1f.headscale.v1.SetPolicyResponse\"\x19\x82\xd3\xe4\x93\x02\x13:\x01*\x1a\x0e/api/v1/policy\x12[\n" +
-	"\x06Health\x12\x1b.headscale.v1.HealthRequest\x1a\x1c.headscale.v1.HealthResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/api/v1/healthB+Z)github.com/skitzo2000/headscale/gen/go/v1b\x06proto3"
+	"\x06Health\x12\x1b.headscale.v1.HealthRequest\x1a\x1c.headscale.v1.HealthResponse\"\x16\x82\xd3\xe4\x93\x02\x10\x12\x0e/api/v1/healthB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_headscale_proto_rawDescOnce sync.Once

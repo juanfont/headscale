@@ -41,12 +41,10 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 	defer tsNode.Close()
 
 	logf("Starting tailscale (hostname=%q)", opts.Hostname)
-
 	lc, err := tsNode.LocalClient()
 	if err != nil {
 		return fmt.Errorf("connect local client: %w", err)
 	}
-
 	opts.LocalClient = lc // for authentication
 
 	// Make sure the Tailscale node starts up. It might not, if it is a new node
@@ -75,9 +73,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		if len(certDomains) == 0 {
 			return errors.New("no cert domains available for HTTPS")
 		}
-
 		base := "https://" + certDomains[0]
-
 		go http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			target := base + r.RequestURI
 			http.Redirect(w, r, target, http.StatusPermanentRedirect)
@@ -87,20 +83,16 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		// For the real service, start a separate listener.
 		// Note: Replaces the port 80 listener.
 		var err error
-
 		lst, err = tsNode.ListenTLS("tcp", ":443")
 		if err != nil {
 			return fmt.Errorf("listen TLS: %w", err)
 		}
-
 		logf("enabled serving via HTTPS")
 	}
 
 	mux := tsql.NewMux()
 	tsweb.Debugger(mux)
-
 	go http.Serve(lst, mux)
-
 	logf("TailSQL started")
 	<-ctx.Done()
 	logf("TailSQL shutting down...")

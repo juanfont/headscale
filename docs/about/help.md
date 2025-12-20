@@ -2,4 +2,4 @@
 
 Join our [Discord server](https://discord.gg/c84AZQhmpx) for announcements and community support.
 
-Please report bugs via [GitHub issues](https://github.com/skitzo2000/headscale/issues)
+Please report bugs via [GitHub issues](https://github.com/juanfont/headscale/issues)

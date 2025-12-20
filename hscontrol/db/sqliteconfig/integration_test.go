@@ -109,9 +109,7 @@ func TestSQLiteDriverPragmaIntegration(t *testing.T) {
 			for pragma, expectedValue := range tt.expected {
 				t.Run("pragma_"+pragma, func(t *testing.T) {
 					var actualValue any
-
 					query := "PRAGMA " + pragma
-
 					err := db.QueryRow(query).Scan(&actualValue)
 					if err != nil {
 						t.Fatalf("Failed to query %s: %v", query, err)
@@ -251,7 +249,6 @@ func TestJournalModeValidation(t *testing.T) {
 			defer db.Close()
 
 			var actualMode string
-
 			err = db.QueryRow("PRAGMA journal_mode").Scan(&actualMode)
 			if err != nil {
 				t.Fatalf("Failed to query journal_mode: %v", err)

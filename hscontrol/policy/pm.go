@@ -3,9 +3,9 @@ package policy
 import (
 	"net/netip"
 
-	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
-	policyv2 "github.com/skitzo2000/headscale/hscontrol/policy/v2"
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
@@ -38,11 +38,8 @@ type PolicyManager interface {
 
 // NewPolicyManager returns a new policy manager.
 func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (PolicyManager, error) {
-	var (
-		polMan PolicyManager
-		err    error
-	)
-
+	var polMan PolicyManager
+	var err error
 	polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
 	if err != nil {
 		return nil, err
@@ -62,7 +59,6 @@ func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[typ
 		if err != nil {
 			return nil, err
 		}
-
 		polMans = append(polMans, pm)
 	}
 

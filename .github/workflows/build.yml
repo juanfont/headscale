@@ -76,7 +76,10 @@ jobs:
     strategy:
       matrix:
         env:
+          - "GOARCH=arm64 GOOS=linux"
           - "GOARCH=amd64 GOOS=linux"
+          - "GOARCH=arm64 GOOS=darwin"
+          - "GOARCH=amd64 GOOS=darwin"
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
       - uses: nixbuild/nix-quick-install-action@2c9db80fb984ceb1bcaa77cdda3fdf8cfba92035 # v34

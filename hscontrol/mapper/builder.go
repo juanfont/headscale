@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/policy"
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/policy"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
@@ -36,7 +36,6 @@ const (
 // NewMapResponseBuilder creates a new builder with basic fields set.
 func (m *mapper) NewMapResponseBuilder(nodeID types.NodeID) *MapResponseBuilder {
 	now := time.Now()
-
 	return &MapResponseBuilder{
 		resp: &tailcfg.MapResponse{
 			KeepAlive:   false,
@@ -124,7 +123,6 @@ func (b *MapResponseBuilder) WithDebugConfig() *MapResponseBuilder {
 	b.resp.Debug = &tailcfg.Debug{
 		DisableLogTail: !b.mapper.cfg.LogTail.Enabled,
 	}
-
 	return b
 }
 
@@ -282,18 +280,16 @@ func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapRe
 	for _, id := range removedIDs {
 		tailscaleIDs = append(tailscaleIDs, id.NodeID())
 	}
-
 	b.resp.PeersRemoved = tailscaleIDs
 
 	return b
 }
 
-// Build finalizes the response and returns marshaled bytes.
+// Build finalizes the response and returns marshaled bytes
 func (b *MapResponseBuilder) Build() (*tailcfg.MapResponse, error) {
 	if len(b.errs) > 0 {
 		return nil, multierr.New(b.errs...)
 	}
-
 	if debugDumpMapResponsePath != "" {
 		writeDebugMapResponse(b.resp, b.debugType, b.nodeID)
 	}

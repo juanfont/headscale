@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -44,7 +44,6 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 
 				// Verify api_keys data preservation
 				var apiKeyCount int
-
 				err = hsdb.DB.Raw("SELECT COUNT(*) FROM api_keys").Scan(&apiKeyCount).Error
 				require.NoError(t, err)
 				assert.Equal(t, 2, apiKeyCount, "should preserve all 2 api_keys from original schema")
@@ -110,7 +109,6 @@ func createSQLiteFromSQLFile(sqlFilePath, dbPath string) error {
 func requireConstraintFailed(t *testing.T, err error) {
 	t.Helper()
 	require.Error(t, err)
-
 	if !strings.Contains(err.Error(), "UNIQUE constraint failed:") && !strings.Contains(err.Error(), "violates unique constraint") {
 		require.Failf(t, "expected error to contain a constraint failure, got: %s", err.Error())
 	}
@@ -322,7 +320,6 @@ func dbForTestWithPath(t *testing.T, sqlFilePath string) *HSDatabase {
 // skip already-applied migrations and only run new ones.
 func TestSQLiteAllTestdataMigrations(t *testing.T) {
 	t.Parallel()
-
 	schemas, err := os.ReadDir("testdata/sqlite")
 	require.NoError(t, err)
 

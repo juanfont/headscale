@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/state"
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/state"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"

@@ -5,9 +5,9 @@ import (
 	"net/netip"
 	"testing"
 
-	policyv2 "github.com/skitzo2000/headscale/hscontrol/policy/v2"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -313,11 +313,8 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 				nodes := types.Nodes{&node}
 
 				// Create policy manager or use nil if specified
-				var (
-					pm  PolicyManager
-					err error
-				)
-
+				var pm PolicyManager
+				var err error
 				if tt.name != "nil_policy_manager" {
 					pm, err = pmf(users, nodes.ViewSlice())
 					assert.NoError(t, err)

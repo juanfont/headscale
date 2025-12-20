@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
 )
 

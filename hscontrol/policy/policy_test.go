@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/skitzo2000/headscale/hscontrol/policy/matcher"
-	"github.com/skitzo2000/headscale/hscontrol/types"
-	"github.com/skitzo2000/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -33,7 +33,6 @@ func TestReduceNodes(t *testing.T) {
 		rules []tailcfg.FilterRule
 		node  *types.Node
 	}
-
 	tests := []struct {
 		name string
 		args args
@@ -784,11 +783,9 @@ func TestReduceNodes(t *testing.T) {
 			for _, v := range gotViews.All() {
 				got = append(got, v.AsStruct())
 			}
-
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("ReduceNodes() unexpected result (-want +got):\n%s", diff)
 				t.Log("Matchers: ")
-
 				for _, m := range matchers {
 					t.Log("\t+", m.DebugString())
 				}
@@ -1035,11 +1032,8 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var (
-					pm  PolicyManager
-					err error
-				)
-
+				var pm PolicyManager
+				var err error
 				pm, err = pmf(nil, tt.nodes.ViewSlice())
 				require.NoError(t, err)
 
@@ -1057,11 +1051,9 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 				for _, v := range gotViews.All() {
 					got = append(got, v.AsStruct())
 				}
-
 				if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 					t.Errorf("TestReduceNodesFromPolicy() unexpected result (-want +got):\n%s", diff)
 					t.Log("Matchers: ")
-
 					for _, m := range matchers {
 						t.Log("\t+", m.DebugString())
 					}
@@ -1414,17 +1406,13 @@ func TestSSHPolicyRules(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var (
-					pm  PolicyManager
-					err error
-				)
-
+				var pm PolicyManager
+				var err error
 				pm, err = pmf(users, append(tt.peers, &tt.targetNode).ViewSlice())
 
 				if tt.expectErr {
 					require.Error(t, err)
 					require.Contains(t, err.Error(), tt.errorMessage)
-
 					return
 				}
 
@@ -1447,7 +1435,6 @@ func TestReduceRoutes(t *testing.T) {
 		routes []netip.Prefix
 		rules  []tailcfg.FilterRule
 	}
-
 	tests := []struct {
 		name string
 		args args
@@ -2069,7 +2056,6 @@ func TestReduceRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
-
 			got := ReduceRoutes(
 				tt.args.node.View(),
 				tt.args.routes,

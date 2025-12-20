@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/skitzo2000/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -830,7 +830,6 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			if tt.name == "empty policy" {
 				// We expect this one to have a valid but empty policy
 				require.NoError(t, err)
-
 				if err != nil {
 					return
 				}
@@ -845,7 +844,6 @@ func TestNodeCanApproveRoute(t *testing.T) {
 					if diff := cmp.Diff(tt.canApprove, result); diff != "" {
 						t.Errorf("NodeCanApproveRoute() mismatch (-want +got):\n%s", diff)
 					}
-
 					assert.Equal(t, tt.canApprove, result, "Unexpected route approval result")
 				})
 			}

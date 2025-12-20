@@ -71,7 +71,6 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 		rw := &respWriterProm{ResponseWriter: w}
 
 		timer := prometheus.NewTimer(httpDuration.WithLabelValues(path))
-
 		next.ServeHTTP(rw, r)
 		timer.ObserveDuration()
 		httpCounter.WithLabelValues(strconv.Itoa(rw.status), r.Method, path).Inc()
@@ -80,7 +79,6 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 
 type respWriterProm struct {
 	http.ResponseWriter
-
 	status      int
 	written     int64
 	wroteHeader bool
@@ -96,7 +94,6 @@ func (r *respWriterProm) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
 	}
-
 	n, err := r.ResponseWriter.Write(b)
 	r.written += int64(n)
 
