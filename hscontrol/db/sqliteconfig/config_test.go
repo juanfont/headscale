@@ -71,6 +71,52 @@ func TestSynchronous(t *testing.T) {
 	}
 }
 
+func TestTxLock(t *testing.T) {
+	tests := []struct {
+		mode  TxLock
+		valid bool
+	}{
+		{TxLockDeferred, true},
+		{TxLockImmediate, true},
+		{TxLockExclusive, true},
+		{TxLock(""), true},           // empty is valid (uses driver default)
+		{TxLock("IMMEDIATE"), false}, // uppercase is invalid
+		{TxLock("INVALID"), false},
+	}
+
+	for _, tt := range tests {
+		name := string(tt.mode)
+		if name == "" {
+			name = "empty"
+		}
+
+		t.Run(name, func(t *testing.T) {
+			if got := tt.mode.IsValid(); got != tt.valid {
+				t.Errorf("TxLock(%q).IsValid() = %v, want %v", tt.mode, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestTxLockString(t *testing.T) {
+	tests := []struct {
+		mode TxLock
+		want string
+	}{
+		{TxLockDeferred, "deferred"},
+		{TxLockImmediate, "immediate"},
+		{TxLockExclusive, "exclusive"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := tt.mode.String(); got != tt.want {
+				t.Errorf("TxLock.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -104,6 +150,21 @@ func TestConfigValidate(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid txlock",
+			config: &Config{
+				Path:   "/path/to/db.sqlite",
+				TxLock: TxLock("INVALID"),
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid txlock immediate",
+			config: &Config{
+				Path:   "/path/to/db.sqlite",
+				TxLock: TxLockImmediate,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -123,9 +184,9 @@ func TestConfigToURL(t *testing.T) {
 		want   string
 	}{
 		{
-			name:   "default config",
+			name:   "default config includes txlock immediate",
 			config: Default("/path/to/db.sqlite"),
-			want:   "file:/path/to/db.sqlite?_pragma=busy_timeout=10000&_pragma=journal_mode=WAL&_pragma=auto_vacuum=INCREMENTAL&_pragma=wal_autocheckpoint=1000&_pragma=synchronous=NORMAL&_pragma=foreign_keys=ON",
+			want:   "file:/path/to/db.sqlite?_txlock=immediate&_pragma=busy_timeout=10000&_pragma=journal_mode=WAL&_pragma=auto_vacuum=INCREMENTAL&_pragma=wal_autocheckpoint=1000&_pragma=synchronous=NORMAL&_pragma=foreign_keys=ON",
 		},
 		{
 			name:   "memory config",
@@ -183,6 +244,47 @@ func TestConfigToURL(t *testing.T) {
 			},
 			want: "file:/full.db?_pragma=busy_timeout=15000&_pragma=journal_mode=WAL&_pragma=auto_vacuum=FULL&_pragma=wal_autocheckpoint=1000&_pragma=synchronous=EXTRA&_pragma=foreign_keys=ON",
 		},
+		{
+			name: "with txlock immediate",
+			config: &Config{
+				Path:              "/test.db",
+				BusyTimeout:       5000,
+				TxLock:            TxLockImmediate,
+				WALAutocheckpoint: -1,
+				ForeignKeys:       true,
+			},
+			want: "file:/test.db?_txlock=immediate&_pragma=busy_timeout=5000&_pragma=foreign_keys=ON",
+		},
+		{
+			name: "with txlock deferred",
+			config: &Config{
+				Path:              "/test.db",
+				TxLock:            TxLockDeferred,
+				WALAutocheckpoint: -1,
+				ForeignKeys:       true,
+			},
+			want: "file:/test.db?_txlock=deferred&_pragma=foreign_keys=ON",
+		},
+		{
+			name: "with txlock exclusive",
+			config: &Config{
+				Path:              "/test.db",
+				TxLock:            TxLockExclusive,
+				WALAutocheckpoint: -1,
+			},
+			want: "file:/test.db?_txlock=exclusive",
+		},
+		{
+			name: "empty txlock omitted from URL",
+			config: &Config{
+				Path:              "/test.db",
+				TxLock:            "",
+				BusyTimeout:       1000,
+				WALAutocheckpoint: -1,
+				ForeignKeys:       true,
+			},
+			want: "file:/test.db?_pragma=busy_timeout=1000&_pragma=foreign_keys=ON",
+		},
 	}
 
 	for _, tt := range tests {
@@ -207,5 +309,12 @@ func TestConfigToURLInvalid(t *testing.T) {
 	_, err := config.ToURL()
 	if err == nil {
 		t.Error("Config.ToURL() with invalid config should return error")
+	}
+}
+
+func TestDefaultConfigHasTxLockImmediate(t *testing.T) {
+	config := Default("/test.db")
+	if config.TxLock != TxLockImmediate {
+		t.Errorf("Default().TxLock = %q, want %q", config.TxLock, TxLockImmediate)
 	}
 }

@@ -16,6 +16,7 @@ var (
 	ErrInvalidAutoVacuum   = errors.New("invalid auto_vacuum")
 	ErrWALAutocheckpoint   = errors.New("wal_autocheckpoint must be >= -1")
 	ErrInvalidSynchronous  = errors.New("invalid synchronous")
+	ErrInvalidTxLock       = errors.New("invalid txlock")
 )
 
 const (
@@ -225,6 +226,62 @@ func (s Synchronous) String() string {
 	return string(s)
 }
 
+// TxLock represents SQLite transaction lock mode.
+// Transaction lock mode determines when write locks are acquired during transactions.
+//
+// Lock Acquisition Behavior:
+//
+// DEFERRED - SQLite default, acquire lock lazily:
+//   - Transaction starts without any lock
+//   - First read acquires SHARED lock
+//   - First write attempts to upgrade to RESERVED lock
+//   - If another transaction holds RESERVED: SQLITE_BUSY (potential deadlock)
+//   - Can cause deadlocks when multiple connections attempt concurrent writes
+//
+// IMMEDIATE - Recommended for write-heavy workloads:
+//   - Transaction immediately acquires RESERVED lock at BEGIN
+//   - If lock unavailable, waits up to busy_timeout before failing
+//   - Other writers queue orderly instead of deadlocking
+//   - Prevents the upgrade-lock deadlock scenario
+//   - Slight overhead for read-only transactions that don't need locks
+//
+// EXCLUSIVE - Maximum isolation:
+//   - Transaction immediately acquires EXCLUSIVE lock at BEGIN
+//   - No other connections can read or write
+//   - Highest isolation but lowest concurrency
+//   - Rarely needed in practice
+type TxLock string
+
+const (
+	// TxLockDeferred acquires locks lazily (SQLite default).
+	// Risk of SQLITE_BUSY deadlocks with concurrent writers. Use for read-heavy workloads.
+	TxLockDeferred TxLock = "deferred"
+
+	// TxLockImmediate acquires write lock immediately (RECOMMENDED for production).
+	// Prevents deadlocks by acquiring RESERVED lock at transaction start.
+	// Writers queue orderly, respecting busy_timeout.
+	TxLockImmediate TxLock = "immediate"
+
+	// TxLockExclusive acquires exclusive lock immediately.
+	// Maximum isolation, no concurrent reads or writes. Rarely needed.
+	TxLockExclusive TxLock = "exclusive"
+)
+
+// IsValid returns true if the TxLock is valid.
+func (t TxLock) IsValid() bool {
+	switch t {
+	case TxLockDeferred, TxLockImmediate, TxLockExclusive, "":
+		return true
+	default:
+		return false
+	}
+}
+
+// String returns the string representation.
+func (t TxLock) String() string {
+	return string(t)
+}
+
 // Config holds SQLite database configuration with type-safe enums.
 // This configuration balances performance, durability, and operational requirements
 // for Headscale's SQLite database usage patterns.
@@ -236,6 +293,7 @@ type Config struct {
 	WALAutocheckpoint int         // pages (-1 = default/not set, 0 = disabled, >0 = enabled)
 	Synchronous       Synchronous // synchronous mode (affects durability vs performance)
 	ForeignKeys       bool        // enable foreign key constraints (data integrity)
+	TxLock            TxLock      // transaction lock mode (affects write concurrency)
 }
 
 // Default returns the production configuration optimized for Headscale's usage patterns.
@@ -244,6 +302,7 @@ type Config struct {
 //   - Data durability with good performance (NORMAL synchronous)
 //   - Automatic space management (INCREMENTAL auto-vacuum)
 //   - Data integrity (foreign key constraints enabled)
+//   - Safe concurrent writes (IMMEDIATE transaction lock)
 //   - Reasonable timeout for busy database scenarios (10s)
 func Default(path string) *Config {
 	return &Config{
@@ -254,6 +313,7 @@ func Default(path string) *Config {
 		WALAutocheckpoint: 1000,
 		Synchronous:       SynchronousNormal,
 		ForeignKeys:       true,
+		TxLock:            TxLockImmediate,
 	}
 }
 
@@ -290,6 +350,10 @@ func (c *Config) Validate() error {
 
 	if c.Synchronous != "" && !c.Synchronous.IsValid() {
 		return fmt.Errorf("%w: %s", ErrInvalidSynchronous, c.Synchronous)
+	}
+
+	if c.TxLock != "" && !c.TxLock.IsValid() {
+		return fmt.Errorf("%w: %s", ErrInvalidTxLock, c.TxLock)
 	}
 
 	return nil
@@ -332,12 +396,20 @@ func (c *Config) ToURL() (string, error) {
 		baseURL = "file:" + c.Path
 	}
 
-	// Add parameters without encoding = signs
-	if len(pragmas) > 0 {
-		var queryParts []string
-		for _, pragma := range pragmas {
-			queryParts = append(queryParts, "_pragma="+pragma)
-		}
+	// Build query parameters
+	queryParts := make([]string, 0, 1+len(pragmas))
+
+	// Add _txlock first (it's a connection parameter, not a pragma)
+	if c.TxLock != "" {
+		queryParts = append(queryParts, "_txlock="+string(c.TxLock))
+	}
+
+	// Add pragma parameters
+	for _, pragma := range pragmas {
+		queryParts = append(queryParts, "_pragma="+pragma)
+	}
+
+	if len(queryParts) > 0 {
 		baseURL += "?" + strings.Join(queryParts, "&")
 	}
 
