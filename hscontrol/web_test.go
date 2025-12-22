@@ -1,108 +1,96 @@
 package hscontrol
 
 import (
-	_ "io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/gorilla/mux"
+	"github.com/juanfont/headscale/hscontrol/types"
 )
 
-func createTestFiles(t *testing.T, root string, files map[string]string) {
-	t.Helper()
-	for path, content := range files {
-		fullPath := filepath.Join(root, path)
-		dir := filepath.Dir(fullPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			t.Fatalf("failed to create dir: %v", err)
-		}
-		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to write file: %v", err)
-		}
-	}
-}
+func TestRegisterWebApps(t *testing.T) {
+	tmpDir := t.TempDir()
 
-func TestFileHandler(t *testing.T) {
-	root := t.TempDir()
+	// index.hyml
+	// index.js
+	os.WriteFile(filepath.Join(tmpDir, "index.html"), []byte("root index"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "index.js"), []byte("root js"), 0644)
 
-	files := map[string]string{
-		"file.txt":       "hello file",
-		"dir/index.html": "<html>dir index</html>",
-		"index.html":     "<html>root index</html>",
-	}
+	// /dir1/index.html
+	// /dir1/1.js
+	dir1 := filepath.Join(tmpDir, "dir1")
+	os.MkdirAll(dir1, 0755)
+	os.WriteFile(filepath.Join(dir1, "index.html"), []byte("dir1 index"), 0644)
+	os.WriteFile(filepath.Join(dir1, "1.js"), []byte("dir1 js"), 0644)
 
-	createTestFiles(t, root, files)
+	// /dir2/2.js
+	dir2 := filepath.Join(tmpDir, "dir2")
+	os.MkdirAll(dir2, 0755)
+	os.WriteFile(filepath.Join(dir2, "2.js"), []byte("dir2 js"), 0644)
+
+	prefix := "/app" // simulate URLPath prefix
 
 	tests := []struct {
-		name       string
-		urlPath    string
-		uri        string
-		spa        bool
-		wantStatus int
-		wantBody   string
+		path     string
+		expected string
+		status   int
+		spa      bool
 	}{
-		{
-			name:       "existing file",
-			urlPath:    "/",
-			uri:        "/file.txt",
-			spa:        false,
-			wantStatus: 200,
-			wantBody:   "hello file",
-		},
-		{
-			name:       "directory with index.html",
-			urlPath:    "/",
-			uri:        "/dir/",
-			spa:        false,
-			wantStatus: 200,
-			wantBody:   "<html>dir index</html>",
-		},
-		{
-			name:       "nonexistent file with SPA",
-			urlPath:    "/",
-			uri:        "/notfound",
-			spa:        true,
-			wantStatus: 200,
-			wantBody:   "<html>root index</html>",
-		},
-		{
-			name:       "nonexistent file without SPA",
-			urlPath:    "/",
-			uri:        "/notfound",
-			spa:        false,
-			wantStatus: 404,
-			wantBody:   "",
-		},
-		{
-			name:       "non GET/HEAD method",
-			urlPath:    "/",
-			uri:        "/file.txt",
-			spa:        false,
-			wantStatus: 404,
-			wantBody:   "",
-		},
+		// SPA mode
+		{prefix + "/", "root index", http.StatusOK, true},
+		{prefix + "/index.js", "root js", http.StatusOK, true},
+		{prefix + "/dir1/", "dir1 index", http.StatusOK, true},
+		{prefix + "/dir1/1.js", "dir1 js", http.StatusOK, true},
+		{prefix + "/dir2/", "root index", http.StatusOK, true}, // fallback to root index.html
+		{prefix + "/dir2/2.js", "dir2 js", http.StatusOK, true},
+		{prefix + "/dir3/", "root index", http.StatusOK, true}, // non-existent directory fallback
+		{prefix + "/dir3/file", "root index", http.StatusOK, true},
+
+		// Non-SPA mode
+		{prefix + "/", "root index", http.StatusOK, false},
+		{prefix + "/index.js", "root js", http.StatusOK, false},
+		{prefix + "/dir1/", "dir1 index", http.StatusOK, false},
+		{prefix + "/dir1/1.js", "dir1 js", http.StatusOK, false},
+		{prefix + "/dir2/", "", http.StatusNotFound, false}, // no index.html
+		{prefix + "/dir2/2.js", "dir2 js", http.StatusOK, false},
+		{prefix + "/dir3/", "", http.StatusNotFound, false},
+		{prefix + "/dir3/file", "", http.StatusNotFound, false},
 	}
 
+	// Note: Accessing any "/*/index.html" file via FileServer or ServeFile
+	// will automatically trigger a 301 redirect to the directory path with trailing '/',
+	// e.g., "/dir1/index.html" -> "/dir1/".
+	// This is default behavior of Go's http.FileServer for directories.
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			handler := fileHandler(tt.urlPath, root, tt.spa)
-			method := http.MethodGet
-			if strings.Contains(tt.name, "non GET/HEAD") {
-				method = http.MethodPost
+		t.Run(tt.path, func(t *testing.T) {
+			router := mux.NewRouter()
+			cfg := types.WebConfig{
+				Enabled: true,
+				Apps: map[string]types.WebAppConfig{
+					"app": {
+						URLPath: prefix,
+						Root:    tmpDir,
+						SPA:     tt.spa,
+					},
+				},
 			}
-			req := httptest.NewRequest(method, tt.uri, nil)
+			RegisterWebApps(router, cfg)
+
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
 
-			handler.ServeHTTP(rr, req)
-
-			if rr.Code != tt.wantStatus {
-				t.Errorf("expected status %d, got %d", tt.wantStatus, rr.Code)
+			// Check HTTP status
+			if rr.Code != tt.status {
+				t.Fatalf("path %q: expected status %d, got %d head %s", tt.path, tt.status, rr.Code, rr.Header())
 			}
-
-			if tt.wantBody != "" && !strings.Contains(rr.Body.String(), tt.wantBody) {
-				t.Errorf("expected body %q, got %q", tt.wantBody, rr.Body.String())
+			// Check response content if expected
+			if tt.expected != "" && !strings.Contains(rr.Body.String(), tt.expected) {
+				t.Fatalf("path %q: expected body to contain %q, got %q", tt.path, tt.expected, rr.Body.String())
 			}
 		})
 	}
