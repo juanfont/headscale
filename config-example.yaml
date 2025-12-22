@@ -439,21 +439,23 @@ taildrop:
 web:
   # If disabled, no static files will be served at all.
   enabled: true
-  # Admin Web UI
-  # This UI is typically a Single Page Application (SPA),
-  admin:
-    # URL path prefix where the admin UI is exposed.
-    # Example: https://headscale.example.com/admin
-    url_path: /admin
-    # Filesystem path containing the static assets.
-    # Must include index.html.
-    root: /web/admin
-    # Enable SPA mode.
-    #
-    # When enabled:
-    # - Requests for non-existent files will fall back to index.html
-    # - This allows frontend routing to work correctly
-    #
-    # Disable this for traditional multi-page static sites.
-    spa: true
+  # Web apps map
+  apps:
+    # Admin Web UI
+    # This UI is typically a Single Page Application (SPA),
+    admin:
+      # URL path prefix where the admin UI is exposed.
+      # Example: https://headscale.example.com/admin
+      url_path: /admin
+      # Filesystem path containing the static assets.
+      # Must include index.html.
+      root: /web/admin
+      # Enable SPA mode.
+      #
+      # When enabled:
+      # - Requests for non-existent files will fall back to index.html
+      # - This allows frontend routing to work correctly
+      #
+      # Disable this for traditional multi-page static sites.
+      spa: true
 
