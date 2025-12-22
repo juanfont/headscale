@@ -101,6 +101,8 @@ type Config struct {
 	Policy PolicyConfig
 
 	Tuning Tuning
+
+	Web WebConfig
 }
 
 type DNSConfig struct {
@@ -400,6 +402,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("tuning.node_store_batch_timeout", "500ms")
 
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
+
+	viper.SetDefault("web.enabled", false)
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
@@ -1224,4 +1228,16 @@ func (d *deprecator) Log() {
 	} else if len(d.warns) > 0 {
 		log.Warn().Msg("\n" + d.String())
 	}
+}
+
+// WebConfig represents the web configuration.
+type WebConfig struct {
+	Enabled bool                    `yaml:"enabled"`
+	Apps    map[string]WebAppConfig `yaml:"apps"`
+}
+
+type WebAppConfig struct {
+	URLPath string `yaml:"url_path"`
+	Root    string `yaml:"root"`
+	SPA     bool   `yaml:"spa"`
 }
