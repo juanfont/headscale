@@ -1068,3 +1068,77 @@ func resolveTagOwners(p *Policy, users types.Users, nodes views.Slice[types.Node
 
 	return ret, nil
 }
+
+// AppConnectorConfigForNode returns the app connector configuration for a node
+// that is advertising itself as an app connector.
+// Returns nil if the node is not configured as an app connector or doesn't advertise as one.
+func (pm *PolicyManager) AppConnectorConfigForNode(node types.NodeView) []AppConnectorAttr {
+	if pm == nil || pm.pol == nil {
+		return nil
+	}
+
+	// Check if node advertises as an app connector
+	if !node.Hostinfo().Valid() {
+		return nil
+	}
+
+	appConnector, ok := node.Hostinfo().AppConnector().Get()
+	if !ok || !appConnector {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	return pm.appConnectorConfigForNodeLocked(node)
+}
+
+// appConnectorConfigForNodeLocked returns the app connector config for a node.
+// pm.mu must be held.
+func (pm *PolicyManager) appConnectorConfigForNodeLocked(node types.NodeView) []AppConnectorAttr {
+	if pm.pol == nil || len(pm.pol.AppConnectors) == 0 {
+		return nil
+	}
+
+	var configs []AppConnectorAttr
+
+	for _, ac := range pm.pol.AppConnectors {
+		if pm.nodeMatchesConnector(node, ac.Connectors) {
+			configs = append(configs, AppConnectorAttr(ac))
+		}
+	}
+
+	return configs
+}
+
+// nodeMatchesConnector checks if a node matches any of the connector specifications.
+func (pm *PolicyManager) nodeMatchesConnector(node types.NodeView, connectors []string) bool {
+	for _, connector := range connectors {
+		// Wildcard matches any advertising connector
+		if connector == "*" {
+			return true
+		}
+
+		// Check if it's a tag reference
+		if strings.HasPrefix(connector, "tag:") {
+			if node.HasTag(connector) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// AppConnectorAttr describes a set of domains serviced by specified app connectors.
+// This is similar to the Tailscale appctype.AppConnectorAttr structure.
+type AppConnectorAttr struct {
+	// Name is the name of this collection of domains.
+	Name string `json:"name,omitempty"`
+	// Connectors enumerates the app connectors which service these domains.
+	Connectors []string `json:"connectors,omitempty"`
+	// Domains enumerates the domains serviced by the specified app connectors.
+	Domains []string `json:"domains,omitempty"`
+	// Routes enumerates the predetermined routes to be advertised.
+	Routes []netip.Prefix `json:"routes,omitempty"`
+}
