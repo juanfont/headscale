@@ -42,6 +42,31 @@ sequentially through each stable release, selecting the latest patch version ava
 - **API**: The Node message in the gRPC/REST API has been simplified - the `ForcedTags`, `InvalidTags`, and `ValidTags` fields have been removed and replaced with a single `Tags` field that contains the node's applied tags [#2993](https://github.com/juanfont/headscale/pull/2993)
   - API clients should use the `Tags` field instead of `ValidTags`
   - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
+- **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations [#2992](https://github.com/juanfont/headscale/pull/2992)
+  - `headscale preauthkeys create` no longer requires `--user` flag (optional for tracking creation)
+  - `headscale preauthkeys list` lists all keys (no longer filtered by user)
+  - `headscale preauthkeys expire --id <ID>` replaces `--user <USER> <KEY>`
+  - `headscale preauthkeys delete --id <ID>` replaces `--user <USER> <KEY>`
+
+  **Before:**
+
+  ```bash
+  headscale preauthkeys create --user 1 --reusable --tags tag:server
+  headscale preauthkeys list --user 1
+  headscale preauthkeys expire --user 1 <KEY>
+  headscale preauthkeys delete --user 1 <KEY>
+  ```
+
+  **After:**
+
+  ```bash
+  headscale preauthkeys create --reusable --tags tag:server
+  headscale preauthkeys create --user 1 --reusable --tags tag:server  # optional user tracking
+  headscale preauthkeys list
+  headscale preauthkeys expire --id 123
+  headscale preauthkeys delete --id 123
+  ```
+
 - **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. [#2885](https://github.com/juanfont/headscale/pull/2885)
 - **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
   - `--advertise-tags` is processed during registration, not on every policy evaluation
