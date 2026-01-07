@@ -1162,18 +1162,16 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
 	})
 }
 
-// DeleteAuthKey deletes an "authorisation key" for a User.
+// DeleteAuthKey deletes an "authorisation key" by ID.
 func (t *HeadscaleInContainer) DeleteAuthKey(
-	user uint64,
-	key string,
+	id uint64,
 ) error {
 	command := []string{
 		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"delete",
-		key,
+		"--id",
+		strconv.FormatUint(id, 10),
 		"--output",
 		"json",
 	}

@@ -530,7 +530,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	// DELETE the pre-auth key using the API
 	t.Logf("Deleting pre-auth key ID %d using API", authKeyID)
 
-	err = headscale.DeleteAuthKey(userID, authKeyString)
+	err = headscale.DeleteAuthKey(authKeyID)
 	require.NoError(t, err)
 	t.Logf("Successfully deleted auth key")
 
