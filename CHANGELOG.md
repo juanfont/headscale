@@ -38,6 +38,9 @@ sequentially through each stable release, selecting the latest patch version ava
 
 ### BREAKING
 
+- **API**: The Node message in the gRPC/REST API has been simplified - the `ForcedTags`, `InvalidTags`, and `ValidTags` fields have been removed and replaced with a single `Tags` field that contains the node's applied tags [#2993](https://github.com/juanfont/headscale/pull/2993)
+  - API clients should use the `Tags` field instead of `ValidTags`
+  - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
 - **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node. [#2885](https://github.com/juanfont/headscale/pull/2885)
 - **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
   - `--advertise-tags` is processed during registration, not on every policy evaluation
