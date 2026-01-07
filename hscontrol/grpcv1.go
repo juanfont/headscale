@@ -161,13 +161,17 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
+	var userID *types.UserID
+	if request.GetUser() != 0 {
+		user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
+		if err != nil {
+			return nil, err
+		}
+		userID = user.TypedID()
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		user.TypedID(),
+		userID,
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
