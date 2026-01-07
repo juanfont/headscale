@@ -1036,18 +1036,18 @@ func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
 }
 
 // ListPreAuthKeys returns all pre-authentication keys for a user.
-func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error) {
-	return s.db.ListPreAuthKeys(userID)
+func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
+	return s.db.ListPreAuthKeys()
 }
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.
-func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
-	return s.db.ExpirePreAuthKey(preAuthKey)
+func (s *State) ExpirePreAuthKey(id uint64) error {
+	return s.db.ExpirePreAuthKey(id)
 }
 
 // DeletePreAuthKey permanently deletes a pre-authentication key.
-func (s *State) DeletePreAuthKey(preAuthKey *types.PreAuthKey) error {
-	return s.db.DeletePreAuthKey(preAuthKey)
+func (s *State) DeletePreAuthKey(id uint64) error {
+	return s.db.DeletePreAuthKey(id)
 }
 
 // GetRegistrationCacheEntry retrieves a node registration from cache.
