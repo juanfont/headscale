@@ -719,20 +719,8 @@ func (node Node) DebugString() string {
 	return sb.String()
 }
 
-// Owner returns the owner of this node for display in API responses and MapResponse.
-//
-// For tagged nodes, this returns the special TaggedDevices user (ID: 2147455555, Name: "tagged-devices")
-// because tags are the identity/owner of the node, not a specific user.
-//
-// For user-owned nodes, this returns the actual owner user.
-//
-// IMPORTANT: Use this method when:
-//   - Generating MapResponse for Tailscale clients
-//   - Creating API responses (gRPC, REST)
-//   - Displaying node ownership/user information to end users
-//
-// DO NOT use the raw User() method for display purposes, as it will expose
-// the internal user ID for tagged nodes instead of "tagged-devices".
+// Owner returns the owner for display purposes.
+// For tagged nodes, returns TaggedDevices. For user-owned nodes, returns the user.
 func (nv NodeView) Owner() UserView {
 	if nv.IsTagged() {
 		return TaggedDevices.View()
