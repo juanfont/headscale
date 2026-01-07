@@ -69,18 +69,19 @@ func newMapper(
 	}
 }
 
+// generateUserProfiles creates user profiles for MapResponse.
 func generateUserProfiles(
 	node types.NodeView,
 	peers views.Slice[types.NodeView],
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.UserView)
 	ids := make([]uint, 0, len(userMap))
-	user := node.User()
+	user := node.Owner()
 	userID := user.Model().ID
 	userMap[userID] = &user
 	ids = append(ids, userID)
 	for _, peer := range peers.All() {
-		peerUser := peer.User()
+		peerUser := peer.Owner()
 		peerUserID := peerUser.Model().ID
 		userMap[peerUserID] = &peerUser
 		ids = append(ids, peerUserID)
