@@ -2979,3 +2979,149 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		}, 60*time.Second, 1*time.Second, "verifying tags removed and ownership returned")
 	})
 }
+
+// =============================================================================
+// Test Suite 5: Auth Key WITHOUT User (Tags-Only Ownership)
+// =============================================================================
+
+// TestTagsAuthKeyWithoutUserInheritsTags tests that when an auth key without a user
+// (tags-only) is used without --advertise-tags, the node inherits the key's tags.
+//
+// Test 5.1: Auth key without user, no --advertise-tags flag
+// Setup: Run `tailscale up --auth-key AUTH_KEY_WITH_TAGS_NO_USER`
+// Expected: Node registers with the tags from the auth key.
+func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-authkey-no-user-inherit"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Create an auth key with tags but WITHOUT a user
+	authKey, err := scenario.CreatePreAuthKeyWithOptions(hsic.AuthKeyOptions{
+		User:      nil,
+		Reusable:  false,
+		Ephemeral: false,
+		Tags:      []string{"tag:valid-owned"},
+	})
+	require.NoError(t, err)
+	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.GetAclTags())
+
+	// Create a tailscale client WITHOUT --advertise-tags
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		// Note: NO WithExtraLoginArgs for --advertise-tags
+	)
+	require.NoError(t, err)
+
+	// Login with the tags-only auth key
+	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for node to be registered and verify it has the key's tags
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "Should have exactly 1 node")
+
+		if len(nodes) == 1 {
+			node := nodes[0]
+			t.Logf("Node registered with tags: %v", node.GetValidTags())
+			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
+		}
+	}, 30*time.Second, 500*time.Millisecond, "verifying node inherited tags from auth key")
+
+	t.Logf("Test 5.1 PASS: Node inherited tags from tags-only auth key")
+}
+
+// TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags tests that when an auth key without
+// a user (tags-only) is used WITH --advertise-tags, the advertised tags are ignored
+// and the auth key's tags are used instead.
+//
+// Test 5.2: Auth key without user, with --advertise-tags (should be ignored)
+// Setup: Run `tailscale up --advertise-tags="tag:second" --auth-key AUTH_KEY_WITH_TAGS_NO_USER`
+// Expected: Node registers with the auth key's tags (tag:valid-owned), NOT the advertised tags.
+func TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-authkey-no-user-ignore-advertise"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Create an auth key with tags but WITHOUT a user
+	authKey, err := scenario.CreatePreAuthKeyWithOptions(hsic.AuthKeyOptions{
+		User:      nil,
+		Reusable:  false,
+		Ephemeral: false,
+		Tags:      []string{"tag:valid-owned"},
+	})
+	require.NoError(t, err)
+	t.Logf("Created tags-only PreAuthKey with tags: %v", authKey.GetAclTags())
+
+	// Create a tailscale client WITH --advertise-tags for a DIFFERENT tag
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:second"}),
+	)
+	require.NoError(t, err)
+
+	// Login with the tags-only auth key
+	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for node to be registered and verify it has the auth KEY's tags, NOT the advertised tags
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1, "Should have exactly 1 node")
+
+		if len(nodes) == 1 {
+			node := nodes[0]
+			t.Logf("Node registered with tags: %v (advertised: tag:second)", node.GetValidTags())
+			// Should have auth key's tags, NOT the advertised tags
+			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
+		}
+	}, 30*time.Second, 500*time.Millisecond, "verifying node has auth key tags, not advertised tags")
+
+	t.Logf("Test 5.2 PASS: Advertised tags were correctly ignored, auth key tags used")
+}
