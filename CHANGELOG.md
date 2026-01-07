@@ -38,7 +38,7 @@ sequentially through each stable release, selecting the latest patch version ava
 
 ### BREAKING
 
-- **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations
+- **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations [#2992](https://github.com/juanfont/headscale/pull/2992)
   - `headscale preauthkeys create` no longer requires `--user` flag (optional for tracking creation)
   - `headscale preauthkeys list` lists all keys (no longer filtered by user)
   - `headscale preauthkeys expire --id <ID>` replaces `--user <USER> <KEY>`
