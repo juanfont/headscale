@@ -446,10 +446,9 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 					[]string{
 						"headscale",
 						"preauthkeys",
-						"--user",
-						strconv.FormatUint(userMap[userName].GetId(), 10),
 						"expire",
-						key.GetKey(),
+						"--id",
+						strconv.FormatUint(key.GetId(), 10),
 					})
 				require.NoError(t, err)
 				require.NoError(t, err)

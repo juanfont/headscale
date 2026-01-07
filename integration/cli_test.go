@@ -313,8 +313,6 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--user",
-				"1",
 				"list",
 				"--output",
 				"json",
@@ -371,15 +369,14 @@ func TestPreAuthKeyCommand(t *testing.T) {
 		)
 	}
 
-	// Test key expiry - use the full key from creation, not the masked one from listing
+	// Test key expiry
 	_, err = headscale.Execute(
 		[]string{
 			"headscale",
 			"preauthkeys",
-			"--user",
-			"1",
 			"expire",
-			keys[0].GetKey(),
+			"--id",
+			strconv.FormatUint(keys[0].GetId(), 10),
 		},
 	)
 	require.NoError(t, err)
@@ -391,8 +388,6 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--user",
-				"1",
 				"list",
 				"--output",
 				"json",
@@ -451,8 +446,6 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--user",
-				"1",
 				"list",
 				"--output",
 				"json",
@@ -460,7 +453,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list without expiry")
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
@@ -538,8 +531,6 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			[]string{
 				"headscale",
 				"preauthkeys",
-				"--user",
-				"1",
 				"list",
 				"--output",
 				"json",
