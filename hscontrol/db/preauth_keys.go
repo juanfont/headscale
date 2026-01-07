@@ -160,7 +160,7 @@ func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	})
 }
 
-// ListPreAuthKeys returns the list of PreAuthKeys for a user.
+// ListPreAuthKeys returns all PreAuthKeys in the database.
 func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 	var keys []types.PreAuthKey
 
