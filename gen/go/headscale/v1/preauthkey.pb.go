@@ -252,8 +252,7 @@ func (x *CreatePreAuthKeyResponse) GetPreAuthKey() *PreAuthKey {
 
 type ExpirePreAuthKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -288,18 +287,11 @@ func (*ExpirePreAuthKeyRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *ExpirePreAuthKeyRequest) GetUser() uint64 {
+func (x *ExpirePreAuthKeyRequest) GetId() uint64 {
 	if x != nil {
-		return x.User
+		return x.Id
 	}
 	return 0
-}
-
-func (x *ExpirePreAuthKeyRequest) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
 }
 
 type ExpirePreAuthKeyResponse struct {
@@ -340,8 +332,7 @@ func (*ExpirePreAuthKeyResponse) Descriptor() ([]byte, []int) {
 
 type DeletePreAuthKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
-	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -376,18 +367,11 @@ func (*DeletePreAuthKeyRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *DeletePreAuthKeyRequest) GetUser() uint64 {
+func (x *DeletePreAuthKeyRequest) GetId() uint64 {
 	if x != nil {
-		return x.User
+		return x.Id
 	}
 	return 0
-}
-
-func (x *DeletePreAuthKeyRequest) GetKey() string {
-	if x != nil {
-		return x.Key
-	}
-	return ""
 }
 
 type DeletePreAuthKeyResponse struct {
@@ -428,7 +412,6 @@ func (*DeletePreAuthKeyResponse) Descriptor() ([]byte, []int) {
 
 type ListPreAuthKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	User          uint64                 `protobuf:"varint,1,opt,name=user,proto3" json:"user,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -461,13 +444,6 @@ func (x *ListPreAuthKeysRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use ListPreAuthKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListPreAuthKeysRequest) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_preauthkey_proto_rawDescGZIP(), []int{7}
-}
-
-func (x *ListPreAuthKeysRequest) GetUser() uint64 {
-	if x != nil {
-		return x.User
-	}
-	return 0
 }
 
 type ListPreAuthKeysResponse struct {
@@ -543,17 +519,14 @@ const file_headscale_v1_preauthkey_proto_rawDesc = "" +
 	"\bacl_tags\x18\x05 \x03(\tR\aaclTags\"V\n" +
 	"\x18CreatePreAuthKeyResponse\x12:\n" +
 	"\fpre_auth_key\x18\x01 \x01(\v2\x18.headscale.v1.PreAuthKeyR\n" +
-	"preAuthKey\"?\n" +
-	"\x17ExpirePreAuthKeyRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x1a\n" +
-	"\x18ExpirePreAuthKeyResponse\"?\n" +
-	"\x17DeletePreAuthKeyRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\x04R\x04user\x12\x10\n" +
-	"\x03key\x18\x02 \x01(\tR\x03key\"\x1a\n" +
-	"\x18DeletePreAuthKeyResponse\",\n" +
-	"\x16ListPreAuthKeysRequest\x12\x12\n" +
-	"\x04user\x18\x01 \x01(\x04R\x04user\"W\n" +
+	"preAuthKey\")\n" +
+	"\x17ExpirePreAuthKeyRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\x1a\n" +
+	"\x18ExpirePreAuthKeyResponse\")\n" +
+	"\x17DeletePreAuthKeyRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\"\x1a\n" +
+	"\x18DeletePreAuthKeyResponse\"\x18\n" +
+	"\x16ListPreAuthKeysRequest\"W\n" +
 	"\x17ListPreAuthKeysResponse\x12<\n" +
 	"\rpre_auth_keys\x18\x01 \x03(\v2\x18.headscale.v1.PreAuthKeyR\vpreAuthKeysB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
