@@ -27,7 +27,7 @@ type ControlServer interface {
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*v1.PreAuthKey, error)
 	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*v1.PreAuthKey, error)
-	DeleteAuthKey(user uint64, key string) error
+	DeleteAuthKey(id uint64) error
 	ListNodes(users ...string) ([]*v1.Node, error)
 	DeleteNode(nodeID uint64) error
 	NodesByUser() (map[string][]*v1.Node, error)
