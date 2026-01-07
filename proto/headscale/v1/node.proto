@@ -35,7 +35,7 @@ message Node {
 
   RegisterMethod register_method = 13;
 
-  reserved 14 to 17;
+  reserved 14 to 20;
   // google.protobuf.Timestamp updated_at = 14;
   // google.protobuf.Timestamp deleted_at = 15;
 
@@ -43,14 +43,16 @@ message Node {
   // bytes endpoints      = 16;
   // bytes enabled_routes = 17;
 
-  repeated string forced_tags = 18;
-  repeated string invalid_tags = 19;
-  repeated string valid_tags = 20;
+  // Deprecated
+  // repeated string forced_tags = 18;
+  // repeated string invalid_tags = 19;
+  // repeated string valid_tags = 20;
   string given_name = 21;
   bool online = 22;
   repeated string approved_routes = 23;
   repeated string available_routes = 24;
   repeated string subnet_routes = 25;
+  repeated string tags = 26;
 }
 
 message RegisterNodeRequest {
@@ -58,27 +60,39 @@ message RegisterNodeRequest {
   string key = 2;
 }
 
-message RegisterNodeResponse { Node node = 1; }
+message RegisterNodeResponse {
+  Node node = 1;
+}
 
-message GetNodeRequest { uint64 node_id = 1; }
+message GetNodeRequest {
+  uint64 node_id = 1;
+}
 
-message GetNodeResponse { Node node = 1; }
+message GetNodeResponse {
+  Node node = 1;
+}
 
 message SetTagsRequest {
   uint64 node_id = 1;
   repeated string tags = 2;
 }
 
-message SetTagsResponse { Node node = 1; }
+message SetTagsResponse {
+  Node node = 1;
+}
 
 message SetApprovedRoutesRequest {
   uint64 node_id = 1;
   repeated string routes = 2;
 }
 
-message SetApprovedRoutesResponse { Node node = 1; }
+message SetApprovedRoutesResponse {
+  Node node = 1;
+}
 
-message DeleteNodeRequest { uint64 node_id = 1; }
+message DeleteNodeRequest {
+  uint64 node_id = 1;
+}
 
 message DeleteNodeResponse {}
 
@@ -87,18 +101,26 @@ message ExpireNodeRequest {
   google.protobuf.Timestamp expiry = 2;
 }
 
-message ExpireNodeResponse { Node node = 1; }
+message ExpireNodeResponse {
+  Node node = 1;
+}
 
 message RenameNodeRequest {
   uint64 node_id = 1;
   string new_name = 2;
 }
 
-message RenameNodeResponse { Node node = 1; }
+message RenameNodeResponse {
+  Node node = 1;
+}
 
-message ListNodesRequest { string user = 1; }
+message ListNodesRequest {
+  string user = 1;
+}
 
-message ListNodesResponse { repeated Node nodes = 1; }
+message ListNodesResponse {
+  repeated Node nodes = 1;
+}
 
 message DebugCreateNodeRequest {
   string user = 1;
@@ -107,8 +129,14 @@ message DebugCreateNodeRequest {
   repeated string routes = 4;
 }
 
-message DebugCreateNodeResponse { Node node = 1; }
+message DebugCreateNodeResponse {
+  Node node = 1;
+}
 
-message BackfillNodeIPsRequest { bool confirmed = 1; }
+message BackfillNodeIPsRequest {
+  bool confirmed = 1;
+}
 
-message BackfillNodeIPsResponse { repeated string changes = 1; }
+message BackfillNodeIPsResponse {
+  repeated string changes = 1;
+}
