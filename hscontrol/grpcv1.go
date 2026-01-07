@@ -339,11 +339,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format
@@ -550,8 +550,6 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 		if node.IsTagged() {
 			resp.User = types.TaggedDevices.Proto()
 		}
-
-		resp.ValidTags = node.Tags().AsSlice()
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp

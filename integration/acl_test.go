@@ -2814,7 +2814,7 @@ func TestACLTagPropagation(t *testing.T) {
 				assert.NotNil(c, node, "Node should still exist")
 
 				if node != nil {
-					assert.ElementsMatch(c, tt.tagChange, node.GetValidTags(), "Tags should be updated")
+					assert.ElementsMatch(c, tt.tagChange, node.GetTags(), "Tags should be updated")
 				}
 			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
 
