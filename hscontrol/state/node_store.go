@@ -509,15 +509,27 @@ func (s *NodeStore) DebugString() string {
 	sb.WriteString(fmt.Sprintf("Users with Nodes: %d\n", len(snapshot.nodesByUser)))
 	sb.WriteString("\n")
 
-	// User distribution
-	sb.WriteString("Nodes by User:\n")
+	// User distribution (shows internal UserID tracking, not display owner)
+	sb.WriteString("Nodes by Internal User ID:\n")
 	for userID, nodes := range snapshot.nodesByUser {
 		if len(nodes) > 0 {
 			userName := "unknown"
+			taggedCount := 0
 			if len(nodes) > 0 && nodes[0].Valid() {
 				userName = nodes[0].User().Name()
+				// Count tagged nodes (which have UserID set but are owned by "tagged-devices")
+				for _, n := range nodes {
+					if n.IsTagged() {
+						taggedCount++
+					}
+				}
 			}
-			sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
+
+			if taggedCount > 0 {
+				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes (%d tagged)\n", userID, userName, len(nodes), taggedCount))
+			} else {
+				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
+			}
 		}
 	}
 	sb.WriteString("\n")
