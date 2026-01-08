@@ -229,7 +229,7 @@
         apps.default = apps.headscale;
 
         checks = {
-          headscale = pkgs.nixosTest (import ./nix/tests/headscale.nix);
+          headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
         };
       });
 }
