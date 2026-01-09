@@ -1336,6 +1336,31 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 	return userMap, nil
 }
 
+// DeleteUser deletes a user from the Headscale instance.
+func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
+	command := []string{
+		"headscale",
+		"users",
+		"delete",
+		"--identifier",
+		strconv.FormatUint(userID, 10),
+		"--force",
+		"--output",
+		"json",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete user command: %w", err)
+	}
+
+	return nil
+}
+
 func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
 	err := h.writePolicy(pol)
 	if err != nil {

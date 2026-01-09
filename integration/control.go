@@ -32,6 +32,7 @@ type ControlServer interface {
 	NodesByName() (map[string]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
 	MapUsers() (map[string]*v1.User, error)
+	DeleteUser(userID uint64) error
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte
