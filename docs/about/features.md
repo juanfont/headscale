@@ -14,6 +14,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] [search domains](https://tailscale.com/kb/1054/dns#search-domains)
     - [x] [Extra DNS records (Headscale only)](../ref/dns.md#setting-extra-dns-records)
 - [x] [Taildrop (File Sharing)](https://tailscale.com/kb/1106/taildrop)
+- [x] [Tags](https://tailscale.com/kb/1068/tags)
 - [x] [Routes](../ref/routes.md)
     - [x] [Subnet routers](../ref/routes.md#subnet-router)
     - [x] [Exit nodes](../ref/routes.md#exit-node)

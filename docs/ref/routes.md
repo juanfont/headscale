@@ -42,8 +42,9 @@ can be used.
 
 ```console
 $ headscale nodes list-routes
-ID | Hostname | Approved | Available                  | Serving (Primary)
-1  | myrouter |          | 10.0.0.0/8, 192.168.0.0/24 |
+ID | Hostname | Approved | Available      | Serving (Primary)
+1  | myrouter |          | 10.0.0.0/8     |
+   |          |          | 192.168.0.0/24 |
 ```
 
 Approve all desired routes of a subnet router by specifying them as comma separated list:
@@ -57,8 +58,9 @@ The node `myrouter` can now route the IPv4 networks `10.0.0.0/8` and `192.168.0.
 
 ```console
 $ headscale nodes list-routes
-ID | Hostname | Approved                   | Available                  | Serving (Primary)
-1  | myrouter | 10.0.0.0/8, 192.168.0.0/24 | 10.0.0.0/8, 192.168.0.0/24 | 10.0.0.0/8, 192.168.0.0/24
+ID | Hostname | Approved       | Available      | Serving (Primary)
+1  | myrouter | 10.0.0.0/8     | 10.0.0.0/8     | 10.0.0.0/8
+   |          | 192.168.0.0/24 | 192.168.0.0/24 | 192.168.0.0/24
 ```
 
 #### Use the subnet router
@@ -109,9 +111,9 @@ approval of routes served with a subnet router.
 
 The ACL snippet below defines the tag `tag:router` owned by the user `alice`. This tag is used for `routes` in the
 `autoApprovers` section. The IPv4 route `192.168.0.0/24` is automatically approved once announced by a subnet router
-owned by the user `alice` and that also advertises the tag `tag:router`.
+that advertises the tag `tag:router`.
 
-```json title="Subnet routers owned by alice and tagged with tag:router are automatically approved"
+```json title="Subnet routers tagged with tag:router are automatically approved"
 {
   "tagOwners": {
     "tag:router": ["alice@"]
@@ -168,8 +170,9 @@ available, but needs to be approved:
 
 ```console
 $ headscale nodes list-routes
-ID | Hostname | Approved | Available       | Serving (Primary)
-1  | myexit   |          | 0.0.0.0/0, ::/0 |
+ID | Hostname | Approved | Available | Serving (Primary)
+1  | myexit   |          | 0.0.0.0/0 |
+   |          |          | ::/0      |
 ```
 
 For exit nodes, it is sufficient to approve either the IPv4 or IPv6 route. The other will be approved automatically.
@@ -183,8 +186,9 @@ The node `myexit` is now approved as exit node for the tailnet:
 
 ```console
 $ headscale nodes list-routes
-ID | Hostname | Approved        | Available       | Serving (Primary)
-1  | myexit   | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0 | 0.0.0.0/0, ::/0
+ID | Hostname | Approved  | Available | Serving (Primary)
+1  | myexit   | 0.0.0.0/0 | 0.0.0.0/0 | 0.0.0.0/0
+   |          | ::/0      | ::/0      | ::/0
 ```
 
 #### Use the exit node
@@ -256,10 +260,9 @@ in a tailnet. Headscale supports the `autoApprovers` section of an ACL to automa
 soon as it joins the tailnet.
 
 The ACL snippet below defines the tag `tag:exit` owned by the user `alice`. This tag is used for `exitNode` in the
-`autoApprovers` section. A new exit node which is owned by the user `alice` and that also advertises the tag `tag:exit`
-is automatically approved:
+`autoApprovers` section. A new exit node that advertises the tag `tag:exit` is automatically approved:
 
-```json title="Exit nodes owned by alice and tagged with tag:exit are automatically approved"
+```json title="Exit nodes tagged with tag:exit are automatically approved"
 {
   "tagOwners": {
     "tag:exit": ["alice@"]
