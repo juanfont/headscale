@@ -247,9 +247,14 @@ func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
 
 	// We run the test suite in a docker container that calls a couple of endpoints for
 	// readiness checks, this ensures that we can run the tests with individual networks
-	// and have the client reach the different containers
-	// TODO(kradalby): Can the test-suite be renamed so we can have multiple?
-	err = dockertestutil.AddContainerToNetwork(s.pool, network, "headscale-test-suite")
+	// and have the client reach the different containers.
+	// The container name includes the run ID to support multiple concurrent test runs.
+	testSuiteName := "headscale-test-suite"
+	if runID := dockertestutil.GetIntegrationRunID(); runID != "" {
+		testSuiteName = "headscale-test-suite-" + runID
+	}
+
+	err = dockertestutil.AddContainerToNetwork(s.pool, network, testSuiteName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to add test suite container to network: %w", err)
 	}

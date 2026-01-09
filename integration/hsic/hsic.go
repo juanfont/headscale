@@ -74,6 +74,7 @@ type HeadscaleInContainer struct {
 	// optional config
 	port             int
 	extraPorts       []string
+	hostMetricsPort  string // Dynamically assigned host port for metrics/pprof access
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
@@ -330,7 +331,18 @@ func New(
 		return nil, err
 	}
 
-	hostname := "hs-" + hash
+	// Include run ID in hostname for easier identification of which test run owns this container
+	runID := dockertestutil.GetIntegrationRunID()
+
+	var hostname string
+
+	if runID != "" {
+		// Use last 6 chars of run ID (the random hash part) for brevity
+		runIDShort := runID[len(runID)-6:]
+		hostname = fmt.Sprintf("hs-%s-%s", runIDShort, hash)
+	} else {
+		hostname = "hs-" + hash
+	}
 
 	hsic := &HeadscaleInContainer{
 		hostname: hostname,
@@ -438,13 +450,13 @@ func New(
 		Env:        env,
 	}
 
-	// Bind metrics port to predictable host port
+	// Bind metrics port to dynamic host port (kernel assigns free port)
 	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 	}
 
 	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
-		{HostPort: "49090"},
+		{HostPort: "0"}, // Let kernel assign a free port
 	}
 
 	if len(hsic.hostPortBindings) > 0 {
@@ -540,9 +552,14 @@ func New(
 
 	hsic.container = container
 
+	// Get the dynamically assigned host port for metrics/pprof
+	hsic.hostMetricsPort = container.GetHostPort("9090/tcp")
+
 	log.Printf(
-		"Ports for %s: metrics/pprof=49090\n",
+		"Headscale %s metrics available at http://localhost:%s/metrics (debug at http://localhost:%s/debug/)\n",
 		hsic.hostname,
+		hsic.hostMetricsPort,
+		hsic.hostMetricsPort,
 	)
 
 	// Write the CA certificates to the container
@@ -930,6 +947,13 @@ func (t *HeadscaleInContainer) Execute(
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return strconv.Itoa(t.port)
+}
+
+// GetHostMetricsPort returns the dynamically assigned host port for metrics/pprof access.
+// This port can be used by operators to access metrics at http://localhost:{port}/metrics
+// and debug endpoints at http://localhost:{port}/debug/ while tests are running.
+func (t *HeadscaleInContainer) GetHostMetricsPort() string {
+	return t.hostMetricsPort
 }
 
 // GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer

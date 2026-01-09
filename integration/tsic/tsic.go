@@ -307,7 +307,18 @@ func New(
 		return nil, err
 	}
 
-	hostname := fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
+	// Include run ID in hostname for easier identification of which test run owns this container
+	runID := dockertestutil.GetIntegrationRunID()
+
+	var hostname string
+
+	if runID != "" {
+		// Use last 6 chars of run ID (the random hash part) for brevity
+		runIDShort := runID[len(runID)-6:]
+		hostname = fmt.Sprintf("ts-%s-%s-%s", runIDShort, strings.ReplaceAll(version, ".", "-"), hash)
+	} else {
+		hostname = fmt.Sprintf("ts-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
+	}
 
 	tsic := &TailscaleInContainer{
 		version:  version,
