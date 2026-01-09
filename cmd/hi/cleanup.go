@@ -18,9 +18,11 @@ import (
 )
 
 // cleanupBeforeTest performs cleanup operations before running tests.
+// Only removes stale (stopped/exited) test containers to avoid interfering with concurrent test runs.
 func cleanupBeforeTest(ctx context.Context) error {
-	if err := killTestContainers(ctx); err != nil {
-		return fmt.Errorf("failed to kill test containers: %w", err)
+	err := cleanupStaleTestContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to clean stale test containers: %w", err)
 	}
 
 	if err := pruneDockerNetworks(ctx); err != nil {
@@ -30,11 +32,25 @@ func cleanupBeforeTest(ctx context.Context) error {
 	return nil
 }
 
-// cleanupAfterTest removes the test container after completion.
-func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID string) error {
-	return cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
+// cleanupAfterTest removes the test container and all associated integration test containers for the run.
+func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID, runID string) error {
+	// Remove the main test container
+	err := cli.ContainerRemove(ctx, containerID, container.RemoveOptions{
 		Force: true,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to remove test container: %w", err)
+	}
+
+	// Clean up integration test containers for this run only
+	if runID != "" {
+		err := killTestContainersByRunID(ctx, runID)
+		if err != nil {
+			return fmt.Errorf("failed to clean up containers for run %s: %w", runID, err)
+		}
+	}
+
+	return nil
 }
 
 // killTestContainers terminates and removes all test containers.
@@ -82,6 +98,100 @@ func killTestContainers(ctx context.Context) error {
 		fmt.Printf("Removed %d test containers\n", removed)
 	} else {
 		fmt.Println("No test containers found to remove")
+	}
+
+	return nil
+}
+
+// killTestContainersByRunID terminates and removes all test containers for a specific run ID.
+// This function filters containers by the hi.run-id label to only affect containers
+// belonging to the specified test run, leaving other concurrent test runs untouched.
+func killTestContainersByRunID(ctx context.Context, runID string) error {
+	cli, err := createDockerClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// Filter containers by hi.run-id label
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "hi.run-id="+runID),
+		),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list containers for run %s: %w", runID, err)
+	}
+
+	removed := 0
+
+	for _, cont := range containers {
+		// Kill the container if it's running
+		if cont.State == "running" {
+			_ = cli.ContainerKill(ctx, cont.ID, "KILL")
+		}
+
+		// Remove the container with retry logic
+		if removeContainerWithRetry(ctx, cli, cont.ID) {
+			removed++
+		}
+	}
+
+	if removed > 0 {
+		fmt.Printf("Removed %d containers for run ID %s\n", removed, runID)
+	}
+
+	return nil
+}
+
+// cleanupStaleTestContainers removes stopped/exited test containers without affecting running tests.
+// This is useful for cleaning up leftover containers from previous crashed or interrupted test runs
+// without interfering with currently running concurrent tests.
+func cleanupStaleTestContainers(ctx context.Context) error {
+	cli, err := createDockerClient()
+	if err != nil {
+		return fmt.Errorf("failed to create Docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// Only get stopped/exited containers
+	containers, err := cli.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("status", "exited"),
+			filters.Arg("status", "dead"),
+		),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to list stopped containers: %w", err)
+	}
+
+	removed := 0
+
+	for _, cont := range containers {
+		// Only remove containers that look like test containers
+		shouldRemove := false
+
+		for _, name := range cont.Names {
+			if strings.Contains(name, "headscale-test-suite") ||
+				strings.Contains(name, "hs-") ||
+				strings.Contains(name, "ts-") ||
+				strings.Contains(name, "derp-") {
+				shouldRemove = true
+				break
+			}
+		}
+
+		if shouldRemove {
+			if removeContainerWithRetry(ctx, cli, cont.ID) {
+				removed++
+			}
+		}
+	}
+
+	if removed > 0 {
+		fmt.Printf("Removed %d stale test containers\n", removed)
 	}
 
 	return nil
