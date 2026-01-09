@@ -2491,6 +2491,157 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
 }
 
+// TestTagsIssue2978ReproTagReplacement specifically tests issue #2978:
+// When tags are changed on the server, the node's self view should update.
+// This test performs multiple tag replacements and checks for immediate propagation.
+//
+// Issue scenario:
+// 1. Node has tag:foo
+// 2. Admin changes to tag:bar
+// 3. Node's self view should show tag:bar (not tag:foo).
+func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-issue-2978"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	userID := userMap[tagTestUser].GetId()
+
+	// Create a tagged PreAuthKey with tag:valid-owned (this is "tag:foo" in issue terms)
+	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
+	require.NoError(t, err)
+
+	// Create and register a tailscale client
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	require.NoError(t, err)
+
+	// Wait for initial registration with tag:valid-owned
+	var nodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			nodeID = nodes[0].GetId()
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+
+	// Verify client initially sees tag:valid-owned
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
+	}, 30*time.Second, 500*time.Millisecond, "client should see initial tag")
+
+	t.Logf("Step 1: Node %d registered with tag:valid-owned, client sees it", nodeID)
+
+	// Step 2: Admin changes tag to tag:second (this is "tag:bar" in issue terms)
+	err = headscale.SetNodeTags(nodeID, []string{"tag:second"})
+	require.NoError(t, err)
+
+	// Verify server-side update
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
+		}
+	}, 10*time.Second, 500*time.Millisecond, "server should show tag:second")
+
+	t.Log("Step 2: Admin changed tag to tag:second, server shows it")
+
+	// CRITICAL CHECK FOR ISSUE #2978:
+	// Check client's self view - does it update WITHOUT waiting long?
+	// First, do an immediate check (no retry) to see timing
+	status, err := client.Status()
+	if err == nil && status != nil && status.Self != nil {
+		var selfTags []string
+
+		if status.Self.Tags != nil {
+			for _, tag := range status.Self.Tags.All() {
+				selfTags = append(selfTags, tag)
+			}
+		}
+
+		t.Logf("Immediate check after SetNodeTags - client self tags: %v", selfTags)
+	}
+
+	// Now verify with EventuallyWithT that the client eventually sees tag:second
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
+	}, 30*time.Second, 500*time.Millisecond, "client self should update to tag:second (issue #2978)")
+
+	t.Log("Step 2 verified: Client self view updated to tag:second")
+
+	// Step 3: Do another replacement - tag:second -> tag:valid-unowned
+	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-unowned"})
+	require.NoError(t, err)
+
+	// Verify server-side update
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-unowned"})
+		}
+	}, 10*time.Second, 500*time.Millisecond, "server should show tag:valid-unowned")
+
+	t.Log("Step 3: Admin changed tag to tag:valid-unowned, server shows it")
+
+	// Immediate check
+	status, err = client.Status()
+	if err == nil && status != nil && status.Self != nil {
+		var selfTags []string
+
+		if status.Self.Tags != nil {
+			for _, tag := range status.Self.Tags.All() {
+				selfTags = append(selfTags, tag)
+			}
+		}
+
+		t.Logf("Immediate check after 2nd SetNodeTags - client self tags: %v", selfTags)
+	}
+
+	// Verify client sees the second replacement
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
+	}, 30*time.Second, 500*time.Millisecond, "client self should update to tag:valid-unowned")
+
+	t.Log("Test PASS: Issue #2978 - All tag replacements propagated to client self view")
+}
+
 // TestTagsAdminAPICannotSetInvalidFormat tests that the admin API rejects
 // tags that don't have the correct format (must start with "tag:").
 //
