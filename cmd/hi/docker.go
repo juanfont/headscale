@@ -26,92 +26,7 @@ var (
 	ErrTestFailed              = errors.New("test failed")
 	ErrUnexpectedContainerWait = errors.New("unexpected end of container wait")
 	ErrNoDockerContext         = errors.New("no docker context found")
-	ErrAnotherRunInProgress    = errors.New("another integration test run is already in progress")
 )
-
-// RunningTestInfo contains information about a currently running integration test.
-type RunningTestInfo struct {
-	RunID         string
-	ContainerID   string
-	ContainerName string
-	StartTime     time.Time
-	Duration      time.Duration
-	TestPattern   string
-}
-
-// ErrNoRunningTests indicates that no integration test is currently running.
-var ErrNoRunningTests = errors.New("no running tests found")
-
-// checkForRunningTests checks if there's already an integration test running.
-// Returns ErrNoRunningTests if no test is running, or RunningTestInfo with details about the running test.
-func checkForRunningTests(ctx context.Context) (*RunningTestInfo, error) {
-	cli, err := createDockerClient()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
-	}
-	defer cli.Close()
-
-	// List all running containers
-	containers, err := cli.ContainerList(ctx, container.ListOptions{
-		All: false, // Only running containers
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
-	}
-
-	// Look for containers with hi.test-type=test-runner label
-	for _, cont := range containers {
-		if cont.Labels != nil && cont.Labels["hi.test-type"] == "test-runner" {
-			// Found a running test runner container
-			runID := cont.Labels["hi.run-id"]
-
-			containerName := ""
-			for _, name := range cont.Names {
-				containerName = strings.TrimPrefix(name, "/")
-
-				break
-			}
-
-			// Get more details via inspection
-			inspect, err := cli.ContainerInspect(ctx, cont.ID)
-			if err != nil {
-				// Return basic info if inspection fails
-				return &RunningTestInfo{
-					RunID:         runID,
-					ContainerID:   cont.ID,
-					ContainerName: containerName,
-				}, nil
-			}
-
-			startTime, _ := time.Parse(time.RFC3339Nano, inspect.State.StartedAt)
-			duration := time.Since(startTime)
-
-			// Try to extract test pattern from command
-			testPattern := ""
-
-			if len(inspect.Config.Cmd) > 0 {
-				for i, arg := range inspect.Config.Cmd {
-					if arg == "-run" && i+1 < len(inspect.Config.Cmd) {
-						testPattern = inspect.Config.Cmd[i+1]
-
-						break
-					}
-				}
-			}
-
-			return &RunningTestInfo{
-				RunID:         runID,
-				ContainerID:   cont.ID,
-				ContainerName: containerName,
-				StartTime:     startTime,
-				Duration:      duration,
-				TestPattern:   testPattern,
-			}, nil
-		}
-	}
-
-	return nil, ErrNoRunningTests
-}
 
 // runTestContainer executes integration tests in a Docker container.
 func runTestContainer(ctx context.Context, config *RunConfig) error {
@@ -174,6 +89,9 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	log.Printf("Starting test: %s", config.TestPattern)
+	log.Printf("Run ID: %s", runID)
+	log.Printf("Monitor with: docker logs -f %s", containerName)
+	log.Printf("Logs directory: %s", logsDir)
 
 	// Start stats collection for container resource monitoring (if enabled)
 	var statsCollector *StatsCollector
@@ -234,9 +152,12 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	shouldCleanup := config.CleanAfter && (!config.KeepOnFailure || exitCode == 0)
 	if shouldCleanup {
 		if config.Verbose {
-			log.Printf("Running post-test cleanup...")
+			log.Printf("Running post-test cleanup for run %s...", runID)
 		}
-		if cleanErr := cleanupAfterTest(ctx, cli, resp.ID); cleanErr != nil && config.Verbose {
+
+		cleanErr := cleanupAfterTest(ctx, cli, resp.ID, runID)
+
+		if cleanErr != nil && config.Verbose {
 			log.Printf("Warning: post-test cleanup failed: %v", cleanErr)
 		}
 
