@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"encoding/json"
 	"errors"
 	"net/netip"
 	"sort"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
@@ -86,9 +88,56 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 		return b
 	}
 
+	// Add app connector capabilities if this node is advertising as an app connector
+	b.addAppConnectorCapabilities(nv, tailnode)
+
 	b.resp.Node = tailnode
 
 	return b
+}
+
+// addAppConnectorCapabilities adds app connector capabilities to a node's CapMap
+// if the node is advertising as an app connector and has matching policy configuration.
+func (b *MapResponseBuilder) addAppConnectorCapabilities(nv types.NodeView, tailnode *tailcfg.Node) {
+	configs := b.mapper.state.AppConnectorConfigForNode(nv)
+	if len(configs) == 0 {
+		return
+	}
+
+	// Initialize CapMap if nil
+	if tailnode.CapMap == nil {
+		tailnode.CapMap = make(tailcfg.NodeCapMap)
+	}
+
+	// Build the app connector attributes for the capability
+	attrs := make([]tailcfg.RawMessage, 0, len(configs))
+
+	for _, cfg := range configs {
+		// Convert the config to JSON for the capability
+		attrJSON, err := json.Marshal(cfg)
+		if err != nil {
+			log.Warn().
+				Err(err).
+				Uint64("node.id", uint64(nv.ID())).
+				Str("app_connector.name", cfg.Name).
+				Msg("Failed to marshal app connector config")
+
+			continue
+		}
+
+		attrs = append(attrs, tailcfg.RawMessage(attrJSON))
+	}
+
+	if len(attrs) > 0 {
+		// The capability key is "tailscale.com/app-connectors" as per Tailscale protocol
+		tailnode.CapMap[tailcfg.NodeCapability("tailscale.com/app-connectors")] = attrs
+
+		log.Debug().
+			Uint64("node.id", uint64(nv.ID())).
+			Str("node.name", nv.Hostname()).
+			Int("app_connectors.count", len(attrs)).
+			Msg("Added app connector capabilities to node")
+	}
 }
 
 func (b *MapResponseBuilder) WithDebugType(t debugType) *MapResponseBuilder {
