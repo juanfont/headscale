@@ -1142,6 +1142,9 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 				nodeToRegister.User = params.PreAuthKey.User
 			}
 			// If PreAuthKey.UserID is nil, the node is "orphaned" (system-created)
+
+			// Tagged nodes have key expiry disabled.
+			nodeToRegister.Expiry = nil
 		} else {
 			// USER-OWNED NODE
 			nodeToRegister.UserID = &params.PreAuthKey.User.ID
@@ -1185,6 +1188,10 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			nodeToRegister.Tags = approvedTags
 			slices.Sort(nodeToRegister.Tags)
 			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+
+			// Tagged nodes have key expiry disabled.
+			nodeToRegister.Expiry = nil
+
 			log.Info().
 				Str("node.name", nodeToRegister.Hostname).
 				Strs("tags", nodeToRegister.Tags).
@@ -1542,9 +1549,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 			node.IsOnline = ptr.To(false)
 			node.LastSeen = ptr.To(time.Now())
 
-			// Update expiry, if it is zero, it means that the node will
-			// not have an expiry anymore. If it is non-zero, we set that.
-			node.Expiry = &regReq.Expiry
+			// Tagged nodes keep their existing expiry (disabled).
+			// User-owned nodes update expiry from the client request.
+			if !node.IsTagged() {
+				node.Expiry = &regReq.Expiry
+			}
 		})
 
 		if !ok {
