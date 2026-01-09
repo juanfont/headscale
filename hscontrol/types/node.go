@@ -377,7 +377,7 @@ func (node *Node) Proto() *v1.Node {
 		Name:        node.Hostname,
 		GivenName:   node.GivenName,
 		User:        nil, // Will be set below based on node type
-		ForcedTags:  node.Tags,
+		Tags:        node.Tags,
 		Online:      node.IsOnline != nil && *node.IsOnline,
 
 		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has

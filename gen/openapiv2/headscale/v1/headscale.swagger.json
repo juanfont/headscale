@@ -1178,26 +1178,9 @@
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
         },
-        "forcedTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "invalidTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "validTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "givenName": {
-          "type": "string"
+          "type": "string",
+          "title": "Deprecated\nrepeated string forced_tags = 18;\nrepeated string invalid_tags = 19;\nrepeated string valid_tags = 20;"
         },
         "online": {
           "type": "boolean"
@@ -1215,6 +1198,12 @@
           }
         },
         "subnetRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
           "type": "array",
           "items": {
             "type": "string"
