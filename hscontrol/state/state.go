@@ -1188,6 +1188,10 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			nodeToRegister.Tags = approvedTags
 			slices.Sort(nodeToRegister.Tags)
 			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+
+			// Tagged nodes have key expiry disabled.
+			nodeToRegister.Expiry = nil
+
 			log.Info().
 				Str("node.name", nodeToRegister.Hostname).
 				Strs("tags", nodeToRegister.Tags).
