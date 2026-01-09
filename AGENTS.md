@@ -405,13 +405,29 @@ go run ./cmd/hi run "TestName" --postgres
 
 # Pattern matching for related tests
 go run ./cmd/hi run "TestPattern*"
+
+# Run multiple tests concurrently (each gets isolated run ID)
+go run ./cmd/hi run "TestPingAllByIP" &
+go run ./cmd/hi run "TestACLAllowUserDst" &
+go run ./cmd/hi run "TestOIDCAuthenticationPingAll" &
 ```
+
+**Concurrent Execution Support**:
+
+The test runner supports running multiple tests concurrently on the same Docker daemon:
+
+- Each test run gets a **unique Run ID** (format: `YYYYMMDD-HHMMSS-{6-char-hash}`)
+- All containers are labeled with `hi.run-id` for isolation
+- Container names include the run ID for easy identification (e.g., `ts-{runID}-1-74-{hash}`)
+- Dynamic port allocation prevents port conflicts between concurrent runs
+- Cleanup only affects containers belonging to the specific run ID
+- Log directories are isolated per run: `control_logs/{runID}/`
 
 **Critical Notes**:
 
-- Only ONE test can run at a time (Docker port conflicts)
 - Tests generate ~100MB of logs per run in `control_logs/`
-- Clean environment before each test: `sudo rm -rf control_logs/202* && docker system prune -f`
+- Running many tests concurrently may cause resource contention (CPU/memory)
+- Clean stale containers periodically: `docker system prune -f`
 
 ### Test Artifacts Location
 
