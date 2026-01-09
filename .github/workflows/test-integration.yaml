@@ -165,6 +165,7 @@ jobs:
           - TestPreAuthKeyCommandWithoutExpiry
           - TestPreAuthKeyCommandReusableEphemeral
           - TestPreAuthKeyCorrectUserLoggedInCommand
+          - TestTaggedNodesCLIOutput
           - TestApiKeyCommand
           - TestNodeCommand
           - TestNodeExpireCommand

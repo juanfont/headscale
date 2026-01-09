@@ -659,6 +659,123 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	}, 20*time.Second, 1*time.Second)
 }
 
+func TestTaggedNodesCLIOutput(t *testing.T) {
+	IntegrationSkip(t)
+
+	user1 := "user1"
+	user2 := "user2"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{user1},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{},
+		hsic.WithTestName("tagcli"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+	)
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	u2, err := headscale.CreateUser(user2)
+	require.NoError(t, err)
+
+	var user2Key v1.PreAuthKey
+
+	// Create a tagged PreAuthKey for user2
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		err = executeAndUnmarshal(
+			headscale,
+			[]string{
+				"headscale",
+				"preauthkeys",
+				"--user",
+				strconv.FormatUint(u2.GetId(), 10),
+				"create",
+				"--reusable",
+				"--expiration",
+				"24h",
+				"--output",
+				"json",
+				"--tags",
+				"tag:test1,tag:test2",
+			},
+			&user2Key,
+		)
+		assert.NoError(c, err)
+	}, 10*time.Second, 200*time.Millisecond, "Waiting for user2 tagged preauth key creation")
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	require.Len(t, allClients, 1)
+
+	client := allClients[0]
+
+	// Log out from user1
+	err = client.Logout()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleLogout()
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
+			"Expected node to be logged out, backend state: %s", status.BackendState)
+	}, 30*time.Second, 2*time.Second)
+
+	// Log in with the tagged PreAuthKey (from user2, with tags)
+	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		status, err := client.Status()
+		assert.NoError(ct, err)
+		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
+		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
+		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
+	}, 30*time.Second, 2*time.Second)
+
+	// Wait for the second node to appear
+	var listNodes []*v1.Node
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		var err error
+
+		listNodes, err = headscale.ListNodes()
+		assert.NoError(ct, err)
+		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login with tagged key")
+		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
+		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
+	}, 20*time.Second, 1*time.Second)
+
+	// Test: tailscale status output should show "tagged-devices" not "userid:2147455555"
+	// This is the fix for issue #2970 - the Tailscale client should display user-friendly names
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		stdout, stderr, err := client.Execute([]string{"tailscale", "status"})
+		assert.NoError(ct, err, "tailscale status command should succeed, stderr: %s", stderr)
+
+		t.Logf("Tailscale status output:\n%s", stdout)
+
+		// The output should contain "tagged-devices" for tagged nodes
+		assert.Contains(ct, stdout, "tagged-devices", "Tailscale status should show 'tagged-devices' for tagged nodes")
+
+		// The output should NOT show the raw numeric userid to the user
+		assert.NotContains(ct, stdout, "userid:2147455555", "Tailscale status should not show numeric userid for tagged nodes")
+	}, 20*time.Second, 1*time.Second)
+}
+
 func TestApiKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
 

@@ -78,7 +78,7 @@ func (s *State) DebugOverview() string {
 	now := time.Now()
 	for _, node := range allNodes.All() {
 		if node.Valid() {
-			userName := node.User().Name()
+			userName := node.Owner().Name()
 			userNodeCounts[userName]++
 
 			if node.IsOnline().Valid() && node.IsOnline().Get() {
@@ -281,7 +281,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 
 	for _, node := range allNodes.All() {
 		if node.Valid() {
-			userName := node.User().Name()
+			userName := node.Owner().Name()
 			info.Users[userName]++
 
 			if node.IsOnline().Valid() && node.IsOnline().Get() {

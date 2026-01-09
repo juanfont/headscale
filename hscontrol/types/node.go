@@ -719,7 +719,13 @@ func (node Node) DebugString() string {
 	return sb.String()
 }
 
-func (nv NodeView) UserView() UserView {
+// Owner returns the owner for display purposes.
+// For tagged nodes, returns TaggedDevices. For user-owned nodes, returns the user.
+func (nv NodeView) Owner() UserView {
+	if nv.IsTagged() {
+		return TaggedDevices.View()
+	}
+
 	return nv.User()
 }
 

@@ -247,9 +247,9 @@ func nodeToRegisterResponse(node types.NodeView) *tailcfg.RegisterResponse {
 	if node.IsTagged() {
 		resp.User = types.TaggedDevices.View().TailscaleUser()
 		resp.Login = types.TaggedDevices.View().TailscaleLogin()
-	} else if node.UserView().Valid() {
-		resp.User = node.UserView().TailscaleUser()
-		resp.Login = node.UserView().TailscaleLogin()
+	} else if node.Owner().Valid() {
+		resp.User = node.Owner().TailscaleUser()
+		resp.Login = node.Owner().TailscaleLogin()
 	}
 
 	return resp
@@ -389,8 +389,8 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
-		User:              node.UserView().TailscaleUser(),
-		Login:             node.UserView().TailscaleLogin(),
+		User:              node.Owner().TailscaleUser(),
+		Login:             node.Owner().TailscaleLogin(),
 	}
 
 	log.Trace().
