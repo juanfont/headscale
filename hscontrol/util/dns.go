@@ -43,6 +43,7 @@ func ValidateUsername(username string) error {
 	}
 
 	atCount := 0
+
 	for _, char := range username {
 		switch {
 		case unicode.IsLetter(char),
@@ -87,18 +88,21 @@ func ValidateHostname(name string) error {
 			strings.ToLower(name),
 		)
 	}
+
 	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") {
 		return fmt.Errorf(
 			"hostname %q cannot start or end with a hyphen",
 			name,
 		)
 	}
+
 	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
 		return fmt.Errorf(
 			"hostname %q cannot start or end with a dot",
 			name,
 		)
 	}
+
 	if invalidDNSRegex.MatchString(name) {
 		return fmt.Errorf(
 			"hostname %q contains invalid characters, only lowercase letters, numbers, hyphens and dots are allowed",
@@ -120,7 +124,8 @@ func ValidateHostname(name string) error {
 // After transformation, validates the result.
 func NormaliseHostname(name string) (string, error) {
 	// Early return if already valid
-	if err := ValidateHostname(name); err == nil {
+	err := ValidateHostname(name)
+	if err == nil {
 		return name, nil
 	}
 
@@ -136,7 +141,8 @@ func NormaliseHostname(name string) (string, error) {
 	}
 
 	// Validate result after transformation
-	if err := ValidateHostname(name); err != nil {
+	err = ValidateHostname(name)
+	if err != nil {
 		return "", fmt.Errorf(
 			"hostname invalid after normalisation: %w",
 			err,
