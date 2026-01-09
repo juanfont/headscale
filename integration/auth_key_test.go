@@ -134,7 +134,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName+"@test.no"].GetId(), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -286,7 +286,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a new authkey for user1, to be used for all clients
-	key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
+	key, err := scenario.CreatePreAuthKey(userMap["user1@test.no"].GetId(), true, false)
 	if err != nil {
 		t.Fatalf("failed to create pre-auth key for user1: %s", err)
 	}
@@ -436,7 +436,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, userName := range spec.Users {
-				key, err := scenario.CreatePreAuthKey(userMap[userName].GetId(), true, false)
+				key, err := scenario.CreatePreAuthKey(userMap[userName+"@test.no"].GetId(), true, false)
 				if err != nil {
 					t.Fatalf("failed to create pre-auth key for user %s: %s", userName, err)
 				}
@@ -447,7 +447,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 						"headscale",
 						"preauthkeys",
 						"--user",
-						strconv.FormatUint(userMap[userName].GetId(), 10),
+						strconv.FormatUint(userMap[userName+"@test.no"].GetId(), 10),
 						"expire",
 						key.GetKey(),
 					})
@@ -489,7 +489,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap["user1"].GetId()
+	userID := userMap["user1@test.no"].GetId()
 
 	// Create a pre-auth key - we keep the full key string before it gets redacted
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -686,7 +686,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	key, err := scenario.CreatePreAuthKey(userMap[user].GetId(), true, false)
+	key, err := scenario.CreatePreAuthKey(userMap[user+"@test.no"].GetId(), true, false)
 	require.NoError(t, err)
 
 	// Re-login - the container already has extraLoginArgs with --advertise-routes

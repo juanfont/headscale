@@ -176,7 +176,7 @@ func (u UserView) TailscaleUserProfile() tailcfg.UserProfile {
 func (u *User) Proto() *v1.User {
 	return &v1.User{
 		Id:            uint64(u.ID),
-		Name:          u.Name,
+		Name:          u.Username(),
 		CreatedAt:     timestamppb.New(u.CreatedAt),
 		DisplayName:   u.DisplayName,
 		Email:         u.Email,

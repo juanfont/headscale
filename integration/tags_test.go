@@ -120,7 +120,7 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -195,7 +195,7 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -268,7 +268,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -369,7 +369,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -466,7 +466,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, true, false, []string{"tag:valid-owned"})
@@ -584,7 +584,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, true, false, []string{"tag:valid-owned"})
@@ -697,7 +697,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -769,7 +769,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -839,7 +839,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -939,7 +939,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -1050,7 +1050,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -1160,7 +1160,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, true, false)
@@ -1884,7 +1884,7 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -1955,7 +1955,7 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey with tag:valid-owned
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2030,7 +2030,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -2101,7 +2101,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create an auth key WITHOUT tags
 	authKey, err := scenario.CreatePreAuthKey(userID, false, false)
@@ -2176,7 +2176,7 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2249,7 +2249,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2333,7 +2333,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})
@@ -2416,7 +2416,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 	userMap, err := headscale.MapUsers()
 	require.NoError(t, err)
 
-	userID := userMap[tagTestUser].GetId()
+	userID := userMap[tagTestUser+"@test.no"].GetId()
 
 	// Create a tagged PreAuthKey to register a node
 	authKey, err := scenario.CreatePreAuthKeyWithTags(userID, false, false, []string{"tag:valid-owned"})

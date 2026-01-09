@@ -2364,9 +2364,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						// (tags-as-identity model: tags come from PreAuthKey, not --advertise-tags)
 						var pak *v1.PreAuthKey
 						if strings.HasPrefix(tt.approver, "tag:") {
-							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), false, false, []string{tt.approver})
+							pak, err = scenario.CreatePreAuthKeyWithTags(userMap["user1@test.no"].GetId(), false, false, []string{tt.approver})
 						} else {
-							pak, err = scenario.CreatePreAuthKey(userMap["user1"].GetId(), false, false)
+							pak, err = scenario.CreatePreAuthKey(userMap["user1@test.no"].GetId(), false, false)
 						}
 						require.NoError(t, err)
 
