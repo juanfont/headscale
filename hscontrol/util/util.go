@@ -287,12 +287,12 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 		return fmt.Sprintf("node-%s", keyPrefix)
 	}
 
-	lowercased := strings.ToLower(hostinfo.Hostname)
-	if err := ValidateHostname(lowercased); err == nil {
-		return lowercased
+	normalized, err := NormaliseHostname(hostinfo.Hostname)
+	if err != nil {
+		return InvalidString()
 	}
 
-	return InvalidString()
+	return normalized
 }
 
 // GenerateRegistrationKey generates a vanity key for tracking web authentication
