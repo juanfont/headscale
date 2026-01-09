@@ -177,16 +177,19 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
-		}
-
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		id, _ := cmd.Flags().GetUint64("id")
+
+		if id == 0 {
+			ErrorOutput(
+				errMissingParameter,
+				"Error: missing --id parameter",
+				output,
+			)
+
+			return
+		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
@@ -213,16 +216,19 @@ var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a preauthkey",
 	Aliases: []string{"del", "rm", "d"},
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
-		}
-
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		id, _ := cmd.Flags().GetUint64("id")
+
+		if id == 0 {
+			ErrorOutput(
+				errMissingParameter,
+				"Error: missing --id parameter",
+				output,
+			)
+
+			return
+		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
