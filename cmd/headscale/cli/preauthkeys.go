@@ -20,17 +20,6 @@ const (
 
 func init() {
 	rootCmd.AddCommand(preauthkeysCmd)
-	preauthkeysCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
-
-	preauthkeysCmd.PersistentFlags().StringP("namespace", "n", "", "User")
-	pakNamespaceFlag := preauthkeysCmd.PersistentFlags().Lookup("namespace")
-	pakNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	pakNamespaceFlag.Hidden = true
-
-	err := preauthkeysCmd.MarkPersistentFlagRequired("user")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
 	preauthkeysCmd.AddCommand(listPreAuthKeys)
 	preauthkeysCmd.AddCommand(createPreAuthKeyCmd)
 	preauthkeysCmd.AddCommand(expirePreAuthKeyCmd)
@@ -43,6 +32,9 @@ func init() {
 		StringP("expiration", "e", DefaultPreAuthKeyExpiry, "Human-readable expiration of the key (e.g. 30m, 24h)")
 	createPreAuthKeyCmd.Flags().
 		StringSlice("tags", []string{}, "Tags to automatically assign to node")
+	createPreAuthKeyCmd.PersistentFlags().Uint64P("user", "u", 0, "User identifier (ID)")
+	expirePreAuthKeyCmd.PersistentFlags().Uint64P("id", "i", 0, "Authkey ID")
+	deletePreAuthKeyCmd.PersistentFlags().Uint64P("id", "i", 0, "Authkey ID")
 }
 
 var preauthkeysCmd = &cobra.Command{
@@ -58,20 +50,11 @@ var listPreAuthKeys = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
-
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ListPreAuthKeysRequest{
-			User: user,
-		}
-
-		response, err := client.ListPreAuthKeys(ctx, request)
+		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
 			ErrorOutput(
 				err,
@@ -142,11 +125,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
-		}
-
+		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
@@ -195,21 +174,21 @@ var createPreAuthKeyCmd = &cobra.Command{
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
-	Use:     "expire KEY",
+	Use:     "expire",
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
-		}
-
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+		id, _ := cmd.Flags().GetUint64("id")
+
+		if id == 0 {
+			ErrorOutput(
+				errMissingParameter,
+				"Error: missing --id parameter",
+				output,
+			)
+
+			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -217,8 +196,7 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
-			User: user,
-			Key:  args[0],
+			Id: id,
 		}
 
 		response, err := client.ExpirePreAuthKey(ctx, request)
@@ -235,21 +213,21 @@ var expirePreAuthKeyCmd = &cobra.Command{
 }
 
 var deletePreAuthKeyCmd = &cobra.Command{
-	Use:     "delete KEY",
+	Use:     "delete",
 	Short:   "Delete a preauthkey",
 	Aliases: []string{"del", "rm", "d"},
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return errMissingParameter
-		}
-
-		return nil
-	},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		user, err := cmd.Flags().GetUint64("user")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+		id, _ := cmd.Flags().GetUint64("id")
+
+		if id == 0 {
+			ErrorOutput(
+				errMissingParameter,
+				"Error: missing --id parameter",
+				output,
+			)
+
+			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -257,8 +235,7 @@ var deletePreAuthKeyCmd = &cobra.Command{
 		defer conn.Close()
 
 		request := &v1.DeletePreAuthKeyRequest{
-			User: user,
-			Key:  args[0],
+			Id: id,
 		}
 
 		response, err := client.DeletePreAuthKey(ctx, request)

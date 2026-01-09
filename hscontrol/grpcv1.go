@@ -161,13 +161,17 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
+	var userID *types.UserID
+	if request.GetUser() != 0 {
+		user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
+		if err != nil {
+			return nil, err
+		}
+		userID = user.TypedID()
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		user.TypedID(),
+		userID,
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -184,16 +188,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
-	}
-
-	err = api.h.state.ExpirePreAuthKey(preAuthKey)
+	err := api.h.state.ExpirePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -205,16 +200,7 @@ func (api headscaleV1APIServer) DeletePreAuthKey(
 	ctx context.Context,
 	request *v1.DeletePreAuthKeyRequest,
 ) (*v1.DeletePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
-	}
-
-	err = api.h.state.DeletePreAuthKey(preAuthKey)
+	err := api.h.state.DeletePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -226,12 +212,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
-	}
-
-	preAuthKeys, err := api.h.state.ListPreAuthKeys(types.UserID(user.ID))
+	preAuthKeys, err := api.h.state.ListPreAuthKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -339,11 +320,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format

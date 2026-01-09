@@ -478,6 +478,22 @@ func (s *Scenario) CreatePreAuthKey(
 	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
 }
 
+// CreatePreAuthKeyWithOptions creates a "pre authorised key" with the specified options
+// to be created in the Headscale instance on behalf of the Scenario.
+func (s *Scenario) CreatePreAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*v1.PreAuthKey, error) {
+	headscale, err := s.Headscale()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preauth key with options: %w", errNoHeadscaleAvailable)
+	}
+
+	key, err := headscale.CreateAuthKeyWithOptions(opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preauth key with options: %w", err)
+	}
+
+	return key, nil
+}
+
 // CreatePreAuthKeyWithTags creates a "pre authorised key" with the specified tags
 // to be created in the Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreatePreAuthKeyWithTags(

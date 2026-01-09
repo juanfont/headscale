@@ -58,12 +58,12 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 		return ErrUserStillHasNodes
 	}
 
-	keys, err := ListPreAuthKeysByUser(tx, uid)
+	keys, err := ListPreAuthKeys(tx)
 	if err != nil {
 		return err
 	}
 	for _, key := range keys {
-		err = DestroyPreAuthKey(tx, key)
+		err = DestroyPreAuthKey(tx, key.ID)
 		if err != nil {
 			return err
 		}

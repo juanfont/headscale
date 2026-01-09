@@ -238,6 +238,8 @@ jobs:
           - TestTagsAdminAPICanSetUnownedTag
           - TestTagsAdminAPICannotRemoveAllTags
           - TestTagsAdminAPICannotSetInvalidFormat
+          - TestTagsAuthKeyWithoutUserInheritsTags
+          - TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:
