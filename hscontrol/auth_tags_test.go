@@ -471,6 +471,160 @@ func TestSingleVsMultipleTags(t *testing.T) {
 	assert.False(t, node2.HasTag("tag:other"))
 }
 
+// TestTaggedPreAuthKeyDisablesKeyExpiry tests that nodes registered with
+// a tagged PreAuthKey have key expiry disabled (expiry is nil).
+func TestTaggedPreAuthKeyDisablesKeyExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-creator")
+	tags := []string{"tag:server", "tag:prod"}
+
+	// Create a tagged PreAuthKey
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+	require.ElementsMatch(t, tags, pak.Tags)
+
+	// Register a node using the tagged key
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Client requests an expiry time, but for tagged nodes it should be ignored
+	clientRequestedExpiry := time.Now().Add(24 * time.Hour)
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-expiry-test",
+		},
+		Expiry: clientRequestedExpiry,
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	// Verify the node has key expiry DISABLED (expiry is nil/zero)
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	// Critical assertion: Tagged nodes should have expiry disabled
+	assert.True(t, node.IsTagged(), "Node should be tagged")
+	assert.False(t, node.Expiry().Valid(), "Tagged node should have expiry disabled (nil)")
+}
+
+// TestUntaggedPreAuthKeyPreservesKeyExpiry tests that nodes registered with
+// an untagged PreAuthKey preserve the client's requested key expiry.
+func TestUntaggedPreAuthKeyPreservesKeyExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("node-owner")
+
+	// Create an untagged PreAuthKey
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
+	require.NoError(t, err)
+	require.Empty(t, pak.Tags, "PreAuthKey should not be tagged")
+
+	// Register a node
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	// Client requests an expiry time
+	clientRequestedExpiry := time.Now().Add(24 * time.Hour)
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "untagged-expiry-test",
+		},
+		Expiry: clientRequestedExpiry,
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	// Verify the node has the client's requested expiry
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	// Critical assertion: User-owned nodes should preserve client expiry
+	assert.False(t, node.IsTagged(), "Node should not be tagged")
+	assert.True(t, node.Expiry().Valid(), "User-owned node should have expiry set")
+	// Allow some tolerance for test execution time
+	assert.WithinDuration(t, clientRequestedExpiry, node.Expiry().Get(), 5*time.Second,
+		"User-owned node should have the client's requested expiry")
+}
+
+// TestTaggedNodeReauthPreservesDisabledExpiry tests that when a tagged node
+// re-authenticates, the disabled expiry is preserved (not updated from client request).
+func TestTaggedNodeReauthPreservesDisabledExpiry(t *testing.T) {
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-creator")
+	tags := []string{"tag:server"}
+
+	// Create a reusable tagged PreAuthKey
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	// Initial registration
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-reauth-test",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	// Verify initial registration has expiry disabled
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+	require.False(t, node.Expiry().Valid(), "Initial registration should have expiry disabled")
+
+	// Re-authenticate with a NEW expiry request (should be ignored for tagged nodes)
+	newRequestedExpiry := time.Now().Add(48 * time.Hour)
+	reAuthReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-reauth-test",
+		},
+		Expiry: newRequestedExpiry, // Client requests new expiry
+	}
+
+	reAuthResp, err := app.handleRegisterWithAuthKey(reAuthReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, reAuthResp.MachineAuthorized)
+
+	// Verify expiry is STILL disabled after re-auth
+	nodeAfterReauth, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	// Critical assertion: Tagged node should preserve disabled expiry on re-auth
+	assert.True(t, nodeAfterReauth.IsTagged(), "Node should still be tagged")
+	assert.False(t, nodeAfterReauth.Expiry().Valid(),
+		"Tagged node should have expiry PRESERVED as disabled after re-auth")
+}
+
 // TestReAuthWithDifferentMachineKey tests the edge case where a node attempts
 // to re-authenticate with the same NodeKey but a DIFFERENT MachineKey.
 // This scenario should be handled gracefully (currently creates a new node).
