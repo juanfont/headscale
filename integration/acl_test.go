@@ -3324,3 +3324,201 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 
 	t.Log("Test PASSED: Remaining users can communicate after deleted user and policy refresh")
 }
+
+// TestACLGroupDeletionExactReproduction reproduces issue #2967:
+// The bug is that deleting a user from the database (while keeping their
+// reference in the ACL) and then creating a new user causes the policy
+// to break for everyone in the group.
+//
+// Steps:
+// 0. Create policy with user1@, user2@ in group - connectivity works
+// 1. DELETE user2 from DB (not ACL) - connectivity may still work (stale)
+// 2. MODIFY ACL: Add user3@ to group - connectivity continues
+// 3. CREATE new user user4 - connectivity STOPS (BUG).
+func TestACLGroupDeletionExactReproduction(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Issue: https://github.com/juanfont/headscale/issues/2967
+
+	const userToDelete = "user2"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", userToDelete},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Step 0: Create initial policy with BOTH user1@ and user2@ in group
+	initialPolicy := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:all"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"),
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:all")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(groupp("group:all"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(initialPolicy),
+		hsic.WithTestName("acl-exact-repro"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
+	require.NoError(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	require.NoError(t, err)
+	require.Len(t, user1Clients, 1)
+	user1 := user1Clients[0]
+
+	user2Clients, err := scenario.ListTailscaleClients(userToDelete)
+	require.NoError(t, err)
+	require.Len(t, user2Clients, 1)
+	user2Client := user2Clients[0]
+
+	user2FQDN, err := user2Client.FQDN()
+	require.NoError(t, err)
+
+	// Verify initial connectivity
+	t.Log("Step 0: Verifying initial connectivity")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "Step 0: user1 should reach user2 initially")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "Step 0: user1 -> user2")
+
+	t.Log("Step 0: PASSED - initial connectivity works")
+
+	// Step 1: DELETE user2 from DB (but NOT from ACL)
+	t.Log("Step 1: Deleting user2 from database (NOT from ACL)")
+
+	// First delete user2's node
+	nodes, err := headscale.ListNodes(userToDelete)
+	require.NoError(t, err)
+	require.Len(t, nodes, 1)
+	err = headscale.DeleteNode(nodes[0].GetId())
+	require.NoError(t, err)
+
+	// Get user2's ID and delete the user
+	users, err := headscale.ListUsers()
+	require.NoError(t, err)
+
+	var user2ID uint64
+
+	for _, u := range users {
+		if u.GetName() == userToDelete {
+			user2ID = u.GetId()
+			break
+		}
+	}
+
+	require.NotZero(t, user2ID)
+	err = headscale.DeleteUser(user2ID)
+	require.NoError(t, err)
+
+	t.Log("Step 2: user2 deleted from DB - ACL still references user2@")
+
+	// Step 3: MODIFY ACL - Add user3@ to the group (user3 exists in DB)
+	t.Log("Step 3: Creating user3 and modifying ACL to add user3@ to group:all")
+
+	// Create user3 first
+	user3, err := headscale.CreateUser("user3")
+	require.NoError(t, err)
+	require.NotNil(t, user3)
+
+	// Now modify ACL to include user3
+	modifiedPolicy2 := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:all"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"), // Still here - user2 is DELETED but still in ACL
+				policyv2.Username("user3@"), // Added user3
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:all")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(groupp("group:all"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = headscale.SetPolicy(modifiedPolicy2)
+	require.NoError(t, err)
+
+	t.Log("Step 3: ACL modified - group:all now has user1@, user2@ (deleted), user3@")
+
+	// Step 4: CREATE a completely new user (user4) - this should trigger the bug
+	t.Log("Step 4: Creating new user (user4) - THIS TRIGGERS THE BUG according to issue #2967")
+
+	user4, err := headscale.CreateUser("user4")
+	require.NoError(t, err)
+	require.NotNil(t, user4)
+
+	// Step 5: Verify user1 can still be reached (the bug would break this)
+	// According to the issue, after creating a new user, connectivity STOPS
+	t.Log("Step 5: Verifying user1 is still reachable (BUG: this should FAIL without fix)")
+
+	// We need to test that user1 can still function
+	// Since user2 is gone, we test that user1's node is still healthy
+	// by checking if we can list nodes and user1 is there
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodesAfter, err := headscale.ListNodes("user1")
+		assert.NoError(c, err)
+		assert.Len(c, nodesAfter, 1, "user1 should still have a node after user4 creation")
+	}, 30*time.Second, 500*time.Millisecond, "user1 node should exist")
+
+	// Check the filter rules - if the bug occurs, the filter becomes EMPTY (0 rules)
+	// This is the key assertion that would fail without the fix
+	filter, err := headscale.DebugFilter()
+	require.NoError(t, err)
+	t.Logf("Filter rules after user4 creation: %d rules", len(filter))
+
+	// BUG MANIFESTATION: Without the fix, filter rules drop to 0
+	// because the policy manager fails to resolve "user2@" which no longer exists
+	require.NotEmpty(t, filter, "BUG #2967: Filter rules should NOT be empty - if this fails, the bug is reproduced")
+
+	// The real test: user1's node should still be able to accept connections
+	// Since user2 is deleted and user3/user4 have no nodes yet, we verify
+	// that user1's status is healthy
+	status, err := user1.Status()
+	require.NoError(t, err)
+	require.NotNil(t, status.Self, "user1 should have valid self status")
+
+	t.Log("Test PASSED: Filter rules are intact and user1 is healthy after user4 creation")
+	t.Log("NOTE: The original bug caused 'pinging to stop' after creating a new user")
+}
