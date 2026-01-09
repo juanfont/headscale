@@ -1284,14 +1284,15 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// If this node exists for this user, update the node in place.
 	if existsSameUser && existingNodeSameUser.Valid() {
-		log.Debug().
+		log.Info().
 			Caller().
 			Str("registration_id", registrationID.String()).
 			Str("user.name", user.Name).
 			Str("registrationMethod", registrationMethod).
 			Str("node.name", existingNodeSameUser.Hostname()).
 			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
-			Msg("Updating existing node registration")
+			Interface("hostinfo", regEntry.Node.Hostinfo).
+			Msg("Updating existing node registration (REAUTH PATH)")
 
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
@@ -1316,10 +1317,128 @@ func (s *State) HandleNodeFromAuthPath(
 			} else {
 				node.Expiry = regEntry.Node.Expiry
 			}
+
+			// Process RequestTags during reauth (Issue #2979)
+			// Handle tag changes when client re-authenticates with --advertise-tags flag
+			//
+			// Due to json:",omitempty" on RequestTags, nil means either:
+			// 1. Client didn't specify --advertise-tags (preserve existing tags)
+			// 2. Client specified --advertise-tags="" (clear tags)
+			//
+			// For the #2979 fix, we treat empty/nil RequestTags as "clear tags".
+			// This allows nodes to transition from any tagged state (including
+			// authkey-tagged) to user-owned by re-authenticating with empty tags.
+			requestTags := []string(nil)
+			if regEntry.Node.Hostinfo != nil {
+				requestTags = regEntry.Node.Hostinfo.RequestTags
+			}
+
+			// Track original registration method for logging
+			wasAuthKeyTagged := node.AuthKey != nil && node.AuthKey.IsTagged()
+
+			log.Debug().
+				Caller().
+				Uint64("node.id", uint64(node.ID)).
+				Str("node.name", node.Hostname).
+				Strs("request.tags", requestTags).
+				Strs("current.tags", node.Tags).
+				Bool("is.tagged", node.IsTagged()).
+				Bool("was.authkey.tagged", wasAuthKeyTagged).
+				Msg("Processing RequestTags during reauth")
+
+			// Case 1: Empty/nil RequestTags = untag node
+			// All nodes can transition to user-owned via reauth with empty tags,
+			// including nodes originally registered with a tagged AuthKey.
+			if len(requestTags) == 0 {
+				if node.IsTagged() {
+					log.Info().
+						Uint64("node.id", uint64(node.ID)).
+						Str("node.name", node.Hostname).
+						Strs("removed.tags", node.Tags).
+						Str("user.name", user.Name).
+						Bool("was.authkey.tagged", wasAuthKeyTagged).
+						Msg("Reauth: removing all tags, returning node ownership to user")
+
+					node.Tags = []string{}
+					node.UserID = &user.ID
+				} else {
+					// Node already user-owned with no tags, nothing to do
+					log.Debug().
+						Uint64("node.id", uint64(node.ID)).
+						Str("node.name", node.Hostname).
+						Msg("Reauth: node already user-owned with no tags")
+				}
+			}
+
+			// Case 2: Non-empty RequestTags = validate and update tags
+			if len(requestTags) > 0 {
+				var approvedTags, rejectedTags []string
+
+				// Validate each requested tag against policy
+				for _, tag := range requestTags {
+					if s.polMan.NodeCanHaveTag(node.View(), tag) {
+						approvedTags = append(approvedTags, tag)
+					} else {
+						rejectedTags = append(rejectedTags, tag)
+					}
+				}
+
+				// If any tags are rejected, we need to fail the reauth
+				// We can't do this inside UpdateNode, so we'll set a marker
+				if len(rejectedTags) > 0 {
+					// Store rejection info to handle after UpdateNode
+					log.Warn().
+						Uint64("node.id", uint64(node.ID)).
+						Str("node.name", node.Hostname).
+						Strs("rejected.tags", rejectedTags).
+						Msg("Reauth: requested tags are not permitted")
+					// We'll check this after UpdateNode and return an error
+				} else if len(approvedTags) > 0 {
+					// Apply approved tags
+					slices.Sort(approvedTags)
+					approvedTags = slices.Compact(approvedTags)
+
+					wasTagged := node.IsTagged()
+					node.Tags = approvedTags
+
+					// Transfer ownership to tagged-devices if not already tagged
+					if !wasTagged {
+						log.Info().
+							Uint64("node.id", uint64(node.ID)).
+							Str("node.name", node.Hostname).
+							Strs("new.tags", approvedTags).
+							Str("old.user", user.Name).
+							Msg("Reauth: applying tags, transferring node to tagged-devices")
+						node.UserID = nil // Tagged nodes have no user owner
+					} else {
+						log.Info().
+							Uint64("node.id", uint64(node.ID)).
+							Str("node.name", node.Hostname).
+							Strs("old.tags", existingNodeSameUser.Tags().AsSlice()).
+							Strs("new.tags", approvedTags).
+							Msg("Reauth: updating tags on already-tagged node")
+					}
+				}
+			}
 		})
 
 		if !ok {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
+		}
+
+		// Check if reauth was rejected due to unauthorized tags
+		if regEntry.Node.Hostinfo != nil && regEntry.Node.Hostinfo.RequestTags != nil && len(regEntry.Node.Hostinfo.RequestTags) > 0 {
+			var rejectedTags []string
+
+			for _, tag := range regEntry.Node.Hostinfo.RequestTags {
+				if !s.polMan.NodeCanHaveTag(updatedNodeView, tag) {
+					rejectedTags = append(rejectedTags, tag)
+				}
+			}
+
+			if len(rejectedTags) > 0 {
+				return types.NodeView{}, change.Change{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
+			}
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -1671,6 +1790,14 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	}
 
 	return change.Change{}, nil
+}
+
+// UpdatePolicyManagerUsersForTest updates the policy manager's user cache.
+// This is exposed for testing purposes to sync the policy manager after
+// creating test users via CreateUserForTest().
+func (s *State) UpdatePolicyManagerUsersForTest() error {
+	_, err := s.updatePolicyManagerUsers()
+	return err
 }
 
 // updatePolicyManagerNodes updates the policy manager with current nodes.

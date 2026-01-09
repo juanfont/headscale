@@ -3541,3 +3541,187 @@ func TestWebAuthRejectsUnauthorizedRequestTags(t *testing.T) {
 	_, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.False(t, found, "Node should not be created when tags are unauthorized")
 }
+
+// TestWebAuthReauthWithEmptyTagsRemovesAllTags tests that when an existing tagged node
+// reauths with empty RequestTags, all tags are removed and ownership returns to user.
+// This is the fix for issue #2979.
+func TestWebAuthReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create a user
+	user := app.state.CreateUserForTest("reauth-untag-user")
+
+	// Update policy manager to recognize the new user
+	// This is necessary because CreateUserForTest doesn't update the policy manager
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err, "Failed to update policy manager users")
+
+	// Set up policy that allows the user to own these tags
+	policy := `{
+		"tagOwners": {
+			"tag:valid-owned": ["reauth-untag-user@"],
+			"tag:second": ["reauth-untag-user@"]
+		},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`
+	_, err = app.state.SetPolicy([]byte(policy))
+	require.NoError(t, err, "Failed to set policy")
+
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+
+	// Step 1: Initial registration with tags
+	registrationID1 := types.MustRegistrationID()
+	regEntry1 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey1.Public(),
+		Hostname:   "reauth-untag-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "reauth-untag-node",
+			RequestTags: []string{"tag:valid-owned", "tag:second"},
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID1, regEntry1)
+
+	// Complete initial registration with tags
+	node, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID1,
+		types.UserID(user.ID),
+		nil,
+		"webauth",
+	)
+	require.NoError(t, err, "Initial registration should succeed")
+	require.True(t, node.IsTagged(), "Node should be tagged after initial registration")
+	require.ElementsMatch(t, []string{"tag:valid-owned", "tag:second"}, node.Tags().AsSlice())
+	t.Logf("Initial registration complete - Node ID: %d, Tags: %v, IsTagged: %t",
+		node.ID().Uint64(), node.Tags().AsSlice(), node.IsTagged())
+
+	// Step 2: Reauth with EMPTY tags to untag
+	nodeKey2 := key.NewNode() // New node key for reauth
+	registrationID2 := types.MustRegistrationID()
+	regEntry2 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(), // Same machine key
+		NodeKey:    nodeKey2.Public(),   // Different node key (rotation)
+		Hostname:   "reauth-untag-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "reauth-untag-node",
+			RequestTags: []string{}, // EMPTY - should untag
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID2, regEntry2)
+
+	// Complete reauth with empty tags
+	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID2,
+		types.UserID(user.ID),
+		nil,
+		"webauth",
+	)
+	require.NoError(t, err, "Reauth should succeed")
+
+	// Verify tags were removed
+	require.False(t, nodeAfterReauth.IsTagged(), "Node should NOT be tagged after reauth with empty tags")
+	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
+
+	// Verify ownership returned to user
+	require.True(t, nodeAfterReauth.UserID().Valid(), "Node should have a user ID")
+	require.Equal(t, user.ID, nodeAfterReauth.UserID().Get(), "Node should be owned by the user again")
+
+	// Verify it's the same node (not a new one)
+	require.Equal(t, node.ID(), nodeAfterReauth.ID(), "Should be the same node after reauth")
+
+	t.Logf("Reauth complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID: %d",
+		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
+		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
+}
+
+// TestAuthKeyTaggedToUserOwnedViaReauth tests that a node originally registered
+// with a tagged pre-auth key can transition to user-owned by re-authenticating
+// via web auth with empty RequestTags. This ensures authkey-tagged nodes are
+// not permanently locked to being tagged.
+func TestAuthKeyTaggedToUserOwnedViaReauth(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create a user
+	user := app.state.CreateUserForTest("authkey-to-user")
+
+	// Create a tagged pre-auth key
+	authKeyTags := []string{"tag:server", "tag:prod"}
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, authKeyTags)
+	require.NoError(t, err, "Failed to create tagged pre-auth key")
+
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+
+	// Step 1: Initial registration with tagged pre-auth key
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey1.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "authkey-tagged-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err, "Initial registration should succeed")
+	require.True(t, resp.MachineAuthorized, "Node should be authorized")
+
+	// Verify initial state: node is tagged via authkey
+	node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+	require.True(t, found, "Node should be found")
+	require.True(t, node.IsTagged(), "Node should be tagged after authkey registration")
+	require.ElementsMatch(t, authKeyTags, node.Tags().AsSlice(), "Node should have authkey tags")
+	require.NotNil(t, node.AuthKey(), "Node should have AuthKey reference")
+	require.Positive(t, node.AuthKey().Tags().Len(), "AuthKey should have tags")
+
+	t.Logf("Initial registration complete - Node ID: %d, Tags: %v, IsTagged: %t, AuthKey.Tags.Len: %d",
+		node.ID().Uint64(), node.Tags().AsSlice(), node.IsTagged(), node.AuthKey().Tags().Len())
+
+	// Step 2: Reauth via web auth with EMPTY tags to transition to user-owned
+	nodeKey2 := key.NewNode() // New node key for reauth
+	registrationID := types.MustRegistrationID()
+	regEntry := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(), // Same machine key
+		NodeKey:    nodeKey2.Public(),   // Different node key (rotation)
+		Hostname:   "authkey-tagged-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "authkey-tagged-node",
+			RequestTags: []string{}, // EMPTY - should untag
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID, regEntry)
+
+	// Complete reauth with empty tags
+	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID,
+		types.UserID(user.ID),
+		nil,
+		"webauth",
+	)
+	require.NoError(t, err, "Reauth should succeed")
+
+	// Verify tags were removed (authkey-tagged → user-owned transition)
+	require.False(t, nodeAfterReauth.IsTagged(), "Node should NOT be tagged after reauth with empty tags")
+	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
+
+	// Verify ownership returned to user
+	require.True(t, nodeAfterReauth.UserID().Valid(), "Node should have a user ID")
+	require.Equal(t, user.ID, nodeAfterReauth.UserID().Get(), "Node should be owned by the user")
+
+	// Verify it's the same node (not a new one)
+	require.Equal(t, node.ID(), nodeAfterReauth.ID(), "Should be the same node after reauth")
+
+	// AuthKey reference should still exist (for audit purposes)
+	require.NotNil(t, nodeAfterReauth.AuthKey(), "AuthKey reference should be preserved")
+
+	t.Logf("Reauth complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID: %d",
+		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
+		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
+}
