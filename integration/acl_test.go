@@ -2420,7 +2420,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node WITH tag:shared via PreAuthKey
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:shared"},
+					userMap["user1@test.no"].GetId(), false, false, []string{"tag:shared"},
 				)
 				require.NoError(t, err)
 
@@ -2439,7 +2439,7 @@ func TestACLTagPropagation(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create user2's node (untagged)
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2@test.no"].GetId(), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2513,7 +2513,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node with tag:team-a (user2 has NO ACL for this)
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:team-a"},
+					userMap["user1@test.no"].GetId(), false, false, []string{"tag:team-a"},
 				)
 				require.NoError(t, err)
 
@@ -2532,7 +2532,7 @@ func TestACLTagPropagation(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create user2's node
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2@test.no"].GetId(), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2606,7 +2606,7 @@ func TestACLTagPropagation(t *testing.T) {
 
 				// Create user1's node with BOTH tags
 				taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-					userMap["user1"].GetId(), false, false, []string{"tag:web", "tag:internal"},
+					userMap["user1@test.no"].GetId(), false, false, []string{"tag:web", "tag:internal"},
 				)
 				require.NoError(t, err)
 
@@ -2625,7 +2625,7 @@ func TestACLTagPropagation(t *testing.T) {
 				require.NoError(t, err)
 
 				// Create user2's node
-				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+				untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2@test.no"].GetId(), false, false)
 				require.NoError(t, err)
 
 				user2Node, err := scenario.CreateTailscaleNode(
@@ -2950,7 +2950,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 
 	// Create user1's node WITH tag:webserver
 	taggedKey, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["user1"].GetId(), false, false, []string{"tag:webserver"},
+		userMap["user1@test.no"].GetId(), false, false, []string{"tag:webserver"},
 	)
 	require.NoError(t, err)
 
@@ -2970,7 +2970,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create user2's node
-	untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), false, false)
+	untaggedKey, err := scenario.CreatePreAuthKey(userMap["user2@test.no"].GetId(), false, false)
 	require.NoError(t, err)
 
 	user2Node, err := scenario.CreateTailscaleNode(

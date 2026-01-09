@@ -403,7 +403,7 @@ func TestTaildrop(t *testing.T) {
 	network := networks[0]
 
 	// Create untagged nodes for user1 using all test versions
-	user1Key, err := scenario.CreatePreAuthKey(userMap["user1"].GetId(), true, false)
+	user1Key, err := scenario.CreatePreAuthKey(userMap["user1@test.no"].GetId(), true, false)
 	require.NoError(t, err)
 
 	var user1Clients []TailscaleClient
@@ -426,7 +426,7 @@ func TestTaildrop(t *testing.T) {
 	}
 
 	// Create untagged nodes for user2 using all test versions
-	user2Key, err := scenario.CreatePreAuthKey(userMap["user2"].GetId(), true, false)
+	user2Key, err := scenario.CreatePreAuthKey(userMap["user2@test.no"].GetId(), true, false)
 	require.NoError(t, err)
 
 	var user2Clients []TailscaleClient
@@ -450,7 +450,7 @@ func TestTaildrop(t *testing.T) {
 
 	// Create a tagged device (tags-as-identity: tags come from PreAuthKey)
 	// Use "head" version to test latest behavior
-	taggedKey, err := scenario.CreatePreAuthKeyWithTags(userMap["user1"].GetId(), true, false, []string{"tag:server"})
+	taggedKey, err := scenario.CreatePreAuthKeyWithTags(userMap["user1@test.no"].GetId(), true, false, []string{"tag:server"})
 	require.NoError(t, err)
 
 	taggedClient, err := scenario.CreateTailscaleNode(

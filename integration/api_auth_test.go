@@ -218,9 +218,10 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
-		assert.Contains(t, userNames, "user1")
-		assert.Contains(t, userNames, "user2")
-		assert.Contains(t, userNames, "user3")
+
+		assert.Contains(t, userNames, "user1@test.no")
+		assert.Contains(t, userNames, "user2@test.no")
+		assert.Contains(t, userNames, "user3@test.no")
 	})
 }
 
@@ -495,8 +496,9 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
-		assert.Contains(t, userNames, "grpcuser1")
-		assert.Contains(t, userNames, "grpcuser2")
+
+		assert.Contains(t, userNames, "grpcuser1@test.no")
+		assert.Contains(t, userNames, "grpcuser2@test.no")
 	})
 }
 
@@ -651,7 +653,8 @@ cli:
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
-		assert.Contains(t, userNames, "cliuser1")
-		assert.Contains(t, userNames, "cliuser2")
+
+		assert.Contains(t, userNames, "cliuser1@test.no")
+		assert.Contains(t, userNames, "cliuser2@test.no")
 	})
 }

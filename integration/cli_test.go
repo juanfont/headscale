@@ -612,7 +612,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
-		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "Node should belong to user1")
+		assert.Equal(ct, user1+"@test.no", listNodes[0].GetUser().GetName(), "Node should belong to user1")
 	}, 15*time.Second, 1*time.Second)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -653,7 +653,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login")
-		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
+		assert.Equal(ct, user1+"@test.no", listNodes[0].GetUser().GetName(), "First node should belong to user1")
 		// Second node is tagged (created with tagged PreAuthKey), so it shows as "tagged-devices"
 		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
 	}, 20*time.Second, 1*time.Second)
