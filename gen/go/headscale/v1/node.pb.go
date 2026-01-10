@@ -921,6 +921,10 @@ func (x *RenameNodeResponse) GetNode() *Node {
 type ListNodesRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	User          string                 `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	// Pagination: number of nodes to return per page (default: 0 = all)
+	Limit         uint64                 `protobuf:"varint,2,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Pagination: offset for the list of nodes (default: 0)
+	Offset        uint64                 `protobuf:"varint,3,opt,name=offset,proto3" json:"offset,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -962,9 +966,25 @@ func (x *ListNodesRequest) GetUser() string {
 	return ""
 }
 
+func (x *ListNodesRequest) GetLimit() uint64 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *ListNodesRequest) GetOffset() uint64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
 type ListNodesResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Nodes         []*Node                `protobuf:"bytes,1,rep,name=nodes,proto3" json:"nodes,omitempty"`
+	// Total number of nodes matching the filter (useful for pagination)
+	Total         uint64                 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1004,6 +1024,13 @@ func (x *ListNodesResponse) GetNodes() []*Node {
 		return x.Nodes
 	}
 	return nil
+}
+
+func (x *ListNodesResponse) GetTotal() uint64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
 }
 
 type DebugCreateNodeRequest struct {

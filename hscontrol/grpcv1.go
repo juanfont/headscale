@@ -518,6 +518,36 @@ func (api headscaleV1APIServer) ListNodes(
 	ctx context.Context,
 	request *v1.ListNodesRequest,
 ) (*v1.ListNodesResponse, error) {
+	limit := request.GetLimit()
+	offset := request.GetOffset()
+	
+	// If pagination parameters are provided, use paginated queries
+	if limit > 0 || offset > 0 {
+		if request.GetUser() != "" {
+			user, err := api.h.state.GetUserByName(request.GetUser())
+			if err != nil {
+				return nil, err
+			}
+
+			nodes, total, err := api.h.state.ListNodesByUserPaginated(types.UserID(user.ID), limit, offset)
+			if err != nil {
+				return nil, err
+			}
+
+			response := nodesToProto(api.h.state, nodes)
+			return &v1.ListNodesResponse{Nodes: response, Total: uint64(total)}, nil
+		}
+
+		nodes, total, err := api.h.state.ListNodesPaginated(limit, offset)
+		if err != nil {
+			return nil, err
+		}
+
+		response := nodesToProto(api.h.state, nodes)
+		return &v1.ListNodesResponse{Nodes: response, Total: uint64(total)}, nil
+	}
+	
+	// Legacy behavior: no pagination, return all nodes
 	// TODO(kradalby): it looks like this can be simplified a lot,
 	// the filtering of nodes by user, vs nodes as a whole can
 	// probably be done once.
@@ -531,13 +561,15 @@ func (api headscaleV1APIServer) ListNodes(
 		nodes := api.h.state.ListNodesByUser(types.UserID(user.ID))
 
 		response := nodesToProto(api.h.state, nodes)
-		return &v1.ListNodesResponse{Nodes: response}, nil
+		// Return total count even for non-paginated requests
+		return &v1.ListNodesResponse{Nodes: response, Total: uint64(len(response))}, nil
 	}
 
 	nodes := api.h.state.ListNodes()
 
 	response := nodesToProto(api.h.state, nodes)
-	return &v1.ListNodesResponse{Nodes: response}, nil
+	// Return total count even for non-paginated requests
+	return &v1.ListNodesResponse{Nodes: response, Total: uint64(len(response))}, nil
 }
 
 func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.Node {
