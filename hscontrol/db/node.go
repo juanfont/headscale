@@ -97,24 +97,25 @@ func (hsdb *HSDatabase) ListNodesPaginated(limit, offset uint64, nodeIDs ...type
 func ListNodesPaginated(tx *gorm.DB, limit, offset uint64, nodeIDs ...types.NodeID) (types.Nodes, int64, error) {
 	nodes := types.Nodes{}
 
-	// Build base query
-	query := tx.Model(&types.Node{})
+	// Build base query with nodeID filtering
+	baseQuery := tx.Model(&types.Node{})
 	if len(nodeIDs) > 0 {
-		query = query.Where(nodeIDs)
+		baseQuery = baseQuery.Where(nodeIDs)
 	}
 
 	// Get total count before pagination
 	var total int64
-	if err := query.Count(&total).Error; err != nil {
+	if err := baseQuery.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// Apply pagination and retrieve nodes
-	query = tx.
+	// Build query for fetching nodes with preloads
+	query := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User")
 
+	// Apply the same nodeID filtering
 	if len(nodeIDs) > 0 {
 		query = query.Where(nodeIDs)
 	}
