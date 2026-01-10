@@ -619,12 +619,12 @@ func (s *State) ListNodesPaginated(limit, offset uint64) (views.Slice[types.Node
 	if err != nil {
 		return views.Slice[types.NodeView]{}, 0, err
 	}
-	
+
 	nodeViews := make([]types.NodeView, len(nodes))
 	for i, node := range nodes {
 		nodeViews[i] = node.View()
 	}
-	
+
 	return views.SliceOf(nodeViews), total, nil
 }
 
@@ -636,12 +636,12 @@ func (s *State) ListNodesByUserPaginated(userID types.UserID, limit, offset uint
 	if err != nil {
 		return views.Slice[types.NodeView]{}, 0, err
 	}
-	
+
 	nodeViews := make([]types.NodeView, len(nodes))
 	for i, node := range nodes {
 		nodeViews[i] = node.View()
 	}
-	
+
 	return views.SliceOf(nodeViews), total, nil
 }
 

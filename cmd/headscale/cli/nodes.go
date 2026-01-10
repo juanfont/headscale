@@ -189,7 +189,7 @@ var listNodesCmd = &cobra.Command{
 
 		// Display pagination info if applicable
 		if limit > 0 || offset > 0 {
-			fmt.Printf("Showing %d of %d total nodes (offset: %d)\n\n", 
+			fmt.Printf("Showing %d of %d total nodes (offset: %d)\n\n",
 				len(response.GetNodes()), response.GetTotal(), offset)
 		}
 

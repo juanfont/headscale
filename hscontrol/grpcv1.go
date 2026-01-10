@@ -339,11 +339,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format
@@ -520,7 +520,7 @@ func (api headscaleV1APIServer) ListNodes(
 ) (*v1.ListNodesResponse, error) {
 	limit := request.GetLimit()
 	offset := request.GetOffset()
-	
+
 	// If pagination parameters are provided, use paginated queries
 	if limit > 0 || offset > 0 {
 		if request.GetUser() != "" {
@@ -546,7 +546,7 @@ func (api headscaleV1APIServer) ListNodes(
 		response := nodesToProto(api.h.state, nodes)
 		return &v1.ListNodesResponse{Nodes: response, Total: uint64(total)}, nil
 	}
-	
+
 	// Legacy behavior: no pagination, return all nodes
 	// TODO(kradalby): it looks like this can be simplified a lot,
 	// the filtering of nodes by user, vs nodes as a whole can
