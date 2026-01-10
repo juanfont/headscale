@@ -1188,7 +1188,7 @@ func TestListNodesByUserPaginated(t *testing.T) {
 	// Create two users
 	user1, err := db.CreateUser(types.User{Name: "user1"})
 	require.NoError(t, err)
-	
+
 	user2, err := db.CreateUser(types.User{Name: "user2"})
 	require.NoError(t, err)
 
