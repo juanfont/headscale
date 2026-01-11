@@ -231,6 +231,56 @@ type OIDCClaims struct {
 	Username          string          `json:"preferred_username,omitempty"`
 }
 
+// DeriveUsername selects a username for the given claims based on the provided
+// priority order. The first non-empty, valid value wins. Supported keys:
+//   - "preferred_username": claims.Username
+//   - "email": claims.Email
+//   - "email_localpart": part of claims.Email before '@'
+//   - "name": claims.Name
+//   - "sub": claims.Sub
+//
+// Values are validated with util.ValidateUsername; invalid candidates are skipped.
+func DeriveUsername(claims *OIDCClaims, order []string) string {
+	pick := func(candidate string) (string, bool) {
+		if candidate == "" {
+			return "", false
+		}
+		if err := util.ValidateUsername(candidate); err != nil {
+			return "", false
+		}
+		return candidate, true
+	}
+
+	for _, key := range order {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "preferred_username", "preferred-username", "username":
+			if v, ok := pick(claims.Username); ok {
+				return v
+			}
+		case "email":
+			if v, ok := pick(claims.Email); ok {
+				return v
+			}
+		case "email_localpart", "email-localpart", "email_local", "email-local":
+			if at := strings.Index(claims.Email, "@"); at > 0 {
+				if v, ok := pick(claims.Email[:at]); ok {
+					return v
+				}
+			}
+		case "name", "display_name", "display-name":
+			if v, ok := pick(claims.Name); ok {
+				return v
+			}
+		case "sub", "subject":
+			if v, ok := pick(claims.Sub); ok {
+				return v
+			}
+		}
+	}
+
+	return ""
+}
+
 // Identifier returns a unique identifier string combining the Iss and Sub claims.
 // The format depends on whether Iss is a URL or not:
 // - For URLs: Joins the URL and sub path (e.g., "https://example.com/sub")
