@@ -200,6 +200,40 @@ func ListNodesByUser(tx *gorm.DB, uid types.UserID) (types.Nodes, error) {
 	return nodes, nil
 }
 
+// ListNodesByUserPaginated gets nodes in a given user with pagination support.
+// If limit is 0, all nodes are returned. Returns nodes, total count, and error.
+func ListNodesByUserPaginated(tx *gorm.DB, uid types.UserID, limit, offset uint64) (types.Nodes, int64, error) {
+	nodes := types.Nodes{}
+	uidPtr := uint(uid)
+
+	// Build base query for counting
+	query := tx.Model(&types.Node{}).Where(&types.Node{UserID: &uidPtr})
+
+	// Get total count
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Build query for fetching nodes with preloads
+	query = tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User").
+		Where(&types.Node{UserID: &uidPtr})
+
+	// Apply pagination if limit > 0
+	if limit > 0 {
+		query = query.Limit(int(limit)).Offset(int(offset))
+	}
+
+	if err := query.Find(&nodes).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return nodes, total, nil
+}
+
 func (hsdb *HSDatabase) CreateUserForTest(name ...string) *types.User {
 	if !testing.Testing() {
 		panic("CreateUserForTest can only be called during tests")

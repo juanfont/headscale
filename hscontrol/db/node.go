@@ -86,6 +86,52 @@ func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 	return nodes, nil
 }
 
+// ListNodesPaginated queries the database for nodes with pagination support.
+// Returns nodes, total count, and error.
+func (hsdb *HSDatabase) ListNodesPaginated(limit, offset uint64, nodeIDs ...types.NodeID) (types.Nodes, int64, error) {
+	return ListNodesPaginated(hsdb.DB, limit, offset, nodeIDs...)
+}
+
+// ListNodesPaginated queries the database for nodes with pagination support.
+// If limit is 0, all nodes are returned. Returns nodes, total count, and error.
+func ListNodesPaginated(tx *gorm.DB, limit, offset uint64, nodeIDs ...types.NodeID) (types.Nodes, int64, error) {
+	nodes := types.Nodes{}
+
+	// Build base query with nodeID filtering
+	baseQuery := tx.Model(&types.Node{})
+	if len(nodeIDs) > 0 {
+		baseQuery = baseQuery.Where(nodeIDs)
+	}
+
+	// Get total count before pagination
+	var total int64
+	if err := baseQuery.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// Build query for fetching nodes with preloads
+	query := tx.
+		Preload("AuthKey").
+		Preload("AuthKey.User").
+		Preload("User")
+
+	// Apply the same nodeID filtering
+	if len(nodeIDs) > 0 {
+		query = query.Where(nodeIDs)
+	}
+
+	// Apply limit and offset if limit > 0
+	if limit > 0 {
+		query = query.Limit(int(limit)).Offset(int(offset))
+	}
+
+	if err := query.Find(&nodes).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return nodes, total, nil
+}
+
 func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}

@@ -96,9 +96,19 @@ message RenameNodeRequest {
 
 message RenameNodeResponse { Node node = 1; }
 
-message ListNodesRequest { string user = 1; }
+message ListNodesRequest {
+  string user = 1;
+  // Pagination: number of nodes to return per page (default: 0 = all)
+  uint64 limit = 2;
+  // Pagination: offset for the list of nodes (default: 0)
+  uint64 offset = 3;
+}
 
-message ListNodesResponse { repeated Node nodes = 1; }
+message ListNodesResponse {
+  repeated Node nodes = 1;
+  // Total number of nodes matching the filter (useful for pagination)
+  uint64 total = 2;
+}
 
 message DebugCreateNodeRequest {
   string user = 1;

@@ -23,6 +23,8 @@ func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
 	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
+	listNodesCmd.Flags().Uint64P("limit", "l", 0, "Maximum number of nodes to list (0 = all)")
+	listNodesCmd.Flags().Uint64P("offset", "o", 0, "Offset for pagination")
 
 	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
 	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
@@ -152,13 +154,23 @@ var listNodesCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
 		}
+		limit, err := cmd.Flags().GetUint64("limit")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting limit flag: %s", err), output)
+		}
+		offset, err := cmd.Flags().GetUint64("offset")
+		if err != nil {
+			ErrorOutput(err, fmt.Sprintf("Error getting offset flag: %s", err), output)
+		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
 
 		request := &v1.ListNodesRequest{
-			User: user,
+			User:   user,
+			Limit:  limit,
+			Offset: offset,
 		}
 
 		response, err := client.ListNodes(ctx, request)
@@ -172,6 +184,13 @@ var listNodesCmd = &cobra.Command{
 
 		if output != "" {
 			SuccessOutput(response.GetNodes(), "", output)
+			return
+		}
+
+		// Display pagination info if limit is set
+		if limit > 0 {
+			fmt.Printf("Showing %d of %d total nodes (offset: %d)\n\n",
+				len(response.GetNodes()), response.GetTotal(), offset)
 		}
 
 		tableData, err := nodesToPtables(user, showTags, response.GetNodes())

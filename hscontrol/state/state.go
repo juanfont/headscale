@@ -611,6 +611,40 @@ func (s *State) ListNodesByUser(userID types.UserID) views.Slice[types.NodeView]
 	return s.nodeStore.ListNodesByUser(userID)
 }
 
+// ListNodesPaginated retrieves nodes with pagination support.
+// If limit is 0, all nodes are returned. Returns node views, total count, and error.
+// This method queries the database directly for efficiency with large datasets.
+func (s *State) ListNodesPaginated(limit, offset uint64) (views.Slice[types.NodeView], int64, error) {
+	nodes, total, err := s.db.ListNodesPaginated(limit, offset)
+	if err != nil {
+		return views.Slice[types.NodeView]{}, 0, err
+	}
+
+	nodeViews := make([]types.NodeView, len(nodes))
+	for i, node := range nodes {
+		nodeViews[i] = node.View()
+	}
+
+	return views.SliceOf(nodeViews), total, nil
+}
+
+// ListNodesByUserPaginated retrieves nodes for a specific user with pagination support.
+// If limit is 0, all nodes are returned. Returns node views, total count, and error.
+// This method queries the database directly for efficiency with large datasets.
+func (s *State) ListNodesByUserPaginated(userID types.UserID, limit, offset uint64) (views.Slice[types.NodeView], int64, error) {
+	nodes, total, err := hsdb.ListNodesByUserPaginated(s.db.DB, userID, limit, offset)
+	if err != nil {
+		return views.Slice[types.NodeView]{}, 0, err
+	}
+
+	nodeViews := make([]types.NodeView, len(nodes))
+	for i, node := range nodes {
+		nodeViews[i] = node.View()
+	}
+
+	return views.SliceOf(nodeViews), total, nil
+}
+
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
 func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Slice[types.NodeView] {
 	if len(peerIDs) == 0 {

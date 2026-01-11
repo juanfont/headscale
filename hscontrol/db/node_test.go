@@ -1115,3 +1115,139 @@ func TestListNodes(t *testing.T) {
 	assert.Equal(t, "test1", nodes[0].Hostname)
 	assert.Equal(t, "test2", nodes[1].Hostname)
 }
+
+func TestListNodesPaginated(t *testing.T) {
+	// Setup test database
+	db, err := newSQLiteTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	// Create a user
+	user, err := db.CreateUser(types.User{Name: "test-user"})
+	require.NoError(t, err)
+
+	// Create 10 test nodes
+	for i := 1; i <= 10; i++ {
+		node := types.Node{
+			MachineKey:     key.NewMachine().Public(),
+			NodeKey:        key.NewNode().Public(),
+			Hostname:       fmt.Sprintf("node%d", i),
+			UserID:         &user.ID,
+			RegisterMethod: util.RegisterMethodAuthKey,
+			Hostinfo:       &tailcfg.Hostinfo{},
+		}
+		err = db.DB.Save(&node).Error
+		require.NoError(t, err)
+	}
+
+	// Test 1: Get all nodes (limit=0)
+	nodes, total, err := db.ListNodesPaginated(0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 10)
+
+	// Test 2: Get first 5 nodes
+	nodes, total, err = db.ListNodesPaginated(5, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 5)
+
+	// Test 3: Get next 5 nodes with offset
+	nodes, total, err = db.ListNodesPaginated(5, 5)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 5)
+
+	// Test 4: Offset beyond available nodes
+	nodes, total, err = db.ListNodesPaginated(5, 15)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 0)
+
+	// Test 5: Limit larger than available nodes
+	nodes, total, err = db.ListNodesPaginated(20, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 10)
+
+	// Test 6: Small page size
+	nodes, total, err = db.ListNodesPaginated(2, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(10), total)
+	assert.Len(t, nodes, 2)
+}
+
+func TestListNodesByUserPaginated(t *testing.T) {
+	// Setup test database
+	db, err := newSQLiteTestDB()
+	if err != nil {
+		t.Fatalf("creating db: %s", err)
+	}
+
+	// Create two users
+	user1, err := db.CreateUser(types.User{Name: "user1"})
+	require.NoError(t, err)
+
+	user2, err := db.CreateUser(types.User{Name: "user2"})
+	require.NoError(t, err)
+
+	// Create 5 nodes for user1
+	for i := 1; i <= 5; i++ {
+		node := types.Node{
+			MachineKey:     key.NewMachine().Public(),
+			NodeKey:        key.NewNode().Public(),
+			Hostname:       fmt.Sprintf("user1-node%d", i),
+			UserID:         &user1.ID,
+			RegisterMethod: util.RegisterMethodAuthKey,
+			Hostinfo:       &tailcfg.Hostinfo{},
+		}
+		err = db.DB.Save(&node).Error
+		require.NoError(t, err)
+	}
+
+	// Create 3 nodes for user2
+	for i := 1; i <= 3; i++ {
+		node := types.Node{
+			MachineKey:     key.NewMachine().Public(),
+			NodeKey:        key.NewNode().Public(),
+			Hostname:       fmt.Sprintf("user2-node%d", i),
+			UserID:         &user2.ID,
+			RegisterMethod: util.RegisterMethodAuthKey,
+			Hostinfo:       &tailcfg.Hostinfo{},
+		}
+		err = db.DB.Save(&node).Error
+		require.NoError(t, err)
+	}
+
+	// Test 1: Get all nodes for user1 (limit=0)
+	nodes, total, err := ListNodesByUserPaginated(db.DB, types.UserID(user1.ID), 0, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+	assert.Len(t, nodes, 5)
+
+	// Test 2: Get first 3 nodes for user1
+	nodes, total, err = ListNodesByUserPaginated(db.DB, types.UserID(user1.ID), 3, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+	assert.Len(t, nodes, 3)
+
+	// Test 3: Get nodes for user2 with pagination
+	nodes, total, err = ListNodesByUserPaginated(db.DB, types.UserID(user2.ID), 2, 0)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	assert.Len(t, nodes, 2)
+
+	// Test 4: Get remaining nodes for user2 with offset
+	nodes, total, err = ListNodesByUserPaginated(db.DB, types.UserID(user2.ID), 2, 2)
+	require.NoError(t, err)
+	assert.Equal(t, int64(3), total)
+	assert.Len(t, nodes, 1)
+
+	// Test 5: Verify nodes don't mix between users
+	allUser1Nodes, _, err := ListNodesByUserPaginated(db.DB, types.UserID(user1.ID), 0, 0)
+	require.NoError(t, err)
+	for _, node := range allUser1Nodes {
+		assert.Equal(t, user1.ID, *node.UserID)
+	}
+}
