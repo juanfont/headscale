@@ -360,6 +360,15 @@ unix_socket_permission: "0770"
 #   # Custom scopes can be configured as needed, be sure to always include the
 #   # required "openid" scope.
 #   scope: ["openid", "profile", "email"]
+
+#   # Optional: control how Headscale derives the username (login name) from OIDC claims.
+#   # The first non-empty, valid value is used.
+#   # Supported values: preferred_username, email_localpart, email, name, sub
+#   # Defaults to [preferred_username, email_localpart, email, name, sub]
+#   # username_claim_order:
+#   #   - preferred_username
+#   #   - email_localpart
+#   #   - email
 #
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
