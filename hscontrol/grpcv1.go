@@ -143,6 +143,9 @@ func (api headscaleV1APIServer) ListUsers(
 	// When listing all users (no filter), include TaggedDevices if there are tagged nodes
 	if !isFilteredRequest {
 		// Check if there are any tagged nodes in the system
+		// TODO: Consider adding State.HasTaggedNodes() for better performance
+		// as this iterates through all nodes. ListUsers is not a high-frequency
+		// operation, so the performance impact is acceptable for now.
 		hasTaggedNodes := false
 		allNodes := api.h.state.ListNodes()
 		for _, node := range allNodes.All() {
@@ -361,11 +364,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-				Node: nil,
-			}, status.Error(
-				codes.InvalidArgument,
-				"cannot remove all tags from a node - tagged nodes must have at least one tag",
-			)
+			Node: nil,
+		}, status.Error(
+			codes.InvalidArgument,
+			"cannot remove all tags from a node - tagged nodes must have at least one tag",
+		)
 	}
 
 	// Validate tag format
