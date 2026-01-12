@@ -592,6 +592,89 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Migrate RequestTags from host_info JSON to tags column.
+				ID: "202601121700-migrate-hostinfo-request-tags",
+				Migrate: func(tx *gorm.DB) error {
+					// Define a minimal struct to read node data
+					type nodeRow struct {
+						ID       uint64
+						HostInfo string
+						Tags     string
+					}
+
+					var nodes []nodeRow
+					err := tx.Raw("SELECT id, host_info, tags FROM nodes WHERE host_info IS NOT NULL AND host_info != '' AND host_info != '{}'").Scan(&nodes).Error
+					if err != nil {
+						return fmt.Errorf("querying nodes for RequestTags migration: %w", err)
+					}
+
+					for _, node := range nodes {
+						// Parse host_info JSON to extract RequestTags
+						var hostInfo struct {
+							RequestTags []string `json:"RequestTags"`
+						}
+						if err := json.Unmarshal([]byte(node.HostInfo), &hostInfo); err != nil {
+							// Skip nodes with invalid JSON - they may have been cleaned up
+							log.Trace().
+								Uint64("node.id", node.ID).
+								Err(err).
+								Msg("Skipping node with invalid host_info JSON during RequestTags migration")
+							continue
+						}
+
+						// Skip if no RequestTags in host_info
+						if len(hostInfo.RequestTags) == 0 {
+							continue
+						}
+
+						// Parse existing tags from the tags column
+						var existingTags []string
+						if node.Tags != "" && node.Tags != "null" {
+							if err := json.Unmarshal([]byte(node.Tags), &existingTags); err != nil {
+								log.Trace().
+									Uint64("node.id", node.ID).
+									Err(err).
+									Msg("Skipping node with invalid tags JSON during RequestTags migration")
+								continue
+							}
+						}
+
+						// Merge RequestTags with existing tags
+						mergedTags := existingTags
+						for _, tag := range hostInfo.RequestTags {
+							if !slices.Contains(mergedTags, tag) {
+								mergedTags = append(mergedTags, tag)
+							}
+						}
+
+						// Sort and compact
+						slices.Sort(mergedTags)
+						mergedTags = slices.Compact(mergedTags)
+
+						// Serialize back to JSON
+						tagsJSON, err := json.Marshal(mergedTags)
+						if err != nil {
+							return fmt.Errorf("serializing merged tags for node %d: %w", node.ID, err)
+						}
+
+						// Update the tags column
+						if err := tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error; err != nil {
+							return fmt.Errorf("updating tags for node %d: %w", node.ID, err)
+						}
+
+						log.Info().
+							Uint64("node.id", node.ID).
+							Strs("request_tags", hostInfo.RequestTags).
+							Strs("existing_tags", existingTags).
+							Strs("merged_tags", mergedTags).
+							Msg("Migrated RequestTags from host_info to tags column")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
