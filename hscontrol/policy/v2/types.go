@@ -1510,6 +1510,7 @@ type Policy struct {
 	ACLs          []ACL              `json:"acls,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
+	Tests         []ACLTest          `json:"tests,omitempty"`
 }
 
 // MarshalJSON is deliberately not implemented for Policy.
