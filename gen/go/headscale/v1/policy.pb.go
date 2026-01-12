@@ -206,6 +206,286 @@ func (x *GetPolicyResponse) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+type ACLTest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Source alias (user, group, tag, host, or IP) to test from.
+	Src string `protobuf:"bytes,1,opt,name=src,proto3" json:"src,omitempty"`
+	// Protocol to test (tcp, udp, icmp). Defaults to TCP/UDP if empty.
+	Proto string `protobuf:"bytes,2,opt,name=proto,proto3" json:"proto,omitempty"`
+	// Destinations (in "host:port" format) that should be allowed.
+	Accept []string `protobuf:"bytes,3,rep,name=accept,proto3" json:"accept,omitempty"`
+	// Destinations (in "host:port" format) that should be denied.
+	Deny          []string `protobuf:"bytes,4,rep,name=deny,proto3" json:"deny,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ACLTest) Reset() {
+	*x = ACLTest{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ACLTest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ACLTest) ProtoMessage() {}
+
+func (x *ACLTest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ACLTest.ProtoReflect.Descriptor instead.
+func (*ACLTest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ACLTest) GetSrc() string {
+	if x != nil {
+		return x.Src
+	}
+	return ""
+}
+
+func (x *ACLTest) GetProto() string {
+	if x != nil {
+		return x.Proto
+	}
+	return ""
+}
+
+func (x *ACLTest) GetAccept() []string {
+	if x != nil {
+		return x.Accept
+	}
+	return nil
+}
+
+func (x *ACLTest) GetDeny() []string {
+	if x != nil {
+		return x.Deny
+	}
+	return nil
+}
+
+type ACLTestResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Source alias that was tested.
+	Src string `protobuf:"bytes,1,opt,name=src,proto3" json:"src,omitempty"`
+	// Whether the test passed (all assertions correct).
+	Passed bool `protobuf:"varint,2,opt,name=passed,proto3" json:"passed,omitempty"`
+	// Errors encountered during test execution.
+	Errors []string `protobuf:"bytes,3,rep,name=errors,proto3" json:"errors,omitempty"`
+	// Destinations that were correctly allowed.
+	AcceptOk []string `protobuf:"bytes,4,rep,name=accept_ok,json=acceptOk,proto3" json:"accept_ok,omitempty"`
+	// Destinations that should have been allowed but were denied.
+	AcceptFail []string `protobuf:"bytes,5,rep,name=accept_fail,json=acceptFail,proto3" json:"accept_fail,omitempty"`
+	// Destinations that were correctly denied.
+	DenyOk []string `protobuf:"bytes,6,rep,name=deny_ok,json=denyOk,proto3" json:"deny_ok,omitempty"`
+	// Destinations that should have been denied but were allowed.
+	DenyFail      []string `protobuf:"bytes,7,rep,name=deny_fail,json=denyFail,proto3" json:"deny_fail,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ACLTestResult) Reset() {
+	*x = ACLTestResult{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ACLTestResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ACLTestResult) ProtoMessage() {}
+
+func (x *ACLTestResult) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ACLTestResult.ProtoReflect.Descriptor instead.
+func (*ACLTestResult) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ACLTestResult) GetSrc() string {
+	if x != nil {
+		return x.Src
+	}
+	return ""
+}
+
+func (x *ACLTestResult) GetPassed() bool {
+	if x != nil {
+		return x.Passed
+	}
+	return false
+}
+
+func (x *ACLTestResult) GetErrors() []string {
+	if x != nil {
+		return x.Errors
+	}
+	return nil
+}
+
+func (x *ACLTestResult) GetAcceptOk() []string {
+	if x != nil {
+		return x.AcceptOk
+	}
+	return nil
+}
+
+func (x *ACLTestResult) GetAcceptFail() []string {
+	if x != nil {
+		return x.AcceptFail
+	}
+	return nil
+}
+
+func (x *ACLTestResult) GetDenyOk() []string {
+	if x != nil {
+		return x.DenyOk
+	}
+	return nil
+}
+
+func (x *ACLTestResult) GetDenyFail() []string {
+	if x != nil {
+		return x.DenyFail
+	}
+	return nil
+}
+
+type TestACLRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Tests to run.
+	Tests []*ACLTest `protobuf:"bytes,1,rep,name=tests,proto3" json:"tests,omitempty"`
+	// Optional: policy content to test against a proposed policy.
+	// If empty, tests run against the current active policy.
+	Policy        string `protobuf:"bytes,2,opt,name=policy,proto3" json:"policy,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestACLRequest) Reset() {
+	*x = TestACLRequest{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestACLRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestACLRequest) ProtoMessage() {}
+
+func (x *TestACLRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestACLRequest.ProtoReflect.Descriptor instead.
+func (*TestACLRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *TestACLRequest) GetTests() []*ACLTest {
+	if x != nil {
+		return x.Tests
+	}
+	return nil
+}
+
+func (x *TestACLRequest) GetPolicy() string {
+	if x != nil {
+		return x.Policy
+	}
+	return ""
+}
+
+type TestACLResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Whether all tests passed.
+	AllPassed bool `protobuf:"varint,1,opt,name=all_passed,json=allPassed,proto3" json:"all_passed,omitempty"`
+	// Individual test results.
+	Results       []*ACLTestResult `protobuf:"bytes,2,rep,name=results,proto3" json:"results,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TestACLResponse) Reset() {
+	*x = TestACLResponse{}
+	mi := &file_headscale_v1_policy_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TestACLResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TestACLResponse) ProtoMessage() {}
+
+func (x *TestACLResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_policy_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TestACLResponse.ProtoReflect.Descriptor instead.
+func (*TestACLResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_policy_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *TestACLResponse) GetAllPassed() bool {
+	if x != nil {
+		return x.AllPassed
+	}
+	return false
+}
+
+func (x *TestACLResponse) GetResults() []*ACLTestResult {
+	if x != nil {
+		return x.Results
+	}
+	return nil
+}
+
 var File_headscale_v1_policy_proto protoreflect.FileDescriptor
 
 const file_headscale_v1_policy_proto_rawDesc = "" +
@@ -221,7 +501,28 @@ const file_headscale_v1_policy_proto_rawDesc = "" +
 	"\x11GetPolicyResponse\x12\x16\n" +
 	"\x06policy\x18\x01 \x01(\tR\x06policy\x129\n" +
 	"\n" +
-	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
+	"updated_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"]\n" +
+	"\aACLTest\x12\x10\n" +
+	"\x03src\x18\x01 \x01(\tR\x03src\x12\x14\n" +
+	"\x05proto\x18\x02 \x01(\tR\x05proto\x12\x16\n" +
+	"\x06accept\x18\x03 \x03(\tR\x06accept\x12\x12\n" +
+	"\x04deny\x18\x04 \x03(\tR\x04deny\"\xc5\x01\n" +
+	"\rACLTestResult\x12\x10\n" +
+	"\x03src\x18\x01 \x01(\tR\x03src\x12\x16\n" +
+	"\x06passed\x18\x02 \x01(\bR\x06passed\x12\x16\n" +
+	"\x06errors\x18\x03 \x03(\tR\x06errors\x12\x1b\n" +
+	"\taccept_ok\x18\x04 \x03(\tR\bacceptOk\x12\x1f\n" +
+	"\vaccept_fail\x18\x05 \x03(\tR\n" +
+	"acceptFail\x12\x17\n" +
+	"\adeny_ok\x18\x06 \x03(\tR\x06denyOk\x12\x1b\n" +
+	"\tdeny_fail\x18\a \x03(\tR\bdenyFail\"U\n" +
+	"\x0eTestACLRequest\x12+\n" +
+	"\x05tests\x18\x01 \x03(\v2\x15.headscale.v1.ACLTestR\x05tests\x12\x16\n" +
+	"\x06policy\x18\x02 \x01(\tR\x06policy\"g\n" +
+	"\x0fTestACLResponse\x12\x1d\n" +
+	"\n" +
+	"all_passed\x18\x01 \x01(\bR\tallPassed\x125\n" +
+	"\aresults\x18\x02 \x03(\v2\x1b.headscale.v1.ACLTestResultR\aresultsB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
 var (
 	file_headscale_v1_policy_proto_rawDescOnce sync.Once
@@ -235,22 +536,28 @@ func file_headscale_v1_policy_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_policy_proto_rawDescData
 }
 
-var file_headscale_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_headscale_v1_policy_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_headscale_v1_policy_proto_goTypes = []any{
 	(*SetPolicyRequest)(nil),      // 0: headscale.v1.SetPolicyRequest
 	(*SetPolicyResponse)(nil),     // 1: headscale.v1.SetPolicyResponse
 	(*GetPolicyRequest)(nil),      // 2: headscale.v1.GetPolicyRequest
 	(*GetPolicyResponse)(nil),     // 3: headscale.v1.GetPolicyResponse
-	(*timestamppb.Timestamp)(nil), // 4: google.protobuf.Timestamp
+	(*ACLTest)(nil),               // 4: headscale.v1.ACLTest
+	(*ACLTestResult)(nil),         // 5: headscale.v1.ACLTestResult
+	(*TestACLRequest)(nil),        // 6: headscale.v1.TestACLRequest
+	(*TestACLResponse)(nil),       // 7: headscale.v1.TestACLResponse
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_headscale_v1_policy_proto_depIdxs = []int32{
-	4, // 0: headscale.v1.SetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
-	4, // 1: headscale.v1.GetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	8, // 0: headscale.v1.SetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
+	8, // 1: headscale.v1.GetPolicyResponse.updated_at:type_name -> google.protobuf.Timestamp
+	4, // 2: headscale.v1.TestACLRequest.tests:type_name -> headscale.v1.ACLTest
+	5, // 3: headscale.v1.TestACLResponse.results:type_name -> headscale.v1.ACLTestResult
+	4, // [4:4] is the sub-list for method output_type
+	4, // [4:4] is the sub-list for method input_type
+	4, // [4:4] is the sub-list for extension type_name
+	4, // [4:4] is the sub-list for extension extendee
+	0, // [0:4] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_policy_proto_init() }
@@ -264,7 +571,7 @@ func file_headscale_v1_policy_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_policy_proto_rawDesc), len(file_headscale_v1_policy_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   4,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

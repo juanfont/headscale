@@ -746,6 +746,16 @@ func (pm *PolicyManager) Version() int {
 	return 2
 }
 
+// Policy returns the underlying Policy struct.
+// This can be used to access embedded tests or other policy data.
+func (pm *PolicyManager) Policy() *Policy {
+	if pm == nil {
+		return nil
+	}
+
+	return pm.pol
+}
+
 func (pm *PolicyManager) DebugString() string {
 	if pm == nil {
 		return "PolicyManager is not setup"

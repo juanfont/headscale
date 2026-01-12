@@ -285,3 +285,162 @@ Used in Tailscale SSH rules to allow access to any user except root. Can only be
   "users": ["autogroup:nonroot"]
 }
 ```
+
+## Testing ACLs
+
+Headscale provides ACL testing functionality to verify that your policy rules work as expected. You can test ACLs using embedded tests in your policy file or via the CLI.
+
+### Embedded Tests in Policy
+
+You can include a `tests` section in your policy file to define test cases that are automatically validated when the policy is loaded or updated. **If any embedded test fails, the policy update will be rejected**, providing regression protection when modifying ACL rules.
+
+```json
+{
+  "groups": {
+    "group:dev": ["dev1@", "dev2@"]
+  },
+  "acls": [
+    {
+      "action": "accept",
+      "src": ["group:dev"],
+      "dst": ["tag:dev-servers:*"]
+    }
+  ],
+  "tests": [
+    {
+      "src": "dev1@",
+      "accept": ["tag:dev-servers:22", "tag:dev-servers:80"]
+    },
+    {
+      "src": "dev1@",
+      "deny": ["tag:prod-servers:22"]
+    },
+    {
+      "src": "group:dev",
+      "proto": "tcp",
+      "accept": ["tag:dev-servers:443"]
+    }
+  ]
+}
+```
+
+Each test case supports the following fields:
+
+| Field    | Description                                              |
+|----------|----------------------------------------------------------|
+| `src`    | Source alias to test from (user, group, tag, host, or IP) |
+| `accept` | List of destinations that should be **allowed** (format: `host:port`) |
+| `deny`   | List of destinations that should be **denied** (format: `host:port`) |
+| `proto`  | Optional protocol filter (`tcp`, `udp`, `icmp`)          |
+
+### CLI Testing
+
+The `headscale policy test` command allows you to test ACL rules without modifying your policy.
+
+#### Test Specific Access
+
+```bash
+# Test if a user can access a server on port 22
+headscale policy test --src "alice@example.com" --accept "tag:server:22"
+
+# Test with multiple destinations
+headscale policy test --src "group:dev" --accept "tag:dev:22" --accept "tag:dev:80"
+
+# Test both allowed and denied access
+headscale policy test --src "alice@" --accept "10.0.0.1:80" --deny "10.0.0.2:443"
+
+# Test with protocol filter
+headscale policy test --src "tag:monitoring" --proto tcp --accept "tag:servers:9090"
+```
+
+#### Run Embedded Tests
+
+```bash
+# Run all tests defined in the current policy's tests section
+headscale policy test --embedded
+```
+
+#### Test a Proposed Policy
+
+Before applying a new policy, you can test it without affecting the running configuration:
+
+```bash
+# Test against a proposed policy file
+headscale policy test --src "alice@" --accept "server:22" --policy-file new-acl.json
+
+# Run embedded tests from a proposed policy file
+headscale policy test --embedded --policy-file new-acl.json
+```
+
+#### Test from a File
+
+You can define multiple tests in a JSON file:
+
+```bash
+headscale policy test --file tests.json
+```
+
+Where `tests.json` contains:
+
+```json
+[
+  {
+    "src": "alice@example.com",
+    "accept": ["server1:22", "server2:80"],
+    "deny": ["database:5432"]
+  },
+  {
+    "src": "tag:ci",
+    "accept": ["tag:staging:*"]
+  }
+]
+```
+
+#### Output Formats
+
+By default, the CLI shows human-readable output.
+
+For programmatic use, JSON output is available:
+
+```bash
+headscale policy test --src "alice@" --accept "server:22" --output json
+```
+
+### API Endpoint
+
+Third-party UIs can use the gRPC/HTTP API to test ACL rules:
+
+**Endpoint:** `POST /api/v1/policy/test`
+
+**Request:**
+
+```json
+{
+  "tests": [
+    {
+      "src": "alice@example.com",
+      "accept": ["server1:22"],
+      "deny": ["database:5432"]
+    }
+  ],
+  "policy": ""
+}
+```
+
+The optional `policy` field allows testing against a proposed policy instead of the current active policy. If empty, tests run against the current policy.
+
+**Response:**
+
+```json
+{
+  "all_passed": true,
+  "results": [
+    {
+      "src": "alice@example.com",
+      "passed": true,
+      "accept_ok": ["server1:22"],
+      "deny_ok": ["database:5432"]
+    }
+  ]
+}
+```

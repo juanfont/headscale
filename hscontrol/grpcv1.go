@@ -26,6 +26,7 @@ import (
 	"tailscale.com/types/views"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -720,6 +721,30 @@ func (api headscaleV1APIServer) SetPolicy(
 		}
 	}
 
+	// Run embedded ACL tests if present
+	// Failed tests block the policy update (like Tailscale)
+	users, err := api.h.state.ListAllUsers()
+	if err != nil {
+		return nil, fmt.Errorf("loading users for test validation: %w", err)
+	}
+
+	testPM, err := policyv2.NewPolicyManager([]byte(p), users, nodes)
+	if err != nil {
+		return nil, fmt.Errorf("parsing policy for tests: %w", err)
+	}
+
+	pol := testPM.Policy()
+	if pol != nil && len(pol.Tests) > 0 {
+		results := testPM.RunTests(pol.Tests)
+		if !results.AllPassed {
+			return nil, status.Errorf(codes.InvalidArgument,
+				"ACL tests failed: %s", results.Errors())
+		}
+		log.Info().
+			Int("tests_passed", len(results.Results)).
+			Msg("All embedded ACL tests passed")
+	}
+
 	updated, err := api.h.state.SetPolicyInDB(p)
 	if err != nil {
 		return nil, err
@@ -827,6 +852,66 @@ func (api headscaleV1APIServer) Health(
 	}
 
 	return response, healthErr
+}
+
+func (api headscaleV1APIServer) TestACL(
+	ctx context.Context,
+	request *v1.TestACLRequest,
+) (*v1.TestACLResponse, error) {
+	if len(request.GetTests()) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "at least one test is required")
+	}
+
+	// Convert proto tests to internal ACLTest structs
+	tests := make([]policyv2.ACLTest, len(request.GetTests()))
+	for i, t := range request.GetTests() {
+		tests[i] = policyv2.ACLTest{
+			Src:    t.GetSrc(),
+			Proto:  policyv2.Protocol(t.GetProto()),
+			Accept: t.GetAccept(),
+			Deny:   t.GetDeny(),
+		}
+	}
+
+	var results policyv2.ACLTestResults
+
+	if request.GetPolicy() != "" {
+		// Test against a proposed policy
+		users, err := api.h.state.ListAllUsers()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to list users: %v", err)
+		}
+		nodes := api.h.state.ListNodes()
+
+		pm, err := policyv2.NewPolicyManager([]byte(request.GetPolicy()), users, nodes)
+		if err != nil {
+			return nil, status.Errorf(codes.InvalidArgument, "invalid policy: %v", err)
+		}
+
+		results = pm.RunTests(tests)
+	} else {
+		// Test against current active policy
+		results = api.h.state.RunACLTests(tests)
+	}
+
+	// Convert results to proto response
+	protoResults := make([]*v1.ACLTestResult, len(results.Results))
+	for i, r := range results.Results {
+		protoResults[i] = &v1.ACLTestResult{
+			Src:        r.Src,
+			Passed:     r.Passed,
+			Errors:     r.Errors,
+			AcceptOk:   r.AcceptOK,
+			AcceptFail: r.AcceptFail,
+			DenyOk:     r.DenyOK,
+			DenyFail:   r.DenyFail,
+		}
+	}
+
+	return &v1.TestACLResponse{
+		AllPassed: results.AllPassed,
+		Results:   protoResults,
+	}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

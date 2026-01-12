@@ -18,6 +18,7 @@ import (
 	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
+	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
@@ -880,6 +881,16 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 // SetPolicy updates the policy configuration.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	return s.polMan.SetPolicy(pol)
+}
+
+// RunACLTests runs multiple ACL tests against the current policy and returns aggregated results.
+func (s *State) RunACLTests(tests []policyv2.ACLTest) policyv2.ACLTestResults {
+	return s.polMan.RunTests(tests)
+}
+
+// RunACLTest evaluates a single ACL test against the current policy.
+func (s *State) RunACLTest(test policyv2.ACLTest) policyv2.ACLTestResult {
+	return s.polMan.RunTest(test)
 }
 
 // AutoApproveRoutes checks if a node's routes should be auto-approved.
