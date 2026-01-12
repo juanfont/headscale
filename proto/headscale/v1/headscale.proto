@@ -180,6 +180,13 @@ service HeadscaleService {
       body : "*"
     };
   }
+
+  rpc TestACL(TestACLRequest) returns (TestACLResponse) {
+    option (google.api.http) = {
+      post : "/api/v1/policy/test"
+      body : "*"
+    };
+  }
   // --- Policy end ---
 
   // --- Health start ---
