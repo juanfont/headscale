@@ -2693,8 +2693,9 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for node to be registered and verify it has the key's tags
+	// Note: Tags-only nodes don't have a user, so we list all nodes
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -2708,14 +2709,14 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 	t.Logf("Test 5.1 PASS: Node inherited tags from tags-only auth key")
 }
 
-// TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags tests that when an auth key without
-// a user (tags-only) is used WITH --advertise-tags, the advertised tags are ignored
-// and the auth key's tags are used instead.
+// TestTagsAuthKeyWithoutUserRejectsAdvertisedTags tests that when an auth key without
+// a user (tags-only) is used WITH --advertise-tags, the registration is rejected.
+// PreAuthKey registrations do not allow client-requested tags.
 //
-// Test 5.2: Auth key without user, with --advertise-tags (should be ignored)
+// Test 5.2: Auth key without user, with --advertise-tags (should be rejected)
 // Setup: Run `tailscale up --advertise-tags="tag:second" --auth-key AUTH_KEY_WITH_TAGS_NO_USER`
-// Expected: Node registers with the auth key's tags (tag:valid-owned), NOT the advertised tags.
-func TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags(t *testing.T) {
+// Expected: Registration fails with error containing "requested tags".
+func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 	IntegrationSkip(t)
 
 	policy := tagsTestPolicy()
@@ -2733,7 +2734,7 @@ func TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("tags-authkey-no-user-ignore-advertise"),
+		hsic.WithTestName("tags-authkey-no-user-reject-advertise"),
 		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -2759,23 +2760,13 @@ func TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// Login with the tags-only auth key
+	// Login should fail because ANY advertise-tags is rejected for PreAuthKey registrations
 	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
-	require.NoError(t, err)
-
-	// Wait for node to be registered and verify it has the auth KEY's tags, NOT the advertised tags
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
-		assert.NoError(c, err)
-		assert.Len(c, nodes, 1, "Should have exactly 1 node")
-
-		if len(nodes) == 1 {
-			node := nodes[0]
-			t.Logf("Node registered with tags: %v (advertised: tag:second)", node.GetTags())
-			// Should have auth key's tags, NOT the advertised tags
-			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
-		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying node has auth key tags, not advertised tags")
-
-	t.Logf("Test 5.2 PASS: Advertised tags were correctly ignored, auth key tags used")
+	if err != nil {
+		t.Logf("Test 5.2 PASS: Registration correctly rejected with error: %v", err)
+		assert.ErrorContains(t, err, "requested tags")
+	} else {
+		t.Logf("Test 5.2 UNEXPECTED: Registration succeeded when it should have failed")
+		t.Fail()
+	}
 }
