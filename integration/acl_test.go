@@ -3325,16 +3325,23 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 	t.Log("Test PASSED: Remaining users can communicate after deleted user and policy refresh")
 }
 
-// TestACLGroupDeletionExactReproduction reproduces issue #2967:
-// The bug is that deleting a user from the database (while keeping their
-// reference in the ACL) and then creating a new user causes the policy
-// to break for everyone in the group.
+// TestACLGroupDeletionExactReproduction reproduces issue #2967 exactly as reported:
+// The reporter had ACTIVE pinging between nodes while making changes.
+// The bug is that deleting a user and then creating a new user causes
+// connectivity to break for remaining users in the group.
 //
-// Steps:
-// 0. Create policy with user1@, user2@ in group - connectivity works
-// 1. DELETE user2 from DB (not ACL) - connectivity may still work (stale)
-// 2. MODIFY ACL: Add user3@ to group - connectivity continues
-// 3. CREATE new user user4 - connectivity STOPS (BUG).
+// Key difference from other tests: We keep multiple nodes ACTIVE and pinging
+// each other throughout the test, just like the reporter's scenario.
+//
+// Reporter's steps (v0.28.0-beta.1):
+// 1. Start pinging between nodes
+// 2. Create policy with group:admin = [user1@]
+// 3. Create users "deleteable" and "existinguser"
+// 4. Add deleteable@ to ACL: Pinging continues
+// 5. Delete deleteable: Pinging continues
+// 6. Add existinguser@ to ACL: Pinging continues
+// 7. Create new user "anotheruser": Pinging continues
+// 8. Add anotherinvaliduser@ to ACL: Pinging stops.
 func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -3342,31 +3349,36 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 
 	const userToDelete = "user2"
 
+	// We need 3 users with active nodes to properly test this:
+	// - user1: will remain throughout (like "ritty" in the issue)
+	// - user2: will be deleted (like "deleteable" in the issue)
+	// - user3: will remain and should still be able to ping user1 after user2 deletion
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
-		Users:        []string{"user1", userToDelete},
+		Users:        []string{"user1", userToDelete, "user3"},
 	}
 
 	scenario, err := NewScenario(spec)
-
 	require.NoError(t, err)
 
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	// Step 0: Create initial policy with BOTH user1@ and user2@ in group
+	// Initial policy: all three users in group, can communicate with each other
 	initialPolicy := &policyv2.Policy{
 		Groups: policyv2.Groups{
-			policyv2.Group("group:all"): []policyv2.Username{
+			policyv2.Group("group:admin"): []policyv2.Username{
 				policyv2.Username("user1@"),
-				policyv2.Username("user2@"),
+				policyv2.Username(userToDelete + "@"),
+				policyv2.Username("user3@"),
 			},
 		},
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{groupp("group:all")},
+				Sources: []policyv2.Alias{groupp("group:admin")},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(groupp("group:all"), tailcfg.PortRangeAny),
+					// Use *:* like the reporter's ACL
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -3396,129 +3408,424 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
 
+	// Get all clients
 	user1Clients, err := scenario.ListTailscaleClients("user1")
 	require.NoError(t, err)
 	require.Len(t, user1Clients, 1)
 	user1 := user1Clients[0]
 
-	user2Clients, err := scenario.ListTailscaleClients(userToDelete)
+	user3Clients, err := scenario.ListTailscaleClients("user3")
 	require.NoError(t, err)
-	require.Len(t, user2Clients, 1)
-	user2Client := user2Clients[0]
+	require.Len(t, user3Clients, 1)
+	user3 := user3Clients[0]
 
-	user2FQDN, err := user2Client.FQDN()
+	user1FQDN, err := user1.FQDN()
+	require.NoError(t, err)
+	user3FQDN, err := user3.FQDN()
 	require.NoError(t, err)
 
-	// Verify initial connectivity
-	t.Log("Step 0: Verifying initial connectivity")
+	// Step 1: Verify initial connectivity - user1 and user3 can ping each other
+	t.Log("Step 1: Verifying initial connectivity (user1 <-> user3)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
 		result, err := user1.Curl(url)
-		assert.NoError(c, err, "Step 0: user1 should reach user2 initially")
+		assert.NoError(c, err, "user1 should reach user3")
 		assert.Len(c, result, 13, "expected hostname response")
-	}, 60*time.Second, 500*time.Millisecond, "Step 0: user1 -> user2")
+	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3")
 
-	t.Log("Step 0: PASSED - initial connectivity works")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user3.Curl(url)
+		assert.NoError(c, err, "user3 should reach user1")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1")
 
-	// Step 1: DELETE user2 from DB (but NOT from ACL)
-	t.Log("Step 1: Deleting user2 from database (NOT from ACL)")
+	t.Log("Step 1: PASSED - initial connectivity works")
 
-	// First delete user2's node
+	// Step 2: Delete user2's node and user (like reporter deleting "deleteable")
+	// The ACL still references user2@ but user2 no longer exists
+	t.Log("Step 2: Deleting user2 (node + user) from database - ACL still references user2@")
+
 	nodes, err := headscale.ListNodes(userToDelete)
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 	err = headscale.DeleteNode(nodes[0].GetId())
 	require.NoError(t, err)
 
-	// Get user2's ID and delete the user
-	users, err := headscale.ListUsers()
+	userToDeleteObj, err := GetUserByName(headscale, userToDelete)
+	require.NoError(t, err, "user to delete should exist")
+
+	err = headscale.DeleteUser(userToDeleteObj.GetId())
 	require.NoError(t, err)
 
-	var user2ID uint64
+	t.Log("Step 2: DONE - user2 deleted, ACL still has user2@ reference")
 
-	for _, u := range users {
-		if u.GetName() == userToDelete {
-			user2ID = u.GetId()
-			break
-		}
+	// Step 3: Verify connectivity still works after user2 deletion
+	// This tests the immediate effect of the fix - policy should be updated
+	t.Log("Step 3: Verifying connectivity STILL works after user2 deletion")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "user1 should still reach user3 after user2 deletion")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3 after user2 deletion")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user3.Curl(url)
+		assert.NoError(c, err, "user3 should still reach user1 after user2 deletion")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1 after user2 deletion")
+
+	t.Log("Step 3: PASSED - connectivity works after user2 deletion")
+
+	// Step 4: Create a NEW user - this triggers updatePolicyManagerUsers()
+	// According to the reporter, this is when the bug manifests
+	t.Log("Step 4: Creating new user (user4) - this triggers policy re-evaluation")
+
+	_, err = headscale.CreateUser("user4")
+	require.NoError(t, err)
+
+	// Step 5: THE CRITICAL TEST - verify connectivity STILL works
+	// Without the fix: DeleteUser didn't update policy, so when CreateUser
+	// triggers updatePolicyManagerUsers(), the stale user2@ is now unknown,
+	// potentially breaking the group.
+	t.Log("Step 5: Verifying connectivity AFTER creating new user (BUG trigger point)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user3FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "BUG #2967: user1 should still reach user3 after user4 creation")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user1 -> user3 after user4 creation (issue #2967)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user3.Curl(url)
+		assert.NoError(c, err, "BUG #2967: user3 should still reach user1 after user4 creation")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user3 -> user1 after user4 creation (issue #2967)")
+
+	// Additional verification: check filter rules are not empty
+	filter, err := headscale.DebugFilter()
+	require.NoError(t, err)
+	t.Logf("Filter rules: %d", len(filter))
+	require.NotEmpty(t, filter, "Filter rules should not be empty")
+
+	t.Log("Test PASSED: Connectivity maintained throughout user deletion and creation")
+	t.Log("Issue #2967 would cause 'pinging to stop' at Step 5")
+}
+
+// TestACLDynamicUnknownUserAddition tests the v0.28.0-beta.1 scenario from issue #2967:
+// "Pinging still stops when a non-registered user is added to a group"
+//
+// This test verifies that when a policy is DYNAMICALLY updated (via SetPolicy)
+// to include a non-existent user in a group, connectivity for valid users
+// is maintained. The v2 policy engine should gracefully handle unknown users.
+//
+// Steps:
+// 1. Start with a valid policy (only existing users in group)
+// 2. Verify connectivity works
+// 3. Update policy to add unknown user to the group
+// 4. Verify connectivity STILL works for valid users.
+func TestACLDynamicUnknownUserAddition(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Issue: https://github.com/juanfont/headscale/issues/2967
+	// Comment: "Pinging still stops when a non-registered user is added to a group"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
 	}
 
-	require.NotZero(t, user2ID)
-	err = headscale.DeleteUser(user2ID)
+	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
 
-	t.Log("Step 2: user2 deleted from DB - ACL still references user2@")
+	defer scenario.ShutdownAssertNoPanics(t)
 
-	// Step 3: MODIFY ACL - Add user3@ to the group (user3 exists in DB)
-	t.Log("Step 3: Creating user3 and modifying ACL to add user3@ to group:all")
-
-	// Create user3 first
-	user3, err := headscale.CreateUser("user3")
-	require.NoError(t, err)
-	require.NotNil(t, user3)
-
-	// Now modify ACL to include user3
-	modifiedPolicy2 := &policyv2.Policy{
+	// Start with a VALID policy - only existing users in the group
+	validPolicy := &policyv2.Policy{
 		Groups: policyv2.Groups{
-			policyv2.Group("group:all"): []policyv2.Username{
+			policyv2.Group("group:test"): []policyv2.Username{
 				policyv2.Username("user1@"),
-				policyv2.Username("user2@"), // Still here - user2 is DELETED but still in ACL
-				policyv2.Username("user3@"), // Added user3
+				policyv2.Username("user2@"),
 			},
 		},
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{groupp("group:all")},
+				Sources: []policyv2.Alias{groupp("group:test")},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(groupp("group:all"), tailcfg.PortRangeAny),
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
 				},
 			},
 		},
 	}
 
-	err = headscale.SetPolicy(modifiedPolicy2)
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(validPolicy),
+		hsic.WithTestName("acl-dynamic-unknown"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
 	require.NoError(t, err)
 
-	t.Log("Step 3: ACL modified - group:all now has user1@, user2@ (deleted), user3@")
-
-	// Step 4: CREATE a completely new user (user4) - this should trigger the bug
-	t.Log("Step 4: Creating new user (user4) - THIS TRIGGERS THE BUG according to issue #2967")
-
-	user4, err := headscale.CreateUser("user4")
+	_, err = scenario.ListTailscaleClientsFQDNs()
 	require.NoError(t, err)
-	require.NotNil(t, user4)
 
-	// Step 5: Verify user1 can still be reached (the bug would break this)
-	// According to the issue, after creating a new user, connectivity STOPS
-	t.Log("Step 5: Verifying user1 is still reachable (BUG: this should FAIL without fix)")
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
 
-	// We need to test that user1 can still function
-	// Since user2 is gone, we test that user1's node is still healthy
-	// by checking if we can list nodes and user1 is there
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	require.NoError(t, err)
+	require.Len(t, user1Clients, 1)
+	user1 := user1Clients[0]
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	require.NoError(t, err)
+	require.Len(t, user2Clients, 1)
+	user2 := user2Clients[0]
+
+	user1FQDN, err := user1.FQDN()
+	require.NoError(t, err)
+	user2FQDN, err := user2.FQDN()
+	require.NoError(t, err)
+
+	// Step 1: Verify initial connectivity with VALID policy
+	t.Log("Step 1: Verifying initial connectivity with valid policy (no unknown users)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodesAfter, err := headscale.ListNodes("user1")
-		assert.NoError(c, err)
-		assert.Len(c, nodesAfter, 1, "user1 should still have a node after user4 creation")
-	}, 30*time.Second, 500*time.Millisecond, "user1 node should exist")
+		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "user1 should reach user2")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "initial user1 -> user2")
 
-	// Check the filter rules - if the bug occurs, the filter becomes EMPTY (0 rules)
-	// This is the key assertion that would fail without the fix
-	filter, err := headscale.DebugFilter()
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user2.Curl(url)
+		assert.NoError(c, err, "user2 should reach user1")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "initial user2 -> user1")
+
+	t.Log("Step 1: PASSED - connectivity works with valid policy")
+
+	// Step 2: DYNAMICALLY update policy to add unknown user
+	// This mimics the v0.28.0-beta.1 scenario where a non-existent user is added
+	t.Log("Step 2: Updating policy to add unknown user (nonexistent@) to the group")
+
+	policyWithUnknown := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:test"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"),
+				policyv2.Username("nonexistent@"), // Added unknown user
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:test")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = headscale.SetPolicy(policyWithUnknown)
 	require.NoError(t, err)
-	t.Logf("Filter rules after user4 creation: %d rules", len(filter))
 
-	// BUG MANIFESTATION: Without the fix, filter rules drop to 0
-	// because the policy manager fails to resolve "user2@" which no longer exists
-	require.NotEmpty(t, filter, "BUG #2967: Filter rules should NOT be empty - if this fails, the bug is reproduced")
-
-	// The real test: user1's node should still be able to accept connections
-	// Since user2 is deleted and user3/user4 have no nodes yet, we verify
-	// that user1's status is healthy
-	status, err := user1.Status()
+	// Wait for policy to propagate
+	err = scenario.WaitForTailscaleSync()
 	require.NoError(t, err)
-	require.NotNil(t, status.Self, "user1 should have valid self status")
 
-	t.Log("Test PASSED: Filter rules are intact and user1 is healthy after user4 creation")
-	t.Log("NOTE: The original bug caused 'pinging to stop' after creating a new user")
+	// Step 3: THE CRITICAL TEST - verify connectivity STILL works
+	// v0.28.0-beta.1 issue: "Pinging still stops when a non-registered user is added to a group"
+	// With v2 policy graceful error handling, this should pass
+	t.Log("Step 3: Verifying connectivity AFTER adding unknown user to policy")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "user1 should STILL reach user2 after adding unknown user")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after unknown user added")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user2.Curl(url)
+		assert.NoError(c, err, "user2 should STILL reach user1 after adding unknown user")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user2 -> user1 after unknown user added")
+
+	t.Log("Step 3: PASSED - connectivity maintained after adding unknown user")
+	t.Log("Test PASSED: v0.28.0-beta.1 scenario - unknown user added dynamically, valid users still work")
+}
+
+// TestACLDynamicUnknownUserRemoval tests the scenario from issue #2967 comments:
+// "Removing all invalid users from ACL restores connectivity"
+//
+// This test verifies that:
+// 1. Start with a policy containing unknown user
+// 2. Connectivity still works (v2 graceful handling)
+// 3. Update policy to remove unknown user
+// 4. Connectivity remains working
+//
+// This ensures the fix handles both:
+// - Adding unknown users (tested above)
+// - Removing unknown users from policy.
+func TestACLDynamicUnknownUserRemoval(t *testing.T) {
+	IntegrationSkip(t)
+
+	// Issue: https://github.com/juanfont/headscale/issues/2967
+	// Comment: "Removing all invalid users from ACL restores connectivity"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Start with a policy that INCLUDES an unknown user
+	policyWithUnknown := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:test"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"),
+				policyv2.Username("invaliduser@"), // Unknown user from the start
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:test")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(policyWithUnknown),
+		hsic.WithTestName("acl-unknown-removal"),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
+	require.NoError(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	require.NoError(t, err)
+	require.Len(t, user1Clients, 1)
+	user1 := user1Clients[0]
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	require.NoError(t, err)
+	require.Len(t, user2Clients, 1)
+	user2 := user2Clients[0]
+
+	user1FQDN, err := user1.FQDN()
+	require.NoError(t, err)
+	user2FQDN, err := user2.FQDN()
+	require.NoError(t, err)
+
+	// Step 1: Verify initial connectivity WITH unknown user in policy
+	// With v2 graceful handling, this should work
+	t.Log("Step 1: Verifying connectivity with unknown user in policy (v2 graceful handling)")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "user1 should reach user2 even with unknown user in policy")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "initial user1 -> user2 with unknown")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user2.Curl(url)
+		assert.NoError(c, err, "user2 should reach user1 even with unknown user in policy")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "initial user2 -> user1 with unknown")
+
+	t.Log("Step 1: PASSED - connectivity works even with unknown user (v2 graceful handling)")
+
+	// Step 2: Update policy to REMOVE the unknown user
+	t.Log("Step 2: Updating policy to remove unknown user")
+
+	cleanPolicy := &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:test"): []policyv2.Username{
+				policyv2.Username("user1@"),
+				policyv2.Username("user2@"),
+				// invaliduser@ removed
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:  "accept",
+				Sources: []policyv2.Alias{groupp("group:test")},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = headscale.SetPolicy(cleanPolicy)
+	require.NoError(t, err)
+
+	// Wait for policy to propagate
+	err = scenario.WaitForTailscaleSync()
+	require.NoError(t, err)
+
+	// Step 3: Verify connectivity after removing unknown user
+	// Issue comment: "Removing all invalid users from ACL restores connectivity"
+	t.Log("Step 3: Verifying connectivity AFTER removing unknown user")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user2FQDN)
+		result, err := user1.Curl(url)
+		assert.NoError(c, err, "user1 should reach user2 after removing unknown user")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user1 -> user2 after unknown removed")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		url := fmt.Sprintf("http://%s/etc/hostname", user1FQDN)
+		result, err := user2.Curl(url)
+		assert.NoError(c, err, "user2 should reach user1 after removing unknown user")
+		assert.Len(c, result, 13, "expected hostname response")
+	}, 60*time.Second, 500*time.Millisecond, "user2 -> user1 after unknown removed")
+
+	t.Log("Step 3: PASSED - connectivity maintained after removing unknown user")
+	t.Log("Test PASSED: Removing unknown users from policy works correctly")
 }

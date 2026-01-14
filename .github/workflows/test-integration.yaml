@@ -140,6 +140,8 @@ jobs:
           - TestACLGroupWithUnknownUser
           - TestACLGroupAfterUserDeletion
           - TestACLGroupDeletionExactReproduction
+          - TestACLDynamicUnknownUserAddition
+          - TestACLDynamicUnknownUserRemoval
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass
