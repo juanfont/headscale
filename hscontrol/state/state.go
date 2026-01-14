@@ -1557,11 +1557,29 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.Change{}, err
 	}
 
+	// Helper to get username for logging (handles nil User for tags-only keys)
+	pakUsername := func() string {
+		if pak.User != nil {
+			return pak.User.Username()
+		}
+
+		return types.TaggedDevices.Name
+	}
+
 	// Check if node exists with same machine key before validating the key.
 	// For #2830: container restarts send the same pre-auth key which may be used/expired.
 	// Skip validation for existing nodes re-registering with the same NodeKey, as the
 	// key was only needed for initial authentication. NodeKey rotation requires validation.
-	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+	//
+	// For tags-only keys (pak.User == nil), we skip the user-based lookup since there's
+	// no user to match against. These keys create tagged nodes without user ownership.
+	var existingNodeSameUser types.NodeView
+
+	var existsSameUser bool
+
+	if pak.User != nil {
+		existingNodeSameUser, existsSameUser = s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+	}
 
 	// For existing nodes, skip validation if:
 	// 1. MachineKey matches (cryptographic proof of machine identity)
@@ -1574,6 +1592,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// - Container restarts may use different PAKs (e.g., env var changed)
 	// - Original PAK may be deleted
 	// - MachineKey + User is sufficient to prove this is the same node
+	//
+	// Note: For tags-only keys, existsSameUser is always false, so we always validate.
 	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid()
 
 	// Check if this is a NodeKey rotation (different NodeKey)
@@ -1619,7 +1639,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	logHostinfoValidation(
 		machineKey.ShortString(),
 		regReq.NodeKey.ShortString(),
-		pak.User.Username(),
+		pakUsername(),
 		hostname,
 		regReq.Hostinfo,
 	)
@@ -1629,12 +1649,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 		Str("node.name", hostname).
 		Str("machine.key", machineKey.ShortString()).
 		Str("node.key", regReq.NodeKey.ShortString()).
-		Str("user.name", pak.User.Username()).
+		Str("user.name", pakUsername()).
 		Msg("Registering node with pre-auth key")
 
 	var finalNode types.NodeView
 
 	// If this node exists for this user, update the node in place.
+	// Note: For tags-only keys (pak.User == nil), existsSameUser is always false.
 	if existsSameUser && existingNodeSameUser.Valid() {
 		log.Trace().
 			Caller().
@@ -1642,7 +1663,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", existingNodeSameUser.NodeKey().ShortString()).
-			Str("user.name", pak.User.Username()).
+			Str("user.name", pakUsername()).
 			Msg("Node re-registering with existing machine key and user, updating in place")
 
 		// Update existing node - NodeStore first, then database
@@ -1706,7 +1727,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Uint64("node.id", updatedNodeView.ID().Uint64()).
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", updatedNodeView.NodeKey().ShortString()).
-			Str("user.name", pak.User.Username()).
+			Str("user.name", pakUsername()).
 			Msg("Node re-authorized")
 
 		finalNode = updatedNodeView
@@ -1715,7 +1736,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Check if node exists with this machine key for a different user
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
-		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
+		// For user-owned keys, check if node exists for a different user
+		// For tags-only keys (pak.User == nil), this check is skipped
+		if pak.User != nil && existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
 			// Node exists but belongs to a different user
 			// Create a NEW node for the new user (do not transfer)
 			// This allows the same machine to have separate node identities per user
@@ -1726,17 +1749,24 @@ func (s *State) HandleNodeFromPreAuthKey(
 				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
 				Str("machine.key", machineKey.ShortString()).
 				Str("old.user", oldUser.Name()).
-				Str("new.user", pak.User.Username()).
+				Str("new.user", pakUsername()).
 				Msg("Creating new node for different user (same machine key exists for another user)")
 		}
 
-		// This is a new node for this user - create it
-		// (Either completely new, or new for this user while existing for another user)
+		// This is a new node - create it
+		// For user-owned keys: create for the user
+		// For tags-only keys: create as tagged node (createAndSaveNewNode handles this via PreAuthKey)
 
 		// Create and save new node
+		// Note: For tags-only keys, User is empty but createAndSaveNewNode uses PreAuthKey for ownership
+		var pakUser types.User
+		if pak.User != nil {
+			pakUser = *pak.User
+		}
+
 		var err error
 		finalNode, err = s.createAndSaveNewNode(newNodeParams{
-			User:                   *pak.User,
+			User:                   pakUser,
 			MachineKey:             machineKey,
 			NodeKey:                regReq.NodeKey,
 			DiscoKey:               key.DiscoPublic{}, // DiscoKey not available in RegisterRequest
