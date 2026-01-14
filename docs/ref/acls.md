@@ -222,7 +222,7 @@ Allows access to the internet through [exit nodes](routes.md#exit-node). Can onl
 
 ### `autogroup:member`
 
-Includes all users who are direct members of the tailnet. Does not include users from shared devices.
+Includes all untagged devices.
 
 ```json
 {
