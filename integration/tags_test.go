@@ -7,6 +7,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -2462,4 +2463,173 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
+}
+
+// =============================================================================
+// Test for Issue #2979: Reauth to untag a device
+// =============================================================================
+
+// TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags tests that reauthenticating
+// with an empty tag list (--advertise-tags= --force-reauth) removes all tags
+// and returns ownership to the user.
+//
+// Bug #2979: Reauth to untag a device keeps it tagged
+// Setup: Register a node with tags via user login, then reauth with --advertise-tags= --force-reauth
+// Expected: Node should have no tags and ownership should return to the user.
+//
+// Note: This only works with --force-reauth because without it, the Tailscale
+// client doesn't trigger a full reauth to the server - it only updates local state.
+func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
+	IntegrationSkip(t)
+
+	t.Run("with force-reauth", func(t *testing.T) {
+		tc := struct {
+			name        string
+			testName    string
+			forceReauth bool
+		}{
+			name:        "with force-reauth",
+			testName:    "with-force-reauth",
+			forceReauth: true,
+		}
+		policy := tagsTestPolicy()
+
+		spec := ScenarioSpec{
+			NodesPerUser: 0,
+			Users:        []string{tagTestUser},
+		}
+
+		scenario, err := NewScenario(spec)
+
+		require.NoError(t, err)
+		defer scenario.ShutdownAssertNoPanics(t)
+
+		err = scenario.CreateHeadscaleEnvWithLoginURL(
+			[]tsic.Option{},
+			hsic.WithACLPolicy(policy),
+			hsic.WithTestName("tags-reauth-untag-2979-"+tc.testName),
+			hsic.WithTLS(),
+		)
+		requireNoErrHeadscaleEnv(t, err)
+
+		headscale, err := scenario.Headscale()
+		requireNoErrGetHeadscale(t, err)
+
+		// Step 1: Create and register a node with tags
+		t.Logf("Step 1: Registering node with tags")
+
+		client, err := scenario.CreateTailscaleNode(
+			"head",
+			tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+			tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned,tag:second"}),
+		)
+		require.NoError(t, err)
+
+		loginURL, err := client.LoginWithURL(headscale.GetEndpoint())
+		require.NoError(t, err)
+
+		body, err := doLoginURL(client.Hostname(), loginURL)
+		require.NoError(t, err)
+
+		err = scenario.runHeadscaleRegister(tagTestUser, body)
+		require.NoError(t, err)
+
+		err = client.WaitForRunning(120 * time.Second)
+		require.NoError(t, err)
+
+		// Verify initial tags
+		var initialNodeID uint64
+
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			nodes, err := headscale.ListNodes(tagTestUser)
+			assert.NoError(c, err)
+			assert.Len(c, nodes, 1, "Expected exactly one node")
+
+			if len(nodes) == 1 {
+				node := nodes[0]
+				initialNodeID = node.GetId()
+				t.Logf("Initial state - Node ID: %d, Tags: %v, User: %s",
+					node.GetId(), node.GetTags(), node.GetUser().GetName())
+
+				// Verify node has the expected tags
+				assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned", "tag:second"})
+			}
+		}, 30*time.Second, 500*time.Millisecond, "checking initial tags")
+
+		// Step 2: Reauth with empty tags to remove all tags
+		t.Logf("Step 2: Reauthenticating with empty tag list to untag device (%s)", tc.name)
+
+		if tc.forceReauth {
+			// Manually run tailscale up with --force-reauth and empty tags
+			// This will output a login URL that we need to complete
+			// Include --hostname to match the initial login command
+			command := []string{
+				"tailscale", "up",
+				"--login-server=" + headscale.GetEndpoint(),
+				"--hostname=" + client.Hostname(),
+				"--advertise-tags=",
+				"--force-reauth",
+			}
+
+			stdout, stderr, _ := client.Execute(command)
+			t.Logf("Reauth command stderr: %s", stderr)
+
+			// Parse the login URL from the command output
+			loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
+			require.NoError(t, err, "Failed to parse login URL from reauth command")
+			t.Logf("Reauth login URL: %s", loginURL)
+
+			body, err := doLoginURL(client.Hostname(), loginURL)
+			require.NoError(t, err)
+
+			err = scenario.runHeadscaleRegister(tagTestUser, body)
+			require.NoError(t, err)
+
+			err = client.WaitForRunning(120 * time.Second)
+			require.NoError(t, err)
+			t.Logf("Completed reauth with empty tags")
+		} else {
+			// Without force-reauth, just try tailscale up
+			// Include --hostname to match the initial login command
+			command := []string{
+				"tailscale", "up",
+				"--login-server=" + headscale.GetEndpoint(),
+				"--hostname=" + client.Hostname(),
+				"--advertise-tags=",
+			}
+			stdout, stderr, err := client.Execute(command)
+			t.Logf("CLI reauth result: err=%v, stdout=%s, stderr=%s", err, stdout, stderr)
+		}
+
+		// Step 3: Verify tags are removed and ownership is returned to user
+		// This is the key assertion for bug #2979
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			nodes, err := headscale.ListNodes(tagTestUser)
+			assert.NoError(c, err)
+
+			if len(nodes) >= 1 {
+				node := nodes[0]
+				t.Logf("After reauth - Node ID: %d, Tags: %v, User: %s",
+					node.GetId(), node.GetTags(), node.GetUser().GetName())
+
+				// Assert: Node should have NO tags
+				assertNodeHasNoTagsWithCollect(c, node)
+
+				// Assert: Node should be owned by the user (not tagged-devices)
+				assert.Equal(c, tagTestUser, node.GetUser().GetName(),
+					"Node ownership should return to user %s after untagging", tagTestUser)
+
+				// Verify the node ID is still the same (not a new registration)
+				assert.Equal(c, initialNodeID, node.GetId(),
+					"Node ID should remain the same after reauth")
+
+				if len(node.GetTags()) == 0 && node.GetUser().GetName() == tagTestUser {
+					t.Logf("Test #2979 (%s) PASS: Node successfully untagged and ownership returned to user", tc.name)
+				} else {
+					t.Logf("Test #2979 (%s) FAIL: Expected no tags and user=%s, got tags=%v user=%s",
+						tc.name, tagTestUser, node.GetTags(), node.GetUser().GetName())
+				}
+			}
+		}, 60*time.Second, 1*time.Second, "verifying tags removed and ownership returned")
+	})
 }
