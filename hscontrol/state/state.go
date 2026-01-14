@@ -1239,6 +1239,93 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	return s.nodeStore.PutNode(*savedNode), nil
 }
 
+// processReauthTags handles tag changes during node re-authentication.
+// It processes RequestTags from the client and updates node tags accordingly.
+// Returns rejected tags (if any) for post-validation error handling.
+func (s *State) processReauthTags(
+	node *types.Node,
+	requestTags []string,
+	user *types.User,
+	oldTags []string,
+) []string {
+	wasAuthKeyTagged := node.AuthKey != nil && node.AuthKey.IsTagged()
+
+	logEvent := log.Debug().
+		Uint64("node.id", uint64(node.ID)).
+		Str("node.name", node.Hostname).
+		Strs("request.tags", requestTags).
+		Strs("current.tags", node.Tags).
+		Bool("is.tagged", node.IsTagged()).
+		Bool("was.authkey.tagged", wasAuthKeyTagged)
+	logEvent.Msg("Processing RequestTags during reauth")
+
+	// Empty RequestTags means untag node (transition to user-owned)
+	if len(requestTags) == 0 {
+		if node.IsTagged() {
+			log.Info().
+				Uint64("node.id", uint64(node.ID)).
+				Str("node.name", node.Hostname).
+				Strs("removed.tags", node.Tags).
+				Str("user.name", user.Name).
+				Bool("was.authkey.tagged", wasAuthKeyTagged).
+				Msg("Reauth: removing all tags, returning node ownership to user")
+
+			node.Tags = []string{}
+			node.UserID = &user.ID
+		}
+
+		return nil
+	}
+
+	// Non-empty RequestTags: validate and apply
+	var approvedTags, rejectedTags []string
+
+	for _, tag := range requestTags {
+		if s.polMan.NodeCanHaveTag(node.View(), tag) {
+			approvedTags = append(approvedTags, tag)
+		} else {
+			rejectedTags = append(rejectedTags, tag)
+		}
+	}
+
+	if len(rejectedTags) > 0 {
+		log.Warn().
+			Uint64("node.id", uint64(node.ID)).
+			Str("node.name", node.Hostname).
+			Strs("rejected.tags", rejectedTags).
+			Msg("Reauth: requested tags are not permitted")
+
+		return rejectedTags
+	}
+
+	if len(approvedTags) > 0 {
+		slices.Sort(approvedTags)
+		approvedTags = slices.Compact(approvedTags)
+
+		wasTagged := node.IsTagged()
+		node.Tags = approvedTags
+
+		// Note: UserID is preserved as "created by" tracking, consistent with SetNodeTags
+		if !wasTagged {
+			log.Info().
+				Uint64("node.id", uint64(node.ID)).
+				Str("node.name", node.Hostname).
+				Strs("new.tags", approvedTags).
+				Str("old.user", user.Name).
+				Msg("Reauth: applying tags, transferring node to tagged-devices")
+		} else {
+			log.Info().
+				Uint64("node.id", uint64(node.ID)).
+				Str("node.name", node.Hostname).
+				Strs("old.tags", oldTags).
+				Strs("new.tags", approvedTags).
+				Msg("Reauth: updating tags on already-tagged node")
+		}
+	}
+
+	return nil
+}
+
 // HandleNodeFromAuthPath handles node registration through authentication flow (like OIDC).
 func (s *State) HandleNodeFromAuthPath(
 	registrationID types.RegistrationID,
@@ -1284,14 +1371,26 @@ func (s *State) HandleNodeFromAuthPath(
 
 	// If this node exists for this user, update the node in place.
 	if existsSameUser && existingNodeSameUser.Valid() {
-		log.Debug().
+		log.Info().
 			Caller().
 			Str("registration_id", registrationID.String()).
 			Str("user.name", user.Name).
 			Str("registrationMethod", registrationMethod).
 			Str("node.name", existingNodeSameUser.Hostname()).
 			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
-			Msg("Updating existing node registration")
+			Interface("hostinfo", regEntry.Node.Hostinfo).
+			Msg("Updating existing node registration via reauth")
+
+		// Process RequestTags during reauth (#2979)
+		// Due to json:",omitempty", we treat empty/nil as "clear tags"
+		var requestTags []string
+		if regEntry.Node.Hostinfo != nil {
+			requestTags = regEntry.Node.Hostinfo.RequestTags
+		}
+
+		oldTags := existingNodeSameUser.Tags().AsSlice()
+
+		var rejectedTags []string
 
 		// Update existing node - NodeStore first, then database
 		updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeSameUser.ID(), func(node *types.Node) {
@@ -1316,10 +1415,16 @@ func (s *State) HandleNodeFromAuthPath(
 			} else {
 				node.Expiry = regEntry.Node.Expiry
 			}
+
+			rejectedTags = s.processReauthTags(node, requestTags, user, oldTags)
 		})
 
 		if !ok {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeSameUser.ID())
+		}
+
+		if len(rejectedTags) > 0 {
+			return types.NodeView{}, change.Change{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
@@ -1671,6 +1776,14 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 	}
 
 	return change.Change{}, nil
+}
+
+// UpdatePolicyManagerUsersForTest updates the policy manager's user cache.
+// This is exposed for testing purposes to sync the policy manager after
+// creating test users via CreateUserForTest().
+func (s *State) UpdatePolicyManagerUsersForTest() error {
+	_, err := s.updatePolicyManagerUsers()
+	return err
 }
 
 // updatePolicyManagerNodes updates the policy manager with current nodes.
