@@ -2700,7 +2700,7 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 
 		if len(nodes) == 1 {
 			node := nodes[0]
-			t.Logf("Node registered with tags: %v", node.GetValidTags())
+			t.Logf("Node registered with tags: %v", node.GetTags())
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
 	}, 30*time.Second, 500*time.Millisecond, "verifying node inherited tags from auth key")
@@ -2771,7 +2771,7 @@ func TestTagsAuthKeyWithoutUserIgnoresAdvertisedTags(t *testing.T) {
 
 		if len(nodes) == 1 {
 			node := nodes[0]
-			t.Logf("Node registered with tags: %v (advertised: tag:second)", node.GetValidTags())
+			t.Logf("Node registered with tags: %v (advertised: tag:second)", node.GetTags())
 			// Should have auth key's tags, NOT the advertised tags
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
