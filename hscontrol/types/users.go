@@ -174,9 +174,17 @@ func (u UserView) TailscaleUserProfile() tailcfg.UserProfile {
 }
 
 func (u *User) Proto() *v1.User {
+	// Use Name if set, otherwise fall back to Username() which provides
+	// a display-friendly identifier (Email > ProviderIdentifier > ID).
+	// This ensures OIDC users (who typically have empty Name) display
+	// their email, while CLI users retain their original Name.
+	name := u.Name
+	if name == "" {
+		name = u.Username()
+	}
 	return &v1.User{
 		Id:            uint64(u.ID),
-		Name:          u.Name,
+		Name:          name,
 		CreatedAt:     timestamppb.New(u.CreatedAt),
 		DisplayName:   u.DisplayName,
 		Email:         u.Email,
