@@ -70,6 +70,18 @@ func (r Change) Merge(other Change) Change {
 	merged.PeersRemoved = uniqueNodeIDs(append(r.PeersRemoved, other.PeersRemoved...))
 	merged.PeerPatches = append(r.PeerPatches, other.PeerPatches...)
 
+	// Preserve OriginNode for self-update detection.
+	// If either change has OriginNode set, keep it so the mapper
+	// can detect self-updates and send the node its own changes.
+	if merged.OriginNode == 0 {
+		merged.OriginNode = other.OriginNode
+	}
+
+	// Preserve TargetNode for targeted responses.
+	if merged.TargetNode == 0 {
+		merged.TargetNode = other.TargetNode
+	}
+
 	if r.Reason != "" && other.Reason != "" && r.Reason != other.Reason {
 		merged.Reason = r.Reason + "; " + other.Reason
 	} else if other.Reason != "" {
