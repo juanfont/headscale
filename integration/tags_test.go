@@ -82,6 +82,62 @@ func assertNodeHasNoTagsWithCollect(c *assert.CollectT, node *v1.Node) {
 	assert.Empty(c, node.GetTags(), "Node %s should have no tags, but has: %v", node.GetName(), node.GetTags())
 }
 
+// assertNodeSelfHasTagsWithCollect asserts that a client's self view has exactly the expected tags.
+// This validates that tag updates have propagated to the node's own status (issue #2978).
+func assertNodeSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient, expectedTags []string) {
+	status, err := client.Status()
+	//nolint:testifylint // must use assert with CollectT in EventuallyWithT
+	assert.NoError(c, err, "failed to get client status")
+
+	if status == nil || status.Self == nil {
+		assert.Fail(c, "client status or self is nil")
+		return
+	}
+
+	var actualTagsSlice []string
+
+	if status.Self.Tags != nil {
+		for _, tag := range status.Self.Tags.All() {
+			actualTagsSlice = append(actualTagsSlice, tag)
+		}
+	}
+
+	sortedActual := append([]string{}, actualTagsSlice...)
+	sortedExpected := append([]string{}, expectedTags...)
+
+	sort.Strings(sortedActual)
+	sort.Strings(sortedExpected)
+	assert.Equal(c, sortedExpected, sortedActual, "Client %s self tags mismatch", client.Hostname())
+}
+
+// assertNetmapSelfHasTagsWithCollect asserts that the client's netmap self node has expected tags.
+// This validates at a deeper level than status - directly from tailscale debug netmap.
+func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient, expectedTags []string) {
+	nm, err := client.Netmap()
+	//nolint:testifylint // must use assert with CollectT in EventuallyWithT
+	assert.NoError(c, err, "failed to get client netmap")
+
+	if nm == nil {
+		assert.Fail(c, "client netmap is nil")
+		return
+	}
+
+	var actualTagsSlice []string
+
+	if nm.SelfNode.Valid() {
+		for _, tag := range nm.SelfNode.Tags().All() {
+			actualTagsSlice = append(actualTagsSlice, tag)
+		}
+	}
+
+	sortedActual := append([]string{}, actualTagsSlice...)
+	sortedExpected := append([]string{}, expectedTags...)
+
+	sort.Strings(sortedActual)
+	sort.Strings(sortedExpected)
+	assert.Equal(c, sortedExpected, sortedActual, "Client %s netmap self tags mismatch", client.Hostname())
+}
+
 // =============================================================================
 // Test Suite 2: Auth Key WITH Pre-assigned Tags
 // =============================================================================
@@ -2380,6 +2436,219 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
 	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
+}
+
+// TestTagsIssue2978ReproTagReplacement specifically tests issue #2978:
+// When tags are changed on the server, the node's self view should update.
+// This test performs multiple tag replacements and checks for immediate propagation.
+//
+// Issue scenario (from nblock's report):
+// 1. Node registers via CLI auth with --advertise-tags=tag:foo
+// 2. Admin changes tag to tag:bar via headscale CLI/API
+// 3. Node's self view should show tag:bar (not tag:foo).
+//
+// This test uses web auth with --advertise-tags to match the reporter's flow.
+func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	// Use CreateHeadscaleEnvWithLoginURL for web auth flow
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{
+			tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+		},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-issue-2978"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Create a tailscale client with --advertise-tags (matching nblock's "cli auth with --advertise-tags=tag:foo")
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+		tsic.WithExtraLoginArgs([]string{"--advertise-tags=tag:valid-owned"}),
+	)
+	require.NoError(t, err)
+
+	// Login via web auth flow (this is "cli auth" - tailscale up triggers web auth)
+	loginURL, err := client.LoginWithURL(headscale.GetEndpoint())
+	require.NoError(t, err)
+
+	// Complete the web auth by visiting the login URL
+	body, err := doLoginURL(client.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	// Register the node via headscale CLI
+	err = scenario.runHeadscaleRegister(tagTestUser, body)
+	require.NoError(t, err)
+
+	// Wait for client to be running
+	err = client.WaitForRunning(120 * time.Second)
+	require.NoError(t, err)
+
+	// Wait for initial registration with tag:valid-owned
+	var nodeID uint64
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			nodeID = nodes[0].GetId()
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+		}
+	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+
+	// Verify client initially sees tag:valid-owned
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
+	}, 30*time.Second, 500*time.Millisecond, "client should see initial tag")
+
+	t.Logf("Step 1: Node %d registered via web auth with --advertise-tags=tag:valid-owned, client sees it", nodeID)
+
+	// Step 2: Admin changes tag to tag:second (FIRST CALL - this is "tag:bar" in issue terms)
+	// According to issue #2978, the first SetNodeTags call updates the server but
+	// the client's self view does NOT update until a SECOND call with the same tag.
+	t.Log("Step 2: Calling SetNodeTags FIRST time with tag:second")
+
+	err = headscale.SetNodeTags(nodeID, []string{"tag:second"})
+	require.NoError(t, err)
+
+	// Verify server-side update happened
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
+		}
+	}, 10*time.Second, 500*time.Millisecond, "server should show tag:second after first call")
+
+	t.Log("Step 2a: Server shows tag:second after first call")
+
+	// CRITICAL BUG CHECK: According to nblock, after the first SetNodeTags call,
+	// the client's self view does NOT update even after waiting ~1 minute.
+	// We wait 10 seconds and check - if the client STILL shows the OLD tag,
+	// that demonstrates the bug. If the client shows the NEW tag, the bug is fixed.
+	t.Log("Step 2b: Waiting 10 seconds to see if client self view updates (bug: it should NOT)")
+	//nolint:forbidigo // intentional sleep to demonstrate bug timing - client should get update immediately, not after waiting
+	time.Sleep(10 * time.Second)
+
+	// Check client status after waiting
+	status, err := client.Status()
+	require.NoError(t, err)
+
+	var selfTagsAfterFirstCall []string
+
+	if status.Self != nil && status.Self.Tags != nil {
+		for _, tag := range status.Self.Tags.All() {
+			selfTagsAfterFirstCall = append(selfTagsAfterFirstCall, tag)
+		}
+	}
+
+	t.Logf("Step 2c: Client self tags after FIRST SetNodeTags + 10s wait: %v", selfTagsAfterFirstCall)
+
+	// Also check netmap
+	nm, nmErr := client.Netmap()
+
+	var netmapTagsAfterFirstCall []string
+
+	if nmErr == nil && nm != nil && nm.SelfNode.Valid() {
+		for _, tag := range nm.SelfNode.Tags().All() {
+			netmapTagsAfterFirstCall = append(netmapTagsAfterFirstCall, tag)
+		}
+	}
+
+	t.Logf("Step 2d: Client netmap self tags after FIRST SetNodeTags + 10s wait: %v", netmapTagsAfterFirstCall)
+
+	// Step 3: Call SetNodeTags AGAIN with the SAME tag (SECOND CALL)
+	// According to nblock, this second call with the same tag triggers the update.
+	t.Log("Step 3: Calling SetNodeTags SECOND time with SAME tag:second")
+
+	err = headscale.SetNodeTags(nodeID, []string{"tag:second"})
+	require.NoError(t, err)
+
+	// Now the client should see the update quickly (within a few seconds)
+	t.Log("Step 3a: Verifying client self view updates after SECOND call")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
+	}, 10*time.Second, 500*time.Millisecond, "client status.Self should update to tag:second after SECOND call")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNetmapSelfHasTagsWithCollect(c, client, []string{"tag:second"})
+	}, 10*time.Second, 500*time.Millisecond, "client netmap.SelfNode should update to tag:second after SECOND call")
+
+	t.Log("Step 3b: Client self view updated to tag:second after SECOND call")
+
+	// Step 4: Do another tag change to verify the pattern repeats
+	t.Log("Step 4: Calling SetNodeTags FIRST time with tag:valid-unowned")
+
+	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-unowned"})
+	require.NoError(t, err)
+
+	// Verify server-side update
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes(tagTestUser)
+		assert.NoError(c, err)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-unowned"})
+		}
+	}, 10*time.Second, 500*time.Millisecond, "server should show tag:valid-unowned")
+
+	t.Log("Step 4a: Server shows tag:valid-unowned after first call")
+
+	// Wait and check - bug means client still shows old tag
+	t.Log("Step 4b: Waiting 10 seconds to see if client self view updates (bug: it should NOT)")
+	//nolint:forbidigo // intentional sleep to demonstrate bug timing - client should get update immediately, not after waiting
+	time.Sleep(10 * time.Second)
+
+	status, err = client.Status()
+	require.NoError(t, err)
+
+	var selfTagsAfterSecondChange []string
+
+	if status.Self != nil && status.Self.Tags != nil {
+		for _, tag := range status.Self.Tags.All() {
+			selfTagsAfterSecondChange = append(selfTagsAfterSecondChange, tag)
+		}
+	}
+
+	t.Logf("Step 4c: Client self tags after FIRST SetNodeTags(tag:valid-unowned) + 10s wait: %v", selfTagsAfterSecondChange)
+
+	// Step 5: Call SetNodeTags AGAIN with the SAME tag
+	t.Log("Step 5: Calling SetNodeTags SECOND time with SAME tag:valid-unowned")
+
+	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-unowned"})
+	require.NoError(t, err)
+
+	// Now the client should see the update quickly
+	t.Log("Step 5a: Verifying client self view updates after SECOND call")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
+	}, 10*time.Second, 500*time.Millisecond, "client status.Self should update to tag:valid-unowned after SECOND call")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertNetmapSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
+	}, 10*time.Second, 500*time.Millisecond, "client netmap.SelfNode should update to tag:valid-unowned after SECOND call")
+
+	t.Log("Test complete - see logs for bug reproduction details")
 }
 
 // TestTagsAdminAPICannotSetInvalidFormat tests that the admin API rejects
