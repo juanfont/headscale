@@ -92,6 +92,11 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 		return nil, nil //nolint:nilnil // No response needed for other nodes when self-only
 	}
 
+	// Check if this is a self-update (the changed node is the receiving node).
+	// When true, ensure the response includes the node's self info so it sees
+	// its own attribute changes (e.g., tags changed via admin API).
+	isSelfUpdate := r.OriginNode != 0 && r.OriginNode == nodeID
+
 	var (
 		mapResp *tailcfg.MapResponse
 		err     error
@@ -110,7 +115,12 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 		}
 
 		removedPeers := nc.computePeerDiff(currentPeerIDs)
-		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers)
+		// Include self node when this is a self-update (e.g., node's own tags changed)
+		// so the node sees its updated self info along with new packet filters.
+		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers, isSelfUpdate)
+	} else if isSelfUpdate {
+		// Non-policy self-update: just send the self node info
+		mapResp, err = mapper.selfMapResponse(nodeID, version)
 	} else {
 		mapResp, err = mapper.buildFromChange(nodeID, version, &r)
 	}
