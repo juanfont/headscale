@@ -255,7 +255,7 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 				t.Fatalf("failed to restore postgres database: %s", err)
 			}
 
-			db = newHeadscaleDBFromPostgresURL(t, u)
+			db := newHeadscaleDBFromPostgresURL(t, u)
 
 			if tt.wantFunc != nil {
 				tt.wantFunc(t, db)
