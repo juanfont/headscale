@@ -37,6 +37,11 @@ var ErrCircularReference = errors.New("circular reference detected")
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
+// ErrSSHUserDstRequiresSameUserSrc is returned when an SSH rule has a username
+// destination but the source is not the same username.
+// Per Tailscale docs: "users in dst are only allowed from the same user".
+var ErrSSHUserDstRequiresSameUserSrc = errors.New("users in dst are only allowed from the same user")
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -1613,6 +1618,68 @@ func validateAutogroupForSSHUser(user *AutoGroup) error {
 	return nil
 }
 
+// validateSSHSrcDstCombination validates that SSH rule src/dst combinations
+// follow Tailscale's rules:
+//   - dst=tag: any src allowed
+//   - dst=autogroup:self: src must be users or groups (no tags) - handled at runtime in filter.go
+//   - dst=username: src must be ONLY the same username
+//
+// See: https://tailscale.com/kb/1337/policy-syntax#dst-1
+// "The destination can be a tag, autogroup:self (if the source contains only users or groups),
+// or a single named user (if the source contains only the same named user)."
+//
+// This function validates explicit username destinations.
+// The autogroup:self case is handled at runtime in filter.go because it results in
+// different rules for different nodes (tagged nodes get no rules).
+// The * (Asterix) case is also handled at runtime in filter.go - see #3009.
+func validateSSHSrcDstCombination(ssh SSH) error {
+	// Find all usernames in dst
+	var dstUsernames []Username
+
+	for _, dst := range ssh.Destinations {
+		if u, ok := dst.(*Username); ok {
+			dstUsernames = append(dstUsernames, *u)
+		}
+	}
+
+	// If no usernames in dst, no restriction on src (validation-wise)
+	// Note: * and autogroup:self are handled at runtime in filter.go
+	if len(dstUsernames) == 0 {
+		return nil
+	}
+
+	// dst has username(s) - src must contain ONLY the same username(s)
+	for _, src := range ssh.Sources {
+		switch s := src.(type) {
+		case *Username:
+			// Check if this username is in dstUsernames
+			if !slices.Contains(dstUsernames, *s) {
+				return fmt.Errorf(
+					"%w; src %q cannot SSH to dst users %v",
+					ErrSSHUserDstRequiresSameUserSrc, *s, dstUsernames,
+				)
+			}
+		case *Tag:
+			return fmt.Errorf(
+				"%w; tags in src cannot SSH to user-owned devices",
+				ErrSSHUserDstRequiresSameUserSrc,
+			)
+		case *Group:
+			return fmt.Errorf(
+				"%w; groups in src cannot SSH to user-owned devices",
+				ErrSSHUserDstRequiresSameUserSrc,
+			)
+		case *AutoGroup:
+			return fmt.Errorf(
+				"%w; autogroup %q in src cannot SSH to user-owned devices",
+				ErrSSHUserDstRequiresSameUserSrc, *s,
+			)
+		}
+	}
+
+	return nil
+}
+
 // validate reports if there are any errors in a policy after
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
@@ -1753,6 +1820,13 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			}
+		}
+
+		// Validate SSH src/dst combination rules (#3010)
+		// This rejects policies where tags/groups/different-users are in src when dst is a username
+		err := validateSSHSrcDstCombination(ssh)
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 
