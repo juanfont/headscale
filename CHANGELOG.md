@@ -109,6 +109,8 @@ sequentially through each stable release, selecting the latest patch version ava
 - Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
 - Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
 - Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
+- Add `--id` flag to API key expire/delete commands as alternative to `--prefix` [#3016](https://github.com/juanfont/headscale/pull/3016)
+  - Example: `headscale apikeys expire --id 1` or `headscale apikeys delete --id 1`
 
 ## 0.27.1 (2025-11-11)
 
