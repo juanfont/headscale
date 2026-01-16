@@ -1092,6 +1092,15 @@ func TestSSHPolicyRules(t *testing.T) {
 		Tags:     []string{"tag:client"},
 	}
 
+	// Tagged server for valid group->tag SSH rules
+	taggedServer := types.Node{
+		Hostname: "tagged-server",
+		IPv4:     ap("100.64.0.3"),
+		UserID:   ptr.To(uint(1)),
+		User:     ptr.To(users[0]),
+		Tags:     []string{"tag:server"},
+	}
+
 	tests := []struct {
 		name         string
 		targetNode   types.Node
@@ -1102,18 +1111,22 @@ func TestSSHPolicyRules(t *testing.T) {
 		errorMessage string
 	}{
 		{
-			name:       "group-to-user",
-			targetNode: nodeUser1,
+			// Test group->tag SSH (valid combination)
+			name:       "group-to-tag",
+			targetNode: taggedServer,
 			peers:      types.Nodes{&nodeUser2},
 			policy: `{
 				"groups": {
 					"group:admins": ["user2@"]
 				},
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
 				"ssh": [
 					{
 						"action": "accept",
 						"src": ["group:admins"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["autogroup:nonroot"]
 					}
 				]
@@ -1137,19 +1150,21 @@ func TestSSHPolicyRules(t *testing.T) {
 			}},
 		},
 		{
+			// Test check action with tag->tag SSH (valid combination)
 			name:       "check-period-specified",
-			targetNode: nodeUser1,
+			targetNode: taggedServer,
 			peers:      types.Nodes{&taggedClient},
 			policy: `{
 				"tagOwners": {
 					"tag:client": ["user1@"],
+					"tag:server": ["user1@"]
 				},
 				"ssh": [
 					{
 						"action": "check",
 						"checkPeriod": "24h",
 						"src": ["tag:client"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["autogroup:nonroot"]
 					}
 				]
@@ -1174,18 +1189,20 @@ func TestSSHPolicyRules(t *testing.T) {
 			}},
 		},
 		{
+			// Test no-matching-rules: target (nodeUser2) doesn't have tag:server
 			name:       "no-matching-rules",
 			targetNode: nodeUser2,
-			peers:      types.Nodes{&nodeUser1},
+			peers:      types.Nodes{&taggedClient},
 			policy: `{
 			    "tagOwners": {
 			    	"tag:client": ["user1@"],
+					"tag:server": ["user1@"]
 			    },
 				"ssh": [
 					{
 						"action": "accept",
 						"src": ["tag:client"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["autogroup:nonroot"]
 					}
 				]
@@ -1245,18 +1262,22 @@ func TestSSHPolicyRules(t *testing.T) {
 			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
 		},
 		{
+			// Test autogroup:nonroot user mapping with group->tag SSH
 			name:       "autogroup-nonroot-should-use-wildcard-with-root-excluded",
-			targetNode: nodeUser1,
+			targetNode: taggedServer,
 			peers:      types.Nodes{&nodeUser2},
 			policy: `{
 				"groups": {
 					"group:admins": ["user2@"]
 				},
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
 				"ssh": [
 					{
 						"action": "accept",
 						"src": ["group:admins"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["autogroup:nonroot"]
 					}
 				]
@@ -1281,18 +1302,22 @@ func TestSSHPolicyRules(t *testing.T) {
 			}},
 		},
 		{
+			// Test autogroup:nonroot + root user mapping with group->tag SSH
 			name:       "autogroup-nonroot-plus-root-should-use-wildcard-with-root-mapped",
-			targetNode: nodeUser1,
+			targetNode: taggedServer,
 			peers:      types.Nodes{&nodeUser2},
 			policy: `{
 				"groups": {
 					"group:admins": ["user2@"]
 				},
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
 				"ssh": [
 					{
 						"action": "accept",
 						"src": ["group:admins"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["autogroup:nonroot", "root"]
 					}
 				]
@@ -1317,18 +1342,22 @@ func TestSSHPolicyRules(t *testing.T) {
 			}},
 		},
 		{
+			// Test specific user mapping with group->tag SSH
 			name:       "specific-users-should-map-to-themselves-not-equals",
-			targetNode: nodeUser1,
+			targetNode: taggedServer,
 			peers:      types.Nodes{&nodeUser2},
 			policy: `{
 				"groups": {
 					"group:admins": ["user2@"]
 				},
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
 				"ssh": [
 					{
 						"action": "accept",
 						"src": ["group:admins"],
-						"dst": ["user1@"],
+						"dst": ["tag:server"],
 						"users": ["ubuntu", "root"]
 					}
 				]
