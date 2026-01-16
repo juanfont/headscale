@@ -998,6 +998,11 @@ func (s *State) GetAPIKey(displayPrefix string) (*types.APIKey, error) {
 	return s.db.GetAPIKey(prefix)
 }
 
+// GetAPIKeyByID retrieves an API key by its database ID.
+func (s *State) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
+	return s.db.GetAPIKeyByID(id)
+}
+
 // ExpireAPIKey marks an API key as expired.
 func (s *State) ExpireAPIKey(key *types.APIKey) error {
 	return s.db.ExpireAPIKey(key)
