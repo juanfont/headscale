@@ -11,7 +11,7 @@ repo_name: juanfont/headscale
 repo_url: https://github.com/juanfont/headscale
 
 # Copyright
-copyright: Copyright &copy; 2025 Headscale authors
+copyright: Copyright &copy; 2026 Headscale authors
 
 # Configuration
 theme:
@@ -111,7 +111,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:
-    version: 0.28.0-beta.1
+    version: 0.28.0-beta.2
 
 # Extensions
 markdown_extensions:
