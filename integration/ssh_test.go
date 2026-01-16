@@ -8,6 +8,7 @@ import (
 	"time"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
@@ -127,6 +128,11 @@ func TestSSHOneUserToAll(t *testing.T) {
 	}
 }
 
+// TestSSHMultipleUsersAllToAll tests that users in the same group can SSH to each other's devices.
+// Per Tailscale rules, user->user SSH requires separate rules for each user:
+// - user1@ can SSH to user1@ devices (same user)
+// - user2@ can SSH to user2@ devices (same user)
+// Note: Cross-user SSH (user1@ -> user2@) requires using tags as destinations.
 func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -145,12 +151,18 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 					},
 				},
 			},
+			// Per Tailscale rules: when dst is a username, src must be only the same username.
+			// Use autogroup:self to allow same-user SSH across all users.
 			SSHs: []policyv2.SSH{
 				{
-					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user1@"), usernamep("user2@")},
-					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+					Action: "accept",
+					Sources: policyv2.SSHSrcAliases{
+						ptr.To(policyv2.AutoGroupMember),
+					},
+					Destinations: policyv2.SSHDstAliases{
+						ptr.To(policyv2.AutoGroupSelf),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -170,16 +182,40 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	testInterUserSSH := func(sourceClients []TailscaleClient, targetClients []TailscaleClient) {
-		for _, client := range sourceClients {
-			for _, peer := range targetClients {
-				assertSSHHostname(t, client, peer)
+	// With autogroup:self, users can only SSH to their own devices
+	// Test same-user SSH works
+	for _, client := range nsOneClients {
+		for _, peer := range nsOneClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
 			}
+
+			assertSSHHostname(t, client, peer)
 		}
 	}
 
-	testInterUserSSH(nsOneClients, nsTwoClients)
-	testInterUserSSH(nsTwoClients, nsOneClients)
+	for _, client := range nsTwoClients {
+		for _, peer := range nsTwoClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test cross-user SSH is denied (autogroup:self restricts to same user)
+	for _, client := range nsOneClients {
+		for _, peer := range nsTwoClients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+
+	for _, client := range nsTwoClients {
+		for _, peer := range nsOneClients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
 }
 
 func TestSSHNoSSHConfigured(t *testing.T) {
@@ -226,6 +262,8 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 	}
 }
 
+// TestSSHIsBlockedInACL tests that SSH connections timeout when ACL doesn't allow port 22.
+// Uses autogroup:self for SSH policy (valid), but ACL only allows port 80.
 func TestSSHIsBlockedInACL(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -244,12 +282,17 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 					},
 				},
 			},
+			// Use autogroup:self which is a valid SSH src/dst combination
 			SSHs: []policyv2.SSH{
 				{
-					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
-					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+					Action: "accept",
+					Sources: policyv2.SSHSrcAliases{
+						ptr.To(policyv2.AutoGroupMember),
+					},
+					Destinations: policyv2.SSHDstAliases{
+						ptr.To(policyv2.AutoGroupSelf),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -277,6 +320,8 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 	}
 }
 
+// TestSSHUserOnlyIsolation tests that users can only SSH to their own devices.
+// Uses user@->user@ rules (valid: same user as src and dst) to achieve isolation.
 func TestSSHUserOnlyIsolation(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -296,16 +341,18 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 					},
 				},
 			},
+			// Per Tailscale rules: when dst is a username, src must be only the same username.
+			// Valid: user1@ -> user1@, user2@ -> user2@
 			SSHs: []policyv2.SSH{
 				{
 					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh1")},
+					Sources:      policyv2.SSHSrcAliases{usernamep("user1@")},
 					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 				{
 					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh2")},
+					Sources:      policyv2.SSHSrcAliases{usernamep("user2@")},
 					Destinations: policyv2.SSHDstAliases{usernamep("user2@")},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
@@ -538,5 +585,143 @@ func TestSSHAutogroupSelf(t *testing.T) {
 		for _, peer := range user1Clients {
 			assertSSHPermissionDenied(t, client, peer)
 		}
+	}
+}
+
+// TestSSHInvalidPolicySrcDstValidation tests that invalid SSH src/dst combinations
+// are rejected at policy validation time.
+// Per Tailscale docs: when dst contains a username, src must contain only the same username.
+// See: https://tailscale.com/kb/1337/policy-syntax#dst-1
+// This test verifies #3010 is fixed: SSH from tagged device to user device should be denied.
+func TestSSHInvalidPolicySrcDstValidation(t *testing.T) {
+	// This test doesn't need Docker - it validates policy parsing via NewPolicyManager
+	// which unmarshals and validates the policy JSON
+	tests := []struct {
+		name      string
+		policy    string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name: "tag-src-user-dst-rejected",
+			policy: `{
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
+				"ssh": [{
+					"action": "accept",
+					"src": ["tag:server"],
+					"dst": ["user1@"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: true,
+			errMsg:    "tags in src cannot SSH to user-owned devices",
+		},
+		{
+			name: "group-src-user-dst-rejected",
+			policy: `{
+				"groups": {
+					"group:admins": ["user1@"]
+				},
+				"ssh": [{
+					"action": "accept",
+					"src": ["group:admins"],
+					"dst": ["user1@"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: true,
+			errMsg:    "groups in src cannot SSH to user-owned devices",
+		},
+		{
+			name: "different-user-src-dst-rejected",
+			policy: `{
+				"ssh": [{
+					"action": "accept",
+					"src": ["user2@"],
+					"dst": ["user1@"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: true,
+			errMsg:    "users in dst are only allowed from the same user",
+		},
+		{
+			name: "same-user-src-dst-allowed",
+			policy: `{
+				"ssh": [{
+					"action": "accept",
+					"src": ["user1@"],
+					"dst": ["user1@"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: false,
+		},
+		{
+			name: "tag-src-tag-dst-allowed",
+			policy: `{
+				"tagOwners": {
+					"tag:client": ["user1@"],
+					"tag:server": ["user1@"]
+				},
+				"ssh": [{
+					"action": "accept",
+					"src": ["tag:client"],
+					"dst": ["tag:server"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: false,
+		},
+		{
+			name: "group-src-tag-dst-allowed",
+			policy: `{
+				"groups": {
+					"group:admins": ["user1@"]
+				},
+				"tagOwners": {
+					"tag:server": ["user1@"]
+				},
+				"ssh": [{
+					"action": "accept",
+					"src": ["group:admins"],
+					"dst": ["tag:server"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: false,
+		},
+		{
+			name: "autogroup-self-allowed",
+			policy: `{
+				"ssh": [{
+					"action": "accept",
+					"src": ["autogroup:member"],
+					"dst": ["autogroup:self"],
+					"users": ["root"]
+				}]
+			}`,
+			expectErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Validate the policy using NewPolicyManager which parses and validates JSON
+			_, err := policyv2.NewPolicyManager(
+				[]byte(tt.policy),
+				nil,                       // no users needed for validation
+				types.Nodes{}.ViewSlice(), // empty nodes slice
+			)
+
+			if tt.expectErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
 }
