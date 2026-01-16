@@ -404,9 +404,38 @@ func (pol *Policy) compileSSHPolicy(
 
 		// Handle other destinations (if any)
 		if len(otherDests) > 0 {
+			// TODO(kradalby): Remove this srcHasTags check when #3009 is completed
+			// and * is removed from SSH destinations entirely.
+			// Check if source contains any tags
+			srcHasTags := false
+
+			for _, src := range rule.Sources {
+				if _, ok := src.(*Tag); ok {
+					srcHasTags = true
+					break
+				}
+			}
+
 			// Build destination set for other destinations
 			var dest netipx.IPSetBuilder
 			for _, dst := range otherDests {
+				// TODO(kradalby): Remove this Asterix handling when #3009 is completed.
+				// This is a workaround to prevent tag->user SSH via * while we still
+				// support * as a destination (which Tailscale doesn't allow).
+				// For * (Asterix), if src has tags, only include tagged nodes
+				// This prevents tagged devices from SSH'ing to user-owned devices via * workaround
+				// See: https://github.com/juanfont/headscale/issues/3010
+				if _, isAsterix := dst.(Asterix); isAsterix && srcHasTags {
+					// Only include tagged nodes in destination
+					for _, n := range nodes.All() {
+						if n.IsTagged() {
+							n.AppendToIPSet(&dest)
+						}
+					}
+
+					continue
+				}
+
 				ips, err := dst.Resolve(pol, users, nodes)
 				if err != nil {
 					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
