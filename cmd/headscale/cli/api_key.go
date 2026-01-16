@@ -9,7 +9,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -29,15 +28,11 @@ func init() {
 	apiKeysCmd.AddCommand(createAPIKeyCmd)
 
 	expireAPIKeyCmd.Flags().StringP("prefix", "p", "", "ApiKey prefix")
-	if err := expireAPIKeyCmd.MarkFlagRequired("prefix"); err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
+	expireAPIKeyCmd.Flags().Uint64P("id", "i", 0, "ApiKey ID")
 	apiKeysCmd.AddCommand(expireAPIKeyCmd)
 
 	deleteAPIKeyCmd.Flags().StringP("prefix", "p", "", "ApiKey prefix")
-	if err := deleteAPIKeyCmd.MarkFlagRequired("prefix"); err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
+	deleteAPIKeyCmd.Flags().Uint64P("id", "i", 0, "ApiKey ID")
 	apiKeysCmd.AddCommand(deleteAPIKeyCmd)
 }
 
@@ -154,11 +149,20 @@ var expireAPIKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		prefix, err := cmd.Flags().GetString("prefix")
-		if err != nil {
+		id, _ := cmd.Flags().GetUint64("id")
+		prefix, _ := cmd.Flags().GetString("prefix")
+
+		switch {
+		case id == 0 && prefix == "":
 			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
+				errMissingParameter,
+				"Either --id or --prefix must be provided",
+				output,
+			)
+		case id != 0 && prefix != "":
+			ErrorOutput(
+				errMissingParameter,
+				"Only one of --id or --prefix can be provided",
 				output,
 			)
 		}
@@ -167,8 +171,11 @@ var expireAPIKeyCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.ExpireApiKeyRequest{
-			Prefix: prefix,
+		request := &v1.ExpireApiKeyRequest{}
+		if id != 0 {
+			request.Id = id
+		} else {
+			request.Prefix = prefix
 		}
 
 		response, err := client.ExpireApiKey(ctx, request)
@@ -191,11 +198,20 @@ var deleteAPIKeyCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
-		prefix, err := cmd.Flags().GetString("prefix")
-		if err != nil {
+		id, _ := cmd.Flags().GetUint64("id")
+		prefix, _ := cmd.Flags().GetString("prefix")
+
+		switch {
+		case id == 0 && prefix == "":
 			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting prefix from CLI flag: %s", err),
+				errMissingParameter,
+				"Either --id or --prefix must be provided",
+				output,
+			)
+		case id != 0 && prefix != "":
+			ErrorOutput(
+				errMissingParameter,
+				"Only one of --id or --prefix can be provided",
 				output,
 			)
 		}
@@ -204,8 +220,11 @@ var deleteAPIKeyCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		request := &v1.DeleteApiKeyRequest{
-			Prefix: prefix,
+		request := &v1.DeleteApiKeyRequest{}
+		if id != 0 {
+			request.Id = id
+		} else {
+			request.Prefix = prefix
 		}
 
 		response, err := client.DeleteApiKey(ctx, request)
