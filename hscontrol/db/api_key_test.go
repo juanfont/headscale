@@ -246,3 +246,30 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 		})
 	}
 }
+
+func TestGetAPIKeyByID(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	// Create an API key
+	_, apiKey, err := db.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
+
+	// Retrieve by ID
+	retrievedKey, err := db.GetAPIKeyByID(apiKey.ID)
+	require.NoError(t, err)
+	require.NotNil(t, retrievedKey)
+	assert.Equal(t, apiKey.ID, retrievedKey.ID)
+	assert.Equal(t, apiKey.Prefix, retrievedKey.Prefix)
+}
+
+func TestGetAPIKeyByIDNotFound(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	// Try to get a non-existent key by ID
+	key, err := db.GetAPIKeyByID(99999)
+	require.Error(t, err)
+	assert.Nil(t, key)
+}
