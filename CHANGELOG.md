@@ -87,6 +87,10 @@ sequentially through each stable release, selecting the latest patch version ava
     address in the user profile. This is now rejected during authentication with an `unverified email` error.
   - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
     profile regardless of its verification state.
+- **SSH Policy**: SSH rules now validate that when destination contains a username, source must contain only the same username [#3018](https://github.com/juanfont/headscale/pull/3018)
+  - Previously accepted policies with `src: ["tag:foo"]` and `dst: ["user@"]` are now rejected
+  - This aligns with Tailscale's policy: tagged devices cannot SSH to user-owned devices
+  - Error message: "users in dst are only allowed from the same user"
 
 ### Changes
 
