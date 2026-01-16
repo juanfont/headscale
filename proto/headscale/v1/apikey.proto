@@ -16,7 +16,10 @@ message CreateApiKeyRequest { google.protobuf.Timestamp expiration = 1; }
 
 message CreateApiKeyResponse { string api_key = 1; }
 
-message ExpireApiKeyRequest { string prefix = 1; }
+message ExpireApiKeyRequest {
+  string prefix = 1;
+  uint64 id = 2;
+}
 
 message ExpireApiKeyResponse {}
 
@@ -24,6 +27,9 @@ message ListApiKeysRequest {}
 
 message ListApiKeysResponse { repeated ApiKey api_keys = 1; }
 
-message DeleteApiKeyRequest { string prefix = 1; }
+message DeleteApiKeyRequest {
+  string prefix = 1;
+  uint64 id = 2;
+}
 
 message DeleteApiKeyResponse {}
