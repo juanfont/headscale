@@ -119,7 +119,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 			name: "OIDC Callback",
 			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
 			externalURLs: []string{
-				"https://github.com/juanfont/headscale/tree/main/docs",
+				"https://headscale.net/stable/",
 				"https://tailscale.com/kb/",
 			},
 		},
