@@ -124,6 +124,13 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -1012,6 +1019,10 @@
       "properties": {
         "prefix": {
           "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
