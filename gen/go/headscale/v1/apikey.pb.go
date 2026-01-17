@@ -189,6 +189,7 @@ func (x *CreateApiKeyResponse) GetApiKey() string {
 type ExpireApiKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	Id            uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -228,6 +229,13 @@ func (x *ExpireApiKeyRequest) GetPrefix() string {
 		return x.Prefix
 	}
 	return ""
+}
+
+func (x *ExpireApiKeyRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
 }
 
 type ExpireApiKeyResponse struct {
@@ -349,6 +357,7 @@ func (x *ListApiKeysResponse) GetApiKeys() []*ApiKey {
 type DeleteApiKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Prefix        string                 `protobuf:"bytes,1,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	Id            uint64                 `protobuf:"varint,2,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -388,6 +397,13 @@ func (x *DeleteApiKeyRequest) GetPrefix() string {
 		return x.Prefix
 	}
 	return ""
+}
+
+func (x *DeleteApiKeyRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
 }
 
 type DeleteApiKeyResponse struct {
@@ -445,15 +461,17 @@ const file_headscale_v1_apikey_proto_rawDesc = "" +
 	"expiration\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"expiration\"/\n" +
 	"\x14CreateApiKeyResponse\x12\x17\n" +
-	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\"-\n" +
+	"\aapi_key\x18\x01 \x01(\tR\x06apiKey\"=\n" +
 	"\x13ExpireApiKeyRequest\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"\x16\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\"\x16\n" +
 	"\x14ExpireApiKeyResponse\"\x14\n" +
 	"\x12ListApiKeysRequest\"F\n" +
 	"\x13ListApiKeysResponse\x12/\n" +
-	"\bapi_keys\x18\x01 \x03(\v2\x14.headscale.v1.ApiKeyR\aapiKeys\"-\n" +
+	"\bapi_keys\x18\x01 \x03(\v2\x14.headscale.v1.ApiKeyR\aapiKeys\"=\n" +
 	"\x13DeleteApiKeyRequest\x12\x16\n" +
-	"\x06prefix\x18\x01 \x01(\tR\x06prefix\"\x16\n" +
+	"\x06prefix\x18\x01 \x01(\tR\x06prefix\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\x04R\x02id\"\x16\n" +
 	"\x14DeleteApiKeyResponseB)Z'github.com/juanfont/headscale/gen/go/v1b\x06proto3"
 
 var (

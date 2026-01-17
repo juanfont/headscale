@@ -597,14 +597,29 @@ func (api headscaleV1APIServer) CreateApiKey(
 	return &v1.CreateApiKeyResponse{ApiKey: apiKey}, nil
 }
 
+// apiKeyIdentifier is implemented by requests that identify an API key.
+type apiKeyIdentifier interface {
+	GetId() uint64
+	GetPrefix() string
+}
+
+// getAPIKey retrieves an API key by ID or prefix from the request.
+// ID is checked first, then prefix. Returns InvalidArgument if neither provided.
+func (api headscaleV1APIServer) getAPIKey(req apiKeyIdentifier) (*types.APIKey, error) {
+	if req.GetId() != 0 {
+		return api.h.state.GetAPIKeyByID(req.GetId())
+	}
+	if req.GetPrefix() != "" {
+		return api.h.state.GetAPIKey(req.GetPrefix())
+	}
+	return nil, status.Error(codes.InvalidArgument, "must provide id or prefix")
+}
+
 func (api headscaleV1APIServer) ExpireApiKey(
 	ctx context.Context,
 	request *v1.ExpireApiKeyRequest,
 ) (*v1.ExpireApiKeyResponse, error) {
-	var apiKey *types.APIKey
-	var err error
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
@@ -642,12 +657,7 @@ func (api headscaleV1APIServer) DeleteApiKey(
 	ctx context.Context,
 	request *v1.DeleteApiKeyRequest,
 ) (*v1.DeleteApiKeyResponse, error) {
-	var (
-		apiKey *types.APIKey
-		err    error
-	)
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
