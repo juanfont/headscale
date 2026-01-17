@@ -12,7 +12,8 @@ tags rather than users, making them suitable for servers and infrastructure. App
 ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
 
 User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
-and applied at registration time. Tags can be managed via the CLI or API after registration.
+and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
+by re-authenticating with `tailscale up --advertise-tags= --force-reauth`.
 
 ### Smarter map updates
 
@@ -38,7 +39,10 @@ sequentially through each stable release, selecting the latest patch version ava
 
 ### BREAKING
 
-- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node. [#2885](https://github.com/juanfont/headscale/pull/2885)
+- **API**: The Node message in the gRPC/REST API has been simplified - the `ForcedTags`, `InvalidTags`, and `ValidTags` fields have been removed and replaced with a single `Tags` field that contains the node's applied tags [#2993](https://github.com/juanfont/headscale/pull/2993)
+  - API clients should use the `Tags` field instead of `ValidTags`
+  - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
+- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. [#2885](https://github.com/juanfont/headscale/pull/2885)
 - **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
   - `--advertise-tags` is processed during registration, not on every policy evaluation
   - PreAuthKey tagged devices ignore `--advertise-tags` from clients
@@ -52,14 +56,17 @@ sequentially through each stable release, selecting the latest patch version ava
   - The `headscale nodes move` CLI command has been removed
   - The `MoveNode` API endpoint has been removed
   - Nodes are permanently associated with their user at registration time
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC in conjunction with `oidc.allowed_domains` or
+    `oidc.allowed_users`. Previous versions allowed to authenticate with an unverified email but did not store the email
+    address in the user profile. This is now rejected during authentication with an `unverified email` error.
+  - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
+    profile regardless of its verification state.
 
 ### Changes
 
 - Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
   - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
-- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
-  - When `true` (default), only verified emails can authenticate via OIDC with `allowed_domains` or `allowed_users`
-  - When `false`, unverified emails are allowed for OIDC authentication
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)

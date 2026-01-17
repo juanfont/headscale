@@ -64,6 +64,9 @@ Headscale provides a metrics and debug endpoint. It allows to introspect differe
 
     Keep the metrics and debug endpoint private to your internal network and don't expose it to the Internet.
 
+    The metrics and debug interface can be disabled completely by setting `metrics_listen_addr: null` in the
+    [configuration file](./configuration.md).
+
 Query metrics via <http://localhost:9090/metrics> and get an overview of available debug information via
 <http://localhost:9090/debug/>. Metrics may be queried from outside localhost but the debug interface is subject to
 additional protection despite listening on all interfaces.

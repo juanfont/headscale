@@ -20,6 +20,7 @@ listen_addr: 127.0.0.1:8080
 
 # Address to listen to /metrics and /debug, you may want
 # to keep this endpoint private to your internal network
+# Use an emty value to disable the metrics listener.
 metrics_listen_addr: 127.0.0.1:9090
 
 # Address to listen for gRPC.
@@ -360,6 +361,12 @@ unix_socket_permission: "0770"
 #   # Custom scopes can be configured as needed, be sure to always include the
 #   # required "openid" scope.
 #   scope: ["openid", "profile", "email"]
+#
+#   # Only verified email addresses are synchronized to the user profile by
+#   # default. Unverified emails may be allowed in case an identity provider
+#   # does not send the "email_verified: true" claim or email verification is
+#   # not required.
+#   email_verified_required: true
 #
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
