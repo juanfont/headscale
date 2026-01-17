@@ -821,8 +821,8 @@ func TestBatcherBasicOperations(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			tn := testData.Nodes[0]
-			tn2 := testData.Nodes[1]
+			tn := &testData.Nodes[0]
+			tn2 := &testData.Nodes[1]
 
 			// Test AddNode with real node ID
 			batcher.AddNode(tn.n.ID, tn.ch, 100)
@@ -1139,7 +1139,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			testNode := testData.Nodes[0]
+			testNode := &testData.Nodes[0]
 
 			var (
 				channelIssues int
@@ -1232,7 +1232,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			testNode := testData.Nodes[0]
+			testNode := &testData.Nodes[0]
 
 			var (
 				panics        int
@@ -1378,7 +1378,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			stableNodes := allNodes[:len(allNodes)/2] // Use first half as stable
 			stableChannels := make(map[types.NodeID]chan *tailcfg.MapResponse)
 
-			for _, node := range stableNodes {
+			for i := range stableNodes {
+				node := &stableNodes[i]
 				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
 				stableChannels[node.n.ID] = ch
 				batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100))
@@ -1428,7 +1429,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 				// Connection churn cycles - rapidly connect/disconnect to test concurrency safety
 				for i := range numCycles {
-					for _, node := range churningNodes {
+					for j := range churningNodes {
+						node := &churningNodes[j]
 						wg.Add(2)
 
 						// Connect churning node
@@ -1520,7 +1522,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 					if i%7 == 0 && len(allNodes) > 0 {
 						// Node-specific changes using real nodes
-						node := allNodes[i%len(allNodes)]
+						node := &allNodes[i%len(allNodes)]
 						// Use a valid expiry time for testing since test nodes don't have expiry set
 						testExpiry := time.Now().Add(24 * time.Hour)
 						batcher.AddWork(change.KeyExpiryFor(node.n.ID, testExpiry))
@@ -1568,7 +1570,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			t.Logf("Work generated: %d DERP + %d Full + %d KeyExpiry = %d total AddWork calls",
 				expectedDerpUpdates, expectedFullUpdates, expectedKeyUpdates, totalGeneratedWork)
 
-			for _, node := range stableNodes {
+			for i := range stableNodes {
+				node := &stableNodes[i]
 				if stats, exists := allStats[node.n.ID]; exists {
 					stableUpdateCount += stats.TotalUpdates
 					t.Logf("Stable node %d: %d updates",
@@ -1581,7 +1584,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 				}
 			}
 
-			for _, node := range churningNodes {
+			for i := range churningNodes {
+				node := &churningNodes[i]
 				if stats, exists := allStats[node.n.ID]; exists {
 					churningUpdateCount += stats.TotalUpdates
 				}
@@ -1606,7 +1610,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			}
 
 			// Verify all stable clients are still functional
-			for _, node := range stableNodes {
+			for i := range stableNodes {
+				node := &stableNodes[i]
 				if !batcher.IsConnected(node.n.ID) {
 					t.Errorf("Stable node %d lost connection during racing", node.n.ID)
 				}
@@ -1825,7 +1830,8 @@ func XTestBatcherScalability(t *testing.T) {
 							}
 
 							// Connection/disconnection cycles for subset of nodes
-							for i, node := range chaosNodes {
+							for i := range chaosNodes {
+								node := &chaosNodes[i]
 								// Only add work if this is connection chaos or mixed
 								if tc.chaosType == "connection" || tc.chaosType == "mixed" {
 									wg.Add(2)
@@ -2139,7 +2145,8 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			t.Logf("Created %d nodes in database", len(allNodes))
 
 			// Connect nodes one at a time and wait for each to be connected
-			for i, node := range allNodes {
+			for i := range allNodes {
+				node := &allNodes[i]
 				batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 				t.Logf("Connected node %d (ID: %d)", i, node.n.ID)
 
@@ -2158,7 +2165,8 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			}, 5*time.Second, 50*time.Millisecond, "waiting for all nodes to connect")
 
 			// Check how many peers each node should see
-			for i, node := range allNodes {
+			for i := range allNodes {
+				node := &allNodes[i]
 				peers := testData.State.ListPeers(node.n.ID)
 				t.Logf("Node %d should see %d peers from state", i, peers.Len())
 			}
@@ -2287,7 +2295,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 
 			// Phase 1: Connect all nodes initially
 			t.Logf("Phase 1: Connecting all nodes...")
-			for i, node := range allNodes {
+			for i := range allNodes {
+				node := &allNodes[i]
 				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 				if err != nil {
 					t.Fatalf("Failed to add node %d: %v", i, err)
@@ -2303,7 +2312,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 
 			// Phase 2: Rapid disconnect ALL nodes (simulating nodes going down)
 			t.Logf("Phase 2: Rapid disconnect all nodes...")
-			for i, node := range allNodes {
+			for i := range allNodes {
+				node := &allNodes[i]
 				removed := batcher.RemoveNode(node.n.ID, node.ch)
 				t.Logf("Node %d RemoveNode result: %t", i, removed)
 			}
@@ -2311,7 +2321,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			// Phase 3: Rapid reconnect with NEW channels (simulating nodes coming back up)
 			t.Logf("Phase 3: Rapid reconnect with new channels...")
 			newChannels := make([]chan *tailcfg.MapResponse, len(allNodes))
-			for i, node := range allNodes {
+			for i := range allNodes {
+				node := &allNodes[i]
 				newChannels[i] = make(chan *tailcfg.MapResponse, 10)
 				err := batcher.AddNode(node.n.ID, newChannels[i], tailcfg.CapabilityVersion(100))
 				if err != nil {
@@ -2335,7 +2346,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				debugInfo := debugBatcher.Debug()
 				disconnectedCount := 0
 
-				for i, node := range allNodes {
+				for i := range allNodes {
+					node := &allNodes[i]
 					if info, exists := debugInfo[node.n.ID]; exists {
 						t.Logf("Node %d (ID %d): debug info = %+v", i, node.n.ID, info)
 
@@ -2407,8 +2419,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			node1 := testData.Nodes[0]
-			node2 := testData.Nodes[1]
+			node1 := &testData.Nodes[0]
+			node2 := &testData.Nodes[1]
 
 			t.Logf("=== MULTI-CONNECTION TEST ===")
 
