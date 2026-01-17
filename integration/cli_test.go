@@ -1695,7 +1695,7 @@ func TestExportCommand(t *testing.T) {
 			[]string{
 				"headscale",
 				"export",
-				"--format",
+				"--output",
 				"json",
 			},
 			&exportResult,
