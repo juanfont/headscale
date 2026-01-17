@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -100,20 +99,7 @@ The export includes:
 			outputFormat = format
 		}
 
-		if outputFormat == "json" || outputFormat == "json-line" {
-			jsonData, err := json.MarshalIndent(exportData, "", "  ")
-			if err != nil {
-				ErrorOutput(
-					err,
-					"Error marshaling to JSON",
-					output,
-				)
-				return
-			}
-			fmt.Println(string(jsonData))
-		} else {
-			// For YAML or other formats, use the standard output mechanism
-			SuccessOutput(exportData, "Export completed successfully", outputFormat)
-		}
+		// Use the standard output mechanism for all formats
+		SuccessOutput(exportData, "Export completed successfully", outputFormat)
 	},
 }
