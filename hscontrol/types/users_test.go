@@ -493,3 +493,95 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 		})
 	}
 }
+
+// TestDeriveUsername validates username derivation from OIDC claims.
+// Tests that DeriveUsername correctly selects and validates usernames
+// from configured claim order, falling back to next claim if current is invalid.
+func TestDeriveUsername(t *testing.T) {
+	tests := []struct {
+		name          string
+		claims        *OIDCClaims
+		claimOrder    []string
+		expectedValid bool
+		expectedName  string
+	}{
+		{
+			name: "preferred_username-available",
+			claims: &OIDCClaims{
+				Username: "alice",
+				Email:    "alice@example.com",
+				Sub:      "alice-sub-123",
+			},
+			claimOrder:    []string{"preferred_username", "email_localpart", "sub"},
+			expectedValid: true,
+			expectedName:  "alice",
+		},
+		{
+			name: "fallback-to-email-localpart",
+			claims: &OIDCClaims{
+				Username: "", // preferred_username is empty
+				Email:    "bob@example.com",
+				Sub:      "bob-sub-456",
+			},
+			claimOrder:    []string{"preferred_username", "email_localpart", "sub"},
+			expectedValid: true,
+			expectedName:  "bob",
+		},
+		{
+			name: "fallback-to-subject",
+			claims: &OIDCClaims{
+				Username: "", // preferred_username is empty
+				Email:    "", // email is empty
+				Sub:      "charlie-sub-789",
+			},
+			claimOrder:    []string{"preferred_username", "email_localpart", "sub"},
+			expectedValid: true,
+			expectedName:  "charlie-sub-789",
+		},
+		{
+			name: "invalid-claim-skipped",
+			claims: &OIDCClaims{
+				Username: "invalid user!", // Invalid: contains space and special character
+				Email:    "diana@example.com",
+				Sub:      "diana-sub-000",
+			},
+			claimOrder:    []string{"preferred_username", "email_localpart", "sub"},
+			expectedValid: true,
+			expectedName:  "diana", // Falls back to email_localpart
+		},
+		{
+			name: "custom-claim-order",
+			claims: &OIDCClaims{
+				Username: "eve",
+				Email:    "eve@example.com",
+				Sub:      "eve-sub-111",
+			},
+			claimOrder:    []string{"email_localpart", "preferred_username", "sub"},
+			expectedValid: true,
+			expectedName:  "eve", // email_localpart comes first, but both "eve" and "eve@example.com" -> "eve"
+		},
+		{
+			name: "no-valid-username-available",
+			claims: &OIDCClaims{
+				Username: "",  // preferred_username is empty
+				Email:    "@", // Invalid email, no local part
+				Sub:      "",  // sub is empty
+			},
+			claimOrder:    []string{"preferred_username", "email_localpart", "sub"},
+			expectedValid: false,
+			expectedName:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			derived := DeriveUsername(tt.claims, tt.claimOrder)
+			if tt.expectedValid {
+				assert.NotEmpty(t, derived, "expected username to be derived")
+				assert.Equal(t, tt.expectedName, derived, "expected derived username to match")
+			} else {
+				assert.Empty(t, derived, "expected no valid username")
+			}
+		})
+	}
+}

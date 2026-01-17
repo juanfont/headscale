@@ -919,6 +919,18 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 	}
 }
 
+// oidcMockUserNoPreferredUsername creates a MockUser without PreferredUsername claim.
+// This simulates OIDC providers (like Google) that don't include preferred_username in their claims,
+// useful for testing username derivation from alternative claims (email, subject, etc).
+func oidcMockUserNoPreferredUsername(subject, email string, emailVerified bool) mockoidc.MockUser {
+	return mockoidc.MockUser{
+		Subject:       subject,
+		Email:         email,
+		EmailVerified: emailVerified,
+		// PreferredUsername is intentionally empty
+	}
+}
+
 // GetUserByName retrieves a user by name from the headscale server.
 // This is a common pattern used when creating preauth keys or managing users.
 func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
