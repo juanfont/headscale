@@ -65,6 +65,7 @@ sequentially through each stable release, selecting the latest patch version ava
 
 ### Changes
 
+- Add App Connector support for domain-based routing through designated connector nodes [#2987](https://github.com/juanfont/headscale/pull/2987)
 - Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
   - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)

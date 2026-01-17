@@ -33,6 +33,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
     - [x] Basic registration
     - [x] Update user profile from identity provider
     - [ ] OIDC groups cannot be used in ACLs
+- [x] [App Connectors](https://tailscale.com/kb/1281/app-connectors) - Route traffic to specific domains through designated connector nodes
 - [ ] [Funnel](https://tailscale.com/kb/1223/funnel) ([#1040](https://github.com/juanfont/headscale/issues/1040))
 - [ ] [Serve](https://tailscale.com/kb/1312/serve) ([#1234](https://github.com/juanfont/headscale/issues/1921))
 - [ ] [Network flow logs](https://tailscale.com/kb/1219/network-flow-logs) ([#1687](https://github.com/juanfont/headscale/issues/1687))
