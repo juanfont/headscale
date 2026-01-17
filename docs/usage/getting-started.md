@@ -167,14 +167,14 @@ The export includes:
 === "Native"
 
     ```shell
-    headscale export --format json > headscale-backup.json
+    headscale export --output json > headscale-backup.json
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale export --format json > headscale-backup.json
+      headscale export --output json > headscale-backup.json
     ```
 
 ### Export in YAML format
@@ -182,14 +182,14 @@ The export includes:
 === "Native"
 
     ```shell
-    headscale export --format yaml > headscale-backup.yaml
+    headscale export --output yaml > headscale-backup.yaml
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale export --format yaml > headscale-backup.yaml
+      headscale export --output yaml > headscale-backup.yaml
     ```
 
 !!! note "Export considerations"

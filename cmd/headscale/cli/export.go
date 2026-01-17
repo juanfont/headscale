@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"fmt"
-
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/status"
@@ -10,7 +8,6 @@ import (
 
 func init() {
 	rootCmd.AddCommand(exportCmd)
-	exportCmd.Flags().StringP("format", "f", "json", "Export format (json or yaml)")
 }
 
 var exportCmd = &cobra.Command{
@@ -26,16 +23,6 @@ The export includes:
 - All API keys`,
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-		format, _ := cmd.Flags().GetString("format")
-
-		if format != "json" && format != "yaml" {
-			ErrorOutput(
-				fmt.Errorf("invalid format: %s", format),
-				"Format must be 'json' or 'yaml'",
-				output,
-			)
-			return
-		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
@@ -92,14 +79,8 @@ The export includes:
 		}
 		exportData["preauth_keys"] = preAuthKeysResp.GetPreAuthKeys()
 
-		// Output the export
-		// If --output flag is set, use it; otherwise use --format flag
-		outputFormat := output
-		if outputFormat == "" {
-			outputFormat = format
-		}
-
-		// Use the standard output mechanism for all formats
-		SuccessOutput(exportData, "Export completed successfully", outputFormat)
+		// Output the export using standard CLI output mechanism
+		// The --output flag (json, yaml, json-line) controls the format
+		SuccessOutput(exportData, "Export completed successfully", output)
 	},
 }
