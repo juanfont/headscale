@@ -406,21 +406,33 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 	}
 
-	// Create test nodes
-	nodeUser1 := types.Node{
-		Hostname: "user1-device",
+	// Create test nodes:
+	// - taggedNode: Tagged node as SSH destination (tag:server)
+	// - nodeUser2: User-owned node as SSH source (group:admins -> user2@)
+	// - taggedNode2: Another tagged node for "no matching destination" test
+	taggedNode := types.Node{
+		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
 		UserID:   ptr.To(users[0].ID),
 		User:     ptr.To(users[0]),
+		Tags:     []string{"tag:server"},
 	}
+	// User-owned node for user2 - acts as the source for group:admins
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     createAddr("100.64.0.2"),
 		UserID:   ptr.To(users[1].ID),
 		User:     ptr.To(users[1]),
 	}
+	taggedNode2 := types.Node{
+		Hostname: "tagged-server2",
+		IPv4:     createAddr("100.64.0.3"),
+		UserID:   ptr.To(users[1].ID),
+		User:     ptr.To(users[1]),
+		Tags:     []string{"tag:other"},
+	}
 
-	nodes := types.Nodes{&nodeUser1, &nodeUser2}
+	nodes := types.Nodes{&taggedNode, &nodeUser2, &taggedNode2}
 
 	tests := []struct {
 		name         string
@@ -430,17 +442,21 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		wantEmpty    bool
 	}{
 		{
+			// Tests SSH user mapping with group->tag (valid combination)
 			name:       "specific user mapping",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"ssh-it-user"},
 					},
 				},
@@ -451,16 +467,19 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "multiple specific users",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"ubuntu", "admin", "deploy"},
 					},
 				},
@@ -473,16 +492,19 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "autogroup:nonroot only",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
 					},
 				},
@@ -494,16 +516,19 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "root only",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"root"},
 					},
 				},
@@ -514,16 +539,19 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "autogroup:nonroot plus root",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot), "root"},
 					},
 				},
@@ -535,16 +563,19 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "mixed specific users and autogroups",
-			targetNode: nodeUser1,
+			targetNode: taggedNode,
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot), "root", "ubuntu", "admin"},
 					},
 				},
@@ -558,16 +589,20 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "no matching destination",
-			targetNode: nodeUser2, // Target node2, but policy only allows user1
+			targetNode: taggedNode2, // Target tagged-server2, but policy only allows tag:server
 			policy: &Policy{
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+					Tag("tag:other"):  Owners{up("user1@")},
 				},
 				SSHs: []SSH{
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")}, // Only user1, not user2
+						Destinations: SSHDstAliases{tp("tag:server")}, // Only tag:server, not tag:other
 						Users:        []SSHUser{"ssh-it-user"},
 					},
 				},
@@ -619,11 +654,13 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 	}
 
-	nodeUser1 := types.Node{
-		Hostname: "user1-device",
+	// Use tagged node for valid group->tag SSH rule
+	taggedNode := types.Node{
+		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
 		UserID:   ptr.To(users[0].ID),
 		User:     ptr.To(users[0]),
+		Tags:     []string{"tag:server"},
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
@@ -632,18 +669,21 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 		User:     ptr.To(users[1]),
 	}
 
-	nodes := types.Nodes{&nodeUser1, &nodeUser2}
+	nodes := types.Nodes{&taggedNode, &nodeUser2}
 
 	policy := &Policy{
 		Groups: Groups{
 			Group("group:admins"): []Username{Username("user2@")},
+		},
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{up("user1@")},
 		},
 		SSHs: []SSH{
 			{
 				Action:       "check",
 				CheckPeriod:  model.Duration(24 * time.Hour),
 				Sources:      SSHSrcAliases{gp("group:admins")},
-				Destinations: SSHDstAliases{up("user1@")},
+				Destinations: SSHDstAliases{tp("tag:server")},
 				Users:        []SSHUser{"ssh-it-user"},
 			},
 		},
@@ -652,7 +692,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 	err := policy.validate()
 	require.NoError(t, err)
 
-	sshPolicy, err := policy.compileSSHPolicy(users, nodeUser1.View(), nodes.ViewSlice())
+	sshPolicy, err := policy.compileSSHPolicy(users, taggedNode.View(), nodes.ViewSlice())
 	require.NoError(t, err)
 	require.NotNil(t, sshPolicy)
 	require.Len(t, sshPolicy.Rules, 1)
@@ -671,7 +711,8 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 }
 
 // TestSSHIntegrationReproduction reproduces the exact scenario from the integration test
-// TestSSHOneUserToAll that was failing with empty sshUsers
+// TestSSHOneUserToAll that was failing with empty sshUsers.
+// Updated to use valid group->tag SSH combination after #3010 fix.
 func TestSSHIntegrationReproduction(t *testing.T) {
 	// Create users matching the integration test
 	users := types.Users{
@@ -679,7 +720,7 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 	}
 
-	// Create simple nodes for testing
+	// Create simple nodes for testing - use tagged node for valid group->tag SSH
 	node1 := &types.Node{
 		Hostname: "user1-node",
 		IPv4:     createAddr("100.64.0.1"),
@@ -687,25 +728,29 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 		User:     ptr.To(users[0]),
 	}
 
-	node2 := &types.Node{
-		Hostname: "user2-node",
+	taggedNode := &types.Node{
+		Hostname: "tagged-node",
 		IPv4:     createAddr("100.64.0.2"),
 		UserID:   ptr.To(users[1].ID),
 		User:     ptr.To(users[1]),
+		Tags:     []string{"tag:server"},
 	}
 
-	nodes := types.Nodes{node1, node2}
+	nodes := types.Nodes{node1, taggedNode}
 
-	// Create a simple policy that reproduces the issue
+	// Create a simple policy that tests SSH user mapping with valid group->tag
 	policy := &Policy{
 		Groups: Groups{
 			Group("group:integration-test"): []Username{Username("user1@")},
+		},
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{up("user2@")},
 		},
 		SSHs: []SSH{
 			{
 				Action:       "accept",
 				Sources:      SSHSrcAliases{gp("group:integration-test")},
-				Destinations: SSHDstAliases{up("user2@")},       // Target user2
+				Destinations: SSHDstAliases{tp("tag:server")},   // Target tagged server
 				Users:        []SSHUser{SSHUser("ssh-it-user")}, // This is the key - specific user
 			},
 		},
@@ -715,8 +760,8 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	err := policy.validate()
 	require.NoError(t, err)
 
-	// Test SSH policy compilation for node2 (target)
-	sshPolicy, err := policy.compileSSHPolicy(users, node2.View(), nodes.ViewSlice())
+	// Test SSH policy compilation for tagged node (target)
+	sshPolicy, err := policy.compileSSHPolicy(users, taggedNode.View(), nodes.ViewSlice())
 	require.NoError(t, err)
 	require.NotNil(t, sshPolicy)
 	require.Len(t, sshPolicy.Rules, 1)
@@ -1646,4 +1691,255 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	require.Contains(t, routerPrincipals, "100.64.0.1", "router rule should include user1's device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.2", "router rule should include user1's other device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.3", "router rule should include user2's device (unfiltered sources)")
+}
+
+// TODO(kradalby): Remove this test when #3009 is completed and * is removed from SSH destinations.
+// TestSSHWithAsterixAndTagSource verifies that when `*` is used as SSH destination
+// with a tag source, user-owned nodes should NOT get SSH rules allowing access from tagged sources.
+// This is a runtime workaround for #3010 while we still support * as a destination.
+// See: https://github.com/juanfont/headscale/issues/3010
+func TestSSHWithAsterixAndTagSource(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		// user1's device (user-owned)
+		{
+			ID:     1,
+			IPv4:   ap("100.64.0.1"),
+			User:   &users[0],
+			UserID: ptr.To(users[0].ID),
+		},
+		// Tagged device with tag:server
+		{
+			ID:     2,
+			IPv4:   ap("100.64.0.2"),
+			User:   &users[0], // Created by user1 but owned by tag
+			UserID: ptr.To(users[0].ID),
+			Tags:   []string{"tag:server"},
+		},
+		// user2's device (user-owned)
+		{
+			ID:     3,
+			IPv4:   ap("100.64.0.3"),
+			User:   &users[1],
+			UserID: ptr.To(users[1].ID),
+		},
+		// Another tagged device
+		{
+			ID:     4,
+			IPv4:   ap("100.64.0.4"),
+			User:   &users[1],
+			UserID: ptr.To(users[1].ID),
+			Tags:   []string{"tag:server"},
+		},
+	}
+
+	// Policy with tag source and * destination
+	// This is the problematic pattern from #3010
+	policy := &Policy{
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{ptr.To(Username("user1@"))},
+		},
+		SSHs: []SSH{
+			{
+				Action: "accept",
+				Sources: SSHSrcAliases{
+					tp("tag:server"),
+				},
+				Destinations: SSHDstAliases{
+					Asterix(0), // * destination
+				},
+				Users: SSHUsers{SSHUser("root")},
+			},
+		},
+	}
+
+	// Test 1: For user1's device (user-owned), should NOT get SSH rules from tagged sources
+	// This is the fix for #3010 - tagged devices should not be able to SSH to user-owned devices
+	node1 := nodes[0].View()
+	sshPolicy1, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// The user-owned node should NOT have any SSH rules that allow access from tagged sources
+	if sshPolicy1 != nil && len(sshPolicy1.Rules) > 0 {
+		for _, rule := range sshPolicy1.Rules {
+			for _, principal := range rule.Principals {
+				// Should NOT contain IPs of tagged nodes (100.64.0.2 or 100.64.0.4)
+				assert.NotEqual(t, "100.64.0.2", principal.NodeIP,
+					"user-owned node should NOT have SSH rule allowing access from tagged source")
+				assert.NotEqual(t, "100.64.0.4", principal.NodeIP,
+					"user-owned node should NOT have SSH rule allowing access from tagged source")
+			}
+		}
+	}
+
+	// Test 2: For tagged node, it CAN have SSH rules (tagged to tagged is OK)
+	taggedNode := nodes[1].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, taggedNode, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Tagged node should be able to receive SSH from other tagged nodes
+	if sshPolicy2 != nil {
+		require.GreaterOrEqual(t, len(sshPolicy2.Rules), 1,
+			"tagged node should have SSH rules allowing access from other tagged sources")
+	}
+}
+
+// TODO(kradalby): Remove this test when #3009 is completed and * is removed from SSH destinations.
+// TestSSHWithAsterixAndUserSource verifies that when `*` is used as SSH destination
+// with a user source, it should work normally (users can SSH to all their devices).
+// This is the valid use case that should continue to work.
+func TestSSHWithAsterixAndUserSource(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	nodes := types.Nodes{
+		// user1's device (user-owned)
+		{
+			ID:     1,
+			IPv4:   ap("100.64.0.1"),
+			User:   &users[0],
+			UserID: ptr.To(users[0].ID),
+		},
+		// user1's second device (user-owned)
+		{
+			ID:     2,
+			IPv4:   ap("100.64.0.2"),
+			User:   &users[0],
+			UserID: ptr.To(users[0].ID),
+		},
+		// user2's device (user-owned)
+		{
+			ID:     3,
+			IPv4:   ap("100.64.0.3"),
+			User:   &users[1],
+			UserID: ptr.To(users[1].ID),
+		},
+	}
+
+	// Policy with user source and * destination - this should work
+	policy := &Policy{
+		SSHs: []SSH{
+			{
+				Action: "accept",
+				Sources: SSHSrcAliases{
+					ptr.To(Username("user1@")),
+				},
+				Destinations: SSHDstAliases{
+					Asterix(0), // * destination
+				},
+				Users: SSHUsers{SSHUser("root")},
+			},
+		},
+	}
+
+	// Test 1: For user1's device, should get SSH rules allowing access from user1's devices
+	node1 := nodes[0].View()
+	sshPolicy1, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy1)
+	require.Len(t, sshPolicy1.Rules, 1, "user1's device should have 1 SSH rule")
+
+	rule := sshPolicy1.Rules[0]
+
+	principals := make([]string, len(rule.Principals))
+	for i, p := range rule.Principals {
+		principals[i] = p.NodeIP
+	}
+
+	// User1's devices should be able to SSH to all * destinations
+	require.Contains(t, principals, "100.64.0.1", "should include user1's first device")
+	require.Contains(t, principals, "100.64.0.2", "should include user1's second device")
+
+	// Test 2: For user2's device, should also get SSH rules (since user1 can SSH to *)
+	node3 := nodes[2].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy2)
+	require.Len(t, sshPolicy2.Rules, 1, "user2's device should have 1 SSH rule (user1 can SSH to *)")
+}
+
+// TODO(kradalby): Remove this test when #3009 is completed and * is removed from SSH destinations.
+// TestSSHWithAsterixAndMixedSource verifies that when `*` is used as SSH destination
+// with mixed sources (tag + user), the tag source should NOT be able to SSH to user-owned devices.
+func TestSSHWithAsterixAndMixedSource(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+	}
+
+	nodes := types.Nodes{
+		// user1's device (user-owned)
+		{
+			ID:     1,
+			IPv4:   ap("100.64.0.1"),
+			User:   &users[0],
+			UserID: ptr.To(users[0].ID),
+		},
+		// Tagged device with tag:server
+		{
+			ID:     2,
+			IPv4:   ap("100.64.0.2"),
+			User:   &users[0],
+			UserID: ptr.To(users[0].ID),
+			Tags:   []string{"tag:server"},
+		},
+	}
+
+	// Policy with mixed sources (tag + user) and * destination
+	policy := &Policy{
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{ptr.To(Username("user1@"))},
+		},
+		SSHs: []SSH{
+			{
+				Action: "accept",
+				Sources: SSHSrcAliases{
+					tp("tag:server"),
+					ptr.To(Username("user1@")),
+				},
+				Destinations: SSHDstAliases{
+					Asterix(0), // * destination
+				},
+				Users: SSHUsers{SSHUser("root")},
+			},
+		},
+	}
+
+	// For user1's user-owned device: should get SSH rules but NOT from tagged source
+	node1 := nodes[0].View()
+	sshPolicy, err := policy.compileSSHPolicy(users, node1, nodes.ViewSlice())
+	require.NoError(t, err)
+	require.NotNil(t, sshPolicy)
+
+	// Check that user1's device has rules, but none from the tagged device
+	for _, rule := range sshPolicy.Rules {
+		for _, principal := range rule.Principals {
+			// Should NOT contain IP of tagged node (100.64.0.2)
+			assert.NotEqual(t, "100.64.0.2", principal.NodeIP,
+				"user-owned node should NOT have SSH rule allowing access from tagged source via * workaround")
+		}
+	}
+
+	// For the tagged device: should get SSH rules including from tagged sources
+	taggedNode := nodes[1].View()
+	sshPolicy2, err := policy.compileSSHPolicy(users, taggedNode, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	if sshPolicy2 != nil && len(sshPolicy2.Rules) > 0 {
+		principals := make([]string, 0)
+
+		for _, rule := range sshPolicy2.Rules {
+			for _, p := range rule.Principals {
+				principals = append(principals, p.NodeIP)
+			}
+		}
+		// Tagged node can receive SSH from tagged sources
+		require.Contains(t, principals, "100.64.0.2",
+			"tagged node should allow SSH from other tagged sources")
+	}
 }

@@ -660,7 +660,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 		},
 		{
-			name: "ssh-with-tag-and-user",
+			// #3010: Tag src -> User dst should be rejected
+			// Tailscale rule: "users in dst are only allowed from the same user"
+			name: "ssh-tag-src-user-dst-rejected",
 			input: `
 {
   "tagOwners": {
@@ -680,32 +682,16 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			want: &Policy{
-				TagOwners: TagOwners{
-					Tag("tag:web"): Owners{ptr.To(Username("admin@example.com"))},
-				},
-				SSHs: []SSH{
-					{
-						Action: "accept",
-						Sources: SSHSrcAliases{
-							tp("tag:web"),
-						},
-						Destinations: SSHDstAliases{
-							ptr.To(Username("admin@example.com")),
-						},
-						Users: []SSHUser{
-							SSHUser("*"),
-						},
-					},
-				},
-			},
+			wantErr: "users in dst are only allowed from the same user",
 		},
 		{
-			name: "ssh-with-check-period",
+			// #3010: Group src -> User dst should be rejected
+			// Groups contain multiple users, so they can't SSH to a single user's devices
+			name: "ssh-group-src-user-dst-rejected",
 			input: `
 {
   "groups": {
-    "group:admins": ["admin@example.com"]
+    "group:admins": ["admin@example.com", "other@example.com"]
   },
   "ssh": [
     {
@@ -715,6 +701,272 @@ func TestUnmarshalPolicy(t *testing.T) {
       ],
       "dst": [
         "admin@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			wantErr: "users in dst are only allowed from the same user",
+		},
+		{
+			// #3010: Different user src -> User dst should be rejected
+			name: "ssh-different-user-src-dst-rejected",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "bob@example.com"
+      ],
+      "dst": [
+        "alice@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			wantErr: "users in dst are only allowed from the same user",
+		},
+		{
+			// #3010: Same user src -> Same user dst should be allowed
+			name: "ssh-same-user-src-dst-allowed",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "alice@example.com"
+      ],
+      "dst": [
+        "alice@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							ptr.To(Username("alice@example.com")),
+						},
+						Destinations: SSHDstAliases{
+							ptr.To(Username("alice@example.com")),
+						},
+						Users: []SSHUser{
+							SSHUser("*"),
+						},
+					},
+				},
+			},
+		},
+		{
+			// #3010: Tag src -> Tag dst should be allowed
+			name: "ssh-tag-src-tag-dst-allowed",
+			input: `
+{
+  "tagOwners": {
+    "tag:web": ["admin@example.com"],
+    "tag:server": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:web"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": ["root"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:web"):    Owners{ptr.To(Username("admin@example.com"))},
+					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							tp("tag:web"),
+						},
+						Destinations: SSHDstAliases{
+							tp("tag:server"),
+						},
+						Users: []SSHUser{
+							SSHUser("root"),
+						},
+					},
+				},
+			},
+		},
+		{
+			// #3010: User src -> Tag dst should be allowed
+			name: "ssh-user-src-tag-dst-allowed",
+			input: `
+{
+  "tagOwners": {
+    "tag:server": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "admin@example.com"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": ["root"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							ptr.To(Username("admin@example.com")),
+						},
+						Destinations: SSHDstAliases{
+							tp("tag:server"),
+						},
+						Users: []SSHUser{
+							SSHUser("root"),
+						},
+					},
+				},
+			},
+		},
+		{
+			// #3010: Group src -> Tag dst should be allowed
+			name: "ssh-group-src-tag-dst-allowed",
+			input: `
+{
+  "groups": {
+    "group:admins": ["admin@example.com"]
+  },
+  "tagOwners": {
+    "tag:server": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": ["root"]
+    }
+  ]
+}
+`,
+			want: &Policy{
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("admin@example.com")},
+				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
+				},
+				SSHs: []SSH{
+					{
+						Action: "accept",
+						Sources: SSHSrcAliases{
+							gp("group:admins"),
+						},
+						Destinations: SSHDstAliases{
+							tp("tag:server"),
+						},
+						Users: []SSHUser{
+							SSHUser("root"),
+						},
+					},
+				},
+			},
+		},
+		{
+			// #3010: Mixed src (tag + user) -> User dst should be rejected
+			// Even if the user matches, having a tag in src invalidates it
+			name: "ssh-mixed-src-user-dst-rejected",
+			input: `
+{
+  "tagOwners": {
+    "tag:web": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:web",
+        "admin@example.com"
+      ],
+      "dst": [
+        "admin@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			wantErr: "users in dst are only allowed from the same user",
+		},
+		{
+			// #3010: Autogroup in src -> User dst should be rejected
+			// autogroup:member contains multiple users
+			name: "ssh-autogroup-src-user-dst-rejected",
+			input: `
+{
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "autogroup:member"
+      ],
+      "dst": [
+        "admin@example.com"
+      ],
+      "users": ["*"]
+    }
+  ]
+}
+`,
+			wantErr: "users in dst are only allowed from the same user",
+		},
+		{
+			// Test checkPeriod with valid src/dst combination (group -> tag)
+			name: "ssh-with-check-period",
+			input: `
+{
+  "groups": {
+    "group:admins": ["admin@example.com"]
+  },
+  "tagOwners": {
+    "tag:server": ["admin@example.com"]
+  },
+  "ssh": [
+    {
+      "action": "accept",
+      "src": [
+        "group:admins"
+      ],
+      "dst": [
+        "tag:server"
       ],
       "users": ["root"],
       "checkPeriod": "24h"
@@ -726,6 +978,9 @@ func TestUnmarshalPolicy(t *testing.T) {
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("admin@example.com")},
 				},
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
+				},
 				SSHs: []SSH{
 					{
 						Action: "accept",
@@ -733,7 +988,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 							gp("group:admins"),
 						},
 						Destinations: SSHDstAliases{
-							ptr.To(Username("admin@example.com")),
+							tp("tag:server"),
 						},
 						Users: []SSHUser{
 							SSHUser("root"),
