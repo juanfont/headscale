@@ -1662,3 +1662,58 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 	)
 	assert.ErrorContains(t, err, "acl policy not found")
 }
+
+func TestExportCommand(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		Users:        []string{"user1", "user2"},
+		NodesPerUser: 2,
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cliexport"))
+	require.NoError(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	// Test export command with JSON output
+	type ExportData struct {
+		Users       []*v1.User       `json:"users"`
+		Nodes       []*v1.Node       `json:"nodes"`
+		ApiKeys     []*v1.ApiKey     `json:"api_keys"`
+		PreAuthKeys []*v1.PreAuthKey `json:"preauth_keys"`
+	}
+
+	var exportResult ExportData
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"export",
+				"--output",
+				"json",
+			},
+			&exportResult,
+		)
+		assert.NoError(ct, err)
+
+		// Verify that we have data
+		assert.GreaterOrEqual(ct, len(exportResult.Users), 2, "Should have at least 2 users")
+		assert.GreaterOrEqual(ct, len(exportResult.Nodes), 4, "Should have at least 4 nodes (2 per user)")
+		assert.NotNil(ct, exportResult.ApiKeys, "API keys should not be nil")
+		assert.NotNil(ct, exportResult.PreAuthKeys, "PreAuth keys should not be nil")
+
+		// Verify users are present
+		userNames := make([]string, len(exportResult.Users))
+		for i, user := range exportResult.Users {
+			userNames[i] = user.GetName()
+		}
+		assert.Contains(ct, userNames, "user1", "Should have user1 in export")
+		assert.Contains(ct, userNames, "user2", "Should have user2 in export")
+	}, 20*time.Second, 1*time.Second, "Waiting for export command to complete")
+}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -259,4 +260,83 @@ func TestSetTags_CannotRemoveAllTags(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Contains(t, st.Message(), "cannot remove all tags")
 	assert.Nil(t, resp.GetNode())
+}
+
+// TestListUsers_IncludesTaggedDevices tests that ListUsers includes the
+// TaggedDevices special user when there are tagged nodes in the system.
+func TestListUsers_IncludesTaggedDevices(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Create test user
+	user := app.state.CreateUserForTest("test-user")
+
+	// Test 1: No tagged nodes - TaggedDevices should NOT be included
+	resp, err := apiServer.ListUsers(context.Background(), &v1.ListUsersRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should only have the regular user
+	assert.Len(t, resp.Users, 1)
+	assert.Equal(t, user.Name, resp.Users[0].Name)
+
+	// Test 2: Create a tagged node - TaggedDevices SHOULD be included
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:server"})
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	taggedReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(taggedReq, machineKey.Public())
+	require.NoError(t, err)
+
+	// Now ListUsers should include TaggedDevices
+	resp, err = apiServer.ListUsers(context.Background(), &v1.ListUsersRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should have both the regular user and TaggedDevices
+	assert.Len(t, resp.Users, 2)
+
+	// Find TaggedDevices in the response
+	hasTaggedDevices := false
+	for _, u := range resp.Users {
+		if u.Name == "tagged-devices" {
+			hasTaggedDevices = true
+			assert.Equal(t, uint64(types.TaggedDevicesUserID), u.Id)
+			assert.Equal(t, "Tagged Devices", u.DisplayName)
+			break
+		}
+	}
+	assert.True(t, hasTaggedDevices, "TaggedDevices should be included when there are tagged nodes")
+
+	// Test 3: Filtered request by name - should NOT include TaggedDevices
+	resp, err = apiServer.ListUsers(context.Background(), &v1.ListUsersRequest{Name: "test-user"})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should only have the filtered user
+	assert.Len(t, resp.Users, 1)
+	assert.Equal(t, "test-user", resp.Users[0].Name)
+
+	// Test 4: Filtered request by ID - should NOT include TaggedDevices
+	resp, err = apiServer.ListUsers(context.Background(), &v1.ListUsersRequest{Id: uint64(user.ID)})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// Should only have users matching the filter
+	assert.Len(t, resp.Users, 1)
+	assert.Equal(t, uint64(user.ID), resp.Users[0].Id)
+	assert.NotEqual(t, "tagged-devices", resp.Users[0].Name, "TaggedDevices should not be included in filtered requests")
 }

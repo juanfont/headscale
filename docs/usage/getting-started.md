@@ -150,3 +150,51 @@ The command returns the preauthkey on success which is used to connect a node to
 ```shell
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 ```
+
+## Export all configuration data
+
+The `headscale export` command allows you to export all configuration data from your Headscale instance. This is useful for backup, migration, or auditing purposes.
+
+The export includes:
+
+- All users
+- All nodes
+- All preauth keys
+- All API keys
+
+### Export in JSON format
+
+=== "Native"
+
+    ```shell
+    headscale export --output json > headscale-backup.json
+    ```
+
+=== "Container"
+
+    ```shell
+    docker exec -it headscale \
+      headscale export --output json > headscale-backup.json
+    ```
+
+### Export in YAML format
+
+=== "Native"
+
+    ```shell
+    headscale export --output yaml > headscale-backup.yaml
+    ```
+
+=== "Container"
+
+    ```shell
+    docker exec -it headscale \
+      headscale export --output yaml > headscale-backup.yaml
+    ```
+
+!!! note "Export considerations"
+
+    * The export includes sensitive data like API keys and preauth keys
+    * Store exported data securely
+    * The export is a snapshot of the current state and does not include historical data
+    * To restore data, you'll need to manually import it using the respective CLI commands

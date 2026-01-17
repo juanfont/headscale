@@ -116,14 +116,18 @@ func (api headscaleV1APIServer) ListUsers(
 ) (*v1.ListUsersResponse, error) {
 	var err error
 	var users []types.User
+	isFilteredRequest := false
 
 	switch {
 	case request.GetName() != "":
 		users, err = api.h.state.ListUsersWithFilter(&types.User{Name: request.GetName()})
+		isFilteredRequest = true
 	case request.GetEmail() != "":
 		users, err = api.h.state.ListUsersWithFilter(&types.User{Email: request.GetEmail()})
+		isFilteredRequest = true
 	case request.GetId() != 0:
 		users, err = api.h.state.ListUsersWithFilter(&types.User{Model: gorm.Model{ID: uint(request.GetId())}})
+		isFilteredRequest = true
 	default:
 		users, err = api.h.state.ListAllUsers()
 	}
@@ -134,6 +138,27 @@ func (api headscaleV1APIServer) ListUsers(
 	response := make([]*v1.User, len(users))
 	for index, user := range users {
 		response[index] = user.Proto()
+	}
+
+	// When listing all users (no filter), include TaggedDevices if there are tagged nodes
+	if !isFilteredRequest {
+		// Check if there are any tagged nodes in the system
+		// TODO: Consider adding State.HasTaggedNodes() for better performance
+		// as this iterates through all nodes. ListUsers is not a high-frequency
+		// operation, so the performance impact is acceptable for now.
+		hasTaggedNodes := false
+		allNodes := api.h.state.ListNodes()
+		for _, node := range allNodes.All() {
+			if node.IsTagged() {
+				hasTaggedNodes = true
+				break
+			}
+		}
+
+		// Include TaggedDevices special user if there are tagged nodes
+		if hasTaggedNodes {
+			response = append(response, types.TaggedDevices.Proto())
+		}
 	}
 
 	sort.Slice(response, func(i, j int) bool {

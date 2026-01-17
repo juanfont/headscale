@@ -191,6 +191,7 @@ nav:
       - DERP: ref/derp.md
       - API: ref/api.md
       - Debug: ref/debug.md
+      - Advanced Git Commands: ref/git-commands.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md
           - Web UI: ref/integration/web-ui.md
