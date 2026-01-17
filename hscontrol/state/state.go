@@ -719,7 +719,18 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	return s.persistNodeToDB(n)
+	nodeView, c, err := s.persistNodeToDB(n)
+	if err != nil {
+		return nodeView, c, err
+	}
+
+	// Set OriginNode so the mapper knows to include self info for this node.
+	// When tags change, persistNodeToDB returns PolicyChange which doesn't set OriginNode,
+	// so the mapper's self-update check fails and the node never sees its new tags.
+	// Setting OriginNode ensures the node gets a self-update with the new tags.
+	c.OriginNode = nodeID
+
+	return nodeView, c, nil
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.

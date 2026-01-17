@@ -233,6 +233,36 @@ func TestChange_Merge(t *testing.T) {
 			r2:   Change{Reason: "update"},
 			want: Change{Reason: "update"},
 		},
+		{
+			name: "OriginNode preserved from first",
+			r1:   Change{OriginNode: 42},
+			r2:   Change{IncludePolicy: true},
+			want: Change{OriginNode: 42, IncludePolicy: true},
+		},
+		{
+			name: "OriginNode preserved from second when first is zero",
+			r1:   Change{IncludePolicy: true},
+			r2:   Change{OriginNode: 42},
+			want: Change{OriginNode: 42, IncludePolicy: true},
+		},
+		{
+			name: "OriginNode first wins when both set",
+			r1:   Change{OriginNode: 1},
+			r2:   Change{OriginNode: 2},
+			want: Change{OriginNode: 1},
+		},
+		{
+			name: "TargetNode preserved from first",
+			r1:   Change{TargetNode: 42},
+			r2:   Change{IncludeSelf: true},
+			want: Change{TargetNode: 42, IncludeSelf: true},
+		},
+		{
+			name: "TargetNode preserved from second when first is zero",
+			r1:   Change{IncludeSelf: true},
+			r2:   Change{TargetNode: 42},
+			want: Change{TargetNode: 42, IncludeSelf: true},
+		},
 	}
 
 	for _, tt := range tests {

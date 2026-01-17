@@ -187,19 +187,28 @@ func (m *mapper) selfMapResponse(
 // - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
 // - Updated PacketFilters
 // - Updated SSHPolicy (SSH rules may reference users/groups that changed)
+// - Optionally, the node's own self info (when includeSelf is true)
 // This avoids the issue where an empty Peers slice is interpreted by Tailscale
 // clients as "no change" rather than "no peers".
+// When includeSelf is true, the node's self info is included so that a node
+// whose own attributes changed (e.g., tags via admin API) sees its updated
+// self info along with the new packet filters.
 func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
 	removedPeers []tailcfg.NodeID,
 	currentPeers views.Slice[types.NodeView],
+	includeSelf bool,
 ) (*tailcfg.MapResponse, error) {
 	builder := m.NewMapResponseBuilder(nodeID).
 		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
 		WithPacketFilters().
 		WithSSHPolicy()
+
+	if includeSelf {
+		builder = builder.WithSelfNode()
+	}
 
 	if len(removedPeers) > 0 {
 		// Convert tailcfg.NodeID to types.NodeID for WithPeersRemoved

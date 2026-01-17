@@ -237,6 +237,7 @@ jobs:
           - TestTagsAdminAPICannotSetNonExistentTag
           - TestTagsAdminAPICanSetUnownedTag
           - TestTagsAdminAPICannotRemoveAllTags
+          - TestTagsIssue2978ReproTagReplacement
           - TestTagsAdminAPICannotSetInvalidFormat
           - TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags
     uses: ./.github/workflows/integration-test-template.yml
