@@ -182,14 +182,14 @@ The export includes:
 === "Native"
 
     ```shell
-    headscale export --format yaml --output yaml > headscale-backup.yaml
+    headscale export --format yaml > headscale-backup.yaml
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale export --format yaml --output yaml > headscale-backup.yaml
+      headscale export --format yaml > headscale-backup.yaml
     ```
 
 !!! note "Export considerations"

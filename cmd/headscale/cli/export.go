@@ -35,6 +35,7 @@ The export includes:
 				"Format must be 'json' or 'yaml'",
 				output,
 			)
+			return
 		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
@@ -52,6 +53,7 @@ The export includes:
 				"Cannot get users: "+status.Convert(err).Message(),
 				output,
 			)
+			return
 		}
 		exportData["users"] = usersResp.GetUsers()
 
@@ -63,6 +65,7 @@ The export includes:
 				"Cannot get nodes: "+status.Convert(err).Message(),
 				output,
 			)
+			return
 		}
 		exportData["nodes"] = nodesResp.GetNodes()
 
@@ -74,6 +77,7 @@ The export includes:
 				"Cannot get API keys: "+status.Convert(err).Message(),
 				output,
 			)
+			return
 		}
 		exportData["api_keys"] = apiKeysResp.GetApiKeys()
 
@@ -85,6 +89,7 @@ The export includes:
 				"Cannot get preauth keys: "+status.Convert(err).Message(),
 				output,
 			)
+			return
 		}
 		exportData["preauth_keys"] = preAuthKeysResp.GetPreAuthKeys()
 
@@ -97,6 +102,7 @@ The export includes:
 					"Error marshaling to JSON",
 					output,
 				)
+				return
 			}
 			fmt.Println(string(jsonData))
 		} else {
