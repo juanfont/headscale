@@ -94,7 +94,13 @@ The export includes:
 		exportData["preauth_keys"] = preAuthKeysResp.GetPreAuthKeys()
 
 		// Output the export
-		if format == "json" || output == "json" || output == "json-line" {
+		// If --output flag is set, use it; otherwise use --format flag
+		outputFormat := output
+		if outputFormat == "" {
+			outputFormat = format
+		}
+
+		if outputFormat == "json" || outputFormat == "json-line" {
 			jsonData, err := json.MarshalIndent(exportData, "", "  ")
 			if err != nil {
 				ErrorOutput(
@@ -107,7 +113,7 @@ The export includes:
 			fmt.Println(string(jsonData))
 		} else {
 			// For YAML or other formats, use the standard output mechanism
-			SuccessOutput(exportData, "Export completed successfully", output)
+			SuccessOutput(exportData, "Export completed successfully", outputFormat)
 		}
 	},
 }
