@@ -137,6 +137,11 @@ jobs:
           - TestACLPolicyPropagationOverTime
           - TestACLTagPropagation
           - TestACLTagPropagationPortSpecific
+          - TestACLGroupWithUnknownUser
+          - TestACLGroupAfterUserDeletion
+          - TestACLGroupDeletionExactReproduction
+          - TestACLDynamicUnknownUserAddition
+          - TestACLDynamicUnknownUserRemoval
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass

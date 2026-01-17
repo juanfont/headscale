@@ -362,8 +362,29 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 
 // DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).
 // This operation is irreversible.
-func (s *State) DeleteUser(userID types.UserID) error {
-	return s.db.DestroyUser(userID)
+// It also updates the policy manager to ensure ACL policies referencing the deleted
+// user are re-evaluated immediately, fixing issue #2967.
+func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
+	err := s.db.DestroyUser(userID)
+	if err != nil {
+		return change.Change{}, err
+	}
+
+	// Update policy manager with the new user list (without the deleted user)
+	// This ensures that if the policy references the deleted user, it gets
+	// re-evaluated immediately rather than when some other operation triggers it.
+	c, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		return change.Change{}, fmt.Errorf("updating policy after user deletion: %w", err)
+	}
+
+	// If the policy manager doesn't detect changes, still return UserRemoved
+	// to ensure peer lists are refreshed
+	if c.IsEmpty() {
+		c = change.UserRemoved()
+	}
+
+	return c, nil
 }
 
 // RenameUser changes a user's name. The new name must be unique.

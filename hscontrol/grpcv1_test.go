@@ -260,3 +260,23 @@ func TestSetTags_CannotRemoveAllTags(t *testing.T) {
 	assert.Contains(t, st.Message(), "cannot remove all tags")
 	assert.Nil(t, resp.GetNode())
 }
+
+// TestDeleteUser_ReturnsProperChangeSignal tests issue #2967 fix:
+// When a user is deleted, the state should return a non-empty change signal
+// to ensure policy manager is updated and clients are notified immediately.
+func TestDeleteUser_ReturnsProperChangeSignal(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create a user
+	user := app.state.CreateUserForTest("test-user-to-delete")
+	require.NotNil(t, user)
+
+	// Delete the user and verify a non-empty change is returned
+	// Issue #2967: Without the fix, DeleteUser returned an empty change,
+	// causing stale policy state until another user operation triggered an update.
+	changeSignal, err := app.state.DeleteUser(*user.TypedID())
+	require.NoError(t, err, "DeleteUser should succeed")
+	assert.False(t, changeSignal.IsEmpty(), "DeleteUser should return a non-empty change signal (issue #2967)")
+}

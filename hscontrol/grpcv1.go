@@ -28,7 +28,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 )
 
@@ -99,13 +98,13 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	err = api.h.state.DeleteUser(types.UserID(user.ID))
+	policyChanged, err := api.h.state.DeleteUser(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
 
-	// User deletion may affect policy, trigger a full policy re-evaluation.
-	api.h.Change(change.UserRemoved())
+	// Use the change returned from DeleteUser which includes proper policy updates
+	api.h.Change(policyChanged)
 
 	return &v1.DeleteUserResponse{}, nil
 }
