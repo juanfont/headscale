@@ -514,6 +514,16 @@ in
                   HuJSON file containing ACL policies.
                 '';
               };
+              validatePolicy = lib.mkOption {
+                type = lib.types.bool;
+                default = true;
+                description = ''
+                  Whether to validate the policy file before starting headscale.
+                  If validation fails, the service will not start.
+                  Only applies when policy.mode is set to "file" and policy.path is set.
+                  Set to false to bypass validation for edge cases.
+                '';
+              };
             };
           };
         };
@@ -653,6 +663,15 @@ in
       isSystemUser = true;
     };
 
+    system.activationScripts.headscale-policy-check = lib.mkIf (
+      cfg.settings.policy.mode == "file"
+      && cfg.settings.policy.path != null
+      && cfg.settings.policy.validatePolicy
+    ) ''
+      # Validate headscale policy file
+      ${lib.getExe cfg.package} policy check -f "${cfg.settings.policy.path}"
+    '';
+
     systemd.services.headscale = {
       description = "headscale coordination server for Tailscale";
       wants = [ "network-online.target" ];
@@ -716,6 +735,14 @@ in
           ];
           SystemCallArchitectures = "native";
           RestrictAddressFamilies = "AF_INET AF_INET6 AF_UNIX";
+        } // lib.optionalAttrs (
+          cfg.settings.policy.mode == "file"
+          && cfg.settings.policy.path != null
+          && cfg.settings.policy.validatePolicy
+        ) {
+          ExecStartPre = [
+            "${lib.getExe cfg.package} policy check -f ${cfg.settings.policy.path}"
+          ];
         };
     };
   };
