@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
@@ -586,6 +587,178 @@ AND auth_key_id NOT IN (
 					err := tx.Migrator().RenameColumn(&types.Node{}, "forced_tags", "tags")
 					if err != nil {
 						return fmt.Errorf("renaming forced_tags to tags: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				// Migrate RequestTags from host_info JSON to tags column.
+				// In 0.27.x, tags from --advertise-tags (ValidTags) were stored only in
+				// host_info.RequestTags, not in the tags column (formerly forced_tags).
+				// This migration validates RequestTags against the policy's tagOwners
+				// and merges validated tags into the tags column.
+				// Fixes: https://github.com/juanfont/headscale/issues/3006
+				ID: "202601121700-migrate-hostinfo-request-tags",
+				Migrate: func(tx *gorm.DB) error {
+					// 1. Load policy from database
+					var policyData string
+					err := tx.Raw("SELECT data FROM policies ORDER BY id DESC LIMIT 1").Scan(&policyData).Error
+					if err != nil || policyData == "" {
+						log.Info().Msg("No policy found in database, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					// 2. Parse tagOwners and groups from policy
+					type migrationPolicy struct {
+						TagOwners map[string][]string `json:"tagOwners"`
+						Groups    map[string][]string `json:"groups"`
+					}
+					var pol migrationPolicy
+					if err := json.Unmarshal([]byte(policyData), &pol); err != nil {
+						log.Warn().Err(err).Msg("Failed to parse policy JSON, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					if len(pol.TagOwners) == 0 {
+						log.Info().Msg("No tagOwners defined in policy, skipping RequestTags migration")
+						return nil
+					}
+
+					// Helper function to check if a user can have a tag
+					canUserHaveTag := func(username string, tag string) bool {
+						owners, exists := pol.TagOwners[tag]
+						if !exists {
+							return false // Tag not defined in policy
+						}
+
+						for _, owner := range owners {
+							// Direct username match
+							if owner == username {
+								return true
+							}
+
+							// Group expansion
+							if strings.HasPrefix(owner, "group:") {
+								if groupMembers, ok := pol.Groups[owner]; ok {
+									if slices.Contains(groupMembers, username) {
+										return true
+									}
+								}
+							}
+						}
+						return false
+					}
+
+					// 3. Query nodes with user info
+					type nodeRow struct {
+						ID       uint64
+						HostInfo string
+						Tags     string
+						UserID   *uint64
+						Username *string
+					}
+					var nodes []nodeRow
+					err = tx.Raw(`
+						SELECT n.id, n.host_info, n.tags, n.user_id, u.name as username 
+						FROM nodes n 
+						LEFT JOIN users u ON n.user_id = u.id
+						WHERE n.host_info IS NOT NULL AND n.host_info != '' AND n.host_info != '{}'
+					`).Scan(&nodes).Error
+					if err != nil {
+						return fmt.Errorf("querying nodes for RequestTags migration: %w", err)
+					}
+
+					// 4. Process each node
+					for _, node := range nodes {
+						// Parse host_info JSON to extract RequestTags
+						var hostInfo struct {
+							RequestTags []string `json:"RequestTags"`
+						}
+						if err := json.Unmarshal([]byte(node.HostInfo), &hostInfo); err != nil {
+							log.Trace().
+								Uint64("node.id", node.ID).
+								Err(err).
+								Msg("Skipping node with invalid host_info JSON during RequestTags migration")
+							continue
+						}
+
+						// Skip if no RequestTags in host_info
+						if len(hostInfo.RequestTags) == 0 {
+							continue
+						}
+
+						// Skip if no username (can't validate)
+						if node.Username == nil || *node.Username == "" {
+							log.Debug().
+								Uint64("node.id", node.ID).
+								Strs("request_tags", hostInfo.RequestTags).
+								Msg("Skipping node without username during RequestTags migration")
+							continue
+						}
+
+						// Parse existing tags from the tags column
+						var existingTags []string
+						if node.Tags != "" && node.Tags != "null" {
+							if err := json.Unmarshal([]byte(node.Tags), &existingTags); err != nil {
+								log.Trace().
+									Uint64("node.id", node.ID).
+									Err(err).
+									Msg("Skipping node with invalid tags JSON during RequestTags migration")
+								continue
+							}
+						}
+
+						// Validate and merge RequestTags
+						var validatedTags []string
+						var rejectedTags []string
+						for _, tag := range hostInfo.RequestTags {
+							if canUserHaveTag(*node.Username, tag) {
+								if !slices.Contains(existingTags, tag) {
+									validatedTags = append(validatedTags, tag)
+								}
+							} else {
+								rejectedTags = append(rejectedTags, tag)
+							}
+						}
+
+						// Skip if no validated tags to add
+						if len(validatedTags) == 0 {
+							if len(rejectedTags) > 0 {
+								log.Debug().
+									Uint64("node.id", node.ID).
+									Str("username", *node.Username).
+									Strs("rejected_tags", rejectedTags).
+									Msg("RequestTags rejected during migration (user not authorized)")
+							}
+							continue
+						}
+
+						// Merge validated tags with existing tags
+						mergedTags := append(existingTags, validatedTags...)
+						slices.Sort(mergedTags)
+						mergedTags = slices.Compact(mergedTags)
+
+						// Serialize back to JSON
+						tagsJSON, err := json.Marshal(mergedTags)
+						if err != nil {
+							return fmt.Errorf("serializing merged tags for node %d: %w", node.ID, err)
+						}
+
+						// Update the tags column
+						if err := tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error; err != nil {
+							return fmt.Errorf("updating tags for node %d: %w", node.ID, err)
+						}
+
+						log.Info().
+							Uint64("node.id", node.ID).
+							Str("username", *node.Username).
+							Strs("validated_tags", validatedTags).
+							Strs("rejected_tags", rejectedTags).
+							Strs("existing_tags", existingTags).
+							Strs("merged_tags", mergedTags).
+							Msg("Migrated validated RequestTags from host_info to tags column")
 					}
 
 					return nil
