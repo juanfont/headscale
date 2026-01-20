@@ -36,6 +36,7 @@ type batcherTestCase struct {
 // that would normally be sent by poll.go in production.
 type testBatcherWrapper struct {
 	Batcher
+
 	state *state.State
 }
 
@@ -81,12 +82,7 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 	}
 
 	// Finally remove from the real batcher
-	removed := t.Batcher.RemoveNode(id, c)
-	if !removed {
-		return false
-	}
-
-	return true
+	return t.Batcher.RemoveNode(id, c)
 }
 
 // wrapBatcherForTest wraps a batcher with test-specific behavior.

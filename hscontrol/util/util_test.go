@@ -1103,7 +1103,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "test-node",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if hi.Hostname != "test-node" {
@@ -1149,7 +1149,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "node-nkey1234",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if hi.Hostname != "node-nkey1234" {
@@ -1165,7 +1165,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "unknown-node",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if hi.Hostname != "unknown-node" {
@@ -1183,7 +1183,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "unknown-node",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if hi.Hostname != "unknown-node" {

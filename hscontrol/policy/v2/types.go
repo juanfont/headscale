@@ -596,6 +596,7 @@ type Alias interface {
 
 type AliasWithPorts struct {
 	Alias
+
 	Ports []tailcfg.PortRange
 }
 
@@ -2107,7 +2108,7 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 	for _, dst := range destinations {
 		for _, portRange := range dst.Ports {
 			// Check if it's not a wildcard port (0-65535)
-			if !(portRange.First == 0 && portRange.Last == 65535) {
+			if portRange.First != 0 || portRange.Last != 65535 {
 				return fmt.Errorf("protocol %q does not support specific ports; only \"*\" is allowed", protocol)
 			}
 		}

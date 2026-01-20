@@ -721,8 +721,6 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
 
-	tarReader := tar.NewReader(bytes.NewReader(tarData))
-
 	// Find the top-level directory to strip
 	var topLevelDir string
 
@@ -743,7 +741,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		}
 	}
 
-	tarReader = tar.NewReader(bytes.NewReader(tarData))
+	tarReader := tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
