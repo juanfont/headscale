@@ -259,6 +259,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 			return
 		default:
 			var stats container.StatsResponse
+
 			err := decoder.Decode(&stats)
 			if err != nil {
 				// EOF is expected when container stops or stream ends

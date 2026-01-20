@@ -154,6 +154,7 @@ func (h *Headscale) KeyHandler(
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
+
 		err := json.NewEncoder(writer).Encode(resp)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to encode key response")

@@ -743,7 +743,8 @@ func extractContainerArtifacts(ctx context.Context, cli *client.Client, containe
 
 	// Extract tar files for headscale containers only
 	if strings.HasPrefix(containerName, "hs-") {
-		if err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
+		err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose)
+		if err != nil {
 			if verbose {
 				log.Printf("Warning: failed to extract files from %s: %v", containerName, err)
 			}

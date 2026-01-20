@@ -66,6 +66,7 @@ func TestUnmarshallOIDCClaims(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got OIDCClaims
+
 			err := json.Unmarshal([]byte(tt.jsonstr), &got)
 			if err != nil {
 				t.Errorf("UnmarshallOIDCClaims() error = %v", err)
@@ -483,6 +484,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var got OIDCClaims
+
 			err := json.Unmarshal([]byte(tt.jsonstr), &got)
 			if err != nil {
 				t.Errorf("TestOIDCClaimsJSONToUser() error = %v", err)

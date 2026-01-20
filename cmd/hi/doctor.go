@@ -321,6 +321,7 @@ func checkRequiredFiles() DoctorResult {
 
 	for _, file := range requiredFiles {
 		cmd := exec.CommandContext(context.Background(), "test", "-e", file)
+
 		err := cmd.Run()
 		if err != nil {
 			missingFiles = append(missingFiles, file)

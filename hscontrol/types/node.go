@@ -573,6 +573,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	newHostname := strings.ToLower(hostInfo.Hostname)
+
 	err := util.ValidateHostname(newHostname)
 	if err != nil {
 		log.Warn().

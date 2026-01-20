@@ -417,6 +417,7 @@ type DERPVerifyTransport struct {
 
 func (t *DERPVerifyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	buf := new(bytes.Buffer)
+
 	err := t.handleVerifyRequest(req, buf)
 	if err != nil {
 		log.Error().Caller().Err(err).Msg("Failed to handle client verify request: ")

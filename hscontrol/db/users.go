@@ -165,6 +165,7 @@ func ListUsers(tx *gorm.DB, where ...*types.User) ([]types.User, error) {
 	}
 
 	users := []types.User{}
+
 	err := tx.Where(user).Find(&users).Error
 	if err != nil {
 		return nil, err

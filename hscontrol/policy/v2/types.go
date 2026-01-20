@@ -212,6 +212,7 @@ func (p Prefix) MarshalJSON() ([]byte, error) {
 
 func (u *Username) UnmarshalJSON(b []byte) error {
 	*u = Username(strings.Trim(string(b), `"`))
+
 	err := u.Validate()
 	if err != nil {
 		return err
@@ -307,6 +308,7 @@ func (g Group) Validate() error {
 
 func (g *Group) UnmarshalJSON(b []byte) error {
 	*g = Group(strings.Trim(string(b), `"`))
+
 	err := g.Validate()
 	if err != nil {
 		return err
@@ -373,6 +375,7 @@ func (t Tag) Validate() error {
 
 func (t *Tag) UnmarshalJSON(b []byte) error {
 	*t = Tag(strings.Trim(string(b), `"`))
+
 	err := t.Validate()
 	if err != nil {
 		return err
@@ -424,6 +427,7 @@ func (h Host) Validate() error {
 
 func (h *Host) UnmarshalJSON(b []byte) error {
 	*h = Host(strings.Trim(string(b), `"`))
+
 	err := h.Validate()
 	if err != nil {
 		return err
@@ -586,6 +590,7 @@ func (ag AutoGroup) Validate() error {
 
 func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
 	*ag = AutoGroup(strings.Trim(string(b), `"`))
+
 	err := ag.Validate()
 	if err != nil {
 		return err
@@ -674,6 +679,7 @@ type AliasWithPorts struct {
 
 func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 	var v any
+
 	err := json.Unmarshal(b, &v)
 	if err != nil {
 		return err
@@ -1055,6 +1061,7 @@ func (g Groups) Contains(group *Group) error {
 func (g *Groups) UnmarshalJSON(b []byte) error {
 	// First unmarshal as a generic map to validate group names first
 	var rawMap map[string]any
+
 	err := json.Unmarshal(b, &rawMap)
 	if err != nil {
 		return err
@@ -1063,6 +1070,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 	// Validate group names first before checking data types
 	for key := range rawMap {
 		group := Group(key)
+
 		err := group.Validate()
 		if err != nil {
 			return err
@@ -1103,6 +1111,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 
 		for _, u := range value {
 			username := Username(u)
+
 			err := username.Validate()
 			if err != nil {
 				if isGroup(u) {
@@ -1126,6 +1135,7 @@ type Hosts map[Host]Prefix
 
 func (h *Hosts) UnmarshalJSON(b []byte) error {
 	var rawHosts map[string]string
+
 	err := json.Unmarshal(b, &rawHosts, policyJSONOpts...)
 	if err != nil {
 		return err
@@ -1135,12 +1145,14 @@ func (h *Hosts) UnmarshalJSON(b []byte) error {
 
 	for key, value := range rawHosts {
 		host := Host(key)
+
 		err := host.Validate()
 		if err != nil {
 			return err
 		}
 
 		var prefix Prefix
+
 		err = prefix.parseString(value)
 		if err != nil {
 			return fmt.Errorf("%w: hostname %q value %q", ErrInvalidIPAddress, key, value)
@@ -1758,11 +1770,13 @@ func (p *Policy) validate() error {
 				}
 			case *Group:
 				g := src
-				if err := p.Groups.Contains(g); err != nil {
+				err := p.Groups.Contains(g)
+				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
 				tagOwner := src
+
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
 					errs = append(errs, err)
@@ -1793,11 +1807,13 @@ func (p *Policy) validate() error {
 				}
 			case *Group:
 				g := dst.Alias.(*Group)
-				if err := p.Groups.Contains(g); err != nil {
+				err := p.Groups.Contains(g)
+				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
 				tagOwner := dst.Alias.(*Tag)
+
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
 					errs = append(errs, err)
@@ -1816,6 +1832,7 @@ func (p *Policy) validate() error {
 		for _, user := range ssh.Users {
 			if strings.HasPrefix(string(user), "autogroup:") {
 				maybeAuto := AutoGroup(user)
+
 				err := validateAutogroupForSSHUser(&maybeAuto)
 				if err != nil {
 					errs = append(errs, err)
@@ -1842,12 +1859,14 @@ func (p *Policy) validate() error {
 				}
 			case *Group:
 				g := src
+
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
 				tagOwner := src
+
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
 					errs = append(errs, err)
@@ -1859,6 +1878,7 @@ func (p *Policy) validate() error {
 			switch dst := dst.(type) {
 			case *AutoGroup:
 				ag := dst
+
 				err := validateAutogroupSupported(ag)
 				if err != nil {
 					errs = append(errs, err)
@@ -1872,6 +1892,7 @@ func (p *Policy) validate() error {
 				}
 			case *Tag:
 				tagOwner := dst
+
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
 					errs = append(errs, err)
@@ -1885,6 +1906,7 @@ func (p *Policy) validate() error {
 			switch tagOwner := tagOwner.(type) {
 			case *Group:
 				g := tagOwner
+
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)
@@ -1911,12 +1933,14 @@ func (p *Policy) validate() error {
 			switch approver := approver.(type) {
 			case *Group:
 				g := approver
+
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
 				tagOwner := approver
+
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
 					errs = append(errs, err)
@@ -1929,12 +1953,14 @@ func (p *Policy) validate() error {
 		switch approver := approver.(type) {
 		case *Group:
 			g := approver
+
 			err := p.Groups.Contains(g)
 			if err != nil {
 				errs = append(errs, err)
 			}
 		case *Tag:
 			tagOwner := approver
+
 			err := p.TagOwners.Contains(tagOwner)
 			if err != nil {
 				errs = append(errs, err)

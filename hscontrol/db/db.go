@@ -108,6 +108,7 @@ func NewHeadscaleDatabase(
 					if err != nil {
 						return fmt.Errorf("automigrating types.PreAuthKey: %w", err)
 					}
+
 					err = tx.AutoMigrate(&types.Node{})
 					if err != nil {
 						return fmt.Errorf("automigrating types.Node: %w", err)

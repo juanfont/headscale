@@ -109,6 +109,7 @@ func DERPVerify(
 	defer c.Close()
 
 	var result error
+
 	err := c.Connect(t.Context())
 	if err != nil {
 		result = fmt.Errorf("client Connect: %w", err)
