@@ -132,7 +132,7 @@ const (
 type TestData struct {
 	Database *db.HSDatabase
 	Users    []*types.User
-	Nodes    []node
+	Nodes    []*node
 	State    *state.State
 	Config   *types.Config
 	Batcher  Batcher
@@ -218,11 +218,11 @@ func setupBatcherWithTestData(
 	// Create test users and nodes in the database
 	users := database.CreateUsersForTest(userCount, "testuser")
 
-	allNodes := make([]node, 0, userCount*nodesPerUser)
+	allNodes := make([]*node, 0, userCount*nodesPerUser)
 	for _, user := range users {
 		dbNodes := database.CreateRegisteredNodesForTest(user, nodesPerUser, "node")
 		for i := range dbNodes {
-			allNodes = append(allNodes, node{
+			allNodes = append(allNodes, &node{
 				n:  dbNodes[i],
 				ch: make(chan *tailcfg.MapResponse, bufferSize),
 			})
@@ -516,7 +516,7 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			testNode := &testData.Nodes[0]
+			testNode := testData.Nodes[0]
 
 			t.Logf("Testing enhanced tracking with node ID %d", testNode.n.ID)
 
@@ -632,7 +632,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 					t.Logf("Joining %d nodes as fast as possible...", len(allNodes))
 
 					for i := range allNodes {
-						node := &allNodes[i]
+						node := allNodes[i]
 						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 
 						// Issue full update after each join to ensure connectivity
@@ -654,7 +654,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						connectedCount := 0
 
 						for i := range allNodes {
-							node := &allNodes[i]
+							node := allNodes[i]
 
 							currentMaxPeers := int(node.maxPeersCount.Load())
 							if currentMaxPeers >= expectedPeers {
@@ -675,7 +675,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 
 					// Disconnect all nodes
 					for i := range allNodes {
-						node := &allNodes[i]
+						node := allNodes[i]
 						batcher.RemoveNode(node.n.ID, node.ch)
 					}
 
@@ -696,7 +696,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 					nodeDetails := make([]string, 0, min(10, len(allNodes)))
 
 					for i := range allNodes {
-						node := &allNodes[i]
+						node := allNodes[i]
 						stats := node.cleanup()
 
 						totalUpdates += stats.TotalUpdates
@@ -1745,7 +1745,7 @@ func XTestBatcherScalability(t *testing.T) {
 					var connectedNodesMutex sync.RWMutex
 
 					for i := range testNodes {
-						node := &testNodes[i]
+						node := testNodes[i]
 						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 						connectedNodesMutex.Lock()
 
@@ -1976,7 +1976,7 @@ func XTestBatcherScalability(t *testing.T) {
 
 					// Now disconnect all nodes from batcher to stop new updates
 					for i := range testNodes {
-						node := &testNodes[i]
+						node := testNodes[i]
 						batcher.RemoveNode(node.n.ID, node.ch)
 					}
 
@@ -1995,7 +1995,7 @@ func XTestBatcherScalability(t *testing.T) {
 					nodeStatsReport := make([]string, 0, len(testNodes))
 
 					for i := range testNodes {
-						node := &testNodes[i]
+						node := testNodes[i]
 						stats := node.cleanup()
 						totalUpdates += stats.TotalUpdates
 						totalPatches += stats.PatchUpdates
@@ -2651,9 +2651,9 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 
 			batcher := testData.Batcher
 			st := testData.State
-			node1 := &testData.Nodes[0]
-			node2 := &testData.Nodes[1]
-			node3 := &testData.Nodes[2]
+			node1 := testData.Nodes[0]
+			node2 := testData.Nodes[1]
+			node3 := testData.Nodes[2]
 
 			t.Logf("Testing issue #2924: Node1=%d, Node2=%d, Node3=%d",
 				node1.n.ID, node2.n.ID, node3.n.ID)
