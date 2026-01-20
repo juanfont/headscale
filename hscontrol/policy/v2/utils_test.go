@@ -24,14 +24,14 @@ func TestParseDestinationAndPort(t *testing.T) {
 		{"tag:api-server:443", "tag:api-server", "443", nil},
 		{"example-host-1:*", "example-host-1", "*", nil},
 		{"hostname:80-90", "hostname", "80-90", nil},
-		{"invalidinput", "", "", errors.New("input must contain a colon character separating destination and port")},
-		{":invalid", "", "", errors.New("input cannot start with a colon character")},
-		{"invalid:", "", "", errors.New("input cannot end with a colon character")},
+		{"invalidinput", "", "", ErrInputMissingColon},
+		{":invalid", "", "", ErrInputStartsWithColon},
+		{"invalid:", "", "", ErrInputEndsWithColon},
 	}
 
 	for _, testCase := range testCases {
 		dst, port, err := splitDestinationAndPort(testCase.input)
-		if dst != testCase.expectedDst || port != testCase.expectedPort || (err != nil && err.Error() != testCase.expectedErr.Error()) {
+		if dst != testCase.expectedDst || port != testCase.expectedPort || !errors.Is(err, testCase.expectedErr) {
 			t.Errorf("parseDestinationAndPort(%q) = (%q, %q, %v), want (%q, %q, %v)",
 				testCase.input, dst, port, err, testCase.expectedDst, testCase.expectedPort, testCase.expectedErr)
 		}
@@ -42,25 +42,21 @@ func TestParsePort(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected uint16
-		err      string
+		err      error
 	}{
-		{"80", 80, ""},
-		{"0", 0, ""},
-		{"65535", 65535, ""},
-		{"-1", 0, "port number out of range"},
-		{"65536", 0, "port number out of range"},
-		{"abc", 0, "invalid port number"},
-		{"", 0, "invalid port number"},
+		{"80", 80, nil},
+		{"0", 0, nil},
+		{"65535", 65535, nil},
+		{"-1", 0, ErrPortOutOfRange},
+		{"65536", 0, ErrPortOutOfRange},
+		{"abc", 0, ErrInvalidPortNumber},
+		{"", 0, ErrInvalidPortNumber},
 	}
 
 	for _, test := range tests {
 		result, err := parsePort(test.input)
-		if err != nil && err.Error() != test.err {
+		if !errors.Is(err, test.err) {
 			t.Errorf("parsePort(%q) error = %v, expected error = %v", test.input, err, test.err)
-		}
-
-		if err == nil && test.err != "" {
-			t.Errorf("parsePort(%q) expected error = %v, got nil", test.input, test.err)
 		}
 
 		if result != test.expected {
@@ -73,30 +69,26 @@ func TestParsePortRange(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected []tailcfg.PortRange
-		err      string
+		err      error
 	}{
-		{"80", []tailcfg.PortRange{{First: 80, Last: 80}}, ""},
-		{"80-90", []tailcfg.PortRange{{First: 80, Last: 90}}, ""},
-		{"80,90", []tailcfg.PortRange{{First: 80, Last: 80}, {First: 90, Last: 90}}, ""},
-		{"80-91,92,93-95", []tailcfg.PortRange{{First: 80, Last: 91}, {First: 92, Last: 92}, {First: 93, Last: 95}}, ""},
-		{"*", []tailcfg.PortRange{tailcfg.PortRangeAny}, ""},
-		{"80-", nil, "invalid port range format"},
-		{"-90", nil, "invalid port range format"},
-		{"80-90,", nil, "invalid port number"},
-		{"80,90-", nil, "invalid port range format"},
-		{"80-90,abc", nil, "invalid port number"},
-		{"80-90,65536", nil, "port number out of range"},
-		{"80-90,90-80", nil, "invalid port range: first port is greater than last port"},
+		{"80", []tailcfg.PortRange{{First: 80, Last: 80}}, nil},
+		{"80-90", []tailcfg.PortRange{{First: 80, Last: 90}}, nil},
+		{"80,90", []tailcfg.PortRange{{First: 80, Last: 80}, {First: 90, Last: 90}}, nil},
+		{"80-91,92,93-95", []tailcfg.PortRange{{First: 80, Last: 91}, {First: 92, Last: 92}, {First: 93, Last: 95}}, nil},
+		{"*", []tailcfg.PortRange{tailcfg.PortRangeAny}, nil},
+		{"80-", nil, ErrInvalidPortRange},
+		{"-90", nil, ErrInvalidPortRange},
+		{"80-90,", nil, ErrInvalidPortNumber},
+		{"80,90-", nil, ErrInvalidPortRange},
+		{"80-90,abc", nil, ErrInvalidPortNumber},
+		{"80-90,65536", nil, ErrPortOutOfRange},
+		{"80-90,90-80", nil, ErrPortRangeInverted},
 	}
 
 	for _, test := range tests {
 		result, err := parsePortRange(test.input)
-		if err != nil && err.Error() != test.err {
+		if !errors.Is(err, test.err) {
 			t.Errorf("parsePortRange(%q) error = %v, expected error = %v", test.input, err, test.err)
-		}
-
-		if err == nil && test.err != "" {
-			t.Errorf("parsePortRange(%q) expected error = %v, got nil", test.input, test.err)
 		}
 
 		if diff := cmp.Diff(result, test.expected); diff != "" {

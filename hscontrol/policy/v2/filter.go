@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -13,8 +12,6 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
-
-var ErrInvalidAction = errors.New("invalid action")
 
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
@@ -149,7 +146,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 
 	for _, src := range acl.Sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			return nil, errors.New("autogroup:self cannot be used in sources")
+			return nil, ErrAutogroupSelfInSource
 		}
 
 		ips, err := src.Resolve(pol, users, nodes)

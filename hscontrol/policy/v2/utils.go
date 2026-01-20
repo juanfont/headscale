@@ -9,6 +9,18 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Sentinel errors for port and destination parsing.
+var (
+	ErrInputMissingColon    = errors.New("input must contain a colon character separating destination and port")
+	ErrInputStartsWithColon = errors.New("input cannot start with a colon character")
+	ErrInputEndsWithColon   = errors.New("input cannot end with a colon character")
+	ErrInvalidPortRange     = errors.New("invalid port range format")
+	ErrPortRangeInverted    = errors.New("invalid port range: first port is greater than last port")
+	ErrPortMustBePositive   = errors.New("first port must be >0, or use '*' for wildcard")
+	ErrInvalidPortNumber    = errors.New("invalid port number")
+	ErrPortOutOfRange       = errors.New("port number out of range")
+)
+
 // splitDestinationAndPort takes an input string and returns the destination and port as a tuple, or an error if the input is invalid.
 func splitDestinationAndPort(input string) (string, string, error) {
 	// Find the last occurrence of the colon character
@@ -16,15 +28,15 @@ func splitDestinationAndPort(input string) (string, string, error) {
 
 	// Check if the colon character is present and not at the beginning or end of the string
 	if lastColonIndex == -1 {
-		return "", "", errors.New("input must contain a colon character separating destination and port")
+		return "", "", ErrInputMissingColon
 	}
 
 	if lastColonIndex == 0 {
-		return "", "", errors.New("input cannot start with a colon character")
+		return "", "", ErrInputStartsWithColon
 	}
 
 	if lastColonIndex == len(input)-1 {
-		return "", "", errors.New("input cannot end with a colon character")
+		return "", "", ErrInputEndsWithColon
 	}
 
 	// Split the string into destination and port based on the last colon
@@ -52,7 +64,7 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 				return e == ""
 			})
 			if len(rangeParts) != 2 {
-				return nil, errors.New("invalid port range format")
+				return nil, ErrInvalidPortRange
 			}
 
 			first, err := parsePort(rangeParts[0])
@@ -66,7 +78,7 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 			}
 
 			if first > last {
-				return nil, errors.New("invalid port range: first port is greater than last port")
+				return nil, ErrPortRangeInverted
 			}
 
 			portRanges = append(portRanges, tailcfg.PortRange{First: first, Last: last})
@@ -77,7 +89,7 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 			}
 
 			if port < 1 {
-				return nil, errors.New("first port must be >0, or use '*' for wildcard")
+				return nil, ErrPortMustBePositive
 			}
 
 			portRanges = append(portRanges, tailcfg.PortRange{First: port, Last: port})
@@ -91,11 +103,11 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 func parsePort(portStr string) (uint16, error) {
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		return 0, errors.New("invalid port number")
+		return 0, ErrInvalidPortNumber
 	}
 
 	if port < 0 || port > 65535 {
-		return 0, errors.New("port number out of range")
+		return 0, ErrPortOutOfRange
 	}
 
 	return uint16(port), nil
