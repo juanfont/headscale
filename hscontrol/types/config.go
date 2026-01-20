@@ -29,7 +29,8 @@ const (
 	PKCEMethodPlain       string        = "plain"
 	PKCEMethodS256        string        = "S256"
 
-	defaultNodeStoreBatchSize = 100
+	defaultNodeStoreBatchSize    = 100
+	defaultWALAutocheckpoint     = 1000 // SQLite default
 )
 
 var (
@@ -380,7 +381,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("database.postgres.conn_max_idle_time_secs", 3600)
 
 	viper.SetDefault("database.sqlite.write_ahead_log", true)
-	viper.SetDefault("database.sqlite.wal_autocheckpoint", 1000) // SQLite default
+	viper.SetDefault("database.sqlite.wal_autocheckpoint", defaultWALAutocheckpoint)
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)

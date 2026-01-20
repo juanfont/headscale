@@ -25,6 +25,25 @@ var (
 	ErrConnectionTimeout = errors.New("connection timeout sending to channel (likely stale connection)")
 )
 
+// Batcher configuration constants.
+const (
+	// initialMapSendTimeout is the timeout for sending the initial map response to a new connection.
+	initialMapSendTimeout = 5 * time.Second
+
+	// offlineNodeCleanupThreshold is how long a node must be offline before it's cleaned up.
+	offlineNodeCleanupThreshold = 15 * time.Minute
+
+	// offlineNodeCleanupInterval is the interval between cleanup runs.
+	offlineNodeCleanupInterval = 5 * time.Minute
+
+	// connectionSendTimeout is the timeout for detecting stale connections.
+	// Kept short to quickly detect Docker containers that are forcefully terminated.
+	connectionSendTimeout = 50 * time.Millisecond
+
+	// connectionIDBytes is the number of random bytes used for connection IDs.
+	connectionIDBytes = 8
+)
+
 // LockFreeBatcher uses atomic operations and concurrent maps to eliminate mutex contention.
 type LockFreeBatcher struct {
 	tick    *time.Ticker
@@ -94,9 +113,9 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	select {
 	case c <- initialMap:
 		// Success
-	case <-time.After(5 * time.Second):
+	case <-time.After(initialMapSendTimeout):
 		log.Error().Uint64("node.id", id.Uint64()).Err(ErrInitialMapTimeout).Msg("Initial map send timeout")
-		log.Debug().Caller().Uint64("node.id", id.Uint64()).Dur("timeout.duration", 5*time.Second).
+		log.Debug().Caller().Uint64("node.id", id.Uint64()).Dur("timeout.duration", initialMapSendTimeout).
 			Msg("Initial map send timed out because channel was blocked or receiver not ready")
 		nodeConn.removeConnectionByChannel(c)
 
@@ -187,7 +206,7 @@ func (b *LockFreeBatcher) doWork() {
 	}
 
 	// Create a cleanup ticker for removing truly disconnected nodes
-	cleanupTicker := time.NewTicker(5 * time.Minute)
+	cleanupTicker := time.NewTicker(offlineNodeCleanupInterval)
 	defer cleanupTicker.Stop()
 
 	for {
@@ -395,14 +414,13 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 // cleanupOfflineNodes removes nodes that have been offline for too long to prevent memory leaks.
 // TODO(kradalby): reevaluate if we want to keep this.
 func (b *LockFreeBatcher) cleanupOfflineNodes() {
-	cleanupThreshold := 15 * time.Minute
 	now := time.Now()
 
 	var nodesToCleanup []types.NodeID
 
 	// Find nodes that have been offline for too long
 	b.connected.Range(func(nodeID types.NodeID, disconnectTime *time.Time) bool {
-		if disconnectTime != nil && now.Sub(*disconnectTime) > cleanupThreshold {
+		if disconnectTime != nil && now.Sub(*disconnectTime) > offlineNodeCleanupThreshold {
 			// Double-check the node doesn't have active connections
 			if nodeConn, exists := b.nodes.Load(nodeID); exists {
 				if !nodeConn.hasActiveConnections() {
@@ -417,7 +435,7 @@ func (b *LockFreeBatcher) cleanupOfflineNodes() {
 	// Clean up the identified nodes
 	for _, nodeID := range nodesToCleanup {
 		log.Info().Uint64("node.id", nodeID.Uint64()).
-			Dur("offline_duration", cleanupThreshold).
+			Dur("offline_duration", offlineNodeCleanupThreshold).
 			Msg("Cleaning up node that has been offline for too long")
 
 		b.nodes.Delete(nodeID)
@@ -532,7 +550,7 @@ type multiChannelNodeConn struct {
 
 // generateConnectionID generates a unique connection identifier.
 func generateConnectionID() string {
-	bytes := make([]byte, 8)
+	bytes := make([]byte, connectionIDBytes)
 	_, _ = rand.Read(bytes)
 
 	return hex.EncodeToString(bytes)
@@ -711,7 +729,7 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 		// Update last used timestamp on successful send
 		entry.lastUsed.Store(time.Now().Unix())
 		return nil
-	case <-time.After(50 * time.Millisecond):
+	case <-time.After(connectionSendTimeout):
 		// Connection is likely stale - client isn't reading from channel
 		// This catches the case where Docker containers are killed but channels remain open
 		return fmt.Errorf("%w: connection %s", ErrConnectionTimeout, entry.id)

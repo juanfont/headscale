@@ -22,6 +22,9 @@ var (
 const (
 	// DefaultBusyTimeout is the default busy timeout in milliseconds.
 	DefaultBusyTimeout = 10000
+	// DefaultWALAutocheckpoint is the default WAL autocheckpoint value (number of pages).
+	// SQLite default is 1000 pages.
+	DefaultWALAutocheckpoint = 1000
 )
 
 // JournalMode represents SQLite journal_mode pragma values.
@@ -310,7 +313,7 @@ func Default(path string) *Config {
 		BusyTimeout:       DefaultBusyTimeout,
 		JournalMode:       JournalModeWAL,
 		AutoVacuum:        AutoVacuumIncremental,
-		WALAutocheckpoint: 1000,
+		WALAutocheckpoint: DefaultWALAutocheckpoint,
 		Synchronous:       SynchronousNormal,
 		ForeignKeys:       true,
 		TxLock:            TxLockImmediate,

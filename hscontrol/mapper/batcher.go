@@ -22,6 +22,10 @@ var (
 	ErrNodeConnectionNil = errors.New("nodeConnection is nil")
 )
 
+// workChannelMultiplier is the multiplier for work channel capacity based on worker count.
+// The size is arbitrary chosen, the sizing should be revisited.
+const workChannelMultiplier = 200
+
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "headscale",
 	Name:      "mapresponse_generated_total",
@@ -49,8 +53,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeB
 		workers: workers,
 		tick:    time.NewTicker(batchTime),
 
-		// The size of this channel is arbitrary chosen, the sizing should be revisited.
-		workCh:         make(chan work, workers*200),
+		workCh:         make(chan work, workers*workChannelMultiplier),
 		nodes:          xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 		connected:      xsync.NewMap[types.NodeID, *time.Time](),
 		pendingChanges: xsync.NewMap[types.NodeID, []change.Change](),

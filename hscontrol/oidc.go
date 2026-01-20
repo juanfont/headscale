@@ -28,6 +28,7 @@ const (
 	defaultOAuthOptionsCount = 3
 	registerCacheExpiration  = time.Minute * 15
 	registerCacheCleanup     = time.Minute * 20
+	csrfTokenLength          = 64
 )
 
 var (
@@ -614,7 +615,7 @@ func getCookieName(baseName, value string) string {
 }
 
 func setCSRFCookie(w http.ResponseWriter, r *http.Request, name string) (string, error) {
-	val, err := util.GenerateRandomStringURLSafe(64)
+	val, err := util.GenerateRandomStringURLSafe(csrfTokenLength)
 	if err != nil {
 		return val, err
 	}

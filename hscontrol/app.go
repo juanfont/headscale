@@ -67,6 +67,9 @@ var (
 	)
 )
 
+// oidcProviderInitTimeout is the timeout for initializing the OIDC provider.
+const oidcProviderInitTimeout = 30 * time.Second
+
 var (
 	debugDeadlock        = envknob.Bool("HEADSCALE_DEBUG_DEADLOCK")
 	debugDeadlockTimeout = envknob.RegisterDuration("HEADSCALE_DEBUG_DEADLOCK_TIMEOUT")
@@ -161,7 +164,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), oidcProviderInitTimeout)
 		defer cancel()
 
 		oidcProvider, err := NewAuthProviderOIDC(
