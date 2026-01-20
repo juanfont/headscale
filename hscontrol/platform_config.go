@@ -19,7 +19,7 @@ func (h *Headscale) WindowsConfigMessage(
 ) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.Windows(h.cfg.ServerURL).Render()))
+	_, _ = writer.Write([]byte(templates.Windows(h.cfg.ServerURL).Render()))
 }
 
 // AppleConfigMessage shows a simple message in the browser to point the user to the iOS/MacOS profile and instructions for how to install it.
@@ -29,7 +29,7 @@ func (h *Headscale) AppleConfigMessage(
 ) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.Apple(h.cfg.ServerURL).Render()))
+	_, _ = writer.Write([]byte(templates.Apple(h.cfg.ServerURL).Render()))
 }
 
 func (h *Headscale) ApplePlatformConfig(
@@ -98,7 +98,7 @@ func (h *Headscale) ApplePlatformConfig(
 	writer.Header().
 		Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(content.Bytes())
+	_, _ = writer.Write(content.Bytes())
 }
 
 type AppleMobileConfig struct {

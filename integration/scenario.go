@@ -169,8 +169,8 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
-	dockertestutil.CleanUnreferencedNetworks(pool)
-	dockertestutil.CleanImagesInCI(pool)
+	_ = dockertestutil.CleanUnreferencedNetworks(pool)
+	_ = dockertestutil.CleanImagesInCI(pool)
 
 	if spec.MaxWait == 0 {
 		pool.MaxWait = dockertestMaxWait()
@@ -314,8 +314,8 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
-	defer dockertestutil.CleanUnreferencedNetworks(s.pool)
-	defer dockertestutil.CleanImagesInCI(s.pool)
+	defer func() { _ = dockertestutil.CleanUnreferencedNetworks(s.pool) }()
+	defer func() { _ = dockertestutil.CleanImagesInCI(s.pool) }()
 
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		stdoutPath, stderrPath, err := control.Shutdown()
@@ -920,7 +920,7 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 				// If the URL is not a OIDC URL, then we need to
 				// run the register command to fully log in the client.
 				if !strings.Contains(loginURL.String(), "/oidc/") {
-					s.runHeadscaleRegister(userStr, body)
+					_ = s.runHeadscaleRegister(userStr, body)
 				}
 
 				return nil

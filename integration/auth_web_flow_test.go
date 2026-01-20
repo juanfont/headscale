@@ -308,7 +308,10 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 		// Register all clients as user1 (this is where cross-user registration happens)
 		// This simulates: headscale nodes register --user user1 --key <key>
-		scenario.runHeadscaleRegister("user1", body)
+		err = scenario.runHeadscaleRegister("user1", body)
+		if err != nil {
+			t.Fatalf("failed to register client %s: %s", client.Hostname(), err)
+		}
 	}
 
 	// Wait for all clients to reach running state

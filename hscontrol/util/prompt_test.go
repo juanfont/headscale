@@ -87,7 +87,7 @@ func TestYesNo(t *testing.T) {
 			go func() {
 				defer w.Close()
 
-				w.WriteString(tt.input)
+				_, _ = w.WriteString(tt.input)
 			}()
 
 			// Call the function
@@ -106,7 +106,7 @@ func TestYesNo(t *testing.T) {
 
 			// Check that the prompt was written to stderr
 			var stderrBuf bytes.Buffer
-			io.Copy(&stderrBuf, stderrR)
+			_, _ = io.Copy(&stderrBuf, stderrR)
 			stderrR.Close()
 
 			expectedPrompt := "Test question [y/n] "
@@ -134,7 +134,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 	go func() {
 		defer w.Close()
 
-		w.WriteString("n\n")
+		_, _ = w.WriteString("n\n")
 	}()
 
 	// Call the function with a custom message
@@ -149,7 +149,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 
 	// Check that the custom message was included in the prompt
 	var stderrBuf bytes.Buffer
-	io.Copy(&stderrBuf, stderrR)
+	_, _ = io.Copy(&stderrBuf, stderrR)
 	stderrR.Close()
 
 	expectedPrompt := customMessage + " [y/n] "
@@ -193,7 +193,7 @@ func TestYesNoCaseInsensitive(t *testing.T) {
 			go func() {
 				defer w.Close()
 
-				w.WriteString(tc.input)
+				_, _ = w.WriteString(tc.input)
 			}()
 
 			// Call the function
@@ -206,7 +206,7 @@ func TestYesNoCaseInsensitive(t *testing.T) {
 			stderrW.Close()
 
 			// Drain stderr
-			io.Copy(io.Discard, stderrR)
+			_, _ = io.Copy(io.Discard, stderrR)
 			stderrR.Close()
 
 			if result != tc.expected {

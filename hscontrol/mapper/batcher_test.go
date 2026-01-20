@@ -549,7 +549,7 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 			testNode.start()
 
 			// Connect the node to the batcher
-			batcher.AddNode(testNode.n.ID, testNode.ch, tailcfg.CapabilityVersion(100))
+			_ = batcher.AddNode(testNode.n.ID, testNode.ch, tailcfg.CapabilityVersion(100))
 
 			// Wait for connection to be established
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -658,7 +658,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 
 					for i := range allNodes {
 						node := &allNodes[i]
-						batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 
 						// Issue full update after each join to ensure connectivity
 						batcher.AddWork(change.FullUpdate())
@@ -827,7 +827,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			tn2 := testData.Nodes[1]
 
 			// Test AddNode with real node ID
-			batcher.AddNode(tn.n.ID, tn.ch, 100)
+			_ = batcher.AddNode(tn.n.ID, tn.ch, 100)
 
 			if !batcher.IsConnected(tn.n.ID) {
 				t.Error("Node should be connected after AddNode")
@@ -848,7 +848,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			drainChannelTimeout(tn.ch, "first node before second", 100*time.Millisecond)
 
 			// Add the second node and verify update message
-			batcher.AddNode(tn2.n.ID, tn2.ch, 100)
+			_ = batcher.AddNode(tn2.n.ID, tn2.ch, 100)
 			assert.True(t, batcher.IsConnected(tn2.n.ID))
 
 			// First node should get an update that second node has connected.
@@ -1053,7 +1053,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 			testNodes := testData.Nodes
 
 			ch := make(chan *tailcfg.MapResponse, 10)
-			batcher.AddNode(testNodes[0].n.ID, ch, tailcfg.CapabilityVersion(100))
+			_ = batcher.AddNode(testNodes[0].n.ID, ch, tailcfg.CapabilityVersion(100))
 
 			// Track update content for validation
 			var receivedUpdates []*tailcfg.MapResponse
@@ -1157,7 +1157,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				ch1 := make(chan *tailcfg.MapResponse, 1)
 
 				wg.Go(func() {
-					batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100))
 				})
 
 				// Add real work during connection chaos
@@ -1170,7 +1170,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 
 				wg.Go(func() {
 					runtime.Gosched() // Yield to introduce timing variability
-					batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
 				})
 
 				// Remove second connection
@@ -1261,7 +1261,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 					ch := make(chan *tailcfg.MapResponse, 5)
 
 					// Add node and immediately queue real work
-					batcher.AddNode(testNode.n.ID, ch, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch, tailcfg.CapabilityVersion(100))
 					batcher.AddWork(change.DERPMap())
 
 					// Consumer goroutine to validate data and detect channel issues
@@ -1384,7 +1384,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			for _, node := range stableNodes {
 				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
 				stableChannels[node.n.ID] = ch
-				batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100))
+				_ = batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100))
 
 				// Monitor updates for each stable client
 				go func(nodeID types.NodeID, channel chan *tailcfg.MapResponse) {
@@ -1458,7 +1458,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 							churningChannelsMutex.Unlock()
 
-							batcher.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100))
+							_ = batcher.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100))
 
 							// Consume updates to prevent blocking
 							go func() {
@@ -1771,7 +1771,7 @@ func XTestBatcherScalability(t *testing.T) {
 
 					for i := range testNodes {
 						node := &testNodes[i]
-						batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 						connectedNodesMutex.Lock()
 
 						connectedNodes[node.n.ID] = true
@@ -2149,7 +2149,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 
 			// Connect nodes one at a time and wait for each to be connected
 			for i, node := range allNodes {
-				batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+				_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 				t.Logf("Connected node %d (ID: %d)", i, node.n.ID)
 
 				// Wait for node to be connected
