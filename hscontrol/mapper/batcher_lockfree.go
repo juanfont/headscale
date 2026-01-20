@@ -16,7 +16,14 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-var errConnectionClosed = errors.New("connection channel already closed")
+// Sentinel errors for lock-free batcher operations.
+var (
+	errConnectionClosed  = errors.New("connection channel already closed")
+	ErrInitialMapTimeout = errors.New("failed to send initial map: timeout")
+	ErrNodeNotFound      = errors.New("node not found")
+	ErrBatcherShutdown   = errors.New("batcher shutting down")
+	ErrConnectionTimeout = errors.New("connection timeout sending to channel (likely stale connection)")
+)
 
 // LockFreeBatcher uses atomic operations and concurrent maps to eliminate mutex contention.
 type LockFreeBatcher struct {
@@ -88,12 +95,12 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	case c <- initialMap:
 		// Success
 	case <-time.After(5 * time.Second):
-		log.Error().Uint64("node.id", id.Uint64()).Err(errors.New("timeout")).Msg("Initial map send timeout")
+		log.Error().Uint64("node.id", id.Uint64()).Err(ErrInitialMapTimeout).Msg("Initial map send timeout")
 		log.Debug().Caller().Uint64("node.id", id.Uint64()).Dur("timeout.duration", 5*time.Second).
 			Msg("Initial map send timed out because channel was blocked or receiver not ready")
 		nodeConn.removeConnectionByChannel(c)
 
-		return fmt.Errorf("failed to send initial map to node %d: timeout", id)
+		return fmt.Errorf("%w for node %d", ErrInitialMapTimeout, id)
 	}
 
 	// Update connection status
@@ -234,7 +241,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 						nc.updateSentPeers(result.mapResponse)
 					}
 				} else {
-					result.err = fmt.Errorf("node %d not found", w.nodeID)
+					result.err = fmt.Errorf("%w: %d", ErrNodeNotFound, w.nodeID)
 
 					b.workErrors.Add(1)
 					log.Error().Err(result.err).
@@ -492,7 +499,7 @@ func (b *LockFreeBatcher) MapResponseFromChange(id types.NodeID, ch change.Chang
 	case result := <-resultCh:
 		return result.mapResponse, result.err
 	case <-b.done:
-		return nil, fmt.Errorf("batcher shutting down while generating map response for node %d", id)
+		return nil, fmt.Errorf("%w: generating map response for node %d", ErrBatcherShutdown, id)
 	}
 }
 
@@ -707,7 +714,7 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 	case <-time.After(50 * time.Millisecond):
 		// Connection is likely stale - client isn't reading from channel
 		// This catches the case where Docker containers are killed but channels remain open
-		return fmt.Errorf("connection %s: timeout sending to channel (likely stale connection)", entry.id)
+		return fmt.Errorf("%w: connection %s", ErrConnectionTimeout, entry.id)
 	}
 }
 
