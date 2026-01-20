@@ -1782,10 +1782,28 @@ func TestSSHWithAsterixAndTagSource(t *testing.T) {
 	require.NoError(t, err)
 
 	// Tagged node should be able to receive SSH from other tagged nodes
-	if sshPolicy2 != nil {
-		require.GreaterOrEqual(t, len(sshPolicy2.Rules), 1,
-			"tagged node should have SSH rules allowing access from other tagged sources")
+	require.NotNil(t, sshPolicy2, "tagged node should have SSH policy")
+	require.GreaterOrEqual(t, len(sshPolicy2.Rules), 1,
+		"tagged node should have SSH rules allowing access from other tagged sources")
+
+	// Verify that tagged nodes ARE included as principals (positive assertion)
+	taggedPrincipals := make([]string, 0)
+
+	for _, rule := range sshPolicy2.Rules {
+		for _, principal := range rule.Principals {
+			taggedPrincipals = append(taggedPrincipals, principal.NodeIP)
+		}
 	}
+	// Tagged nodes 100.64.0.2 and 100.64.0.4 should be allowed as principals
+	assert.Contains(t, taggedPrincipals, "100.64.0.2",
+		"tagged node should allow SSH from tagged source 100.64.0.2")
+	assert.Contains(t, taggedPrincipals, "100.64.0.4",
+		"tagged node should allow SSH from tagged source 100.64.0.4")
+	// User-owned nodes should NOT be principals (they don't have tag:server)
+	assert.NotContains(t, taggedPrincipals, "100.64.0.1",
+		"tagged node should not allow SSH from user-owned source 100.64.0.1")
+	assert.NotContains(t, taggedPrincipals, "100.64.0.3",
+		"tagged node should not allow SSH from user-owned source 100.64.0.3")
 }
 
 // TODO(kradalby): Remove this test when #3009 is completed and * is removed from SSH destinations.

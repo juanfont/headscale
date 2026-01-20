@@ -406,15 +406,7 @@ func (pol *Policy) compileSSHPolicy(
 		if len(otherDests) > 0 {
 			// TODO(kradalby): Remove this srcHasTags check when #3009 is completed
 			// and * is removed from SSH destinations entirely.
-			// Check if source contains any tags
-			srcHasTags := false
-
-			for _, src := range rule.Sources {
-				if _, ok := src.(*Tag); ok {
-					srcHasTags = true
-					break
-				}
-			}
+			srcHasTags := rule.Sources.ContainsTag()
 
 			// Build destination set for other destinations
 			var dest netipx.IPSetBuilder

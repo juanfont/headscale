@@ -1648,7 +1648,10 @@ func validateSSHSrcDstCombination(ssh SSH) error {
 		return nil
 	}
 
-	// dst has username(s) - src must contain ONLY the same username(s)
+	// dst has username(s) - src must contain ONLY the same username(s).
+	// The loop validates each source entry: any non-matching username, tag, group,
+	// or autogroup immediately fails validation. This ensures all sources in the
+	// rule are the same username(s) present in dst.
 	for _, src := range ssh.Sources {
 		switch s := src.(type) {
 		case *Username:
@@ -1908,6 +1911,19 @@ type SSH struct {
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
 // It can be a list of usernames, groups, tags or autogroups.
 type SSHSrcAliases []Alias
+
+// ContainsTag returns true if the source aliases contain any Tag.
+// TODO(kradalby): Remove this helper when #3009 is completed and * is removed
+// from SSH destinations entirely.
+func (s SSHSrcAliases) ContainsTag() bool {
+	for _, src := range s {
+		if _, ok := src.(*Tag); ok {
+			return true
+		}
+	}
+
+	return false
+}
 
 // MarshalJSON marshals the Groups to JSON.
 func (g Groups) MarshalJSON() ([]byte, error) {

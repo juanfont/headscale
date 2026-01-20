@@ -709,11 +709,12 @@ func TestSSHInvalidPolicySrcDstValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Validate the policy using NewPolicyManager which parses and validates JSON
+			// Validate the policy using NewPolicyManager which parses and validates JSON.
+			// These tests only exercise SSH src/dst validation, so no users/nodes are needed.
 			_, err := policyv2.NewPolicyManager(
 				[]byte(tt.policy),
-				nil,                       // no users needed for validation
-				types.Nodes{}.ViewSlice(), // empty nodes slice
+				nil,                       // users not needed for src/dst validation tests
+				types.Nodes{}.ViewSlice(), // empty nodes sufficient for src/dst validation tests
 			)
 
 			if tt.expectErr {
