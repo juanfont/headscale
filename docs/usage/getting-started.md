@@ -109,20 +109,20 @@ On a client machine, run the `tailscale up` command and provide the FQDN of your
 tailscale up --login-server <YOUR_HEADSCALE_URL>
 ```
 
-Usually, a browser window with further instructions is opened and contains the value for `<YOUR_MACHINE_KEY>`. Approve
-and register the node on your headscale server:
+Usually, a browser window with further instructions is opened. This page explains how to complete the registration on
+your headscale server and it also prints the registration key required to approve the node:
 
 === "Native"
 
     ```shell
-    headscale nodes register --user <USER> --key <YOUR_MACHINE_KEY>
+    headscale nodes register --user <USER> --key <REGISTRATION_KEY>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale nodes register --user <USER> --key <YOUR_MACHINE_KEY>
+      headscale nodes register --user <USER> --key <REGISTRATION_KEY>
     ```
 
 ### Using a preauthkey
