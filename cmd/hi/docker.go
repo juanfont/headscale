@@ -475,7 +475,7 @@ func createDockerClient() (*client.Client, error) {
 
 // getCurrentDockerContext retrieves the current Docker context information.
 func getCurrentDockerContext() (*DockerContext, error) {
-	cmd := exec.Command("docker", "context", "inspect")
+	cmd := exec.CommandContext(context.Background(), "docker", "context", "inspect")
 
 	output, err := cmd.Output()
 	if err != nil {

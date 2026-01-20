@@ -1035,7 +1035,7 @@ func (hsdb *HSDatabase) Close() error {
 	}
 
 	if hsdb.cfg.Database.Type == types.DatabaseSqlite && hsdb.cfg.Database.Sqlite.WriteAheadLog {
-		_, _ = db.Exec("VACUUM")
+		_, _ = db.ExecContext(context.Background(), "VACUUM")
 	}
 
 	return db.Close()

@@ -99,12 +99,12 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 
 	// If debug flag is set, resolve hostname to IP address
 	if debugUseDERPIP {
-		ips, err := net.LookupIP(host)
+		addrs, err := net.DefaultResolver.LookupIPAddr(context.Background(), host)
 		if err != nil {
 			log.Error().Caller().Err(err).Msgf("Failed to resolve DERP hostname %s to IP, using hostname", host)
-		} else if len(ips) > 0 {
+		} else if len(addrs) > 0 {
 			// Use the first IP address
-			ipStr := ips[0].String()
+			ipStr := addrs[0].IP.String()
 			log.Info().Caller().Msgf("HEADSCALE_DEBUG_DERP_USE_IP: Resolved %s to %s", host, ipStr)
 			host = ipStr
 		}
