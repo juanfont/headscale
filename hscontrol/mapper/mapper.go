@@ -139,29 +139,6 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 	}
 }
 
-// fullMapResponse returns a MapResponse for the given node.
-func (m *mapper) fullMapResponse(
-	nodeID types.NodeID,
-	capVer tailcfg.CapabilityVersion,
-) (*tailcfg.MapResponse, error) {
-	peers := m.state.ListPeers(nodeID)
-
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(fullResponseDebug).
-		WithCapabilityVersion(capVer).
-		WithSelfNode().
-		WithDERPMap().
-		WithDomain().
-		WithCollectServicesDisabled().
-		WithDebugConfig().
-		WithSSHPolicy().
-		WithDNSConfig().
-		WithUserProfiles(peers).
-		WithPacketFilters().
-		WithPeers(peers).
-		Build()
-}
-
 func (m *mapper) selfMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,

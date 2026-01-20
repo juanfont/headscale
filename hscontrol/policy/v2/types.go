@@ -1377,49 +1377,44 @@ func (p Protocol) Description() string {
 	}
 }
 
-// parseProtocol converts a Protocol to its IANA protocol numbers and wildcard requirement.
+// parseProtocol converts a Protocol to its IANA protocol numbers.
 // Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
-func (p Protocol) parseProtocol() ([]int, bool) {
+func (p Protocol) parseProtocol() []int {
 	switch p {
 	case "":
 		// Empty protocol applies to TCP and UDP traffic only
-		return []int{protocolTCP, protocolUDP}, false
+		return []int{protocolTCP, protocolUDP}
 	case ProtocolWildcard:
 		// Wildcard protocol - defensive handling (should not reach here due to validation)
-		return nil, false
+		return nil
 	case ProtocolIGMP:
-		return []int{protocolIGMP}, true
+		return []int{protocolIGMP}
 	case ProtocolIPv4, ProtocolIPInIP:
-		return []int{protocolIPv4}, true
+		return []int{protocolIPv4}
 	case ProtocolTCP:
-		return []int{protocolTCP}, false
+		return []int{protocolTCP}
 	case ProtocolEGP:
-		return []int{protocolEGP}, true
+		return []int{protocolEGP}
 	case ProtocolIGP:
-		return []int{protocolIGP}, true
+		return []int{protocolIGP}
 	case ProtocolUDP:
-		return []int{protocolUDP}, false
+		return []int{protocolUDP}
 	case ProtocolGRE:
-		return []int{protocolGRE}, true
+		return []int{protocolGRE}
 	case ProtocolESP:
-		return []int{protocolESP}, true
+		return []int{protocolESP}
 	case ProtocolAH:
-		return []int{protocolAH}, true
+		return []int{protocolAH}
 	case ProtocolSCTP:
-		return []int{protocolSCTP}, false
+		return []int{protocolSCTP}
 	case ProtocolICMP:
-		return []int{protocolICMP, protocolIPv6ICMP}, true
+		return []int{protocolICMP, protocolIPv6ICMP}
 	default:
 		// Try to parse as a numeric protocol number
 		// This should not fail since validation happened during unmarshaling
 		protocolNumber, _ := strconv.Atoi(string(p))
 
-		// Determine if wildcard is needed based on protocol number
-		needsWildcard := protocolNumber != protocolTCP &&
-			protocolNumber != protocolUDP &&
-			protocolNumber != protocolSCTP
-
-		return []int{protocolNumber}, needsWildcard
+		return []int{protocolNumber}
 	}
 }
 

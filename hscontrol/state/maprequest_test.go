@@ -1,14 +1,12 @@
 package state
 
 import (
-	"net/netip"
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/key"
 )
 
 func TestNetInfoFromMapRequest(t *testing.T) {
@@ -136,25 +134,3 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 	})
 }
 
-// Simple helper function for tests.
-func createTestNodeSimple(id types.NodeID) *types.Node {
-	user := types.User{
-		Name: "test-user",
-	}
-
-	machineKey := key.NewMachine()
-	nodeKey := key.NewNode()
-
-	node := &types.Node{
-		ID:         id,
-		Hostname:   "test-node",
-		UserID:     new(uint(id)),
-		User:       &user,
-		MachineKey: machineKey.Public(),
-		NodeKey:    nodeKey.Public(),
-		IPv4:       &netip.Addr{},
-		IPv6:       &netip.Addr{},
-	}
-
-	return node
-}

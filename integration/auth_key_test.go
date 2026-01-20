@@ -64,7 +64,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", 120*time.Second)
 
 			// Validate that all nodes have NetInfo and DERP servers before logout
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
+			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout")
 
 			// assertClientsState(t, allClients)
 
@@ -172,7 +172,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireNoErrSync(t, err)
 
 			// Validate that all nodes have NetInfo and DERP servers after reconnection
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection", 3*time.Minute)
+			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after reconnection")
 
 			err = scenario.WaitForTailscaleSync()
 			requireNoErrSync(t, err)
@@ -262,7 +262,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	// Validate initial connection state
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
-	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login")
 
 	var (
 		listNodes             []*v1.Node
@@ -332,7 +332,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	// Validate connection state after relogin as user1
 	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", 120*time.Second)
-	requireAllClientsNetInfoAndDERP(t, headscale, expectedUser1Nodes, "all user1 nodes should have NetInfo and DERP after relogin", 3*time.Minute)
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedUser1Nodes, "all user1 nodes should have NetInfo and DERP after relogin")
 
 	// Validate that user2 still has their original nodes after user1's re-authentication
 	// When nodes re-authenticate with a different user's pre-auth key, NEW nodes are created
@@ -414,7 +414,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 
 			// Validate initial connection state
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
-			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
+			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login")
 
 			var (
 				listNodes             []*v1.Node

@@ -9,7 +9,6 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -128,7 +127,7 @@ func validateInitialConnection(t *testing.T, headscale ControlServer, expectedNo
 	t.Helper()
 
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
-	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login")
 }
 
 // validateLogoutComplete performs comprehensive validation after client logout.
@@ -147,7 +146,7 @@ func validateReloginComplete(t *testing.T, headscale ControlServer, expectedNode
 	t.Helper()
 
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after relogin", 120*time.Second)
-	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after relogin", 3*time.Minute)
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after relogin")
 }
 
 // requireAllClientsOnline validates that all nodes are online/offline across all headscale systems
@@ -366,7 +365,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 }
 
 // requireAllClientsOfflineStaged validates offline state with staged timeouts for different components.
-func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, totalTimeout time.Duration) {
+func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, _ string, _ time.Duration) {
 	t.Helper()
 
 	// Stage 1: Verify batcher disconnection (should be immediate)
@@ -467,8 +466,10 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 // requireAllClientsNetInfoAndDERP validates that all nodes have NetInfo in the database
 // and a valid DERP server based on the NetInfo. This function follows the pattern of
 // requireAllClientsOnline by using hsic.DebugNodeStore to get the database state.
-func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, timeout time.Duration) {
+func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string) {
 	t.Helper()
+
+	const timeout = 3 * time.Minute
 
 	startTime := time.Now()
 	t.Logf("requireAllClientsNetInfoAndDERP: Starting NetInfo/DERP validation for %d nodes at %s - %s", len(expectedNodes), startTime.Format(TimestampFormat), message)
@@ -556,14 +557,14 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 // pingAllHelper performs ping tests between all clients and addresses, returning success count.
 // This is used to validate network connectivity in integration tests.
 // Returns the total number of successful ping operations.
-func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
+func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 	t.Helper()
 
 	success := 0
 
 	for _, client := range clients {
 		for _, addr := range addrs {
-			err := client.Ping(addr, opts...)
+			err := client.Ping(addr)
 			if err != nil {
 				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
 			} else {
@@ -626,167 +627,6 @@ func isSelfClient(client TailscaleClient, addr string) bool {
 	}
 
 	return false
-}
-
-// assertClientsState validates the status and netmap of a list of clients for general connectivity.
-// Runs parallel validation of status, netcheck, and netmap for all clients to ensure
-// they have proper network configuration for all-to-all connectivity tests.
-func assertClientsState(t *testing.T, clients []TailscaleClient) {
-	t.Helper()
-
-	var wg sync.WaitGroup
-
-	for _, client := range clients {
-		wg.Add(1)
-
-		c := client // Avoid loop pointer
-
-		go func() {
-			defer wg.Done()
-
-			assertValidStatus(t, c)
-			assertValidNetcheck(t, c)
-			assertValidNetmap(t, c)
-		}()
-	}
-
-	t.Logf("waiting for client state checks to finish")
-	wg.Wait()
-}
-
-// assertValidNetmap validates that a client's netmap has all required fields for proper operation.
-// Checks self node and all peers for essential networking data including hostinfo, addresses,
-// endpoints, and DERP configuration. Skips validation for Tailscale versions below 1.56.
-// This test is not suitable for ACL/partial connection tests.
-func assertValidNetmap(t *testing.T, client TailscaleClient) {
-	t.Helper()
-
-	if !util.TailscaleVersionNewerOrEqual("1.56", client.Version()) {
-		t.Logf("%q has version %q, skipping netmap check...", client.Hostname(), client.Version())
-
-		return
-	}
-
-	t.Logf("Checking netmap of %q", client.Hostname())
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		netmap, err := client.Netmap()
-		assert.NoError(c, err, "getting netmap for %q", client.Hostname())
-
-		assert.Truef(c, netmap.SelfNode.Hostinfo().Valid(), "%q does not have Hostinfo", client.Hostname())
-
-		if hi := netmap.SelfNode.Hostinfo(); hi.Valid() {
-			assert.LessOrEqual(c, 1, netmap.SelfNode.Hostinfo().Services().Len(), "%q does not have enough services, got: %v", client.Hostname(), netmap.SelfNode.Hostinfo().Services())
-		}
-
-		assert.NotEmptyf(c, netmap.SelfNode.AllowedIPs(), "%q does not have any allowed IPs", client.Hostname())
-		assert.NotEmptyf(c, netmap.SelfNode.Addresses(), "%q does not have any addresses", client.Hostname())
-
-		assert.Truef(c, netmap.SelfNode.Online().Get(), "%q is not online", client.Hostname())
-
-		assert.Falsef(c, netmap.SelfNode.Key().IsZero(), "%q does not have a valid NodeKey", client.Hostname())
-		assert.Falsef(c, netmap.SelfNode.Machine().IsZero(), "%q does not have a valid MachineKey", client.Hostname())
-		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
-
-		for _, peer := range netmap.Peers {
-			assert.NotEqualf(c, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString())
-			assert.NotEqualf(c, 0, peer.HomeDERP(), "peer (%s) has no home DERP in %q's netmap, got: %d", peer.ComputedName(), client.Hostname(), peer.HomeDERP())
-
-			assert.Truef(c, peer.Hostinfo().Valid(), "peer (%s) of %q does not have Hostinfo", peer.ComputedName(), client.Hostname())
-
-			if hi := peer.Hostinfo(); hi.Valid() {
-				assert.LessOrEqualf(c, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
-
-				// Netinfo is not always set
-				// assert.Truef(c, hi.NetInfo().Valid(), "peer (%s) of %q does not have NetInfo", peer.ComputedName(), client.Hostname())
-				if ni := hi.NetInfo(); ni.Valid() {
-					assert.NotEqualf(c, 0, ni.PreferredDERP(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.Hostinfo().NetInfo().PreferredDERP())
-				}
-			}
-
-			assert.NotEmptyf(c, peer.Endpoints(), "peer (%s) of %q does not have any endpoints", peer.ComputedName(), client.Hostname())
-			assert.NotEmptyf(c, peer.AllowedIPs(), "peer (%s) of %q does not have any allowed IPs", peer.ComputedName(), client.Hostname())
-			assert.NotEmptyf(c, peer.Addresses(), "peer (%s) of %q does not have any addresses", peer.ComputedName(), client.Hostname())
-
-			assert.Truef(c, peer.Online().Get(), "peer (%s) of %q is not online", peer.ComputedName(), client.Hostname())
-
-			assert.Falsef(c, peer.Key().IsZero(), "peer (%s) of %q does not have a valid NodeKey", peer.ComputedName(), client.Hostname())
-			assert.Falsef(c, peer.Machine().IsZero(), "peer (%s) of %q does not have a valid MachineKey", peer.ComputedName(), client.Hostname())
-			assert.Falsef(c, peer.DiscoKey().IsZero(), "peer (%s) of %q does not have a valid DiscoKey", peer.ComputedName(), client.Hostname())
-		}
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for valid netmap for %q", client.Hostname())
-}
-
-// assertValidStatus validates that a client's status has all required fields for proper operation.
-// Checks self and peer status for essential data including hostinfo, tailscale IPs, endpoints,
-// and network map presence. This test is not suitable for ACL/partial connection tests.
-func assertValidStatus(t *testing.T, client TailscaleClient) {
-	t.Helper()
-
-	status, err := client.Status(true)
-	if err != nil {
-		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
-	}
-
-	assert.NotEmptyf(t, status.Self.HostName, "%q does not have HostName set, likely missing Hostinfo", client.Hostname())
-	assert.NotEmptyf(t, status.Self.OS, "%q does not have OS set, likely missing Hostinfo", client.Hostname())
-	assert.NotEmptyf(t, status.Self.Relay, "%q does not have a relay, likely missing Hostinfo/Netinfo", client.Hostname())
-
-	assert.NotEmptyf(t, status.Self.TailscaleIPs, "%q does not have Tailscale IPs", client.Hostname())
-
-	// This seem to not appear until version 1.56
-	if status.Self.AllowedIPs != nil {
-		assert.NotEmptyf(t, status.Self.AllowedIPs, "%q does not have any allowed IPs", client.Hostname())
-	}
-
-	assert.NotEmptyf(t, status.Self.Addrs, "%q does not have any endpoints", client.Hostname())
-
-	assert.Truef(t, status.Self.Online, "%q is not online", client.Hostname())
-
-	assert.Truef(t, status.Self.InNetworkMap, "%q is not in network map", client.Hostname())
-
-	// This isn't really relevant for Self as it won't be in its own socket/wireguard.
-	// assert.Truef(t, status.Self.InMagicSock, "%q is not tracked by magicsock", client.Hostname())
-	// assert.Truef(t, status.Self.InEngine, "%q is not in wireguard engine", client.Hostname())
-
-	for _, peer := range status.Peer {
-		assert.NotEmptyf(t, peer.HostName, "peer (%s) of %q does not have HostName set, likely missing Hostinfo", peer.DNSName, client.Hostname())
-		assert.NotEmptyf(t, peer.OS, "peer (%s) of %q does not have OS set, likely missing Hostinfo", peer.DNSName, client.Hostname())
-		assert.NotEmptyf(t, peer.Relay, "peer (%s) of %q does not have a relay, likely missing Hostinfo/Netinfo", peer.DNSName, client.Hostname())
-
-		assert.NotEmptyf(t, peer.TailscaleIPs, "peer (%s) of %q does not have Tailscale IPs", peer.DNSName, client.Hostname())
-
-		// This seem to not appear until version 1.56
-		if peer.AllowedIPs != nil {
-			assert.NotEmptyf(t, peer.AllowedIPs, "peer (%s) of %q does not have any allowed IPs", peer.DNSName, client.Hostname())
-		}
-
-		// Addrs does not seem to appear in the status from peers.
-		// assert.NotEmptyf(t, peer.Addrs, "peer (%s) of %q does not have any endpoints", peer.DNSName, client.Hostname())
-
-		assert.Truef(t, peer.Online, "peer (%s) of %q is not online", peer.DNSName, client.Hostname())
-
-		assert.Truef(t, peer.InNetworkMap, "peer (%s) of %q is not in network map", peer.DNSName, client.Hostname())
-		assert.Truef(t, peer.InMagicSock, "peer (%s) of %q is not tracked by magicsock", peer.DNSName, client.Hostname())
-
-		// TODO(kradalby): InEngine is only true when a proper tunnel is set up,
-		// there might be some interesting stuff to test here in the future.
-		// assert.Truef(t, peer.InEngine, "peer (%s) of %q is not in wireguard engine", peer.DNSName, client.Hostname())
-	}
-}
-
-// assertValidNetcheck validates that a client has a proper DERP relay configured.
-// Ensures the client has discovered and selected a DERP server for relay functionality,
-// which is essential for NAT traversal and connectivity in restricted networks.
-func assertValidNetcheck(t *testing.T, client TailscaleClient) {
-	t.Helper()
-
-	report, err := client.Netcheck()
-	if err != nil {
-		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
-	}
-
-	assert.NotEqualf(t, 0, report.PreferredDERP, "%q does not have a DERP relay", client.Hostname())
 }
 
 // assertCommandOutputContains executes a command with exponential backoff retry until the output
@@ -925,12 +765,6 @@ func aliasWithPorts(alias policyv2.Alias, ports ...tailcfg.PortRange) policyv2.A
 // Specifies which users can assign and manage specific tags in ACL configurations.
 func usernameOwner(name string) policyv2.Owner {
 	return new(policyv2.Username(name))
-}
-
-// groupOwner returns a Group as an Owner for use in TagOwners policies.
-// Specifies which groups can assign and manage specific tags in ACL configurations.
-func groupOwner(name string) policyv2.Owner {
-	return new(policyv2.Group(name))
 }
 
 // usernameApprover returns a Username as an AutoApprover for subnet route policies.

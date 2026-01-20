@@ -127,11 +127,9 @@ const (
 
 	// Channel configuration.
 	NORMAL_BUFFER_SIZE = 50
-	SMALL_BUFFER_SIZE  = 3
-	TINY_BUFFER_SIZE   = 1 // For maximum contention
-	LARGE_BUFFER_SIZE  = 200
-
-	reservedResponseHeaderSize = 4
+	SMALL_BUFFER_SIZE = 3
+	TINY_BUFFER_SIZE  = 1 // For maximum contention
+	LARGE_BUFFER_SIZE = 200
 )
 
 // TestData contains all test entities created for a test scenario.
@@ -319,23 +317,6 @@ func (ut *updateTracker) recordUpdate(nodeID types.NodeID, updateSize int) {
 	stats.LastUpdate = time.Now()
 }
 
-// getStats returns a copy of the statistics for a node.
-func (ut *updateTracker) getStats(nodeID types.NodeID) UpdateStats {
-	ut.mu.RLock()
-	defer ut.mu.RUnlock()
-
-	if stats, exists := ut.stats[nodeID]; exists {
-		// Return a copy to avoid race conditions
-		return UpdateStats{
-			TotalUpdates: stats.TotalUpdates,
-			UpdateSizes:  slices.Clone(stats.UpdateSizes),
-			LastUpdate:   stats.LastUpdate,
-		}
-	}
-
-	return UpdateStats{}
-}
-
 // getAllStats returns a copy of all statistics.
 func (ut *updateTracker) getAllStats() map[types.NodeID]UpdateStats {
 	ut.mu.RLock()
@@ -387,16 +368,14 @@ type UpdateInfo struct {
 }
 
 // parseUpdateAndAnalyze parses an update and returns detailed information.
-func parseUpdateAndAnalyze(resp *tailcfg.MapResponse) (UpdateInfo, error) {
-	info := UpdateInfo{
+func parseUpdateAndAnalyze(resp *tailcfg.MapResponse) UpdateInfo {
+	return UpdateInfo{
 		PeerCount:  len(resp.Peers),
 		PatchCount: len(resp.PeersChangedPatch),
 		IsFull:     len(resp.Peers) > 0,
 		IsPatch:    len(resp.PeersChangedPatch) > 0,
 		IsDERP:     resp.DERPMap != nil,
 	}
-
-	return info, nil
 }
 
 // start begins consuming updates from the node's channel and tracking stats.
@@ -418,36 +397,36 @@ func (n *node) start() {
 				atomic.AddInt64(&n.updateCount, 1)
 
 				// Parse update and track detailed stats
-				if info, err := parseUpdateAndAnalyze(data); err == nil {
-					// Track update types
-					if info.IsFull {
-						atomic.AddInt64(&n.fullCount, 1)
-						n.lastPeerCount.Store(int64(info.PeerCount))
-						// Update max peers seen using compare-and-swap for thread safety
-						for {
-							current := n.maxPeersCount.Load()
-							if int64(info.PeerCount) <= current {
-								break
-							}
+				info := parseUpdateAndAnalyze(data)
 
-							if n.maxPeersCount.CompareAndSwap(current, int64(info.PeerCount)) {
-								break
-							}
+				// Track update types
+				if info.IsFull {
+					atomic.AddInt64(&n.fullCount, 1)
+					n.lastPeerCount.Store(int64(info.PeerCount))
+					// Update max peers seen using compare-and-swap for thread safety
+					for {
+						current := n.maxPeersCount.Load()
+						if int64(info.PeerCount) <= current {
+							break
+						}
+
+						if n.maxPeersCount.CompareAndSwap(current, int64(info.PeerCount)) {
+							break
 						}
 					}
+				}
 
-					if info.IsPatch {
-						atomic.AddInt64(&n.patchCount, 1)
-						// For patches, we track how many patch items using compare-and-swap
-						for {
-							current := n.maxPeersCount.Load()
-							if int64(info.PatchCount) <= current {
-								break
-							}
+				if info.IsPatch {
+					atomic.AddInt64(&n.patchCount, 1)
+					// For patches, we track how many patch items using compare-and-swap
+					for {
+						current := n.maxPeersCount.Load()
+						if int64(info.PatchCount) <= current {
+							break
+						}
 
-							if n.maxPeersCount.CompareAndSwap(current, int64(info.PatchCount)) {
-								break
-							}
+						if n.maxPeersCount.CompareAndSwap(current, int64(info.PatchCount)) {
+							break
 						}
 					}
 				}
@@ -914,7 +893,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 	}
 }
 
-func drainChannelTimeout(ch <-chan *tailcfg.MapResponse, name string, timeout time.Duration) {
+func drainChannelTimeout(ch <-chan *tailcfg.MapResponse, _ string, timeout time.Duration) {
 	count := 0
 
 	timer := time.NewTimer(timeout)
