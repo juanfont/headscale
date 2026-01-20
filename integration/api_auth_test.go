@@ -79,7 +79,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 	t.Run("HTTP_NoAuthHeader", func(t *testing.T) {
 		// Test 1: Request without any Authorization header
 		// Expected: Should return 401 with ONLY "Unauthorized" text, no user data
-		req, err := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
 		require.NoError(t, err)
 
 		resp, err := client.Do(req)
@@ -131,7 +131,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 	t.Run("HTTP_InvalidAuthHeader", func(t *testing.T) {
 		// Test 2: Request with invalid Authorization header (missing "Bearer " prefix)
 		// Expected: Should return 401 with ONLY "Unauthorized" text, no user data
-		req, err := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "InvalidToken")
 
@@ -165,7 +165,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		// Test 3: Request with Bearer prefix but invalid token
 		// Expected: Should return 401 with ONLY "Unauthorized" text, no user data
 		// Note: Both malformed and properly formatted invalid tokens should return 401
-		req, err := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer invalid-token-12345")
 
@@ -198,7 +198,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 	t.Run("HTTP_ValidAPIKey", func(t *testing.T) {
 		// Test 4: Request with valid API key
 		// Expected: Should return 200 with user data (this is the authorized case)
-		req, err := http.NewRequestWithContext(context.Background(), "GET", apiURL, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, apiURL, nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer "+validAPIKey)
 
@@ -294,6 +294,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		)
 
 		var responseBodySb295 strings.Builder
+
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
 				httpCode = after
@@ -301,6 +302,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 				responseBodySb295.WriteString(line)
 			}
 		}
+
 		responseBody += responseBodySb295.String()
 
 		// Should return 401
@@ -345,6 +347,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		)
 
 		var responseBodySb344 strings.Builder
+
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
 				httpCode = after
@@ -352,6 +355,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 				responseBodySb344.WriteString(line)
 			}
 		}
+
 		responseBody += responseBodySb344.String()
 
 		assert.Equal(t, "401", httpCode)

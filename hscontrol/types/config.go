@@ -29,16 +29,16 @@ const (
 	PKCEMethodPlain       string        = "plain"
 	PKCEMethodS256        string        = "S256"
 
-	defaultNodeStoreBatchSize    = 100
-	defaultWALAutocheckpoint     = 1000 // SQLite default
+	defaultNodeStoreBatchSize = 100
+	defaultWALAutocheckpoint  = 1000 // SQLite default
 )
 
 var (
-	errOidcMutuallyExclusive   = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
-	errServerURLSuffix         = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
-	errServerURLSame           = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
-	errInvalidPKCEMethod       = errors.New("pkce.method must be either 'plain' or 'S256'")
-	errNoPrefixConfigured      = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+	errOidcMutuallyExclusive     = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errServerURLSuffix           = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errServerURLSame             = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
+	errInvalidPKCEMethod         = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errNoPrefixConfigured        = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
 	errInvalidAllocationStrategy = errors.New("invalid prefixes.allocation strategy")
 )
 
@@ -406,7 +406,8 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("prefixes.allocation", string(IPAllocationStrategySequential))
 
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+		var configFileNotFoundError viper.ConfigFileNotFoundError
+		if errors.As(err, &configFileNotFoundError) {
 			log.Warn().Msg("No config file found, using defaults")
 			return nil
 		}
@@ -446,7 +447,8 @@ func validateServerConfig() error {
 	depr.fatal("oidc.map_legacy_users")
 
 	if viper.GetBool("oidc.enabled") {
-		if err := validatePKCEMethod(viper.GetString("oidc.pkce.method")); err != nil {
+		err := validatePKCEMethod(viper.GetString("oidc.pkce.method"))
+		if err != nil {
 			return err
 		}
 	}
@@ -984,7 +986,8 @@ func LoadServerConfig() (*Config, error) {
 	// - Control plane runs on login.tailscale.com/controlplane.tailscale.com
 	// - MagicDNS (BaseDomain) for users is on a *.ts.net domain per tailnet (e.g. tail-scale.ts.net)
 	if dnsConfig.BaseDomain != "" {
-		if err := isSafeServerURL(serverURL, dnsConfig.BaseDomain); err != nil {
+		err := isSafeServerURL(serverURL, dnsConfig.BaseDomain)
+		if err != nil {
 			return nil, err
 		}
 	}

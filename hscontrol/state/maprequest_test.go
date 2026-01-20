@@ -133,4 +133,3 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 		assert.Equal(t, 7, result.PreferredDERP, "Should preserve DERP region from existing node")
 	})
 }
-

@@ -261,7 +261,8 @@ AND auth_key_id NOT IN (
 					if err == nil && routesExists {
 						log.Info().Msg("Dropping leftover routes table")
 
-						if err := tx.Exec("DROP TABLE routes").Error; err != nil {
+						err := tx.Exec("DROP TABLE routes").Error
+						if err != nil {
 							return fmt.Errorf("dropping routes table: %w", err)
 						}
 					}
@@ -294,7 +295,8 @@ AND auth_key_id NOT IN (
 							_ = tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error
 
 							// Rename current table to _old
-							if err := tx.Exec("ALTER TABLE " + table + " RENAME TO " + table + "_old").Error; err != nil {
+							err := tx.Exec("ALTER TABLE " + table + " RENAME TO " + table + "_old").Error
+							if err != nil {
 								return fmt.Errorf("renaming table %s to %s_old: %w", table, table, err)
 							}
 						}
@@ -368,7 +370,8 @@ AND auth_key_id NOT IN (
 					}
 
 					for _, createSQL := range tableCreationSQL {
-						if err := tx.Exec(createSQL).Error; err != nil {
+						err := tx.Exec(createSQL).Error
+						if err != nil {
 							return fmt.Errorf("creating new table: %w", err)
 						}
 					}
@@ -397,7 +400,8 @@ AND auth_key_id NOT IN (
 					}
 
 					for _, copySQL := range dataCopySQL {
-						if err := tx.Exec(copySQL).Error; err != nil {
+						err := tx.Exec(copySQL).Error
+						if err != nil {
 							return fmt.Errorf("copying data: %w", err)
 						}
 					}
@@ -420,14 +424,16 @@ AND auth_key_id NOT IN (
 					}
 
 					for _, indexSQL := range indexes {
-						if err := tx.Exec(indexSQL).Error; err != nil {
+						err := tx.Exec(indexSQL).Error
+						if err != nil {
 							return fmt.Errorf("creating index: %w", err)
 						}
 					}
 
 					// Drop old tables only after everything succeeds
 					for _, table := range tablesToRename {
-						if err := tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error; err != nil {
+						err := tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error
+						if err != nil {
 							log.Warn().Str("table", table+"_old").Err(err).Msg("Failed to drop old table, but migration succeeded")
 						}
 					}
@@ -946,18 +952,21 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 
 			if needsFKDisabled {
 				// Disable foreign keys for this migration
-				if err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+				err := dbConn.Exec("PRAGMA foreign_keys = OFF").Error
+				if err != nil {
 					return fmt.Errorf("disabling foreign keys for migration %s: %w", migrationID, err)
 				}
 			} else {
 				// Ensure foreign keys are enabled for this migration
-				if err := dbConn.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+				err := dbConn.Exec("PRAGMA foreign_keys = ON").Error
+				if err != nil {
 					return fmt.Errorf("enabling foreign keys for migration %s: %w", migrationID, err)
 				}
 			}
 
 			// Run up to this specific migration (will only run the next pending migration)
-			if err := migrations.MigrateTo(migrationID); err != nil {
+			err := migrations.MigrateTo(migrationID)
+			if err != nil {
 				return fmt.Errorf("running migration %s: %w", migrationID, err)
 			}
 		}
@@ -1009,7 +1018,8 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		}
 	} else {
 		// PostgreSQL can run all migrations in one block - no foreign key issues
-		if err := migrations.Migrate(); err != nil {
+		err := migrations.Migrate()
+		if err != nil {
 			return err
 		}
 	}

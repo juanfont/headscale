@@ -31,17 +31,17 @@ var ErrInvalidHostName = errors.New("invalid hostname")
 
 // Sentinel errors for username validation.
 var (
-	ErrUsernameTooShort       = errors.New("username must be at least 2 characters long")
+	ErrUsernameTooShort        = errors.New("username must be at least 2 characters long")
 	ErrUsernameMustStartLetter = errors.New("username must start with a letter")
-	ErrUsernameTooManyAt      = errors.New("username cannot contain more than one '@'")
-	ErrUsernameInvalidChar    = errors.New("username contains invalid character")
+	ErrUsernameTooManyAt       = errors.New("username cannot contain more than one '@'")
+	ErrUsernameInvalidChar     = errors.New("username contains invalid character")
 )
 
 // Sentinel errors for hostname validation.
 var (
-	ErrHostnameTooShort     = errors.New("hostname too short, must be at least 2 characters")
-	ErrHostnameHyphenEnds   = errors.New("hostname cannot start or end with a hyphen")
-	ErrHostnameDotEnds      = errors.New("hostname cannot start or end with a dot")
+	ErrHostnameTooShort   = errors.New("hostname too short, must be at least 2 characters")
+	ErrHostnameHyphenEnds = errors.New("hostname cannot start or end with a hyphen")
+	ErrHostnameDotEnds    = errors.New("hostname cannot start or end with a dot")
 )
 
 // ValidateUsername checks if a username is valid.

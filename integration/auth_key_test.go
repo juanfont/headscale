@@ -355,7 +355,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, fmt.Sprintf("validating %s is logged in as user1 after auth key user switch", client.Hostname()))
+		}, 30*time.Second, 2*time.Second, "validating %s is logged in as user1 after auth key user switch", client.Hostname())
 	}
 }
 

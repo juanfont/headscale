@@ -667,7 +667,8 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 			Str("conn.id", conn.id).Int("connection_index", i).
 			Msg("send: attempting to send to connection")
 
-		if err := conn.send(data); err != nil {
+		err := conn.send(data)
+		if err != nil {
 			lastErr = err
 
 			failedConnections = append(failedConnections, i)

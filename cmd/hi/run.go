@@ -49,7 +49,8 @@ func runIntegrationTest(env *command.Env) error {
 		log.Printf("Running pre-flight system checks...")
 	}
 
-	if err := runDoctorCheck(env.Context()); err != nil {
+	err := runDoctorCheck(env.Context())
+	if err != nil {
 		return fmt.Errorf("pre-flight checks failed: %w", err)
 	}
 

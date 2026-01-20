@@ -3131,8 +3131,8 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.expected.Action, acl.Action)
 			assert.Equal(t, tt.expected.Protocol, acl.Protocol)
-			assert.Equal(t, len(tt.expected.Sources), len(acl.Sources))
-			assert.Equal(t, len(tt.expected.Destinations), len(acl.Destinations))
+			assert.Len(t, acl.Sources, len(tt.expected.Sources))
+			assert.Len(t, acl.Destinations, len(tt.expected.Destinations))
 
 			// Compare sources
 			for i, expectedSrc := range tt.expected.Sources {
@@ -3179,8 +3179,8 @@ func TestACL_UnmarshalJSON_Roundtrip(t *testing.T) {
 	// Should be equal
 	assert.Equal(t, original.Action, unmarshaled.Action)
 	assert.Equal(t, original.Protocol, unmarshaled.Protocol)
-	assert.Equal(t, len(original.Sources), len(unmarshaled.Sources))
-	assert.Equal(t, len(original.Destinations), len(unmarshaled.Destinations))
+	assert.Len(t, unmarshaled.Sources, len(original.Sources))
+	assert.Len(t, unmarshaled.Destinations, len(original.Destinations))
 }
 
 func TestACL_UnmarshalJSON_PolicyIntegration(t *testing.T) {

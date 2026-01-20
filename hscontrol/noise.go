@@ -283,7 +283,8 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(writer).Encode(registerResponse); err != nil {
+	err := json.NewEncoder(writer).Encode(registerResponse)
+	if err != nil {
 		log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
 		return
 	}

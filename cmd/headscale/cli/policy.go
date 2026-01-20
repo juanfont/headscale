@@ -35,7 +35,8 @@ func init() {
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
 
-	if err := checkPolicy.MarkFlagRequired("file"); err != nil {
+	err := checkPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 

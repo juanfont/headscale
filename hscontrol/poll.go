@@ -249,7 +249,8 @@ func (m *mapSession) serveLongPoll() {
 				return
 			}
 
-			if err := m.writeMap(update); err != nil {
+			err := m.writeMap(update)
+			if err != nil {
 				m.errf(err, "cannot write update to client")
 				return
 			}
@@ -258,7 +259,8 @@ func (m *mapSession) serveLongPoll() {
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
-			if err := m.writeMap(&keepAlive); err != nil {
+			err := m.writeMap(&keepAlive)
+			if err != nil {
 				m.errf(err, "cannot write keep alive")
 				return
 			}

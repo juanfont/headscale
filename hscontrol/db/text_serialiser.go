@@ -12,9 +12,9 @@ import (
 
 // Sentinel errors for text serialisation.
 var (
-	ErrTextUnmarshalFailed  = errors.New("failed to unmarshal text value")
-	ErrUnsupportedType      = errors.New("unsupported type")
-	ErrTextMarshalerOnly    = errors.New("only encoding.TextMarshaler is supported")
+	ErrTextUnmarshalFailed = errors.New("failed to unmarshal text value")
+	ErrUnsupportedType     = errors.New("unsupported type")
+	ErrTextMarshalerOnly   = errors.New("only encoding.TextMarshaler is supported")
 )
 
 // Got from https://github.com/xdg-go/strum/blob/main/types.go

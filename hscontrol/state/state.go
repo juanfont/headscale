@@ -187,7 +187,8 @@ func NewState(cfg *types.Config) (*State, error) {
 func (s *State) Close() error {
 	s.nodeStore.Stop()
 
-	if err := s.db.Close(); err != nil {
+	err := s.db.Close()
+	if err != nil {
 		return fmt.Errorf("closing database: %w", err)
 	}
 
@@ -741,7 +742,8 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
 	}
 
@@ -1214,7 +1216,8 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// New node - database first to get ID, then NodeStore
 	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if err := tx.Save(&nodeToRegister).Error; err != nil {
+		err := tx.Save(&nodeToRegister).Error
+		if err != nil {
 			return nil, fmt.Errorf("failed to save node: %w", err)
 		}
 

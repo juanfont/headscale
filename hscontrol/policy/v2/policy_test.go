@@ -106,7 +106,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.Equal(t, len(initialNodes), len(pm.filterRulesMap))
+	require.Len(t, pm.filterRulesMap, len(initialNodes))
 
 	tests := []struct {
 		name            string

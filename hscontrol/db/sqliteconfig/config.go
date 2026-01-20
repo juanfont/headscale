@@ -365,7 +365,8 @@ func (c *Config) Validate() error {
 // ToURL builds a properly encoded SQLite connection string using _pragma parameters
 // compatible with modernc.org/sqlite driver.
 func (c *Config) ToURL() (string, error) {
-	if err := c.Validate(); err != nil {
+	err := c.Validate()
+	if err != nil {
 		return "", fmt.Errorf("invalid config: %w", err)
 	}
 

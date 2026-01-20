@@ -14,6 +14,7 @@ func YesNo(msg string) bool {
 	fmt.Fprint(os.Stderr, msg+" [y/n] ")
 
 	var resp string
+
 	_, _ = fmt.Scanln(&resp)
 
 	resp = strings.ToLower(resp)

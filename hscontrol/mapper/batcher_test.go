@@ -123,9 +123,9 @@ const (
 
 	// Channel configuration.
 	NORMAL_BUFFER_SIZE = 50
-	SMALL_BUFFER_SIZE = 3
-	TINY_BUFFER_SIZE  = 1 // For maximum contention
-	LARGE_BUFFER_SIZE = 200
+	SMALL_BUFFER_SIZE  = 3
+	TINY_BUFFER_SIZE   = 1 // For maximum contention
+	LARGE_BUFFER_SIZE  = 200
 )
 
 // TestData contains all test entities created for a test scenario.
@@ -1145,6 +1145,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 
 				wg.Go(func() {
 					runtime.Gosched() // Yield to introduce timing variability
+
 					_ = batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
 				})
 
@@ -1747,6 +1748,7 @@ func XTestBatcherScalability(t *testing.T) {
 					for i := range testNodes {
 						node := testNodes[i]
 						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+
 						connectedNodesMutex.Lock()
 
 						connectedNodes[node.n.ID] = true

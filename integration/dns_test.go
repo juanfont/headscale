@@ -199,6 +199,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
+
 	command := []string{"echo", fmt.Sprintf("'%s'", string(b4)), ">", erPath}
 	_, err = hs.Execute([]string{"bash", "-c", strings.Join(command, " ")})
 	require.NoError(t, err)

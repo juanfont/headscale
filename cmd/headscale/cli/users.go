@@ -16,7 +16,7 @@ import (
 
 // Sentinel errors for CLI commands.
 var (
-	ErrNameOrIDRequired = errors.New("--name or --identifier flag is required")
+	ErrNameOrIDRequired        = errors.New("--name or --identifier flag is required")
 	ErrMultipleUsersFoundUseID = errors.New("unable to determine user, query returned multiple users, use ID")
 )
 

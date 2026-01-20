@@ -106,6 +106,7 @@ func TestYesNo(t *testing.T) {
 
 			// Check that the prompt was written to stderr
 			var stderrBuf bytes.Buffer
+
 			_, _ = io.Copy(&stderrBuf, stderrR)
 			stderrR.Close()
 
@@ -149,6 +150,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 
 	// Check that the custom message was included in the prompt
 	var stderrBuf bytes.Buffer
+
 	_, _ = io.Copy(&stderrBuf, stderrR)
 	stderrR.Close()
 
