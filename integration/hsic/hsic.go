@@ -53,6 +53,9 @@ var (
 	errInvalidHeadscaleImageFormat = errors.New("invalid HEADSCALE_INTEGRATION_HEADSCALE_IMAGE format, expected repository:tag")
 	errHeadscaleImageRequiredInCI  = errors.New("HEADSCALE_INTEGRATION_HEADSCALE_IMAGE must be set in CI")
 	errInvalidPostgresImageFormat  = errors.New("invalid HEADSCALE_INTEGRATION_POSTGRES_IMAGE format, expected repository:tag")
+	errDatabaseEmptySchema         = errors.New("database file exists but has no schema")
+	errDatabaseFileEmpty           = errors.New("database file is empty")
+	errNoRegularFileInTar          = errors.New("no regular file found in database tar archive")
 )
 
 type fileInContainer struct {
@@ -861,7 +864,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 	}
 
 	if strings.TrimSpace(schemaCheck) == "" {
-		return errors.New("database file exists but has no schema (empty database)")
+		return errDatabaseEmptySchema
 	}
 
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
@@ -914,7 +917,8 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			// Check if we actually wrote something
 			if written == 0 {
 				return fmt.Errorf(
-					"database file is empty (size: %d, header size: %d)",
+					"%w (size: %d, header size: %d)",
+					errDatabaseFileEmpty,
 					written,
 					header.Size,
 				)
@@ -924,7 +928,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		}
 	}
 
-	return errors.New("no regular file found in database tar archive")
+	return errNoRegularFileInTar
 }
 
 // Execute runs a command inside the Headscale container and returns the

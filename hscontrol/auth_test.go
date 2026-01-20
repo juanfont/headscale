@@ -17,6 +17,12 @@ import (
 	"tailscale.com/types/key"
 )
 
+// Test sentinel errors.
+var (
+	errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+	errInvalidAuthURLFormat   = errors.New("invalid AuthURL format")
+)
+
 // Interactive step type constants.
 const (
 	stepTypeInitialRequest  = "initial_request"
@@ -579,7 +585,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
 
 				if !found {
-					return "", errors.New("node not found after setup")
+					return "", errNodeNotFoundAfterSetup
 				}
 
 				// Expire the node
@@ -2716,7 +2722,7 @@ func extractRegistrationIDFromAuthURL(authURL string) (types.RegistrationID, err
 
 	idx := strings.LastIndex(authURL, registerPrefix)
 	if idx == -1 {
-		return "", fmt.Errorf("invalid AuthURL format: %s", authURL)
+		return "", fmt.Errorf("%w: %s", errInvalidAuthURLFormat, authURL)
 	}
 
 	idStr := authURL[idx+len(registerPrefix):]

@@ -28,6 +28,14 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Sentinel errors for integration test helpers.
+var (
+	errExpectedStringNotFound = errors.New("expected string not found in output")
+	errUserNotFound           = errors.New("user not found")
+	errNoNewClientFound       = errors.New("no new client found")
+	errUnexpectedClientCount  = errors.New("unexpected client count")
+)
+
 const (
 	// derpPingTimeout defines the timeout for individual DERP ping operations
 	// Used in DERP connectivity tests to verify relay server communication.
@@ -646,7 +654,7 @@ func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []stri
 		}
 
 		if !strings.Contains(stdout, contains) {
-			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+			return struct{}{}, fmt.Errorf("executing command, %w: %q not found in %q", errExpectedStringNotFound, contains, stdout)
 		}
 
 		return struct{}{}, nil
@@ -811,7 +819,7 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("user %s not found", username)
+	return nil, fmt.Errorf("%w: %s", errUserNotFound, username)
 }
 
 // FindNewClient finds a client that is in the new list but not in the original list.
@@ -833,7 +841,7 @@ func FindNewClient(original, updated []TailscaleClient) (TailscaleClient, error)
 		}
 	}
 
-	return nil, errors.New("no new client found")
+	return nil, errNoNewClientFound
 }
 
 // AddAndLoginClient adds a new tailscale client to a user and logs it in.
@@ -873,7 +881,7 @@ func (s *Scenario) AddAndLoginClient(
 		}
 
 		if len(updatedClients) != len(originalClients)+1 {
-			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients))
+			return struct{}{}, fmt.Errorf("%w: expected %d clients, got %d", errUnexpectedClientCount, len(originalClients)+1, len(updatedClients))
 		}
 
 		newClient, err = FindNewClient(originalClients, updatedClients)

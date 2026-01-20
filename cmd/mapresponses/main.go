@@ -12,6 +12,8 @@ import (
 	"github.com/juanfont/headscale/integration/integrationutil"
 )
 
+var errDirectoryRequired = errors.New("directory is required")
+
 type MapConfig struct {
 	Directory string `flag:"directory,Directory to read map responses from"`
 }
@@ -41,7 +43,7 @@ func main() {
 // runIntegrationTest executes the integration test workflow.
 func runOnline(env *command.Env) error {
 	if mapConfig.Directory == "" {
-		return errors.New("directory is required")
+		return errDirectoryRequired
 	}
 
 	resps, err := mapper.ReadMapResponsesFromDirectory(mapConfig.Directory)

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -18,6 +19,8 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
+
+var errUnexpectedRecvType = errors.New("client first Recv was unexpected type")
 
 func TestDERPVerifyEndpoint(t *testing.T) {
 	IntegrationSkip(t)
@@ -113,7 +116,7 @@ func DERPVerify(
 	if m, err := c.Recv(); err != nil {
 		result = fmt.Errorf("client first Recv: %w", err)
 	} else if v, ok := m.(derp.ServerInfoMessage); !ok {
-		result = fmt.Errorf("client first Recv was unexpected type %T", v)
+		result = fmt.Errorf("%w: %T", errUnexpectedRecvType, v)
 	}
 
 	if expectSuccess && result != nil {

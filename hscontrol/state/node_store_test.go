@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"runtime"
@@ -13,6 +14,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
+)
+
+// Test sentinel errors for concurrent operations.
+var (
+	errTestUpdateNodeFailed = errors.New("UpdateNode failed")
+	errTestGetNodeFailed    = errors.New("GetNode failed")
+	errTestPutNodeFailed    = errors.New("PutNode failed")
 )
 
 func TestSnapshotFromNodes(t *testing.T) {
@@ -1001,19 +1009,19 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 						n.Hostname = "race-updated"
 					})
 					if !resultNode.Valid() {
-						errors <- fmt.Errorf("UpdateNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("%w in goroutine %d, op %d", errTestUpdateNodeFailed, gid, j)
 					}
 				case 1:
 					retrieved, found := store.GetNode(nodeID)
 					if !found || !retrieved.Valid() {
-						errors <- fmt.Errorf("GetNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("%w in goroutine %d, op %d", errTestGetNodeFailed, gid, j)
 					}
 				case 2:
 					newNode := createConcurrentTestNode(nodeID, "race-put")
 
 					resultNode := store.PutNode(newNode)
 					if !resultNode.Valid() {
-						errors <- fmt.Errorf("PutNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("%w in goroutine %d, op %d", errTestPutNodeFailed, gid, j)
 					}
 				}
 			}
@@ -1113,7 +1121,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: PutNode(%d) finished, valid=%v, duration=%v\n", endPut.Format("15:04:05.000"), id, resultNode.Valid(), endPut.Sub(startPut))
 
 			if !resultNode.Valid() {
-				putResults[idx-1] = fmt.Errorf("PutNode failed for node %d", id)
+				putResults[idx-1] = fmt.Errorf("%w for node %d", errTestPutNodeFailed, id)
 			}
 		}(i, nodeID)
 	}
@@ -1140,7 +1148,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: UpdateNode(%d) finished, valid=%v, ok=%v, duration=%v\n", endUpdate.Format("15:04:05.000"), id, resultNode.Valid(), ok, endUpdate.Sub(startUpdate))
 
 			if !ok || !resultNode.Valid() {
-				updateResults[idx-1] = fmt.Errorf("UpdateNode failed for node %d", id)
+				updateResults[idx-1] = fmt.Errorf("%w for node %d", errTestUpdateNodeFailed, id)
 			}
 		}(i, nodeID)
 	}
