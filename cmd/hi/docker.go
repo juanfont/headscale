@@ -39,6 +39,7 @@ const (
 
 // runTestContainer executes integration tests in a Docker container.
 func runTestContainer(ctx context.Context, config *RunConfig) error {
+	//nolint:contextcheck // createDockerClient internal functions don't accept context
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -110,6 +111,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	if config.Stats {
 		var err error
 
+		//nolint:contextcheck // NewStatsCollector internal functions don't accept context
 		statsCollector, err = NewStatsCollector()
 		if err != nil {
 			if config.Verbose {
@@ -632,6 +634,7 @@ func listControlFiles(logsDir string) {
 
 // extractArtifactsFromContainers collects container logs and files from the specific test run.
 func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
+	//nolint:contextcheck // createDockerClient internal functions don't accept context
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)

@@ -69,6 +69,7 @@ func NewAuthProviderOIDC(
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
+	//nolint:contextcheck // Initialization code - no parent context available
 	oidcProvider, err := oidc.NewProvider(context.Background(), cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("creating OIDC provider from issuer config: %w", err)

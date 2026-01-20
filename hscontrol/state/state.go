@@ -492,6 +492,7 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
+	//nolint:staticcheck // SA4006: now is used in new(now) below
 	now := time.Now()
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {

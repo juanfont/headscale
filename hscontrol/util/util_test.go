@@ -1210,7 +1210,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "test",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if hi.Hostname != "test" {
@@ -1244,7 +1244,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
 				if len(hi.Hostname) != 63 {

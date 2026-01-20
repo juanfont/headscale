@@ -299,6 +299,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		case <-derpTickerChan:
 			log.Info().Msg("Fetching DERPMap updates")
 
+			//nolint:contextcheck // GetDERPMap internal functions don't accept context
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
 				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
 				if err != nil {
@@ -885,6 +886,7 @@ func (h *Headscale) Serve() error {
 				// Close state connections
 				info("closing state and database")
 
+				//nolint:contextcheck // Close method signature does not accept context
 				err = h.state.Close()
 				if err != nil {
 					log.Error().Err(err).Msg("failed to close state")

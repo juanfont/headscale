@@ -98,6 +98,7 @@ func TestExpireNode(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -142,6 +143,7 @@ func TestSetTags(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -637,9 +639,11 @@ func TestListEphemeralNodes(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	//nolint:staticcheck // SA4006: pakEph is used in new(pakEph.ID) below
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 

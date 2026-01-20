@@ -327,6 +327,7 @@ func TestApproveRoutesWithPolicy_EdgeCases(t *testing.T) {
 }
 
 func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
+	//nolint:staticcheck // SA4006: user is used in new(user.ID) and new(user) below
 	user := types.User{
 		Model: gorm.Model{ID: 1},
 		Name:  "test",

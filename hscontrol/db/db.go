@@ -75,6 +75,7 @@ func NewHeadscaleDatabase(
 				ID: "202501221827",
 				Migrate: func(tx *gorm.DB) error {
 					// Remove any invalid routes associated with a node that does not exist.
+					//nolint:staticcheck // SA1019: types.Route kept for GORM migrations only
 					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
 						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
 						if err != nil {
@@ -83,6 +84,7 @@ func NewHeadscaleDatabase(
 					}
 
 					// Remove any invalid routes without a node_id.
+					//nolint:staticcheck // SA1019: types.Route kept for GORM migrations only
 					if tx.Migrator().HasTable(&types.Route{}) {
 						err := tx.Exec("delete from routes where node_id is null").Error
 						if err != nil {
@@ -90,6 +92,7 @@ func NewHeadscaleDatabase(
 						}
 					}
 
+					//nolint:staticcheck // SA1019: types.Route kept for GORM migrations only
 					err := tx.AutoMigrate(&types.Route{})
 					if err != nil {
 						return fmt.Errorf("automigrating types.Route: %w", err)
@@ -155,6 +158,7 @@ AND auth_key_id NOT IN (
 
 					nodeRoutes := map[uint64][]netip.Prefix{}
 
+					//nolint:staticcheck // SA1019: types.Route kept for GORM migrations only
 					var routes []types.Route
 
 					err = tx.Find(&routes).Error
@@ -184,6 +188,7 @@ AND auth_key_id NOT IN (
 					}
 
 					// Drop the old table.
+					//nolint:staticcheck // SA1019: types.Route kept for GORM migrations only
 					_ = tx.Migrator().DropTable(&types.Route{})
 
 					return nil
