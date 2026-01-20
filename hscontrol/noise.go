@@ -31,6 +31,9 @@ const (
 	earlyPayloadMagic = "\xff\xff\xffTS"
 )
 
+// Sentinel errors for noise server.
+var ErrUnsupportedClientVersion = errors.New("unsupported client version")
+
 type noiseServer struct {
 	headscale *Headscale
 
@@ -117,7 +120,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {
-	return fmt.Errorf("unsupported client version: %s (%d)", capver.TailscaleVersion(version), version)
+	return fmt.Errorf("%w: %s (%d)", ErrUnsupportedClientVersion, capver.TailscaleVersion(version), version)
 }
 
 func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {

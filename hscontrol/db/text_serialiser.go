@@ -3,10 +3,18 @@ package db
 import (
 	"context"
 	"encoding"
+	"errors"
 	"fmt"
 	"reflect"
 
 	"gorm.io/gorm/schema"
+)
+
+// Sentinel errors for text serialisation.
+var (
+	ErrTextUnmarshalFailed  = errors.New("failed to unmarshal text value")
+	ErrUnsupportedType      = errors.New("unsupported type")
+	ErrTextMarshalerOnly    = errors.New("only encoding.TextMarshaler is supported")
 )
 
 // Got from https://github.com/xdg-go/strum/blob/main/types.go
@@ -49,7 +57,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 		case string:
 			bytes = []byte(v)
 		default:
-			return fmt.Errorf("failed to unmarshal text value: %#v", dbValue)
+			return fmt.Errorf("%w: %#v", ErrTextUnmarshalFailed, dbValue)
 		}
 
 		if isTextUnmarshaler(fieldValue) {
@@ -75,7 +83,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 			return nil
 		} else {
-			return fmt.Errorf("unsupported type: %T", fieldValue.Interface())
+			return fmt.Errorf("%w: %T", ErrUnsupportedType, fieldValue.Interface())
 		}
 	}
 
@@ -99,6 +107,6 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 
 		return string(b), nil
 	default:
-		return nil, fmt.Errorf("only encoding.TextMarshaler is supported, got %t", v)
+		return nil, fmt.Errorf("%w, got %T", ErrTextMarshalerOnly, v)
 	}
 }

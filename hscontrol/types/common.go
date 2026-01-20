@@ -20,7 +20,10 @@ const (
 	DatabaseSqlite       = "sqlite3"
 )
 
-var ErrCannotParsePrefix = errors.New("cannot parse prefix")
+var (
+	ErrCannotParsePrefix  = errors.New("cannot parse prefix")
+	ErrInvalidRegIDLength = errors.New("registration ID has invalid length")
+)
 
 type StateUpdateType int
 
@@ -175,7 +178,7 @@ func MustRegistrationID() RegistrationID {
 
 func RegistrationIDFromString(str string) (RegistrationID, error) {
 	if len(str) != RegistrationIDLength {
-		return "", fmt.Errorf("registration ID must be %d characters long", RegistrationIDLength)
+		return "", fmt.Errorf("%w: expected %d characters", ErrInvalidRegIDLength, RegistrationIDLength)
 	}
 
 	return RegistrationID(str), nil

@@ -33,10 +33,12 @@ const (
 )
 
 var (
-	errOidcMutuallyExclusive = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
-	errServerURLSuffix       = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
-	errServerURLSame         = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
-	errInvalidPKCEMethod     = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errOidcMutuallyExclusive   = errors.New("oidc_client_secret and oidc_client_secret_path are mutually exclusive")
+	errServerURLSuffix         = errors.New("server_url cannot be part of base_domain in a way that could make the DERP and headscale server unreachable")
+	errServerURLSame           = errors.New("server_url cannot use the same domain as base_domain in a way that could make the DERP and headscale server unreachable")
+	errInvalidPKCEMethod       = errors.New("pkce.method must be either 'plain' or 'S256'")
+	errNoPrefixConfigured      = errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+	errInvalidAllocationStrategy = errors.New("invalid prefixes.allocation strategy")
 )
 
 type IPAllocationStrategy string
@@ -929,7 +931,7 @@ func LoadServerConfig() (*Config, error) {
 	}
 
 	if prefix4 == nil && prefix6 == nil {
-		return nil, errors.New("no IPv4 or IPv6 prefix configured, minimum one prefix is required")
+		return nil, errNoPrefixConfigured
 	}
 
 	allocStr := viper.GetString("prefixes.allocation")
@@ -941,7 +943,8 @@ func LoadServerConfig() (*Config, error) {
 		alloc = IPAllocationStrategyRandom
 	default:
 		return nil, fmt.Errorf(
-			"config error, prefixes.allocation is set to %s, which is not a valid strategy, allowed options: %s, %s",
+			"%w: %q, allowed options: %s, %s",
+			errInvalidAllocationStrategy,
 			allocStr,
 			IPAllocationStrategySequential,
 			IPAllocationStrategyRandom,

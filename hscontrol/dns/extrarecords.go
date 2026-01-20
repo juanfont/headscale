@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -14,6 +15,9 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
 )
+
+// Sentinel errors for extra records.
+var ErrPathIsDirectory = errors.New("path is a directory, only file is supported")
 
 type ExtraRecordsMan struct {
 	mu      sync.RWMutex
@@ -39,7 +43,7 @@ func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 	}
 
 	if fi.IsDir() {
-		return nil, fmt.Errorf("path is a directory, only file is supported: %s", path)
+		return nil, fmt.Errorf("%w: %s", ErrPathIsDirectory, path)
 	}
 
 	records, hash, err := readExtraRecordsFromPath(path)

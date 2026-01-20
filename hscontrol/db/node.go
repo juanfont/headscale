@@ -36,6 +36,7 @@ var (
 		"node not found in registration cache",
 	)
 	ErrCouldNotConvertNodeInterface = errors.New("failed to convert node interface")
+	ErrNameNotUnique                 = errors.New("name is not unique")
 )
 
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.
@@ -288,7 +289,7 @@ func RenameNode(tx *gorm.DB,
 	}
 
 	if count > 0 {
-		return errors.New("name is not unique")
+		return ErrNameNotUnique
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -670,7 +671,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		Hostname:       nodeName,
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pak.ID,
 	}
 
 	err = hsdb.DB.Save(node).Error

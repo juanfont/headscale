@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -17,6 +18,9 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
+
+// Sentinel errors for user types.
+var ErrCannotParseBool = errors.New("could not parse value as boolean")
 
 type UserID uint64
 
@@ -224,7 +228,7 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		*bit = FlexibleBoolean(pv)
 
 	default:
-		return fmt.Errorf("could not parse %v as boolean", v)
+		return fmt.Errorf("%w: %v", ErrCannotParseBool, v)
 	}
 
 	return nil

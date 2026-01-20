@@ -16,6 +16,19 @@ import (
 	"tailscale.com/util/cmpver"
 )
 
+// Sentinel errors for URL parsing.
+var (
+	ErrMultipleURLsFound = errors.New("multiple URLs found")
+	ErrNoURLFound        = errors.New("no URL found")
+)
+
+// Sentinel errors for traceroute parsing.
+var (
+	ErrTracerouteEmpty       = errors.New("empty traceroute output")
+	ErrTracerouteHeader      = errors.New("parsing traceroute header")
+	ErrTracerouteNotReached  = errors.New("traceroute did not reach target")
+)
+
 func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
 	if cmpver.Compare(minimum, toCheck) <= 0 ||
 		toCheck == "unstable" ||
@@ -37,7 +50,7 @@ func ParseLoginURLFromCLILogin(output string) (*url.URL, error) {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
 			if urlStr != "" {
-				return nil, fmt.Errorf("multiple URLs found: %s and %s", urlStr, line)
+				return nil, fmt.Errorf("%w: %s and %s", ErrMultipleURLsFound, urlStr, line)
 			}
 
 			urlStr = line
@@ -45,7 +58,7 @@ func ParseLoginURLFromCLILogin(output string) (*url.URL, error) {
 	}
 
 	if urlStr == "" {
-		return nil, errors.New("no URL found")
+		return nil, ErrNoURLFound
 	}
 
 	loginURL, err := url.Parse(urlStr)
@@ -91,7 +104,7 @@ type Traceroute struct {
 func ParseTraceroute(output string) (Traceroute, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) < 1 {
-		return Traceroute{}, errors.New("empty traceroute output")
+		return Traceroute{}, ErrTracerouteEmpty
 	}
 
 	// Parse the header line - handle both 'traceroute' and 'tracert' (Windows)
@@ -99,7 +112,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 
 	headerMatches := headerRegex.FindStringSubmatch(lines[0])
 	if len(headerMatches) < 2 {
-		return Traceroute{}, fmt.Errorf("parsing traceroute header: %s", lines[0])
+		return Traceroute{}, fmt.Errorf("%w: %s", ErrTracerouteHeader, lines[0])
 	}
 
 	hostname := headerMatches[1]
@@ -255,7 +268,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 
 	// If we didn't reach the target, it's unsuccessful
 	if !result.Success {
-		result.Err = errors.New("traceroute did not reach target")
+		result.Err = ErrTracerouteNotReached
 	}
 
 	return result, nil

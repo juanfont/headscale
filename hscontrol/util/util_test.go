@@ -1,7 +1,6 @@
 package util
 
 import (
-	"errors"
 	"net/netip"
 	"strings"
 	"testing"
@@ -322,7 +321,7 @@ func TestParseTraceroute(t *testing.T) {
 					},
 				},
 				Success: false,
-				Err:     errors.New("traceroute did not reach target"),
+				Err:     ErrTracerouteNotReached,
 			},
 			wantErr: false,
 		},
@@ -490,7 +489,7 @@ over a maximum of 30 hops:
 					},
 				},
 				Success: false,
-				Err:     errors.New("traceroute did not reach target"),
+				Err:     ErrTracerouteNotReached,
 			},
 			wantErr: false,
 		},

@@ -27,6 +27,7 @@ var (
 	ErrTestFailed              = errors.New("test failed")
 	ErrUnexpectedContainerWait = errors.New("unexpected end of container wait")
 	ErrNoDockerContext         = errors.New("no docker context found")
+	ErrMemoryLimitExceeded     = errors.New("container exceeded memory limits")
 )
 
 // runTestContainer executes integration tests in a Docker container.
@@ -151,7 +152,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
 			}
 
-			return fmt.Errorf("test failed: %d container(s) exceeded memory limits", len(violations))
+			return fmt.Errorf("%w: %d container(s)", ErrMemoryLimitExceeded, len(violations))
 		}
 	}
 
