@@ -93,6 +93,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 	mux := tsql.NewMux()
 	tsweb.Debugger(mux)
 	go http.Serve(lst, mux)
+
 	logf("TailSQL started")
 	<-ctx.Done()
 	logf("TailSQL shutting down...")

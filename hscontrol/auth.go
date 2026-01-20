@@ -51,6 +51,7 @@ func (h *Headscale) handleRegister(
 			if err != nil {
 				return nil, fmt.Errorf("handling logout: %w", err)
 			}
+
 			if resp != nil {
 				return resp, nil
 			}
@@ -131,7 +132,7 @@ func (h *Headscale) handleRegister(
 }
 
 // handleLogout checks if the [tailcfg.RegisterRequest] is a
-// logout attempt from a node. If the node is not attempting to
+// logout attempt from a node. If the node is not attempting to.
 func (h *Headscale) handleLogout(
 	node types.NodeView,
 	req tailcfg.RegisterRequest,
@@ -158,6 +159,7 @@ func (h *Headscale) handleLogout(
 			Interface("reg.req", req).
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
+
 		return &tailcfg.RegisterResponse{
 			NodeKeyExpired:    true,
 			MachineAuthorized: false,
@@ -277,6 +279,7 @@ func (h *Headscale) waitForFollowup(
 				// registration is expired in the cache, instruct the client to try a new registration
 				return h.reqToNewRegisterResponse(req, machineKey)
 			}
+
 			return nodeToRegisterResponse(node.View()), nil
 		}
 	}
@@ -342,6 +345,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
+
 		if perr, ok := errors.AsType[types.PAKError](err); ok {
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
@@ -432,6 +436,7 @@ func (h *Headscale) handleRegisterInteractive(
 			Str("generated.hostname", hostname).
 			Msg("Received registration request with empty hostname, generated default")
 	}
+
 	hostinfo.Hostname = hostname
 
 	nodeToRegister := types.NewRegisterNode(

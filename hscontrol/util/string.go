@@ -33,6 +33,7 @@ func GenerateRandomStringURLSafe(n int) (string, error) {
 	b, err := GenerateRandomBytes(n)
 
 	uenc := base64.RawURLEncoding.EncodeToString(b)
+
 	return uenc[:n], err
 }
 
@@ -99,6 +100,7 @@ func TailcfgFilterRulesToString(rules []tailcfg.FilterRule) string {
   DstIPs: %v
 }
 `, rule.SrcIPs, rule.DstPorts))
+
 		if index < len(rules)-1 {
 			sb.WriteString(", ")
 		}

@@ -301,6 +301,7 @@ func validatePKCEMethod(method string) error {
 	if method != PKCEMethodPlain && method != PKCEMethodS256 {
 		return errInvalidPKCEMethod
 	}
+
 	return nil
 }
 
@@ -1082,6 +1083,7 @@ func LoadServerConfig() (*Config, error) {
 				if workers := viper.GetInt("tuning.batcher_workers"); workers > 0 {
 					return workers
 				}
+
 				return DefaultBatcherWorkers()
 			}(),
 			RegisterCacheCleanup:    viper.GetDuration("tuning.register_cache_cleanup"),
@@ -1117,6 +1119,7 @@ func isSafeServerURL(serverURL, baseDomain string) error {
 	}
 
 	s := len(serverDomainParts)
+
 	b := len(baseDomainParts)
 	for i := range baseDomainParts {
 		if serverDomainParts[s-i-1] != baseDomainParts[b-i-1] {

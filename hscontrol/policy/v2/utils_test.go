@@ -58,9 +58,11 @@ func TestParsePort(t *testing.T) {
 		if err != nil && err.Error() != test.err {
 			t.Errorf("parsePort(%q) error = %v, expected error = %v", test.input, err, test.err)
 		}
+
 		if err == nil && test.err != "" {
 			t.Errorf("parsePort(%q) expected error = %v, got nil", test.input, test.err)
 		}
+
 		if result != test.expected {
 			t.Errorf("parsePort(%q) = %v, expected %v", test.input, result, test.expected)
 		}
@@ -92,9 +94,11 @@ func TestParsePortRange(t *testing.T) {
 		if err != nil && err.Error() != test.err {
 			t.Errorf("parsePortRange(%q) error = %v, expected error = %v", test.input, err, test.err)
 		}
+
 		if err == nil && test.err != "" {
 			t.Errorf("parsePortRange(%q) expected error = %v, got nil", test.input, test.err)
 		}
+
 		if diff := cmp.Diff(result, test.expected); diff != "" {
 			t.Errorf("parsePortRange(%q) mismatch (-want +got):\n%s", test.input, diff)
 		}

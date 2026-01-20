@@ -180,6 +180,7 @@ Success.`,
 				if err != nil {
 					t.Errorf("ParseLoginURLFromCLILogin() error = %v, wantErr %v", err, tt.wantErr)
 				}
+
 				if gotURL.String() != tt.wantURL {
 					t.Errorf("ParseLoginURLFromCLILogin() = %v, want %v", gotURL, tt.wantURL)
 				}
@@ -1066,6 +1067,7 @@ func TestEnsureHostname(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.want, "invalid-") {
@@ -1103,9 +1105,11 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "test-node" {
 					t.Errorf("hostname = %v, want test-node", hi.Hostname)
 				}
+
 				if hi.OS != "linux" {
 					t.Errorf("OS = %v, want linux", hi.OS)
 				}
@@ -1147,6 +1151,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "node-nkey1234" {
 					t.Errorf("hostname = %v, want node-nkey1234", hi.Hostname)
 				}
@@ -1162,6 +1167,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "unknown-node" {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
@@ -1179,6 +1185,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "unknown-node" {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
@@ -1200,18 +1207,23 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "test" {
 					t.Errorf("hostname = %v, want test", hi.Hostname)
 				}
+
 				if hi.OS != "windows" {
 					t.Errorf("OS = %v, want windows", hi.OS)
 				}
+
 				if hi.OSVersion != "10.0.19044" {
 					t.Errorf("OSVersion = %v, want 10.0.19044", hi.OSVersion)
 				}
+
 				if hi.DeviceModel != "test-device" {
 					t.Errorf("DeviceModel = %v, want test-device", hi.DeviceModel)
 				}
+
 				if hi.BackendLogID != "log123" {
 					t.Errorf("BackendLogID = %v, want log123", hi.BackendLogID)
 				}
@@ -1229,6 +1241,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
+
 				if len(hi.Hostname) != 63 {
 					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
 				}
@@ -1239,6 +1252,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			gotHostname := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.wantHostname, "invalid-") {
@@ -1265,6 +1279,7 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
+
 			result := EnsureHostname(hostinfo, "mkey", "nkey")
 			if len(result) > 63 {
 				t.Errorf("test case %d: hostname length = %d, want <= 63", i, len(result))

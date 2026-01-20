@@ -243,10 +243,12 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) {
 		var resp *tailcfg.RegisterResponse
+
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			return &tailcfg.RegisterRequest{}, regErr(err)
 		}
+
 		var regReq tailcfg.RegisterRequest
 		if err := json.Unmarshal(body, &regReq); err != nil {
 			return &regReq, regErr(err)
@@ -260,6 +262,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 				resp = &tailcfg.RegisterResponse{
 					Error: httpErr.Msg,
 				}
+
 				return &regReq, resp
 			}
 

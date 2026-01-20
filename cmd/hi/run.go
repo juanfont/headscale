@@ -48,6 +48,7 @@ func runIntegrationTest(env *command.Env) error {
 	if runConfig.Verbose {
 		log.Printf("Running pre-flight system checks...")
 	}
+
 	if err := runDoctorCheck(env.Context()); err != nil {
 		return fmt.Errorf("pre-flight checks failed: %w", err)
 	}
@@ -94,8 +95,10 @@ func detectGoVersion() string {
 
 // splitLines splits a string into lines without using strings.Split.
 func splitLines(s string) []string {
-	var lines []string
-	var current string
+	var (
+		lines   []string
+		current string
+	)
 
 	for _, char := range s {
 		if char == '\n' {

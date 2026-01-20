@@ -725,12 +725,14 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 
 	// Find the top-level directory to strip
 	var topLevelDir string
+
 	firstPass := tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := firstPass.Next()
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
@@ -747,6 +749,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
@@ -794,6 +797,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 				outFile.Close()
 				return fmt.Errorf("failed to copy file contents: %w", err)
 			}
+
 			outFile.Close()
 
 			// Set file permissions
@@ -844,10 +848,12 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 	// Check if the database file exists and has a schema
 	dbPath := "/tmp/integration_test_db.sqlite3"
+
 	fileInfo, err := t.Execute([]string{"ls", "-la", dbPath})
 	if err != nil {
 		return fmt.Errorf("database file does not exist at %s: %w", dbPath, err)
 	}
+
 	log.Printf("Database file info: %s", fileInfo)
 
 	// Check if the database has any tables (schema)
@@ -872,6 +878,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return fmt.Errorf("failed to read tar header: %w", err)
 		}
@@ -886,6 +893,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		// Extract the first regular file we find
 		if header.Typeflag == tar.TypeReg {
 			dbPath := path.Join(savePath, t.hostname+".db")
+
 			outFile, err := os.Create(dbPath)
 			if err != nil {
 				return fmt.Errorf("failed to create database file: %w", err)
@@ -893,6 +901,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 			written, err := io.Copy(outFile, tarReader)
 			outFile.Close()
+
 			if err != nil {
 				return fmt.Errorf("failed to copy database file: %w", err)
 			}
@@ -1059,6 +1068,7 @@ func (t *HeadscaleInContainer) CreateUser(
 	}
 
 	var u v1.User
+
 	err = json.Unmarshal([]byte(result), &u)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
@@ -1195,6 +1205,7 @@ func (t *HeadscaleInContainer) ListNodes(
 	users ...string,
 ) ([]*v1.Node, error) {
 	var ret []*v1.Node
+
 	execUnmarshal := func(command []string) error {
 		result, _, err := dockertestutil.ExecuteCommand(
 			t.container,
@@ -1206,6 +1217,7 @@ func (t *HeadscaleInContainer) ListNodes(
 		}
 
 		var nodes []*v1.Node
+
 		err = json.Unmarshal([]byte(result), &nodes)
 		if err != nil {
 			return fmt.Errorf("failed to unmarshal nodes: %w", err)
@@ -1245,7 +1257,7 @@ func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 		"nodes",
 		"delete",
 		"--identifier",
-		fmt.Sprintf("%d", nodeID),
+		strconv.FormatUint(nodeID, 10),
 		"--output",
 		"json",
 		"--force",
@@ -1309,6 +1321,7 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 	}
 
 	var users []*v1.User
+
 	err = json.Unmarshal([]byte(result), &users)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
@@ -1439,6 +1452,7 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 		if pidInt == 1 {
 			continue
 		}
+
 		pids = append(pids, pidInt)
 	}
 
@@ -1494,6 +1508,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	}
 
 	var node *v1.Node
+
 	err = json.Unmarshal([]byte(result), &node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal node response: %q, error: %w", result, err)

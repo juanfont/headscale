@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -40,7 +41,7 @@ func main() {
 // runIntegrationTest executes the integration test workflow.
 func runOnline(env *command.Env) error {
 	if mapConfig.Directory == "" {
-		return fmt.Errorf("directory is required")
+		return errors.New("directory is required")
 	}
 
 	resps, err := mapper.ReadMapResponsesFromDirectory(mapConfig.Directory)
@@ -57,5 +58,6 @@ func runOnline(env *command.Env) error {
 
 	os.Stderr.Write(out)
 	os.Stderr.Write([]byte("\n"))
+
 	return nil
 }

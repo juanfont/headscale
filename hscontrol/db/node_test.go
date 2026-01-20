@@ -497,6 +497,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes1) == 0 {
 					expectedRoutes1 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes1, node1ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -508,6 +509,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes2) == 0 {
 					expectedRoutes2 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes2, node2ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -745,12 +747,15 @@ func TestNodeNaming(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, new(mpp("100.64.0.66/32").Addr()), nil)
 		_, err = RegisterNodeForTest(tx, nodeShortHostname, new(mpp("100.64.0.67/32").Addr()), nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -999,6 +1004,7 @@ func TestListPeers(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
@@ -1084,6 +1090,7 @@ func TestListNodes(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err

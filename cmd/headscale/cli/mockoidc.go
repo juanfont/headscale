@@ -73,6 +73,7 @@ func mockOIDC() error {
 	}
 
 	var users []mockoidc.MockUser
+
 	err := json.Unmarshal([]byte(userStr), &users)
 	if err != nil {
 		return fmt.Errorf("unmarshalling users: %w", err)
@@ -137,6 +138,7 @@ func getMockOIDC(clientID string, clientSecret string, users []mockoidc.MockUser
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Info().Msgf("Request: %+v", r)
 			h.ServeHTTP(w, r)
+
 			if r.Response != nil {
 				log.Info().Msgf("Response: %+v", r.Response)
 			}

@@ -70,6 +70,7 @@ func TestUnmarshallOIDCClaims(t *testing.T) {
 				t.Errorf("UnmarshallOIDCClaims() error = %v", err)
 				return
 			}
+
 			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Errorf("UnmarshallOIDCClaims() mismatch (-want +got):\n%s", diff)
 			}
@@ -190,6 +191,7 @@ func TestOIDCClaimsIdentifier(t *testing.T) {
 			}
 			result := claims.Identifier()
 			assert.Equal(t, tt.expected, result)
+
 			if diff := cmp.Diff(tt.expected, result); diff != "" {
 				t.Errorf("Identifier() mismatch (-want +got):\n%s", diff)
 			}
@@ -282,6 +284,7 @@ func TestCleanIdentifier(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := CleanIdentifier(tt.identifier)
 			assert.Equal(t, tt.expected, result)
+
 			if diff := cmp.Diff(tt.expected, result); diff != "" {
 				t.Errorf("CleanIdentifier() mismatch (-want +got):\n%s", diff)
 			}
@@ -487,6 +490,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 			var user User
 
 			user.FromClaim(&got, tt.emailVerifiedRequired)
+
 			if diff := cmp.Diff(user, tt.want); diff != "" {
 				t.Errorf("TestOIDCClaimsJSONToUser() mismatch (-want +got):\n%s", diff)
 			}

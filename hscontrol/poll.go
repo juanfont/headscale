@@ -152,6 +152,7 @@ func (m *mapSession) serveLongPoll() {
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+
 		disconnected := true
 		// Wait up to 10 seconds for the node to reconnect.
 		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
@@ -160,6 +161,7 @@ func (m *mapSession) serveLongPoll() {
 				disconnected = false
 				break
 			}
+
 			<-ticker.C
 		}
 
@@ -215,8 +217,10 @@ func (m *mapSession) serveLongPoll() {
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
+
 		return
 	}
+
 	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("AddNode succeeded in poll session because node added to batcher")
 
 	m.h.Change(mapReqChange)

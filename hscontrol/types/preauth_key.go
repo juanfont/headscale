@@ -128,6 +128,7 @@ func (pak *PreAuthKey) Validate() error {
 			if pak.Expiration != nil {
 				return *pak.Expiration
 			}
+
 			return time.Time{}
 		}()).
 		Time("now", time.Now()).

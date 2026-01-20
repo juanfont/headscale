@@ -71,10 +71,12 @@ func (sc *StatsCollector) StartCollection(ctx context.Context, runID string, ver
 
 	// Start monitoring existing containers
 	sc.wg.Add(1)
+
 	go sc.monitorExistingContainers(ctx, runID, verbose)
 
 	// Start Docker events monitoring for new containers
 	sc.wg.Add(1)
+
 	go sc.monitorDockerEvents(ctx, runID, verbose)
 
 	if verbose {
@@ -88,10 +90,12 @@ func (sc *StatsCollector) StartCollection(ctx context.Context, runID string, ver
 func (sc *StatsCollector) StopCollection() {
 	// Check if already stopped without holding lock
 	sc.mutex.RLock()
+
 	if !sc.collectionStarted {
 		sc.mutex.RUnlock()
 		return
 	}
+
 	sc.mutex.RUnlock()
 
 	// Signal stop to all goroutines
@@ -115,6 +119,7 @@ func (sc *StatsCollector) monitorExistingContainers(ctx context.Context, runID s
 		if verbose {
 			log.Printf("Failed to list existing containers: %v", err)
 		}
+
 		return
 	}
 
@@ -168,6 +173,7 @@ func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string,
 			if verbose {
 				log.Printf("Error in Docker events stream: %v", err)
 			}
+
 			return
 		}
 	}
@@ -214,6 +220,7 @@ func (sc *StatsCollector) startStatsForContainer(ctx context.Context, containerI
 	}
 
 	sc.wg.Add(1)
+
 	go sc.collectStatsForContainer(ctx, containerID, verbose)
 }
 
@@ -227,11 +234,13 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 		if verbose {
 			log.Printf("Failed to get stats stream for container %s: %v", containerID[:12], err)
 		}
+
 		return
 	}
 	defer statsResponse.Body.Close()
 
 	decoder := json.NewDecoder(statsResponse.Body)
+
 	var prevStats *container.Stats
 
 	for {
@@ -247,6 +256,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 				if err.Error() != "EOF" && verbose {
 					log.Printf("Failed to decode stats for container %s: %v", containerID[:12], err)
 				}
+
 				return
 			}
 
@@ -262,8 +272,10 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 			// Store the sample (skip first sample since CPU calculation needs previous stats)
 			if prevStats != nil {
 				// Get container stats reference without holding the main mutex
-				var containerStats *ContainerStats
-				var exists bool
+				var (
+					containerStats *ContainerStats
+					exists         bool
+				)
 
 				sc.mutex.RLock()
 				containerStats, exists = sc.containers[containerID]
@@ -332,10 +344,12 @@ type StatsSummary struct {
 func (sc *StatsCollector) GetSummary() []ContainerStatsSummary {
 	// Take snapshot of container references without holding main lock long
 	sc.mutex.RLock()
+
 	containerRefs := make([]*ContainerStats, 0, len(sc.containers))
 	for _, containerStats := range sc.containers {
 		containerRefs = append(containerRefs, containerStats)
 	}
+
 	sc.mutex.RUnlock()
 
 	summaries := make([]ContainerStatsSummary, 0, len(containerRefs))
@@ -393,9 +407,11 @@ func calculateStatsSummary(values []float64) StatsSummary {
 		if value < min {
 			min = value
 		}
+
 		if value > max {
 			max = value
 		}
+
 		sum += value
 	}
 
@@ -435,6 +451,7 @@ func (sc *StatsCollector) CheckMemoryLimits(hsLimitMB, tsLimitMB float64) []Memo
 	}
 
 	summaries := sc.GetSummary()
+
 	var violations []MemoryViolation
 
 	for _, summary := range summaries {

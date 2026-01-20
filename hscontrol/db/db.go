@@ -155,6 +155,7 @@ AND auth_key_id NOT IN (
 					nodeRoutes := map[uint64][]netip.Prefix{}
 
 					var routes []types.Route
+
 					err = tx.Find(&routes).Error
 					if err != nil {
 						return fmt.Errorf("fetching routes: %w", err)
@@ -255,9 +256,11 @@ AND auth_key_id NOT IN (
 
 					// Check if routes table exists and drop it (should have been migrated already)
 					var routesExists bool
+
 					err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='routes'").Row().Scan(&routesExists)
 					if err == nil && routesExists {
 						log.Info().Msg("Dropping leftover routes table")
+
 						if err := tx.Exec("DROP TABLE routes").Error; err != nil {
 							return fmt.Errorf("dropping routes table: %w", err)
 						}
@@ -280,6 +283,7 @@ AND auth_key_id NOT IN (
 					for _, table := range tablesToRename {
 						// Check if table exists before renaming
 						var exists bool
+
 						err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Row().Scan(&exists)
 						if err != nil {
 							return fmt.Errorf("checking if table %s exists: %w", table, err)
@@ -761,6 +765,7 @@ AND auth_key_id NOT IN (
 
 		// or else it blocks...
 		sqlConn.SetMaxIdleConns(maxIdleConns)
+
 		sqlConn.SetMaxOpenConns(maxOpenConns)
 		defer sqlConn.SetMaxIdleConns(1)
 		defer sqlConn.SetMaxOpenConns(1)

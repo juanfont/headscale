@@ -23,6 +23,7 @@ func usernameAndIDFlag(cmd *cobra.Command) {
 // If both are empty, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 	username, _ := cmd.Flags().GetString("name")
+
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
 		err := errors.New("--name or --identifier flag is required")

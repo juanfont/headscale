@@ -142,6 +142,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 		if !ok {
 			log.Error().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed")
 			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed because node not found in NodeStore")
+
 			return
 		}
 
@@ -157,10 +158,12 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	app.ephemeralGC = ephemeralGC
 
 	var authProvider AuthProvider
+
 	authProvider = NewAuthProviderWeb(cfg.ServerURL)
 	if cfg.OIDC.Issuer != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+
 		oidcProvider, err := NewAuthProviderOIDC(
 			ctx,
 			&app,
@@ -177,6 +180,7 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 			authProvider = oidcProvider
 		}
 	}
+
 	app.authProvider = authProvider
 
 	if app.cfg.TailcfgDNSConfig != nil && app.cfg.TailcfgDNSConfig.Proxied { // if MagicDNS
@@ -251,9 +255,11 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 	lastExpiryCheck := time.Unix(0, 0)
 
 	derpTickerChan := make(<-chan time.Time)
+
 	if h.cfg.DERP.AutoUpdate && h.cfg.DERP.UpdateFrequency != 0 {
 		derpTicker := time.NewTicker(h.cfg.DERP.UpdateFrequency)
 		defer derpTicker.Stop()
+
 		derpTickerChan = derpTicker.C
 	}
 
@@ -271,8 +277,10 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			return
 
 		case <-expireTicker.C:
-			var expiredNodeChanges []change.Change
-			var changed bool
+			var (
+				expiredNodeChanges []change.Change
+				changed            bool
+			)
 
 			lastExpiryCheck, expiredNodeChanges, changed = h.state.ExpireExpiredNodes(lastExpiryCheck)
 
@@ -287,11 +295,13 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 
 		case <-derpTickerChan:
 			log.Info().Msg("Fetching DERPMap updates")
+
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
 				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
 				if err != nil {
 					return nil, err
 				}
+
 				if h.cfg.DERP.ServerEnabled && h.cfg.DERP.AutomaticallyAddEmbeddedDerpRegion {
 					region, _ := h.DERPServer.GenerateRegion()
 					derpMap.Regions[region.RegionID] = &region
@@ -303,6 +313,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 				log.Error().Err(err).Msg("failed to build new DERPMap, retrying later")
 				continue
 			}
+
 			h.state.SetDERPMap(derpMap)
 
 			h.Change(change.DERPMap())
@@ -311,6 +322,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			if !ok {
 				continue
 			}
+
 			h.cfg.TailcfgDNSConfig.ExtraRecords = records
 
 			h.Change(change.ExtraRecords())
@@ -390,6 +402,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 
 		writeUnauthorized := func(statusCode int) {
 			writer.WriteHeader(statusCode)
+
 			if _, err := writer.Write([]byte("Unauthorized")); err != nil {
 				log.Error().Err(err).Msg("writing HTTP response failed")
 			}
@@ -486,6 +499,7 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 // Serve launches the HTTP and gRPC server service Headscale and the API.
 func (h *Headscale) Serve() error {
 	var err error
+
 	capver.CanOldCodeBeCleanedUp()
 
 	if profilingEnabled {
@@ -512,6 +526,7 @@ func (h *Headscale) Serve() error {
 		Msg("Clients with a lower minimum version will be rejected")
 
 	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
+
 	h.mapBatcher.Start()
 	defer h.mapBatcher.Close()
 
@@ -545,6 +560,7 @@ func (h *Headscale) Serve() error {
 	// around between restarts, they will reconnect and the GC will
 	// be cancelled.
 	go h.ephemeralGC.Start()
+
 	ephmNodes := h.state.ListEphemeralNodes()
 	for _, node := range ephmNodes.All() {
 		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
@@ -555,7 +571,9 @@ func (h *Headscale) Serve() error {
 		if err != nil {
 			return fmt.Errorf("setting up extrarecord manager: %w", err)
 		}
+
 		h.cfg.TailcfgDNSConfig.ExtraRecords = h.extraRecordMan.Records()
+
 		go h.extraRecordMan.Run()
 		defer h.extraRecordMan.Close()
 	}
@@ -564,6 +582,7 @@ func (h *Headscale) Serve() error {
 	// records updates
 	scheduleCtx, scheduleCancel := context.WithCancel(context.Background())
 	defer scheduleCancel()
+
 	go h.scheduledTasks(scheduleCtx)
 
 	if zl.GlobalLevel() == zl.TraceLevel {
@@ -751,7 +770,6 @@ func (h *Headscale) Serve() error {
 		log.Info().Msg("metrics server disabled (metrics_listen_addr is empty)")
 	}
 
-
 	var tailsqlContext context.Context
 	if tailsqlEnabled {
 		if h.cfg.Database.Type != types.DatabaseSqlite {
@@ -863,6 +881,7 @@ func (h *Headscale) Serve() error {
 
 				// Close state connections
 				info("closing state and database")
+
 				err = h.state.Close()
 				if err != nil {
 					log.Error().Err(err).Msg("failed to close state")

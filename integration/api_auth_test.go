@@ -35,6 +35,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -46,6 +47,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 	// Create an API key using the CLI
 	var validAPIKey string
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		apiKeyOutput, err := headscale.Execute(
 			[]string{
@@ -63,7 +65,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 	// Get the API endpoint
 	endpoint := headscale.GetEndpoint()
-	apiURL := fmt.Sprintf("%s/api/v1/user", endpoint)
+	apiURL := endpoint + "/api/v1/user"
 
 	// Create HTTP client
 	client := &http.Client{
@@ -81,6 +83,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 		resp, err := client.Do(req)
 		require.NoError(t, err)
+
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
@@ -99,6 +102,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		// Should NOT contain user data after "Unauthorized"
 		// This is the security bypass - if users array is present, auth was bypassed
 		var jsonCheck map[string]any
+
 		jsonErr := json.Unmarshal(body, &jsonCheck)
 
 		// If we can unmarshal JSON and it contains "users", that's the bypass
@@ -132,6 +136,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 		resp, err := client.Do(req)
 		require.NoError(t, err)
+
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
@@ -165,6 +170,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 		resp, err := client.Do(req)
 		require.NoError(t, err)
+
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
@@ -193,10 +199,11 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		// Expected: Should return 200 with user data (this is the authorized case)
 		req, err := http.NewRequest("GET", apiURL, nil)
 		require.NoError(t, err)
-		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", validAPIKey))
+		req.Header.Set("Authorization", "Bearer "+validAPIKey)
 
 		resp, err := client.Do(req)
 		require.NoError(t, err)
+
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
@@ -208,16 +215,19 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 
 		// Should be able to parse as protobuf JSON
 		var response v1.ListUsersResponse
+
 		err = protojson.Unmarshal(body, &response)
 		assert.NoError(t, err, "Response should be valid protobuf JSON with valid API key")
 
 		// Should contain our test users
 		users := response.GetUsers()
 		assert.Len(t, users, 3, "Should have 3 users")
+
 		userNames := make([]string, len(users))
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
+
 		assert.Contains(t, userNames, "user1")
 		assert.Contains(t, userNames, "user2")
 		assert.Contains(t, userNames, "user3")
@@ -234,6 +244,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -254,10 +265,11 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+
 	validAPIKey := strings.TrimSpace(apiKeyOutput)
 
 	endpoint := headscale.GetEndpoint()
-	apiURL := fmt.Sprintf("%s/api/v1/user", endpoint)
+	apiURL := endpoint + "/api/v1/user"
 
 	t.Run("Curl_NoAuth", func(t *testing.T) {
 		// Execute curl from inside the headscale container without auth
@@ -274,16 +286,21 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 
 		// Parse the output
 		lines := strings.Split(curlOutput, "\n")
-		var httpCode string
-		var responseBody string
 
+		var (
+			httpCode     string
+			responseBody string
+		)
+
+		var responseBodySb295 strings.Builder
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
 				httpCode = after
 			} else {
-				responseBody += line
+				responseBodySb295.WriteString(line)
 			}
 		}
+		responseBody += responseBodySb295.String()
 
 		// Should return 401
 		assert.Equal(t, "401", httpCode,
@@ -320,16 +337,21 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		require.NoError(t, err)
 
 		lines := strings.Split(curlOutput, "\n")
-		var httpCode string
-		var responseBody string
 
+		var (
+			httpCode     string
+			responseBody string
+		)
+
+		var responseBodySb344 strings.Builder
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
 				httpCode = after
 			} else {
-				responseBody += line
+				responseBodySb344.WriteString(line)
 			}
 		}
+		responseBody += responseBodySb344.String()
 
 		assert.Equal(t, "401", httpCode)
 		assert.Contains(t, responseBody, "Unauthorized")
@@ -346,7 +368,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 				"curl",
 				"-s",
 				"-H",
-				fmt.Sprintf("Authorization: Bearer %s", validAPIKey),
+				"Authorization: Bearer " + validAPIKey,
 				"-w",
 				"\nHTTP_CODE:%{http_code}",
 				apiURL,
@@ -355,8 +377,11 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		require.NoError(t, err)
 
 		lines := strings.Split(curlOutput, "\n")
-		var httpCode string
-		var responseBody strings.Builder
+
+		var (
+			httpCode     string
+			responseBody strings.Builder
+		)
 
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
@@ -372,8 +397,10 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 
 		// Should contain user data
 		var response v1.ListUsersResponse
+
 		err = protojson.Unmarshal([]byte(responseBody.String()), &response)
 		assert.NoError(t, err, "Response should be valid protobuf JSON")
+
 		users := response.GetUsers()
 		assert.Len(t, users, 2, "Should have 2 users")
 	})
@@ -391,6 +418,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -420,11 +448,12 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+
 	validAPIKey := strings.TrimSpace(apiKeyOutput)
 
 	// Get the gRPC endpoint
 	// For gRPC, we need to use the hostname and port 50443
-	grpcAddress := fmt.Sprintf("%s:50443", headscale.GetHostname())
+	grpcAddress := headscale.GetHostname() + ":50443"
 
 	t.Run("gRPC_NoAPIKey", func(t *testing.T) {
 		// Test 1: Try to use CLI without API key (should fail)
@@ -487,6 +516,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		// CLI outputs the users array directly, not wrapped in ListUsersResponse
 		// Parse as JSON array (CLI uses json.Marshal, not protojson)
 		var users []*v1.User
+
 		err = json.Unmarshal([]byte(output), &users)
 		assert.NoError(t, err, "Response should be valid JSON array")
 		assert.Len(t, users, 2, "Should have 2 users")
@@ -495,6 +525,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
+
 		assert.Contains(t, userNames, "grpcuser1")
 		assert.Contains(t, userNames, "grpcuser2")
 	})
@@ -513,6 +544,7 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -540,9 +572,10 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+
 	validAPIKey := strings.TrimSpace(apiKeyOutput)
 
-	grpcAddress := fmt.Sprintf("%s:50443", headscale.GetHostname())
+	grpcAddress := headscale.GetHostname() + ":50443"
 
 	// Create a config file for testing
 	configWithoutKey := fmt.Sprintf(`
@@ -643,6 +676,7 @@ cli:
 		// CLI outputs the users array directly, not wrapped in ListUsersResponse
 		// Parse as JSON array (CLI uses json.Marshal, not protojson)
 		var users []*v1.User
+
 		err = json.Unmarshal([]byte(output), &users)
 		assert.NoError(t, err, "Response should be valid JSON array")
 		assert.Len(t, users, 2, "Should have 2 users")
@@ -651,6 +685,7 @@ cli:
 		for i, u := range users {
 			userNames[i] = u.GetName()
 		}
+
 		assert.Contains(t, userNames, "cliuser1")
 		assert.Contains(t, userNames, "cliuser2")
 	})

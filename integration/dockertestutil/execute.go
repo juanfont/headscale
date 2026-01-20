@@ -41,6 +41,7 @@ type buffer struct {
 func (b *buffer) Write(p []byte) (n int, err error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.Write(p)
 }
 
@@ -49,6 +50,7 @@ func (b *buffer) Write(p []byte) (n int, err error) {
 func (b *buffer) String() string {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.String()
 }
 

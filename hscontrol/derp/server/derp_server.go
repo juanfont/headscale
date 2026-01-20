@@ -74,9 +74,11 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	if err != nil {
 		return tailcfg.DERPRegion{}, err
 	}
-	var host string
-	var port int
-	var portStr string
+	var (
+		host    string
+		port    int
+		portStr string
+	)
 
 	// Extract hostname and port from URL
 	host, portStr, err = net.SplitHostPort(serverURL.Host)
@@ -205,6 +207,7 @@ func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Reques
 		return
 	}
 	defer websocketConn.Close(websocket.StatusInternalError, "closing")
+
 	if websocketConn.Subprotocol() != "derp" {
 		websocketConn.Close(websocket.StatusPolicyViolation, "client must speak the derp subprotocol")
 
@@ -309,6 +312,7 @@ func DERPBootstrapDNSHandler(
 		resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 		defer cancel()
 		var resolver net.Resolver
+
 		for _, region := range derpMap.Regions().All() {
 			for _, node := range region.Nodes().All() { // we don't care if we override some nodes
 				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
@@ -320,6 +324,7 @@ func DERPBootstrapDNSHandler(
 
 					continue
 				}
+
 				dnsEntries[node.HostName()] = addrs
 			}
 		}

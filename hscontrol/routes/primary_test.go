@@ -130,6 +130,7 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("192.168.1.0/24"))
 				pr.SetRoutes(2, mp("192.168.2.0/24"))
 				pr.SetRoutes(1) // Deregister by setting no routes
+
 				return pr.SetRoutes(1, mp("192.168.3.0/24"))
 			},
 			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
@@ -153,8 +154,9 @@ func TestPrimaryRoutes(t *testing.T) {
 		{
 			name: "multiple-nodes-register-same-route",
 			operations: func(pr *PrimaryRoutes) bool {
-				pr.SetRoutes(1, mp("192.168.1.0/24"))        // false
-				pr.SetRoutes(2, mp("192.168.1.0/24"))        // true
+				pr.SetRoutes(1, mp("192.168.1.0/24")) // false
+				pr.SetRoutes(2, mp("192.168.1.0/24")) // true
+
 				return pr.SetRoutes(3, mp("192.168.1.0/24")) // false
 			},
 			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
@@ -182,7 +184,8 @@ func TestPrimaryRoutes(t *testing.T) {
 				pr.SetRoutes(1, mp("192.168.1.0/24")) // false
 				pr.SetRoutes(2, mp("192.168.1.0/24")) // true, 1 primary
 				pr.SetRoutes(3, mp("192.168.1.0/24")) // false, 1 primary
-				return pr.SetRoutes(1)                // true, 2 primary
+
+				return pr.SetRoutes(1) // true, 2 primary
 			},
 			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
 				2: {
@@ -393,6 +396,7 @@ func TestPrimaryRoutes(t *testing.T) {
 			operations: func(pr *PrimaryRoutes) bool {
 				pr.SetRoutes(1, mp("10.0.0.0/16"), mp("0.0.0.0/0"), mp("::/0"))
 				pr.SetRoutes(3, mp("0.0.0.0/0"), mp("::/0"))
+
 				return pr.SetRoutes(2, mp("0.0.0.0/0"), mp("::/0"))
 			},
 			expectedRoutes: map[types.NodeID]set.Set[netip.Prefix]{
@@ -413,15 +417,20 @@ func TestPrimaryRoutes(t *testing.T) {
 			operations: func(pr *PrimaryRoutes) bool {
 				var wg sync.WaitGroup
 				wg.Add(2)
+
 				var change1, change2 bool
+
 				go func() {
 					defer wg.Done()
+
 					change1 = pr.SetRoutes(1, mp("192.168.1.0/24"))
 				}()
 				go func() {
 					defer wg.Done()
+
 					change2 = pr.SetRoutes(2, mp("192.168.2.0/24"))
 				}()
+
 				wg.Wait()
 
 				return change1 || change2
@@ -449,17 +458,21 @@ func TestPrimaryRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pr := New()
+
 			change := tt.operations(pr)
 			if change != tt.expectedChange {
 				t.Errorf("change = %v, want %v", change, tt.expectedChange)
 			}
+
 			comps := append(util.Comparers, cmpopts.EquateEmpty())
 			if diff := cmp.Diff(tt.expectedRoutes, pr.routes, comps...); diff != "" {
 				t.Errorf("routes mismatch (-want +got):\n%s", diff)
 			}
+
 			if diff := cmp.Diff(tt.expectedPrimaries, pr.primaries, comps...); diff != "" {
 				t.Errorf("primaries mismatch (-want +got):\n%s", diff)
 			}
+
 			if diff := cmp.Diff(tt.expectedIsPrimary, pr.isPrimary, comps...); diff != "" {
 				t.Errorf("isPrimary mismatch (-want +got):\n%s", diff)
 			}

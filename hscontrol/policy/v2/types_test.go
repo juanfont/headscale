@@ -81,6 +81,7 @@ func TestMarshalJSON(t *testing.T) {
 
 	// Unmarshal back to verify round trip
 	var roundTripped Policy
+
 	err = json.Unmarshal(marshalled, &roundTripped)
 	require.NoError(t, err)
 
@@ -2020,6 +2021,7 @@ func TestResolvePolicy(t *testing.T) {
 			}
 
 			var prefs []netip.Prefix
+
 			if ips != nil {
 				if p := ips.Prefixes(); len(p) > 0 {
 					prefs = p
@@ -2191,9 +2193,11 @@ func TestResolveAutoApprovers(t *testing.T) {
 				t.Errorf("resolveAutoApprovers() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
 				t.Errorf("resolveAutoApprovers() mismatch (-want +got):\n%s", diff)
 			}
+
 			if tt.wantAllIPRoutes != nil {
 				if gotAllIPRoutes == nil {
 					t.Error("resolveAutoApprovers() expected non-nil allIPRoutes, got nil")
@@ -2340,6 +2344,7 @@ func mustIPSet(prefixes ...string) *netipx.IPSet {
 	for _, p := range prefixes {
 		builder.AddPrefix(mp(p))
 	}
+
 	ipSet, _ := builder.IPSet()
 
 	return ipSet
@@ -2349,6 +2354,7 @@ func ipSetComparer(x, y *netipx.IPSet) bool {
 	if x == nil || y == nil {
 		return x == y
 	}
+
 	return cmp.Equal(x.Prefixes(), y.Prefixes(), util.Comparers...)
 }
 
@@ -2577,6 +2583,7 @@ func TestResolveTagOwners(t *testing.T) {
 				t.Errorf("resolveTagOwners() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
+
 			if diff := cmp.Diff(tt.want, got, cmps...); diff != "" {
 				t.Errorf("resolveTagOwners() mismatch (-want +got):\n%s", diff)
 			}
@@ -2852,6 +2859,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 				require.ErrorContains(t, err, tt.wantErr)
 				return
 			}
+
 			require.NoError(t, err)
 
 			got := pm.NodeCanHaveTag(tt.node.View(), tt.tag)
@@ -3112,6 +3120,7 @@ func TestACL_UnmarshalJSON_WithCommentFields(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var acl ACL
+
 			err := json.Unmarshal([]byte(tt.input), &acl)
 
 			if tt.wantErr {
@@ -3163,6 +3172,7 @@ func TestACL_UnmarshalJSON_Roundtrip(t *testing.T) {
 
 	// Unmarshal back
 	var unmarshaled ACL
+
 	err = json.Unmarshal(jsonBytes, &unmarshaled)
 	require.NoError(t, err)
 
@@ -3241,12 +3251,13 @@ func TestACL_UnmarshalJSON_InvalidAction(t *testing.T) {
 	assert.Contains(t, err.Error(), `invalid action "deny"`)
 }
 
-// Helper function to parse aliases for testing
+// Helper function to parse aliases for testing.
 func mustParseAlias(s string) Alias {
 	alias, err := parseAlias(s)
 	if err != nil {
 		panic(err)
 	}
+
 	return alias
 }
 

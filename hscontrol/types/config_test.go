@@ -363,6 +363,7 @@ noise:
 
 	// Populate a custom config file
 	configFilePath := filepath.Join(tmpDir, "config.yaml")
+
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
 	if err != nil {
 		t.Fatalf("Couldn't write file %s", configFilePath)
@@ -398,10 +399,12 @@ server_url: http://127.0.0.1:8080
 tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: TLS-ALPN-01
 `)
+
 	err = os.WriteFile(configFilePath, configYaml, 0o600)
 	if err != nil {
 		t.Fatalf("Couldn't write file %s", configFilePath)
 	}
+
 	err = LoadConfig(tmpDir, false)
 	require.NoError(t, err)
 }
@@ -463,6 +466,7 @@ func TestSafeServerURL(t *testing.T) {
 
 				return
 			}
+
 			assert.NoError(t, err)
 		})
 	}

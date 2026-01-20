@@ -47,6 +47,7 @@ func SaveLog(
 	}
 
 	var stdout, stderr bytes.Buffer
+
 	err = WriteLog(pool, resource, &stdout, &stderr)
 	if err != nil {
 		return "", "", err

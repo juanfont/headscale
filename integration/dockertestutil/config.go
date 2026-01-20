@@ -34,6 +34,7 @@ func DockerAddIntegrationLabels(opts *dockertest.RunOptions, testType string) {
 	if opts.Labels == nil {
 		opts.Labels = make(map[string]string)
 	}
+
 	opts.Labels["hi.run-id"] = runID
 	opts.Labels["hi.test-type"] = testType
 }

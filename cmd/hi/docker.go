@@ -60,6 +60,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		if config.Verbose {
 			log.Printf("Running pre-test cleanup...")
 		}
+
 		if err := cleanupBeforeTest(ctx); err != nil && config.Verbose {
 			log.Printf("Warning: pre-test cleanup failed: %v", err)
 		}
@@ -95,13 +96,16 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	// Start stats collection for container resource monitoring (if enabled)
 	var statsCollector *StatsCollector
+
 	if config.Stats {
 		var err error
+
 		statsCollector, err = NewStatsCollector()
 		if err != nil {
 			if config.Verbose {
 				log.Printf("Warning: failed to create stats collector: %v", err)
 			}
+
 			statsCollector = nil
 		}
 
@@ -140,6 +144,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		if len(violations) > 0 {
 			log.Printf("MEMORY LIMIT VIOLATIONS DETECTED:")
 			log.Printf("=================================")
+
 			for _, violation := range violations {
 				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB",
 					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
@@ -347,6 +352,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	maxWaitTime := 10 * time.Second
 	checkInterval := 500 * time.Millisecond
 	timeout := time.After(maxWaitTime)
+
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -356,6 +362,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 			if verbose {
 				log.Printf("Timeout waiting for container finalization, proceeding with artifact extraction")
 			}
+
 			return nil
 		case <-ticker.C:
 			allFinalized := true
@@ -366,12 +373,14 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 					if verbose {
 						log.Printf("Warning: failed to inspect container %s: %v", testCont.name, err)
 					}
+
 					continue
 				}
 
 				// Check if container is in a final state
 				if !isContainerFinalized(inspect.State) {
 					allFinalized = false
+
 					if verbose {
 						log.Printf("Container %s still finalizing (state: %s)", testCont.name, inspect.State.Status)
 					}
@@ -384,6 +393,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 				if verbose {
 					log.Printf("All test containers finalized, ready for artifact extraction")
 				}
+
 				return nil
 			}
 		}
@@ -403,10 +413,12 @@ func findProjectRoot(startPath string) string {
 		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
 			return current
 		}
+
 		parent := filepath.Dir(current)
 		if parent == current {
 			return startPath
 		}
+
 		current = parent
 	}
 }
@@ -416,6 +428,7 @@ func boolToInt(b bool) int {
 	if b {
 		return 1
 	}
+
 	return 0
 }
 
@@ -435,6 +448,7 @@ func createDockerClient() (*client.Client, error) {
 	}
 
 	var clientOpts []client.Opt
+
 	clientOpts = append(clientOpts, client.WithAPIVersionNegotiation())
 
 	if contextInfo != nil {
@@ -444,6 +458,7 @@ func createDockerClient() (*client.Client, error) {
 					if runConfig.Verbose {
 						log.Printf("Using Docker host from context '%s': %s", contextInfo.Name, host)
 					}
+
 					clientOpts = append(clientOpts, client.WithHost(host))
 				}
 			}
@@ -460,6 +475,7 @@ func createDockerClient() (*client.Client, error) {
 // getCurrentDockerContext retrieves the current Docker context information.
 func getCurrentDockerContext() (*DockerContext, error) {
 	cmd := exec.Command("docker", "context", "inspect")
+
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get docker context: %w", err)
@@ -491,6 +507,7 @@ func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageNa
 		if client.IsErrNotFound(err) {
 			return false, nil
 		}
+
 		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
 	}
 
@@ -509,6 +526,7 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 		if verbose {
 			log.Printf("Image %s is available locally", imageName)
 		}
+
 		return nil
 	}
 
@@ -533,6 +551,7 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 		if err != nil {
 			return fmt.Errorf("failed to read pull output: %w", err)
 		}
+
 		log.Printf("Image %s pulled successfully", imageName)
 	}
 
@@ -547,9 +566,11 @@ func listControlFiles(logsDir string) {
 		return
 	}
 
-	var logFiles []string
-	var dataFiles []string
-	var dataDirs []string
+	var (
+		logFiles  []string
+		dataFiles []string
+		dataDirs  []string
+	)
 
 	for _, entry := range entries {
 		name := entry.Name()
@@ -578,6 +599,7 @@ func listControlFiles(logsDir string) {
 
 	if len(logFiles) > 0 {
 		log.Printf("Headscale logs:")
+
 		for _, file := range logFiles {
 			log.Printf("  %s", file)
 		}
@@ -585,9 +607,11 @@ func listControlFiles(logsDir string) {
 
 	if len(dataFiles) > 0 || len(dataDirs) > 0 {
 		log.Printf("Headscale data:")
+
 		for _, file := range dataFiles {
 			log.Printf("  %s", file)
 		}
+
 		for _, dir := range dataDirs {
 			log.Printf("  %s/", dir)
 		}
@@ -612,6 +636,7 @@ func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDi
 	currentTestContainers := getCurrentTestContainers(containers, testContainerID, verbose)
 
 	extractedCount := 0
+
 	for _, cont := range currentTestContainers {
 		// Extract container logs and tar files
 		if err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose); err != nil {
@@ -622,6 +647,7 @@ func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDi
 			if verbose {
 				log.Printf("Extracted artifacts from container %s (%s)", cont.name, cont.ID[:12])
 			}
+
 			extractedCount++
 		}
 	}
@@ -645,11 +671,13 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 
 	// Find the test container to get its run ID label
 	var runID string
+
 	for _, cont := range containers {
 		if cont.ID == testContainerID {
 			if cont.Labels != nil {
 				runID = cont.Labels["hi.run-id"]
 			}
+
 			break
 		}
 	}

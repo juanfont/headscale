@@ -372,18 +372,23 @@ func (c *Config) ToURL() (string, error) {
 	if c.BusyTimeout > 0 {
 		pragmas = append(pragmas, fmt.Sprintf("busy_timeout=%d", c.BusyTimeout))
 	}
+
 	if c.JournalMode != "" {
 		pragmas = append(pragmas, fmt.Sprintf("journal_mode=%s", c.JournalMode))
 	}
+
 	if c.AutoVacuum != "" {
 		pragmas = append(pragmas, fmt.Sprintf("auto_vacuum=%s", c.AutoVacuum))
 	}
+
 	if c.WALAutocheckpoint >= 0 {
 		pragmas = append(pragmas, fmt.Sprintf("wal_autocheckpoint=%d", c.WALAutocheckpoint))
 	}
+
 	if c.Synchronous != "" {
 		pragmas = append(pragmas, fmt.Sprintf("synchronous=%s", c.Synchronous))
 	}
+
 	if c.ForeignKeys {
 		pragmas = append(pragmas, "foreign_keys=ON")
 	}

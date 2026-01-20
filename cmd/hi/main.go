@@ -82,9 +82,11 @@ func cleanAll(ctx context.Context) error {
 	if err := killTestContainers(ctx); err != nil {
 		return err
 	}
+
 	if err := pruneDockerNetworks(ctx); err != nil {
 		return err
 	}
+
 	if err := cleanOldImages(ctx); err != nil {
 		return err
 	}

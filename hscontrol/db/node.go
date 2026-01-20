@@ -206,6 +206,7 @@ func SetTags(
 
 	slices.Sort(tags)
 	tags = slices.Compact(tags)
+
 	b, err := json.Marshal(tags)
 	if err != nil {
 		return err
@@ -378,6 +379,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		if ipv4 == nil {
 			ipv4 = oldNode.IPv4
 		}
+
 		if ipv6 == nil {
 			ipv6 = oldNode.IPv6
 		}
@@ -406,6 +408,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv6 = ipv6
 
 	var err error
+
 	node.Hostname, err = util.NormaliseHostname(node.Hostname)
 	if err != nil {
 		newHostname := util.InvalidString()
@@ -693,9 +696,12 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 	}
 
 	var registeredNode *types.Node
+
 	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
+
 		registeredNode, err = RegisterNodeForTest(tx, *node, ipv4, ipv6)
+
 		return err
 	})
 	if err != nil {

@@ -156,6 +156,7 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 	// Strip invalid DNS characters for givenName comparison
 	normalised := strings.ToLower(node.Hostname)
 	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+
 	return node.GivenName == normalised
 }
 
@@ -464,7 +465,7 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
@@ -579,6 +580,7 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 			Str("rejected_hostname", hostInfo.Hostname).
 			Err(err).
 			Msg("Rejecting invalid hostname update from hostinfo")
+
 		return
 	}
 
@@ -670,6 +672,7 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 func (nodes Nodes) DebugString() string {
 	var sb strings.Builder
 	sb.WriteString("Nodes:\n")
+
 	for _, node := range nodes {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")

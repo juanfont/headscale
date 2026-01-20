@@ -136,7 +136,7 @@ func TestNetInfoPreservationInRegistrationFlow(t *testing.T) {
 	})
 }
 
-// Simple helper function for tests
+// Simple helper function for tests.
 func createTestNodeSimple(id types.NodeID) *types.Node {
 	user := types.User{
 		Name: "test-user",

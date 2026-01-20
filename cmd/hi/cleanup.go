@@ -69,8 +69,10 @@ func killTestContainers(ctx context.Context) error {
 	}
 
 	removed := 0
+
 	for _, cont := range containers {
 		shouldRemove := false
+
 		for _, name := range cont.Names {
 			if strings.Contains(name, "headscale-test-suite") ||
 				strings.Contains(name, "hs-") ||
@@ -259,8 +261,10 @@ func cleanOldImages(ctx context.Context) error {
 	}
 
 	removed := 0
+
 	for _, img := range images {
 		shouldRemove := false
+
 		for _, tag := range img.RepoTags {
 			if strings.Contains(tag, "hs-") ||
 				strings.Contains(tag, "headscale-integration") ||
@@ -302,6 +306,7 @@ func cleanCacheVolume(ctx context.Context) error {
 	defer cli.Close()
 
 	volumeName := "hs-integration-go-cache"
+
 	err = cli.VolumeRemove(ctx, volumeName, true)
 	if err != nil {
 		if errdefs.IsNotFound(err) {
