@@ -23,8 +23,7 @@ var serveCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
-			var squibbleErr squibble.ValidationError
-			if errors.As(err, &squibbleErr) {
+			if squibbleErr, ok := errors.AsType[squibble.ValidationError](err); ok {
 				fmt.Printf("SQLite schema failed to validate:\n")
 				fmt.Println(squibbleErr.Diff)
 			}

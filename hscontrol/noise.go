@@ -256,8 +256,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
 		if err != nil {
-			var httpErr HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				resp = &tailcfg.RegisterResponse{
 					Error: httpErr.Msg,
 				}

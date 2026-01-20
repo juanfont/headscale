@@ -16,7 +16,6 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 	"tailscale.com/util/slicesx"
@@ -656,17 +655,17 @@ func parseAlias(vs string) (Alias, error) {
 	case isWildcard(vs):
 		return Wildcard, nil
 	case isUser(vs):
-		return ptr.To(Username(vs)), nil
+		return new(Username(vs)), nil
 	case isGroup(vs):
-		return ptr.To(Group(vs)), nil
+		return new(Group(vs)), nil
 	case isTag(vs):
-		return ptr.To(Tag(vs)), nil
+		return new(Tag(vs)), nil
 	case isAutoGroup(vs):
-		return ptr.To(AutoGroup(vs)), nil
+		return new(AutoGroup(vs)), nil
 	}
 
 	if isHost(vs) {
-		return ptr.To(Host(vs)), nil
+		return new(Host(vs)), nil
 	}
 
 	return nil, fmt.Errorf(`Invalid alias %q. An alias must be one of the following types:
@@ -829,11 +828,11 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 func parseAutoApprover(s string) (AutoApprover, error) {
 	switch {
 	case isUser(s):
-		return ptr.To(Username(s)), nil
+		return new(Username(s)), nil
 	case isGroup(s):
-		return ptr.To(Group(s)), nil
+		return new(Group(s)), nil
 	case isTag(s):
-		return ptr.To(Tag(s)), nil
+		return new(Tag(s)), nil
 	}
 
 	return nil, fmt.Errorf(`Invalid AutoApprover %q. An alias must be one of the following types:
@@ -925,11 +924,11 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 func parseOwner(s string) (Owner, error) {
 	switch {
 	case isUser(s):
-		return ptr.To(Username(s)), nil
+		return new(Username(s)), nil
 	case isGroup(s):
-		return ptr.To(Group(s)), nil
+		return new(Group(s)), nil
 	case isTag(s):
-		return ptr.To(Tag(s)), nil
+		return new(Tag(s)), nil
 	}
 
 	return nil, fmt.Errorf(`Invalid Owner %q. An alias must be one of the following types:
@@ -2023,8 +2022,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 	ast.Standardize()
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil {
-		var serr *json.SemanticError
-		if errors.As(err, &serr) && serr.Err == json.ErrUnknownName {
+		if serr, ok := errors.AsType[*json.SemanticError](err); ok && serr.Err == json.ErrUnknownName {
 			ptr := serr.JSONPointer
 			name := ptr.LastToken()
 			return nil, fmt.Errorf("unknown field %q", name)

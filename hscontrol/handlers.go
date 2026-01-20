@@ -36,8 +36,7 @@ const (
 
 // httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
-	var herr HTTPError
-	if errors.As(err, &herr) {
+	if herr, ok := errors.AsType[HTTPError](err); ok {
 		http.Error(w, herr.Msg, herr.Code)
 		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
 	} else {

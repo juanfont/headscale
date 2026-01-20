@@ -16,7 +16,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 type AuthProvider interface {
@@ -113,8 +112,7 @@ func (h *Headscale) handleRegister(
 		resp, err := h.handleRegisterWithAuthKey(req, machineKey)
 		if err != nil {
 			// Preserve HTTPError types so they can be handled properly by the HTTP layer
-			var httpErr HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				return nil, httpErr
 			}
 
@@ -316,7 +314,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
+			LastSeen:   new(time.Now()),
 		},
 	)
 
@@ -344,8 +342,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
-		var perr types.PAKError
-		if errors.As(err, &perr) {
+		if perr, ok := errors.AsType[types.PAKError](err); ok {
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
 
@@ -443,7 +440,7 @@ func (h *Headscale) handleRegisterInteractive(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
+			LastSeen:   new(time.Now()),
 		},
 	)
 
