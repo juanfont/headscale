@@ -245,7 +245,7 @@ func (s *State) DebugPolicy() (string, error) {
 
 		return string(pol), nil
 	default:
-		return "", fmt.Errorf("unsupported policy mode: %s", s.cfg.Policy.Mode)
+		return "", fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, s.cfg.Policy.Mode)
 	}
 }
 
