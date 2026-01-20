@@ -245,7 +245,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
 
-	allIps, err := scenario.ListTailscaleClientsIPs()
+	_, err = scenario.ListTailscaleClientsIPs()
 	requireNoErrListClientIPs(t, err)
 
 	err = scenario.WaitForTailscaleSync()
@@ -367,7 +367,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	// Test connectivity after user switch
-	allIps, err = scenario.ListTailscaleClientsIPs()
+	allIps, err := scenario.ListTailscaleClientsIPs()
 	requireNoErrListClientIPs(t, err)
 
 	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {

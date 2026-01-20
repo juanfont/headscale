@@ -1860,7 +1860,7 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "autogroup-member-comprehensive",
-			toResolve: new(AutoGroup(AutoGroupMember)),
+			toResolve: new(AutoGroupMember),
 			nodes: types.Nodes{
 				// Node with no tags (should be included - is a member)
 				{
@@ -1910,7 +1910,7 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "autogroup-tagged",
-			toResolve: new(AutoGroup(AutoGroupTagged)),
+			toResolve: new(AutoGroupTagged),
 			nodes: types.Nodes{
 				// Node with no tags (should be excluded - not tagged)
 				{

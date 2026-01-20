@@ -1158,7 +1158,7 @@ var errParseAuthPage = errors.New("failed to parse auth page")
 
 func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	// see api.go HTML template
-	codeSep := strings.Split(string(body), "</code>")
+	codeSep := strings.Split(body, "</code>")
 	if len(codeSep) != expectedHTMLSplitParts {
 		return errParseAuthPage
 	}

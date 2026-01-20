@@ -173,6 +173,9 @@ AND auth_key_id NOT IN (
 						routes = slices.Compact(routes)
 
 						data, err := json.Marshal(routes)
+						if err != nil {
+							return fmt.Errorf("marshaling routes for node %d: %w", nodeID, err)
+						}
 
 						err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", data).Error
 						if err != nil {

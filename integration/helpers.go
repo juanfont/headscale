@@ -23,8 +23,8 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
+	"maps"
+	"slices"
 	"tailscale.com/tailcfg"
 )
 
@@ -332,7 +332,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 		var failureReport strings.Builder
 
-		ids := types.NodeIDs(maps.Keys(nodeStatus))
+		ids := slices.Collect(maps.Keys(nodeStatus))
 		slices.Sort(ids)
 
 		for _, nodeID := range ids {

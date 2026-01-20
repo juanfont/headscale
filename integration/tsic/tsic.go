@@ -731,12 +731,12 @@ func (t *TailscaleInContainer) LoginWithURL(
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
-	stdout, stderr, err := t.Execute([]string{"tailscale", "logout"})
+	_, _, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
 		return err
 	}
 
-	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
+	stdout, stderr, _ := t.Execute([]string{"tailscale", "status"})
 	if !strings.Contains(stdout+stderr, "Logged out.") {
 		return fmt.Errorf("%w: stdout: %s, stderr: %s", errLogoutFailed, stdout, stderr)
 	}

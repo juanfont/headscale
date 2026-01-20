@@ -3113,7 +3113,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 		user1Nodes := 0
 		user2Nodes := 0
 
-		for i := 0; i < allNodesSlice.Len(); i++ {
+		for i := range allNodesSlice.Len() {
 			n := allNodesSlice.At(i)
 			if n.UserID().Get() == user1.ID {
 				user1Nodes++

@@ -754,6 +754,9 @@ func TestNodeNaming(t *testing.T) {
 		}
 
 		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, new(mpp("100.64.0.66/32").Addr()), nil)
+		if err != nil {
+			return err
+		}
 		_, err = RegisterNodeForTest(tx, nodeShortHostname, new(mpp("100.64.0.67/32").Addr()), nil)
 
 		return err
