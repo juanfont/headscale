@@ -9,6 +9,9 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// portRangeParts is the expected number of parts in a port range (start-end).
+const portRangeParts = 2
+
 // Sentinel errors for port and destination parsing.
 var (
 	ErrInputMissingColon    = errors.New("input must contain a colon character separating destination and port")
@@ -63,7 +66,7 @@ func parsePortRange(portDef string) ([]tailcfg.PortRange, error) {
 			rangeParts = slices.DeleteFunc(rangeParts, func(e string) bool {
 				return e == ""
 			})
-			if len(rangeParts) != 2 {
+			if len(rangeParts) != portRangeParts {
 				return nil, ErrInvalidPortRange
 			}
 

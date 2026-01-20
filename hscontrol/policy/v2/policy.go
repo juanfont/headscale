@@ -21,6 +21,9 @@ import (
 	"tailscale.com/util/deephash"
 )
 
+// PolicyVersion is the version number of this policy implementation.
+const PolicyVersion = 2
+
 // ErrInvalidTagOwner is returned when a tag owner is not an Alias type.
 var ErrInvalidTagOwner = errors.New("tag owner is not an Alias")
 
@@ -739,7 +742,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 }
 
 func (pm *PolicyManager) Version() int {
-	return 2
+	return PolicyVersion
 }
 
 func (pm *PolicyManager) DebugString() string {

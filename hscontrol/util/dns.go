@@ -20,6 +20,9 @@ const (
 
 	// value related to RFC 1123 and 952.
 	LabelHostnameLength = 63
+
+	// minNameLength is the minimum length for usernames and hostnames.
+	minNameLength = 2
 )
 
 var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
@@ -48,7 +51,7 @@ var (
 // It cannot contain invalid characters.
 func ValidateUsername(username string) error {
 	// Ensure the username meets the minimum length requirement
-	if len(username) < 2 {
+	if len(username) < minNameLength {
 		return ErrUsernameTooShort
 	}
 
@@ -84,7 +87,7 @@ func ValidateUsername(username string) error {
 // This function does NOT modify the input - it only validates.
 // The hostname must already be lowercase and contain only valid characters.
 func ValidateHostname(name string) error {
-	if len(name) < 2 {
+	if len(name) < minNameLength {
 		return fmt.Errorf("%w: %q", ErrHostnameTooShort, name)
 	}
 	if len(name) > LabelHostnameLength {

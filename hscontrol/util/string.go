@@ -9,6 +9,9 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// invalidStringRandomLength is the length of random bytes for invalid string generation.
+const invalidStringRandomLength = 8
+
 // GenerateRandomBytes returns securely generated random bytes.
 // It will return an error if the system's secure random
 // number generator fails to function correctly, in which
@@ -68,7 +71,7 @@ func MustGenerateRandomStringDNSSafe(size int) string {
 }
 
 func InvalidString() string {
-	hash, _ := GenerateRandomStringDNSSafe(8)
+	hash, _ := GenerateRandomStringDNSSafe(invalidStringRandomLength)
 	return "invalid-" + hash
 }
 

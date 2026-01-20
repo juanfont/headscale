@@ -24,9 +24,17 @@ var (
 
 // Sentinel errors for traceroute parsing.
 var (
-	ErrTracerouteEmpty       = errors.New("empty traceroute output")
-	ErrTracerouteHeader      = errors.New("parsing traceroute header")
-	ErrTracerouteNotReached  = errors.New("traceroute did not reach target")
+	ErrTracerouteEmpty      = errors.New("empty traceroute output")
+	ErrTracerouteHeader     = errors.New("parsing traceroute header")
+	ErrTracerouteNotReached = errors.New("traceroute did not reach target")
+)
+
+// Regex match group constants for traceroute parsing.
+// The regexes capture hostname (group 1) and IP (group 2), plus the full match (group 0).
+const (
+	hostIPRegexGroups        = 3
+	nodeKeyPrefixLen         = 8
+	minTracerouteHeaderMatch = 2 // full match + hostname
 )
 
 func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
@@ -111,7 +119,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 	headerRegex := regexp.MustCompile(`(?i)(?:traceroute|tracing route) to ([^ ]+) (?:\[([^\]]+)\]|\(([^)]+)\))`)
 
 	headerMatches := headerRegex.FindStringSubmatch(lines[0])
-	if len(headerMatches) < 2 {
+	if len(headerMatches) < minTracerouteHeaderMatch {
 		return Traceroute{}, fmt.Errorf("%w: %s", ErrTracerouteHeader, lines[0])
 	}
 
@@ -210,12 +218,12 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			hopHostname = "*"
 			// Skip any remaining asterisks
 			remainder = strings.TrimLeft(remainder, "* ")
-		} else if hostMatch := hostIPRegex.FindStringSubmatch(remainder); len(hostMatch) >= 3 {
+		} else if hostMatch := hostIPRegex.FindStringSubmatch(remainder); len(hostMatch) >= hostIPRegexGroups {
 			// Format: hostname (IP)
 			hopHostname = hostMatch[1]
 			hopIP, _ = netip.ParseAddr(hostMatch[2])
 			remainder = strings.TrimSpace(remainder[len(hostMatch[0]):])
-		} else if hostMatch := hostIPBracketRegex.FindStringSubmatch(remainder); len(hostMatch) >= 3 {
+		} else if hostMatch := hostIPBracketRegex.FindStringSubmatch(remainder); len(hostMatch) >= hostIPRegexGroups {
 			// Format: hostname [IP] (Windows)
 			hopHostname = hostMatch[1]
 			hopIP, _ = netip.ParseAddr(hostMatch[2])
@@ -307,8 +315,8 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 		}
 
 		keyPrefix := key
-		if len(key) > 8 {
-			keyPrefix = key[:8]
+		if len(key) > nodeKeyPrefixLen {
+			keyPrefix = key[:nodeKeyPrefixLen]
 		}
 
 		return "node-" + keyPrefix
