@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
@@ -502,9 +503,9 @@ func getDockerSocketPath() string {
 
 // checkImageAvailableLocally checks if the specified Docker image is available locally.
 func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
-	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	_, err := cli.ImageInspect(ctx, imageName)
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if cerrdefs.IsNotFound(err) {
 			return false, nil
 		}
 
