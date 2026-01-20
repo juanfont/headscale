@@ -97,8 +97,8 @@ more information: `headscale users --help`.
 
 ## Register a node
 
-One has to register a node first to use headscale as coordination with Tailscale. The following examples work for the
-Tailscale client on Linux/BSD operating systems. Alternatively, follow the instructions to connect
+One has to register a node first to use headscale as coordination server with Tailscale. The following examples work for
+the Tailscale client on Linux/BSD operating systems. Alternatively, follow the instructions to connect
 [Android](connect/android.md), [Apple](connect/apple.md) or [Windows](connect/windows.md) devices.
 
 ### Normal, interactive login
