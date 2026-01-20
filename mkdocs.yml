@@ -183,6 +183,7 @@ nav:
           - Windows: usage/connect/windows.md
   - Reference:
       - Configuration: ref/configuration.md
+      - Registration methods: ref/registration.md
       - OpenID Connect: ref/oidc.md
       - Routes: ref/routes.md
       - TLS: ref/tls.md

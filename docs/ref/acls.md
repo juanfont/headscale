@@ -222,7 +222,7 @@ Allows access to the internet through [exit nodes](routes.md#exit-node). Can onl
 
 ### `autogroup:member`
 
-Includes all untagged devices.
+Includes all [personal (untagged) devices](registration.md/#identity-model).
 
 ```json
 {
@@ -234,7 +234,7 @@ Includes all untagged devices.
 
 ### `autogroup:tagged`
 
-Includes all devices that have at least one tag.
+Includes all devices that [have at least one tag](registration.md/#identity-model).
 
 ```json
 {
