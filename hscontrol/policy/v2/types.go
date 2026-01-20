@@ -1770,6 +1770,7 @@ func (p *Policy) validate() error {
 				}
 			case *Group:
 				g := src
+
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)
@@ -1807,6 +1808,7 @@ func (p *Policy) validate() error {
 				}
 			case *Group:
 				g := dst.Alias.(*Group)
+
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)

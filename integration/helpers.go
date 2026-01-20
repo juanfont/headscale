@@ -455,7 +455,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 				if slices.Contains(expectedNodes, nodeID) {
 					allMapResponsesOffline = false
 
-					assert.False(c, true, "Node %d should not appear in map responses", nodeID)
+					assert.Fail(c, "Node should not appear in map responses", "Node %d should not appear in map responses", nodeID)
 				}
 			}
 		} else {

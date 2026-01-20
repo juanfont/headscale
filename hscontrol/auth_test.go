@@ -3363,7 +3363,7 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 	}
 
 	_, err = app.handleRegister(context.Background(), req, machineKey.Public())
-	assert.Error(t, err, "expired pre-auth key should be rejected")
+	require.Error(t, err, "expired pre-auth key should be rejected")
 	assert.Contains(t, err.Error(), "authkey expired", "error should mention key expiration")
 }
 

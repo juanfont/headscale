@@ -1101,6 +1101,8 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			nodeKey:      "nkey12345678",
 			wantHostname: "test-node",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				t.Helper()
+
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1147,6 +1149,8 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			nodeKey:      "nkey12345678",
 			wantHostname: "node-nkey1234",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				t.Helper()
+
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1163,6 +1167,8 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			nodeKey:      "",
 			wantHostname: "unknown-node",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+				t.Helper()
+
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}

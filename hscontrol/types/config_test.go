@@ -349,11 +349,8 @@ func TestReadConfigFromEnv(t *testing.T) {
 }
 
 func TestTLSConfigValidation(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+
 	configYaml := []byte(`---
 tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: ""
@@ -364,7 +361,7 @@ noise:
 	// Populate a custom config file
 	configFilePath := filepath.Join(tmpDir, "config.yaml")
 
-	err = os.WriteFile(configFilePath, configYaml, 0o600)
+	err := os.WriteFile(configFilePath, configYaml, 0o600)
 	if err != nil {
 		t.Fatalf("Couldn't write file %s", configFilePath)
 	}
