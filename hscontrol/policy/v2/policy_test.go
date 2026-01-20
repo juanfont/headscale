@@ -94,7 +94,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	}
 
 	for i, n := range initialNodes {
-		n.ID = types.NodeID(i + 1)
+		n.ID = types.NodeID(i + 1) //nolint:gosec // G115: Test code with small values
 	}
 
 	pm, err := NewPolicyManager([]byte(policy), users, initialNodes.ViewSlice())
@@ -187,7 +187,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 				}
 
 				if !found {
-					n.ID = types.NodeID(len(initialNodes) + i + 1)
+					n.ID = types.NodeID(len(initialNodes) + i + 1) //nolint:gosec // G115: Test code with small values
 				}
 			}
 

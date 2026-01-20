@@ -31,7 +31,7 @@ const (
 	earlyPayloadMagic = "\xff\xff\xffTS"
 )
 
-// Sentinel errors for noise server.
+// ErrUnsupportedClientVersion is returned when a client version is not supported.
 var ErrUnsupportedClientVersion = errors.New("unsupported client version")
 
 type noiseServer struct {

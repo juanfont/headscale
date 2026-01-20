@@ -40,6 +40,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 				return nodes, peersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+				t.Helper()
 				assert.Empty(t, snapshot.nodesByID)
 				assert.Empty(t, snapshot.allNodes)
 				assert.Empty(t, snapshot.peersByNode)
@@ -56,6 +57,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 				return nodes, allowAllPeersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+				t.Helper()
 				assert.Len(t, snapshot.nodesByID, 1)
 				assert.Len(t, snapshot.allNodes, 1)
 				assert.Len(t, snapshot.peersByNode, 1)
@@ -79,6 +81,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 				return nodes, allowAllPeersFunc
 			},
 			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+				t.Helper()
 				assert.Len(t, snapshot.nodesByID, 2)
 				assert.Len(t, snapshot.allNodes, 2)
 				assert.Len(t, snapshot.peersByNode, 2)
@@ -915,6 +918,7 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 		go func(nodeID int) {
 			defer wg.Done()
 
+			//nolint:gosec // G115: Test code with controlled values
 			node := createConcurrentTestNode(types.NodeID(nodeID), "concurrent-node")
 
 			resultNode := store.PutNode(node)
@@ -954,6 +958,7 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 		go func(nodeID int) {
 			defer wg.Done()
 
+			//nolint:gosec // G115: Test code with controlled values
 			node := createConcurrentTestNode(types.NodeID(nodeID), "batch-node")
 
 			resultNode := store.PutNode(node)
@@ -1062,7 +1067,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 
 	const ops = 100
 	for i := range ops {
-		nodeID := types.NodeID(i + 1)
+		nodeID := types.NodeID(i + 1) //nolint:gosec // G115: Test code with controlled values
 		node := createConcurrentTestNode(nodeID, "cleanup-node")
 		resultNode := store.PutNode(node)
 		assert.True(t, resultNode.Valid())
@@ -1106,7 +1111,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 
 	// Launch all PutNode operations concurrently
 	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i)
+		nodeID := types.NodeID(i) //nolint:gosec // G115: Test code with controlled values
 
 		wg.Add(1)
 
@@ -1132,7 +1137,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 	wg = sync.WaitGroup{}
 
 	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i)
+		nodeID := types.NodeID(i) //nolint:gosec // G115: Test code with controlled values
 
 		wg.Add(1)
 
@@ -1197,7 +1202,7 @@ func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
 		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 		store.Start()
 
-		nonExistentID := types.NodeID(999 + i)
+		nonExistentID := types.NodeID(999 + i) //nolint:gosec // G115: Test code with controlled values
 		updateCallCount := 0
 
 		fmt.Printf("[TestNodeStoreUpdateNonExistentNode] UpdateNode(%d) starting\n", nonExistentID)
@@ -1221,7 +1226,7 @@ func BenchmarkNodeStoreAllocations(b *testing.B) {
 	defer store.Stop()
 
 	for i := 0; b.Loop(); i++ {
-		nodeID := types.NodeID(i + 1)
+		nodeID := types.NodeID(i + 1) //nolint:gosec // G115: Benchmark code with controlled values
 		node := createConcurrentTestNode(nodeID, "bench-node")
 		store.PutNode(node)
 		store.UpdateNode(nodeID, func(n *types.Node) {

@@ -639,7 +639,7 @@ func (t *TailscaleInContainer) Execute(
 	return stdout, stderr, nil
 }
 
-// Retrieve container logs.
+// Logs retrieves container logs.
 func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(
 		t.pool,

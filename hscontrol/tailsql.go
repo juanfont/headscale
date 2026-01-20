@@ -13,7 +13,7 @@ import (
 	"tailscale.com/types/logger"
 )
 
-// Sentinel errors for tailsql service.
+// ErrNoCertDomains is returned when no cert domains are available for HTTPS.
 var ErrNoCertDomains = errors.New("no cert domains available for HTTPS")
 
 func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath string) error {

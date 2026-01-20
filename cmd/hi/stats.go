@@ -18,7 +18,7 @@ import (
 	"github.com/docker/docker/client"
 )
 
-// Sentinel errors for stats collection.
+// ErrStatsCollectionAlreadyStarted is returned when stats collection is already running.
 var ErrStatsCollectionAlreadyStarted = errors.New("stats collection already started")
 
 // Stats calculation constants.

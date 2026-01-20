@@ -202,7 +202,7 @@ func WithPostgres() Option {
 	}
 }
 
-// WithPolicy sets the policy mode for headscale.
+// WithPolicyMode sets the policy mode for headscale.
 func WithPolicyMode(mode types.PolicyMode) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.policyMode = mode
@@ -781,6 +781,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directory
+			//nolint:gosec // G115: tar.Header.Mode is int64, safe to convert to uint32 for permissions
 			err := os.MkdirAll(targetPath, os.FileMode(header.Mode))
 			if err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
@@ -797,6 +798,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
 			}
 
+			//nolint:gosec // G110: Trusted tar archive from our own container
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				outFile.Close()
 				return fmt.Errorf("failed to copy file contents: %w", err)
@@ -805,6 +807,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			outFile.Close()
 
 			// Set file permissions
+			//nolint:gosec // G115: tar.Header.Mode is int64, safe to convert to uint32 for permissions
 			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
 				return fmt.Errorf("failed to set file permissions: %w", err)
 			}
@@ -903,6 +906,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 				return fmt.Errorf("failed to create database file: %w", err)
 			}
 
+			//nolint:gosec // G110: Trusted tar archive from our own container
 			written, err := io.Copy(outFile, tarReader)
 			outFile.Close()
 

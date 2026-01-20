@@ -294,11 +294,10 @@ func IsCI() bool {
 	return false
 }
 
-// SafeHostname extracts a hostname from Hostinfo, providing sensible defaults
+// EnsureHostname extracts a hostname from Hostinfo, providing sensible defaults
 // if Hostinfo is nil or Hostname is empty. This prevents nil pointer dereferences
 // and ensures nodes always have a valid hostname.
 // The hostname is truncated to 63 characters to comply with DNS label length limits (RFC 1123).
-// EnsureHostname guarantees a valid hostname for node registration.
 // This function never fails - it always returns a valid hostname.
 //
 // Strategy:

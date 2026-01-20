@@ -19,7 +19,7 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-// Sentinel errors for user types.
+// ErrCannotParseBool is returned when a value cannot be parsed as a boolean.
 var ErrCannotParseBool = errors.New("could not parse value as boolean")
 
 type UserID uint64
@@ -155,7 +155,7 @@ func (u UserView) ID() uint {
 
 func (u *User) TailscaleLogin() tailcfg.Login {
 	return tailcfg.Login{
-		ID:            tailcfg.LoginID(u.ID),
+		ID:            tailcfg.LoginID(u.ID), //nolint:gosec // G115: User IDs are always positive and fit in int64
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
@@ -201,8 +201,8 @@ func (u *User) Proto() *v1.User {
 	}
 }
 
-// JumpCloud returns a JSON where email_verified is returned as a
-// string "true" or "false" instead of a boolean.
+// FlexibleBoolean handles JSON where email_verified is returned as a
+// string "true" or "false" instead of a boolean (e.g., JumpCloud).
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
 // https://github.com/juanfont/headscale/issues/2293

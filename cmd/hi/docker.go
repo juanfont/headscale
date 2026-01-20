@@ -787,11 +787,13 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	}
 
 	// Write stdout logs
+	//nolint:gosec // G306: Log files are meant to be world-readable
 	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stdout log: %w", err)
 	}
 
 	// Write stderr logs
+	//nolint:gosec // G306: Log files are meant to be world-readable
 	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stderr log: %w", err)
 	}

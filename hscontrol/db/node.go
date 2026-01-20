@@ -221,7 +221,7 @@ func SetTags(
 	return nil
 }
 
-// SetTags takes a Node struct pointer and update the forced tags.
+// SetApprovedRoutes updates the approved routes for a node.
 func SetApprovedRoutes(
 	tx *gorm.DB,
 	nodeID types.NodeID,

@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -23,8 +25,6 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"maps"
-	"slices"
 	"tailscale.com/tailcfg"
 )
 

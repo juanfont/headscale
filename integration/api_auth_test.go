@@ -404,7 +404,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		var response v1.ListUsersResponse
 
 		err = protojson.Unmarshal([]byte(responseBody.String()), &response)
-		assert.NoError(t, err, "Response should be valid protobuf JSON")
+		require.NoError(t, err, "Response should be valid protobuf JSON")
 
 		users := response.GetUsers()
 		assert.Len(t, users, 2, "Should have 2 users")

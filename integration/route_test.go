@@ -2887,6 +2887,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 }
 
 // assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT.
+//nolint:testifylint // CollectT requires assert, not require
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
 	assert.True(c, tr.Success)

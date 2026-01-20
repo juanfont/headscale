@@ -16,7 +16,7 @@ import (
 	"tailscale.com/util/set"
 )
 
-// Sentinel errors for extra records.
+// ErrPathIsDirectory is returned when a path is a directory instead of a file.
 var ErrPathIsDirectory = errors.New("path is a directory, only file is supported")
 
 type ExtraRecordsMan struct {

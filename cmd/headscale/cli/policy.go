@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	//nolint:gosec // G101: This is a flag name, not a credential
 	bypassFlag = "bypass-grpc-and-access-database-directly"
 )
 

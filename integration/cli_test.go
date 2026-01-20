@@ -1467,7 +1467,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
