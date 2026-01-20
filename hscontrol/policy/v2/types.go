@@ -186,6 +186,8 @@ func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeV
 }
 
 // Username is a string that represents a username, it must contain an @.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Username string
 
 func (u Username) Validate() error {
@@ -296,6 +298,8 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.
 }
 
 // Group is a special string which is always prefixed with `group:`.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Group string
 
 func (g Group) Validate() error {
@@ -363,6 +367,8 @@ func (g Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Nod
 }
 
 // Tag is a special string which is always prefixed with `tag:`.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Tag string
 
 func (t Tag) Validate() error {
@@ -415,6 +421,8 @@ func (t Tag) MarshalJSON() ([]byte, error) {
 }
 
 // Host is a string that represents a hostname.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Host string
 
 func (h Host) Validate() error {
@@ -474,6 +482,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView
 	return buildIPSetMultiErr(&ips, errs)
 }
 
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Prefix netip.Prefix
 
 func (p Prefix) Validate() error {
@@ -562,6 +571,8 @@ func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuild
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type AutoGroup string
 
 const (
@@ -661,14 +672,14 @@ func (ag *AutoGroup) Is(c AutoGroup) bool {
 
 type Alias interface {
 	Validate() error
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(data []byte) error
 
 	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
 	// addresses that the Alias represents within Headscale. It is the product
 	// of the Alias and the Policy, Users and Nodes.
 	// This is an interface definition and the implementation is independent of
 	// the Alias type.
-	Resolve(*Policy, types.Users, views.Slice[types.NodeView]) (*netipx.IPSet, error)
+	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -793,6 +804,7 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Aliases []Alias
 
 func (a *Aliases) UnmarshalJSON(b []byte) error {
@@ -883,7 +895,7 @@ func unmarshalPointer[T any](
 
 type AutoApprover interface {
 	CanBeAutoApprover() bool
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(data []byte) error
 	String() string
 }
 
@@ -960,7 +972,7 @@ func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
 
 type Owner interface {
 	CanBeTagOwner() bool
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(data []byte) error
 	String() string
 }
 
@@ -1038,6 +1050,8 @@ func parseOwner(s string) (Owner, error) {
 type Usernames []Username
 
 // Groups are a map of Group to a list of Username.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Groups map[Group]Usernames
 
 func (g Groups) Contains(group *Group) error {
@@ -1131,6 +1145,8 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 }
 
 // Hosts are alias for IP addresses or subnets.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Hosts map[Host]Prefix
 
 func (h *Hosts) UnmarshalJSON(b []byte) error {
@@ -1327,6 +1343,8 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 }
 
 // Action represents the action to take for an ACL rule.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Action string
 
 const (
@@ -1334,6 +1352,8 @@ const (
 )
 
 // SSHAction represents the action to take for an SSH rule.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type SSHAction string
 
 const (
@@ -1390,6 +1410,8 @@ func (a SSHAction) MarshalJSON() ([]byte, error) {
 }
 
 // Protocol represents a network protocol with its IANA number and descriptions.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type Protocol string
 
 const (
@@ -1990,6 +2012,8 @@ type SSH struct {
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
 // It can be a list of usernames, groups, tags or autogroups.
+//
+//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
 type SSHSrcAliases []Alias
 
 // MarshalJSON marshals the Groups to JSON.
