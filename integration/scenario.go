@@ -46,6 +46,8 @@ import (
 
 const (
 	scenarioHashLength = 6
+	// expectedHTMLSplitParts is the expected number of parts when splitting HTML for key extraction.
+	expectedHTMLSplitParts = 2
 )
 
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
@@ -1153,17 +1155,17 @@ var errParseAuthPage = errors.New("failed to parse auth page")
 func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	// see api.go HTML template
 	codeSep := strings.Split(string(body), "</code>")
-	if len(codeSep) != 2 {
+	if len(codeSep) != expectedHTMLSplitParts {
 		return errParseAuthPage
 	}
 
 	keySep := strings.Split(codeSep[0], "key ")
-	if len(keySep) != 2 {
+	if len(keySep) != expectedHTMLSplitParts {
 		return errParseAuthPage
 	}
 
 	key := keySep[1]
-	key = strings.SplitN(key, " ", 2)[0]
+	key = strings.SplitN(key, " ", expectedHTMLSplitParts)[0]
 	log.Printf("registering node %s", key)
 
 	if headscale, err := s.Headscale(); err == nil {

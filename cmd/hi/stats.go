@@ -21,6 +21,12 @@ import (
 // Sentinel errors for stats collection.
 var ErrStatsCollectionAlreadyStarted = errors.New("stats collection already started")
 
+// Stats calculation constants.
+const (
+	bytesPerKB          = 1024
+	percentageMultiplier = 100.0
+)
+
 // ContainerStats represents statistics for a single container.
 type ContainerStats struct {
 	ContainerID   string
@@ -269,7 +275,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 			}
 
 			// Calculate memory usage in MB
-			memoryMB := float64(stats.MemoryStats.Usage) / (1024 * 1024)
+			memoryMB := float64(stats.MemoryStats.Usage) / (bytesPerKB * bytesPerKB)
 
 			// Store the sample (skip first sample since CPU calculation needs previous stats)
 			if prevStats != nil {
@@ -314,7 +320,7 @@ func calculateCPUPercent(prevStats, stats *container.StatsResponse) float64 {
 			numCPUs = 1.0
 		}
 
-		return (cpuDelta / systemDelta) * numCPUs * 100.0
+		return (cpuDelta / systemDelta) * numCPUs * percentageMultiplier
 	}
 
 	return 0.0

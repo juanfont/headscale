@@ -30,6 +30,13 @@ var (
 	ErrMemoryLimitExceeded     = errors.New("container exceeded memory limits")
 )
 
+// Docker container constants.
+const (
+	containerFinalStateWait     = 10 * time.Second
+	containerStateCheckInterval = 500 * time.Millisecond
+	dirPermissions              = 0o755
+)
+
 // runTestContainer executes integration tests in a Docker container.
 func runTestContainer(ctx context.Context, config *RunConfig) error {
 	cli, err := createDockerClient()
@@ -351,8 +358,8 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
 
 	// Wait for all test containers to reach a final state
-	maxWaitTime := 10 * time.Second
-	checkInterval := 500 * time.Millisecond
+	maxWaitTime := containerFinalStateWait
+	checkInterval := containerStateCheckInterval
 	timeout := time.After(maxWaitTime)
 
 	ticker := time.NewTicker(checkInterval)
@@ -720,7 +727,7 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 // extractContainerArtifacts saves logs and tar files from a container.
 func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Ensure the logs directory exists
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+	if err := os.MkdirAll(logsDir, dirPermissions); err != nil {
 		return fmt.Errorf("failed to create logs directory: %w", err)
 	}
 

@@ -22,19 +22,29 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Integration test timing constants.
+const (
+	// peerSyncTimeoutCI is the peer sync timeout for CI environments.
+	peerSyncTimeoutCI = 120 * time.Second
+	// peerSyncTimeoutDev is the peer sync timeout for development environments.
+	peerSyncTimeoutDev = 60 * time.Second
+	// peerSyncRetryIntervalMs is the retry interval for peer sync checks.
+	peerSyncRetryIntervalMs = 100
+)
+
 // PeerSyncTimeout returns the timeout for peer synchronization based on environment:
 // 60s for dev, 120s for CI.
 func PeerSyncTimeout() time.Duration {
 	if util.IsCI() {
-		return 120 * time.Second
+		return peerSyncTimeoutCI
 	}
 
-	return 60 * time.Second
+	return peerSyncTimeoutDev
 }
 
 // PeerSyncRetryInterval returns the retry interval for peer synchronization checks.
 func PeerSyncRetryInterval() time.Duration {
-	return 100 * time.Millisecond
+	return peerSyncRetryIntervalMs * time.Millisecond
 }
 
 func WriteFileToContainer(

@@ -46,6 +46,7 @@ const (
 	tlsKeyPath                    = "/etc/headscale/tls.key"
 	headscaleDefaultPort          = 8080
 	IntegrationTestDockerFileName = "Dockerfile.integration"
+	dirPermissions                = 0o755
 )
 
 var (
@@ -720,7 +721,7 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 
 // extractTarToDirectory extracts a tar archive to a directory.
 func extractTarToDirectory(tarData []byte, targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+	if err := os.MkdirAll(targetDir, dirPermissions); err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
 
@@ -784,7 +785,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			}
 		case tar.TypeReg:
 			// Ensure parent directories exist
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(targetPath), dirPermissions); err != nil {
 				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
 			}
 

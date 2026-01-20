@@ -14,6 +14,11 @@ const (
 	// TimestampFormatRunID is used for generating unique run identifiers
 	// Format: "20060102-150405" provides compact date-time for file/directory names.
 	TimestampFormatRunID = "20060102-150405"
+
+	// runIDHashLength is the length of the random hash in run IDs.
+	runIDHashLength = 6
+	// runIDParts is the number of parts in a run ID (YYYYMMDD-HHMMSS-HASH).
+	runIDParts = 3
 )
 
 // GetIntegrationRunID returns the run ID for the current integration test session.
@@ -46,7 +51,7 @@ func GenerateRunID() string {
 	timestamp := now.Format(TimestampFormatRunID)
 
 	// Add a short random hash to ensure uniqueness
-	randomHash := util.MustGenerateRandomStringDNSSafe(6)
+	randomHash := util.MustGenerateRandomStringDNSSafe(runIDHashLength)
 
 	return fmt.Sprintf("%s-%s", timestamp, randomHash)
 }
@@ -55,9 +60,9 @@ func GenerateRunID() string {
 // Expects format: "prefix-YYYYMMDD-HHMMSS-HASH".
 func ExtractRunIDFromContainerName(containerName string) string {
 	parts := strings.Split(containerName, "-")
-	if len(parts) >= 3 {
+	if len(parts) >= runIDParts {
 		// Return the last three parts as the run ID (YYYYMMDD-HHMMSS-HASH)
-		return strings.Join(parts[len(parts)-3:], "-")
+		return strings.Join(parts[len(parts)-runIDParts:], "-")
 	}
 
 	panic("unexpected container name format: " + containerName)

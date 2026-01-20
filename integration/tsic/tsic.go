@@ -44,6 +44,13 @@ const (
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
+
+	// Container restart and backoff timeouts.
+	containerRestartTimeout     = 30 // seconds, used by Docker API
+	tailscaleVersionTimeout     = 5 * time.Second
+	containerRestartBackoff     = 30 * time.Second
+	backoffMaxElapsedTime       = 10 * time.Second
+	curlFailFastMaxTime         = 2 * time.Second
 )
 
 var (
@@ -747,7 +754,7 @@ func (t *TailscaleInContainer) Restart() error {
 	}
 
 	// Use Docker API to restart the container
-	err := t.pool.Client.RestartContainer(t.container.Container.ID, 30)
+	err := t.pool.Client.RestartContainer(t.container.Container.ID, containerRestartTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to restart container %s: %w", t.hostname, err)
 	}
@@ -756,13 +763,13 @@ func (t *TailscaleInContainer) Restart() error {
 	// We use exponential backoff to poll until we can successfully execute a command
 	_, err = backoff.Retry(context.Background(), func() (struct{}, error) {
 		// Try to execute a simple command to verify the container is responsive
-		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(5*time.Second))
+		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(tailscaleVersionTimeout))
 		if err != nil {
 			return struct{}{}, fmt.Errorf("container not ready: %w", err)
 		}
 
 		return struct{}{}, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(containerRestartBackoff))
 	if err != nil {
 		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
 	}
@@ -847,7 +854,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		}
 
 		return ips, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IPs for %s after retries: %w", t.hostname, err)
 	}
@@ -1151,7 +1158,7 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 		}
 
 		return status.Self.DNSName, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 	if err != nil {
 		return "", fmt.Errorf("failed to get FQDN for %s after retries: %w", t.hostname, err)
 	}
@@ -1507,7 +1514,7 @@ func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
 	// Use aggressive timeouts for fast failure detection
 	return t.Curl(url,
 		WithCurlConnectionTimeout(1*time.Second),
-		WithCurlMaxTime(2*time.Second),
+		WithCurlMaxTime(curlFailFastMaxTime),
 		WithCurlRetry(1))
 }
 

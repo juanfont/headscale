@@ -53,6 +53,16 @@ const (
 	// TimestampFormatRunID is used for generating unique run identifiers
 	// Format: "20060102-150405" provides compact date-time for file/directory names.
 	TimestampFormatRunID = "20060102-150405"
+
+	// Connection validation timeouts.
+	connectionValidationTimeout = 120 * time.Second
+	onlineCheckRetryInterval    = 2 * time.Second
+	batcherValidationTimeout    = 15 * time.Second
+	nodestoreValidationTimeout  = 20 * time.Second
+	mapResponseTimeout          = 60 * time.Second
+	netInfoRetryInterval        = 5 * time.Second
+	backoffMaxElapsedTime       = 10 * time.Second
+	backoffRetryInterval        = 500 * time.Millisecond
 )
 
 // NodeSystemStatus represents the status of a node across different systems.
@@ -134,7 +144,7 @@ func collectExpectedNodeIDs(t *testing.T, clients []TailscaleClient) []types.Nod
 func validateInitialConnection(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", connectionValidationTimeout)
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login")
 }
 
@@ -144,7 +154,7 @@ func validateInitialConnection(t *testing.T, headscale ControlServer, expectedNo
 func validateLogoutComplete(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
-	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", connectionValidationTimeout)
 }
 
 // validateReloginComplete performs comprehensive validation after client relogin.
@@ -153,7 +163,7 @@ func validateLogoutComplete(t *testing.T, headscale ControlServer, expectedNodes
 func validateReloginComplete(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after relogin", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after relogin", connectionValidationTimeout)
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after relogin")
 }
 
@@ -369,7 +379,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 		}
 
 		assert.True(c, allMatch, fmt.Sprintf("Not all %d nodes are %s across all systems (batcher, mapresponses, nodestore)", len(expectedNodes), stateStr))
-	}, timeout, 2*time.Second, message)
+	}, timeout, onlineCheckRetryInterval, message)
 }
 
 // requireAllClientsOfflineStaged validates offline state with staged timeouts for different components.
@@ -398,7 +408,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allBatcherOffline, "All nodes should be disconnected from batcher")
-	}, 15*time.Second, 1*time.Second, "batcher disconnection validation")
+	}, batcherValidationTimeout, 1*time.Second, "batcher disconnection validation")
 
 	// Stage 2: Verify nodestore offline status (up to 15 seconds due to disconnect detection delay)
 	t.Logf("Stage 2: Verifying nodestore offline status for %d nodes (allowing for 10s disconnect detection delay)", len(expectedNodes))
@@ -424,7 +434,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allNodeStoreOffline, "All nodes should be offline in nodestore")
-	}, 20*time.Second, 1*time.Second, "nodestore offline validation")
+	}, nodestoreValidationTimeout, 1*time.Second, "nodestore offline validation")
 
 	// Stage 3: Verify map response propagation (longest delay due to peer update timing)
 	t.Logf("Stage 3: Verifying map response propagation for %d nodes (allowing for peer map update delays)", len(expectedNodes))
@@ -466,7 +476,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allMapResponsesOffline, "All nodes should be absent from peer map responses")
-	}, 60*time.Second, 2*time.Second, "map response propagation validation")
+	}, mapResponseTimeout, onlineCheckRetryInterval, "map response propagation validation")
 
 	t.Logf("All stages completed: nodes are fully offline across all systems")
 }
@@ -528,7 +538,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 
 			t.Logf("Node %d (%s) has valid NetInfo with DERP server %d at %s", nodeID, node.Hostname, preferredDERP, time.Now().Format(TimestampFormat))
 		}
-	}, timeout, 5*time.Second, message)
+	}, timeout, netInfoRetryInterval, message)
 
 	endTime := time.Now()
 	duration := endTime.Sub(startTime)
@@ -658,7 +668,7 @@ func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []stri
 		}
 
 		return struct{}{}, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 
 	assert.NoError(t, err)
 }
@@ -890,7 +900,7 @@ func (s *Scenario) AddAndLoginClient(
 		}
 
 		return struct{}{}, nil
-	}, backoff.WithBackOff(backoff.NewConstantBackOff(500*time.Millisecond)), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewConstantBackOff(backoffRetryInterval)), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 	if err != nil {
 		return nil, fmt.Errorf("timeout waiting for new client: %w", err)
 	}

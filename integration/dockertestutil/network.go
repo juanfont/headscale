@@ -13,6 +13,12 @@ import (
 
 var ErrContainerNotFound = errors.New("container not found")
 
+// Docker memory constants.
+const (
+	bytesPerKB        = 1024
+	containerMemoryGB = 2
+)
+
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Network, error) {
 	networks, err := pool.NetworksByName(name)
 	if err != nil {
@@ -172,6 +178,6 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 
 // DockerMemoryLimit sets memory limit and disables OOM kill for containers.
 func DockerMemoryLimit(config *docker.HostConfig) {
-	config.Memory = 2 * 1024 * 1024 * 1024 // 2GB in bytes
+	config.Memory = containerMemoryGB * bytesPerKB * bytesPerKB * bytesPerKB // 2GB in bytes
 	config.OOMKillDisable = true
 }
