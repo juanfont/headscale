@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -327,7 +328,7 @@ func (ut *updateTracker) getStats(nodeID types.NodeID) UpdateStats {
 		// Return a copy to avoid race conditions
 		return UpdateStats{
 			TotalUpdates: stats.TotalUpdates,
-			UpdateSizes:  append([]int{}, stats.UpdateSizes...),
+			UpdateSizes:  slices.Clone(stats.UpdateSizes),
 			LastUpdate:   stats.LastUpdate,
 		}
 	}
@@ -344,7 +345,7 @@ func (ut *updateTracker) getAllStats() map[types.NodeID]UpdateStats {
 	for nodeID, stats := range ut.stats {
 		result[nodeID] = UpdateStats{
 			TotalUpdates: stats.TotalUpdates,
-			UpdateSizes:  append([]int{}, stats.UpdateSizes...),
+			UpdateSizes:  slices.Clone(stats.UpdateSizes),
 			LastUpdate:   stats.LastUpdate,
 		}
 	}

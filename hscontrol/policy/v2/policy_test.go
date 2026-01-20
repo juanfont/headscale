@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) *types.Node {
@@ -20,8 +19,8 @@ func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) 
 		Hostname: name,
 		IPv4:     ap(ipv4),
 		IPv6:     ap(ipv6),
-		User:     ptr.To(user),
-		UserID:   ptr.To(user.ID),
+		User:     new(user),
+		UserID:   new(user.ID),
 		Hostinfo: hostinfo,
 	}
 }
@@ -457,8 +456,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -468,8 +467,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 		Hostname: "test-2-router",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:node-router"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -537,8 +536,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -547,8 +546,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-2-device",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -647,8 +646,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user1-node",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Tags:     []string{"tag:web", "tag:internal"},
 	}
 
@@ -658,8 +657,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user2-node",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 	}
 
 	initialNodes := types.Nodes{user1Node, user2Node}
@@ -686,8 +685,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user1-node",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Tags:     []string{"tag:internal"}, // tag:web removed!
 	}
 

@@ -17,7 +17,7 @@ func isTextUnmarshaler(rv reflect.Value) bool {
 }
 
 func maybeInstantiatePtr(rv reflect.Value) {
-	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv.Kind() == reflect.Pointer && rv.IsNil() {
 		np := reflect.New(rv.Type().Elem())
 		rv.Set(np)
 	}
@@ -36,7 +36,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 	// If the field is a pointer, we need to dereference it to get the actual type
 	// so we do not end with a second pointer.
-	if fieldValue.Elem().Kind() == reflect.Ptr {
+	if fieldValue.Elem().Kind() == reflect.Pointer {
 		fieldValue = fieldValue.Elem()
 	}
 
@@ -65,7 +65,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 			// If it is not a pointer, we need to assign the value to the
 			// field.
 			dstField := field.ReflectValueOf(ctx, dst)
-			if dstField.Kind() == reflect.Ptr {
+			if dstField.Kind() == reflect.Pointer {
 				dstField.Set(fieldValue)
 			} else {
 				dstField.Set(fieldValue.Elem())
@@ -86,7 +86,7 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 		// If the value is nil, we return nil, however, go nil values are not
 		// always comparable, particularly when reflection is involved:
 		// https://dev.to/arxeiss/in-go-nil-is-not-equal-to-nil-sometimes-jn8
-		if v == nil || (reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil()) {
+		if v == nil || (reflect.ValueOf(v).Kind() == reflect.Pointer && reflect.ValueOf(v).IsNil()) {
 			return nil, nil
 		}
 		b, err := v.MarshalText()

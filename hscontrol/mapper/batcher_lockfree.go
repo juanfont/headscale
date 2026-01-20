@@ -13,7 +13,6 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var errConnectionClosed = errors.New("connection channel already closed")
@@ -136,7 +135,7 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	// No active connections - keep the node entry alive for rapid reconnections
 	// The node will get a fresh full map when it reconnects
 	log.Debug().Caller().Uint64("node.id", id.Uint64()).Msg("Node disconnected from batcher because all connections removed, keeping entry for rapid reconnection")
-	b.connected.Store(id, ptr.To(time.Now()))
+	b.connected.Store(id, new(time.Now()))
 
 	return false
 }

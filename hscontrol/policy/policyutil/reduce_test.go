@@ -16,7 +16,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/util/must"
 )
 
@@ -144,13 +143,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: ptr.To(users[0]),
+				User: new(users[0]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: ptr.To(users[0]),
+					User: new(users[0]),
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -191,7 +190,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
@@ -202,7 +201,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -283,19 +282,19 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				// "internal" exit node
 				&types.Node{
 					IPv4: ap("100.64.0.100"),
 					IPv6: ap("fd7a:115c:a1e0::100"),
-					User: ptr.To(users[3]),
+					User: new(users[3]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -344,7 +343,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -353,12 +352,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -453,7 +452,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -462,12 +461,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -565,7 +564,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
@@ -574,12 +573,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -655,7 +654,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
@@ -664,12 +663,12 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -737,7 +736,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
@@ -747,7 +746,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -804,13 +803,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.2"),
 				IPv6: ap("fd7a:115c:a1e0::2"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
 					},

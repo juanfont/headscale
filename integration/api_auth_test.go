@@ -356,13 +356,13 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 
 		lines := strings.Split(curlOutput, "\n")
 		var httpCode string
-		var responseBody string
+		var responseBody strings.Builder
 
 		for _, line := range lines {
 			if after, ok := strings.CutPrefix(line, "HTTP_CODE:"); ok {
 				httpCode = after
 			} else {
-				responseBody += line
+				responseBody.WriteString(line)
 			}
 		}
 
@@ -372,7 +372,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 
 		// Should contain user data
 		var response v1.ListUsersResponse
-		err = protojson.Unmarshal([]byte(responseBody), &response)
+		err = protojson.Unmarshal([]byte(responseBody.String()), &response)
 		assert.NoError(t, err, "Response should be valid protobuf JSON")
 		users := response.GetUsers()
 		assert.Len(t, users, 2, "Should have 2 users")

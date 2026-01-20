@@ -8,7 +8,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/types/ptr"
 )
 
 // TestEphemeralNodeDeleteWithConcurrentUpdate tests the race condition where UpdateNode and DeleteNode
@@ -50,7 +49,7 @@ func TestEphemeralNodeDeleteWithConcurrentUpdate(t *testing.T) {
 	// Goroutine 1: UpdateNode (simulates UpdateNodeFromMapRequest)
 	go func() {
 		updatedNode, updateOk = store.UpdateNode(node.ID, func(n *types.Node) {
-			n.LastSeen = ptr.To(time.Now())
+			n.LastSeen = new(time.Now())
 		})
 		done <- true
 	}()
@@ -106,7 +105,7 @@ func TestUpdateNodeReturnsInvalidWhenDeletedInSameBatch(t *testing.T) {
 	// Start UpdateNode in goroutine - it will queue and wait for batch
 	go func() {
 		node, ok := store.UpdateNode(node.ID, func(n *types.Node) {
-			n.LastSeen = ptr.To(time.Now())
+			n.LastSeen = new(time.Now())
 		})
 		resultChan <- struct {
 			node types.NodeView
@@ -156,7 +155,7 @@ func TestPersistNodeToDBPreventsRaceCondition(t *testing.T) {
 
 	// Simulate UpdateNode being called
 	updatedNode, ok := store.UpdateNode(node.ID, func(n *types.Node) {
-		n.LastSeen = ptr.To(time.Now())
+		n.LastSeen = new(time.Now())
 	})
 	require.True(t, ok, "UpdateNode should succeed")
 	require.True(t, updatedNode.Valid(), "UpdateNode should return valid node")
@@ -221,7 +220,7 @@ func TestEphemeralNodeLogoutRaceCondition(t *testing.T) {
 	// Goroutine 1: UpdateNode (simulates UpdateNodeFromMapRequest)
 	go func() {
 		updatedNode, updateOk = store.UpdateNode(ephemeralNode.ID, func(n *types.Node) {
-			n.LastSeen = ptr.To(time.Now())
+			n.LastSeen = new(time.Now())
 		})
 		done <- true
 	}()
@@ -294,7 +293,7 @@ func TestUpdateNodeFromMapRequestEphemeralLogoutSequence(t *testing.T) {
 
 	go func() {
 		node, ok := store.UpdateNode(ephemeralNode.ID, func(n *types.Node) {
-			n.LastSeen = ptr.To(time.Now())
+			n.LastSeen = new(time.Now())
 			endpoint := netip.MustParseAddrPort("10.0.0.1:41641")
 			n.Endpoints = []netip.AddrPort{endpoint}
 		})
@@ -363,7 +362,7 @@ func TestUpdateNodeDeletedInSameBatchReturnsInvalid(t *testing.T) {
 
 	go func() {
 		updatedNode, ok := store.UpdateNode(node.ID, func(n *types.Node) {
-			n.LastSeen = ptr.To(time.Now())
+			n.LastSeen = new(time.Now())
 		})
 		updateDone <- struct {
 			node types.NodeView
@@ -417,7 +416,7 @@ func TestPersistNodeToDBChecksNodeStoreBeforePersist(t *testing.T) {
 
 	// UpdateNode returns a node
 	updatedNode, ok := store.UpdateNode(ephemeralNode.ID, func(n *types.Node) {
-		n.LastSeen = ptr.To(time.Now())
+		n.LastSeen = new(time.Now())
 	})
 	require.True(t, ok, "UpdateNode should succeed")
 	require.True(t, updatedNode.Valid(), "updated node should be valid")

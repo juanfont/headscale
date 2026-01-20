@@ -93,7 +93,7 @@ func (u *User) StringID() string {
 }
 
 // TypedID returns a pointer to the user's ID as a UserID type.
-// This is a convenience method to avoid ugly casting like ptr.To(types.UserID(user.ID)).
+// This is a convenience method to avoid ugly casting like new(types.UserID(user.ID)).
 func (u *User) TypedID() *UserID {
 	uid := UserID(u.ID)
 	return &uid

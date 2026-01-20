@@ -22,7 +22,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestGetNode(t *testing.T) {
@@ -115,7 +114,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -159,7 +158,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 	}
 
 	trx := db.DB.Save(node)
@@ -443,7 +442,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
 					},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4: new(netip.MustParseAddr("100.64.0.1")),
 				}
 
 				err = adb.DB.Save(&node).Error
@@ -460,7 +459,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 						RoutableIPs: tt.routes,
 					},
 					Tags: []string{"tag:exit"},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.2")),
+					IPv4: new(netip.MustParseAddr("100.64.0.2")),
 				}
 
 				err = adb.DB.Save(&nodeTagged).Error
@@ -649,7 +648,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 	}
 
 	nodeEph := types.Node{
@@ -659,7 +658,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pakEph.ID),
+		AuthKeyID:      new(pakEph.ID),
 	}
 
 	err = db.DB.Save(&node).Error
@@ -750,8 +749,8 @@ func TestNodeNaming(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
-		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
+		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, new(mpp("100.64.0.66/32").Addr()), nil)
+		_, err = RegisterNodeForTest(tx, nodeShortHostname, new(mpp("100.64.0.67/32").Addr()), nil)
 		return err
 	})
 	require.NoError(t, err)

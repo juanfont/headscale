@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestNetInfoFromMapRequest(t *testing.T) {
@@ -149,7 +148,7 @@ func createTestNodeSimple(id types.NodeID) *types.Node {
 	node := &types.Node{
 		ID:         id,
 		Hostname:   "test-node",
-		UserID:     ptr.To(uint(id)),
+		UserID:     new(uint(id)),
 		User:       &user,
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey.Public(),
