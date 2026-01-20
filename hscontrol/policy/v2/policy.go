@@ -956,14 +956,7 @@ func (pm *PolicyManager) invalidateGlobalPolicyCache(newNodes views.Slice[types.
 // It will return a Owners list where all the Tag types have been resolved to their underlying Owners.
 func flattenTags(tagOwners TagOwners, tag Tag, visiting map[Tag]bool, chain []Tag) (Owners, error) {
 	if visiting[tag] {
-		cycleStart := 0
-
-		for i, t := range chain {
-			if t == tag {
-				cycleStart = i
-				break
-			}
-		}
+		cycleStart := slices.Index(chain, tag)
 
 		cycleTags := make([]string, len(chain[cycleStart:]))
 		for i, t := range chain[cycleStart:] {

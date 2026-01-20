@@ -16,7 +16,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1232,8 +1232,8 @@ func (t *HeadscaleInContainer) ListNodes(
 		}
 	}
 
-	sort.Slice(ret, func(i, j int) bool {
-		return cmp.Compare(ret[i].GetId(), ret[j].GetId()) == -1
+	slices.SortFunc(ret, func(a, b *v1.Node) int {
+		return cmp.Compare(a.GetId(), b.GetId())
 	})
 
 	return ret, nil

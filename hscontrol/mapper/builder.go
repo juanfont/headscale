@@ -1,9 +1,10 @@
 package mapper
 
 import (
+	"cmp"
 	"errors"
 	"net/netip"
-	"sort"
+	"slices"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy"
@@ -261,8 +262,8 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 	}
 
 	// Peers is always returned sorted by Node.ID.
-	sort.SliceStable(tailPeers, func(x, y int) bool {
-		return tailPeers[x].ID < tailPeers[y].ID
+	slices.SortStableFunc(tailPeers, func(a, b *tailcfg.Node) int {
+		return cmp.Compare(a.ID, b.ID)
 	})
 
 	return tailPeers, nil

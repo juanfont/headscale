@@ -1,15 +1,16 @@
 package integration
 
 import (
+	"cmp"
 	"maps"
 	"net/netip"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
+	gocmp "github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -111,11 +112,11 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		},
 	}
 
-	sort.Slice(listUsers, func(i, j int) bool {
-		return listUsers[i].GetId() < listUsers[j].GetId()
+	slices.SortFunc(listUsers, func(a, b *v1.User) int {
+		return cmp.Compare(a.GetId(), b.GetId())
 	})
 
-	if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+	if diff := gocmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 		t.Fatalf("unexpected users: %s", diff)
 	}
 }
@@ -388,11 +389,11 @@ func TestOIDC024UserCreation(t *testing.T) {
 			listUsers, err := headscale.ListUsers()
 			require.NoError(t, err)
 
-			sort.Slice(listUsers, func(i, j int) bool {
-				return listUsers[i].GetId() < listUsers[j].GetId()
+			slices.SortFunc(listUsers, func(a, b *v1.User) int {
+				return cmp.Compare(a.GetId(), b.GetId())
 			})
 
-			if diff := cmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+			if diff := gocmp.Diff(want, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 				t.Errorf("unexpected users: %s", diff)
 			}
 		})
@@ -517,11 +518,11 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			},
 		}
 
-		sort.Slice(listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
+		slices.SortFunc(listUsers, func(a, b *v1.User) int {
+			return cmp.Compare(a.GetId(), b.GetId())
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := gocmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
@@ -599,11 +600,11 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			},
 		}
 
-		sort.Slice(listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
+		slices.SortFunc(listUsers, func(a, b *v1.User) int {
+			return cmp.Compare(a.GetId(), b.GetId())
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := gocmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after user2 login - expected both user1 and user2: %s", diff)
 		}
 	}, 30*time.Second, 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
@@ -763,11 +764,11 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			},
 		}
 
-		sort.Slice(listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
+		slices.SortFunc(listUsers, func(a, b *v1.User) int {
+			return cmp.Compare(a.GetId(), b.GetId())
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := gocmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("Final user validation failed - both users should persist after relogin cycle: %s", diff)
 		}
 	}, 30*time.Second, 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
@@ -935,13 +936,11 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		},
 	}
 
-	sort.Slice(
-		listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
-		},
-	)
+	slices.SortFunc(listUsers, func(a, b *v1.User) int {
+		return cmp.Compare(a.GetId(), b.GetId())
+	})
 
-	if diff := cmp.Diff(
+	if diff := gocmp.Diff(
 		wantUsers,
 		listUsers,
 		cmpopts.IgnoreUnexported(v1.User{}),
@@ -1046,13 +1045,11 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 		},
 	}
 
-	sort.Slice(
-		listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
-		},
-	)
+	slices.SortFunc(listUsers, func(a, b *v1.User) int {
+		return cmp.Compare(a.GetId(), b.GetId())
+	})
 
-	if diff := cmp.Diff(
+	if diff := gocmp.Diff(
 		wantUsers,
 		listUsers,
 		cmpopts.IgnoreUnexported(v1.User{}),
@@ -1155,11 +1152,11 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			},
 		}
 
-		sort.Slice(listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
+		slices.SortFunc(listUsers, func(a, b *v1.User) int {
+			return cmp.Compare(a.GetId(), b.GetId())
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := gocmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
 	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
@@ -1249,11 +1246,11 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			},
 		}
 
-		sort.Slice(listUsers, func(i, j int) bool {
-			return listUsers[i].GetId() < listUsers[j].GetId()
+		slices.SortFunc(listUsers, func(a, b *v1.User) int {
+			return cmp.Compare(a.GetId(), b.GetId())
 		})
 
-		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
+		if diff := gocmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("Final user validation failed - user1 should persist after same-user relogin: %s", diff)
 		}
 	}, 30*time.Second, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")

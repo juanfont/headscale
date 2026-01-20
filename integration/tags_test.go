@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const tagTestUser = "taguser"
@@ -30,9 +29,9 @@ const tagTestUser = "taguser"
 func tagsTestPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
-			"tag:valid-owned":   policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:second":        policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:valid-unowned": policyv2.Owners{ptr.To(policyv2.Username("other-user@"))},
+			"tag:valid-owned":   policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:second":        policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:valid-unowned": policyv2.Owners{new(policyv2.Username("other-user@"))},
 			// Note: tag:nonexistent deliberately NOT defined
 		},
 		ACLs: []policyv2.ACL{
@@ -51,11 +50,11 @@ func tagsEqual(actual, expected []string) bool {
 		return false
 	}
 
-	sortedActual := append([]string{}, actual...)
-	sortedExpected := append([]string{}, expected...)
+	sortedActual := slices.Clone(actual)
+	sortedExpected := slices.Clone(expected)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 
 	for i := range sortedActual {
 		if sortedActual[i] != sortedExpected[i] {
@@ -69,11 +68,11 @@ func tagsEqual(actual, expected []string) bool {
 // assertNodeHasTagsWithCollect asserts that a node has exactly the expected tags (order-independent).
 func assertNodeHasTagsWithCollect(c *assert.CollectT, node *v1.Node, expectedTags []string) {
 	actualTags := node.GetTags()
-	sortedActual := append([]string{}, actualTags...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTags)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Node %s tags mismatch", node.GetName())
 }
 
@@ -102,11 +101,11 @@ func assertNodeSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient
 		}
 	}
 
-	sortedActual := append([]string{}, actualTagsSlice...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTagsSlice)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Client %s self tags mismatch", client.Hostname())
 }
 
@@ -2507,11 +2506,11 @@ func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClie
 		}
 	}
 
-	sortedActual := append([]string{}, actualTagsSlice...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTagsSlice)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Client %s netmap self tags mismatch", client.Hostname())
 }
 

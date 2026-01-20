@@ -7,7 +7,6 @@ import (
 	"maps"
 	"net/netip"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -287,11 +286,10 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	t.Logf("webservice: %s, %s", webip.String(), weburl)
 
 	// Sort nodes by ID
-	sort.SliceStable(allClients, func(i, j int) bool {
-		statusI := allClients[i].MustStatus()
-		statusJ := allClients[j].MustStatus()
-
-		return statusI.Self.ID < statusJ.Self.ID
+	slices.SortStableFunc(allClients, func(a, b TailscaleClient) int {
+		statusA := a.MustStatus()
+		statusB := b.MustStatus()
+		return cmp.Compare(statusA.Self.ID, statusB.Self.ID)
 	})
 
 	// This is ok because the scenario makes users in order, so the three first
@@ -1359,10 +1357,10 @@ func TestSubnetRouteACL(t *testing.T) {
 	}
 
 	// Sort nodes by ID
-	sort.SliceStable(allClients, func(i, j int) bool {
-		statusI := allClients[i].MustStatus()
-		statusJ := allClients[j].MustStatus()
-		return statusI.Self.ID < statusJ.Self.ID
+	slices.SortStableFunc(allClients, func(a, b TailscaleClient) int {
+		statusA := a.MustStatus()
+		statusB := b.MustStatus()
+		return cmp.Compare(statusA.Self.ID, statusB.Self.ID)
 	})
 
 	subRouter1 := allClients[0]
@@ -2403,11 +2401,10 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("webservice: %s, %s", webip.String(), weburl)
 
 					// Sort nodes by ID
-					sort.SliceStable(allClients, func(i, j int) bool {
-						statusI := allClients[i].MustStatus()
-						statusJ := allClients[j].MustStatus()
-
-						return statusI.Self.ID < statusJ.Self.ID
+					slices.SortStableFunc(allClients, func(a, b TailscaleClient) int {
+						statusA := a.MustStatus()
+						statusB := b.MustStatus()
+						return cmp.Compare(statusA.Self.ID, statusB.Self.ID)
 					})
 
 					// This is ok because the scenario makes users in order, so the three first
