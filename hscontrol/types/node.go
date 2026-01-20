@@ -42,10 +42,6 @@ type (
 	NodeIDs []NodeID
 )
 
-func (n NodeIDs) Len() int           { return len(n) }
-func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
-func (n NodeIDs) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
-
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
 }
@@ -197,13 +193,7 @@ func (node *Node) IPs() []netip.Addr {
 
 // HasIP reports if a node has a given IP address.
 func (node *Node) HasIP(i netip.Addr) bool {
-	for _, ip := range node.IPs() {
-		if ip.Compare(i) == 0 {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(node.IPs(), i)
 }
 
 // IsTagged reports if a device is tagged and therefore should not be treated
@@ -355,13 +345,9 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 }
 
 func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
-	for _, node := range nodes {
-		if node.NodeKey == nodeKey {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(nodes, func(node *Node) bool {
+		return node.NodeKey == nodeKey
+	})
 }
 
 func (node *Node) Proto() *v1.Node {
@@ -1048,7 +1034,7 @@ func (nv NodeView) TailNode(
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
 	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
-	tsaddr.SortPrefixes(allowedIPs)
+	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},

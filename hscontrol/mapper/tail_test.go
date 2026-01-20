@@ -13,7 +13,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestTailNode(t *testing.T) {
@@ -95,7 +94,7 @@ func TestTailNode(t *testing.T) {
 				IPv4:      iap("100.64.0.1"),
 				Hostname:  "mini",
 				GivenName: "mini",
-				UserID:    ptr.To(uint(0)),
+				UserID:    new(uint(0)),
 				User: &types.User{
 					Name: "mini",
 				},
@@ -136,10 +135,10 @@ func TestTailNode(t *testing.T) {
 				),
 				Addresses: []netip.Prefix{netip.MustParsePrefix("100.64.0.1/32")},
 				AllowedIPs: []netip.Prefix{
-					tsaddr.AllIPv4(),
-					netip.MustParsePrefix("192.168.0.0/24"),
-					netip.MustParsePrefix("100.64.0.1/32"),
-					tsaddr.AllIPv6(),
+					tsaddr.AllIPv4(),                        // 0.0.0.0/0
+					netip.MustParsePrefix("100.64.0.1/32"),  // lower IPv4
+					netip.MustParsePrefix("192.168.0.0/24"), // higher IPv4
+					tsaddr.AllIPv6(),                        // ::/0 (IPv6)
 				},
 				PrimaryRoutes: []netip.Prefix{
 					netip.MustParsePrefix("192.168.0.0/24"),

@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"net/netip"
+	"slices"
 	"testing"
 
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
@@ -10,9 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 )
 
@@ -32,10 +31,10 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "test-node",
-		UserID:         ptr.To(user1.ID),
-		User:           ptr.To(user1),
+		UserID:         new(user1.ID),
+		User:           new(user1),
 		RegisterMethod: util.RegisterMethodAuthKey,
-		IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
+		IPv4:           new(netip.MustParseAddr("100.64.0.1")),
 		Tags:           []string{"tag:test"},
 	}
 
@@ -44,10 +43,10 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "other-node",
-		UserID:         ptr.To(user2.ID),
-		User:           ptr.To(user2),
+		UserID:         new(user2.ID),
+		User:           new(user2),
 		RegisterMethod: util.RegisterMethodAuthKey,
-		IPv4:           ptr.To(netip.MustParseAddr("100.64.0.2")),
+		IPv4:           new(netip.MustParseAddr("100.64.0.2")),
 	}
 
 	// Create a policy that auto-approves specific routes
@@ -194,7 +193,7 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 			assert.Equal(t, tt.wantChanged, gotChanged, "changed flag mismatch: %s", tt.description)
 
 			// Sort for comparison since ApproveRoutesWithPolicy sorts the results
-			tsaddr.SortPrefixes(tt.wantApproved)
+			slices.SortFunc(tt.wantApproved, netip.Prefix.Compare)
 			assert.Equal(t, tt.wantApproved, gotApproved, "approved routes mismatch: %s", tt.description)
 
 			// Verify that all previously approved routes are still present
@@ -304,10 +303,10 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "testnode",
-					UserID:         ptr.To(user.ID),
-					User:           ptr.To(user),
+					UserID:         new(user.ID),
+					User:           new(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
-					IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4:           new(netip.MustParseAddr("100.64.0.1")),
 					ApprovedRoutes: tt.currentApproved,
 				}
 				nodes := types.Nodes{&node}
@@ -330,7 +329,7 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 				if tt.wantApproved == nil {
 					assert.Nil(t, gotApproved, "expected nil approved routes")
 				} else {
-					tsaddr.SortPrefixes(tt.wantApproved)
+					slices.SortFunc(tt.wantApproved, netip.Prefix.Compare)
 					assert.Equal(t, tt.wantApproved, gotApproved, "approved routes mismatch")
 				}
 			})

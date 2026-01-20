@@ -4,6 +4,7 @@
 package hscontrol
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"net/netip"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -135,8 +135,8 @@ func (api headscaleV1APIServer) ListUsers(
 		response[index] = user.Proto()
 	}
 
-	sort.Slice(response, func(i, j int) bool {
-		return response[i].Id < response[j].Id
+	slices.SortFunc(response, func(a, b *v1.User) int {
+		return cmp.Compare(a.Id, b.Id)
 	})
 
 	return &v1.ListUsersResponse{Users: response}, nil
@@ -221,8 +221,8 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 		response[index] = key.Proto()
 	}
 
-	sort.Slice(response, func(i, j int) bool {
-		return response[i].Id < response[j].Id
+	slices.SortFunc(response, func(a, b *v1.PreAuthKey) int {
+		return cmp.Compare(a.Id, b.Id)
 	})
 
 	return &v1.ListPreAuthKeysResponse{PreAuthKeys: response}, nil
@@ -387,7 +387,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 
 	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)
@@ -535,8 +535,8 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 		response[index] = resp
 	}
 
-	sort.Slice(response, func(i, j int) bool {
-		return response[i].Id < response[j].Id
+	slices.SortFunc(response, func(a, b *v1.Node) int {
+		return cmp.Compare(a.Id, b.Id)
 	})
 
 	return response
@@ -632,8 +632,8 @@ func (api headscaleV1APIServer) ListApiKeys(
 		response[index] = key.Proto()
 	}
 
-	sort.Slice(response, func(i, j int) bool {
-		return response[i].Id < response[j].Id
+	slices.SortFunc(response, func(a, b *v1.ApiKey) int {
+		return cmp.Compare(a.Id, b.Id)
 	})
 
 	return &v1.ListApiKeysResponse{ApiKeys: response}, nil

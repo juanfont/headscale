@@ -9,7 +9,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/views"
 )
 
@@ -111,7 +110,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	}
 
 	// Sort and deduplicate
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 	newApproved = lo.Filter(newApproved, func(route netip.Prefix, index int) bool {
 		return route.IsValid()
@@ -120,7 +119,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	// Sort the current approved for comparison
 	sortedCurrent := make([]netip.Prefix, len(currentApproved))
 	copy(sortedCurrent, currentApproved)
-	tsaddr.SortPrefixes(sortedCurrent)
+	slices.SortFunc(sortedCurrent, netip.Prefix.Compare)
 
 	// Only update if the routes actually changed
 	if !slices.Equal(sortedCurrent, newApproved) {

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -57,7 +56,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// this is important so the same node is chosen two times in a row
 	// as the primary route.
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
-	sort.Sort(ids)
+	slices.Sort(ids)
 
 	// Create a map of prefixes to nodes that serve them so we
 	// can determine the primary route for each prefix.
@@ -236,7 +235,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
-	tsaddr.SortPrefixes(routes)
+	slices.SortFunc(routes, netip.Prefix.Compare)
 
 	return routes
 }
@@ -254,7 +253,7 @@ func (pr *PrimaryRoutes) stringLocked() string {
 	fmt.Fprintln(&sb, "Available routes:")
 
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
-	sort.Sort(ids)
+	slices.Sort(ids)
 	for _, id := range ids {
 		prefixes := pr.routes[id]
 		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
@@ -294,7 +293,7 @@ func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
 	// Populate available routes
 	for nodeID, routes := range pr.routes {
 		prefixes := routes.Slice()
-		tsaddr.SortPrefixes(prefixes)
+		slices.SortFunc(prefixes, netip.Prefix.Compare)
 		debug.AvailableRoutes[nodeID] = prefixes
 	}
 
