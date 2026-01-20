@@ -1,5 +1,33 @@
 # Web interfaces for headscale
 
+Headscale also supports serving static web applications directly from the server, without deploying an external web frontend. This can be used for admin panels, consoles, or other custom management interfaces.
+
+## Configuration
+
+Add a web section in your config.yaml:
+
+```yaml
+web:
+  enabled: true                 # Enable built-in web server
+  apps:
+    admin:
+      url_path: /admin          # URL path to access the app
+      root: /web/admin          # Directory containing static files
+      spa: true                 # Enable SPA mode (fallback to index.html)
+    console:
+      url_path: /console
+      root: /web/console
+      spa: false
+```
+
+- enabled: Enables or disables the internal web server. Default is false.
+- url_path: Path where the app will be served.
+- root: Directory containing static files to serve.
+- spa: If true, unknown routes fallback to index.html, suitable for single-page applications.
+
+
+## Community contributions
+
 !!! warning "Community contributions"
 
     This page contains community contributions. The projects listed here are not

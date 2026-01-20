@@ -109,6 +109,7 @@ sequentially through each stable release, selecting the latest patch version ava
 - Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
 - Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
 - Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
+- Add support for serving built-in static web interfaces (e.g. admin or console UIs) directly. [#2982](https://github.com/juanfont/headscale/pull/2982)
 
 ## 0.27.1 (2025-11-11)
 

@@ -474,6 +474,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
 	}
 
+	RegisterWebApps(router, h.cfg.Web)
+
 	apiRouter := router.PathPrefix("/api").Subrouter()
 	apiRouter.Use(h.httpAuthenticationMiddleware)
 	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
@@ -750,7 +752,6 @@ func (h *Headscale) Serve() error {
 	} else {
 		log.Info().Msg("metrics server disabled (metrics_listen_addr is empty)")
 	}
-
 
 	var tailsqlContext context.Context
 	if tailsqlEnabled {

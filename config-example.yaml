@@ -434,3 +434,35 @@ taildrop:
 #   #
 #   # node_store_batch_size: 100
 #   # node_store_batch_timeout: 500ms
+
+# Web UI configuration
+#
+# This section controls the built-in static web file serving.
+# It is typically used to expose:
+# - Admin UI (SPA-based management console)
+#
+# The web server is served by headscale itself and shares
+# the same listen_addr as the main HTTP server.
+web:
+  # If disabled, no static files will be served at all.
+  enabled: true
+  # Web apps map
+  apps:
+    # Admin Web UI
+    # This UI is typically a Single Page Application (SPA),
+    admin:
+      # URL path prefix where the admin UI is exposed.
+      # Example: https://headscale.example.com/admin
+      url_path: /admin
+      # Filesystem path containing the static assets.
+      # Must include index.html.
+      root: /web/admin
+      # Enable SPA mode.
+      #
+      # When enabled:
+      # - Requests for non-existent files will fall back to index.html
+      # - This allows frontend routing to work correctly
+      #
+      # Disable this for traditional multi-page static sites.
+      spa: true
+
