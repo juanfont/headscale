@@ -78,7 +78,7 @@ var listPreAuthKeys = &cobra.Command{
 				"Used",
 				"Expiration",
 				"Created",
-				"Tags",
+				"Owner",
 			},
 		}
 		for _, key := range response.GetPreAuthKeys() {
@@ -87,13 +87,14 @@ var listPreAuthKeys = &cobra.Command{
 				expiration = ColourTime(key.GetExpiration().AsTime())
 			}
 
-			aclTags := ""
-
-			for _, tag := range key.GetAclTags() {
-				aclTags += "\n" + tag
+			var owner string
+			if len(key.GetAclTags()) > 0 {
+				owner = strings.Join(key.GetAclTags(), "\n")
+			} else if key.GetUser() != nil {
+				owner = key.GetUser().GetName()
+			} else {
+				owner = "-"
 			}
-
-			aclTags = strings.TrimLeft(aclTags, "\n")
 
 			tableData = append(tableData, []string{
 				strconv.FormatUint(key.GetId(), 10),
@@ -103,7 +104,7 @@ var listPreAuthKeys = &cobra.Command{
 				strconv.FormatBool(key.GetUsed()),
 				expiration,
 				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				aclTags,
+				owner,
 			})
 
 		}
