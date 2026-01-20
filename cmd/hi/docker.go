@@ -70,7 +70,8 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 			log.Printf("Running pre-test cleanup...")
 		}
 
-		if err := cleanupBeforeTest(ctx); err != nil && config.Verbose {
+		err := cleanupBeforeTest(ctx)
+		if err != nil && config.Verbose {
 			log.Printf("Warning: pre-test cleanup failed: %v", err)
 		}
 	}
@@ -123,7 +124,8 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 			// Start stats collection immediately - no need for complex retry logic
 			// The new implementation monitors Docker events and will catch containers as they start
-			if err := statsCollector.StartCollection(ctx, runID, config.Verbose); err != nil {
+			err := statsCollector.StartCollection(ctx, runID, config.Verbose)
+			if err != nil {
 				if config.Verbose {
 					log.Printf("Warning: failed to start stats collection: %v", err)
 				}
@@ -135,7 +137,8 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
 	// Ensure all containers have finished and logs are flushed before extracting artifacts
-	if waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose); waitErr != nil && config.Verbose {
+	waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose)
+	if waitErr != nil && config.Verbose {
 		log.Printf("Warning: failed to wait for container finalization: %v", waitErr)
 	}
 
@@ -648,7 +651,8 @@ func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDi
 
 	for _, cont := range currentTestContainers {
 		// Extract container logs and tar files
-		if err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose); err != nil {
+		err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose)
+		if err != nil {
 			if verbose {
 				log.Printf("Warning: failed to extract artifacts from container %s (%s): %v", cont.name, cont.ID[:12], err)
 			}
@@ -727,7 +731,8 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 // extractContainerArtifacts saves logs and tar files from a container.
 func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Ensure the logs directory exists
-	if err := os.MkdirAll(logsDir, dirPermissions); err != nil {
+	err := os.MkdirAll(logsDir, dirPermissions)
+	if err != nil {
 		return fmt.Errorf("failed to create logs directory: %w", err)
 	}
 

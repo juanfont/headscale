@@ -36,7 +36,7 @@ var (
 		"node not found in registration cache",
 	)
 	ErrCouldNotConvertNodeInterface = errors.New("failed to convert node interface")
-	ErrNameNotUnique                 = errors.New("name is not unique")
+	ErrNameNotUnique                = errors.New("name is not unique")
 )
 
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.
@@ -229,7 +229,8 @@ func SetApprovedRoutes(
 ) error {
 	if len(routes) == 0 {
 		// if no routes are provided, we remove all
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error; err != nil {
+		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error
+		if err != nil {
 			return fmt.Errorf("removing approved routes: %w", err)
 		}
 
@@ -278,13 +279,15 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
 	}
 
 	// Check if the new name is unique
 	var count int64
-	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
+	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
+	if err != nil {
 		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
 
@@ -494,8 +497,9 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 
 func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	nodes := types.Nodes{}
-	if err := tx.
-		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
+	err := tx.
+		Where("given_name = ?", name).Find(&nodes).Error
+	if err != nil {
 		return false, err
 	}
 

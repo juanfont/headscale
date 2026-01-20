@@ -46,11 +46,11 @@ const (
 	dockerExecuteTimeout = 60 * time.Second
 
 	// Container restart and backoff timeouts.
-	containerRestartTimeout     = 30 // seconds, used by Docker API
-	tailscaleVersionTimeout     = 5 * time.Second
-	containerRestartBackoff     = 30 * time.Second
-	backoffMaxElapsedTime       = 10 * time.Second
-	curlFailFastMaxTime         = 2 * time.Second
+	containerRestartTimeout = 30 // seconds, used by Docker API
+	tailscaleVersionTimeout = 5 * time.Second
+	containerRestartBackoff = 30 * time.Second
+	backoffMaxElapsedTime   = 10 * time.Second
+	curlFailFastMaxTime     = 2 * time.Second
 )
 
 var (

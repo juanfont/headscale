@@ -721,7 +721,8 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 
 // extractTarToDirectory extracts a tar archive to a directory.
 func extractTarToDirectory(tarData []byte, targetDir string) error {
-	if err := os.MkdirAll(targetDir, dirPermissions); err != nil {
+	err := os.MkdirAll(targetDir, dirPermissions)
+	if err != nil {
 		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
 	}
 
@@ -780,7 +781,8 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directory
-			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+			err := os.MkdirAll(targetPath, os.FileMode(header.Mode))
+			if err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:

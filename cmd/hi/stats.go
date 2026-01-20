@@ -23,7 +23,7 @@ var ErrStatsCollectionAlreadyStarted = errors.New("stats collection already star
 
 // Stats calculation constants.
 const (
-	bytesPerKB          = 1024
+	bytesPerKB           = 1024
 	percentageMultiplier = 100.0
 )
 
@@ -259,7 +259,8 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 			return
 		default:
 			var stats container.StatsResponse
-			if err := decoder.Decode(&stats); err != nil {
+			err := decoder.Decode(&stats)
+			if err != nil {
 				// EOF is expected when container stops or stream ends
 				if err.Error() != "EOF" && verbose {
 					log.Printf("Failed to decode stats for container %s: %v", containerID[:12], err)

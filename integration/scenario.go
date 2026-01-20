@@ -53,16 +53,16 @@ const (
 var usePostgresForTest = envknob.Bool("HEADSCALE_INTEGRATION_POSTGRES")
 
 var (
-	errNoHeadscaleAvailable  = errors.New("no headscale available")
-	errNoUserAvailable       = errors.New("no user available")
-	errNoClientFound         = errors.New("client not found")
-	errUserAlreadyInNetwork  = errors.New("users can only have nodes placed in one network")
-	errNoNetworkNamed        = errors.New("no network named")
-	errNoIPAMConfig          = errors.New("no IPAM config found in network")
-	errHTTPClientNil         = errors.New("http client is nil")
-	errLoginURLNil           = errors.New("login url is nil")
-	errUnexpectedStatusCode  = errors.New("unexpected status code")
-	errNetworkDoesNotExist   = errors.New("network does not exist")
+	errNoHeadscaleAvailable = errors.New("no headscale available")
+	errNoUserAvailable      = errors.New("no user available")
+	errNoClientFound        = errors.New("client not found")
+	errUserAlreadyInNetwork = errors.New("users can only have nodes placed in one network")
+	errNoNetworkNamed       = errors.New("no network named")
+	errNoIPAMConfig         = errors.New("no IPAM config found in network")
+	errHTTPClientNil        = errors.New("http client is nil")
+	errLoginURLNil          = errors.New("login url is nil")
+	errUnexpectedStatusCode = errors.New("unexpected status code")
+	errNetworkDoesNotExist  = errors.New("network does not exist")
 
 	// AllVersions represents a list of Tailscale versions the suite
 	// uses to test compatibility with the ControlServer.
@@ -391,13 +391,15 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	if s.mockOIDC.r != nil {
 		s.mockOIDC.r.Close()
 
-		if err := s.mockOIDC.r.Close(); err != nil {
+		err := s.mockOIDC.r.Close()
+		if err != nil {
 			log.Printf("failed to tear down oidc server: %s", err)
 		}
 	}
 
 	for _, network := range s.networks {
-		if err := network.Close(); err != nil {
+		err := network.Close()
+		if err != nil {
 			log.Printf("failed to tear down network: %s", err)
 		}
 	}
@@ -775,7 +777,8 @@ func (s *Scenario) WaitForTailscaleSyncPerUser(timeout, retryInterval time.Durat
 			})
 		}
 
-		if err := user.syncWaitGroup.Wait(); err != nil {
+		err := user.syncWaitGroup.Wait()
+		if err != nil {
 			allErrors = append(allErrors, err)
 		}
 	}
@@ -938,7 +941,8 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 			log.Printf("client %s is ready", client.Hostname())
 		}
 
-		if err := user.joinWaitGroup.Wait(); err != nil {
+		err := user.joinWaitGroup.Wait()
+		if err != nil {
 			return err
 		}
 
