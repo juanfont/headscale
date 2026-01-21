@@ -155,7 +155,7 @@ func (u UserView) ID() uint {
 
 func (u *User) TailscaleLogin() tailcfg.Login {
 	return tailcfg.Login{
-		ID:            tailcfg.LoginID(u.ID), //nolint:gosec // G115: User IDs are always positive and fit in int64
+		ID:            tailcfg.LoginID(u.ID), //nolint:gosec
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
@@ -277,8 +277,10 @@ func (c *OIDCClaims) Identifier() string {
 
 	var result string
 	// Try to parse as URL to handle URL joining correctly
+	//nolint:noinlineerr
 	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" {
 		// For URLs, use proper URL path joining
+		//nolint:noinlineerr
 		if joined, err := url.JoinPath(issuer, subject); err == nil {
 			result = joined
 		}

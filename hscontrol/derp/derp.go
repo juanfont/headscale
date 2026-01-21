@@ -161,9 +161,9 @@ func derpRandom() *rand.Rand {
 
 	derpRandomOnce.Do(func() {
 		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
-		//nolint:gosec // G404,G115: Intentionally using math/rand for deterministic DERP server ID
+		//nolint:gosec
 		rnd := rand.New(rand.NewSource(0))
-		//nolint:gosec // G115: Checksum is always positive and fits in int64
+		//nolint:gosec
 		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table)))
 		derpRandomInst = rnd
 	})

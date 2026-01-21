@@ -38,8 +38,10 @@ const (
 )
 
 // runTestContainer executes integration tests in a Docker container.
+//
+//nolint:gocyclo
 func runTestContainer(ctx context.Context, config *RunConfig) error {
-	//nolint:contextcheck // createDockerClient internal functions don't accept context
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -62,6 +64,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	const dirPerm = 0o755
+	//nolint:noinlineerr
 	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil {
 		return fmt.Errorf("failed to create logs directory: %w", err)
 	}
@@ -83,6 +86,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	imageName := "golang:" + config.GoVersion
+	//nolint:noinlineerr
 	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil {
 		return fmt.Errorf("failed to ensure image availability: %w", err)
 	}
@@ -96,6 +100,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		log.Printf("Created container: %s", resp.ID)
 	}
 
+	//nolint:noinlineerr
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
 		return fmt.Errorf("failed to start container: %w", err)
 	}
@@ -111,7 +116,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	if config.Stats {
 		var err error
 
-		//nolint:contextcheck // NewStatsCollector internal functions don't accept context
+		//nolint:contextcheck
 		statsCollector, err = NewStatsCollector()
 		if err != nil {
 			if config.Verbose {
@@ -145,6 +150,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	// Extract artifacts from test containers before cleanup
+	//nolint:noinlineerr
 	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose {
 		log.Printf("Warning: failed to extract artifacts from containers: %v", err)
 	}
@@ -424,6 +430,7 @@ func isContainerFinalized(state *container.State) bool {
 func findProjectRoot(startPath string) string {
 	current := startPath
 	for {
+		//nolint:noinlineerr
 		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
 			return current
 		}
@@ -496,6 +503,7 @@ func getCurrentDockerContext() (*DockerContext, error) {
 	}
 
 	var contexts []DockerContext
+	//nolint:noinlineerr
 	if err := json.Unmarshal(output, &contexts); err != nil {
 		return nil, fmt.Errorf("failed to parse docker context: %w", err)
 	}
@@ -634,7 +642,7 @@ func listControlFiles(logsDir string) {
 
 // extractArtifactsFromContainers collects container logs and files from the specific test run.
 func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
-	//nolint:contextcheck // createDockerClient internal functions don't accept context
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -740,6 +748,7 @@ func extractContainerArtifacts(ctx context.Context, cli *client.Client, containe
 	}
 
 	// Extract container logs
+	//nolint:noinlineerr
 	if err := extractContainerLogs(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
 		return fmt.Errorf("failed to extract logs: %w", err)
 	}
@@ -787,13 +796,13 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	}
 
 	// Write stdout logs
-	//nolint:gosec // G306: Log files are meant to be world-readable
+	//nolint:gosec,mnd,noinlineerr
 	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stdout log: %w", err)
 	}
 
 	// Write stderr logs
-	//nolint:gosec // G306: Log files are meant to be world-readable
+	//nolint:gosec,mnd,noinlineerr
 	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
 		return fmt.Errorf("failed to write stderr log: %w", err)
 	}

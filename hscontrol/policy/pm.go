@@ -70,6 +70,7 @@ func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[typ
 }
 
 func PolicyManagerFuncsForTest(pol []byte) []func([]types.User, views.Slice[types.NodeView]) (PolicyManager, error) {
+	//nolint:prealloc
 	var polmanFuncs []func([]types.User, views.Slice[types.NodeView]) (PolicyManager, error)
 
 	polmanFuncs = append(polmanFuncs, func(u []types.User, n views.Slice[types.NodeView]) (PolicyManager, error) {

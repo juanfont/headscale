@@ -224,6 +224,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// propagate correctly when switching between policy types.
 	s.nodeStore.RebuildPeerMaps()
 
+	//nolint:prealloc
 	cs := []change.Change{change.PolicyChange()}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether
@@ -254,6 +255,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) {
+	//nolint:noinlineerr
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
@@ -288,6 +290,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, err
 		}
 
+		//nolint:noinlineerr
 		if err := updateFn(user); err != nil {
 			return nil, err
 		}
@@ -492,7 +495,7 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
-	//nolint:staticcheck // SA4006: now is used in new(now) below
+	//nolint:staticcheck
 	now := time.Now()
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
@@ -817,6 +820,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 
 	var updates []change.Change
 
+	//nolint:unqueryvet
 	for _, node := range s.nodeStore.ListNodes().All() {
 		if !node.Valid() {
 			continue
@@ -1697,7 +1701,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 				}
 			}
 
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		})
 		if err != nil {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("writing node to database: %w", err)

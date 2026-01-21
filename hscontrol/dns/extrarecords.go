@@ -104,6 +104,7 @@ func (e *ExtraRecordsMan) Run() {
 				// and not watch it. We will therefore attempt to re-add it with a backoff.
 			case fsnotify.Remove, fsnotify.Rename:
 				_, err := backoff.Retry(context.Background(), func() (struct{}, error) {
+					//nolint:noinlineerr
 					if _, err := os.Stat(e.path); err != nil {
 						return struct{}{}, err
 					}

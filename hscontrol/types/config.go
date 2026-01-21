@@ -916,6 +916,7 @@ func LoadCLIConfig() (*Config, error) {
 // LoadServerConfig returns the full Headscale configuration to
 // host a Headscale server. This is called as part of `headscale serve`.
 func LoadServerConfig() (*Config, error) {
+	//nolint:noinlineerr
 	if err := validateServerConfig(); err != nil {
 		return nil, err
 	}

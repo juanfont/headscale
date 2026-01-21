@@ -187,7 +187,7 @@ func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeV
 
 // Username is a string that represents a username, it must contain an @.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Username string
 
 func (u Username) Validate() error {
@@ -299,7 +299,7 @@ func (u Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.
 
 // Group is a special string which is always prefixed with `group:`.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Group string
 
 func (g Group) Validate() error {
@@ -368,7 +368,7 @@ func (g Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Nod
 
 // Tag is a special string which is always prefixed with `tag:`.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Tag string
 
 func (t Tag) Validate() error {
@@ -422,7 +422,7 @@ func (t Tag) MarshalJSON() ([]byte, error) {
 
 // Host is a string that represents a hostname.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Host string
 
 func (h Host) Validate() error {
@@ -482,7 +482,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView
 	return buildIPSetMultiErr(&ips, errs)
 }
 
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Prefix netip.Prefix
 
 func (p Prefix) Validate() error {
@@ -530,6 +530,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	//nolint:noinlineerr
 	if err := p.Validate(); err != nil {
 		return err
 	}
@@ -572,7 +573,7 @@ func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuild
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type AutoGroup string
 
 const (
@@ -622,6 +623,7 @@ func (ag AutoGroup) MarshalJSON() ([]byte, error) {
 func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var build netipx.IPSetBuilder
 
+	//nolint:exhaustive
 	switch ag {
 	case AutoGroupInternet:
 		return util.TheInternet(), nil
@@ -724,6 +726,7 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 			return err
 		}
 
+		//nolint:noinlineerr
 		if err := ve.Validate(); err != nil {
 			return err
 		}
@@ -804,7 +807,7 @@ func (ve *AliasEnc) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Aliases []Alias
 
 func (a *Aliases) UnmarshalJSON(b []byte) error {
@@ -1051,7 +1054,7 @@ type Usernames []Username
 
 // Groups are a map of Group to a list of Username.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Groups map[Group]Usernames
 
 func (g Groups) Contains(group *Group) error {
@@ -1146,7 +1149,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 
 // Hosts are alias for IP addresses or subnets.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Hosts map[Host]Prefix
 
 func (h *Hosts) UnmarshalJSON(b []byte) error {
@@ -1344,7 +1347,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 
 // Action represents the action to take for an ACL rule.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Action string
 
 const (
@@ -1353,7 +1356,7 @@ const (
 
 // SSHAction represents the action to take for an SSH rule.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type SSHAction string
 
 const (
@@ -1411,7 +1414,7 @@ func (a SSHAction) MarshalJSON() ([]byte, error) {
 
 // Protocol represents a network protocol with its IANA number and descriptions.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type Protocol string
 
 const (
@@ -1439,6 +1442,7 @@ func (p Protocol) String() string {
 
 // Description returns the human-readable description of the Protocol.
 func (p Protocol) Description() string {
+	//nolint:exhaustive
 	switch p {
 	case ProtocolICMP:
 		return "Internet Control Message Protocol"
@@ -1476,6 +1480,7 @@ func (p Protocol) Description() string {
 // parseProtocol converts a Protocol to its IANA protocol numbers.
 // Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
 func (p Protocol) parseProtocol() []int {
+	//nolint:exhaustive
 	switch p {
 	case "":
 		// Empty protocol applies to TCP and UDP traffic only
@@ -1532,6 +1537,7 @@ func (p *Protocol) UnmarshalJSON(b []byte) error {
 
 // validate checks if the Protocol is valid.
 func (p Protocol) validate() error {
+	//nolint:exhaustive
 	switch p {
 	case "", ProtocolICMP, ProtocolIGMP, ProtocolIPv4, ProtocolIPInIP,
 		ProtocolTCP, ProtocolEGP, ProtocolIGP, ProtocolUDP, ProtocolGRE,
@@ -1598,6 +1604,7 @@ type ACL struct {
 func (a *ACL) UnmarshalJSON(b []byte) error {
 	// First unmarshal into a map to filter out comment fields
 	var raw map[string]any
+	//nolint:noinlineerr
 	if err := json.Unmarshal(b, &raw, policyJSONOpts...); err != nil {
 		return err
 	}
@@ -1623,6 +1630,7 @@ func (a *ACL) UnmarshalJSON(b []byte) error {
 	var temp aclAlias
 
 	// Unmarshal into the temporary struct using the v2 JSON options
+	//nolint:noinlineerr
 	if err := json.Unmarshal(filteredBytes, &temp, policyJSONOpts...); err != nil {
 		return err
 	}
@@ -1759,6 +1767,8 @@ func validateAutogroupForSSHUser(user *AutoGroup) error {
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
 // in the policy that needs to be addressed before it can be used.
+//
+//nolint:gocyclo
 func (p *Policy) validate() error {
 	if p == nil {
 		panic("passed nil policy")
@@ -1808,14 +1818,15 @@ func (p *Policy) validate() error {
 		}
 
 		for _, dst := range acl.Destinations {
+			//nolint:gocritic
 			switch dst.Alias.(type) {
 			case *Host:
-				h := dst.Alias.(*Host)
+				h := dst.Alias.(*Host) //nolint:forcetypeassert
 				if !p.Hosts.exist(*h) {
 					errs = append(errs, fmt.Errorf("%w: %q - please define or remove the reference", ErrHostNotDefined, *h))
 				}
 			case *AutoGroup:
-				ag := dst.Alias.(*AutoGroup)
+				ag := dst.Alias.(*AutoGroup) //nolint:forcetypeassert
 
 				err := validateAutogroupSupported(ag)
 				if err != nil {
@@ -1829,14 +1840,14 @@ func (p *Policy) validate() error {
 					continue
 				}
 			case *Group:
-				g := dst.Alias.(*Group)
+				g := dst.Alias.(*Group) //nolint:forcetypeassert
 
 				err := p.Groups.Contains(g)
 				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				tagOwner := dst.Alias.(*Tag)
+				tagOwner := dst.Alias.(*Tag) //nolint:forcetypeassert
 
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
@@ -2013,7 +2024,7 @@ type SSH struct {
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
 // It can be a list of usernames, groups, tags or autogroups.
 //
-//nolint:recvcheck // Mixed receivers: pointer for UnmarshalJSON, value for read-only methods
+//nolint:recvcheck
 type SSHSrcAliases []Alias
 
 // MarshalJSON marshals the Groups to JSON.
@@ -2192,7 +2203,7 @@ func (u SSHUser) MarshalJSON() ([]byte, error) {
 // This is the only entrypoint of reading a policy from a file or other source.
 func unmarshalPolicy(b []byte) (*Policy, error) {
 	if len(b) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	var policy Policy
@@ -2204,7 +2215,9 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 	ast.Standardize()
 
+	//nolint:noinlineerr
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil {
+		//nolint:noinlineerr
 		if serr, ok := errors.AsType[*json.SemanticError](err); ok && errors.Is(serr.Err, json.ErrUnknownName) {
 			ptr := serr.JSONPointer
 			name := ptr.LastToken()
@@ -2215,6 +2228,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
 	}
 
+	//nolint:noinlineerr
 	if err := policy.validate(); err != nil {
 		return nil, err
 	}

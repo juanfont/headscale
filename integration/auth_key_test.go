@@ -133,7 +133,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
+				//nolint:forbidigo
 				time.Sleep(5 * time.Minute)
 			}
 
@@ -453,7 +453,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			// https://github.com/tailscale/tailscale/commit/1eaad7d3deb0815e8932e913ca1a862afa34db38
 			// https://github.com/juanfont/headscale/issues/2164
 			if !https {
-				//nolint:forbidigo // Intentional delay: Tailscale client requires 5 min wait before reconnecting over non-HTTPS
+				//nolint:forbidigo
 				time.Sleep(5 * time.Minute)
 			}
 

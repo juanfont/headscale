@@ -214,6 +214,7 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
+	//nolint:noinlineerr
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
@@ -288,8 +289,9 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
 	}
 
+	//nolint:prealloc
 	data := make([]byte, reservedResponseHeaderSize)
-	//nolint:gosec // G115: JSON response size will not exceed uint32 max
+	//nolint:gosec
 	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
 	data = append(data, jsonBody...)
 
@@ -334,13 +336,13 @@ func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
 		Str("node.name", m.node.Hostname)
 }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) infof(msg string, a ...any) { m.logf(log.Info().Caller()).Msgf(msg, a...) }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) tracef(msg string, a ...any) { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) errf(err error, msg string, a ...any) {
 	m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...)
 }

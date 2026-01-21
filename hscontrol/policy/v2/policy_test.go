@@ -76,6 +76,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{Model: gorm.Model{ID: 3}, Name: "user3", Email: "user3@headscale.net"},
 	}
 
+	//nolint:goconst
 	policy := `{
 		"acls": [
 			{
@@ -94,7 +95,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	}
 
 	for i, n := range initialNodes {
-		n.ID = types.NodeID(i + 1) //nolint:gosec // G115: Test code with small values
+		n.ID = types.NodeID(i + 1) //nolint:gosec
 	}
 
 	pm, err := NewPolicyManager([]byte(policy), users, initialNodes.ViewSlice())
@@ -187,7 +188,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 				}
 
 				if !found {
-					n.ID = types.NodeID(len(initialNodes) + i + 1) //nolint:gosec // G115: Test code with small values
+					n.ID = types.NodeID(len(initialNodes) + i + 1) //nolint:gosec
 				}
 			}
 
@@ -753,8 +754,8 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 		Hostname: "admin-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -764,8 +765,8 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 		Hostname: "user1-server",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:server"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -836,8 +837,8 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 		Hostname: "device-a",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -847,8 +848,8 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 		Hostname: "device-b",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:web"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}

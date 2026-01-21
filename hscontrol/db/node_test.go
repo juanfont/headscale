@@ -98,7 +98,7 @@ func TestExpireNode(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
-	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -143,7 +143,7 @@ func TestSetTags(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
-	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -468,10 +468,10 @@ func TestAutoApproveRoutes(t *testing.T) {
 				require.NoError(t, err)
 
 				users, err := adb.ListUsers()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				nodes, err := adb.ListNodes()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
@@ -600,7 +600,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	// Use shorter expiry for faster tests
 	for i := range want {
-		go e.Schedule(types.NodeID(i), 100*time.Millisecond) //nolint:gosec // test code, no overflow risk
+		go e.Schedule(types.NodeID(i), 100*time.Millisecond) //nolint:gosec
 	}
 
 	// Wait for all deletions to complete
@@ -639,11 +639,11 @@ func TestListEphemeralNodes(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
-	//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
-	//nolint:staticcheck // SA4006: pakEph is used in new(pakEph.ID) below
+	//nolint:staticcheck
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
@@ -724,6 +724,7 @@ func TestNodeNaming(t *testing.T) {
 	// break your network, so they should be replaced when registering
 	// a node.
 	// https://github.com/juanfont/headscale/issues/2343
+	//nolint:gosmopolitan
 	nodeInvalidHostname := types.Node{
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
@@ -822,25 +823,26 @@ func TestNodeNaming(t *testing.T) {
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
-	assert.ErrorContains(t, err, "name is not unique")
+	require.ErrorContains(t, err, "name is not unique")
 
 	// Rename invalid chars
+	//nolint:gosmopolitan
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[2].ID, "我的电脑")
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename too short
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[3].ID, "a")
 	})
-	assert.ErrorContains(t, err, "at least 2 characters")
+	require.ErrorContains(t, err, "at least 2 characters")
 
 	// Rename with emoji
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "hostname-with-💩")
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename with only emoji
 	err = db.Write(func(tx *gorm.DB) error {
@@ -908,12 +910,12 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "chinese_chars_with_dash_rejected",
-			newName: "server-北京-01",
+			newName: "server-北京-01", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{
 			name:    "chinese_only_rejected",
-			newName: "我的电脑",
+			newName: "我的电脑", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{
@@ -923,7 +925,7 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "mixed_chinese_emoji_rejected",
-			newName: "测试💻机器",
+			newName: "测试💻机器", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{

@@ -253,6 +253,7 @@ func SetApprovedRoutes(
 		return err
 	}
 
+	//nolint:noinlineerr
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil {
 		return fmt.Errorf("updating approved routes: %w", err)
 	}
@@ -655,7 +656,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		panic("CreateNodeForTest requires a valid user")
 	}
 
-	nodeName := "testnode"
+	nodeName := "testnode" //nolint:goconst
 	if len(hostname) > 0 && hostname[0] != "" {
 		nodeName = hostname[0]
 	}

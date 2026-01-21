@@ -192,7 +192,7 @@ func (m *mapper) policyChangeResponse(
 		// Convert tailcfg.NodeID to types.NodeID for WithPeersRemoved
 		removedIDs := make([]types.NodeID, len(removedPeers))
 		for i, id := range removedPeers {
-			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
+			removedIDs[i] = types.NodeID(id) //nolint:gosec
 		}
 
 		builder.WithPeersRemoved(removedIDs...)
@@ -215,7 +215,7 @@ func (m *mapper) buildFromChange(
 	resp *change.Change,
 ) (*tailcfg.MapResponse, error) {
 	if resp.IsEmpty() {
-		return nil, nil //nolint:nilnil // Empty response means nothing to send, not an error
+		return nil, nil //nolint:nilnil
 	}
 
 	// If this is a self-update (the changed node is the receiving node),
@@ -307,7 +307,7 @@ func writeDebugMapResponse(
 
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)

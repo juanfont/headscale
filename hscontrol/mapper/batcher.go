@@ -86,7 +86,7 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 	version := nc.version()
 
 	if r.IsEmpty() {
-		return nil, nil //nolint:nilnil // Empty response means nothing to send
+		return nil, nil //nolint:nilnil
 	}
 
 	if nodeID == 0 {
@@ -99,7 +99,7 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 
 	// Handle self-only responses
 	if r.IsSelfOnly() && r.TargetNode != nodeID {
-		return nil, nil //nolint:nilnil // No response needed for other nodes when self-only
+		return nil, nil //nolint:nilnil
 	}
 
 	// Check if this is a self-update (the changed node is the receiving node).

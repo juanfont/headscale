@@ -38,15 +38,15 @@ func runDoctorCheck(ctx context.Context) error {
 	}
 
 	// Check 3: Go installation
-	//nolint:contextcheck // These checks don't need context
+	//nolint:contextcheck
 	results = append(results, checkGoInstallation())
 
 	// Check 4: Git repository
-	//nolint:contextcheck // These checks don't need context
+	//nolint:contextcheck
 	results = append(results, checkGitRepository())
 
 	// Check 5: Required files
-	//nolint:contextcheck // These checks don't need context
+	//nolint:contextcheck
 	results = append(results, checkRequiredFiles())
 
 	// Display results
@@ -89,7 +89,7 @@ func checkDockerBinary() DoctorResult {
 
 // checkDockerDaemon verifies Docker daemon is running and accessible.
 func checkDockerDaemon(ctx context.Context) DoctorResult {
-	//nolint:contextcheck // createDockerClient internal functions don't accept context
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return DoctorResult{
@@ -129,7 +129,7 @@ func checkDockerDaemon(ctx context.Context) DoctorResult {
 
 // checkDockerContext verifies Docker context configuration.
 func checkDockerContext(_ context.Context) DoctorResult {
-	//nolint:contextcheck // getCurrentDockerContext doesn't accept context
+	//nolint:contextcheck
 	contextInfo, err := getCurrentDockerContext()
 	if err != nil {
 		return DoctorResult{
@@ -160,7 +160,7 @@ func checkDockerContext(_ context.Context) DoctorResult {
 
 // checkDockerSocket verifies Docker socket accessibility.
 func checkDockerSocket(ctx context.Context) DoctorResult {
-	//nolint:contextcheck // createDockerClient internal functions don't accept context
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return DoctorResult{
@@ -198,7 +198,7 @@ func checkDockerSocket(ctx context.Context) DoctorResult {
 
 // checkGolangImage verifies the golang Docker image is available locally or can be pulled.
 func checkGolangImage(ctx context.Context) DoctorResult {
-	//nolint:contextcheck // createDockerClient internal functions don't accept context
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return DoctorResult{

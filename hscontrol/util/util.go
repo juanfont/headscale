@@ -185,6 +185,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			firstSpace := strings.Index(remainder, " ")
 			if firstSpace > 0 {
 				firstPart := remainder[:firstSpace]
+				//nolint:noinlineerr
 				if _, err := strconv.ParseFloat(strings.TrimPrefix(firstPart, "<"), 64); err == nil {
 					latencyFirst = true
 				}
@@ -233,6 +234,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			parts := strings.Fields(remainder)
 			if len(parts) > 0 {
 				hopHostname = parts[0]
+				//nolint:noinlineerr
 				if ip, err := netip.ParseAddr(parts[0]); err == nil {
 					hopIP = ip
 				}
@@ -336,7 +338,7 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 // it's purely for observability and correlating log entries during the registration process.
 func GenerateRegistrationKey() (string, error) {
 	const (
-		registerKeyPrefix = "hskey-reg-" //nolint:gosec // This is a vanity key for logging, not a credential
+		registerKeyPrefix = "hskey-reg-" //nolint:gosec
 		registerKeyLength = 64
 	)
 

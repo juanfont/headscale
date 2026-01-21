@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	//nolint:gosec // G101: This is a flag name, not a credential
+	//nolint:gosec
 	bypassFlag = "bypass-grpc-and-access-database-directly"
 )
 
@@ -178,6 +178,7 @@ var setPolicy = &cobra.Command{
 			defer cancel()
 			defer conn.Close()
 
+			//nolint:noinlineerr
 			if _, err := client.SetPolicy(ctx, request); err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
 			}

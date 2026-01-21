@@ -323,6 +323,8 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
+	t.Helper()
+
 	defer func() { _ = dockertestutil.CleanUnreferencedNetworks(s.pool) }()
 	defer func() { _ = dockertestutil.CleanImagesInCI(s.pool) }()
 
@@ -1172,6 +1174,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	key = strings.SplitN(key, " ", expectedHTMLSplitParts)[0]
 	log.Printf("registering node %s", key)
 
+	//nolint:noinlineerr
 	if headscale, err := s.Headscale(); err == nil {
 		_, err = headscale.Execute(
 			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
@@ -1449,6 +1452,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
 
+	//nolint:noinlineerr
 	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
 		headscaleBuildOptions,
 		mockOidcOptions,
@@ -1468,6 +1472,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 
 	hostEndpoint := net.JoinHostPort(ipAddr, strconv.Itoa(port))
 
+	//nolint:noinlineerr
 	if err := s.pool.Retry(func() error {
 		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
 		httpClient := &http.Client{}

@@ -97,6 +97,7 @@ func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 		return err
 	}
 
+	//nolint:noinlineerr
 	if err = util.ValidateHostname(newName); err != nil {
 		return err
 	}

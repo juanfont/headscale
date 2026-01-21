@@ -25,6 +25,7 @@ linters:
     - revive
     - tagliatelle
     - testpackage
+    - thelper
     - varnamelen
     - wrapcheck
     - wsl

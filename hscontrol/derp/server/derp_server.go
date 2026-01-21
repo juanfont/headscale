@@ -314,6 +314,7 @@ func DERPBootstrapDNSHandler(
 		defer cancel()
 		var resolver net.Resolver
 
+		//nolint:unqueryvet
 		for _, region := range derpMap.Regions().All() {
 			for _, node := range region.Nodes().All() { // we don't care if we override some nodes
 				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())

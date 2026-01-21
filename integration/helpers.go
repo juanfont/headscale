@@ -174,9 +174,10 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 
 	startTime := time.Now()
 
+	//nolint:goconst
 	stateStr := "offline"
 	if expectedOnline {
-		stateStr = "online"
+		stateStr = "online" //nolint:goconst
 	}
 
 	t.Logf("requireAllSystemsOnline: Starting %s validation for %d nodes at %s - %s", stateStr, len(expectedNodes), startTime.Format(TimestampFormat), message)
@@ -194,6 +195,8 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 }
 
 // requireAllClientsOnlineWithSingleTimeout is the original validation logic for online state.
+//
+//nolint:gocyclo
 func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, expectedOnline bool, message string, timeout time.Duration) {
 	t.Helper()
 
@@ -548,6 +551,8 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 // assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
 func assertLastSeenSet(t *testing.T, node *v1.Node) {
+	t.Helper()
+
 	assert.NotNil(t, node)
 	assert.NotNil(t, node.GetLastSeen())
 }
@@ -566,7 +571,7 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 
 	for _, client := range clients {
 		status, err := client.Status()
-		assert.NoError(t, err, "failed to get status for client %s", client.Hostname())
+		assert.NoError(t, err, "failed to get status for client %s", client.Hostname()) //nolint:testifylint
 		assert.Equal(t, "NeedsLogin", status.BackendState,
 			"client %s should be logged out", client.Hostname())
 	}
@@ -765,7 +770,7 @@ func tagp(name string) policyv2.Alias {
 // prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
-	//nolint:staticcheck // SA4006: prefix is used in new(policyv2.Prefix(prefix)) below
+	//nolint:staticcheck
 	prefix := netip.MustParsePrefix(cidr)
 	return new(policyv2.Prefix(prefix))
 }

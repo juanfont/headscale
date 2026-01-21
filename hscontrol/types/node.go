@@ -234,6 +234,7 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
+	//nolint:prealloc
 	var addrs []netip.Prefix
 	for _, nodeAddress := range node.IPs() {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
@@ -263,6 +264,7 @@ func (node *Node) IsExitNode() bool {
 }
 
 func (node *Node) IPsAsString() []string {
+	//nolint:prealloc
 	var ret []string
 
 	for _, ip := range node.IPs() {
@@ -925,11 +927,11 @@ func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	}
 
 	if nv.IsTagged() {
-		//nolint:gosec // G115: TaggedDevices.ID is a constant that fits in int64
+		//nolint:gosec
 		return tailcfg.UserID(int64(TaggedDevices.ID))
 	}
 
-	//nolint:gosec // G115: UserID values are within int64 range
+	//nolint:gosec
 	return tailcfg.UserID(int64(nv.UserID().Get()))
 }
 
@@ -1054,7 +1056,7 @@ func (nv NodeView) TailNode(
 	}
 
 	tNode := tailcfg.Node{
-		//nolint:gosec // G115: NodeID values are within int64 range
+		//nolint:gosec
 		ID:       tailcfg.NodeID(nv.ID()),
 		StableID: nv.ID().StableID(),
 		Name:     hostname,

@@ -1605,17 +1605,17 @@ func TestResolvePolicy(t *testing.T) {
 
 	// Extract users to variables so we can take their addresses
 	// The variables below are all used in new() calls in the test cases.
-	//nolint:staticcheck // SA4006: testuser is used in new(testuser) below
+	//nolint:staticcheck
 	testuser := users["testuser"]
-	//nolint:staticcheck // SA4006: groupuser is used in new(groupuser) below
+	//nolint:staticcheck
 	groupuser := users["groupuser"]
-	//nolint:staticcheck // SA4006: groupuser1 is used in new(groupuser1) below
+	//nolint:staticcheck
 	groupuser1 := users["groupuser1"]
-	//nolint:staticcheck // SA4006: groupuser2 is used in new(groupuser2) below
+	//nolint:staticcheck
 	groupuser2 := users["groupuser2"]
-	//nolint:staticcheck // SA4006: notme is used in new(notme) below
+	//nolint:staticcheck
 	notme := users["notme"]
-	//nolint:staticcheck // SA4006: testuser2 is used in new(testuser2) below
+	//nolint:staticcheck
 	testuser2 := users["testuser2"]
 
 	tests := []struct {

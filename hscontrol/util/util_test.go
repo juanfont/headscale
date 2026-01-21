@@ -902,7 +902,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "hostname_with_unicode",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "node-ñoño-测试",
+				Hostname: "node-ñoño-测试", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -983,7 +983,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_chars_with_dash_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
+				Hostname: "server-北京-01", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -992,7 +992,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_only_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1010,7 +1010,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "mixed_chinese_emoji_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "测试💻机器",
+				Hostname: "测试💻机器", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1173,6 +1173,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 					t.Fatal("hostinfo should not be nil")
 				}
 
+				//nolint:goconst
 				if hi.Hostname != "unknown-node" {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
@@ -1283,6 +1284,8 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
+			t.Parallel()
+
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
 
 			result := EnsureHostname(hostinfo, "mkey", "nkey")

@@ -69,7 +69,7 @@ func NewAuthProviderOIDC(
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
-	//nolint:contextcheck // Initialization code - no parent context available
+	//nolint:contextcheck
 	oidcProvider, err := oidc.NewProvider(context.Background(), cfg.Issuer)
 	if err != nil {
 		return nil, fmt.Errorf("creating OIDC provider from issuer config: %w", err)
@@ -238,6 +238,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
 
 	var claims types.OIDCClaims
+	//nolint:noinlineerr
 	if err := idToken.Claims(&claims); err != nil {
 		httpError(writer, fmt.Errorf("decoding ID token claims: %w", err))
 		return
@@ -338,6 +339,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
 
+		//nolint:noinlineerr
 		if _, err := writer.Write(content.Bytes()); err != nil {
 			util.LogErr(err, "Failed to write HTTP response")
 		}

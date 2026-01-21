@@ -1609,6 +1609,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	store := &mem.Store{}
+	//nolint:noinlineerr
 	if err = store.LoadFromJSON(state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state file: %w", err)
 	}
@@ -1624,6 +1625,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	p := &ipn.Prefs{}
+	//nolint:noinlineerr
 	if err = json.Unmarshal(currentProfile, &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current profile state: %w", err)
 	}

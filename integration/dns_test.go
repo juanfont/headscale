@@ -86,6 +86,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	const erPath = "/tmp/extra_records.json"
 
+	//nolint:prealloc
 	extraRecords := []tailcfg.DNSRecord{
 		{
 			Name:  "test.myvpn.example.com",

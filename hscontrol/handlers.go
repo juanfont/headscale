@@ -91,6 +91,7 @@ func (h *Headscale) handleVerifyRequest(
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
+	//nolint:noinlineerr
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err))
 	}
@@ -183,6 +184,7 @@ func (h *Headscale) HealthHandler(
 			res.Status = "fail"
 		}
 
+		//nolint:noinlineerr
 		if err := json.NewEncoder(writer).Encode(res); err != nil {
 			log.Error().Err(err).Msg("failed to encode health response")
 		}

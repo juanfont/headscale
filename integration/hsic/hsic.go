@@ -781,13 +781,14 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directory
-			//nolint:gosec // G115: tar.Header.Mode is int64, safe to convert to uint32 for permissions
+			//nolint:gosec
 			err := os.MkdirAll(targetPath, os.FileMode(header.Mode))
 			if err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
 			// Ensure parent directories exist
+			//nolint:noinlineerr
 			if err := os.MkdirAll(filepath.Dir(targetPath), dirPermissions); err != nil {
 				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
 			}
@@ -798,7 +799,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
 			}
 
-			//nolint:gosec // G110: Trusted tar archive from our own container
+			//nolint:gosec,noinlineerr
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				outFile.Close()
 				return fmt.Errorf("failed to copy file contents: %w", err)
@@ -807,7 +808,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			outFile.Close()
 
 			// Set file permissions
-			//nolint:gosec // G115: tar.Header.Mode is int64, safe to convert to uint32 for permissions
+			//nolint:gosec,noinlineerr
 			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
 				return fmt.Errorf("failed to set file permissions: %w", err)
 			}
@@ -906,7 +907,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 				return fmt.Errorf("failed to create database file: %w", err)
 			}
 
-			//nolint:gosec // G110: Trusted tar archive from our own container
+			//nolint:gosec
 			written, err := io.Copy(outFile, tarReader)
 			outFile.Close()
 
@@ -1593,6 +1594,7 @@ func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.M
 	}
 
 	var res map[types.NodeID][]tailcfg.MapResponse
+	//nolint:noinlineerr
 	if err := json.Unmarshal([]byte(result), &res); err != nil {
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
@@ -1613,6 +1615,7 @@ func (t *HeadscaleInContainer) PrimaryRoutes() (*routes.DebugRoutes, error) {
 	}
 
 	var debugRoutes routes.DebugRoutes
+	//nolint:noinlineerr
 	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil {
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
@@ -1633,6 +1636,7 @@ func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, erro
 	}
 
 	var debugInfo hscontrol.DebugBatcherInfo
+	//nolint:noinlineerr
 	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil {
 		return nil, fmt.Errorf("decoding batcher debug response: %w", err)
 	}
@@ -1653,6 +1657,7 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	var nodeStore map[types.NodeID]types.Node
+	//nolint:noinlineerr
 	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil {
 		return nil, fmt.Errorf("decoding nodestore debug response: %w", err)
 	}
@@ -1673,6 +1678,7 @@ func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
 	}
 
 	var filterRules []tailcfg.FilterRule
+	//nolint:noinlineerr
 	if err := json.Unmarshal([]byte(result), &filterRules); err != nil {
 		return nil, fmt.Errorf("decoding filter response: %w", err)
 	}

@@ -244,7 +244,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
-	//nolint:contextcheck // IIFE uses context from outer scope implicitly
+	//nolint:contextcheck
 	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) {
 		var resp *tailcfg.RegisterResponse
 
@@ -254,6 +254,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		}
 
 		var regReq tailcfg.RegisterRequest
+		//nolint:noinlineerr
 		if err := json.Unmarshal(body, &regReq); err != nil {
 			return &regReq, regErr(err)
 		}

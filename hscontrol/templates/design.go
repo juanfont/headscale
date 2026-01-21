@@ -15,43 +15,43 @@ import (
 // Material for MkDocs design system - exact values from official docs.
 const (
 	// Text colors - from --md-default-fg-color CSS variables.
-	colorTextPrimary   = "#000000de" //nolint:unused // rgba(0,0,0,0.87) - Body text
-	colorTextSecondary = "#0000008a" //nolint:unused // rgba(0,0,0,0.54) - Headings (--md-default-fg-color--light)
-	colorTextTertiary  = "#00000052" //nolint:unused // rgba(0,0,0,0.32) - Lighter text
-	colorTextLightest  = "#00000012" //nolint:unused // rgba(0,0,0,0.07) - Lightest text
+	colorTextPrimary   = "#000000de" //nolint:unused
+	colorTextSecondary = "#0000008a" //nolint:unused
+	colorTextTertiary  = "#00000052" //nolint:unused
+	colorTextLightest  = "#00000012" //nolint:unused
 
 	// Code colors - from --md-code-* CSS variables.
-	colorCodeFg = "#36464e" //nolint:unused // Code text color (--md-code-fg-color)
-	colorCodeBg = "#f5f5f5" //nolint:unused // Code background (--md-code-bg-color)
+	colorCodeFg = "#36464e" //nolint:unused
+	colorCodeBg = "#f5f5f5" //nolint:unused
 
 	// Border colors.
-	colorBorderLight  = "#e5e7eb" //nolint:unused // Light borders
-	colorBorderMedium = "#d1d5db" //nolint:unused // Medium borders
+	colorBorderLight  = "#e5e7eb" //nolint:unused
+	colorBorderMedium = "#d1d5db" //nolint:unused
 
 	// Background colors.
-	colorBackgroundPage = "#ffffff" //nolint:unused // Page background
-	colorBackgroundCard = "#ffffff" //nolint:unused // Card/content background
+	colorBackgroundPage = "#ffffff" //nolint:unused
+	colorBackgroundCard = "#ffffff" //nolint:unused
 
 	// Accent colors - from --md-primary/accent-fg-color.
-	colorPrimaryAccent = "#4051b5" //nolint:unused // Primary accent (links)
-	colorAccent        = "#526cfe" //nolint:unused // Secondary accent
+	colorPrimaryAccent = "#4051b5" //nolint:unused
+	colorAccent        = "#526cfe" //nolint:unused
 
 	// Success colors.
-	colorSuccess      = "#059669" //nolint:unused // Success states
-	colorSuccessLight = "#d1fae5" //nolint:unused // Success backgrounds
+	colorSuccess      = "#059669" //nolint:unused
+	colorSuccessLight = "#d1fae5" //nolint:unused
 )
 
 // Spacing System
 // Based on 4px/8px base unit for consistent rhythm.
 // Uses rem units for scalability with user font size preferences.
 const (
-	spaceXS  = "0.25rem" //nolint:unused // 4px - Tight spacing
-	spaceS   = "0.5rem"  //nolint:unused // 8px - Small spacing
-	spaceM   = "1rem"    //nolint:unused // 16px - Medium spacing (base)
-	spaceL   = "1.5rem"  //nolint:unused // 24px - Large spacing
-	spaceXL  = "2rem"    //nolint:unused // 32px - Extra large spacing
-	space2XL = "3rem"    //nolint:unused // 48px - 2x extra large spacing
-	space3XL = "4rem"    //nolint:unused // 64px - 3x extra large spacing
+	spaceXS  = "0.25rem" //nolint:unused
+	spaceS   = "0.5rem"  //nolint:unused
+	spaceM   = "1rem"    //nolint:unused
+	spaceL   = "1.5rem"  //nolint:unused
+	spaceXL  = "2rem"    //nolint:unused
+	space2XL = "3rem"    //nolint:unused
+	space3XL = "4rem"    //nolint:unused
 )
 
 // Typography System
@@ -63,26 +63,26 @@ const (
 	fontFamilyCode   = `"Roboto Mono", "SF Mono", Monaco, "Cascadia Code", Consolas, "Courier New", monospace`        //nolint:unused
 
 	// Font sizes - from .md-typeset CSS rules.
-	fontSizeBase  = "0.8rem"   //nolint:unused // 12.8px - Base text (.md-typeset)
-	fontSizeH1    = "2em"      //nolint:unused // 2x base - Main headings
-	fontSizeH2    = "1.5625em" //nolint:unused // 1.5625x base - Section headings
-	fontSizeH3    = "1.25em"   //nolint:unused // 1.25x base - Subsection headings
-	fontSizeSmall = "0.8em"    //nolint:unused // 0.8x base - Small text
-	fontSizeCode  = "0.85em"   //nolint:unused // 0.85x base - Inline code
+	fontSizeBase  = "0.8rem"   //nolint:unused
+	fontSizeH1    = "2em"      //nolint:unused
+	fontSizeH2    = "1.5625em" //nolint:unused
+	fontSizeH3    = "1.25em"   //nolint:unused
+	fontSizeSmall = "0.8em"    //nolint:unused
+	fontSizeCode  = "0.85em"   //nolint:unused
 
 	// Line heights - from .md-typeset CSS rules.
-	lineHeightBase = "1.6" //nolint:unused // Body text (.md-typeset)
-	lineHeightH1   = "1.3" //nolint:unused // H1 headings
-	lineHeightH2   = "1.4" //nolint:unused // H2 headings
-	lineHeightH3   = "1.5" //nolint:unused // H3 headings
-	lineHeightCode = "1.4" //nolint:unused // Code blocks (pre)
+	lineHeightBase = "1.6" //nolint:unused
+	lineHeightH1   = "1.3" //nolint:unused
+	lineHeightH2   = "1.4" //nolint:unused
+	lineHeightH3   = "1.5" //nolint:unused
+	lineHeightCode = "1.4" //nolint:unused
 )
 
 // Responsive Container Component
 // Creates a centered container with responsive padding and max-width.
 // Mobile-first approach: starts at 100% width with padding, constrains on larger screens.
 //
-//nolint:unused // Reserved for future use in Phase 4.
+//nolint:unused
 func responsiveContainer(children ...elem.Node) *elem.Element {
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
@@ -100,7 +100,7 @@ func responsiveContainer(children ...elem.Node) *elem.Element {
 //   - title: Optional title for the card (empty string for no title)
 //   - children: Content elements to display in the card
 //
-//nolint:unused // Reserved for future use in Phase 4.
+//nolint:unused
 func card(title string, children ...elem.Node) *elem.Element {
 	cardContent := children
 	if title != "" {
@@ -134,7 +134,7 @@ func card(title string, children ...elem.Node) *elem.Element {
 // EXTRACTED FROM: .md-typeset pre CSS rules
 // Exact styling from Material for MkDocs documentation.
 //
-//nolint:unused // Used across apple.go, windows.go, register_web.go templates.
+//nolint:unused
 func codeBlock(code string) *elem.Element {
 	return elem.Pre(attrs.Props{
 		attrs.Style: styles.Props{
@@ -164,7 +164,7 @@ func codeBlock(code string) *elem.Element {
 // Returns inline styles for the main content container that matches .md-typeset.
 // EXTRACTED FROM: .md-typeset CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used in general.go for mdTypesetBody.
+//nolint:unused
 func baseTypesetStyles() styles.Props {
 	return styles.Props{
 		styles.FontSize:   fontSizeBase,   // 0.8rem
@@ -180,7 +180,7 @@ func baseTypesetStyles() styles.Props {
 // Returns inline styles for H1 headings that match .md-typeset h1.
 // EXTRACTED FROM: .md-typeset h1 CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used across templates for main headings.
+//nolint:unused
 func h1Styles() styles.Props {
 	return styles.Props{
 		styles.Color:      colorTextSecondary, // rgba(0, 0, 0, 0.54)
@@ -198,7 +198,7 @@ func h1Styles() styles.Props {
 // Returns inline styles for H2 headings that match .md-typeset h2.
 // EXTRACTED FROM: .md-typeset h2 CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used across templates for section headings.
+//nolint:unused
 func h2Styles() styles.Props {
 	return styles.Props{
 		styles.FontSize:   fontSizeH2,   // 1.5625em
@@ -216,7 +216,7 @@ func h2Styles() styles.Props {
 // Returns inline styles for H3 headings that match .md-typeset h3.
 // EXTRACTED FROM: .md-typeset h3 CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used across templates for subsection headings.
+//nolint:unused
 func h3Styles() styles.Props {
 	return styles.Props{
 		styles.FontSize:   fontSizeH3,   // 1.25em
@@ -234,7 +234,7 @@ func h3Styles() styles.Props {
 // Returns inline styles for paragraphs that match .md-typeset p.
 // EXTRACTED FROM: .md-typeset p CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used for consistent paragraph spacing.
+//nolint:unused
 func paragraphStyles() styles.Props {
 	return styles.Props{
 		styles.Margin:     "1em 0",
@@ -250,7 +250,7 @@ func paragraphStyles() styles.Props {
 // Returns inline styles for ordered lists that match .md-typeset ol.
 // EXTRACTED FROM: .md-typeset ol CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used for numbered instruction lists.
+//nolint:unused
 func orderedListStyles() styles.Props {
 	return styles.Props{
 		styles.MarginBottom: "1em",
@@ -268,7 +268,7 @@ func orderedListStyles() styles.Props {
 // Returns inline styles for unordered lists that match .md-typeset ul.
 // EXTRACTED FROM: .md-typeset ul CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used for bullet point lists.
+//nolint:unused
 func unorderedListStyles() styles.Props {
 	return styles.Props{
 		styles.MarginBottom: "1em",
@@ -287,7 +287,7 @@ func unorderedListStyles() styles.Props {
 // EXTRACTED FROM: .md-typeset a CSS rule from Material for MkDocs.
 // Note: Hover states cannot be implemented with inline styles.
 //
-//nolint:unused // Used for text links.
+//nolint:unused
 func linkStyles() styles.Props {
 	return styles.Props{
 		styles.Color:          colorPrimaryAccent, // #4051b5 - var(--md-primary-fg-color)
@@ -301,7 +301,7 @@ func linkStyles() styles.Props {
 // Returns inline styles for inline code that matches .md-typeset code.
 // EXTRACTED FROM: .md-typeset code CSS rule from Material for MkDocs.
 //
-//nolint:unused // Used for inline code snippets.
+//nolint:unused
 func inlineCodeStyles() styles.Props {
 	return styles.Props{
 		styles.BackgroundColor: colorCodeBg, // #f5f5f5
@@ -317,7 +317,7 @@ func inlineCodeStyles() styles.Props {
 // Inline Code Component
 // For inline code snippets within text.
 //
-//nolint:unused // Reserved for future inline code usage.
+//nolint:unused
 func inlineCode(code string) *elem.Element {
 	return elem.Code(attrs.Props{
 		attrs.Style: inlineCodeStyles().ToInline(),
@@ -327,7 +327,7 @@ func inlineCode(code string) *elem.Element {
 // orDivider creates a visual "or" divider between sections.
 // Styled with lines on either side for better visual separation.
 //
-//nolint:unused // Used in apple.go template.
+//nolint:unused
 func orDivider() *elem.Element {
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
@@ -367,7 +367,7 @@ func orDivider() *elem.Element {
 
 // warningBox creates a warning message box with icon and content.
 //
-//nolint:unused // Used in apple.go template.
+//nolint:unused
 func warningBox(title, message string) *elem.Element {
 	return elem.Div(attrs.Props{
 		attrs.Style: styles.Props{
@@ -404,7 +404,7 @@ func warningBox(title, message string) *elem.Element {
 
 // downloadButton creates a nice button-style link for downloads.
 //
-//nolint:unused // Used in apple.go template.
+//nolint:unused
 func downloadButton(href, text string) *elem.Element {
 	return elem.A(attrs.Props{
 		attrs.Href:     href,
@@ -428,7 +428,7 @@ func downloadButton(href, text string) *elem.Element {
 // Creates a link with proper security attributes for external URLs.
 // Automatically adds rel="noreferrer noopener" and target="_blank".
 //
-//nolint:unused // Used in apple.go, oidc_callback.go templates.
+//nolint:unused
 func externalLink(href, text string) *elem.Element {
 	return elem.A(attrs.Props{
 		attrs.Href:   href,
@@ -444,7 +444,7 @@ func externalLink(href, text string) *elem.Element {
 // Instruction Step Component
 // For numbered instruction lists with consistent formatting.
 //
-//nolint:unused // Reserved for future use in Phase 4.
+//nolint:unused
 func instructionStep(_ int, text string) *elem.Element {
 	return elem.Li(attrs.Props{
 		attrs.Style: styles.Props{
@@ -457,7 +457,7 @@ func instructionStep(_ int, text string) *elem.Element {
 // Status Message Component
 // For displaying success/error/info messages with appropriate styling.
 //
-//nolint:unused // Reserved for future use in Phase 4.
+//nolint:unused
 func statusMessage(message string, isSuccess bool) *elem.Element {
 	bgColor := colorSuccessLight
 	textColor := colorSuccess

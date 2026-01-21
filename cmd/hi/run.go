@@ -68,8 +68,10 @@ func runIntegrationTest(env *command.Env) error {
 func detectGoVersion() string {
 	goModPath := filepath.Join("..", "..", "go.mod")
 
+	//nolint:noinlineerr
 	if _, err := os.Stat("go.mod"); err == nil {
 		goModPath = "go.mod"
+		//nolint:noinlineerr
 	} else if _, err := os.Stat("../../go.mod"); err == nil {
 		goModPath = "../../go.mod"
 	}

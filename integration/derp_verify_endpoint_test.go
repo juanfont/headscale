@@ -115,6 +115,7 @@ func DERPVerify(
 		result = fmt.Errorf("client Connect: %w", err)
 	}
 
+	//nolint:noinlineerr
 	if m, err := c.Recv(); err != nil {
 		result = fmt.Errorf("client first Recv: %w", err)
 	} else if v, ok := m.(derp.ServerInfoMessage); !ok {

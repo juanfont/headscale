@@ -1610,7 +1610,7 @@ func TestSubnetRouteACL(t *testing.T) {
 func TestEnablingExitRoutes(t *testing.T) {
 	IntegrationSkip(t)
 
-	user := "user2"
+	user := "user2" //nolint:goconst
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -2040,6 +2040,8 @@ func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
 //   - Verify that peers can no longer use node
 //   - Policy is changed back to auto approve route, check that routes already existing is approved.
 //   - Verify that routes can now be seen by peers.
+//
+//nolint:gocyclo
 func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -2887,7 +2889,8 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 }
 
 // assertTracerouteViaIPWithCollect is a version of assertTracerouteViaIP that works with assert.CollectT.
-//nolint:testifylint // CollectT requires assert, not require
+//
+//nolint:testifylint
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
 	assert.True(c, tr.Success)
@@ -2905,6 +2908,8 @@ func SortPeerStatus(a, b *ipnstate.PeerStatus) int {
 }
 
 func printCurrentRouteMap(t *testing.T, routers ...*ipnstate.PeerStatus) {
+	t.Helper()
+
 	t.Logf("== Current routing map ==")
 	slices.SortFunc(routers, SortPeerStatus)
 

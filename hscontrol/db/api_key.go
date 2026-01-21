@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	apiKeyPrefix       = "hskey-api-" //nolint:gosec // This is a prefix, not a credential
+	apiKeyPrefix       = "hskey-api-" //nolint:gosec
 	apiKeyPrefixLength = 12
 	apiKeyHashLength   = 64
 

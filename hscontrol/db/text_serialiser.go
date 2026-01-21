@@ -67,6 +67,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 			ret := f.Call(args)
 			if !ret[0].IsNil() {
+				//nolint:forcetypeassert
 				return decodingError(field.Name, ret[0].Interface().(error))
 			}
 
@@ -97,7 +98,7 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 		// always comparable, particularly when reflection is involved:
 		// https://dev.to/arxeiss/in-go-nil-is-not-equal-to-nil-sometimes-jn8
 		if v == nil || (reflect.ValueOf(v).Kind() == reflect.Pointer && reflect.ValueOf(v).IsNil()) {
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		}
 
 		b, err := v.MarshalText()

@@ -102,6 +102,7 @@ func TestSQLiteDriverPragmaIntegration(t *testing.T) {
 			defer db.Close()
 
 			// Test connection
+			//nolint:noinlineerr
 			if err := db.PingContext(context.Background()); err != nil {
 				t.Fatalf("Failed to ping database: %v", err)
 			}
@@ -181,11 +182,13 @@ func TestForeignKeyConstraintEnforcement(t *testing.T) {
 		);
 	`
 
+	//nolint:noinlineerr
 	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		t.Fatalf("Failed to create schema: %v", err)
 	}
 
 	// Insert parent record
+	//nolint:noinlineerr
 	if _, err := db.ExecContext(context.Background(), "INSERT INTO parent (id, name) VALUES (1, 'Parent 1')"); err != nil {
 		t.Fatalf("Failed to insert parent: %v", err)
 	}

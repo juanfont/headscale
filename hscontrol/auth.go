@@ -356,7 +356,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// If node is not valid, it means an ephemeral node was deleted during logout
 	if !node.Valid() {
 		h.Change(changed)
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg

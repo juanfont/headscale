@@ -70,7 +70,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				//nolint:staticcheck // SA4006: pak is used in new(pak.ID) below
+				//nolint:staticcheck
 				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
