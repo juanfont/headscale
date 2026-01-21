@@ -37,6 +37,15 @@ var ErrCircularReference = errors.New("circular reference detected")
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
+// App Connector validation errors.
+var (
+	ErrAppConnectorMissingConnectors = errors.New("appConnector must have at least one connector")
+	ErrAppConnectorMissingDomains    = errors.New("appConnector must have at least one domain")
+	ErrAppConnectorUndefinedTag      = errors.New("appConnector references undefined tag")
+	ErrAppConnectorDomainEmpty       = errors.New("domain cannot be empty")
+	ErrAppConnectorDomainInvalid     = errors.New("invalid domain format")
+)
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -1510,6 +1519,29 @@ type Policy struct {
 	ACLs          []ACL              `json:"acls,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
+	AppConnectors []AppConnector     `json:"appConnectors,omitempty"`
+}
+
+// AppConnector defines an app connector configuration that allows routing
+// traffic to specific domains through designated connector nodes.
+// See https://tailscale.com/kb/1281/app-connectors for more information.
+type AppConnector struct {
+	// Name is a human-readable name for this app connector configuration.
+	Name string `json:"name,omitempty"`
+
+	// Connectors is a list of tags or "*" that identifies which nodes
+	// can serve as connectors for these domains.
+	// Examples: ["tag:connector"], ["*"]
+	Connectors []string `json:"connectors"`
+
+	// Domains is a list of domain names that should be routed through
+	// the connector. Supports wildcards like "*.example.com".
+	Domains []string `json:"domains"`
+
+	// Routes is an optional list of IP prefixes that should be
+	// pre-configured as routes for the connector (in addition to
+	// dynamically discovered routes from DNS resolution).
+	Routes []netip.Prefix `json:"routes,omitempty"`
 }
 
 // MarshalJSON is deliberately not implemented for Policy.
@@ -1813,6 +1845,39 @@ func (p *Policy) validate() error {
 		}
 	}
 
+	// Validate app connectors
+	for _, ac := range p.AppConnectors {
+		if len(ac.Connectors) == 0 {
+			errs = append(errs, fmt.Errorf("%w: %q", ErrAppConnectorMissingConnectors, ac.Name))
+		}
+
+		if len(ac.Domains) == 0 {
+			errs = append(errs, fmt.Errorf("%w: %q", ErrAppConnectorMissingDomains, ac.Name))
+		}
+		// Validate connector references
+		for _, connector := range ac.Connectors {
+			if connector == "*" {
+				continue
+			}
+
+			if isTag(connector) {
+				tag := Tag(connector)
+
+				err := p.TagOwners.Contains(&tag)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("%w: appConnector %q references %q", ErrAppConnectorUndefinedTag, ac.Name, connector))
+				}
+			}
+		}
+		// Validate domain format
+		for _, domain := range ac.Domains {
+			err := validateAppConnectorDomain(domain)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%w: appConnector %q has invalid domain %q", err, ac.Name, domain))
+			}
+		}
+	}
+
 	if len(errs) > 0 {
 		return multierr.New(errs...)
 	}
@@ -2097,4 +2162,37 @@ func (p *Policy) usesAutogroupSelf() bool {
 	}
 
 	return false
+}
+
+// validateAppConnectorDomain validates an app connector domain.
+// Valid domains can be:
+// - A fully qualified domain name (e.g., "example.com")
+// - A wildcard subdomain (e.g., "*.example.com").
+func validateAppConnectorDomain(domain string) error {
+	if domain == "" {
+		return ErrAppConnectorDomainEmpty
+	}
+
+	// Check for wildcard domains
+	if strings.HasPrefix(domain, "*.") {
+		// Remove the "*." prefix and validate the rest
+		rest := domain[2:]
+		if rest == "" {
+			return fmt.Errorf("%w: wildcard domain must have a base domain", ErrAppConnectorDomainInvalid)
+		}
+
+		domain = rest
+	}
+
+	// Basic validation - domain should not start or end with dots
+	if strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") {
+		return fmt.Errorf("%w: domain cannot start or end with a dot", ErrAppConnectorDomainInvalid)
+	}
+
+	// Check for empty labels
+	if strings.Contains(domain, "..") {
+		return fmt.Errorf("%w: domain cannot have empty labels", ErrAppConnectorDomainInvalid)
+	}
+
+	return nil
 }
