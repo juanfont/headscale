@@ -20,6 +20,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/derp"
+	"tailscale.com/derp/derpserver"
 	"tailscale.com/envknob"
 	"tailscale.com/net/stun"
 	"tailscale.com/net/wsconn"
@@ -45,7 +46,7 @@ type DERPServer struct {
 	serverURL     string
 	key           key.NodePrivate
 	cfg           *types.DERPConfig
-	tailscaleDERP *derp.Server
+	tailscaleDERP *derpserver.Server
 }
 
 func NewDERPServer(
@@ -54,7 +55,7 @@ func NewDERPServer(
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
 	log.Trace().Caller().Msg("Creating new embedded DERP server")
-	server := derp.NewServer(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
+	server := derpserver.New(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
 
 	if cfg.ServerVerifyClients {
 		server.SetVerifyClientURL(DerpVerifyScheme + "://verify")
