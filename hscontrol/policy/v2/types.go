@@ -37,6 +37,15 @@ var ErrCircularReference = errors.New("circular reference detected")
 
 var ErrUndefinedTagReference = errors.New("references undefined tag")
 
+// SSH validation errors.
+var (
+	ErrSSHTagSourceToUserDest             = errors.New("tags in SSH source cannot access user-owned devices")
+	ErrSSHUserDestRequiresSameUser        = errors.New("user destination requires source to contain only that same user")
+	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
+	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
+	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
+)
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -1613,6 +1622,63 @@ func validateAutogroupForSSHUser(user *AutoGroup) error {
 	return nil
 }
 
+// validateSSHSrcDstCombination validates that SSH source/destination combinations
+// follow Tailscale's security model:
+// - Destination can be: tags, autogroup:self (if source is users/groups), or same-user
+// - Tags/autogroup:tagged CANNOT SSH to user destinations
+// - Username destinations require the source to be that same single user only.
+func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAliases) error {
+	// Categorize source types
+	srcHasTaggedEntities := false
+	srcHasGroups := false
+	srcUsernames := make(map[string]bool)
+
+	for _, src := range sources {
+		switch v := src.(type) {
+		case *Tag:
+			srcHasTaggedEntities = true
+		case *AutoGroup:
+			if v.Is(AutoGroupTagged) {
+				srcHasTaggedEntities = true
+			} else if v.Is(AutoGroupMember) {
+				srcHasGroups = true // autogroup:member is like a group of users
+			}
+		case *Group:
+			srcHasGroups = true
+		case *Username:
+			srcUsernames[string(*v)] = true
+		}
+	}
+
+	// Check destinations against source constraints
+	for _, dst := range destinations {
+		switch v := dst.(type) {
+		case *Username:
+			// Rule: Tags/autogroup:tagged CANNOT SSH to user destinations
+			if srcHasTaggedEntities {
+				return fmt.Errorf("%w (%s); use autogroup:tagged or specific tags as destinations instead",
+					ErrSSHTagSourceToUserDest, *v)
+			}
+			// Rule: Username destination requires source to be that same single user only
+			if srcHasGroups || len(srcUsernames) != 1 || !srcUsernames[string(*v)] {
+				return fmt.Errorf("%w %q; use autogroup:self instead for same-user SSH access",
+					ErrSSHUserDestRequiresSameUser, *v)
+			}
+		case *AutoGroup:
+			// Rule: autogroup:self requires source to NOT contain tags
+			if v.Is(AutoGroupSelf) && srcHasTaggedEntities {
+				return ErrSSHAutogroupSelfRequiresUserSource
+			}
+			// Rule: autogroup:member (user-owned devices) cannot be accessed by tagged entities
+			if v.Is(AutoGroupMember) && srcHasTaggedEntities {
+				return ErrSSHTagSourceToAutogroupMember
+			}
+		}
+	}
+
+	return nil
+}
+
 // validate reports if there are any errors in a policy after
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
@@ -1754,6 +1820,12 @@ func (p *Policy) validate() error {
 				}
 			}
 		}
+
+		// Validate SSH source/destination combinations follow Tailscale's security model
+		err := validateSSHSrcDstCombination(ssh.Sources, ssh.Destinations)
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	for _, tagOwners := range p.TagOwners {
@@ -1886,15 +1958,12 @@ func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 	*a = make([]Alias, len(aliases))
 	for i, alias := range aliases {
 		switch alias.Alias.(type) {
-		case *Username, *Tag, *AutoGroup, *Host,
-			// Asterix and Group is actually not supposed to be supported,
-			// however we do not support autogroups at the moment
-			// so we will leave it in as there is no other option
-			// to dynamically give all access
-			// https://tailscale.com/kb/1193/tailscale-ssh#dst
-			// TODO(kradalby): remove this when we support autogroup:tagged and autogroup:member
-			Asterix:
+		case *Username, *Tag, *AutoGroup, *Host:
 			(*a)[i] = alias.Alias
+		case Asterix:
+			return fmt.Errorf("%w; use 'autogroup:member' for user-owned devices, "+
+				"'autogroup:tagged' for tagged devices, or specific tags/users",
+				ErrSSHWildcardDestination)
 		default:
 			return fmt.Errorf(
 				"alias %T is not supported for SSH destination",
@@ -1924,6 +1993,8 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 		case *Host:
 			aliases[i] = string(*v)
 		case Asterix:
+			// Marshal wildcard as "*" so it gets rejected during unmarshal
+			// with a proper error message explaining alternatives
 			aliases[i] = "*"
 		default:
 			return nil, fmt.Errorf("unknown SSH destination alias type: %T", v)
