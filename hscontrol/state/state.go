@@ -115,8 +115,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	)
 
 	db, err := hsdb.NewHeadscaleDatabase(
-		cfg.Database,
-		cfg.BaseDomain,
+		cfg,
 		registrationCache,
 	)
 	if err != nil {

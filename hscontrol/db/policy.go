@@ -24,14 +24,22 @@ func (hsdb *HSDatabase) SetPolicy(policy string) (*types.Policy, error) {
 
 // GetPolicy returns the latest policy in the database.
 func (hsdb *HSDatabase) GetPolicy() (*types.Policy, error) {
+	return GetPolicy(hsdb.DB)
+}
+
+// GetPolicy returns the latest policy from the database.
+// This standalone function can be used in contexts where HSDatabase is not available,
+// such as during migrations.
+func GetPolicy(tx *gorm.DB) (*types.Policy, error) {
 	var p types.Policy
 
 	// Query:
 	// SELECT * FROM policies ORDER BY id DESC LIMIT 1;
-	if err := hsdb.DB.
+	err := tx.
 		Order("id DESC").
 		Limit(1).
-		First(&p).Error; err != nil {
+		First(&p).Error
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, types.ErrPolicyNotFound
 		}

@@ -7,15 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -54,20 +55,51 @@ type KV struct {
 
 type HSDatabase struct {
 	DB       *gorm.DB
-	cfg      *types.DatabaseConfig
+	cfg      *types.Config
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
-
-	baseDomain string
 }
 
-// TODO(kradalby): assemble this struct from toptions or something typed
-// rather than arguments.
+// loadPolicyBytes loads policy from file or database based on configuration.
+// This is used during migrations when HSDatabase is not yet fully initialized.
+func loadPolicyBytes(tx *gorm.DB, cfg *types.Config) ([]byte, error) {
+	switch cfg.Policy.Mode {
+	case types.PolicyModeFile:
+		if cfg.Policy.Path == "" {
+			return nil, nil
+		}
+
+		absPath := util.AbsolutePathFromConfigPath(cfg.Policy.Path)
+
+		return os.ReadFile(absPath)
+
+	case types.PolicyModeDB:
+		p, err := GetPolicy(tx)
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil, nil
+			}
+
+			return nil, err
+		}
+
+		if p.Data == "" {
+			return nil, nil
+		}
+
+		return []byte(p.Data), nil
+
+	default:
+		return nil, nil
+	}
+}
+
+// NewHeadscaleDatabase creates a new database connection and runs migrations.
+// It accepts the full configuration to allow migrations access to policy settings.
 func NewHeadscaleDatabase(
-	cfg types.DatabaseConfig,
-	baseDomain string,
+	cfg *types.Config,
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
 ) (*HSDatabase, error) {
-	dbConn, err := openDB(cfg)
+	dbConn, err := openDB(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +286,7 @@ AND auth_key_id NOT IN (
 				ID: "202507021200",
 				Migrate: func(tx *gorm.DB) error {
 					// Only run on SQLite
-					if cfg.Type != types.DatabaseSqlite {
+					if cfg.Database.Type != types.DatabaseSqlite {
 						log.Info().Msg("Skipping schema migration on non-SQLite database")
 						return nil
 					}
@@ -602,119 +634,55 @@ AND auth_key_id NOT IN (
 				// Fixes: https://github.com/juanfont/headscale/issues/3006
 				ID: "202601121700-migrate-hostinfo-request-tags",
 				Migrate: func(tx *gorm.DB) error {
-					// 1. Load policy from database
-					var policyData string
-					err := tx.Raw("SELECT data FROM policies ORDER BY id DESC LIMIT 1").Scan(&policyData).Error
-					if err != nil || policyData == "" {
-						log.Info().Msg("No policy found in database, skipping RequestTags migration (tags will be validated on node reconnect)")
-						return nil
-					}
-
-					// 2. Parse tagOwners and groups from policy
-					type migrationPolicy struct {
-						TagOwners map[string][]string `json:"tagOwners"`
-						Groups    map[string][]string `json:"groups"`
-					}
-					var pol migrationPolicy
-					if err := json.Unmarshal([]byte(policyData), &pol); err != nil {
-						log.Warn().Err(err).Msg("Failed to parse policy JSON, skipping RequestTags migration (tags will be validated on node reconnect)")
-						return nil
-					}
-
-					if len(pol.TagOwners) == 0 {
-						log.Info().Msg("No tagOwners defined in policy, skipping RequestTags migration")
-						return nil
-					}
-
-					// Helper function to check if a user can have a tag
-					canUserHaveTag := func(username string, tag string) bool {
-						owners, exists := pol.TagOwners[tag]
-						if !exists {
-							return false // Tag not defined in policy
-						}
-
-						for _, owner := range owners {
-							// Direct username match
-							if owner == username {
-								return true
-							}
-
-							// Group expansion
-							if strings.HasPrefix(owner, "group:") {
-								if groupMembers, ok := pol.Groups[owner]; ok {
-									if slices.Contains(groupMembers, username) {
-										return true
-									}
-								}
-							}
-						}
-						return false
-					}
-
-					// 3. Query nodes with user info
-					type nodeRow struct {
-						ID       uint64
-						HostInfo string
-						Tags     string
-						UserID   *uint64
-						Username *string
-					}
-					var nodes []nodeRow
-					err = tx.Raw(`
-						SELECT n.id, n.host_info, n.tags, n.user_id, u.name as username 
-						FROM nodes n 
-						LEFT JOIN users u ON n.user_id = u.id
-						WHERE n.host_info IS NOT NULL AND n.host_info != '' AND n.host_info != '{}'
-					`).Scan(&nodes).Error
+					// 1. Load policy from file or database based on configuration
+					policyData, err := loadPolicyBytes(tx, cfg)
 					if err != nil {
-						return fmt.Errorf("querying nodes for RequestTags migration: %w", err)
+						log.Warn().Err(err).Msg("Failed to load policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					if len(policyData) == 0 {
+						log.Info().Msg("No policy found, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					// 2. Load users and nodes to create PolicyManager
+					users, err := ListUsers(tx)
+					if err != nil {
+						return fmt.Errorf("loading users for RequestTags migration: %w", err)
+					}
+
+					nodes, err := ListNodes(tx)
+					if err != nil {
+						return fmt.Errorf("loading nodes for RequestTags migration: %w", err)
+					}
+
+					// 3. Create PolicyManager (handles HuJSON parsing, groups, nested tags, etc.)
+					polMan, err := policy.NewPolicyManager(policyData, users, nodes.ViewSlice())
+					if err != nil {
+						log.Warn().Err(err).Msg("Failed to parse policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
 					}
 
 					// 4. Process each node
 					for _, node := range nodes {
-						// Parse host_info JSON to extract RequestTags
-						var hostInfo struct {
-							RequestTags []string `json:"RequestTags"`
-						}
-						if err := json.Unmarshal([]byte(node.HostInfo), &hostInfo); err != nil {
-							log.Trace().
-								Uint64("node.id", node.ID).
-								Err(err).
-								Msg("Skipping node with invalid host_info JSON during RequestTags migration")
+						if node.Hostinfo == nil {
 							continue
 						}
 
-						// Skip if no RequestTags in host_info
-						if len(hostInfo.RequestTags) == 0 {
+						requestTags := node.Hostinfo.RequestTags
+						if len(requestTags) == 0 {
 							continue
 						}
 
-						// Skip if no username (can't validate)
-						if node.Username == nil || *node.Username == "" {
-							log.Debug().
-								Uint64("node.id", node.ID).
-								Strs("request_tags", hostInfo.RequestTags).
-								Msg("Skipping node without username during RequestTags migration")
-							continue
-						}
+						existingTags := node.Tags
 
-						// Parse existing tags from the tags column
-						var existingTags []string
-						if node.Tags != "" && node.Tags != "null" {
-							if err := json.Unmarshal([]byte(node.Tags), &existingTags); err != nil {
-								log.Trace().
-									Uint64("node.id", node.ID).
-									Err(err).
-									Msg("Skipping node with invalid tags JSON during RequestTags migration")
-								continue
-							}
-						}
+						var validatedTags, rejectedTags []string
 
-						// Validate and merge RequestTags
-						var validatedTags []string
-						var rejectedTags []string
-						for _, tag := range hostInfo.RequestTags {
-							if canUserHaveTag(*node.Username, tag) {
+						nodeView := node.View()
+
+						for _, tag := range requestTags {
+							if polMan.NodeCanHaveTag(nodeView, tag) {
 								if !slices.Contains(existingTags, tag) {
 									validatedTags = append(validatedTags, tag)
 								}
@@ -723,37 +691,34 @@ AND auth_key_id NOT IN (
 							}
 						}
 
-						// Skip if no validated tags to add
 						if len(validatedTags) == 0 {
 							if len(rejectedTags) > 0 {
 								log.Debug().
-									Uint64("node.id", node.ID).
-									Str("username", *node.Username).
+									Uint64("node.id", uint64(node.ID)).
+									Str("node.name", node.Hostname).
 									Strs("rejected_tags", rejectedTags).
-									Msg("RequestTags rejected during migration (user not authorized)")
+									Msg("RequestTags rejected during migration (not authorized)")
 							}
+
 							continue
 						}
 
-						// Merge validated tags with existing tags
 						mergedTags := append(existingTags, validatedTags...)
 						slices.Sort(mergedTags)
 						mergedTags = slices.Compact(mergedTags)
 
-						// Serialize back to JSON
 						tagsJSON, err := json.Marshal(mergedTags)
 						if err != nil {
 							return fmt.Errorf("serializing merged tags for node %d: %w", node.ID, err)
 						}
 
-						// Update the tags column
 						if err := tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error; err != nil {
 							return fmt.Errorf("updating tags for node %d: %w", node.ID, err)
 						}
 
 						log.Info().
-							Uint64("node.id", node.ID).
-							Str("username", *node.Username).
+							Uint64("node.id", uint64(node.ID)).
+							Str("node.name", node.Hostname).
 							Strs("validated_tags", validatedTags).
 							Strs("rejected_tags", rejectedTags).
 							Strs("existing_tags", existingTags).
@@ -821,7 +786,8 @@ AND auth_key_id NOT IN (
 		return nil
 	})
 
-	if err := runMigrations(cfg, dbConn, migrations); err != nil {
+	err = runMigrations(cfg.Database, dbConn, migrations)
+	if err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -829,7 +795,7 @@ AND auth_key_id NOT IN (
 	// This is currently only done on sqlite as squibble does not
 	// support Postgres and we use our sqlite schema as our source of
 	// truth.
-	if cfg.Type == types.DatabaseSqlite {
+	if cfg.Database.Type == types.DatabaseSqlite {
 		sqlConn, err := dbConn.DB()
 		if err != nil {
 			return nil, fmt.Errorf("getting DB from gorm: %w", err)
@@ -861,10 +827,8 @@ AND auth_key_id NOT IN (
 
 	db := HSDatabase{
 		DB:       dbConn,
-		cfg:      &cfg,
+		cfg:      cfg,
 		regCache: regCache,
-
-		baseDomain: baseDomain,
 	}
 
 	return &db, err
@@ -1107,7 +1071,7 @@ func (hsdb *HSDatabase) Close() error {
 		return err
 	}
 
-	if hsdb.cfg.Type == types.DatabaseSqlite && hsdb.cfg.Sqlite.WriteAheadLog {
+	if hsdb.cfg.Database.Type == types.DatabaseSqlite && hsdb.cfg.Database.Sqlite.WriteAheadLog {
 		db.Exec("VACUUM")
 	}
 

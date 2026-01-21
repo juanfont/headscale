@@ -69,8 +69,7 @@ var getPolicy = &cobra.Command{
 			}
 
 			d, err := db.NewHeadscaleDatabase(
-				cfg.Database,
-				cfg.BaseDomain,
+				cfg,
 				nil,
 			)
 			if err != nil {
@@ -145,8 +144,7 @@ var setPolicy = &cobra.Command{
 			}
 
 			d, err := db.NewHeadscaleDatabase(
-				cfg.Database,
-				cfg.BaseDomain,
+				cfg,
 				nil,
 			)
 			if err != nil {

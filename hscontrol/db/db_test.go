@@ -288,13 +288,17 @@ func dbForTestWithPath(t *testing.T, sqlFilePath string) *HSDatabase {
 	}
 
 	db, err := NewHeadscaleDatabase(
-		types.DatabaseConfig{
-			Type: "sqlite3",
-			Sqlite: types.SqliteConfig{
-				Path: dbPath,
+		&types.Config{
+			Database: types.DatabaseConfig{
+				Type: "sqlite3",
+				Sqlite: types.SqliteConfig{
+					Path: dbPath,
+				},
+			},
+			Policy: types.PolicyConfig{
+				Mode: types.PolicyModeDB,
 			},
 		},
-		"",
 		emptyCache(),
 	)
 	if err != nil {
@@ -343,13 +347,17 @@ func TestSQLiteAllTestdataMigrations(t *testing.T) {
 			require.NoError(t, err)
 
 			_, err = NewHeadscaleDatabase(
-				types.DatabaseConfig{
-					Type: "sqlite3",
-					Sqlite: types.SqliteConfig{
-						Path: dbPath,
+				&types.Config{
+					Database: types.DatabaseConfig{
+						Type: "sqlite3",
+						Sqlite: types.SqliteConfig{
+							Path: dbPath,
+						},
+					},
+					Policy: types.PolicyConfig{
+						Mode: types.PolicyModeDB,
 					},
 				},
-				"",
 				emptyCache(),
 			)
 			require.NoError(t, err)
