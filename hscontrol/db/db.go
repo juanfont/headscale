@@ -46,13 +46,6 @@ const (
 	contextTimeoutSecs = 10
 )
 
-// KV is a key-value store in a psql table. For future use...
-// TODO(kradalby): Is this used for anything?
-type KV struct {
-	Key   string
-	Value string
-}
-
 type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.Config
