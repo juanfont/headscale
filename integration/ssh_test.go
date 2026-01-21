@@ -80,10 +80,15 @@ func TestSSHOneUserToAll(t *testing.T) {
 			},
 			SSHs: []policyv2.SSH{
 				{
-					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{wildcard()},
-					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+					Action:  "accept",
+					Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					// Use autogroup:member and autogroup:tagged instead of wildcard
+					// since wildcard (*) is no longer supported for SSH destinations
+					Destinations: policyv2.SSHDstAliases{
+						ptr.To(policyv2.AutoGroupMember),
+						ptr.To(policyv2.AutoGroupTagged),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
 		},
@@ -127,6 +132,8 @@ func TestSSHOneUserToAll(t *testing.T) {
 	}
 }
 
+// TestSSHMultipleUsersAllToAll tests that users in a group can SSH to each other's devices
+// using autogroup:self as the destination, which allows same-user SSH access.
 func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -147,9 +154,13 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 			},
 			SSHs: []policyv2.SSH{
 				{
-					Action:       "accept",
-					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user1@"), usernamep("user2@")},
+					Action:  "accept",
+					Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					// Use autogroup:self to allow users to SSH to their own devices.
+					// Username destinations (e.g., "user1@") now require the source
+					// to be that exact same user only. For group-to-group SSH access,
+					// use autogroup:self instead.
+					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
@@ -170,16 +181,42 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 	_, err = scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	testInterUserSSH := func(sourceClients []TailscaleClient, targetClients []TailscaleClient) {
-		for _, client := range sourceClients {
-			for _, peer := range targetClients {
-				assertSSHHostname(t, client, peer)
+	// With autogroup:self, users can SSH to their own devices, but not to other users' devices.
+	// Test that user1's devices can SSH to each other
+	for _, client := range nsOneClients {
+		for _, peer := range nsOneClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
 			}
+
+			assertSSHHostname(t, client, peer)
 		}
 	}
 
-	testInterUserSSH(nsOneClients, nsTwoClients)
-	testInterUserSSH(nsTwoClients, nsOneClients)
+	// Test that user2's devices can SSH to each other
+	for _, client := range nsTwoClients {
+		for _, peer := range nsTwoClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	// Test that user1 cannot SSH to user2's devices (autogroup:self only allows same-user)
+	for _, client := range nsOneClients {
+		for _, peer := range nsTwoClients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+
+	// Test that user2 cannot SSH to user1's devices (autogroup:self only allows same-user)
+	for _, client := range nsTwoClients {
+		for _, peer := range nsOneClients {
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
 }
 
 func TestSSHNoSSHConfigured(t *testing.T) {
@@ -248,7 +285,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
+					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
@@ -297,16 +334,19 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 				},
 			},
 			SSHs: []policyv2.SSH{
+				// Use autogroup:self to allow users in each group to SSH to their own devices.
+				// Username destinations (e.g., "user1@") require the source to be that
+				// exact same user only, not a group containing that user.
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh1")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user1@")},
+					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh2")},
-					Destinations: policyv2.SSHDstAliases{usernamep("user2@")},
+					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
