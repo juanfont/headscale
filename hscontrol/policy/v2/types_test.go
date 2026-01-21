@@ -664,7 +664,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 			input: `
 {
   "tagOwners": {
-    "tag:web": ["admin@example.com"]
+    "tag:web": ["admin@example.com"],
+    "tag:server": ["admin@example.com"]
   },
   "ssh": [
     {
@@ -673,7 +674,7 @@ func TestUnmarshalPolicy(t *testing.T) {
         "tag:web"
       ],
       "dst": [
-        "admin@example.com"
+        "tag:server"
       ],
       "users": ["*"]
     }
@@ -682,7 +683,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			want: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:web"): Owners{ptr.To(Username("admin@example.com"))},
+					Tag("tag:web"):    Owners{ptr.To(Username("admin@example.com"))},
+					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
 				},
 				SSHs: []SSH{
 					{
@@ -691,7 +693,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 							tp("tag:web"),
 						},
 						Destinations: SSHDstAliases{
-							ptr.To(Username("admin@example.com")),
+							tp("tag:server"),
 						},
 						Users: []SSHUser{
 							SSHUser("*"),
@@ -714,7 +716,7 @@ func TestUnmarshalPolicy(t *testing.T) {
         "group:admins"
       ],
       "dst": [
-        "admin@example.com"
+        "autogroup:self"
       ],
       "users": ["root"],
       "checkPeriod": "24h"
@@ -733,7 +735,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 							gp("group:admins"),
 						},
 						Destinations: SSHDstAliases{
-							ptr.To(Username("admin@example.com")),
+							agp("autogroup:self"),
 						},
 						Users: []SSHUser{
 							SSHUser("root"),
@@ -1520,6 +1522,249 @@ func TestUnmarshalPolicy(t *testing.T) {
 }
 `,
 			wantErr: `tag "tag:child" references undefined tag "tag:nonexistent"`,
+		},
+		// SSH source/destination validation tests (#3009, #3010)
+		{
+			name: "ssh-tag-to-user-rejected",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["tag:server"],
+    "dst": ["admin@"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: "tags in SSH source cannot access user-owned devices",
+		},
+		{
+			name: "ssh-autogroup-tagged-to-user-rejected",
+			input: `
+{
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:tagged"],
+    "dst": ["admin@"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: "tags in SSH source cannot access user-owned devices",
+		},
+		{
+			name: "ssh-tag-to-autogroup-self-rejected",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["tag:server"],
+    "dst": ["autogroup:self"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: "autogroup:self destination requires source to contain only users or groups",
+		},
+		{
+			name: "ssh-group-to-user-rejected",
+			input: `
+{
+  "groups": {"group:admins": ["admin@", "user1@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["group:admins"],
+    "dst": ["admin@"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: `user destination requires source to contain only that same user "admin@"`,
+		},
+		{
+			name: "ssh-same-user-to-user-allowed",
+			input: `
+{
+  "ssh": [{
+    "action": "accept",
+    "src": ["admin@"],
+    "dst": ["admin@"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{up("admin@")},
+						Destinations: SSHDstAliases{up("admin@")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-group-to-autogroup-self-allowed",
+			input: `
+{
+  "groups": {"group:admins": ["admin@", "user1@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["group:admins"],
+    "dst": ["autogroup:self"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("admin@"), Username("user1@")},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{gp("group:admins")},
+						Destinations: SSHDstAliases{agp("autogroup:self")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-autogroup-tagged-to-autogroup-member-rejected",
+			input: `
+{
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:tagged"],
+    "dst": ["autogroup:member"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: "tags in SSH source cannot access autogroup:member",
+		},
+		{
+			name: "ssh-autogroup-tagged-to-autogroup-tagged-allowed",
+			input: `
+{
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:tagged"],
+    "dst": ["autogroup:tagged"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:tagged")},
+						Destinations: SSHDstAliases{agp("autogroup:tagged")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-wildcard-destination-rejected",
+			input: `
+{
+  "groups": {"group:admins": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["group:admins"],
+    "dst": ["*"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			wantErr: "wildcard (*) is not supported as SSH destination",
+		},
+		{
+			name: "ssh-group-to-tag-allowed",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "groups": {"group:admins": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["group:admins"],
+    "dst": ["tag:server"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("admin@")},
+				},
+				Groups: Groups{
+					Group("group:admins"): []Username{Username("admin@")},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{gp("group:admins")},
+						Destinations: SSHDstAliases{tp("tag:server")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-user-to-tag-allowed",
+			input: `
+{
+  "tagOwners": {"tag:server": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["admin@"],
+    "dst": ["tag:server"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("admin@")},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{up("admin@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-autogroup-member-to-autogroup-tagged-allowed",
+			input: `
+{
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["autogroup:tagged"],
+    "users": ["autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{agp("autogroup:tagged")},
+						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
 		},
 	}
 

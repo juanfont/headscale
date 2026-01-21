@@ -406,21 +406,33 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 	}
 
-	// Create test nodes
-	nodeUser1 := types.Node{
-		Hostname: "user1-device",
+	// Create test nodes - use tagged nodes as SSH destinations
+	// and untagged nodes as SSH sources (since group->username destinations
+	// are not allowed per Tailscale security model, but groups can SSH to tags)
+	nodeTaggedServer := types.Node{
+		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
 		UserID:   ptr.To(users[0].ID),
 		User:     ptr.To(users[0]),
+		Tags:     []string{"tag:server"},
 	}
-	nodeUser2 := types.Node{
-		Hostname: "user2-device",
+	nodeTaggedDB := types.Node{
+		Hostname: "tagged-db",
 		IPv4:     createAddr("100.64.0.2"),
+		UserID:   ptr.To(users[1].ID),
+		User:     ptr.To(users[1]),
+		Tags:     []string{"tag:database"},
+	}
+	// Add untagged node for user2 - this will be the SSH source
+	// (group:admins contains user2, so user2's untagged node provides the source IPs)
+	nodeUser2Untagged := types.Node{
+		Hostname: "user2-device",
+		IPv4:     createAddr("100.64.0.3"),
 		UserID:   ptr.To(users[1].ID),
 		User:     ptr.To(users[1]),
 	}
 
-	nodes := types.Nodes{&nodeUser1, &nodeUser2}
+	nodes := types.Nodes{&nodeTaggedServer, &nodeTaggedDB, &nodeUser2Untagged}
 
 	tests := []struct {
 		name         string
@@ -431,8 +443,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 	}{
 		{
 			name:       "specific user mapping",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -440,7 +455,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"ssh-it-user"},
 					},
 				},
@@ -451,8 +466,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "multiple specific users",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -460,7 +478,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"ubuntu", "admin", "deploy"},
 					},
 				},
@@ -473,8 +491,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "autogroup:nonroot only",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -482,7 +503,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot)},
 					},
 				},
@@ -494,8 +515,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "root only",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -503,7 +527,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{"root"},
 					},
 				},
@@ -514,8 +538,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "autogroup:nonroot plus root",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -523,7 +550,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot), "root"},
 					},
 				},
@@ -535,8 +562,11 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "mixed specific users and autogroups",
-			targetNode: nodeUser1,
+			targetNode: nodeTaggedServer,
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -544,7 +574,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")},
+						Destinations: SSHDstAliases{tp("tag:server")},
 						Users:        []SSHUser{SSHUser(AutoGroupNonRoot), "root", "ubuntu", "admin"},
 					},
 				},
@@ -558,8 +588,12 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 		},
 		{
 			name:       "no matching destination",
-			targetNode: nodeUser2, // Target node2, but policy only allows user1
+			targetNode: nodeTaggedDB, // Target tag:database, but policy only allows tag:server
 			policy: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:server"):   Owners{up("user1@")},
+					Tag("tag:database"): Owners{up("user1@")},
+				},
 				Groups: Groups{
 					Group("group:admins"): []Username{Username("user2@")},
 				},
@@ -567,7 +601,7 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 					{
 						Action:       "accept",
 						Sources:      SSHSrcAliases{gp("group:admins")},
-						Destinations: SSHDstAliases{up("user1@")}, // Only user1, not user2
+						Destinations: SSHDstAliases{tp("tag:server")}, // Only tag:server, not tag:database
 						Users:        []SSHUser{"ssh-it-user"},
 					},
 				},
@@ -600,9 +634,9 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 			rule := sshPolicy.Rules[0]
 			assert.Equal(t, tt.wantSSHUsers, rule.SSHUsers, "SSH users mapping should match expected")
 
-			// Verify principals are set correctly (should contain user2's IP since that's the source)
+			// Verify principals are set correctly (should contain user2's untagged device IP since that's the source)
 			require.Len(t, rule.Principals, 1)
-			assert.Equal(t, "100.64.0.2", rule.Principals[0].NodeIP)
+			assert.Equal(t, "100.64.0.3", rule.Principals[0].NodeIP)
 
 			// Verify action is set correctly
 			assert.True(t, rule.Action.Accept)
@@ -619,11 +653,13 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 	}
 
-	nodeUser1 := types.Node{
-		Hostname: "user1-device",
+	// Use tagged nodes for SSH user mapping tests
+	nodeTaggedServer := types.Node{
+		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
 		UserID:   ptr.To(users[0].ID),
 		User:     ptr.To(users[0]),
+		Tags:     []string{"tag:server"},
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
@@ -632,9 +668,12 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 		User:     ptr.To(users[1]),
 	}
 
-	nodes := types.Nodes{&nodeUser1, &nodeUser2}
+	nodes := types.Nodes{&nodeTaggedServer, &nodeUser2}
 
 	policy := &Policy{
+		TagOwners: TagOwners{
+			Tag("tag:server"): Owners{up("user1@")},
+		},
 		Groups: Groups{
 			Group("group:admins"): []Username{Username("user2@")},
 		},
@@ -643,7 +682,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 				Action:       "check",
 				CheckPeriod:  model.Duration(24 * time.Hour),
 				Sources:      SSHSrcAliases{gp("group:admins")},
-				Destinations: SSHDstAliases{up("user1@")},
+				Destinations: SSHDstAliases{tp("tag:server")},
 				Users:        []SSHUser{"ssh-it-user"},
 			},
 		},
@@ -652,7 +691,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 	err := policy.validate()
 	require.NoError(t, err)
 
-	sshPolicy, err := policy.compileSSHPolicy(users, nodeUser1.View(), nodes.ViewSlice())
+	sshPolicy, err := policy.compileSSHPolicy(users, nodeTaggedServer.View(), nodes.ViewSlice())
 	require.NoError(t, err)
 	require.NotNil(t, sshPolicy)
 	require.Len(t, sshPolicy.Rules, 1)
@@ -697,16 +736,17 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	nodes := types.Nodes{node1, node2}
 
 	// Create a simple policy that reproduces the issue
+	// Updated to use autogroup:self instead of username destination (per Tailscale security model)
 	policy := &Policy{
 		Groups: Groups{
-			Group("group:integration-test"): []Username{Username("user1@")},
+			Group("group:integration-test"): []Username{Username("user1@"), Username("user2@")},
 		},
 		SSHs: []SSH{
 			{
 				Action:       "accept",
 				Sources:      SSHSrcAliases{gp("group:integration-test")},
-				Destinations: SSHDstAliases{up("user2@")},       // Target user2
-				Users:        []SSHUser{SSHUser("ssh-it-user")}, // This is the key - specific user
+				Destinations: SSHDstAliases{agp("autogroup:self")}, // Users can SSH to their own devices
+				Users:        []SSHUser{SSHUser("ssh-it-user")},    // This is the key - specific user
 			},
 		},
 	}
@@ -715,7 +755,7 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	err := policy.validate()
 	require.NoError(t, err)
 
-	// Test SSH policy compilation for node2 (target)
+	// Test SSH policy compilation for node2 (owned by user2, who is in the group)
 	sshPolicy, err := policy.compileSSHPolicy(users, node2.View(), nodes.ViewSlice())
 	require.NoError(t, err)
 	require.NotNil(t, sshPolicy)
