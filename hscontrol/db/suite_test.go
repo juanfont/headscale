@@ -23,13 +23,17 @@ func newSQLiteTestDB() (*HSDatabase, error) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 
 	db, err := NewHeadscaleDatabase(
-		types.DatabaseConfig{
-			Type: types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
+		&types.Config{
+			Database: types.DatabaseConfig{
+				Type: types.DatabaseSqlite,
+				Sqlite: types.SqliteConfig{
+					Path: tmpDir + "/headscale_test.db",
+				},
+			},
+			Policy: types.PolicyConfig{
+				Mode: types.PolicyModeDB,
 			},
 		},
-		"",
 		emptyCache(),
 	)
 	if err != nil {
@@ -72,18 +76,22 @@ func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
 	port, _ := strconv.Atoi(pu.Port())
 
 	db, err := NewHeadscaleDatabase(
-		types.DatabaseConfig{
-			Type: types.DatabasePostgres,
-			Postgres: types.PostgresConfig{
-				Host: pu.Hostname(),
-				User: pu.User.Username(),
-				Name: strings.TrimLeft(pu.Path, "/"),
-				Pass: pass,
-				Port: port,
-				Ssl:  "disable",
+		&types.Config{
+			Database: types.DatabaseConfig{
+				Type: types.DatabasePostgres,
+				Postgres: types.PostgresConfig{
+					Host: pu.Hostname(),
+					User: pu.User.Username(),
+					Name: strings.TrimLeft(pu.Path, "/"),
+					Pass: pass,
+					Port: port,
+					Ssl:  "disable",
+				},
+			},
+			Policy: types.PolicyConfig{
+				Mode: types.PolicyModeDB,
 			},
 		},
-		"",
 		emptyCache(),
 	)
 	if err != nil {

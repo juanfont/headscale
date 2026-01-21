@@ -15,6 +15,7 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/juanfont/headscale/hscontrol/db/sqliteconfig"
+	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -44,29 +45,19 @@ const (
 	contextTimeoutSecs = 10
 )
 
-// KV is a key-value store in a psql table. For future use...
-// TODO(kradalby): Is this used for anything?
-type KV struct {
-	Key   string
-	Value string
-}
-
 type HSDatabase struct {
 	DB       *gorm.DB
-	cfg      *types.DatabaseConfig
+	cfg      *types.Config
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
-
-	baseDomain string
 }
 
-// TODO(kradalby): assemble this struct from toptions or something typed
-// rather than arguments.
+// NewHeadscaleDatabase creates a new database connection and runs migrations.
+// It accepts the full configuration to allow migrations access to policy settings.
 func NewHeadscaleDatabase(
-	cfg types.DatabaseConfig,
-	baseDomain string,
+	cfg *types.Config,
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
 ) (*HSDatabase, error) {
-	dbConn, err := openDB(cfg)
+	dbConn, err := openDB(cfg.Database)
 	if err != nil {
 		return nil, err
 	}
@@ -253,7 +244,7 @@ AND auth_key_id NOT IN (
 				ID: "202507021200",
 				Migrate: func(tx *gorm.DB) error {
 					// Only run on SQLite
-					if cfg.Type != types.DatabaseSqlite {
+					if cfg.Database.Type != types.DatabaseSqlite {
 						log.Info().Msg("Skipping schema migration on non-SQLite database")
 						return nil
 					}
@@ -592,6 +583,112 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Migrate RequestTags from host_info JSON to tags column.
+				// In 0.27.x, tags from --advertise-tags (ValidTags) were stored only in
+				// host_info.RequestTags, not in the tags column (formerly forced_tags).
+				// This migration validates RequestTags against the policy's tagOwners
+				// and merges validated tags into the tags column.
+				// Fixes: https://github.com/juanfont/headscale/issues/3006
+				ID: "202601121700-migrate-hostinfo-request-tags",
+				Migrate: func(tx *gorm.DB) error {
+					// 1. Load policy from file or database based on configuration
+					policyData, err := PolicyBytes(tx, cfg)
+					if err != nil {
+						log.Warn().Err(err).Msg("Failed to load policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					if len(policyData) == 0 {
+						log.Info().Msg("No policy found, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					// 2. Load users and nodes to create PolicyManager
+					users, err := ListUsers(tx)
+					if err != nil {
+						return fmt.Errorf("loading users for RequestTags migration: %w", err)
+					}
+
+					nodes, err := ListNodes(tx)
+					if err != nil {
+						return fmt.Errorf("loading nodes for RequestTags migration: %w", err)
+					}
+
+					// 3. Create PolicyManager (handles HuJSON parsing, groups, nested tags, etc.)
+					polMan, err := policy.NewPolicyManager(policyData, users, nodes.ViewSlice())
+					if err != nil {
+						log.Warn().Err(err).Msg("Failed to parse policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						return nil
+					}
+
+					// 4. Process each node
+					for _, node := range nodes {
+						if node.Hostinfo == nil {
+							continue
+						}
+
+						requestTags := node.Hostinfo.RequestTags
+						if len(requestTags) == 0 {
+							continue
+						}
+
+						existingTags := node.Tags
+
+						var validatedTags, rejectedTags []string
+
+						nodeView := node.View()
+
+						for _, tag := range requestTags {
+							if polMan.NodeCanHaveTag(nodeView, tag) {
+								if !slices.Contains(existingTags, tag) {
+									validatedTags = append(validatedTags, tag)
+								}
+							} else {
+								rejectedTags = append(rejectedTags, tag)
+							}
+						}
+
+						if len(validatedTags) == 0 {
+							if len(rejectedTags) > 0 {
+								log.Debug().
+									Uint64("node.id", uint64(node.ID)).
+									Str("node.name", node.Hostname).
+									Strs("rejected_tags", rejectedTags).
+									Msg("RequestTags rejected during migration (not authorized)")
+							}
+
+							continue
+						}
+
+						mergedTags := append(existingTags, validatedTags...)
+						slices.Sort(mergedTags)
+						mergedTags = slices.Compact(mergedTags)
+
+						tagsJSON, err := json.Marshal(mergedTags)
+						if err != nil {
+							return fmt.Errorf("serializing merged tags for node %d: %w", node.ID, err)
+						}
+
+						err = tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error
+						if err != nil {
+							return fmt.Errorf("updating tags for node %d: %w", node.ID, err)
+						}
+
+						log.Info().
+							Uint64("node.id", uint64(node.ID)).
+							Str("node.name", node.Hostname).
+							Strs("validated_tags", validatedTags).
+							Strs("rejected_tags", rejectedTags).
+							Strs("existing_tags", existingTags).
+							Strs("merged_tags", mergedTags).
+							Msg("Migrated validated RequestTags from host_info to tags column")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
@@ -648,7 +745,8 @@ AND auth_key_id NOT IN (
 		return nil
 	})
 
-	if err := runMigrations(cfg, dbConn, migrations); err != nil {
+	err = runMigrations(cfg.Database, dbConn, migrations)
+	if err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -656,7 +754,7 @@ AND auth_key_id NOT IN (
 	// This is currently only done on sqlite as squibble does not
 	// support Postgres and we use our sqlite schema as our source of
 	// truth.
-	if cfg.Type == types.DatabaseSqlite {
+	if cfg.Database.Type == types.DatabaseSqlite {
 		sqlConn, err := dbConn.DB()
 		if err != nil {
 			return nil, fmt.Errorf("getting DB from gorm: %w", err)
@@ -688,10 +786,8 @@ AND auth_key_id NOT IN (
 
 	db := HSDatabase{
 		DB:       dbConn,
-		cfg:      &cfg,
+		cfg:      cfg,
 		regCache: regCache,
-
-		baseDomain: baseDomain,
 	}
 
 	return &db, err
@@ -934,7 +1030,7 @@ func (hsdb *HSDatabase) Close() error {
 		return err
 	}
 
-	if hsdb.cfg.Type == types.DatabaseSqlite && hsdb.cfg.Sqlite.WriteAheadLog {
+	if hsdb.cfg.Database.Type == types.DatabaseSqlite && hsdb.cfg.Database.Sqlite.WriteAheadLog {
 		db.Exec("VACUUM")
 	}
 

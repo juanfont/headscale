@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	hsdb "github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"tailscale.com/tailcfg"
@@ -228,7 +229,7 @@ func (s *State) DebugPolicy() (string, error) {
 
 		return p.Data, nil
 	case types.PolicyModeFile:
-		pol, err := policyBytes(s.db, s.cfg)
+		pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 		if err != nil {
 			return "", err
 		}
