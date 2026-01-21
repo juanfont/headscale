@@ -8,9 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/netip"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -142,7 +140,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading users: %w", err)
 	}
 
-	pol, err := policyBytes(db, cfg)
+	pol, err := hsdb.PolicyBytes(db.DB, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
@@ -198,47 +196,6 @@ func (s *State) Close() error {
 	return nil
 }
 
-// policyBytes loads policy configuration from file or database based on the configured mode.
-// Returns nil if no policy is configured, which is valid.
-func policyBytes(db *hsdb.HSDatabase, cfg *types.Config) ([]byte, error) {
-	switch cfg.Policy.Mode {
-	case types.PolicyModeFile:
-		path := cfg.Policy.Path
-
-		// It is fine to start headscale without a policy file.
-		if len(path) == 0 {
-			return nil, nil
-		}
-
-		absPath := util.AbsolutePathFromConfigPath(path)
-		policyFile, err := os.Open(absPath)
-		if err != nil {
-			return nil, err
-		}
-		defer policyFile.Close()
-
-		return io.ReadAll(policyFile)
-
-	case types.PolicyModeDB:
-		p, err := db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil, nil
-			}
-
-			return nil, err
-		}
-
-		if p.Data == "" {
-			return nil, nil
-		}
-
-		return []byte(p.Data), err
-	}
-
-	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, cfg.Policy.Mode)
-}
-
 // SetDERPMap updates the DERP relay configuration.
 func (s *State) SetDERPMap(dm *tailcfg.DERPMap) {
 	s.derpMap.Store(dm)
@@ -252,7 +209,7 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
 func (s *State) ReloadPolicy() ([]change.Change, error) {
-	pol, err := policyBytes(s.db, s.cfg)
+	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}

@@ -2,8 +2,10 @@ package db
 
 import (
 	"errors"
+	"os"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -48,4 +50,42 @@ func GetPolicy(tx *gorm.DB) (*types.Policy, error) {
 	}
 
 	return &p, nil
+}
+
+// PolicyBytes loads policy configuration from file or database based on the configured mode.
+// Returns nil if no policy is configured, which is valid.
+// This standalone function can be used in contexts where HSDatabase is not available,
+// such as during migrations.
+func PolicyBytes(tx *gorm.DB, cfg *types.Config) ([]byte, error) {
+	switch cfg.Policy.Mode {
+	case types.PolicyModeFile:
+		path := cfg.Policy.Path
+
+		// It is fine to start headscale without a policy file.
+		if len(path) == 0 {
+			return nil, nil
+		}
+
+		absPath := util.AbsolutePathFromConfigPath(path)
+
+		return os.ReadFile(absPath)
+
+	case types.PolicyModeDB:
+		p, err := GetPolicy(tx)
+		if err != nil {
+			if errors.Is(err, types.ErrPolicyNotFound) {
+				return nil, nil
+			}
+
+			return nil, err
+		}
+
+		if p.Data == "" {
+			return nil, nil
+		}
+
+		return []byte(p.Data), nil
+	}
+
+	return nil, nil
 }

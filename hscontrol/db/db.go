@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -50,40 +49,6 @@ type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.Config
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
-}
-
-// loadPolicyBytes loads policy from file or database based on configuration.
-// This is used during migrations when HSDatabase is not yet fully initialized.
-func loadPolicyBytes(tx *gorm.DB, cfg *types.Config) ([]byte, error) {
-	switch cfg.Policy.Mode {
-	case types.PolicyModeFile:
-		if cfg.Policy.Path == "" {
-			return nil, nil
-		}
-
-		absPath := util.AbsolutePathFromConfigPath(cfg.Policy.Path)
-
-		return os.ReadFile(absPath)
-
-	case types.PolicyModeDB:
-		p, err := GetPolicy(tx)
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil, nil
-			}
-
-			return nil, err
-		}
-
-		if p.Data == "" {
-			return nil, nil
-		}
-
-		return []byte(p.Data), nil
-
-	default:
-		return nil, nil
-	}
 }
 
 // NewHeadscaleDatabase creates a new database connection and runs migrations.
@@ -628,7 +593,7 @@ AND auth_key_id NOT IN (
 				ID: "202601121700-migrate-hostinfo-request-tags",
 				Migrate: func(tx *gorm.DB) error {
 					// 1. Load policy from file or database based on configuration
-					policyData, err := loadPolicyBytes(tx, cfg)
+					policyData, err := PolicyBytes(tx, cfg)
 					if err != nil {
 						log.Warn().Err(err).Msg("Failed to load policy, skipping RequestTags migration (tags will be validated on node reconnect)")
 						return nil
@@ -705,7 +670,8 @@ AND auth_key_id NOT IN (
 							return fmt.Errorf("serializing merged tags for node %d: %w", node.ID, err)
 						}
 
-						if err := tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error; err != nil {
+						err = tx.Exec("UPDATE nodes SET tags = ? WHERE id = ?", string(tagsJSON), node.ID).Error
+						if err != nil {
 							return fmt.Errorf("updating tags for node %d: %w", node.ID, err)
 						}
 
