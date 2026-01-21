@@ -16,12 +16,11 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 type AuthProvider interface {
-	RegisterHandler(http.ResponseWriter, *http.Request)
-	AuthURL(types.RegistrationID) string
+	RegisterHandler(w http.ResponseWriter, r *http.Request)
+	AuthURL(regID types.RegistrationID) string
 }
 
 func (h *Headscale) handleRegister(
@@ -52,6 +51,7 @@ func (h *Headscale) handleRegister(
 			if err != nil {
 				return nil, fmt.Errorf("handling logout: %w", err)
 			}
+
 			if resp != nil {
 				return resp, nil
 			}
@@ -113,8 +113,7 @@ func (h *Headscale) handleRegister(
 		resp, err := h.handleRegisterWithAuthKey(req, machineKey)
 		if err != nil {
 			// Preserve HTTPError types so they can be handled properly by the HTTP layer
-			var httpErr HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				return nil, httpErr
 			}
 
@@ -133,7 +132,7 @@ func (h *Headscale) handleRegister(
 }
 
 // handleLogout checks if the [tailcfg.RegisterRequest] is a
-// logout attempt from a node. If the node is not attempting to
+// logout attempt from a node. If the node is not attempting to.
 func (h *Headscale) handleLogout(
 	node types.NodeView,
 	req tailcfg.RegisterRequest,
@@ -160,6 +159,7 @@ func (h *Headscale) handleLogout(
 			Interface("reg.req", req).
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
+
 		return &tailcfg.RegisterResponse{
 			NodeKeyExpired:    true,
 			MachineAuthorized: false,
@@ -279,6 +279,7 @@ func (h *Headscale) waitForFollowup(
 				// registration is expired in the cache, instruct the client to try a new registration
 				return h.reqToNewRegisterResponse(req, machineKey)
 			}
+
 			return nodeToRegisterResponse(node.View()), nil
 		}
 	}
@@ -316,7 +317,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
+			LastSeen:   new(time.Now()),
 		},
 	)
 
@@ -344,8 +345,8 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
-		var perr types.PAKError
-		if errors.As(err, &perr) {
+
+		if perr, ok := errors.AsType[types.PAKError](err); ok {
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
 
@@ -355,7 +356,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// If node is not valid, it means an ephemeral node was deleted during logout
 	if !node.Valid() {
 		h.Change(changed)
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
@@ -435,6 +436,7 @@ func (h *Headscale) handleRegisterInteractive(
 			Str("generated.hostname", hostname).
 			Msg("Received registration request with empty hostname, generated default")
 	}
+
 	hostinfo.Hostname = hostname
 
 	nodeToRegister := types.NewRegisterNode(
@@ -443,7 +445,7 @@ func (h *Headscale) handleRegisterInteractive(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
+			LastSeen:   new(time.Now()),
 		},
 	)
 

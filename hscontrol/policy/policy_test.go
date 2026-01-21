@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -33,6 +32,7 @@ func TestReduceNodes(t *testing.T) {
 		rules []tailcfg.FilterRule
 		node  *types.Node
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -783,9 +783,11 @@ func TestReduceNodes(t *testing.T) {
 			for _, v := range gotViews.All() {
 				got = append(got, v.AsStruct())
 			}
+
 			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 				t.Errorf("ReduceNodes() unexpected result (-want +got):\n%s", diff)
 				t.Log("Matchers: ")
+
 				for _, m := range matchers {
 					t.Log("\t+", m.DebugString())
 				}
@@ -796,6 +798,7 @@ func TestReduceNodes(t *testing.T) {
 
 func TestReduceNodesFromPolicy(t *testing.T) {
 	n := func(id types.NodeID, ip, hostname, username string, routess ...string) *types.Node {
+		//nolint:prealloc
 		var routes []netip.Prefix
 		for _, route := range routess {
 			routes = append(routes, netip.MustParsePrefix(route))
@@ -1032,8 +1035,11 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm PolicyManager
-				var err error
+				var (
+					pm  PolicyManager
+					err error
+				)
+
 				pm, err = pmf(nil, tt.nodes.ViewSlice())
 				require.NoError(t, err)
 
@@ -1051,9 +1057,11 @@ func TestReduceNodesFromPolicy(t *testing.T) {
 				for _, v := range gotViews.All() {
 					got = append(got, v.AsStruct())
 				}
+
 				if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
 					t.Errorf("TestReduceNodesFromPolicy() unexpected result (-want +got):\n%s", diff)
 					t.Log("Matchers: ")
+
 					for _, m := range matchers {
 						t.Log("\t+", m.DebugString())
 					}
@@ -1074,21 +1082,21 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 	}
 
 	taggedClient := types.Node{
 		Hostname: "tagged-client",
 		IPv4:     ap("100.64.0.4"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 		Tags:     []string{"tag:client"},
 	}
 
@@ -1207,7 +1215,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `invalid SSH action "invalid", must be one of: accept, check`,
+			errorMessage: `invalid SSH action: "invalid", must be one of: accept, check`,
 		},
 		{
 			name:       "invalid-check-period",
@@ -1242,7 +1250,7 @@ func TestSSHPolicyRules(t *testing.T) {
         ]
     }`,
 			expectErr:    true,
-			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
+			errorMessage: `autogroup not supported for SSH: "autogroup:invalid" for SSH user`,
 		},
 		{
 			name:       "autogroup-nonroot-should-use-wildcard-with-root-excluded",
@@ -1406,13 +1414,17 @@ func TestSSHPolicyRules(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range PolicyManagerFuncsForTest([]byte(tt.policy)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm PolicyManager
-				var err error
+				var (
+					pm  PolicyManager
+					err error
+				)
+
 				pm, err = pmf(users, append(tt.peers, &tt.targetNode).ViewSlice())
 
 				if tt.expectErr {
 					require.Error(t, err)
 					require.Contains(t, err.Error(), tt.errorMessage)
+
 					return
 				}
 
@@ -1435,6 +1447,7 @@ func TestReduceRoutes(t *testing.T) {
 		routes []netip.Prefix
 		rules  []tailcfg.FilterRule
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -2056,6 +2069,7 @@ func TestReduceRoutes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			matchers := matcher.MatchesFromFilterRules(tt.args.rules)
+
 			got := ReduceRoutes(
 				tt.args.node.View(),
 				tt.args.routes,

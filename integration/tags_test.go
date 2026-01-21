@@ -1,7 +1,7 @@
 package integration
 
 import (
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const tagTestUser = "taguser"
@@ -30,9 +29,9 @@ const tagTestUser = "taguser"
 func tagsTestPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
-			"tag:valid-owned":   policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:second":        policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:valid-unowned": policyv2.Owners{ptr.To(policyv2.Username("other-user@"))},
+			"tag:valid-owned":   policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:second":        policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:valid-unowned": policyv2.Owners{new(policyv2.Username("other-user@"))},
 			// Note: tag:nonexistent deliberately NOT defined
 		},
 		ACLs: []policyv2.ACL{
@@ -51,11 +50,11 @@ func tagsEqual(actual, expected []string) bool {
 		return false
 	}
 
-	sortedActual := append([]string{}, actual...)
-	sortedExpected := append([]string{}, expected...)
+	sortedActual := slices.Clone(actual)
+	sortedExpected := slices.Clone(expected)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 
 	for i := range sortedActual {
 		if sortedActual[i] != sortedExpected[i] {
@@ -69,11 +68,11 @@ func tagsEqual(actual, expected []string) bool {
 // assertNodeHasTagsWithCollect asserts that a node has exactly the expected tags (order-independent).
 func assertNodeHasTagsWithCollect(c *assert.CollectT, node *v1.Node, expectedTags []string) {
 	actualTags := node.GetTags()
-	sortedActual := append([]string{}, actualTags...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTags)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Node %s tags mismatch", node.GetName())
 }
 
@@ -86,7 +85,7 @@ func assertNodeHasNoTagsWithCollect(c *assert.CollectT, node *v1.Node) {
 // This validates that tag updates have propagated to the node's own status (issue #2978).
 func assertNodeSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient, expectedTags []string) {
 	status, err := client.Status()
-	//nolint:testifylint // must use assert with CollectT in EventuallyWithT
+	//nolint:testifylint
 	assert.NoError(c, err, "failed to get client status")
 
 	if status == nil || status.Self == nil {
@@ -102,11 +101,11 @@ func assertNodeSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient
 		}
 	}
 
-	sortedActual := append([]string{}, actualTagsSlice...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTagsSlice)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Client %s self tags mismatch", client.Hostname())
 }
 
@@ -557,7 +556,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 		"--authkey=" + authKey.GetKey(),
 		"--force-reauth",
 	}
-	//nolint:errcheck // Intentionally ignoring error - we check results below
+	//nolint:errcheck
 	client.Execute(command)
 
 	// Verify admin tags are preserved even after reauth - admin decisions are authoritative (server-side)
@@ -2491,7 +2490,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 // This validates at a deeper level than status - directly from tailscale debug netmap.
 func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient, expectedTags []string) {
 	nm, err := client.Netmap()
-	//nolint:testifylint // must use assert with CollectT in EventuallyWithT
+	//nolint:testifylint
 	assert.NoError(c, err, "failed to get client netmap")
 
 	if nm == nil {
@@ -2502,16 +2501,17 @@ func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClie
 	var actualTagsSlice []string
 
 	if nm.SelfNode.Valid() {
+		//nolint:unqueryvet
 		for _, tag := range nm.SelfNode.Tags().All() {
 			actualTagsSlice = append(actualTagsSlice, tag)
 		}
 	}
 
-	sortedActual := append([]string{}, actualTagsSlice...)
-	sortedExpected := append([]string{}, expectedTags...)
+	sortedActual := slices.Clone(actualTagsSlice)
+	sortedExpected := slices.Clone(expectedTags)
 
-	sort.Strings(sortedActual)
-	sort.Strings(sortedExpected)
+	slices.Sort(sortedActual)
+	slices.Sort(sortedExpected)
 	assert.Equal(c, sortedExpected, sortedActual, "Client %s netmap self tags mismatch", client.Hostname())
 }
 
@@ -2624,7 +2624,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	// We wait 10 seconds and check - if the client STILL shows the OLD tag,
 	// that demonstrates the bug. If the client shows the NEW tag, the bug is fixed.
 	t.Log("Step 2b: Waiting 10 seconds to see if client self view updates (bug: it should NOT)")
-	//nolint:forbidigo // intentional sleep to demonstrate bug timing - client should get update immediately, not after waiting
+	//nolint:forbidigo
 	time.Sleep(10 * time.Second)
 
 	// Check client status after waiting
@@ -2647,6 +2647,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	var netmapTagsAfterFirstCall []string
 
 	if nmErr == nil && nm != nil && nm.SelfNode.Valid() {
+		//nolint:unqueryvet
 		for _, tag := range nm.SelfNode.Tags().All() {
 			netmapTagsAfterFirstCall = append(netmapTagsAfterFirstCall, tag)
 		}
@@ -2693,7 +2694,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 
 	// Wait and check - bug means client still shows old tag
 	t.Log("Step 4b: Waiting 10 seconds to see if client self view updates (bug: it should NOT)")
-	//nolint:forbidigo // intentional sleep to demonstrate bug timing - client should get update immediately, not after waiting
+	//nolint:forbidigo
 	time.Sleep(10 * time.Second)
 
 	status, err = client.Status()

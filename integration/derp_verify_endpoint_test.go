@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -19,12 +20,15 @@ import (
 	"tailscale.com/types/key"
 )
 
+var errUnexpectedRecvType = errors.New("client first Recv was unexpected type")
+
 func TestDERPVerifyEndpoint(t *testing.T) {
 	IntegrationSkip(t)
 
 	// Generate random hostname for the headscale instance
 	hash, err := util.GenerateRandomStringDNSSafe(6)
 	require.NoError(t, err)
+
 	testName := "derpverify"
 	hostname := fmt.Sprintf("hs-%s-%s", testName, hash)
 
@@ -40,6 +44,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -104,13 +109,17 @@ func DERPVerify(
 	defer c.Close()
 
 	var result error
-	if err := c.Connect(t.Context()); err != nil {
+
+	err := c.Connect(t.Context())
+	if err != nil {
 		result = fmt.Errorf("client Connect: %w", err)
 	}
+
+	//nolint:noinlineerr
 	if m, err := c.Recv(); err != nil {
 		result = fmt.Errorf("client first Recv: %w", err)
 	} else if v, ok := m.(derp.ServerInfoMessage); !ok {
-		result = fmt.Errorf("client first Recv was unexpected type %T", v)
+		result = fmt.Errorf("%w: %T", errUnexpectedRecvType, v)
 	}
 
 	if expectSuccess && result != nil {

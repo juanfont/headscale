@@ -8,7 +8,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"tailscale.com/types/ptr"
 )
 
 func TestCreateAndDestroyUser(t *testing.T) {
@@ -71,6 +70,7 @@ func TestDestroyUserErrors(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
+				//nolint:staticcheck
 				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
@@ -79,7 +79,7 @@ func TestDestroyUserErrors(t *testing.T) {
 					Hostname:       "testnode",
 					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
-					AuthKeyID:      ptr.To(pak.ID),
+					AuthKeyID:      new(pak.ID),
 				}
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)

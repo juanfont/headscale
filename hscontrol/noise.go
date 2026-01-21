@@ -31,6 +31,9 @@ const (
 	earlyPayloadMagic = "\xff\xff\xffTS"
 )
 
+// ErrUnsupportedClientVersion is returned when a client version is not supported.
+var ErrUnsupportedClientVersion = errors.New("unsupported client version")
+
 type noiseServer struct {
 	headscale *Headscale
 
@@ -117,7 +120,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {
-	return fmt.Errorf("unsupported client version: %s (%d)", capver.TailscaleVersion(version), version)
+	return fmt.Errorf("%w: %s (%d)", ErrUnsupportedClientVersion, capver.TailscaleVersion(version), version)
 }
 
 func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
@@ -241,13 +244,17 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
+	//nolint:contextcheck
 	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) {
 		var resp *tailcfg.RegisterResponse
+
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			return &tailcfg.RegisterRequest{}, regErr(err)
 		}
+
 		var regReq tailcfg.RegisterRequest
+		//nolint:noinlineerr
 		if err := json.Unmarshal(body, &regReq); err != nil {
 			return &regReq, regErr(err)
 		}
@@ -256,11 +263,11 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 
 		resp, err = ns.headscale.handleRegister(req.Context(), regReq, ns.conn.Peer())
 		if err != nil {
-			var httpErr HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				resp = &tailcfg.RegisterResponse{
 					Error: httpErr.Msg,
 				}
+
 				return &regReq, resp
 			}
 
@@ -278,7 +285,8 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	if err := json.NewEncoder(writer).Encode(registerResponse); err != nil {
+	err := json.NewEncoder(writer).Encode(registerResponse)
+	if err != nil {
 		log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
 		return
 	}

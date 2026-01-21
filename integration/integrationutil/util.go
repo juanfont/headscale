@@ -22,18 +22,29 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Integration test timing constants.
+const (
+	// peerSyncTimeoutCI is the peer sync timeout for CI environments.
+	peerSyncTimeoutCI = 120 * time.Second
+	// peerSyncTimeoutDev is the peer sync timeout for development environments.
+	peerSyncTimeoutDev = 60 * time.Second
+	// peerSyncRetryIntervalMs is the retry interval for peer sync checks.
+	peerSyncRetryIntervalMs = 100
+)
+
 // PeerSyncTimeout returns the timeout for peer synchronization based on environment:
 // 60s for dev, 120s for CI.
 func PeerSyncTimeout() time.Duration {
 	if util.IsCI() {
-		return 120 * time.Second
+		return peerSyncTimeoutCI
 	}
-	return 60 * time.Second
+
+	return peerSyncTimeoutDev
 }
 
 // PeerSyncRetryInterval returns the retry interval for peer synchronization checks.
 func PeerSyncRetryInterval() time.Duration {
-	return 100 * time.Millisecond
+	return peerSyncRetryIntervalMs * time.Millisecond
 }
 
 func WriteFileToContainer(
@@ -205,25 +216,27 @@ func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[type
 	res := make(map[types.NodeID]map[types.NodeID]bool)
 	for nid, mrs := range all {
 		res[nid] = make(map[types.NodeID]bool)
+
 		for _, mr := range mrs {
 			for _, peer := range mr.Peers {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec
 				}
 			}
 
 			for _, peer := range mr.PeersChanged {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec
 				}
 			}
 
 			for _, peer := range mr.PeersChangedPatch {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.NodeID)] = *peer.Online
+					res[nid][types.NodeID(peer.NodeID)] = *peer.Online //nolint:gosec
 				}
 			}
 		}
 	}
+
 	return res
 }

@@ -38,9 +38,12 @@ type buffer struct {
 
 // Write appends the contents of p to the buffer, growing the buffer as needed. It returns
 // the number of bytes written.
+//
+//nolint:nonamedreturns
 func (b *buffer) Write(p []byte) (n int, err error) {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.Write(p)
 }
 
@@ -49,6 +52,7 @@ func (b *buffer) Write(p []byte) (n int, err error) {
 func (b *buffer) String() string {
 	b.mutex.Lock()
 	defer b.mutex.Unlock()
+
 	return b.store.String()
 }
 

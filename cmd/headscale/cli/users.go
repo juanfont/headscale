@@ -14,6 +14,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// Sentinel errors for CLI commands.
+var (
+	ErrNameOrIDRequired        = errors.New("--name or --identifier flag is required")
+	ErrMultipleUsersFoundUseID = errors.New("unable to determine user, query returned multiple users, use ID")
+)
+
 func usernameAndIDFlag(cmd *cobra.Command) {
 	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
 	cmd.Flags().StringP("name", "n", "", "Username")
@@ -23,12 +29,12 @@ func usernameAndIDFlag(cmd *cobra.Command) {
 // If both are empty, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 	username, _ := cmd.Flags().GetString("name")
+
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
 		ErrorOutput(
-			err,
-			"Cannot rename user: "+status.Convert(err).Message(),
+			ErrNameOrIDRequired,
+			"Cannot rename user: "+status.Convert(ErrNameOrIDRequired).Message(),
 			"",
 		)
 	}
@@ -50,7 +56,7 @@ func init() {
 	userCmd.AddCommand(renameUserCmd)
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	renameNodeCmd.MarkFlagRequired("new-name")
+	_ = renameUserCmd.MarkFlagRequired("new-name")
 }
 
 var errMissingParameter = errors.New("missing parameters")
@@ -94,6 +100,7 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
+			//nolint:noinlineerr
 			if _, err := url.Parse(pictureURL); err != nil {
 				ErrorOutput(
 					err,
@@ -148,7 +155,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+			err := ErrMultipleUsersFoundUseID
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),
@@ -276,7 +283,7 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+			err := ErrMultipleUsersFoundUseID
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),

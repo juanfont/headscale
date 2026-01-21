@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 
@@ -57,7 +56,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	// this is important so the same node is chosen two times in a row
 	// as the primary route.
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
-	sort.Sort(ids)
+	slices.Sort(ids)
 
 	// Create a map of prefixes to nodes that serve them so we
 	// can determine the primary route for each prefix.
@@ -108,9 +107,11 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 					Msg("Current primary no longer available")
 			}
 		}
+
 		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
+
 			log.Debug().
 				Caller().
 				Str("prefix", prefix.String()).
@@ -127,6 +128,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 				Str("prefix", prefix.String()).
 				Msg("Cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
+
 			changed = true
 		}
 	}
@@ -162,14 +164,18 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {
 		wasPresent := false
+
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
+
 			wasPresent = true
+
 			log.Debug().
 				Caller().
 				Uint64("node.id", node.Uint64()).
 				Msg("Removed node from primary routes (no prefixes)")
 		}
+
 		changed := pr.updatePrimaryLocked()
 		log.Debug().
 			Caller().
@@ -236,7 +242,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
-	tsaddr.SortPrefixes(routes)
+	slices.SortFunc(routes, netip.Prefix.Compare)
 
 	return routes
 }
@@ -254,13 +260,15 @@ func (pr *PrimaryRoutes) stringLocked() string {
 	fmt.Fprintln(&sb, "Available routes:")
 
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
-	sort.Sort(ids)
+	slices.Sort(ids)
+
 	for _, id := range ids {
 		prefixes := pr.routes[id]
 		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
 	}
 
 	fmt.Fprintln(&sb, "\n\nCurrent primary routes:")
+
 	for route, nodeID := range pr.primaries {
 		fmt.Fprintf(&sb, "\nRoute %s: %d", route, nodeID)
 	}
@@ -294,7 +302,7 @@ func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
 	// Populate available routes
 	for nodeID, routes := range pr.routes {
 		prefixes := routes.Slice()
-		tsaddr.SortPrefixes(prefixes)
+		slices.SortFunc(prefixes, netip.Prefix.Compare)
 		debug.AvailableRoutes[nodeID] = prefixes
 	}
 

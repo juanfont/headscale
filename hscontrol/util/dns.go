@@ -20,11 +20,29 @@ const (
 
 	// value related to RFC 1123 and 952.
 	LabelHostnameLength = 63
+
+	// minNameLength is the minimum length for usernames and hostnames.
+	minNameLength = 2
 )
 
 var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var ErrInvalidHostName = errors.New("invalid hostname")
+
+// Sentinel errors for username validation.
+var (
+	ErrUsernameTooShort        = errors.New("username must be at least 2 characters long")
+	ErrUsernameMustStartLetter = errors.New("username must start with a letter")
+	ErrUsernameTooManyAt       = errors.New("username cannot contain more than one '@'")
+	ErrUsernameInvalidChar     = errors.New("username contains invalid character")
+)
+
+// Sentinel errors for hostname validation.
+var (
+	ErrHostnameTooShort   = errors.New("hostname too short, must be at least 2 characters")
+	ErrHostnameHyphenEnds = errors.New("hostname cannot start or end with a hyphen")
+	ErrHostnameDotEnds    = errors.New("hostname cannot start or end with a dot")
+)
 
 // ValidateUsername checks if a username is valid.
 // It must be at least 2 characters long, start with a letter, and contain
@@ -33,13 +51,13 @@ var ErrInvalidHostName = errors.New("invalid hostname")
 // It cannot contain invalid characters.
 func ValidateUsername(username string) error {
 	// Ensure the username meets the minimum length requirement
-	if len(username) < 2 {
-		return errors.New("username must be at least 2 characters long")
+	if len(username) < minNameLength {
+		return ErrUsernameTooShort
 	}
 
 	// Ensure the username starts with a letter
 	if !unicode.IsLetter(rune(username[0])) {
-		return errors.New("username must start with a letter")
+		return ErrUsernameMustStartLetter
 	}
 
 	atCount := 0
@@ -55,10 +73,10 @@ func ValidateUsername(username string) error {
 		case char == '@':
 			atCount++
 			if atCount > 1 {
-				return errors.New("username cannot contain more than one '@'")
+				return ErrUsernameTooManyAt
 			}
 		default:
-			return fmt.Errorf("username contains invalid character: '%c'", char)
+			return fmt.Errorf("%w: '%c'", ErrUsernameInvalidChar, char)
 		}
 	}
 
@@ -69,11 +87,8 @@ func ValidateUsername(username string) error {
 // This function does NOT modify the input - it only validates.
 // The hostname must already be lowercase and contain only valid characters.
 func ValidateHostname(name string) error {
-	if len(name) < 2 {
-		return fmt.Errorf(
-			"hostname %q is too short, must be at least 2 characters",
-			name,
-		)
+	if len(name) < minNameLength {
+		return fmt.Errorf("%w: %q", ErrHostnameTooShort, name)
 	}
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
@@ -90,17 +105,11 @@ func ValidateHostname(name string) error {
 	}
 
 	if strings.HasPrefix(name, "-") || strings.HasSuffix(name, "-") {
-		return fmt.Errorf(
-			"hostname %q cannot start or end with a hyphen",
-			name,
-		)
+		return fmt.Errorf("%w: %q", ErrHostnameHyphenEnds, name)
 	}
 
 	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".") {
-		return fmt.Errorf(
-			"hostname %q cannot start or end with a dot",
-			name,
-		)
+		return fmt.Errorf("%w: %q", ErrHostnameDotEnds, name)
 	}
 
 	if invalidDNSRegex.MatchString(name) {

@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -13,8 +12,6 @@ import (
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
 )
-
-var ErrInvalidAction = errors.New("invalid action")
 
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
@@ -42,9 +39,10 @@ func (pol *Policy) compileFilterRules(
 			continue
 		}
 
-		protocols, _ := acl.Protocol.parseProtocol()
+		protocols := acl.Protocol.parseProtocol()
 
 		var destPorts []tailcfg.NetPortRange
+
 		for _, dest := range acl.Destinations {
 			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
@@ -121,14 +119,18 @@ func (pol *Policy) compileFilterRulesForNode(
 // It returns a slice of filter rules because when an ACL has both autogroup:self
 // and other destinations, they need to be split into separate rules with different
 // source filtering logic.
+//
+//nolint:gocyclo
 func (pol *Policy) compileACLWithAutogroupSelf(
 	acl ACL,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) ([]*tailcfg.FilterRule, error) {
-	var autogroupSelfDests []AliasWithPorts
-	var otherDests []AliasWithPorts
+	var (
+		autogroupSelfDests []AliasWithPorts
+		otherDests         []AliasWithPorts
+	)
 
 	for _, dest := range acl.Destinations {
 		if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -138,14 +140,15 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		}
 	}
 
-	protocols, _ := acl.Protocol.parseProtocol()
+	protocols := acl.Protocol.parseProtocol()
+
 	var rules []*tailcfg.FilterRule
 
 	var resolvedSrcIPs []*netipx.IPSet
 
 	for _, src := range acl.Sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
-			return nil, fmt.Errorf("autogroup:self cannot be used in sources")
+			return nil, ErrAutogroupSelfInSource
 		}
 
 		ips, err := src.Resolve(pol, users, nodes)
@@ -167,6 +170,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	if len(autogroupSelfDests) > 0 {
 		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
 		sameUserNodes := make([]types.NodeView, 0)
+
 		for _, n := range nodes.All() {
 			if n.User().ID() == node.User().ID() && !n.IsTagged() {
 				sameUserNodes = append(sameUserNodes, n)
@@ -176,6 +180,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		if len(sameUserNodes) > 0 {
 			// Filter sources to only same-user untagged devices
 			var srcIPs netipx.IPSetBuilder
+
 			for _, ips := range resolvedSrcIPs {
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
@@ -192,6 +197,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 
 			if srcSet != nil && len(srcSet.Prefixes()) > 0 {
 				var destPorts []tailcfg.NetPortRange
+
 				for _, dest := range autogroupSelfDests {
 					for _, n := range sameUserNodes {
 						for _, port := range dest.Ports {
@@ -280,13 +286,14 @@ func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 	}
 }
 
+//nolint:gocyclo
 func (pol *Policy) compileSSHPolicy(
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) (*tailcfg.SSHPolicy, error) {
 	if pol == nil || pol.SSHs == nil || len(pol.SSHs) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil
 	}
 
 	log.Trace().Caller().Msgf("compiling SSH policy for node %q", node.Hostname())
@@ -297,8 +304,10 @@ func (pol *Policy) compileSSHPolicy(
 		// Separate destinations into autogroup:self and others
 		// This is needed because autogroup:self requires filtering sources to same-user only,
 		// while other destinations should use all resolved sources
-		var autogroupSelfDests []Alias
-		var otherDests []Alias
+		var (
+			autogroupSelfDests []Alias
+			otherDests         []Alias
+		)
 
 		for _, dst := range rule.Destinations {
 			if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -321,6 +330,7 @@ func (pol *Policy) compileSSHPolicy(
 		}
 
 		var action tailcfg.SSHAction
+
 		switch rule.Action {
 		case SSHActionAccept:
 			action = sshAction(true, 0)
@@ -336,9 +346,11 @@ func (pol *Policy) compileSSHPolicy(
 			// by default, we do not allow root unless explicitly stated
 			userMap["root"] = ""
 		}
+
 		if rule.Users.ContainsRoot() {
 			userMap["root"] = "root"
 		}
+
 		for _, u := range rule.Users.NormalUsers() {
 			userMap[u.String()] = u.String()
 		}
@@ -348,6 +360,7 @@ func (pol *Policy) compileSSHPolicy(
 		if len(autogroupSelfDests) > 0 && !node.IsTagged() {
 			// Build destination set for autogroup:self (same-user untagged devices only)
 			var dest netipx.IPSetBuilder
+
 			for _, n := range nodes.All() {
 				if n.User().ID() == node.User().ID() && !n.IsTagged() {
 					n.AppendToIPSet(&dest)
@@ -364,6 +377,7 @@ func (pol *Policy) compileSSHPolicy(
 				// Filter sources to only same-user untagged devices
 				// Pre-filter to same-user untagged devices for efficiency
 				sameUserNodes := make([]types.NodeView, 0)
+
 				for _, n := range nodes.All() {
 					if n.User().ID() == node.User().ID() && !n.IsTagged() {
 						sameUserNodes = append(sameUserNodes, n)
@@ -371,6 +385,7 @@ func (pol *Policy) compileSSHPolicy(
 				}
 
 				var filteredSrcIPs netipx.IPSetBuilder
+
 				for _, n := range sameUserNodes {
 					// Check if any of this node's IPs are in the source set
 					if slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
@@ -406,12 +421,14 @@ func (pol *Policy) compileSSHPolicy(
 		if len(otherDests) > 0 {
 			// Build destination set for other destinations
 			var dest netipx.IPSetBuilder
+
 			for _, dst := range otherDests {
 				ips, err := dst.Resolve(pol, users, nodes)
 				if err != nil {
 					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 					continue
 				}
+
 				if ips != nil {
 					dest.AddSet(ips)
 				}

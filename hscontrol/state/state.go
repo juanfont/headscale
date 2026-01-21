@@ -25,10 +25,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	zcache "zgo.at/zcache/v2"
 )
@@ -133,7 +131,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	// On startup, all nodes should be marked as offline until they reconnect
 	// This ensures we don't have stale online status from previous runs
 	for _, node := range nodes {
-		node.IsOnline = ptr.To(false)
+		node.IsOnline = new(false)
 	}
 	users, err := db.ListUsers()
 	if err != nil {
@@ -189,7 +187,8 @@ func NewState(cfg *types.Config) (*State, error) {
 func (s *State) Close() error {
 	s.nodeStore.Stop()
 
-	if err := s.db.Close(); err != nil {
+	err := s.db.Close()
+	if err != nil {
 		return fmt.Errorf("closing database: %w", err)
 	}
 
@@ -225,6 +224,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// propagate correctly when switching between policy types.
 	s.nodeStore.RebuildPeerMaps()
 
+	//nolint:prealloc
 	cs := []change.Change{change.PolicyChange()}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether
@@ -255,6 +255,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) {
+	//nolint:noinlineerr
 	if err := s.db.DB.Save(&user).Error; err != nil {
 		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
@@ -289,6 +290,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, err
 		}
 
+		//nolint:noinlineerr
 		if err := updateFn(user); err != nil {
 			return nil, err
 		}
@@ -468,10 +470,8 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 	// CRITICAL FIX: Update the online status in NodeStore BEFORE creating change notification
 	// This ensures that when the NodeCameOnline change is distributed and processed by other nodes,
 	// the NodeStore already reflects the correct online status for full map generation.
-	// now := time.Now()
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.IsOnline = ptr.To(true)
-		// n.LastSeen = ptr.To(now)
+		n.IsOnline = new(true)
 	})
 	if !ok {
 		return nil
@@ -495,16 +495,17 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
+	//nolint:staticcheck
 	now := time.Now()
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.LastSeen = ptr.To(now)
+		n.LastSeen = new(now)
 		// NodeStore is the source of truth for all node state including online status.
-		n.IsOnline = ptr.To(false)
+		n.IsOnline = new(false)
 	})
 
 	if !ok {
-		return nil, fmt.Errorf("node not found: %d", id)
+		return nil, fmt.Errorf("%w: %d", ErrNodeNotFound, id)
 	}
 
 	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node disconnected")
@@ -745,13 +746,14 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
 	}
 
 	// Check name uniqueness against NodeStore
 	allNodes := s.nodeStore.ListNodes()
-	for i := 0; i < allNodes.Len(); i++ {
+	for i := range allNodes.Len() {
 		node := allNodes.At(i)
 		if node.ID() != nodeID && node.AsStruct().GivenName == newName {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %s", ErrNodeNameNotUnique, newName)
@@ -790,7 +792,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 			// Preserve online status and NetInfo when refreshing from database
 			existingNode, exists := s.nodeStore.GetNode(node.ID)
 			if exists && existingNode.Valid() {
-				node.IsOnline = ptr.To(existingNode.IsOnline().Get())
+				node.IsOnline = new(existingNode.IsOnline().Get())
 
 				// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
@@ -818,6 +820,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 
 	var updates []change.Change
 
+	//nolint:unqueryvet
 	for _, node := range s.nodeStore.ListNodes().All() {
 		if !node.Valid() {
 			continue
@@ -1117,7 +1120,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		DiscoKey:       params.DiscoKey,
 		Hostinfo:       params.Hostinfo,
 		Endpoints:      params.Endpoints,
-		LastSeen:       ptr.To(time.Now()),
+		LastSeen:       new(time.Now()),
 		RegisterMethod: params.RegisterMethod,
 		Expiry:         params.Expiry,
 	}
@@ -1218,7 +1221,8 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// New node - database first to get ID, then NodeStore
 	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if err := tx.Save(&nodeToRegister).Error; err != nil {
+		err := tx.Save(&nodeToRegister).Error
+		if err != nil {
 			return nil, fmt.Errorf("failed to save node: %w", err)
 		}
 
@@ -1407,8 +1411,8 @@ func (s *State) HandleNodeFromAuthPath(
 
 			node.Endpoints = regEntry.Node.Endpoints
 			node.RegisterMethod = regEntry.Node.RegisterMethod
-			node.IsOnline = ptr.To(false)
-			node.LastSeen = ptr.To(time.Now())
+			node.IsOnline = new(false)
+			node.LastSeen = new(time.Now())
 
 			// Tagged nodes keep their existing expiry (disabled).
 			// User-owned nodes update expiry from the provided value or registration entry.
@@ -1669,8 +1673,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Only update AuthKey reference
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
-			node.IsOnline = ptr.To(false)
-			node.LastSeen = ptr.To(time.Now())
+			node.IsOnline = new(false)
+			node.LastSeen = new(time.Now())
 
 			// Tagged nodes keep their existing expiry (disabled).
 			// User-owned nodes update expiry from the client request.
@@ -1697,7 +1701,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 				}
 			}
 
-			return nil, nil
+			return nil, nil //nolint:nilnil
 		})
 		if err != nil {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("writing node to database: %w", err)
@@ -2122,8 +2126,8 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 		newRoutes = []netip.Prefix{}
 	}
 
-	tsaddr.SortPrefixes(oldRoutes)
-	tsaddr.SortPrefixes(newRoutes)
+	slices.SortFunc(oldRoutes, netip.Prefix.Compare)
+	slices.SortFunc(newRoutes, netip.Prefix.Compare)
 
 	return !slices.Equal(oldRoutes, newRoutes)
 }

@@ -159,10 +159,12 @@ func New(
 	} else {
 		hostname = fmt.Sprintf("derp-%s-%s", strings.ReplaceAll(version, ".", "-"), hash)
 	}
+
 	tlsCert, tlsKey, err := integrationutil.CreateCertificate(hostname)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certificates for headscale test: %w", err)
 	}
+
 	dsic := &DERPServerInContainer{
 		version:  version,
 		hostname: hostname,
@@ -185,6 +187,7 @@ func New(
 	fmt.Fprintf(&cmdArgs, " --a=:%d", dsic.derpPort)
 	fmt.Fprintf(&cmdArgs, " --stun=true")
 	fmt.Fprintf(&cmdArgs, " --stun-port=%d", dsic.stunPort)
+
 	if dsic.withVerifyClientURL != "" {
 		fmt.Fprintf(&cmdArgs, " --verify-client-url=%s", dsic.withVerifyClientURL)
 	}
@@ -214,11 +217,13 @@ func New(
 	}
 
 	var container *dockertest.Resource
+
 	buildOptions := &dockertest.BuildOptions{
 		Dockerfile: "Dockerfile.derper",
 		ContextDir: dockerContextPath,
 		BuildArgs:  []docker.BuildArg{},
 	}
+
 	switch version {
 	case "head":
 		buildOptions.BuildArgs = append(buildOptions.BuildArgs, docker.BuildArg{
@@ -249,6 +254,7 @@ func New(
 			err,
 		)
 	}
+
 	log.Printf("Created %s container\n", hostname)
 
 	dsic.container = container
@@ -259,12 +265,14 @@ func New(
 			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
 		}
 	}
+
 	if len(dsic.tlsCert) != 0 {
 		err = dsic.WriteFile(fmt.Sprintf("%s/%s.crt", DERPerCertRoot, dsic.hostname), dsic.tlsCert)
 		if err != nil {
 			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
 		}
 	}
+
 	if len(dsic.tlsKey) != 0 {
 		err = dsic.WriteFile(fmt.Sprintf("%s/%s.key", DERPerCertRoot, dsic.hostname), dsic.tlsKey)
 		if err != nil {

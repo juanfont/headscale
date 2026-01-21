@@ -332,7 +332,7 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	return nil
 }
 
-// MarkExpirePreAuthKey marks a PreAuthKey as expired.
+// ExpirePreAuthKey marks a PreAuthKey as expired.
 func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
 	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error

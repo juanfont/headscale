@@ -72,12 +72,12 @@ func init() {
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	tagCmd.MarkFlagRequired("identifier")
+	_ = tagCmd.MarkFlagRequired("identifier")
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
 	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	approveRoutesCmd.MarkFlagRequired("identifier")
+	_ = approveRoutesCmd.MarkFlagRequired("identifier")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
@@ -233,10 +233,7 @@ var listNodeRoutesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodeRoutesToPtables(nodes)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-		}
+		tableData := nodeRoutesToPtables(nodes)
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
@@ -601,9 +598,7 @@ func nodesToPtables(
 	return tableData, nil
 }
 
-func nodeRoutesToPtables(
-	nodes []*v1.Node,
-) (pterm.TableData, error) {
+func nodeRoutesToPtables(nodes []*v1.Node) pterm.TableData {
 	tableHeader := []string{
 		"ID",
 		"Hostname",
@@ -627,7 +622,7 @@ func nodeRoutesToPtables(
 		)
 	}
 
-	return tableData, nil
+	return tableData
 }
 
 var tagCmd = &cobra.Command{

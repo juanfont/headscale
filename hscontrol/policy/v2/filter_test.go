@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and ports.
@@ -410,14 +409,14 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{&nodeUser1, &nodeUser2}
@@ -590,7 +589,9 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 				if sshPolicy == nil {
 					return // Expected empty result
 				}
+
 				assert.Empty(t, sshPolicy.Rules, "SSH policy should be empty when no rules match")
+
 				return
 			}
 
@@ -622,14 +623,14 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{&nodeUser1, &nodeUser2}
@@ -671,7 +672,7 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 }
 
 // TestSSHIntegrationReproduction reproduces the exact scenario from the integration test
-// TestSSHOneUserToAll that was failing with empty sshUsers
+// TestSSHOneUserToAll that was failing with empty sshUsers.
 func TestSSHIntegrationReproduction(t *testing.T) {
 	// Create users matching the integration test
 	users := types.Users{
@@ -683,15 +684,15 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	node1 := &types.Node{
 		Hostname: "user1-node",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 	}
 
 	node2 := &types.Node{
 		Hostname: "user2-node",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{node1, node2}
@@ -736,7 +737,7 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 }
 
 // TestSSHJSONSerialization verifies that the SSH policy can be properly serialized
-// to JSON and that the sshUsers field is not empty
+// to JSON and that the sshUsers field is not empty.
 func TestSSHJSONSerialization(t *testing.T) {
 	users := types.Users{
 		{Name: "user1", Model: gorm.Model{ID: 1}},
@@ -776,6 +777,7 @@ func TestSSHJSONSerialization(t *testing.T) {
 
 	// Parse back to verify structure
 	var parsed tailcfg.SSHPolicy
+
 	err = json.Unmarshal(jsonData, &parsed)
 	require.NoError(t, err)
 
@@ -806,19 +808,19 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 
 	nodes := types.Nodes{
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.2"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.3"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.4"),
 		},
 		// Tagged device for user1
@@ -860,6 +862,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+
 	if len(rules) != 1 {
 		t.Fatalf("expected 1 rule, got %d", len(rules))
 	}
@@ -876,6 +879,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 		found := false
 
 		addr := netip.MustParseAddr(expectedIP)
+
 		for _, prefix := range rule.SrcIPs {
 			pref := netip.MustParsePrefix(prefix)
 			if pref.Contains(addr) {
@@ -893,6 +897,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	excludedSourceIPs := []string{"100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6"}
 	for _, excludedIP := range excludedSourceIPs {
 		addr := netip.MustParseAddr(excludedIP)
+
 		for _, prefix := range rule.SrcIPs {
 			pref := netip.MustParsePrefix(prefix)
 			if pref.Contains(addr) {
@@ -938,11 +943,11 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	nodes := types.Nodes{
 		// User-owned nodes
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.2"),
 		},
 		// Tagged nodes
@@ -960,8 +965,8 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	policy := &Policy{
 		TagOwners: TagOwners{
-			Tag("tag:server"):   Owners{ptr.To(Username("user1@"))},
-			Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
+			Tag("tag:server"):   Owners{new(Username("user1@"))},
+			Tag("tag:database"): Owners{new(Username("user2@"))},
 		},
 		ACLs: []ACL{
 			// Rule 1: user1 (user-owned) should NOT be able to reach tagged nodes
@@ -1056,11 +1061,11 @@ func TestAutogroupTagged(t *testing.T) {
 	nodes := types.Nodes{
 		// User-owned nodes (not tagged)
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.2"),
 		},
 		// Tagged nodes
@@ -1083,10 +1088,10 @@ func TestAutogroupTagged(t *testing.T) {
 
 	policy := &Policy{
 		TagOwners: TagOwners{
-			Tag("tag:server"):   Owners{ptr.To(Username("user1@"))},
-			Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
-			Tag("tag:web"):      Owners{ptr.To(Username("user1@"))},
-			Tag("tag:prod"):     Owners{ptr.To(Username("user1@"))},
+			Tag("tag:server"):   Owners{new(Username("user1@"))},
+			Tag("tag:database"): Owners{new(Username("user2@"))},
+			Tag("tag:web"):      Owners{new(Username("user1@"))},
+			Tag("tag:prod"):     Owners{new(Username("user1@"))},
 		},
 		ACLs: []ACL{
 			// Rule: autogroup:tagged can reach user-owned nodes
@@ -1206,10 +1211,10 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
 	}
 
 	policy := &Policy{
@@ -1273,11 +1278,11 @@ func TestAutogroupSelfWithGroupSource(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
-		{User: ptr.To(users[2]), IPv4: ap("100.64.0.5")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[2]), IPv4: ap("100.64.0.5")},
 	}
 
 	policy := &Policy{
@@ -1326,14 +1331,14 @@ func TestAutogroupSelfWithGroupSource(t *testing.T) {
 	assert.Empty(t, rules3, "user3 should have no rules")
 }
 
-// Helper function to create IP addresses for testing
+// Helper function to create IP addresses for testing.
 func createAddr(ip string) *netip.Addr {
 	addr, _ := netip.ParseAddr(ip)
 	return &addr
 }
 
 // TestSSHWithAutogroupSelfInDestination verifies that SSH policies work correctly
-// with autogroup:self in destinations
+// with autogroup:self in destinations.
 func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1"},
@@ -1342,13 +1347,13 @@ func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 
 	nodes := types.Nodes{
 		// User1's nodes
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-node1"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-node2"},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-node1"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-node2"},
 		// User2's nodes
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-node1"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-node2"},
+		{User: new(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-node1"},
+		{User: new(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-node2"},
 		// Tagged node for user1 (should be excluded)
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.5"), Hostname: "user1-tagged", Tags: []string{"tag:server"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.5"), Hostname: "user1-tagged", Tags: []string{"tag:server"}},
 	}
 
 	policy := &Policy{
@@ -1381,6 +1386,7 @@ func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 	for i, p := range rule.Principals {
 		principalIPs[i] = p.NodeIP
 	}
+
 	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
 
 	// Test for user2's first node
@@ -1399,12 +1405,14 @@ func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 	for i, p := range rule2.Principals {
 		principalIPs2[i] = p.NodeIP
 	}
+
 	assert.ElementsMatch(t, []string{"100.64.0.3", "100.64.0.4"}, principalIPs2)
 
 	// Test for tagged node (should have no SSH rules)
 	node5 := nodes[4].View()
 	sshPolicy3, err := policy.compileSSHPolicy(users, node5, nodes.ViewSlice())
 	require.NoError(t, err)
+
 	if sshPolicy3 != nil {
 		assert.Empty(t, sshPolicy3.Rules, "tagged nodes should not get SSH rules with autogroup:self")
 	}
@@ -1412,7 +1420,7 @@ func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 
 // TestSSHWithAutogroupSelfAndSpecificUser verifies that when a specific user
 // is in the source and autogroup:self in destination, only that user's devices
-// can SSH (and only if they match the target user)
+// can SSH (and only if they match the target user).
 func TestSSHWithAutogroupSelfAndSpecificUser(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1"},
@@ -1420,10 +1428,10 @@ func TestSSHWithAutogroupSelfAndSpecificUser(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
 	}
 
 	policy := &Policy{
@@ -1454,18 +1462,20 @@ func TestSSHWithAutogroupSelfAndSpecificUser(t *testing.T) {
 	for i, p := range rule.Principals {
 		principalIPs[i] = p.NodeIP
 	}
+
 	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
 
 	// For user2's node: should have no rules (user1's devices can't match user2's self)
 	node3 := nodes[2].View()
 	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
 	require.NoError(t, err)
+
 	if sshPolicy2 != nil {
 		assert.Empty(t, sshPolicy2.Rules, "user2 should have no SSH rules since source is user1")
 	}
 }
 
-// TestSSHWithAutogroupSelfAndGroup verifies SSH with group sources and autogroup:self destinations
+// TestSSHWithAutogroupSelfAndGroup verifies SSH with group sources and autogroup:self destinations.
 func TestSSHWithAutogroupSelfAndGroup(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1"},
@@ -1474,11 +1484,11 @@ func TestSSHWithAutogroupSelfAndGroup(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
-		{User: ptr.To(users[2]), IPv4: ap("100.64.0.5")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[2]), IPv4: ap("100.64.0.5")},
 	}
 
 	policy := &Policy{
@@ -1512,29 +1522,31 @@ func TestSSHWithAutogroupSelfAndGroup(t *testing.T) {
 	for i, p := range rule.Principals {
 		principalIPs[i] = p.NodeIP
 	}
+
 	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs)
 
 	// For user3's node: should have no rules (not in group:admins)
 	node5 := nodes[4].View()
 	sshPolicy2, err := policy.compileSSHPolicy(users, node5, nodes.ViewSlice())
 	require.NoError(t, err)
+
 	if sshPolicy2 != nil {
 		assert.Empty(t, sshPolicy2.Rules, "user3 should have no SSH rules (not in group)")
 	}
 }
 
 // TestSSHWithAutogroupSelfExcludesTaggedDevices verifies that tagged devices
-// are excluded from both sources and destinations when autogroup:self is used
+// are excluded from both sources and destinations when autogroup:self is used.
 func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
 	users := types.Users{
 		{Model: gorm.Model{ID: 1}, Name: "user1"},
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "untagged1"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "untagged2"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.3"), Hostname: "tagged1", Tags: []string{"tag:server"}},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.4"), Hostname: "tagged2", Tags: []string{"tag:web"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "untagged1"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "untagged2"},
+		{User: new(users[0]), IPv4: ap("100.64.0.3"), Hostname: "tagged1", Tags: []string{"tag:server"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.4"), Hostname: "tagged2", Tags: []string{"tag:web"}},
 	}
 
 	policy := &Policy{
@@ -1569,6 +1581,7 @@ func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
 	for i, p := range rule.Principals {
 		principalIPs[i] = p.NodeIP
 	}
+
 	assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, principalIPs,
 		"should only include untagged devices")
 
@@ -1576,6 +1589,7 @@ func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
 	node3 := nodes[2].View()
 	sshPolicy2, err := policy.compileSSHPolicy(users, node3, nodes.ViewSlice())
 	require.NoError(t, err)
+
 	if sshPolicy2 != nil {
 		assert.Empty(t, sshPolicy2.Rules, "tagged node should get no SSH rules with autogroup:self")
 	}
@@ -1591,10 +1605,10 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-device"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-device2"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-device"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-router", Tags: []string{"tag:router"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-device"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-device2"},
+		{User: new(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-device"},
+		{User: new(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-router", Tags: []string{"tag:router"}},
 	}
 
 	policy := &Policy{
@@ -1624,10 +1638,12 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	// Verify autogroup:self rule has filtered sources (only same-user devices)
 	selfRule := sshPolicy1.Rules[0]
 	require.Len(t, selfRule.Principals, 2, "autogroup:self rule should only have user1's devices")
+
 	selfPrincipals := make([]string, len(selfRule.Principals))
 	for i, p := range selfRule.Principals {
 		selfPrincipals[i] = p.NodeIP
 	}
+
 	require.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, selfPrincipals,
 		"autogroup:self rule should only include same-user untagged devices")
 
@@ -1639,10 +1655,12 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	require.Len(t, sshPolicyRouter.Rules, 1, "router should have 1 SSH rule (tag:router)")
 
 	routerRule := sshPolicyRouter.Rules[0]
+
 	routerPrincipals := make([]string, len(routerRule.Principals))
 	for i, p := range routerRule.Principals {
 		routerPrincipals[i] = p.NodeIP
 	}
+
 	require.Contains(t, routerPrincipals, "100.64.0.1", "router rule should include user1's device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.2", "router rule should include user1's other device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.3", "router rule should include user2's device (unfiltered sources)")

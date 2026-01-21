@@ -44,6 +44,13 @@ const (
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
+
+	// Container restart and backoff timeouts.
+	containerRestartTimeout = 30 // seconds, used by Docker API
+	tailscaleVersionTimeout = 5 * time.Second
+	containerRestartBackoff = 30 * time.Second
+	backoffMaxElapsedTime   = 10 * time.Second
+	curlFailFastMaxTime     = 2 * time.Second
 )
 
 var (
@@ -59,6 +66,17 @@ var (
 	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
 	errContainerNotInitialized         = errors.New("container not initialized")
 	errFQDNNotYetAvailable             = errors.New("FQDN not yet available")
+	errNoNetworkSet                    = errors.New("no network set")
+	errLogoutFailed                    = errors.New("failed to logout")
+	errNoIPsReturned                   = errors.New("no IPs returned yet")
+	errNoIPv4AddressFound              = errors.New("no IPv4 address found")
+	errBackendStateTimeout             = errors.New("timeout waiting for backend state")
+	errPeerWaitTimeout                 = errors.New("timeout waiting for peers")
+	errPeerNotOnline                   = errors.New("peer is not online")
+	errPeerNoHostname                  = errors.New("peer does not have a hostname")
+	errPeerNoDERP                      = errors.New("peer does not have a DERP relay")
+	errFileEmpty                       = errors.New("file is empty")
+	errTailscaleVersionRequired        = errors.New("tailscale version requirement not met")
 )
 
 const (
@@ -338,7 +356,7 @@ func New(
 	}
 
 	if tsic.network == nil {
-		return nil, fmt.Errorf("no network set, called from: \n%s", string(debug.Stack()))
+		return nil, fmt.Errorf("%w, called from: \n%s", errNoNetworkSet, string(debug.Stack()))
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
@@ -621,7 +639,7 @@ func (t *TailscaleInContainer) Execute(
 	return stdout, stderr, nil
 }
 
-// Retrieve container logs.
+// Logs retrieves container logs.
 func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(
 		t.pool,
@@ -713,14 +731,14 @@ func (t *TailscaleInContainer) LoginWithURL(
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
-	stdout, stderr, err := t.Execute([]string{"tailscale", "logout"})
+	_, _, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
 		return err
 	}
 
-	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
+	stdout, stderr, _ := t.Execute([]string{"tailscale", "status"})
 	if !strings.Contains(stdout+stderr, "Logged out.") {
-		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
+		return fmt.Errorf("%w: stdout: %s, stderr: %s", errLogoutFailed, stdout, stderr)
 	}
 
 	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
@@ -736,7 +754,7 @@ func (t *TailscaleInContainer) Restart() error {
 	}
 
 	// Use Docker API to restart the container
-	err := t.pool.Client.RestartContainer(t.container.Container.ID, 30)
+	err := t.pool.Client.RestartContainer(t.container.Container.ID, containerRestartTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to restart container %s: %w", t.hostname, err)
 	}
@@ -745,13 +763,13 @@ func (t *TailscaleInContainer) Restart() error {
 	// We use exponential backoff to poll until we can successfully execute a command
 	_, err = backoff.Retry(context.Background(), func() (struct{}, error) {
 		// Try to execute a simple command to verify the container is responsive
-		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(5*time.Second))
+		_, _, err := t.Execute([]string{"tailscale", "version"}, dockertestutil.ExecuteCommandTimeout(tailscaleVersionTimeout))
 		if err != nil {
 			return struct{}{}, fmt.Errorf("container not ready: %w", err)
 		}
 
 		return struct{}{}, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(30*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(containerRestartBackoff))
 	if err != nil {
 		return fmt.Errorf("timeout waiting for container %s to restart and become ready: %w", t.hostname, err)
 	}
@@ -832,11 +850,11 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		}
 
 		if len(ips) == 0 {
-			return nil, fmt.Errorf("no IPs returned yet for %s", t.hostname)
+			return nil, fmt.Errorf("%w for %s", errNoIPsReturned, t.hostname)
 		}
 
 		return ips, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IPs for %s after retries: %w", t.hostname, err)
 	}
@@ -866,7 +884,7 @@ func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
 		}
 	}
 
-	return netip.Addr{}, fmt.Errorf("no IPv4 address found for %s", t.hostname)
+	return netip.Addr{}, fmt.Errorf("%w for %s", errNoIPv4AddressFound, t.hostname)
 }
 
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
@@ -1140,7 +1158,7 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 		}
 
 		return status.Self.DNSName, nil
-	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
+	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(backoffMaxElapsedTime))
 	if err != nil {
 		return "", fmt.Errorf("failed to get FQDN for %s after retries: %w", t.hostname, err)
 	}
@@ -1211,7 +1229,7 @@ func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Du
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for backend state %s on %s after %v", state, t.hostname, timeout)
+			return fmt.Errorf("%w %s on %s after %v", errBackendStateTimeout, state, t.hostname, timeout)
 		case <-ticker.C:
 			status, err := t.Status()
 			if err != nil {
@@ -1253,10 +1271,10 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 		select {
 		case <-ctx.Done():
 			if len(lastErrs) > 0 {
-				return fmt.Errorf("timeout waiting for %d peers on %s after %v, errors: %w", expected, t.hostname, timeout, multierr.New(lastErrs...))
+				return fmt.Errorf("%w for %d peers on %s after %v, errors: %w", errPeerWaitTimeout, expected, t.hostname, timeout, multierr.New(lastErrs...))
 			}
 
-			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout)
+			return fmt.Errorf("%w for %d peers on %s after %v", errPeerWaitTimeout, expected, t.hostname, timeout)
 		case <-ticker.C:
 			status, err := t.Status()
 			if err != nil {
@@ -1284,15 +1302,15 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 				peer := status.Peer[peerKey]
 
 				if !peer.Online {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %w: %s", t.hostname, errPeerNotOnline, peer.HostName))
 				}
 
 				if peer.HostName == "" {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %w: %s", t.hostname, errPeerNoHostname, peer.HostName))
 				}
 
 				if peer.Relay == "" {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %w: %s", t.hostname, errPeerNoDERP, peer.HostName))
 				}
 			}
 
@@ -1496,7 +1514,7 @@ func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
 	// Use aggressive timeouts for fast failure detection
 	return t.Curl(url,
 		WithCurlConnectionTimeout(1*time.Second),
-		WithCurlMaxTime(2*time.Second),
+		WithCurlMaxTime(curlFailFastMaxTime),
 		WithCurlRetry(1))
 }
 
@@ -1578,7 +1596,7 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 	}
 
 	if out.Len() == 0 {
-		return nil, errors.New("file is empty")
+		return nil, errFileEmpty
 	}
 
 	return out.Bytes(), nil
@@ -1591,6 +1609,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	store := &mem.Store{}
+	//nolint:noinlineerr
 	if err = store.LoadFromJSON(state); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal state file: %w", err)
 	}
@@ -1606,6 +1625,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	p := &ipn.Prefs{}
+	//nolint:noinlineerr
 	if err = json.Unmarshal(currentProfile, &p); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal current profile state: %w", err)
 	}
@@ -1617,7 +1637,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 // This is useful for verifying that policy changes have propagated to the client.
 func (t *TailscaleInContainer) PacketFilter() ([]filter.Match, error) {
 	if !util.TailscaleVersionNewerOrEqual("1.56", t.version) {
-		return nil, fmt.Errorf("tsic.PacketFilter() requires Tailscale 1.56+, current version: %s", t.version)
+		return nil, fmt.Errorf("%w: PacketFilter() requires Tailscale 1.56+, current version: %s", errTailscaleVersionRequired, t.version)
 	}
 
 	nm, err := t.Netmap()

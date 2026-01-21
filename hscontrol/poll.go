@@ -152,6 +152,7 @@ func (m *mapSession) serveLongPoll() {
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+
 		disconnected := true
 		// Wait up to 10 seconds for the node to reconnect.
 		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
@@ -160,6 +161,7 @@ func (m *mapSession) serveLongPoll() {
 				disconnected = false
 				break
 			}
+
 			<-ticker.C
 		}
 
@@ -212,11 +214,14 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
+	//nolint:noinlineerr
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
 		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
+
 		return
 	}
+
 	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("AddNode succeeded in poll session because node added to batcher")
 
 	m.h.Change(mapReqChange)
@@ -245,7 +250,8 @@ func (m *mapSession) serveLongPoll() {
 				return
 			}
 
-			if err := m.writeMap(update); err != nil {
+			err := m.writeMap(update)
+			if err != nil {
 				m.errf(err, "cannot write update to client")
 				return
 			}
@@ -254,7 +260,8 @@ func (m *mapSession) serveLongPoll() {
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
-			if err := m.writeMap(&keepAlive); err != nil {
+			err := m.writeMap(&keepAlive)
+			if err != nil {
 				m.errf(err, "cannot write keep alive")
 				return
 			}
@@ -282,8 +289,9 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
 	}
 
+	//nolint:prealloc
 	data := make([]byte, reservedResponseHeaderSize)
-	//nolint:gosec // G115: JSON response size will not exceed uint32 max
+	//nolint:gosec
 	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
 	data = append(data, jsonBody...)
 
@@ -328,13 +336,13 @@ func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
 		Str("node.name", m.node.Hostname)
 }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) infof(msg string, a ...any) { m.logf(log.Info().Caller()).Msgf(msg, a...) }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) tracef(msg string, a ...any) { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
 
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
+//nolint:zerologlint
 func (m *mapSession) errf(err error, msg string, a ...any) {
 	m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...)
 }

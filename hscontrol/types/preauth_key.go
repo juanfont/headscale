@@ -114,7 +114,7 @@ func (key *PreAuthKey) Proto() *v1.PreAuthKey {
 	return &protoKey
 }
 
-// canUsePreAuthKey checks if a pre auth key can be used.
+// Validate checks if a pre auth key can be used.
 func (pak *PreAuthKey) Validate() error {
 	if pak == nil {
 		return PAKError("invalid authkey")
@@ -128,6 +128,7 @@ func (pak *PreAuthKey) Validate() error {
 			if pak.Expiration != nil {
 				return *pak.Expiration
 			}
+
 			return time.Time{}
 		}()).
 		Time("now", time.Now()).

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,6 +18,7 @@ const (
 	errMockOidcClientIDNotDefined     = Error("MOCKOIDC_CLIENT_ID not defined")
 	errMockOidcClientSecretNotDefined = Error("MOCKOIDC_CLIENT_SECRET not defined")
 	errMockOidcPortNotDefined         = Error("MOCKOIDC_PORT not defined")
+	errMockOidcUsersNotDefined        = Error("MOCKOIDC_USERS not defined")
 	refreshTTL                        = 60 * time.Minute
 )
 
@@ -69,10 +69,11 @@ func mockOIDC() error {
 
 	userStr := os.Getenv("MOCKOIDC_USERS")
 	if userStr == "" {
-		return errors.New("MOCKOIDC_USERS not defined")
+		return errMockOidcUsersNotDefined
 	}
 
 	var users []mockoidc.MockUser
+
 	err := json.Unmarshal([]byte(userStr), &users)
 	if err != nil {
 		return fmt.Errorf("unmarshalling users: %w", err)
@@ -133,10 +134,11 @@ func getMockOIDC(clientID string, clientSecret string, users []mockoidc.MockUser
 		ErrorQueue:                    &mockoidc.ErrorQueue{},
 	}
 
-	mock.AddMiddleware(func(h http.Handler) http.Handler {
+	_ = mock.AddMiddleware(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Info().Msgf("Request: %+v", r)
 			h.ServeHTTP(w, r)
+
 			if r.Response != nil {
 				log.Info().Msgf("Response: %+v", r.Response)
 			}

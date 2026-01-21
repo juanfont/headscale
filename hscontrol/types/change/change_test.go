@@ -16,8 +16,8 @@ func TestChange_FieldSync(t *testing.T) {
 	typ := reflect.TypeFor[Change]()
 	boolCount := 0
 
-	for i := range typ.NumField() {
-		if typ.Field(i).Type.Kind() == reflect.Bool {
+	for field := range typ.Fields() {
+		if field.Type.Kind() == reflect.Bool {
 			boolCount++
 		}
 	}

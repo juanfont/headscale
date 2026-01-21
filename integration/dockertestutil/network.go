@@ -13,11 +13,18 @@ import (
 
 var ErrContainerNotFound = errors.New("container not found")
 
+// Docker memory constants.
+const (
+	bytesPerKB        = 1024
+	containerMemoryGB = 2
+)
+
 func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Network, error) {
 	networks, err := pool.NetworksByName(name)
 	if err != nil {
 		return nil, fmt.Errorf("looking up network names: %w", err)
 	}
+
 	if len(networks) == 0 {
 		if _, err := pool.CreateNetwork(name); err == nil {
 			// Create does not give us an updated version of the resource, so we need to
@@ -90,6 +97,7 @@ func RandomFreeHostPort() (int, error) {
 // CleanUnreferencedNetworks removes networks that are not referenced by any containers.
 func CleanUnreferencedNetworks(pool *dockertest.Pool) error {
 	filter := "name=hs-"
+
 	networks, err := pool.NetworksByName(filter)
 	if err != nil {
 		return fmt.Errorf("getting networks by filter %q: %w", filter, err)
@@ -122,6 +130,7 @@ func CleanImagesInCI(pool *dockertest.Pool) error {
 	}
 
 	removedCount := 0
+
 	for _, image := range images {
 		// Only remove dangling (untagged) images to avoid forcing rebuilds
 		// Dangling images have no RepoTags or only have "<none>:<none>"
@@ -169,6 +178,6 @@ func DockerAllowNetworkAdministration(config *docker.HostConfig) {
 
 // DockerMemoryLimit sets memory limit and disables OOM kill for containers.
 func DockerMemoryLimit(config *docker.HostConfig) {
-	config.Memory = 2 * 1024 * 1024 * 1024 // 2GB in bytes
+	config.Memory = containerMemoryGB * bytesPerKB * bytesPerKB * bytesPerKB // 2GB in bytes
 	config.OOMKillDisable = true
 }

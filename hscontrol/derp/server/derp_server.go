@@ -74,9 +74,12 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	if err != nil {
 		return tailcfg.DERPRegion{}, err
 	}
-	var host string
-	var port int
-	var portStr string
+
+	var (
+		host    string
+		port    int
+		portStr string
+	)
 
 	// Extract hostname and port from URL
 	host, portStr, err = net.SplitHostPort(serverURL.Host)
@@ -97,12 +100,12 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 
 	// If debug flag is set, resolve hostname to IP address
 	if debugUseDERPIP {
-		ips, err := net.LookupIP(host)
+		addrs, err := net.DefaultResolver.LookupIPAddr(context.Background(), host)
 		if err != nil {
 			log.Error().Caller().Err(err).Msgf("Failed to resolve DERP hostname %s to IP, using hostname", host)
-		} else if len(ips) > 0 {
+		} else if len(addrs) > 0 {
 			// Use the first IP address
-			ipStr := ips[0].String()
+			ipStr := addrs[0].IP.String()
 			log.Info().Caller().Msgf("HEADSCALE_DEBUG_DERP_USE_IP: Resolved %s to %s", host, ipStr)
 			host = ipStr
 		}
@@ -205,6 +208,7 @@ func (d *DERPServer) serveWebsocket(writer http.ResponseWriter, req *http.Reques
 		return
 	}
 	defer websocketConn.Close(websocket.StatusInternalError, "closing")
+
 	if websocketConn.Subprotocol() != "derp" {
 		websocketConn.Close(websocket.StatusPolicyViolation, "client must speak the derp subprotocol")
 
@@ -309,6 +313,8 @@ func DERPBootstrapDNSHandler(
 		resolvCtx, cancel := context.WithTimeout(req.Context(), time.Minute)
 		defer cancel()
 		var resolver net.Resolver
+
+		//nolint:unqueryvet
 		for _, region := range derpMap.Regions().All() {
 			for _, node := range region.Nodes().All() { // we don't care if we override some nodes
 				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
@@ -320,6 +326,7 @@ func DERPBootstrapDNSHandler(
 
 					continue
 				}
+
 				dnsEntries[node.HostName()] = addrs
 			}
 		}
@@ -411,7 +418,9 @@ type DERPVerifyTransport struct {
 
 func (t *DERPVerifyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	buf := new(bytes.Buffer)
-	if err := t.handleVerifyRequest(req, buf); err != nil {
+
+	err := t.handleVerifyRequest(req, buf)
+	if err != nil {
 		log.Error().Caller().Err(err).Msg("Failed to handle client verify request: ")
 
 		return nil, err

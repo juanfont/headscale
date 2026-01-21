@@ -15,8 +15,8 @@ import (
 
 type ControlServer interface {
 	Shutdown() (string, string, error)
-	SaveLog(string) (string, string, error)
-	SaveProfile(string) error
+	SaveLog(dir string) (string, string, error)
+	SaveProfile(dir string) error
 	Execute(command []string) (string, error)
 	WriteFile(path string, content []byte) error
 	ConnectToNetwork(network *dockertest.Network) error
@@ -35,12 +35,12 @@ type ControlServer interface {
 	ListUsers() ([]*v1.User, error)
 	MapUsers() (map[string]*v1.User, error)
 	DeleteUser(userID uint64) error
-	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
+	ApproveRoutes(nodeID uint64, routes []netip.Prefix) (*v1.Node, error)
 	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte
 	GetHostname() string
 	GetIPInNetwork(network *dockertest.Network) string
-	SetPolicy(*policyv2.Policy) error
+	SetPolicy(pol *policyv2.Policy) error
 	GetAllMapReponses() (map[types.NodeID][]tailcfg.MapResponse, error)
 	PrimaryRoutes() (*routes.DebugRoutes, error)
 	DebugBatcher() (*hscontrol.DebugBatcherInfo, error)

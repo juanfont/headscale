@@ -38,9 +38,7 @@ func (v *VersionInfo) String() string {
 	return sb.String()
 }
 
-var buildInfo = sync.OnceValues(func() (*debug.BuildInfo, bool) {
-	return debug.ReadBuildInfo()
-})
+var buildInfo = sync.OnceValues(debug.ReadBuildInfo)
 
 var GetVersionInfo = sync.OnceValue(func() *VersionInfo {
 	info := &VersionInfo{

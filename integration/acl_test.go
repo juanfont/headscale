@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var veryLargeDestination = []policyv2.AliasWithPorts{
@@ -1284,9 +1283,9 @@ func TestACLAutogroupMember(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:  "accept",
-					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+					Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 					Destinations: []policyv2.AliasWithPorts{
-						aliasWithPorts(ptr.To(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
+						aliasWithPorts(new(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
 					},
 				},
 			},
@@ -1372,9 +1371,9 @@ func TestACLAutogroupTagged(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupTagged)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -1657,9 +1656,9 @@ func TestACLAutogroupSelf(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 			{
@@ -1877,7 +1876,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 
 			result, err := client.Curl(url)
 			assert.Empty(t, result, "user1 should not be able to access user2's regular devices (autogroup:self isolation)")
-			assert.Error(t, err, "connection from user1 to user2 regular device should fail")
+			require.Error(t, err, "connection from user1 to user2 regular device should fail")
 		}
 	}
 
@@ -1896,6 +1895,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo
 func TestACLPolicyPropagationOverTime(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1956,9 +1956,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 		},

@@ -134,6 +134,7 @@ func shuffleDERPMap(dm *tailcfg.DERPMap) {
 	for id := range dm.Regions {
 		ids = append(ids, id)
 	}
+
 	slices.Sort(ids)
 
 	for _, id := range ids {
@@ -160,16 +161,20 @@ func derpRandom() *rand.Rand {
 
 	derpRandomOnce.Do(func() {
 		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
+		//nolint:gosec
 		rnd := rand.New(rand.NewSource(0))
+		//nolint:gosec
 		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table)))
 		derpRandomInst = rnd
 	})
+
 	return derpRandomInst
 }
 
 func resetDerpRandomForTesting() {
 	derpRandomMu.Lock()
 	defer derpRandomMu.Unlock()
+
 	derpRandomOnce = sync.Once{}
 	derpRandomInst = nil
 }

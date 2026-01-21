@@ -242,7 +242,9 @@ func TestShuffleDERPMapDeterministic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			viper.Set("dns.base_domain", tt.baseDomain)
+
 			defer viper.Reset()
+
 			resetDerpRandomForTesting()
 
 			testMap := tt.derpMap.View().AsStruct()

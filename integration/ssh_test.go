@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func isSSHNoAccessStdError(stderr string) bool {
@@ -453,7 +452,7 @@ func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient
 
 func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	t.Helper()
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
@@ -482,10 +481,10 @@ func TestSSHAutogroupSelf(t *testing.T) {
 				{
 					Action: "accept",
 					Sources: policyv2.SSHSrcAliases{
-						ptr.To(policyv2.AutoGroupMember),
+						new(policyv2.AutoGroupMember),
 					},
 					Destinations: policyv2.SSHDstAliases{
-						ptr.To(policyv2.AutoGroupSelf),
+						new(policyv2.AutoGroupSelf),
 					},
 					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},

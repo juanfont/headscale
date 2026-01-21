@@ -1,13 +1,13 @@
 package db
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/netip"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,7 +20,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 const (
@@ -37,6 +36,7 @@ var (
 		"node not found in registration cache",
 	)
 	ErrCouldNotConvertNodeInterface = errors.New("failed to convert node interface")
+	ErrNameNotUnique                = errors.New("name is not unique")
 )
 
 // ListPeers returns peers of node, regardless of any Policy or if the node is expired.
@@ -60,7 +60,7 @@ func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types
 		return types.Nodes{}, err
 	}
 
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
+	slices.SortFunc(nodes, func(a, b *types.Node) int { return cmp.Compare(a.ID, b.ID) })
 
 	return nodes, nil
 }
@@ -207,6 +207,7 @@ func SetTags(
 
 	slices.Sort(tags)
 	tags = slices.Compact(tags)
+
 	b, err := json.Marshal(tags)
 	if err != nil {
 		return err
@@ -220,7 +221,7 @@ func SetTags(
 	return nil
 }
 
-// SetTags takes a Node struct pointer and update the forced tags.
+// SetApprovedRoutes updates the approved routes for a node.
 func SetApprovedRoutes(
 	tx *gorm.DB,
 	nodeID types.NodeID,
@@ -228,7 +229,8 @@ func SetApprovedRoutes(
 ) error {
 	if len(routes) == 0 {
 		// if no routes are provided, we remove all
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error; err != nil {
+		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error
+		if err != nil {
 			return fmt.Errorf("removing approved routes: %w", err)
 		}
 
@@ -251,6 +253,7 @@ func SetApprovedRoutes(
 		return err
 	}
 
+	//nolint:noinlineerr
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil {
 		return fmt.Errorf("updating approved routes: %w", err)
 	}
@@ -277,18 +280,21 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
 	}
 
 	// Check if the new name is unique
 	var count int64
-	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
+
+	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
+	if err != nil {
 		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
 
 	if count > 0 {
-		return errors.New("name is not unique")
+		return ErrNameNotUnique
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
@@ -379,6 +385,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		if ipv4 == nil {
 			ipv4 = oldNode.IPv4
 		}
+
 		if ipv6 == nil {
 			ipv6 = oldNode.IPv6
 		}
@@ -407,6 +414,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv6 = ipv6
 
 	var err error
+
 	node.Hostname, err = util.NormaliseHostname(node.Hostname)
 	if err != nil {
 		newHostname := util.InvalidString()
@@ -491,8 +499,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 
 func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	nodes := types.Nodes{}
-	if err := tx.
-		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
+
+	err := tx.
+		Where("given_name = ?", name).Find(&nodes).Error
+	if err != nil {
 		return false, err
 	}
 
@@ -646,7 +656,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		panic("CreateNodeForTest requires a valid user")
 	}
 
-	nodeName := "testnode"
+	nodeName := "testnode" //nolint:goconst
 	if len(hostname) > 0 && hostname[0] != "" {
 		nodeName = hostname[0]
 	}
@@ -668,7 +678,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		Hostname:       nodeName,
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pak.ID,
 	}
 
 	err = hsdb.DB.Save(node).Error
@@ -694,9 +704,12 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 	}
 
 	var registeredNode *types.Node
+
 	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
+
 		registeredNode, err = RegisterNodeForTest(tx, *node, ipv4, ipv6)
+
 		return err
 	})
 	if err != nil {

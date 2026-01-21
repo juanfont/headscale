@@ -36,8 +36,7 @@ const (
 
 // httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
-	var herr HTTPError
-	if errors.As(err, &herr) {
+	if herr, ok := errors.AsType[HTTPError](err); ok {
 		http.Error(w, herr.Msg, herr.Code)
 		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
 	} else {
@@ -56,7 +55,7 @@ type HTTPError struct {
 func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
 func (e HTTPError) Unwrap() error { return e.Err }
 
-// Error returns an HTTPError containing the given information.
+// NewHTTPError returns an HTTPError containing the given information.
 func NewHTTPError(code int, msg string, err error) HTTPError {
 	return HTTPError{Code: code, Msg: msg, Err: err}
 }
@@ -92,6 +91,7 @@ func (h *Headscale) handleVerifyRequest(
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
+	//nolint:noinlineerr
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err))
 	}
@@ -155,7 +155,11 @@ func (h *Headscale) KeyHandler(
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(writer).Encode(resp)
+
+		err := json.NewEncoder(writer).Encode(resp)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to encode key response")
+		}
 
 		return
 	}
@@ -180,8 +184,12 @@ func (h *Headscale) HealthHandler(
 			res.Status = "fail"
 		}
 
-		json.NewEncoder(writer).Encode(res)
+		//nolint:noinlineerr
+		if err := json.NewEncoder(writer).Encode(res); err != nil {
+			log.Error().Err(err).Msg("failed to encode health response")
+		}
 	}
+
 	err := h.state.PingDB(req.Context())
 	if err != nil {
 		respond(err)
@@ -218,6 +226,7 @@ func (h *Headscale) VersionHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	versionInfo := types.GetVersionInfo()
+
 	err := json.NewEncoder(writer).Encode(versionInfo)
 	if err != nil {
 		log.Error().
@@ -267,7 +276,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+	_, _ = writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
 }
 
 func FaviconHandler(writer http.ResponseWriter, req *http.Request) {

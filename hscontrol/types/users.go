@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -17,6 +18,9 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
+
+// ErrCannotParseBool is returned when a value cannot be parsed as a boolean.
+var ErrCannotParseBool = errors.New("could not parse value as boolean")
 
 type UserID uint64
 
@@ -40,9 +44,11 @@ var TaggedDevices = User{
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
+
 	for _, user := range u {
 		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
 	}
+
 	sb.WriteString(" ]")
 
 	return sb.String()
@@ -89,11 +95,12 @@ func (u *User) StringID() string {
 	if u == nil {
 		return ""
 	}
+
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
 // TypedID returns a pointer to the user's ID as a UserID type.
-// This is a convenience method to avoid ugly casting like ptr.To(types.UserID(user.ID)).
+// This is a convenience method to avoid ugly casting like new(types.UserID(user.ID)).
 func (u *User) TypedID() *UserID {
 	uid := UserID(u.ID)
 	return &uid
@@ -148,7 +155,7 @@ func (u UserView) ID() uint {
 
 func (u *User) TailscaleLogin() tailcfg.Login {
 	return tailcfg.Login{
-		ID:            tailcfg.LoginID(u.ID),
+		ID:            tailcfg.LoginID(u.ID), //nolint:gosec
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
@@ -194,8 +201,8 @@ func (u *User) Proto() *v1.User {
 	}
 }
 
-// JumpCloud returns a JSON where email_verified is returned as a
-// string "true" or "false" instead of a boolean.
+// FlexibleBoolean handles JSON where email_verified is returned as a
+// string "true" or "false" instead of a boolean (e.g., JumpCloud).
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.
 // https://github.com/juanfont/headscale/issues/2293
@@ -203,6 +210,7 @@ type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
+
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("could not unmarshal data: %w", err)
@@ -216,10 +224,11 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
 		}
+
 		*bit = FlexibleBoolean(pv)
 
 	default:
-		return fmt.Errorf("could not parse %v as boolean", v)
+		return fmt.Errorf("%w: %v", ErrCannotParseBool, v)
 	}
 
 	return nil
@@ -253,9 +262,11 @@ func (c *OIDCClaims) Identifier() string {
 	if c.Iss == "" && c.Sub == "" {
 		return ""
 	}
+
 	if c.Iss == "" {
 		return CleanIdentifier(c.Sub)
 	}
+
 	if c.Sub == "" {
 		return CleanIdentifier(c.Iss)
 	}
@@ -266,8 +277,10 @@ func (c *OIDCClaims) Identifier() string {
 
 	var result string
 	// Try to parse as URL to handle URL joining correctly
+	//nolint:noinlineerr
 	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" {
 		// For URLs, use proper URL path joining
+		//nolint:noinlineerr
 		if joined, err := url.JoinPath(issuer, subject); err == nil {
 			result = joined
 		}
@@ -340,6 +353,7 @@ func CleanIdentifier(identifier string) string {
 			cleanParts = append(cleanParts, trimmed)
 		}
 	}
+
 	if len(cleanParts) == 0 {
 		return ""
 	}
@@ -382,6 +396,7 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
 		identifier = "/" + identifier
 	}
+
 	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL

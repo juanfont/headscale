@@ -86,6 +86,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	const erPath = "/tmp/extra_records.json"
 
+	//nolint:prealloc
 	extraRecords := []tailcfg.DNSRecord{
 		{
 			Name:  "test.myvpn.example.com",
@@ -93,7 +94,8 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			Value: "6.6.6.6",
 		},
 	}
-	b, _ := json.Marshal(extraRecords)
+	b, err := json.Marshal(extraRecords)
+	require.NoError(t, err)
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithPackages("python3", "curl", "bind-tools"),
@@ -133,13 +135,14 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write the file directly into place from the docker API.
-	b0, _ := json.Marshal([]tailcfg.DNSRecord{
+	b0, err := json.Marshal([]tailcfg.DNSRecord{
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
 			Value: "2.2.2.2",
 		},
 	})
+	require.NoError(t, err)
 
 	err = hs.WriteFile(erPath, b0)
 	require.NoError(t, err)
@@ -155,7 +158,8 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		Type:  "A",
 		Value: "7.7.7.7",
 	})
-	b2, _ := json.Marshal(extraRecords)
+	b2, err := json.Marshal(extraRecords)
+	require.NoError(t, err)
 
 	err = hs.WriteFile(erPath+"2", b2)
 	require.NoError(t, err)
@@ -169,13 +173,14 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	// Write a new file and copy it to the path to ensure the reload
 	// works when a file is copied into place.
-	b3, _ := json.Marshal([]tailcfg.DNSRecord{
+	b3, err := json.Marshal([]tailcfg.DNSRecord{
 		{
 			Name:  "copy.myvpn.example.com",
 			Type:  "A",
 			Value: "8.8.8.8",
 		},
 	})
+	require.NoError(t, err)
 
 	err = hs.WriteFile(erPath+"3", b3)
 	require.NoError(t, err)
@@ -187,13 +192,15 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	}
 
 	// Write in place to ensure pipe like behaviour works
-	b4, _ := json.Marshal([]tailcfg.DNSRecord{
+	b4, err := json.Marshal([]tailcfg.DNSRecord{
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
 			Value: "9.9.9.9",
 		},
 	})
+	require.NoError(t, err)
+
 	command := []string{"echo", fmt.Sprintf("'%s'", string(b4)), ">", erPath}
 	_, err = hs.Execute([]string{"bash", "-c", strings.Join(command, " ")})
 	require.NoError(t, err)

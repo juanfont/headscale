@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"os/exec"
@@ -44,6 +45,7 @@ func TestSQLiteMigrationAndDataValidation(t *testing.T) {
 
 				// Verify api_keys data preservation
 				var apiKeyCount int
+
 				err = hsdb.DB.Raw("SELECT COUNT(*) FROM api_keys").Scan(&apiKeyCount).Error
 				require.NoError(t, err)
 				assert.Equal(t, 2, apiKeyCount, "should preserve all 2 api_keys from original schema")
@@ -176,7 +178,7 @@ func createSQLiteFromSQLFile(sqlFilePath, dbPath string) error {
 		return err
 	}
 
-	_, err = db.Exec(string(schemaContent))
+	_, err = db.ExecContext(context.Background(), string(schemaContent))
 
 	return err
 }
@@ -186,6 +188,7 @@ func createSQLiteFromSQLFile(sqlFilePath, dbPath string) error {
 func requireConstraintFailed(t *testing.T, err error) {
 	t.Helper()
 	require.Error(t, err)
+
 	if !strings.Contains(err.Error(), "UNIQUE constraint failed:") && !strings.Contains(err.Error(), "violates unique constraint") {
 		require.Failf(t, "expected error to contain a constraint failure, got: %s", err.Error())
 	}
@@ -320,7 +323,7 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 			}
 
 			// Construct the pg_restore command
-			cmd := exec.Command(pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
+			cmd := exec.CommandContext(context.Background(), pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
 
 			// Set the output streams
 			cmd.Stdout = os.Stdout
@@ -401,6 +404,7 @@ func dbForTestWithPath(t *testing.T, sqlFilePath string) *HSDatabase {
 // skip already-applied migrations and only run new ones.
 func TestSQLiteAllTestdataMigrations(t *testing.T) {
 	t.Parallel()
+
 	schemas, err := os.ReadDir("testdata/sqlite")
 	require.NoError(t, err)
 

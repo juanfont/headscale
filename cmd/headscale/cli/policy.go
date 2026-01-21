@@ -16,6 +16,7 @@ import (
 )
 
 const (
+	//nolint:gosec
 	bypassFlag = "bypass-grpc-and-access-database-directly"
 )
 
@@ -29,13 +30,17 @@ func init() {
 	if err := setPolicy.MarkFlagRequired("file"); err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	if err := checkPolicy.MarkFlagRequired("file"); err != nil {
+
+	err := checkPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	policyCmd.AddCommand(checkPolicy)
 }
 
@@ -173,6 +178,7 @@ var setPolicy = &cobra.Command{
 			defer cancel()
 			defer conn.Close()
 
+			//nolint:noinlineerr
 			if _, err := client.SetPolicy(ctx, request); err != nil {
 				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
 			}

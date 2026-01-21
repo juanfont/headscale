@@ -22,7 +22,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestGetNode(t *testing.T) {
@@ -99,6 +98,7 @@ func TestExpireNode(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -115,7 +115,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -143,6 +143,7 @@ func TestSetTags(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
@@ -159,7 +160,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 	}
 
 	trx := db.DB.Save(node)
@@ -443,7 +444,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
 					},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4: new(netip.MustParseAddr("100.64.0.1")),
 				}
 
 				err = adb.DB.Save(&node).Error
@@ -460,17 +461,17 @@ func TestAutoApproveRoutes(t *testing.T) {
 						RoutableIPs: tt.routes,
 					},
 					Tags: []string{"tag:exit"},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.2")),
+					IPv4: new(netip.MustParseAddr("100.64.0.2")),
 				}
 
 				err = adb.DB.Save(&nodeTagged).Error
 				require.NoError(t, err)
 
 				users, err := adb.ListUsers()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				nodes, err := adb.ListNodes()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
@@ -498,6 +499,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes1) == 0 {
 					expectedRoutes1 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes1, node1ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -509,6 +511,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes2) == 0 {
 					expectedRoutes2 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes2, node2ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -597,7 +600,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 	// Use shorter expiry for faster tests
 	for i := range want {
-		go e.Schedule(types.NodeID(i), 100*time.Millisecond) //nolint:gosec // test code, no overflow risk
+		go e.Schedule(types.NodeID(i), 100*time.Millisecond) //nolint:gosec
 	}
 
 	// Wait for all deletions to complete
@@ -636,9 +639,11 @@ func TestListEphemeralNodes(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test"})
 	require.NoError(t, err)
 
+	//nolint:staticcheck
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	//nolint:staticcheck
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
@@ -649,7 +654,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 	}
 
 	nodeEph := types.Node{
@@ -659,7 +664,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pakEph.ID),
+		AuthKeyID:      new(pakEph.ID),
 	}
 
 	err = db.DB.Save(&node).Error
@@ -719,6 +724,7 @@ func TestNodeNaming(t *testing.T) {
 	// break your network, so they should be replaced when registering
 	// a node.
 	// https://github.com/juanfont/headscale/issues/2343
+	//nolint:gosmopolitan
 	nodeInvalidHostname := types.Node{
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
@@ -746,12 +752,19 @@ func TestNodeNaming(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 		if err != nil {
 			return err
 		}
-		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
-		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
+
+		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, new(mpp("100.64.0.66/32").Addr()), nil)
+		if err != nil {
+			return err
+		}
+
+		_, err = RegisterNodeForTest(tx, nodeShortHostname, new(mpp("100.64.0.67/32").Addr()), nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -810,25 +823,26 @@ func TestNodeNaming(t *testing.T) {
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
-	assert.ErrorContains(t, err, "name is not unique")
+	require.ErrorContains(t, err, "name is not unique")
 
 	// Rename invalid chars
+	//nolint:gosmopolitan
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[2].ID, "我的电脑")
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename too short
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[3].ID, "a")
 	})
-	assert.ErrorContains(t, err, "at least 2 characters")
+	require.ErrorContains(t, err, "at least 2 characters")
 
 	// Rename with emoji
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "hostname-with-💩")
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename with only emoji
 	err = db.Write(func(tx *gorm.DB) error {
@@ -896,12 +910,12 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "chinese_chars_with_dash_rejected",
-			newName: "server-北京-01",
+			newName: "server-北京-01", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{
 			name:    "chinese_only_rejected",
-			newName: "我的电脑",
+			newName: "我的电脑", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{
@@ -911,7 +925,7 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "mixed_chinese_emoji_rejected",
-			newName: "测试💻机器",
+			newName: "测试💻机器", //nolint:gosmopolitan
 			wantErr: "invalid characters",
 		},
 		{
@@ -1000,6 +1014,7 @@ func TestListPeers(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
@@ -1085,6 +1100,7 @@ func TestListNodes(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err

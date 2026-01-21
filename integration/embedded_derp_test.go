@@ -99,7 +99,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 // we *want* it to show up in stacktraces,
 // so marking it as a test helper would be counterproductive.
 //
-//nolint:thelper
+
 func derpServerScenario(
 	t *testing.T,
 	spec ScenarioSpec,
@@ -179,7 +179,7 @@ func derpServerScenario(
 
 	// Let the DERP updater run a couple of times to ensure it does not
 	// break the DERPMap. The updater runs on a 10s interval by default.
-	//nolint:forbidigo // Intentional delay: must wait for DERP updater to run multiple times (interval-based)
+	//nolint:forbidigo
 	time.Sleep(30 * time.Second)
 
 	success = pingDerpAllHelper(t, allClients, allHostnames)

@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
 )
 
 // cleanupBeforeTest performs cleanup operations before running tests.
@@ -25,6 +25,7 @@ func cleanupBeforeTest(ctx context.Context) error {
 		return fmt.Errorf("failed to clean stale test containers: %w", err)
 	}
 
+	//nolint:noinlineerr
 	if err := pruneDockerNetworks(ctx); err != nil {
 		return fmt.Errorf("failed to prune networks: %w", err)
 	}
@@ -55,6 +56,7 @@ func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID, runI
 
 // killTestContainers terminates and removes all test containers.
 func killTestContainers(ctx context.Context) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -69,8 +71,10 @@ func killTestContainers(ctx context.Context) error {
 	}
 
 	removed := 0
+
 	for _, cont := range containers {
 		shouldRemove := false
+
 		for _, name := range cont.Names {
 			if strings.Contains(name, "headscale-test-suite") ||
 				strings.Contains(name, "hs-") ||
@@ -107,6 +111,7 @@ func killTestContainers(ctx context.Context) error {
 // This function filters containers by the hi.run-id label to only affect containers
 // belonging to the specified test run, leaving other concurrent test runs untouched.
 func killTestContainersByRunID(ctx context.Context, runID string) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -149,6 +154,7 @@ func killTestContainersByRunID(ctx context.Context, runID string) error {
 // This is useful for cleaning up leftover containers from previous crashed or interrupted test runs
 // without interfering with currently running concurrent tests.
 func cleanupStaleTestContainers(ctx context.Context) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -223,6 +229,7 @@ func removeContainerWithRetry(ctx context.Context, cli *client.Client, container
 
 // pruneDockerNetworks removes unused Docker networks.
 func pruneDockerNetworks(ctx context.Context) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -245,6 +252,7 @@ func pruneDockerNetworks(ctx context.Context) error {
 
 // cleanOldImages removes test-related and old dangling Docker images.
 func cleanOldImages(ctx context.Context) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -259,8 +267,10 @@ func cleanOldImages(ctx context.Context) error {
 	}
 
 	removed := 0
+
 	for _, img := range images {
 		shouldRemove := false
+
 		for _, tag := range img.RepoTags {
 			if strings.Contains(tag, "hs-") ||
 				strings.Contains(tag, "headscale-integration") ||
@@ -295,6 +305,7 @@ func cleanOldImages(ctx context.Context) error {
 
 // cleanCacheVolume removes the Docker volume used for Go module cache.
 func cleanCacheVolume(ctx context.Context) error {
+	//nolint:contextcheck
 	cli, err := createDockerClient()
 	if err != nil {
 		return fmt.Errorf("failed to create Docker client: %w", err)
@@ -302,11 +313,12 @@ func cleanCacheVolume(ctx context.Context) error {
 	defer cli.Close()
 
 	volumeName := "hs-integration-go-cache"
+
 	err = cli.VolumeRemove(ctx, volumeName, true)
 	if err != nil {
-		if errdefs.IsNotFound(err) {
+		if cerrdefs.IsNotFound(err) {
 			fmt.Printf("Go module cache volume not found: %s\n", volumeName)
-		} else if errdefs.IsConflict(err) {
+		} else if cerrdefs.IsConflict(err) {
 			fmt.Printf("Go module cache volume is in use and cannot be removed: %s\n", volumeName)
 		} else {
 			fmt.Printf("Failed to remove Go module cache volume %s: %v\n", volumeName, err)

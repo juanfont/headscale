@@ -15,6 +15,17 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Sentinel errors for batcher operations.
+var (
+	ErrInvalidNodeID     = errors.New("invalid nodeID")
+	ErrMapperNil         = errors.New("mapper is nil")
+	ErrNodeConnectionNil = errors.New("nodeConnection is nil")
+)
+
+// workChannelMultiplier is the multiplier for work channel capacity based on worker count.
+// The size is arbitrary chosen, the sizing should be revisited.
+const workChannelMultiplier = 200
+
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "headscale",
 	Name:      "mapresponse_generated_total",
@@ -42,8 +53,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeB
 		workers: workers,
 		tick:    time.NewTicker(batchTime),
 
-		// The size of this channel is arbitrary chosen, the sizing should be revisited.
-		workCh:         make(chan work, workers*200),
+		workCh:         make(chan work, workers*workChannelMultiplier),
 		nodes:          xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 		connected:      xsync.NewMap[types.NodeID, *time.Time](),
 		pendingChanges: xsync.NewMap[types.NodeID, []change.Change](),
@@ -76,20 +86,20 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 	version := nc.version()
 
 	if r.IsEmpty() {
-		return nil, nil //nolint:nilnil // Empty response means nothing to send
+		return nil, nil //nolint:nilnil
 	}
 
 	if nodeID == 0 {
-		return nil, fmt.Errorf("invalid nodeID: %d", nodeID)
+		return nil, fmt.Errorf("%w: %d", ErrInvalidNodeID, nodeID)
 	}
 
 	if mapper == nil {
-		return nil, fmt.Errorf("mapper is nil for nodeID %d", nodeID)
+		return nil, fmt.Errorf("%w for nodeID %d", ErrMapperNil, nodeID)
 	}
 
 	// Handle self-only responses
 	if r.IsSelfOnly() && r.TargetNode != nodeID {
-		return nil, nil //nolint:nilnil // No response needed for other nodes when self-only
+		return nil, nil //nolint:nilnil
 	}
 
 	// Check if this is a self-update (the changed node is the receiving node).
@@ -135,7 +145,7 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.Change].
 func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error {
 	if nc == nil {
-		return errors.New("nodeConnection is nil")
+		return ErrNodeConnectionNil
 	}
 
 	nodeID := nc.nodeID()

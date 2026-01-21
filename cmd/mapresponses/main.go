@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -10,6 +11,8 @@ import (
 	"github.com/juanfont/headscale/hscontrol/mapper"
 	"github.com/juanfont/headscale/integration/integrationutil"
 )
+
+var errDirectoryRequired = errors.New("directory is required")
 
 type MapConfig struct {
 	Directory string `flag:"directory,Directory to read map responses from"`
@@ -40,7 +43,7 @@ func main() {
 // runIntegrationTest executes the integration test workflow.
 func runOnline(env *command.Env) error {
 	if mapConfig.Directory == "" {
-		return fmt.Errorf("directory is required")
+		return errDirectoryRequired
 	}
 
 	resps, err := mapper.ReadMapResponsesFromDirectory(mapConfig.Directory)
@@ -57,5 +60,6 @@ func runOnline(env *command.Env) error {
 
 	os.Stderr.Write(out)
 	os.Stderr.Write([]byte("\n"))
+
 	return nil
 }

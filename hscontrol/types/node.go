@@ -42,10 +42,6 @@ type (
 	NodeIDs []NodeID
 )
 
-func (n NodeIDs) Len() int           { return len(n) }
-func (n NodeIDs) Less(i, j int) bool { return n[i] < n[j] }
-func (n NodeIDs) Swap(i, j int)      { n[i], n[j] = n[j], n[i] }
-
 func (id NodeID) StableID() tailcfg.StableNodeID {
 	return tailcfg.StableNodeID(strconv.FormatUint(uint64(id), util.Base10))
 }
@@ -160,6 +156,7 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 	// Strip invalid DNS characters for givenName comparison
 	normalised := strings.ToLower(node.Hostname)
 	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+
 	return node.GivenName == normalised
 }
 
@@ -197,13 +194,7 @@ func (node *Node) IPs() []netip.Addr {
 
 // HasIP reports if a node has a given IP address.
 func (node *Node) HasIP(i netip.Addr) bool {
-	for _, ip := range node.IPs() {
-		if ip.Compare(i) == 0 {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(node.IPs(), i)
 }
 
 // IsTagged reports if a device is tagged and therefore should not be treated
@@ -243,6 +234,7 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
+	//nolint:prealloc
 	var addrs []netip.Prefix
 	for _, nodeAddress := range node.IPs() {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
@@ -272,6 +264,7 @@ func (node *Node) IsExitNode() bool {
 }
 
 func (node *Node) IPsAsString() []string {
+	//nolint:prealloc
 	var ret []string
 
 	for _, ip := range node.IPs() {
@@ -355,13 +348,9 @@ func (nodes Nodes) FilterByIP(ip netip.Addr) Nodes {
 }
 
 func (nodes Nodes) ContainsNodeKey(nodeKey key.NodePublic) bool {
-	for _, node := range nodes {
-		if node.NodeKey == nodeKey {
-			return true
-		}
-	}
-
-	return false
+	return slices.ContainsFunc(nodes, func(node *Node) bool {
+		return node.NodeKey == nodeKey
+	})
 }
 
 func (node *Node) Proto() *v1.Node {
@@ -478,7 +467,7 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
@@ -586,13 +575,16 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	newHostname := strings.ToLower(hostInfo.Hostname)
-	if err := util.ValidateHostname(newHostname); err != nil {
+
+	err := util.ValidateHostname(newHostname)
+	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
 			Str("current_hostname", node.Hostname).
 			Str("rejected_hostname", hostInfo.Hostname).
 			Err(err).
 			Msg("Rejecting invalid hostname update from hostinfo")
+
 		return
 	}
 
@@ -684,6 +676,7 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 func (nodes Nodes) DebugString() string {
 	var sb strings.Builder
 	sb.WriteString("Nodes:\n")
+
 	for _, node := range nodes {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")
@@ -855,7 +848,7 @@ func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.Peer
 // GetFQDN returns the fully qualified domain name for the node.
 func (nv NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !nv.Valid() {
-		return "", errors.New("failed to create valid FQDN: node view is invalid")
+		return "", fmt.Errorf("failed to create valid FQDN: %w", ErrInvalidNodeView)
 	}
 
 	return nv.ж.GetFQDN(baseDomain)
@@ -934,11 +927,11 @@ func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	}
 
 	if nv.IsTagged() {
-		//nolint:gosec // G115: TaggedDevices.ID is a constant that fits in int64
+		//nolint:gosec
 		return tailcfg.UserID(int64(TaggedDevices.ID))
 	}
 
-	//nolint:gosec // G115: UserID values are within int64 range
+	//nolint:gosec
 	return tailcfg.UserID(int64(nv.UserID().Get()))
 }
 
@@ -1048,7 +1041,7 @@ func (nv NodeView) TailNode(
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
 	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
-	tsaddr.SortPrefixes(allowedIPs)
+	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
@@ -1063,7 +1056,7 @@ func (nv NodeView) TailNode(
 	}
 
 	tNode := tailcfg.Node{
-		//nolint:gosec // G115: NodeID values are within int64 range
+		//nolint:gosec
 		ID:       tailcfg.NodeID(nv.ID()),
 		StableID: nv.ID().StableID(),
 		Name:     hostname,

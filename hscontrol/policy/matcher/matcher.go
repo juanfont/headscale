@@ -21,10 +21,13 @@ func (m Match) DebugString() string {
 
 	sb.WriteString("Match:\n")
 	sb.WriteString("  Sources:\n")
+
 	for _, prefix := range m.srcs.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
+
 	sb.WriteString("  Destinations:\n")
+
 	for _, prefix := range m.dests.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
