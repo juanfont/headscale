@@ -2,7 +2,8 @@
   description = "headscale - Open Source Tailscale Control server";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # TODO: Move back to nixpkgs-unstable once Go 1.26 is available there
+    nixpkgs.url = "github:NixOS/nixpkgs/master";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -23,11 +24,11 @@
         default = headscale;
       };
 
-      overlay = _: prev:
+      overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.system};
-          buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-escboufgbk+lEitw48eWEIltXbaCPdysb/g4YR+extg=";
+          buildGo = pkgs.buildGo126Module;
+          vendorHash = "sha256-hL9vHunaxodGt3g/CIVirXy4OjZKTI3XwbVPPRb34OY=";
         in
         {
           headscale = buildGo {
@@ -129,10 +130,10 @@
       (system:
       let
         pkgs = import nixpkgs {
-          overlays = [ self.overlay ];
+          overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_25 gnumake ];
+        buildDeps = with pkgs; [ git go_1_26 gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
@@ -167,7 +168,7 @@
             clang-tools # clang-format
             protobuf-language-server
           ]
-          ++ lib.optional pkgs.stdenv.isLinux [ traceroute ];
+          ++ lib.optional pkgs.stdenv.hostPlatform.isLinux [ traceroute ];
 
         # Add entry to build a docker image with headscale
         # caveat: only works on Linux
@@ -184,7 +185,7 @@
       in
       rec {
         # `nix develop`
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           buildInputs =
             devDeps
             ++ [
@@ -219,8 +220,8 @@
         packages = with pkgs; {
           inherit headscale;
           inherit headscale-docker;
+          default = headscale;
         };
-        defaultPackage = pkgs.headscale;
 
         # `nix run`
         apps.headscale = flake-utils.lib.mkApp {
