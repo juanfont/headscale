@@ -7,11 +7,13 @@ package types
 
 import (
 	"database/sql"
-	"encoding/json"
+	jsonv1 "encoding/json"
 	"errors"
 	"net/netip"
 	"time"
 
+	jsonv2 "github.com/go-json-experiment/json"
+	"github.com/go-json-experiment/json/jsontext"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -48,8 +50,17 @@ func (v UserView) AsStruct() *User {
 	return v.ж.Clone()
 }
 
-func (v UserView) MarshalJSON() ([]byte, error) { return json.Marshal(v.ж) }
+// MarshalJSON implements [jsonv1.Marshaler].
+func (v UserView) MarshalJSON() ([]byte, error) {
+	return jsonv1.Marshal(v.ж)
+}
 
+// MarshalJSONTo implements [jsonv2.MarshalerTo].
+func (v UserView) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return jsonv2.MarshalEncode(enc, v.ж)
+}
+
+// UnmarshalJSON implements [jsonv1.Unmarshaler].
 func (v *UserView) UnmarshalJSON(b []byte) error {
 	if v.ж != nil {
 		return errors.New("already initialized")
@@ -58,20 +69,51 @@ func (v *UserView) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var x User
-	if err := json.Unmarshal(b, &x); err != nil {
+	if err := jsonv1.Unmarshal(b, &x); err != nil {
 		return err
 	}
 	v.ж = &x
 	return nil
 }
 
-func (v UserView) Model() gorm.Model                  { return v.ж.Model }
-func (v UserView) Name() string                       { return v.ж.Name }
-func (v UserView) DisplayName() string                { return v.ж.DisplayName }
-func (v UserView) Email() string                      { return v.ж.Email }
+// UnmarshalJSONFrom implements [jsonv2.UnmarshalerFrom].
+func (v *UserView) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if v.ж != nil {
+		return errors.New("already initialized")
+	}
+	var x User
+	if err := jsonv2.UnmarshalDecode(dec, &x); err != nil {
+		return err
+	}
+	v.ж = &x
+	return nil
+}
+
+func (v UserView) Model() gorm.Model { return v.ж.Model }
+
+// Name (username) for the user, is used if email is empty
+// Should not be used, please use Username().
+// It is unique if ProviderIdentifier is not set.
+func (v UserView) Name() string { return v.ж.Name }
+
+// Typically the full name of the user
+func (v UserView) DisplayName() string { return v.ж.DisplayName }
+
+// Email of the user
+// Should not be used, please use Username().
+func (v UserView) Email() string { return v.ж.Email }
+
+// ProviderIdentifier is a unique or not set identifier of the
+// user from OIDC. It is the combination of `iss`
+// and `sub` claim in the OIDC token.
+// It is unique if set.
+// It is unique together with Name.
 func (v UserView) ProviderIdentifier() sql.NullString { return v.ж.ProviderIdentifier }
-func (v UserView) Provider() string                   { return v.ж.Provider }
-func (v UserView) ProfilePicURL() string              { return v.ж.ProfilePicURL }
+
+// Provider is the origin of the user account,
+// same as RegistrationMethod, without authkey.
+func (v UserView) Provider() string      { return v.ж.Provider }
+func (v UserView) ProfilePicURL() string { return v.ж.ProfilePicURL }
 
 // A compilation failure here means this code must be regenerated, with the command at the top of this file.
 var _UserViewNeedsRegeneration = User(struct {
@@ -112,8 +154,17 @@ func (v NodeView) AsStruct() *Node {
 	return v.ж.Clone()
 }
 
-func (v NodeView) MarshalJSON() ([]byte, error) { return json.Marshal(v.ж) }
+// MarshalJSON implements [jsonv1.Marshaler].
+func (v NodeView) MarshalJSON() ([]byte, error) {
+	return jsonv1.Marshal(v.ж)
+}
 
+// MarshalJSONTo implements [jsonv2.MarshalerTo].
+func (v NodeView) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return jsonv2.MarshalEncode(enc, v.ж)
+}
+
+// UnmarshalJSON implements [jsonv1.Unmarshaler].
 func (v *NodeView) UnmarshalJSON(b []byte) error {
 	if v.ж != nil {
 		return errors.New("already initialized")
@@ -122,7 +173,20 @@ func (v *NodeView) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var x Node
-	if err := json.Unmarshal(b, &x); err != nil {
+	if err := jsonv1.Unmarshal(b, &x); err != nil {
+		return err
+	}
+	v.ж = &x
+	return nil
+}
+
+// UnmarshalJSONFrom implements [jsonv2.UnmarshalerFrom].
+func (v *NodeView) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if v.ж != nil {
+		return errors.New("already initialized")
+	}
+	var x Node
+	if err := jsonv2.UnmarshalDecode(dec, &x); err != nil {
 		return err
 	}
 	v.ж = &x
@@ -139,22 +203,52 @@ func (v NodeView) IPv4() views.ValuePointer[netip.Addr]   { return views.ValuePo
 
 func (v NodeView) IPv6() views.ValuePointer[netip.Addr] { return views.ValuePointerOf(v.ж.IPv6) }
 
-func (v NodeView) Hostname() string                 { return v.ж.Hostname }
-func (v NodeView) GivenName() string                { return v.ж.GivenName }
+// Hostname represents the name given by the Tailscale
+// client during registration
+func (v NodeView) Hostname() string { return v.ж.Hostname }
+
+// Givenname represents either:
+// a DNS normalized version of Hostname
+// a valid name set by the User
+//
+// GivenName is the name used in all DNS related
+// parts of headscale.
+func (v NodeView) GivenName() string { return v.ж.GivenName }
+
+// UserID is set for ALL nodes (tagged and user-owned) to track "created by".
+// For tagged nodes, this is informational only - the tag is the owner.
+// For user-owned nodes, this identifies the owner.
+// Only nil for orphaned nodes (should not happen in normal operation).
 func (v NodeView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
 
-func (v NodeView) User() UserView                        { return v.ж.User.View() }
-func (v NodeView) RegisterMethod() string                { return v.ж.RegisterMethod }
-func (v NodeView) Tags() views.Slice[string]             { return views.SliceOf(v.ж.Tags) }
+func (v NodeView) User() UserView         { return v.ж.User.View() }
+func (v NodeView) RegisterMethod() string { return v.ж.RegisterMethod }
+
+// Tags is the definitive owner for tagged nodes.
+// When non-empty, the node is "tagged" and tags define its identity.
+// Empty for user-owned nodes.
+// Tags cannot be removed once set (one-way transition).
+func (v NodeView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
+
+// When a node has been created with a PreAuthKey, we need to
+// prevent the preauthkey from being deleted before the node.
+// The preauthkey can define "tags" of the node so we need it
+// around.
 func (v NodeView) AuthKeyID() views.ValuePointer[uint64] { return views.ValuePointerOf(v.ж.AuthKeyID) }
 
 func (v NodeView) AuthKey() PreAuthKeyView               { return v.ж.AuthKey.View() }
 func (v NodeView) Expiry() views.ValuePointer[time.Time] { return views.ValuePointerOf(v.ж.Expiry) }
 
+// LastSeen is when the node was last in contact with
+// headscale. It is best effort and not persisted.
 func (v NodeView) LastSeen() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.LastSeen)
 }
 
+// ApprovedRoutes is a list of routes that the node is allowed to announce
+// as a subnet router. They are not necessarily the routes that the node
+// announces at the moment.
+// See [Node.Hostinfo]
 func (v NodeView) ApprovedRoutes() views.Slice[netip.Prefix] {
 	return views.SliceOf(v.ж.ApprovedRoutes)
 }
@@ -223,8 +317,17 @@ func (v PreAuthKeyView) AsStruct() *PreAuthKey {
 	return v.ж.Clone()
 }
 
-func (v PreAuthKeyView) MarshalJSON() ([]byte, error) { return json.Marshal(v.ж) }
+// MarshalJSON implements [jsonv1.Marshaler].
+func (v PreAuthKeyView) MarshalJSON() ([]byte, error) {
+	return jsonv1.Marshal(v.ж)
+}
 
+// MarshalJSONTo implements [jsonv2.MarshalerTo].
+func (v PreAuthKeyView) MarshalJSONTo(enc *jsontext.Encoder) error {
+	return jsonv2.MarshalEncode(enc, v.ж)
+}
+
+// UnmarshalJSON implements [jsonv1.Unmarshaler].
 func (v *PreAuthKeyView) UnmarshalJSON(b []byte) error {
 	if v.ж != nil {
 		return errors.New("already initialized")
@@ -233,23 +336,50 @@ func (v *PreAuthKeyView) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	var x PreAuthKey
-	if err := json.Unmarshal(b, &x); err != nil {
+	if err := jsonv1.Unmarshal(b, &x); err != nil {
 		return err
 	}
 	v.ж = &x
 	return nil
 }
 
-func (v PreAuthKeyView) ID() uint64                       { return v.ж.ID }
-func (v PreAuthKeyView) Key() string                      { return v.ж.Key }
-func (v PreAuthKeyView) Prefix() string                   { return v.ж.Prefix }
-func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte]    { return views.ByteSliceOf(v.ж.Hash) }
+// UnmarshalJSONFrom implements [jsonv2.UnmarshalerFrom].
+func (v *PreAuthKeyView) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	if v.ж != nil {
+		return errors.New("already initialized")
+	}
+	var x PreAuthKey
+	if err := jsonv2.UnmarshalDecode(dec, &x); err != nil {
+		return err
+	}
+	v.ж = &x
+	return nil
+}
+
+func (v PreAuthKeyView) ID() uint64 { return v.ж.ID }
+
+// Legacy plaintext key (for backwards compatibility)
+func (v PreAuthKeyView) Key() string { return v.ж.Key }
+
+// New bcrypt-based authentication
+func (v PreAuthKeyView) Prefix() string { return v.ж.Prefix }
+
+// bcrypt
+func (v PreAuthKeyView) Hash() views.ByteSlice[[]byte] { return views.ByteSliceOf(v.ж.Hash) }
+
+// For tagged keys: UserID tracks who created the key (informational)
+// For user-owned keys: UserID tracks the node owner
+// Can be nil for system-created tagged keys
 func (v PreAuthKeyView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
 
-func (v PreAuthKeyView) User() UserView            { return v.ж.User.View() }
-func (v PreAuthKeyView) Reusable() bool            { return v.ж.Reusable }
-func (v PreAuthKeyView) Ephemeral() bool           { return v.ж.Ephemeral }
-func (v PreAuthKeyView) Used() bool                { return v.ж.Used }
+func (v PreAuthKeyView) User() UserView  { return v.ж.User.View() }
+func (v PreAuthKeyView) Reusable() bool  { return v.ж.Reusable }
+func (v PreAuthKeyView) Ephemeral() bool { return v.ж.Ephemeral }
+func (v PreAuthKeyView) Used() bool      { return v.ж.Used }
+
+// Tags to assign to nodes registered with this key.
+// Tags are copied to the node during registration.
+// If non-empty, this creates tagged nodes (not user-owned).
 func (v PreAuthKeyView) Tags() views.Slice[string] { return views.SliceOf(v.ж.Tags) }
 func (v PreAuthKeyView) CreatedAt() views.ValuePointer[time.Time] {
 	return views.ValuePointerOf(v.ж.CreatedAt)
