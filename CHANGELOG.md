@@ -87,6 +87,57 @@ sequentially through each stable release, selecting the latest patch version ava
     address in the user profile. This is now rejected during authentication with an `unverified email` error.
   - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
     profile regardless of its verification state.
+- **SSH Policy**: Wildcard (`*`) is no longer supported as an SSH destination [#3009](https://github.com/juanfont/headscale/issues/3009)
+  - Use `autogroup:member` for user-owned devices
+  - Use `autogroup:tagged` for tagged devices
+  - Use specific tags (e.g., `tag:server`) for targeted access
+
+  **Before:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["*"], "users": ["root"] }
+  ```
+
+  **After:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["autogroup:member", "autogroup:tagged"], "users": ["root"] }
+  ```
+
+- **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
+
+  Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+  1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
+  2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
+
+  **Invalid policies now rejected at load time:**
+
+  ```json
+  // INVALID: tag source to user destination
+  {"src": ["tag:server"], "dst": ["alice@"], ...}
+
+  // INVALID: autogroup:tagged to autogroup:member
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:member"], ...}
+
+  // INVALID: group to specific user (use autogroup:self instead)
+  {"src": ["group:admins"], "dst": ["alice@"], ...}
+  ```
+
+  **Valid patterns:**
+
+  ```json
+  // Users/groups can SSH to their own devices via autogroup:self
+  {"src": ["group:admins"], "dst": ["autogroup:self"], ...}
+
+  // Users/groups can SSH to tagged devices
+  {"src": ["group:admins"], "dst": ["autogroup:tagged"], ...}
+
+  // Tagged devices can SSH to other tagged devices
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:tagged"], ...}
+
+  // Same user can SSH to their own devices
+  {"src": ["alice@"], "dst": ["alice@"], ...}
+  ```
 
 ### Changes
 
