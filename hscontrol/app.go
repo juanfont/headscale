@@ -828,7 +828,7 @@ func (h *Headscale) Serve() error {
 			case syscall.SIGHUP:
 				log.Info().
 					Str("signal", sig.String()).
-					Msg("Received SIGHUP, reloading configuration")
+					Msg("Received SIGHUP, reloading TLS certificate")
 
 				// Reload TLS certificate if using manual TLS (not ACME/Let's Encrypt)
 				if h.cfg.TLS.CertPath != "" && h.cfg.TLS.LetsEncrypt.Hostname == "" {
@@ -836,6 +836,10 @@ func (h *Headscale) Serve() error {
 						log.Error().Err(err).Msg("reloading TLS certificate")
 					}
 				}
+
+				log.Info().
+					Str("signal", sig.String()).
+					Msg("Received SIGHUP, reloading ACL policy")
 
 				// Reload ACL policy
 				if !h.cfg.Policy.IsEmpty() {
