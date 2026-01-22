@@ -15,6 +15,9 @@ User-owned nodes can now request tags during registration using `--advertise-tag
 and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
 by re-authenticating with `tailscale up --advertise-tags= --force-reauth`.
 
+A one-time migration will validate and migrate any `RequestTags` (stored in hostinfo) to the tags column. Tags are validated against
+your policy's `tagOwners` rules during migration. [#3011](https://github.com/juanfont/headscale/pull/3011)
+
 ### Smarter map updates
 
 The map update system has been rewritten to send smaller, partial updates instead of full network maps whenever possible. This reduces bandwidth usage and improves performance, especially for large networks. The system now properly tracks peer
@@ -61,7 +64,6 @@ sequentially through each stable release, selecting the latest patch version ava
 
   ```bash
   headscale preauthkeys create --reusable --tags tag:server
-  headscale preauthkeys create --user 1 --reusable --tags tag:server  # optional user tracking
   headscale preauthkeys list
   headscale preauthkeys expire --id 123
   headscale preauthkeys delete --id 123
@@ -80,7 +82,7 @@ sequentially through each stable release, selecting the latest patch version ava
 - Remove ability to move nodes between users [#2922](https://github.com/juanfont/headscale/pull/2922)
   - The `headscale nodes move` CLI command has been removed
   - The `MoveNode` API endpoint has been removed
-  - Nodes are permanently associated with their user at registration time
+  - Nodes are permanently associated with their user or tag at registration time
 - Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
   - When `true` (default), only verified emails can authenticate via OIDC in conjunction with `oidc.allowed_domains` or
     `oidc.allowed_users`. Previous versions allowed to authenticate with an unverified email but did not store the email
@@ -160,8 +162,9 @@ sequentially through each stable release, selecting the latest patch version ava
 - Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
 - Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
 - Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
-- Add `--id` flag to API key expire/delete commands as alternative to `--prefix` [#3016](https://github.com/juanfont/headscale/pull/3016)
-  - Example: `headscale apikeys expire --id 1` or `headscale apikeys delete --id 1`
+- **API Key CLI**: Add `--id` flag to expire/delete commands as alternative to `--prefix` [#3016](https://github.com/juanfont/headscale/pull/3016)
+  - `headscale apikeys expire --id <ID>` or `--prefix <PREFIX>`
+  - `headscale apikeys delete --id <ID>` or `--prefix <PREFIX>`
 
 ## 0.27.1 (2025-11-11)
 
