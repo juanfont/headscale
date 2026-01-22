@@ -365,8 +365,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.1 h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=
 github.com/opencontainers/image-spec v1.1.1/go.mod h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=
-github.com/opencontainers/runc v1.3.2 h1:GUwgo0Fx9M/pl2utaSYlJfdBcXAB/CZXDxe322lvJ3Y=
-github.com/opencontainers/runc v1.3.2/go.mod h1:F7UQQEsxcjUNnFpT1qPLHZBKYP7yWwk6hq8suLy9cl0=
+github.com/opencontainers/runc v1.3.3 h1:qlmBbbhu+yY0QM7jqfuat7M1H3/iXjju3VkP9lkFQr4=
+github.com/opencontainers/runc v1.3.3/go.mod h1:D7rL72gfWxVs9cJ2/AayxB0Hlvn9g0gaF1R7uunumSI=
 github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
 github.com/ory/dockertest/v3 v3.12.0 h1:3oV9d0sDzlSQfHtIaB5k6ghUCVMVLpAY8hwrqoCyRCw=
 github.com/ory/dockertest/v3 v3.12.0/go.mod h1:aKNDTva3cp8dwOWwb9cWuX84aH5akkxXRvO7KCwWVjE=
