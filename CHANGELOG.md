@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## Next
+
+### Changes
+
+- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+
 ## 0.28.0 (202x-xx-xx)
 
 **Minimum supported Tailscale client version: v1.74.0**

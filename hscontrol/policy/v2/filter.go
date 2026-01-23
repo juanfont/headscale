@@ -164,11 +164,13 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	}
 
 	// Handle autogroup:self destinations (if any)
-	if len(autogroupSelfDests) > 0 {
+	// Note: Tagged nodes can't match autogroup:self, so skip this block for tagged nodes
+	if len(autogroupSelfDests) > 0 && !node.IsTagged() {
 		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
 		sameUserNodes := make([]types.NodeView, 0)
 		for _, n := range nodes.All() {
-			if n.User().ID() == node.User().ID() && !n.IsTagged() {
+			// Check !n.IsTagged() first to short-circuit and avoid nil User access
+			if !n.IsTagged() && n.User().ID() == node.User().ID() {
 				sameUserNodes = append(sameUserNodes, n)
 			}
 		}
