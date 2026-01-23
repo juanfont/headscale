@@ -97,10 +97,10 @@ func TestParsing(t *testing.T) {
 				{
 					SrcIPs: []string{"100.100.101.0/24", "192.168.1.0/24"},
 					DstPorts: []tailcfg.NetPortRange{
-						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
-						{IP: "::/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "::/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
 					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
@@ -153,21 +153,21 @@ func TestParsing(t *testing.T) {
 }`,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
 					IPProto: []int{ProtocolTCP},
 				},
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRange{First: 53, Last: 53}},
 					},
 					IPProto: []int{ProtocolUDP},
 				},
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
@@ -201,7 +201,7 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
@@ -346,7 +346,7 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},

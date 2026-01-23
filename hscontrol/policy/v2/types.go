@@ -122,11 +122,11 @@ func (a Asterix) UnmarshalJSON(b []byte) error {
 func (a Asterix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var ips netipx.IPSetBuilder
 
-	// TODO(kradalby):
-	// Should this actually only be the CGNAT spaces? I do not think so, because
-	// we also want to include subnet routers right?
-	ips.AddPrefix(tsaddr.AllIPv4())
-	ips.AddPrefix(tsaddr.AllIPv6())
+	// Use Tailscale's CGNAT range for IPv4 and ULA range for IPv6.
+	// This matches Tailscale's behavior where wildcard (*) refers to
+	// "any node in the tailnet" which uses these address ranges.
+	ips.AddPrefix(tsaddr.CGNATRange())
+	ips.AddPrefix(tsaddr.TailscaleULARange())
 
 	return ips.IPSet()
 }
