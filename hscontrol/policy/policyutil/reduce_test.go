@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
+	v2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -223,7 +224,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 				{
 					SrcIPs: []string{
@@ -238,7 +239,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -374,12 +375,12 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 				{
 					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: hsExitNodeDestForTest,
-					IPProto:  []int{6, 17},
+					IPProto:  []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -483,7 +484,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -519,7 +520,7 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -595,7 +596,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -609,7 +610,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -685,7 +686,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
@@ -699,7 +700,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -767,7 +768,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
