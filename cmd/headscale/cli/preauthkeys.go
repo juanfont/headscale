@@ -9,7 +9,6 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -150,10 +149,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 		}
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
-
-		log.Trace().
-			Dur("expiration", time.Duration(duration)).
-			Msg("expiration has been set")
 
 		request.Expiration = timestamppb.New(expiration)
 
