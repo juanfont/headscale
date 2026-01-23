@@ -1,13 +1,18 @@
-// Copyright (c) Tailscale Inc & AUTHORS
-// Copyright (c) Headscale AUTHORS
-// SPDX-License-Identifier: BSD-3-Clause
-
-// tailscale_compat_test.go contains tests that verify Headscale's ACL-to-PacketFilter
-// translation matches Tailscale's behavior. These tests are derived from empirical
-// observations of Tailscale's actual filter generation.
+// This file is "generated" by Claude.
+// It contains a large set of input ACL/Policy JSON configurations that
+// the AI agent has systematically applied to a Tailnet on Tailscale SaaS
+// and then observed the individual clients connected to the Tailnet
+// with a given policy and recorded the resulting Packet filter rules sent
+// to the clients.
 //
-// Test data source: https://github.com/kradalby/acl-explore/findings/
-
+// There is likely a lot of duplicate or overlapping tests, however, the main
+// exercise of this work was to create a comperehensive test set for comparing
+// the behaviour of our policy engine and the upstream one.
+//
+// We aim to keep these tests to make sure we do not regress as we evolve
+// and improve our policy implementation.
+// This file is NOT intended for developer/humans to change and should be
+// consider a "black box" test suite.
 package v2
 
 import (

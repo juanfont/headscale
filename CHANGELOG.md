@@ -2,6 +2,13 @@
 
 ## 0.29.0 (202x-xx-xx)
 
+### Tailscale ACL compatibility improvements
+
+Extensive test cases were systematically generated using Tailscale clients and the official SaaS
+to understand how the packet filter should be generated. We discovered a few differences, but
+overall our implementation was very close.
+[#3036](https://github.com/juanfont/headscale/pull/3036)
+
 ### BREAKING
 
 - **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
