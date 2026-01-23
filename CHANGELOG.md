@@ -2,6 +2,12 @@
 
 ## Next
 
+### BREAKING
+
+- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
+  - Policies relying on wildcard to match non-Tailscale IPs will need to use explicit CIDR ranges instead
+
 ### Changes
 
 - **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
