@@ -1318,11 +1318,10 @@ func TestTailscaleCompatAutogroups(t *testing.T) {
 							"100.90.199.68/32",
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
-						// NOTE: Headscale uses raw IP addresses without CIDR suffix for autogroup:self destinations.
 						// Tailscale uses CIDR format: "100.90.199.68/32" and "fd7a:115c:a1e0::2d01:c747/128"
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRangeAny},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRangeAny},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRangeAny},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -1395,11 +1394,9 @@ func TestTailscaleCompatAutogroups(t *testing.T) {
 							"100.90.199.68/32",
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
-						// NOTE: Headscale uses raw IP addresses without CIDR suffix for autogroup:self destinations.
-						// TODO: Tailscale uses CIDR format
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRangeAny},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRangeAny},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRangeAny},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRangeAny},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3584,8 +3581,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						// Dsts = user1's own IPs with all ports (no CIDR notation for autogroup:self)
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3612,8 +3609,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3639,8 +3636,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3666,8 +3663,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3693,8 +3690,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3722,8 +3719,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						// autogroup:self destinations use plain IPs (no CIDR notation)
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -3996,12 +3993,12 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						// 6 Dsts: 3 ports × 2 IPs (autogroup:self uses plain IPs)
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 80, Last: 80}},
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 443, Last: 443}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 80, Last: 80}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -4028,8 +4025,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						// Port range preserved (autogroup:self uses plain IPs)
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 80, Last: 443}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 80, Last: 443}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 443}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 443}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -4061,8 +4058,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -4072,8 +4069,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 80, Last: 80}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -4221,8 +4218,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -5308,8 +5305,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -5350,8 +5347,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -5361,8 +5358,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 80, Last: 80}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -6858,8 +6855,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -6884,8 +6881,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -6909,8 +6906,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -6934,8 +6931,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -6959,8 +6956,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -8028,8 +8025,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							// Note: autogroup:self destinations use raw IP format (no /32 suffix)
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -8268,8 +8265,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							// Note: autogroup:self destinations use raw IP format (no /32 suffix)
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 80, Last: 443}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 80, Last: 443}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 443}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 443}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -8293,8 +8290,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							// Note: autogroup:self destinations use raw IP format (no /32 suffix)
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
@@ -8335,8 +8332,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							// Note: autogroup:self destinations use raw IP format (no /32 suffix)
-							{IP: "100.90.199.68", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-							{IP: "fd7a:115c:a1e0::2d01:c747", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
+							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},

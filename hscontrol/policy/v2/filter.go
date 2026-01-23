@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 	"time"
 
@@ -199,7 +200,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 						for _, port := range dest.Ports {
 							for _, ip := range n.IPs() {
 								destPorts = append(destPorts, tailcfg.NetPortRange{
-									IP:    ip.String(),
+									IP:    netip.PrefixFrom(ip, ip.BitLen()).String(),
 									Ports: port,
 								})
 							}

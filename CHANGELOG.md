@@ -19,6 +19,7 @@ via tscli, and capture PacketFilter from each node's netmap. Several bugs were f
 - **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
 - **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules and export protocol constants [#3036](https://github.com/juanfont/headscale/pull/3036)
 - **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
 
 ## 0.28.0 (202x-xx-xx)
 
