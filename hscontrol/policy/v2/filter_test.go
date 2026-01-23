@@ -941,7 +941,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 		}
 	}
 
-	expectedDestIPs := []string{"100.64.0.1", "100.64.0.2"}
+	expectedDestIPs := []string{"100.64.0.1/32", "100.64.0.2/32"}
 
 	actualDestIPs := make([]string, 0, len(rule.DstPorts))
 	for _, dst := range rule.DstPorts {
@@ -957,7 +957,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	}
 
 	// Verify that other users' devices and tagged devices are not in destinations
-	excludedDestIPs := []string{"100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6"}
+	excludedDestIPs := []string{"100.64.0.3/32", "100.64.0.4/32", "100.64.0.5/32", "100.64.0.6/32"}
 	for _, excludedIP := range excludedDestIPs {
 		for _, actualIP := range actualDestIPs {
 			if actualIP == excludedIP {
@@ -1294,7 +1294,8 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 		actualDestIPs = append(actualDestIPs, dst.IP)
 	}
 
-	assert.ElementsMatch(t, expectedSourceIPs, actualDestIPs)
+	expectedDestIPs := []string{"100.64.0.1/32", "100.64.0.2/32"}
+	assert.ElementsMatch(t, expectedDestIPs, actualDestIPs)
 
 	node2 := nodes[2].View()
 	rules2, err := policy.compileFilterRulesForNode(users, node2, nodes.ViewSlice())
