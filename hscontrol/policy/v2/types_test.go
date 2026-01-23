@@ -2101,7 +2101,7 @@ func TestResolvePolicy(t *testing.T) {
 		{
 			name:      "wildcard-alias",
 			toResolve: Wildcard,
-			want:      []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()},
+			want:      []netip.Prefix{tsaddr.CGNATRange(), tsaddr.TailscaleULARange()},
 		},
 		{
 			name:      "autogroup-member-comprehensive",
