@@ -1281,21 +1281,21 @@ func (a SSHAction) MarshalJSON() ([]byte, error) {
 type Protocol string
 
 const (
-	ProtocolICMP     Protocol = "icmp"
-	ProtocolIGMP     Protocol = "igmp"
-	ProtocolIPv4     Protocol = "ipv4"
-	ProtocolIPInIP   Protocol = "ip-in-ip"
-	ProtocolTCP      Protocol = "tcp"
-	ProtocolEGP      Protocol = "egp"
-	ProtocolIGP      Protocol = "igp"
-	ProtocolUDP      Protocol = "udp"
-	ProtocolGRE      Protocol = "gre"
-	ProtocolESP      Protocol = "esp"
-	ProtocolAH       Protocol = "ah"
-	ProtocolIPv6ICMP Protocol = "ipv6-icmp"
-	ProtocolSCTP     Protocol = "sctp"
-	ProtocolFC       Protocol = "fc"
-	ProtocolWildcard Protocol = "*"
+	ProtoNameICMP     Protocol = "icmp"
+	ProtoNameIGMP     Protocol = "igmp"
+	ProtoNameIPv4     Protocol = "ipv4"
+	ProtoNameIPInIP   Protocol = "ip-in-ip"
+	ProtoNameTCP      Protocol = "tcp"
+	ProtoNameEGP      Protocol = "egp"
+	ProtoNameIGP      Protocol = "igp"
+	ProtoNameUDP      Protocol = "udp"
+	ProtoNameGRE      Protocol = "gre"
+	ProtoNameESP      Protocol = "esp"
+	ProtoNameAH       Protocol = "ah"
+	ProtoNameIPv6ICMP Protocol = "ipv6-icmp"
+	ProtoNameSCTP     Protocol = "sctp"
+	ProtoNameFC       Protocol = "fc"
+	ProtoNameWildcard Protocol = "*"
 )
 
 // String returns the string representation of the Protocol.
@@ -1306,33 +1306,33 @@ func (p Protocol) String() string {
 // Description returns the human-readable description of the Protocol.
 func (p Protocol) Description() string {
 	switch p {
-	case ProtocolICMP:
+	case ProtoNameICMP:
 		return "Internet Control Message Protocol"
-	case ProtocolIGMP:
+	case ProtoNameIGMP:
 		return "Internet Group Management Protocol"
-	case ProtocolIPv4:
+	case ProtoNameIPv4:
 		return "IPv4 encapsulation"
-	case ProtocolTCP:
+	case ProtoNameTCP:
 		return "Transmission Control Protocol"
-	case ProtocolEGP:
+	case ProtoNameEGP:
 		return "Exterior Gateway Protocol"
-	case ProtocolIGP:
+	case ProtoNameIGP:
 		return "Interior Gateway Protocol"
-	case ProtocolUDP:
+	case ProtoNameUDP:
 		return "User Datagram Protocol"
-	case ProtocolGRE:
+	case ProtoNameGRE:
 		return "Generic Routing Encapsulation"
-	case ProtocolESP:
+	case ProtoNameESP:
 		return "Encapsulating Security Payload"
-	case ProtocolAH:
+	case ProtoNameAH:
 		return "Authentication Header"
-	case ProtocolIPv6ICMP:
+	case ProtoNameIPv6ICMP:
 		return "Internet Control Message Protocol for IPv6"
-	case ProtocolSCTP:
+	case ProtoNameSCTP:
 		return "Stream Control Transmission Protocol"
-	case ProtocolFC:
+	case ProtoNameFC:
 		return "Fibre Channel"
-	case ProtocolWildcard:
+	case ProtoNameWildcard:
 		return "Wildcard (not supported - use specific protocol)"
 	default:
 		return "Unknown Protocol"
@@ -1344,42 +1344,43 @@ func (p Protocol) Description() string {
 func (p Protocol) parseProtocol() ([]int, bool) {
 	switch p {
 	case "":
-		// Empty protocol applies to TCP and UDP traffic only
-		return []int{protocolTCP, protocolUDP}, false
-	case ProtocolWildcard:
+		// Empty protocol applies to TCP, UDP, ICMP, and ICMPv6 traffic
+		// This matches Tailscale's behavior for protocol defaults
+		return []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}, false
+	case ProtoNameWildcard:
 		// Wildcard protocol - defensive handling (should not reach here due to validation)
 		return nil, false
-	case ProtocolIGMP:
-		return []int{protocolIGMP}, true
-	case ProtocolIPv4, ProtocolIPInIP:
-		return []int{protocolIPv4}, true
-	case ProtocolTCP:
-		return []int{protocolTCP}, false
-	case ProtocolEGP:
-		return []int{protocolEGP}, true
-	case ProtocolIGP:
-		return []int{protocolIGP}, true
-	case ProtocolUDP:
-		return []int{protocolUDP}, false
-	case ProtocolGRE:
-		return []int{protocolGRE}, true
-	case ProtocolESP:
-		return []int{protocolESP}, true
-	case ProtocolAH:
-		return []int{protocolAH}, true
-	case ProtocolSCTP:
-		return []int{protocolSCTP}, false
-	case ProtocolICMP:
-		return []int{protocolICMP, protocolIPv6ICMP}, true
+	case ProtoNameIGMP:
+		return []int{ProtocolIGMP}, true
+	case ProtoNameIPv4, ProtoNameIPInIP:
+		return []int{ProtocolIPv4}, true
+	case ProtoNameTCP:
+		return []int{ProtocolTCP}, false
+	case ProtoNameEGP:
+		return []int{ProtocolEGP}, true
+	case ProtoNameIGP:
+		return []int{ProtocolIGP}, true
+	case ProtoNameUDP:
+		return []int{ProtocolUDP}, false
+	case ProtoNameGRE:
+		return []int{ProtocolGRE}, true
+	case ProtoNameESP:
+		return []int{ProtocolESP}, true
+	case ProtoNameAH:
+		return []int{ProtocolAH}, true
+	case ProtoNameSCTP:
+		return []int{ProtocolSCTP}, false
+	case ProtoNameICMP:
+		return []int{ProtocolICMP, ProtocolIPv6ICMP}, true
 	default:
 		// Try to parse as a numeric protocol number
 		// This should not fail since validation happened during unmarshaling
 		protocolNumber, _ := strconv.Atoi(string(p))
 
 		// Determine if wildcard is needed based on protocol number
-		needsWildcard := protocolNumber != protocolTCP &&
-			protocolNumber != protocolUDP &&
-			protocolNumber != protocolSCTP
+		needsWildcard := protocolNumber != ProtocolTCP &&
+			protocolNumber != ProtocolUDP &&
+			protocolNumber != ProtocolSCTP
 
 		return []int{protocolNumber}, needsWildcard
 	}
@@ -1403,11 +1404,11 @@ func (p *Protocol) UnmarshalJSON(b []byte) error {
 // validate checks if the Protocol is valid.
 func (p Protocol) validate() error {
 	switch p {
-	case "", ProtocolICMP, ProtocolIGMP, ProtocolIPv4, ProtocolIPInIP,
-		ProtocolTCP, ProtocolEGP, ProtocolIGP, ProtocolUDP, ProtocolGRE,
-		ProtocolESP, ProtocolAH, ProtocolSCTP:
+	case "", ProtoNameICMP, ProtoNameIGMP, ProtoNameIPv4, ProtoNameIPInIP,
+		ProtoNameTCP, ProtoNameEGP, ProtoNameIGP, ProtoNameUDP, ProtoNameGRE,
+		ProtoNameESP, ProtoNameAH, ProtoNameSCTP:
 		return nil
-	case ProtocolWildcard:
+	case ProtoNameWildcard:
 		// Wildcard "*" is not allowed - Tailscale rejects it
 		return fmt.Errorf("proto name \"*\" not known; use protocol number 0-255 or protocol name (icmp, tcp, udp, etc.)")
 	default:
@@ -1439,19 +1440,19 @@ func (p Protocol) MarshalJSON() ([]byte, error) {
 
 // Protocol constants matching the IANA numbers
 const (
-	protocolICMP     = 1   // Internet Control Message
-	protocolIGMP     = 2   // Internet Group Management
-	protocolIPv4     = 4   // IPv4 encapsulation
-	protocolTCP      = 6   // Transmission Control
-	protocolEGP      = 8   // Exterior Gateway Protocol
-	protocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
-	protocolUDP      = 17  // User Datagram
-	protocolGRE      = 47  // Generic Routing Encapsulation
-	protocolESP      = 50  // Encap Security Payload
-	protocolAH       = 51  // Authentication Header
-	protocolIPv6ICMP = 58  // ICMP for IPv6
-	protocolSCTP     = 132 // Stream Control Transmission Protocol
-	protocolFC       = 133 // Fibre Channel
+	ProtocolICMP     = 1   // Internet Control Message
+	ProtocolIGMP     = 2   // Internet Group Management
+	ProtocolIPv4     = 4   // IPv4 encapsulation
+	ProtocolTCP      = 6   // Transmission Control
+	ProtocolEGP      = 8   // Exterior Gateway Protocol
+	ProtocolIGP      = 9   // any private interior gateway (used by Cisco for their IGRP)
+	ProtocolUDP      = 17  // User Datagram
+	ProtocolGRE      = 47  // Generic Routing Encapsulation
+	ProtocolESP      = 50  // Encap Security Payload
+	ProtocolAH       = 51  // Authentication Header
+	ProtocolIPv6ICMP = 58  // ICMP for IPv6
+	ProtocolSCTP     = 132 // Stream Control Transmission Protocol
+	ProtocolFC       = 133 // Fibre Channel
 )
 
 type ACL struct {
@@ -2114,7 +2115,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 // can have specific ports. All other protocols should only use wildcard ports.
 func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWithPorts) error {
 	// Only TCP, UDP, and SCTP support specific ports
-	supportsSpecificPorts := protocol == ProtocolTCP || protocol == ProtocolUDP || protocol == ProtocolSCTP || protocol == ""
+	supportsSpecificPorts := protocol == ProtoNameTCP || protocol == ProtoNameUDP || protocol == ProtoNameSCTP || protocol == ""
 
 	if supportsSpecificPorts {
 		return nil // No validation needed for these protocols
