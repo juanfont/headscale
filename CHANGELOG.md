@@ -2,6 +2,18 @@
 
 ## 0.29.0 (202x-xx-xx)
 
+### BREAKING
+
+- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
+  - Policies relying on wildcard to match non-Tailscale IPs will need to use explicit CIDR ranges instead
+  - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
+- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
+- **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
+  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
+
 ### Changes
 
 - **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
