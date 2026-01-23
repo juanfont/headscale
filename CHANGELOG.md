@@ -2,6 +2,12 @@
 
 ## Next
 
+### Tailscale ACL compatibility improvements
+
+Tests generated using Tailscale's mts.go test harness to run virtual nodes, set ACL policies
+via tscli, and capture PacketFilter from each node's netmap. Several bugs were found and fixed.
+[#3036](https://github.com/juanfont/headscale/pull/3036)
+
 ### BREAKING
 
 - **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
