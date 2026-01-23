@@ -46,6 +46,11 @@ var (
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
 )
 
+// ACL validation errors.
+var (
+	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self destination requires sources to be users, groups, or autogroup:member only")
+)
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -1680,6 +1685,51 @@ func validateSSHSrcDstCombination(sources SSHSrcAliases, destinations SSHDstAlia
 	return nil
 }
 
+// validateACLSrcDstCombination validates that ACL source/destination combinations
+// follow Tailscale's security model:
+// - autogroup:self destinations require ALL sources to be users, groups, autogroup:member, or wildcard (*)
+// - Tags, autogroup:tagged, hosts, and raw IPs are NOT valid sources for autogroup:self
+// - Wildcard (*) is allowed because autogroup:self evaluation narrows it per-node to the node's own IPs.
+func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts) error {
+	// Check if any destination is autogroup:self
+	hasAutogroupSelf := false
+
+	for _, dst := range destinations {
+		if ag, ok := dst.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+			hasAutogroupSelf = true
+			break
+		}
+	}
+
+	if !hasAutogroupSelf {
+		return nil // No autogroup:self, no validation needed
+	}
+
+	// Validate all sources are valid for autogroup:self
+	for _, src := range sources {
+		switch v := src.(type) {
+		case *Username, *Group, Asterix:
+			// Valid sources - users, groups, and wildcard (*) are allowed
+			// Wildcard is allowed because autogroup:self evaluation narrows it per-node
+			continue
+		case *AutoGroup:
+			if v.Is(AutoGroupMember) {
+				continue // autogroup:member is valid
+			}
+			// autogroup:tagged and others are NOT valid
+			return ErrACLAutogroupSelfInvalidSource
+		case *Tag, *Host, *Prefix:
+			// Tags, hosts, and IPs are NOT valid sources for autogroup:self
+			return ErrACLAutogroupSelfInvalidSource
+		default:
+			// Unknown type - be conservative and reject
+			return ErrACLAutogroupSelfInvalidSource
+		}
+	}
+
+	return nil
+}
+
 // validate reports if there are any errors in a policy after
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
@@ -1760,6 +1810,12 @@ func (p *Policy) validate() error {
 
 		// Validate protocol-port compatibility
 		if err := validateProtocolPortCompatibility(acl.Protocol, acl.Destinations); err != nil {
+			errs = append(errs, err)
+		}
+
+		// Validate ACL source/destination combinations follow Tailscale's security model
+		err := validateACLSrcDstCombination(acl.Sources, acl.Destinations)
+		if err != nil {
 			errs = append(errs, err)
 		}
 	}
