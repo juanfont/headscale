@@ -10142,29 +10142,28 @@ func TestTailscaleCompatErrorCases(t *testing.T) {
 	}
 }
 
-// TestTailscaleCompatErrorCasesHeadscaleDiffers documents cases where Tailscale produces
-// validation errors but Headscale does NOT. These represent compatibility gaps.
+// TestTailscaleCompatErrorCasesHeadscaleDiffers validates that Headscale correctly rejects
+// policies that Tailscale also rejects. These tests verify that autogroup:self destination
+// validation for ACL rules matches Tailscale's behavior.
 //
-// TODO: Tailscale validates that autogroup:self can only be used when ALL sources are
-// users, groups, or autogroup:member. Headscale does NOT currently perform this validation
-// for ACL rules (only for SSH rules). This means invalid policies like tag:client → autogroup:self:*
-// will be accepted by Headscale but rejected by Tailscale.
+// Tailscale validates that autogroup:self can only be used when ALL sources are
+// users, groups, or autogroup:member. Headscale now performs this same validation.
 //
 // Reference: /home/kradalby/acl-explore/findings/09-mixed-scenarios.md.
 func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 	t.Parallel()
 
-	// These tests document where Headscale behavior DIFFERS from Tailscale.
+	// These tests verify that Headscale rejects policies the same way Tailscale does.
 	// Tailscale rejects these policies at validation time (400 Bad Request),
-	// but Headscale currently accepts them.
+	// and Headscale now does the same.
 	tests := []struct {
 		name           string
 		policy         string
-		tailscaleError string // What Tailscale would return
+		tailscaleError string // What Tailscale returns (and Headscale should match)
 		reference      string
 	}{
 		// Test 2.5: tag:client → autogroup:self:* + tag:server:22
-		// TODO: Tailscale REJECTS this - autogroup:self requires user/group sources
+		// Tailscale REJECTS this - autogroup:self requires user/group sources
 		{
 			name: "tag_source_with_self_dest_2_5",
 			policy: `{
@@ -10184,7 +10183,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 4.5: tag:client → autogroup:self:*
-		// TODO: Tailscale REJECTS this - autogroup:self requires user/group sources
+		// Tailscale REJECTS this - autogroup:self requires user/group sources
 		{
 			name: "tag_source_to_self_dest_only_4_5",
 			policy: `{
@@ -10203,7 +10202,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 6.1: autogroup:tagged → autogroup:self:*
-		// TODO: Tailscale REJECTS this - autogroup:tagged is NOT a valid source for autogroup:self
+		// Tailscale REJECTS this - autogroup:tagged is NOT a valid source for autogroup:self
 		{
 			name: "autogroup_tagged_to_self_6_1",
 			policy: `{
@@ -10222,7 +10221,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 9.5: [autogroup:member, autogroup:tagged] → [autogroup:self:*, tag:server:22]
-		// TODO: Tailscale REJECTS this - ANY invalid source (autogroup:tagged) invalidates the rule
+		// Tailscale REJECTS this - ANY invalid source (autogroup:tagged) invalidates the rule
 		{
 			name: "both_autogroups_to_self_plus_tag_9_5",
 			policy: `{
@@ -10241,7 +10240,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 13.6: autogroup:tagged → self:*
-		// TODO: Tailscale REJECTS this - same as 6.1
+		// Tailscale REJECTS this - same as 6.1
 		{
 			name: "autogroup_tagged_to_self_13_6",
 			policy: `{
@@ -10260,7 +10259,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 13.10: tag:client → self:*
-		// TODO: Tailscale REJECTS this - tags are not valid sources for autogroup:self
+		// Tailscale REJECTS this - tags are not valid sources for autogroup:self
 		{
 			name: "tag_to_self_13_10",
 			policy: `{
@@ -10279,7 +10278,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 13.13: Host → self:*
-		// TODO: Tailscale REJECTS this - hosts are not valid sources for autogroup:self
+		// Tailscale REJECTS this - hosts are not valid sources for autogroup:self
 		{
 			name: "host_to_self_13_13",
 			policy: `{
@@ -10301,7 +10300,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 13.14: Raw IP → self:*
-		// TODO: Tailscale REJECTS this - raw IPs are not valid sources for autogroup:self
+		// Tailscale REJECTS this - raw IPs are not valid sources for autogroup:self
 		{
 			name: "raw_ip_to_self_13_14",
 			policy: `{
@@ -10320,7 +10319,7 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		},
 
 		// Test 13.25: [autogroup:member, tag:client] → self:*
-		// TODO: Tailscale REJECTS this - ANY invalid source (tag:client) invalidates the rule
+		// Tailscale REJECTS this - ANY invalid source (tag:client) invalidates the rule
 		{
 			name: "mixed_valid_invalid_sources_to_self_13_25",
 			policy: `{
@@ -10343,16 +10342,15 @@ func TestTailscaleCompatErrorCasesHeadscaleDiffers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			pol, err := unmarshalPolicy([]byte(tt.policy))
-			require.NoError(t, err, "test %s (%s): policy should parse", tt.name, tt.reference)
-
-			// TODO: Headscale does NOT validate autogroup:self source restrictions for ACL rules.
-			// Tailscale would reject these policies with: %s
-			// For now, document that Headscale accepts these policies.
-			err = pol.validate()
-			require.NoError(t, err,
-				"test %s (%s): Headscale currently accepts this policy (Tailscale rejects with: %s)",
-				tt.name, tt.reference, tt.tailscaleError)
+			// unmarshalPolicy calls validate() internally, so we expect it to fail
+			// with our validation error
+			_, err := unmarshalPolicy([]byte(tt.policy))
+			require.Error(t, err,
+				"test %s (%s): should reject policy like Tailscale",
+				tt.name, tt.reference)
+			require.ErrorIs(t, err, ErrACLAutogroupSelfInvalidSource,
+				"test %s (%s): expected autogroup:self validation error",
+				tt.name, tt.reference)
 		})
 	}
 }
