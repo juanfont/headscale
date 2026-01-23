@@ -136,7 +136,7 @@
         "package.json",
         "requirements.txt",
         "Pipfile",
-        "Gemfile",
+            "Gemfile",
         "composer.json",
         ".editorconfig",
         ".eslintrc.json",
