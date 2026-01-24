@@ -82,6 +82,7 @@ sequentially through each stable release, selecting the latest patch version ava
   - API clients should use the `Tags` field instead of `ValidTags`
   - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
 - **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations [#2992](https://github.com/juanfont/headscale/pull/2992)
+
   - `headscale preauthkeys create` no longer requires `--user` flag (optional for tracking creation)
   - `headscale preauthkeys list` lists all keys (no longer filtered by user)
   - `headscale preauthkeys expire --id <ID>` replaces `--user <USER> <KEY>`
@@ -126,6 +127,7 @@ sequentially through each stable release, selecting the latest patch version ava
   - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
     profile regardless of its verification state.
 - **SSH Policy**: Wildcard (`*`) is no longer supported as an SSH destination [#3009](https://github.com/juanfont/headscale/issues/3009)
+
   - Use `autogroup:member` for user-owned devices
   - Use `autogroup:tagged` for tagged devices
   - Use specific tags (e.g., `tag:server`) for targeted access
@@ -145,6 +147,7 @@ sequentially through each stable release, selecting the latest patch version ava
 - **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
 
   Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+
   1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
   2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
 
@@ -192,6 +195,7 @@ sequentially through each stable release, selecting the latest patch version ava
 - Add `taildrop.enabled` configuration option to enable/disable Taildrop file sharing [#2955](https://github.com/juanfont/headscale/pull/2955)
 - Allow disabling the metrics server by setting empty `metrics_listen_addr` [#2914](https://github.com/juanfont/headscale/pull/2914)
 - Log ACME/autocert errors for easier debugging [#2933](https://github.com/juanfont/headscale/pull/2933)
+- Certificates now reload on SIGHUP signal [#3041](https://github.com/juanfont/headscale/pull/3041)
 - Improve CLI list output formatting [#2951](https://github.com/juanfont/headscale/pull/2951)
 - Use Debian 13 distroless base images for containers [#2944](https://github.com/juanfont/headscale/pull/2944)
 - Fix ACL policy not applied to new OIDC nodes until client restart [#2890](https://github.com/juanfont/headscale/pull/2890)
