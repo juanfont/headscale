@@ -276,7 +276,8 @@ var expireNodeCmd = &cobra.Command{
 
 			return
 		}
-		expiryTime := time.Now()
+		now := time.Now()
+		expiryTime := now
 		if expiry != "" {
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
 			if err != nil {
@@ -311,7 +312,11 @@ var expireNodeCmd = &cobra.Command{
 			)
 		}
 
-		SuccessOutput(response.GetNode(), "Node expired", output)
+		if now.Equal(expiryTime) || now.After(expiryTime) {
+			SuccessOutput(response.GetNode(), "Node expired", output)
+		} else {
+			SuccessOutput(response.GetNode(), "Node expiration updated", output)
+		}
 	},
 }
 
