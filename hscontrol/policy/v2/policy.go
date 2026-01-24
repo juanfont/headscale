@@ -323,7 +323,10 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 
 	// Check each node pair for peer relationships.
 	// Start j at i+1 to avoid checking the same pair twice and creating duplicates.
-	// We check both directions (i->j and j->i) since ACLs can be asymmetric.
+	// We use symmetric visibility: if EITHER node can access the other, BOTH see
+	// each other. This matches the global filter path behavior and ensures that
+	// one-way access rules (e.g., admin -> tagged server) still allow both nodes
+	// to see each other as peers, which is required for network connectivity.
 	for i := range nodes.Len() {
 		nodeI := nodes.At(i)
 		matchersI, hasFilterI := nodeMatchers[nodeI.ID()]
@@ -332,13 +335,16 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			nodeJ := nodes.At(j)
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
 
-			// Check if nodeI can access nodeJ
-			if hasFilterI && nodeI.CanAccess(matchersI, nodeJ) {
-				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
-			}
+			// If either node can access the other, both should see each other as peers.
+			// This symmetric visibility is required for proper network operation:
+			// - Admin with *:* rule should see tagged servers (even if servers
+			//   can't access admin)
+			// - Servers should see admin so they can respond to admin's connections
+			canIAccessJ := hasFilterI && nodeI.CanAccess(matchersI, nodeJ)
+			canJAccessI := hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI)
 
-			// Check if nodeJ can access nodeI
-			if hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI) {
+			if canIAccessJ || canJAccessI {
+				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI)
 			}
 		}

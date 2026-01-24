@@ -1067,31 +1067,50 @@ func (t *HeadscaleInContainer) CreateUser(
 	return &u, nil
 }
 
-// CreateAuthKey creates a new "authorisation key" for a User that can be used
-// to authorise a TailscaleClient with the Headscale instance.
-func (t *HeadscaleInContainer) CreateAuthKey(
-	user uint64,
-	reusable bool,
-	ephemeral bool,
-) (*v1.PreAuthKey, error) {
+// AuthKeyOptions defines options for creating an auth key.
+type AuthKeyOptions struct {
+	// User is the user ID that owns the auth key. If nil and Tags are specified,
+	// the auth key is owned by the tags only (tags-as-identity model).
+	User *uint64
+	// Reusable indicates if the key can be used multiple times
+	Reusable bool
+	// Ephemeral indicates if nodes registered with this key should be ephemeral
+	Ephemeral bool
+	// Tags are the tags to assign to the auth key
+	Tags []string
+}
+
+// CreateAuthKeyWithOptions creates a new "authorisation key" with the specified options.
+// This supports both user-owned and tags-only auth keys.
+func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v1.PreAuthKey, error) {
 	command := []string{
 		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
+	}
+
+	// Only add --user flag if User is specified
+	if opts.User != nil {
+		command = append(command, "--user", strconv.FormatUint(*opts.User, 10))
+	}
+
+	command = append(command,
 		"preauthkeys",
 		"create",
 		"--expiration",
 		"24h",
 		"--output",
 		"json",
-	}
+	)
 
-	if reusable {
+	if opts.Reusable {
 		command = append(command, "--reusable")
 	}
 
-	if ephemeral {
+	if opts.Ephemeral {
 		command = append(command, "--ephemeral")
+	}
+
+	if len(opts.Tags) > 0 {
+		command = append(command, "--tags", strings.Join(opts.Tags, ","))
 	}
 
 	result, _, err := dockertestutil.ExecuteCommand(
@@ -1104,12 +1123,27 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	}
 
 	var preAuthKey v1.PreAuthKey
+
 	err = json.Unmarshal([]byte(result), &preAuthKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
 	}
 
 	return &preAuthKey, nil
+}
+
+// CreateAuthKey creates a new "authorisation key" for a User that can be used
+// to authorise a TailscaleClient with the Headscale instance.
+func (t *HeadscaleInContainer) CreateAuthKey(
+	user uint64,
+	reusable bool,
+	ephemeral bool,
+) (*v1.PreAuthKey, error) {
+	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
+		User:      &user,
+		Reusable:  reusable,
+		Ephemeral: ephemeral,
+	})
 }
 
 // CreateAuthKeyWithTags creates a new "authorisation key" for a User with the specified tags.
@@ -1120,61 +1154,24 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
 	ephemeral bool,
 	tags []string,
 ) (*v1.PreAuthKey, error) {
-	command := []string{
-		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
-		"preauthkeys",
-		"create",
-		"--expiration",
-		"24h",
-		"--output",
-		"json",
-	}
-
-	if reusable {
-		command = append(command, "--reusable")
-	}
-
-	if ephemeral {
-		command = append(command, "--ephemeral")
-	}
-
-	if len(tags) > 0 {
-		command = append(command, "--tags", strings.Join(tags, ","))
-	}
-
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute create auth key with tags command: %w", err)
-	}
-
-	var preAuthKey v1.PreAuthKey
-
-	err = json.Unmarshal([]byte(result), &preAuthKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
-	}
-
-	return &preAuthKey, nil
+	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
+		User:      &user,
+		Reusable:  reusable,
+		Ephemeral: ephemeral,
+		Tags:      tags,
+	})
 }
 
-// DeleteAuthKey deletes an "authorisation key" for a User.
+// DeleteAuthKey deletes an "authorisation key" by ID.
 func (t *HeadscaleInContainer) DeleteAuthKey(
-	user uint64,
-	key string,
+	id uint64,
 ) error {
 	command := []string{
 		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"delete",
-		key,
+		"--id",
+		strconv.FormatUint(id, 10),
 		"--output",
 		"json",
 	}
@@ -1334,6 +1331,31 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 	}
 
 	return userMap, nil
+}
+
+// DeleteUser deletes a user from the Headscale instance.
+func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
+	command := []string{
+		"headscale",
+		"users",
+		"delete",
+		"--identifier",
+		strconv.FormatUint(userID, 10),
+		"--force",
+		"--output",
+		"json",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to execute delete user command: %w", err)
+	}
+
+	return nil
 }
 
 func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {

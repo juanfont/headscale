@@ -10,48 +10,11 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog"
-	"gopkg.in/check.v1"
 	"zombiezen.com/go/postgrestest"
 )
 
-func Test(t *testing.T) {
-	check.TestingT(t)
-}
-
-var _ = check.Suite(&Suite{})
-
-type Suite struct{}
-
-var (
-	tmpDir string
-	db     *HSDatabase
-)
-
-func (s *Suite) SetUpTest(c *check.C) {
-	s.ResetDB(c)
-}
-
-func (s *Suite) TearDownTest(c *check.C) {
-	// os.RemoveAll(tmpDir)
-}
-
-func (s *Suite) ResetDB(c *check.C) {
-	// if len(tmpDir) != 0 {
-	// 	os.RemoveAll(tmpDir)
-	// }
-
-	var err error
-	db, err = newSQLiteTestDB()
-	if err != nil {
-		c.Fatal(err)
-	}
-}
-
-// TODO(kradalby): make this a t.Helper when we dont depend
-// on check test framework.
 func newSQLiteTestDB() (*HSDatabase, error) {
-	var err error
-	tmpDir, err = os.MkdirTemp("", "headscale-db-test-*")
+	tmpDir, err := os.MkdirTemp("", "headscale-db-test-*")
 	if err != nil {
 		return nil, err
 	}
@@ -59,14 +22,18 @@ func newSQLiteTestDB() (*HSDatabase, error) {
 	log.Printf("database path: %s", tmpDir+"/headscale_test.db")
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 
-	db, err = NewHeadscaleDatabase(
-		types.DatabaseConfig{
-			Type: types.DatabaseSqlite,
-			Sqlite: types.SqliteConfig{
-				Path: tmpDir + "/headscale_test.db",
+	db, err := NewHeadscaleDatabase(
+		&types.Config{
+			Database: types.DatabaseConfig{
+				Type: types.DatabaseSqlite,
+				Sqlite: types.SqliteConfig{
+					Path: tmpDir + "/headscale_test.db",
+				},
+			},
+			Policy: types.PolicyConfig{
+				Mode: types.PolicyModeDB,
 			},
 		},
-		"",
 		emptyCache(),
 	)
 	if err != nil {
@@ -109,18 +76,22 @@ func newHeadscaleDBFromPostgresURL(t *testing.T, pu *url.URL) *HSDatabase {
 	port, _ := strconv.Atoi(pu.Port())
 
 	db, err := NewHeadscaleDatabase(
-		types.DatabaseConfig{
-			Type: types.DatabasePostgres,
-			Postgres: types.PostgresConfig{
-				Host: pu.Hostname(),
-				User: pu.User.Username(),
-				Name: strings.TrimLeft(pu.Path, "/"),
-				Pass: pass,
-				Port: port,
-				Ssl:  "disable",
+		&types.Config{
+			Database: types.DatabaseConfig{
+				Type: types.DatabasePostgres,
+				Postgres: types.PostgresConfig{
+					Host: pu.Hostname(),
+					User: pu.User.Username(),
+					Name: strings.TrimLeft(pu.Path, "/"),
+					Pass: pass,
+					Port: port,
+					Ssl:  "disable",
+				},
+			},
+			Policy: types.PolicyConfig{
+				Mode: types.PolicyModeDB,
 			},
 		},
-		"",
 		emptyCache(),
 	)
 	if err != nil {

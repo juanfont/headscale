@@ -446,10 +446,9 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 					[]string{
 						"headscale",
 						"preauthkeys",
-						"--user",
-						strconv.FormatUint(userMap[userName].GetId(), 10),
 						"expire",
-						key.GetKey(),
+						"--id",
+						strconv.FormatUint(key.GetId(), 10),
 					})
 				require.NoError(t, err)
 				require.NoError(t, err)
@@ -530,7 +529,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	// DELETE the pre-auth key using the API
 	t.Logf("Deleting pre-auth key ID %d using API", authKeyID)
 
-	err = headscale.DeleteAuthKey(userID, authKeyString)
+	err = headscale.DeleteAuthKey(authKeyID)
 	require.NoError(t, err)
 	t.Logf("Successfully deleted auth key")
 

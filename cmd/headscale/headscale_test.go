@@ -9,34 +9,17 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/viper"
-	"gopkg.in/check.v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func Test(t *testing.T) {
-	check.TestingT(t)
-}
-
-var _ = check.Suite(&Suite{})
-
-type Suite struct{}
-
-func (s *Suite) SetUpSuite(c *check.C) {
-}
-
-func (s *Suite) TearDownSuite(c *check.C) {
-}
-
-func (*Suite) TestConfigFileLoading(c *check.C) {
+func TestConfigFileLoading(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	path, err := os.Getwd()
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	cfgFile := filepath.Join(tmpDir, "config.yaml")
 
@@ -45,70 +28,54 @@ func (*Suite) TestConfigFileLoading(c *check.C) {
 		filepath.Clean(path+"/../../config-example.yaml"),
 		cfgFile,
 	)
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Load example config, it should load without validation errors
 	err = types.LoadConfig(cfgFile, true)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
-	c.Assert(viper.GetString("listen_addr"), check.Equals, "127.0.0.1:8080")
-	c.Assert(viper.GetString("metrics_listen_addr"), check.Equals, "127.0.0.1:9090")
-	c.Assert(viper.GetString("database.type"), check.Equals, "sqlite")
-	c.Assert(viper.GetString("database.sqlite.path"), check.Equals, "/var/lib/headscale/db.sqlite")
-	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
-	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
-	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
-	c.Assert(
-		util.GetFileMode("unix_socket_permission"),
-		check.Equals,
-		fs.FileMode(0o770),
-	)
-	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
+	assert.Equal(t, "http://127.0.0.1:8080", viper.GetString("server_url"))
+	assert.Equal(t, "127.0.0.1:8080", viper.GetString("listen_addr"))
+	assert.Equal(t, "127.0.0.1:9090", viper.GetString("metrics_listen_addr"))
+	assert.Equal(t, "sqlite", viper.GetString("database.type"))
+	assert.Equal(t, "/var/lib/headscale/db.sqlite", viper.GetString("database.sqlite.path"))
+	assert.Empty(t, viper.GetString("tls_letsencrypt_hostname"))
+	assert.Equal(t, ":http", viper.GetString("tls_letsencrypt_listen"))
+	assert.Equal(t, "HTTP-01", viper.GetString("tls_letsencrypt_challenge_type"))
+	assert.Equal(t, fs.FileMode(0o770), util.GetFileMode("unix_socket_permission"))
+	assert.False(t, viper.GetBool("logtail.enabled"))
 }
 
-func (*Suite) TestConfigLoading(c *check.C) {
+func TestConfigLoading(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 	defer os.RemoveAll(tmpDir)
 
 	path, err := os.Getwd()
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Symlink the example config file
 	err = os.Symlink(
 		filepath.Clean(path+"/../../config-example.yaml"),
 		filepath.Join(tmpDir, "config.yaml"),
 	)
-	if err != nil {
-		c.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	// Load example config, it should load without validation errors
 	err = types.LoadConfig(tmpDir, false)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	// Test that config file was interpreted correctly
-	c.Assert(viper.GetString("server_url"), check.Equals, "http://127.0.0.1:8080")
-	c.Assert(viper.GetString("listen_addr"), check.Equals, "127.0.0.1:8080")
-	c.Assert(viper.GetString("metrics_listen_addr"), check.Equals, "127.0.0.1:9090")
-	c.Assert(viper.GetString("database.type"), check.Equals, "sqlite")
-	c.Assert(viper.GetString("database.sqlite.path"), check.Equals, "/var/lib/headscale/db.sqlite")
-	c.Assert(viper.GetString("tls_letsencrypt_hostname"), check.Equals, "")
-	c.Assert(viper.GetString("tls_letsencrypt_listen"), check.Equals, ":http")
-	c.Assert(viper.GetString("tls_letsencrypt_challenge_type"), check.Equals, "HTTP-01")
-	c.Assert(
-		util.GetFileMode("unix_socket_permission"),
-		check.Equals,
-		fs.FileMode(0o770),
-	)
-	c.Assert(viper.GetBool("logtail.enabled"), check.Equals, false)
-	c.Assert(viper.GetBool("randomize_client_port"), check.Equals, false)
+	assert.Equal(t, "http://127.0.0.1:8080", viper.GetString("server_url"))
+	assert.Equal(t, "127.0.0.1:8080", viper.GetString("listen_addr"))
+	assert.Equal(t, "127.0.0.1:9090", viper.GetString("metrics_listen_addr"))
+	assert.Equal(t, "sqlite", viper.GetString("database.type"))
+	assert.Equal(t, "/var/lib/headscale/db.sqlite", viper.GetString("database.sqlite.path"))
+	assert.Empty(t, viper.GetString("tls_letsencrypt_hostname"))
+	assert.Equal(t, ":http", viper.GetString("tls_letsencrypt_listen"))
+	assert.Equal(t, "HTTP-01", viper.GetString("tls_letsencrypt_challenge_type"))
+	assert.Equal(t, fs.FileMode(0o770), util.GetFileMode("unix_socket_permission"))
+	assert.False(t, viper.GetBool("logtail.enabled"))
+	assert.False(t, viper.GetBool("randomize_client_port"))
 }

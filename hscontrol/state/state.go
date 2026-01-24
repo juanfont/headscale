@@ -8,9 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/netip"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -115,8 +113,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	)
 
 	db, err := hsdb.NewHeadscaleDatabase(
-		cfg.Database,
-		cfg.BaseDomain,
+		cfg,
 		registrationCache,
 	)
 	if err != nil {
@@ -143,7 +140,7 @@ func NewState(cfg *types.Config) (*State, error) {
 		return nil, fmt.Errorf("loading users: %w", err)
 	}
 
-	pol, err := policyBytes(db, cfg)
+	pol, err := hsdb.PolicyBytes(db.DB, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
@@ -199,47 +196,6 @@ func (s *State) Close() error {
 	return nil
 }
 
-// policyBytes loads policy configuration from file or database based on the configured mode.
-// Returns nil if no policy is configured, which is valid.
-func policyBytes(db *hsdb.HSDatabase, cfg *types.Config) ([]byte, error) {
-	switch cfg.Policy.Mode {
-	case types.PolicyModeFile:
-		path := cfg.Policy.Path
-
-		// It is fine to start headscale without a policy file.
-		if len(path) == 0 {
-			return nil, nil
-		}
-
-		absPath := util.AbsolutePathFromConfigPath(path)
-		policyFile, err := os.Open(absPath)
-		if err != nil {
-			return nil, err
-		}
-		defer policyFile.Close()
-
-		return io.ReadAll(policyFile)
-
-	case types.PolicyModeDB:
-		p, err := db.GetPolicy()
-		if err != nil {
-			if errors.Is(err, types.ErrPolicyNotFound) {
-				return nil, nil
-			}
-
-			return nil, err
-		}
-
-		if p.Data == "" {
-			return nil, nil
-		}
-
-		return []byte(p.Data), err
-	}
-
-	return nil, fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, cfg.Policy.Mode)
-}
-
 // SetDERPMap updates the DERP relay configuration.
 func (s *State) SetDERPMap(dm *tailcfg.DERPMap) {
 	s.derpMap.Store(dm)
@@ -253,7 +209,7 @@ func (s *State) DERPMap() tailcfg.DERPMapView {
 // ReloadPolicy reloads the access control policy and triggers auto-approval if changed.
 // Returns true if the policy changed.
 func (s *State) ReloadPolicy() ([]change.Change, error) {
-	pol, err := policyBytes(s.db, s.cfg)
+	pol, err := hsdb.PolicyBytes(s.db.DB, s.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loading policy: %w", err)
 	}
@@ -362,8 +318,29 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 
 // DeleteUser permanently removes a user and all associated data (nodes, API keys, etc).
 // This operation is irreversible.
-func (s *State) DeleteUser(userID types.UserID) error {
-	return s.db.DestroyUser(userID)
+// It also updates the policy manager to ensure ACL policies referencing the deleted
+// user are re-evaluated immediately, fixing issue #2967.
+func (s *State) DeleteUser(userID types.UserID) (change.Change, error) {
+	err := s.db.DestroyUser(userID)
+	if err != nil {
+		return change.Change{}, err
+	}
+
+	// Update policy manager with the new user list (without the deleted user)
+	// This ensures that if the policy references the deleted user, it gets
+	// re-evaluated immediately rather than when some other operation triggers it.
+	c, err := s.updatePolicyManagerUsers()
+	if err != nil {
+		return change.Change{}, fmt.Errorf("updating policy after user deletion: %w", err)
+	}
+
+	// If the policy manager doesn't detect changes, still return UserRemoved
+	// to ensure peer lists are refreshed
+	if c.IsEmpty() {
+		c = change.UserRemoved()
+	}
+
+	return c, nil
 }
 
 // RenameUser changes a user's name. The new name must be unique.
@@ -719,7 +696,18 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	return s.persistNodeToDB(n)
+	nodeView, c, err := s.persistNodeToDB(n)
+	if err != nil {
+		return nodeView, c, err
+	}
+
+	// Set OriginNode so the mapper knows to include self info for this node.
+	// When tags change, persistNodeToDB returns PolicyChange which doesn't set OriginNode,
+	// so the mapper's self-update check fails and the node never sees its new tags.
+	// Setting OriginNode ensures the node gets a self-update with the new tags.
+	c.OriginNode = nodeID
+
+	return nodeView, c, nil
 }
 
 // SetApprovedRoutes sets the network routes that a node is approved to advertise.
@@ -966,6 +954,11 @@ func (s *State) GetAPIKey(displayPrefix string) (*types.APIKey, error) {
 	return s.db.GetAPIKey(prefix)
 }
 
+// GetAPIKeyByID retrieves an API key by its database ID.
+func (s *State) GetAPIKeyByID(id uint64) (*types.APIKey, error) {
+	return s.db.GetAPIKeyByID(id)
+}
+
 // ExpireAPIKey marks an API key as expired.
 func (s *State) ExpireAPIKey(key *types.APIKey) error {
 	return s.db.ExpireAPIKey(key)
@@ -1025,18 +1018,18 @@ func (s *State) GetPreAuthKey(id string) (*types.PreAuthKey, error) {
 }
 
 // ListPreAuthKeys returns all pre-authentication keys for a user.
-func (s *State) ListPreAuthKeys(userID types.UserID) ([]types.PreAuthKey, error) {
-	return s.db.ListPreAuthKeys(userID)
+func (s *State) ListPreAuthKeys() ([]types.PreAuthKey, error) {
+	return s.db.ListPreAuthKeys()
 }
 
 // ExpirePreAuthKey marks a pre-authentication key as expired.
-func (s *State) ExpirePreAuthKey(preAuthKey *types.PreAuthKey) error {
-	return s.db.ExpirePreAuthKey(preAuthKey)
+func (s *State) ExpirePreAuthKey(id uint64) error {
+	return s.db.ExpirePreAuthKey(id)
 }
 
 // DeletePreAuthKey permanently deletes a pre-authentication key.
-func (s *State) DeletePreAuthKey(preAuthKey *types.PreAuthKey) error {
-	return s.db.DeletePreAuthKey(preAuthKey)
+func (s *State) DeletePreAuthKey(id uint64) error {
+	return s.db.DeletePreAuthKey(id)
 }
 
 // GetRegistrationCacheEntry retrieves a node registration from cache.
@@ -1546,11 +1539,29 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.NodeView{}, change.Change{}, err
 	}
 
+	// Helper to get username for logging (handles nil User for tags-only keys)
+	pakUsername := func() string {
+		if pak.User != nil {
+			return pak.User.Username()
+		}
+
+		return types.TaggedDevices.Name
+	}
+
 	// Check if node exists with same machine key before validating the key.
 	// For #2830: container restarts send the same pre-auth key which may be used/expired.
 	// Skip validation for existing nodes re-registering with the same NodeKey, as the
 	// key was only needed for initial authentication. NodeKey rotation requires validation.
-	existingNodeSameUser, existsSameUser := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+	//
+	// For tags-only keys (pak.User == nil), we skip the user-based lookup since there's
+	// no user to match against. These keys create tagged nodes without user ownership.
+	var existingNodeSameUser types.NodeView
+
+	var existsSameUser bool
+
+	if pak.User != nil {
+		existingNodeSameUser, existsSameUser = s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+	}
 
 	// For existing nodes, skip validation if:
 	// 1. MachineKey matches (cryptographic proof of machine identity)
@@ -1563,6 +1574,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// - Container restarts may use different PAKs (e.g., env var changed)
 	// - Original PAK may be deleted
 	// - MachineKey + User is sufficient to prove this is the same node
+	//
+	// Note: For tags-only keys, existsSameUser is always false, so we always validate.
 	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid()
 
 	// Check if this is a NodeKey rotation (different NodeKey)
@@ -1608,7 +1621,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	logHostinfoValidation(
 		machineKey.ShortString(),
 		regReq.NodeKey.ShortString(),
-		pak.User.Username(),
+		pakUsername(),
 		hostname,
 		regReq.Hostinfo,
 	)
@@ -1618,12 +1631,13 @@ func (s *State) HandleNodeFromPreAuthKey(
 		Str("node.name", hostname).
 		Str("machine.key", machineKey.ShortString()).
 		Str("node.key", regReq.NodeKey.ShortString()).
-		Str("user.name", pak.User.Username()).
+		Str("user.name", pakUsername()).
 		Msg("Registering node with pre-auth key")
 
 	var finalNode types.NodeView
 
 	// If this node exists for this user, update the node in place.
+	// Note: For tags-only keys (pak.User == nil), existsSameUser is always false.
 	if existsSameUser && existingNodeSameUser.Valid() {
 		log.Trace().
 			Caller().
@@ -1631,7 +1645,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Uint64("node.id", existingNodeSameUser.ID().Uint64()).
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", existingNodeSameUser.NodeKey().ShortString()).
-			Str("user.name", pak.User.Username()).
+			Str("user.name", pakUsername()).
 			Msg("Node re-registering with existing machine key and user, updating in place")
 
 		// Update existing node - NodeStore first, then database
@@ -1695,7 +1709,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Uint64("node.id", updatedNodeView.ID().Uint64()).
 			Str("machine.key", machineKey.ShortString()).
 			Str("node.key", updatedNodeView.NodeKey().ShortString()).
-			Str("user.name", pak.User.Username()).
+			Str("user.name", pakUsername()).
 			Msg("Node re-authorized")
 
 		finalNode = updatedNodeView
@@ -1704,7 +1718,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Check if node exists with this machine key for a different user
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
-		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
+		// For user-owned keys, check if node exists for a different user
+		// For tags-only keys (pak.User == nil), this check is skipped
+		if pak.User != nil && existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
 			// Node exists but belongs to a different user
 			// Create a NEW node for the new user (do not transfer)
 			// This allows the same machine to have separate node identities per user
@@ -1715,17 +1731,24 @@ func (s *State) HandleNodeFromPreAuthKey(
 				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
 				Str("machine.key", machineKey.ShortString()).
 				Str("old.user", oldUser.Name()).
-				Str("new.user", pak.User.Username()).
+				Str("new.user", pakUsername()).
 				Msg("Creating new node for different user (same machine key exists for another user)")
 		}
 
-		// This is a new node for this user - create it
-		// (Either completely new, or new for this user while existing for another user)
+		// This is a new node - create it
+		// For user-owned keys: create for the user
+		// For tags-only keys: create as tagged node (createAndSaveNewNode handles this via PreAuthKey)
 
 		// Create and save new node
+		// Note: For tags-only keys, User is empty but createAndSaveNewNode uses PreAuthKey for ownership
+		var pakUser types.User
+		if pak.User != nil {
+			pakUser = *pak.User
+		}
+
 		var err error
 		finalNode, err = s.createAndSaveNewNode(newNodeParams{
-			User:                   *pak.User,
+			User:                   pakUser,
 			MachineKey:             machineKey,
 			NodeKey:                regReq.NodeKey,
 			DiscoKey:               key.DiscoPublic{}, // DiscoKey not available in RegisterRequest

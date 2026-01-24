@@ -18,7 +18,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/check.v1"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
@@ -26,70 +25,85 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-func (s *Suite) TestGetNode(c *check.C) {
+func TestGetNode(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user := db.CreateUserForTest("test")
 
-	_, err := db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.NotNil)
+	_, err = db.getNode(types.UserID(user.ID), "testnode")
+	require.Error(t, err)
 
 	node := db.CreateNodeForTest(user, "testnode")
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
-	c.Assert(node.Hostname, check.Equals, "testnode")
+	require.NoError(t, err)
+	assert.Equal(t, "testnode", node.Hostname)
 }
 
-func (s *Suite) TestGetNodeByID(c *check.C) {
+func TestGetNodeByID(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user := db.CreateUserForTest("test")
 
-	_, err := db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
+	_, err = db.GetNodeByID(0)
+	require.Error(t, err)
 
 	node := db.CreateNodeForTest(user, "testnode")
 
 	retrievedNode, err := db.GetNodeByID(node.ID)
-	c.Assert(err, check.IsNil)
-	c.Assert(retrievedNode.Hostname, check.Equals, "testnode")
+	require.NoError(t, err)
+	assert.Equal(t, "testnode", retrievedNode.Hostname)
 }
 
-func (s *Suite) TestHardDeleteNode(c *check.C) {
+func TestHardDeleteNode(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user := db.CreateUserForTest("test")
 	node := db.CreateNodeForTest(user, "testnode3")
 
-	err := db.DeleteNode(node)
-	c.Assert(err, check.IsNil)
+	err = db.DeleteNode(node)
+	require.NoError(t, err)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode3")
-	c.Assert(err, check.NotNil)
+	require.Error(t, err)
 }
 
-func (s *Suite) TestListPeers(c *check.C) {
+func TestListPeersManyNodes(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user := db.CreateUserForTest("test")
 
-	_, err := db.GetNodeByID(0)
-	c.Assert(err, check.NotNil)
+	_, err = db.GetNodeByID(0)
+	require.Error(t, err)
 
 	nodes := db.CreateNodesForTest(user, 11, "testnode")
 
 	firstNode := nodes[0]
 	peersOfFirstNode, err := db.ListPeers(firstNode.ID)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
-	c.Assert(len(peersOfFirstNode), check.Equals, 10)
-	c.Assert(peersOfFirstNode[0].Hostname, check.Equals, "testnode-1")
-	c.Assert(peersOfFirstNode[5].Hostname, check.Equals, "testnode-6")
-	c.Assert(peersOfFirstNode[9].Hostname, check.Equals, "testnode-10")
+	assert.Len(t, peersOfFirstNode, 10)
+	assert.Equal(t, "testnode-1", peersOfFirstNode[0].Hostname)
+	assert.Equal(t, "testnode-6", peersOfFirstNode[5].Hostname)
+	assert.Equal(t, "testnode-10", peersOfFirstNode[9].Hostname)
 }
 
-func (s *Suite) TestExpireNode(c *check.C) {
+func TestExpireNode(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.NotNil)
+	require.Error(t, err)
 
 	nodeKey := key.NewNode()
 	machineKey := key.NewMachine()
@@ -107,30 +121,33 @@ func (s *Suite) TestExpireNode(c *check.C) {
 	db.DB.Save(node)
 
 	nodeFromDB, err := db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
-	c.Assert(nodeFromDB, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, nodeFromDB)
 
-	c.Assert(nodeFromDB.IsExpired(), check.Equals, false)
+	assert.False(t, nodeFromDB.IsExpired())
 
 	now := time.Now()
 	err = db.NodeSetExpiry(nodeFromDB.ID, now)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
-	c.Assert(nodeFromDB.IsExpired(), check.Equals, true)
+	assert.True(t, nodeFromDB.IsExpired())
 }
 
-func (s *Suite) TestSetTags(c *check.C) {
+func TestSetTags(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	user, err := db.CreateUser(types.User{Name: "test"})
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.NotNil)
+	require.Error(t, err)
 
 	nodeKey := key.NewNode()
 	machineKey := key.NewMachine()
@@ -146,27 +163,23 @@ func (s *Suite) TestSetTags(c *check.C) {
 	}
 
 	trx := db.DB.Save(node)
-	c.Assert(trx.Error, check.IsNil)
+	require.NoError(t, trx.Error)
 
 	// assign simple tags
 	sTags := []string{"tag:test", "tag:foo"}
 	err = db.SetTags(node.ID, sTags)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 	node, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
-	c.Assert(node.Tags, check.DeepEquals, sTags)
+	require.NoError(t, err)
+	assert.Equal(t, sTags, node.Tags)
 
 	// assign duplicate tags, expect no errors but no doubles in DB
 	eTags := []string{"tag:bar", "tag:test", "tag:unknown", "tag:test"}
 	err = db.SetTags(node.ID, eTags)
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 	node, err = db.getNode(types.UserID(user.ID), "testnode")
-	c.Assert(err, check.IsNil)
-	c.Assert(
-		node.Tags,
-		check.DeepEquals,
-		[]string{"tag:bar", "tag:test", "tag:unknown"},
-	)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"tag:bar", "tag:test", "tag:unknown"}, node.Tags)
 }
 
 func TestHeadscale_generateGivenName(t *testing.T) {

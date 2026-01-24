@@ -124,6 +124,13 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -566,15 +573,6 @@
             }
           }
         },
-        "parameters": [
-          {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "type": "string",
-            "format": "uint64"
-          }
-        ],
         "tags": [
           "HeadscaleService"
         ]
@@ -597,17 +595,11 @@
         },
         "parameters": [
           {
-            "name": "user",
+            "name": "id",
             "in": "query",
             "required": false,
             "type": "string",
             "format": "uint64"
-          },
-          {
-            "name": "key",
-            "in": "query",
-            "required": false,
-            "type": "string"
           }
         ],
         "tags": [
@@ -1027,6 +1019,10 @@
       "properties": {
         "prefix": {
           "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
@@ -1044,12 +1040,9 @@
     "v1ExpirePreAuthKeyRequest": {
       "type": "object",
       "properties": {
-        "user": {
+        "id": {
           "type": "string",
           "format": "uint64"
-        },
-        "key": {
-          "type": "string"
         }
       }
     },

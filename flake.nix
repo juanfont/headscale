@@ -23,11 +23,11 @@
         default = headscale;
       };
 
-      overlay = _: prev:
+      overlays.default = _: prev:
         let
-          pkgs = nixpkgs.legacyPackages.${prev.system};
+          pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-VOi4PGZ8I+2MiwtzxpKc/4smsL5KcH/pHVkjJfAFPJ0=";
+          vendorHash = "sha256-dWsDgI5K+8mFw4PA5gfFBPCSqBJp5RcZzm0ML1+HsWw=";
         in
         {
           headscale = buildGo {
@@ -62,16 +62,16 @@
 
           protoc-gen-grpc-gateway = buildGo rec {
             pname = "grpc-gateway";
-            version = "2.24.0";
+            version = "2.27.4";
 
             src = pkgs.fetchFromGitHub {
               owner = "grpc-ecosystem";
               repo = "grpc-gateway";
               rev = "v${version}";
-              sha256 = "sha256-lUEoqXJF1k4/il9bdDTinkUV5L869njZNYqObG/mHyA=";
+              sha256 = "sha256-4bhEQTVV04EyX/qJGNMIAQDcMWcDVr1tFkEjBHpc2CA=";
             };
 
-            vendorHash = "sha256-Ttt7bPKU+TMKRg5550BS6fsPwYp0QJqcZ7NLrhttSdw=";
+            vendorHash = "sha256-ohZW/uPdt08Y2EpIQ2yeyGSjV9O58+QbQQqYrs6O8/g=";
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
 
@@ -80,16 +80,16 @@
 
           protobuf-language-server = buildGo rec {
             pname = "protobuf-language-server";
-            version = "2546944";
+            version = "1cf777d";
 
             src = pkgs.fetchFromGitHub {
               owner = "lasorda";
               repo = "protobuf-language-server";
-              rev = "${version}";
-              sha256 = "sha256-Cbr3ktT86RnwUntOiDKRpNTClhdyrKLTQG2ZEd6fKDc=";
+              rev = "1cf777de4d35a6e493a689e3ca1a6183ce3206b6";
+              sha256 = "sha256-9MkBQPxr/TDr/sNz/Sk7eoZwZwzdVbE5u6RugXXk5iY=";
             };
 
-            vendorHash = "sha256-PfT90dhfzJZabzLTb1D69JCO+kOh2khrlpF5mCDeypk=";
+            vendorHash = "sha256-4nTpKBe7ekJsfQf+P6edT/9Vp2SBYbKz1ITawD3bhkI=";
 
             subPackages = [ "." ];
           };
@@ -129,7 +129,7 @@
       (system:
       let
         pkgs = import nixpkgs {
-          overlays = [ self.overlay ];
+          overlays = [ self.overlays.default ];
           inherit system;
         };
         buildDeps = with pkgs; [ git go_1_25 gnumake ];
@@ -182,9 +182,9 @@
           config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
         };
       in
-      rec {
+      {
         # `nix develop`
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           buildInputs =
             devDeps
             ++ [
@@ -219,14 +219,16 @@
         packages = with pkgs; {
           inherit headscale;
           inherit headscale-docker;
+          default = headscale;
         };
-        defaultPackage = pkgs.headscale;
 
         # `nix run`
         apps.headscale = flake-utils.lib.mkApp {
-          drv = packages.headscale;
+          drv = pkgs.headscale;
         };
-        apps.default = apps.headscale;
+        apps.default = flake-utils.lib.mkApp {
+          drv = pkgs.headscale;
+        };
 
         checks = {
           headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);

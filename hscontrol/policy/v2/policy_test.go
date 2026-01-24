@@ -729,3 +729,162 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 
 	require.False(t, canAccess, "user2 should NOT be able to access user1 after tag:web is removed (ReduceNodes should filter out)")
 }
+
+// TestAutogroupSelfWithAdminOverride reproduces issue #2990:
+// When autogroup:self is combined with an admin rule (group:admin -> *:*),
+// tagged nodes become invisible to admins because BuildPeerMap uses asymmetric
+// peer visibility in the autogroup:self path.
+//
+// The fix requires symmetric visibility: if admin can access tagged node,
+// BOTH admin and tagged node should see each other as peers.
+func TestAutogroupSelfWithAdminOverride(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	// Admin has a regular device
+	adminNode := &types.Node{
+		ID:       1,
+		Hostname: "admin-device",
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// user1 has a tagged server
+	user1TaggedNode := &types.Node{
+		ID:       2,
+		Hostname: "user1-server",
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		Tags:     []string{"tag:server"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{adminNode, user1TaggedNode}
+
+	// Policy from issue #2990:
+	// - group:admin has full access to everything (*:*)
+	// - autogroup:member -> autogroup:self (allows users to see their own devices)
+	//
+	// Bug: The tagged server becomes invisible to admin because:
+	// 1. Admin can access tagged server (via *:* rule)
+	// 2. Tagged server CANNOT access admin (no rule for that)
+	// 3. With asymmetric logic, tagged server is not added to admin's peer list
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:server": ["user1@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// Admin should see the tagged server as a peer (via group:admin -> *:* rule)
+	adminPeers := peerMap[adminNode.ID]
+	require.True(t, slices.ContainsFunc(adminPeers, func(n types.NodeView) bool {
+		return n.ID() == user1TaggedNode.ID
+	}), "admin should see tagged server as peer via *:* rule (issue #2990)")
+
+	// Tagged server should also see admin as a peer (symmetric visibility)
+	// Even though tagged server cannot ACCESS admin, it should still SEE admin
+	// because admin CAN access it. This is required for proper network operation.
+	taggedPeers := peerMap[user1TaggedNode.ID]
+	require.True(t, slices.ContainsFunc(taggedPeers, func(n types.NodeView) bool {
+		return n.ID() == adminNode.ID
+	}), "tagged server should see admin as peer (symmetric visibility)")
+}
+
+// TestAutogroupSelfSymmetricVisibility verifies that peer visibility is symmetric:
+// if node A can access node B, then both A and B should see each other as peers.
+// This is the same behavior as the global filter path.
+func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	// user1 has device A
+	deviceA := &types.Node{
+		ID:       1,
+		Hostname: "device-a",
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// user2 has device B (tagged)
+	deviceB := &types.Node{
+		ID:       2,
+		Hostname: "device-b",
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		Tags:     []string{"tag:web"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{deviceA, deviceB}
+
+	// One-way rule: user1 can access tag:web, but tag:web cannot access user1
+	policy := `{
+		"tagOwners": {
+			"tag:web": ["user2@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["tag:web:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// Device A (user1) should see device B (tag:web) as peer
+	aPeers := peerMap[deviceA.ID]
+	require.True(t, slices.ContainsFunc(aPeers, func(n types.NodeView) bool {
+		return n.ID() == deviceB.ID
+	}), "device A should see device B as peer (user1 -> tag:web rule)")
+
+	// Device B (tag:web) should ALSO see device A as peer (symmetric visibility)
+	// Even though B cannot ACCESS A, B should still SEE A as a peer
+	bPeers := peerMap[deviceB.ID]
+	require.True(t, slices.ContainsFunc(bPeers, func(n types.NodeView) bool {
+		return n.ID() == deviceA.ID
+	}), "device B should see device A as peer (symmetric visibility)")
+}

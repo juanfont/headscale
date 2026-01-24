@@ -8,6 +8,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/ory/dockertest/v3"
 	"tailscale.com/tailcfg"
 )
@@ -25,13 +26,15 @@ type ControlServer interface {
 	CreateUser(user string) (*v1.User, error)
 	CreateAuthKey(user uint64, reusable bool, ephemeral bool) (*v1.PreAuthKey, error)
 	CreateAuthKeyWithTags(user uint64, reusable bool, ephemeral bool, tags []string) (*v1.PreAuthKey, error)
-	DeleteAuthKey(user uint64, key string) error
+	CreateAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*v1.PreAuthKey, error)
+	DeleteAuthKey(id uint64) error
 	ListNodes(users ...string) ([]*v1.Node, error)
 	DeleteNode(nodeID uint64) error
 	NodesByUser() (map[string][]*v1.Node, error)
 	NodesByName() (map[string]*v1.Node, error)
 	ListUsers() ([]*v1.User, error)
 	MapUsers() (map[string]*v1.User, error)
+	DeleteUser(userID uint64) error
 	ApproveRoutes(uint64, []netip.Prefix) (*v1.Node, error)
 	SetNodeTags(nodeID uint64, tags []string) error
 	GetCert() []byte

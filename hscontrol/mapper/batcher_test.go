@@ -213,8 +213,7 @@ func setupBatcherWithTestData(
 
 	// Create database and populate it with test data
 	database, err := db.NewHeadscaleDatabase(
-		cfg.Database,
-		"",
+		cfg,
 		emptyCache(),
 	)
 	if err != nil {

@@ -137,6 +137,11 @@ jobs:
           - TestACLPolicyPropagationOverTime
           - TestACLTagPropagation
           - TestACLTagPropagationPortSpecific
+          - TestACLGroupWithUnknownUser
+          - TestACLGroupAfterUserDeletion
+          - TestACLGroupDeletionExactReproduction
+          - TestACLDynamicUnknownUserAddition
+          - TestACLDynamicUnknownUserRemoval
           - TestAPIAuthenticationBypass
           - TestAPIAuthenticationBypassCurl
           - TestGRPCAuthenticationBypass
@@ -237,8 +242,11 @@ jobs:
           - TestTagsAdminAPICannotSetNonExistentTag
           - TestTagsAdminAPICanSetUnownedTag
           - TestTagsAdminAPICannotRemoveAllTags
+          - TestTagsIssue2978ReproTagReplacement
           - TestTagsAdminAPICannotSetInvalidFormat
           - TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags
+          - TestTagsAuthKeyWithoutUserInheritsTags
+          - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:

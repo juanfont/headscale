@@ -57,10 +57,6 @@ func CreatePreAuthKey(
 		return nil, ErrPreAuthKeyNotTaggedOrOwned
 	}
 
-	// If uid != nil && len(aclTags) > 0:
-	// Both are allowed: UserID tracks "created by", tags define node ownership
-	// This is valid per the new model
-
 	var (
 		user   *types.User
 		userID *uint
@@ -158,22 +154,17 @@ func CreatePreAuthKey(
 	}, nil
 }
 
-func (hsdb *HSDatabase) ListPreAuthKeys(uid types.UserID) ([]types.PreAuthKey, error) {
+func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-		return ListPreAuthKeysByUser(rx, uid)
+		return ListPreAuthKeys(rx)
 	})
 }
 
-// ListPreAuthKeysByUser returns the list of PreAuthKeys for a user.
-func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
-	user, err := GetUserByID(tx, uid)
-	if err != nil {
-		return nil, err
-	}
+// ListPreAuthKeys returns all PreAuthKeys in the database.
+func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
+	var keys []types.PreAuthKey
 
-	keys := []types.PreAuthKey{}
-
-	err = tx.Preload("User").Where(&types.PreAuthKey{UserID: &user.ID}).Find(&keys).Error
+	err := tx.Preload("User").Find(&keys).Error
 	if err != nil {
 		return nil, err
 	}
@@ -298,34 +289,35 @@ func GetPreAuthKey(tx *gorm.DB, key string) (*types.PreAuthKey, error) {
 // DestroyPreAuthKey destroys a preauthkey. Returns error if the PreAuthKey
 // does not exist. This also clears the auth_key_id on any nodes that reference
 // this key.
-func DestroyPreAuthKey(tx *gorm.DB, pak types.PreAuthKey) error {
+func DestroyPreAuthKey(tx *gorm.DB, id uint64) error {
 	return tx.Transaction(func(db *gorm.DB) error {
 		// First, clear the foreign key reference on any nodes using this key
 		err := db.Model(&types.Node{}).
-			Where("auth_key_id = ?", pak.ID).
+			Where("auth_key_id = ?", id).
 			Update("auth_key_id", nil).Error
 		if err != nil {
 			return fmt.Errorf("failed to clear auth_key_id on nodes: %w", err)
 		}
 
 		// Then delete the pre-auth key
-		if result := db.Unscoped().Delete(pak); result.Error != nil {
-			return result.Error
+		err = tx.Unscoped().Delete(&types.PreAuthKey{}, id).Error
+		if err != nil {
+			return err
 		}
 
 		return nil
 	})
 }
 
-func (hsdb *HSDatabase) ExpirePreAuthKey(k *types.PreAuthKey) error {
+func (hsdb *HSDatabase) ExpirePreAuthKey(id uint64) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
-		return ExpirePreAuthKey(tx, k)
+		return ExpirePreAuthKey(tx, id)
 	})
 }
 
-func (hsdb *HSDatabase) DeletePreAuthKey(k *types.PreAuthKey) error {
+func (hsdb *HSDatabase) DeletePreAuthKey(id uint64) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
-		return DestroyPreAuthKey(tx, *k)
+		return DestroyPreAuthKey(tx, id)
 	})
 }
 
@@ -341,7 +333,7 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 }
 
 // MarkExpirePreAuthKey marks a PreAuthKey as expired.
-func ExpirePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
+func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
-	return tx.Model(&types.PreAuthKey{}).Where("id = ?", k.ID).Update("expiration", now).Error
+	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error
 }
