@@ -191,6 +191,7 @@ nav:
       - DNS: ref/dns.md
       - DERP: ref/derp.md
       - API: ref/api.md
+      - Tags: ref/tags.md
       - Debug: ref/debug.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md
