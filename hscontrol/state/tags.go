@@ -63,6 +63,6 @@ func logTagOperation(existingNode types.NodeView, newTags []string) {
 			Str("node.name", existingNode.Hostname()).
 			Uint("created.by.user", userID).
 			Strs("new.tags", newTags).
-			Msg("Converting user-owned node to tagged node (irreversible)")
+			Msg("Converting user-owned node to tagged node")
 	}
 }
