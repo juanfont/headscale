@@ -46,4 +46,5 @@ type ControlServer interface {
 	DebugBatcher() (*hscontrol.DebugBatcherInfo, error)
 	DebugNodeStore() (map[types.NodeID]types.Node, error)
 	DebugFilter() ([]tailcfg.FilterRule, error)
+	Reload() error
 }
