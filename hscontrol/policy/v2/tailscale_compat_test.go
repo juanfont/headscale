@@ -2305,18 +2305,11 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 	`),
 			// KEY INSIGHT: In Tailscale, multiple rules with the SAME source are MERGED into a
 			// single filter entry with all destination ports combined.
-			// NOTE: Headscale does NOT merge rules - each ACL rule becomes a separate filter entry.
-			// TODO: Implement rule merging to match Tailscale behavior.
-			// Tailscale expected:
-			// {
-			//   SrcIPs: ["100.80.238.75/32", "fd7a:115c:a1e0::7901:ee86/128"],
-			//   DstPorts: [all ports 22, 80, 443 combined],
-			//   IPProto: [6, 17, 1, 58],
-			// }
+			// Headscale now merges rules with identical SrcIPs and IPProto.
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// Headscale: First rule (port 22)
+					// Merged: Both ACL rules combined into single filter entry
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -2325,16 +2318,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Headscale: Second rule (ports 80, 443)
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
@@ -2410,12 +2393,11 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			// In Tailscale: 4 rules → 2 filter entries (merged per-source)
 			// - tag:client rules merged (ports 22, 80)
 			// - tag:web rules merged (ports 22, 443)
-			// NOTE: Headscale does NOT merge rules - produces 4 separate filter entries.
-			// TODO: Implement rule merging to match Tailscale behavior.
+			// Headscale now merges rules with identical SrcIPs and IPProto.
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// Headscale: Rule 1 (tag:client → port 22)
+					// Merged: tag:client rules (ports 22, 80)
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -2424,22 +2406,12 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Headscale: Rule 2 (tag:client → port 80)
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
-					// Headscale: Rule 3 (tag:web → port 22)
+					// Merged: tag:web rules (ports 22, 443)
 					{
 						SrcIPs: []string{
 							"100.94.92.91/32",
@@ -2448,16 +2420,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Headscale: Rule 4 (tag:web → port 443)
-					{
-						SrcIPs: []string{
-							"100.94.92.91/32",
-							"fd7a:115c:a1e0::ef01:5c81/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 						},
@@ -2633,14 +2595,13 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 		{"action": "accept", "src": ["tag:client"], "dst": ["tag:server:22"]},
 		{"action": "accept", "src": ["tag:client"], "dst": ["tag:server:80"]}
 	`),
-			// KEY FINDING: Same source, same dest node, different ports = MERGED in Tailscale!
-			// In Tailscale: 2 rules → 1 filter entry with all ports combined (4 Dsts: 2 ports × 2 IPs)
-			// NOTE: Headscale does NOT merge - produces 2 separate filter entries.
-			// TODO: Implement rule merging to match Tailscale behavior.
+			// KEY FINDING: Same source, same dest node, different ports = MERGED
+			// 2 rules → 1 filter entry with all ports combined (4 Dsts: 2 ports × 2 IPs)
+			// Headscale now merges rules with identical SrcIPs and IPProto.
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// Headscale: First rule (port 22)
+					// Merged: Both rules combined
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -2649,32 +2610,11 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Headscale: Second rule (port 80)
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
-					// TODO: Tailscale merges these into a single entry:
-					// {
-					//   SrcIPs: ["100.80.238.75/32", "fd7a:115c:a1e0::7901:ee86/128"],
-					//   DstPorts: [
-					//     {IP: "100.108.74.26/32", Ports: {22, 22}},
-					//     {IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: {22, 22}},
-					//     {IP: "100.108.74.26/32", Ports: {80, 80}},
-					//     {IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: {80, 80}},
-					//   ],
-					//   IPProto: [6, 17, 1, 58],
-					// }
 				},
 				"tagged-client": nil,
 				"tagged-db":     nil,
@@ -3751,7 +3691,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			name: "same_src_same_dest_different_ports_two_rules",
 			// Test 14.2: Same src, same dest, different ports (2 rules)
 			// In Tailscale: MERGED into single filter entry with combined Dsts
-			// NOTE: Headscale does NOT merge - produces 2 separate filter entries
+			// Headscale now merges rules with identical SrcIPs and IPProto.
 			policy: makePolicy(`
 		{"action": "accept", "src": ["tag:client"], "dst": ["tag:server:22"]},
 		{"action": "accept", "src": ["tag:client"], "dst": ["tag:server:80"]}
@@ -3759,7 +3699,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// Headscale: 2 separate rules (TODO: Tailscale merges into 1)
+					// Merged: Both rules combined
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -3768,15 +3708,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -4042,16 +3973,14 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			// Test 13.36: Self twice in separate rules (merged)
 			// * → autogroup:self:22
 			// * → autogroup:self:80
-			// Tailscale MERGES these into a single filter entry
-			// NOTE: Headscale does NOT merge - produces 2 separate filter entries
+			// Tailscale MERGES these into a single filter entry with 4 Dsts
 			policy: makePolicy(`
 		{"action": "accept", "src": ["*"], "dst": ["autogroup:self:22"]},
 		{"action": "accept", "src": ["*"], "dst": ["autogroup:self:80"]}
 	`),
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": {
-					// TODO: Tailscale merges into 1 filter entry with 4 Dsts
-					// Headscale produces 2 separate filter entries
+					// Merged: Both rules combined into 1 filter entry with 4 Dsts
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -4060,15 +3989,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -4172,8 +4092,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// TODO: Tailscale merges into 1 filter entry with Srcs deduplicated and 4 Dsts
-					// Headscale produces 2 separate filter entries
+					// Merged: 1 filter entry with Srcs deduplicated and 4 Dsts (duplicated)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -4182,15 +4101,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -4254,8 +4164,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// TODO: Tailscale MERGES into 1 filter entry with 4 Dsts
-					// Headscale produces 2 separate filter entries
+					// Merged: Both rules combined
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -4264,15 +4173,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -4347,8 +4247,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// TODO: Tailscale produces 1 filter entry with Srcs deduplicated and 6 Dsts
-					// Headscale produces 3 separate filter entries
+					// Merged: 1 filter entry with Srcs deduplicated and 6 Dsts (not deduplicated)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -4357,26 +4256,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -4753,8 +4634,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": nil,
 				"tagged-server": {
-					// TODO: Tailscale merges rules to same node with same Srcs
-					// Headscale produces 2 separate entries for tag:server:22 and webserver:443
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -4762,17 +4641,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
@@ -5247,8 +5117,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			name: "group_plus_user_same_person_same_dest_14_8",
 			// Test 14.8: Group + user (same person) → same dest (2 rules)
 			// Same person via group + user email = 1 filter entry, Srcs MERGED, Dsts NOT merged
-			// TODO: Tailscale merges these rules with 4 Dsts (2× duplicated)
-			// Headscale produces 2 separate filter entries
 			policy: makePolicy(`
 		{"action": "accept", "src": ["group:admins"], "dst": ["tag:server:22"]},
 		{"action": "accept", "src": ["kratail2tid@"], "dst": ["tag:server:22"]}
@@ -5259,8 +5127,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-db":     nil,
 				"tagged-web":    nil,
 				"tagged-server": {
-					// TODO: Tailscale merges these into single entry with 4 Dsts (duplicated)
-					// Headscale produces 2 separate filter entries
+					// Merged: 1 filter entry with 4 Dsts (duplicated)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -5269,15 +5136,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -5339,8 +5197,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 	`),
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1": {
-					// TODO: Tailscale merges these into single entry with 4 Dsts
-					// Headscale may produce 2 entries (need to verify)
+					// Merged: 1 filter entry with 4 Dsts
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -5349,15 +5206,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -6697,9 +6545,10 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// tagged-server gets THREE separate filter entries
+				// tagged-server gets TWO filter entries (Rules 1+3 merged, Rule 2 separate)
 				"tagged-server": {
-					// Rule 1: autogroup:member
+					// Rules 1+3: autogroup:member and group:admins (same SrcIPs) merged
+					// DstPorts combined from both rules (duplicates included)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -6707,27 +6556,17 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
-					// Rule 2: tag:client
+					// Rule 2: tag:client (different SrcIPs, not merged)
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
 							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Rule 3: group:admins
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
@@ -7035,8 +6874,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 		{
 			name: "same_src_same_dest_diff_ports_merged_14_2",
 			// Same source + dest node + different ports
-			// TODO(kradalby): Tailscale MERGES these into 1 filter entry with 4 Dsts
-			// Headscale creates 2 SEPARATE filter entries (one per rule)
+			// MERGED into 1 filter entry with 4 Dsts
 			policy: `{
 				"groups": {
 					"group:admins": ["kratail2tid@"],
@@ -7065,12 +6903,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// TODO(kradalby): Tailscale merges into 1 entry with 4 DstPorts:
-				// {IP: "100.108.74.26/32", Ports: 22}, {IP: "fd7a:...:4a87/128", Ports: 22},
-				// {IP: "100.108.74.26/32", Ports: 80}, {IP: "fd7a:...:4a87/128", Ports: 80}
-				// Headscale: 2 SEPARATE filter entries
 				"tagged-server": {
-					// Entry 1: port 22
+					// Merged: 1 entry with 4 DstPorts
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -7079,16 +6913,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Entry 2: port 80
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -7162,8 +6986,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 		{
 			name: "group_user_same_person_same_dest_14_8",
 			// Group + user (same person)
-			// TODO(kradalby): Tailscale MERGES these into 1 filter entry (Srcs deduplicated, Dsts NOT)
-			// Headscale creates 2 SEPARATE filter entries
+			// MERGED into 1 filter entry (Srcs deduplicated, Dsts NOT)
 			policy: `{
 				"groups": {
 					"group:admins": ["kratail2tid@"],
@@ -7192,12 +7015,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// TODO(kradalby): Tailscale merges into 1 entry with deduplicated Srcs but duplicated Dsts:
-				// Srcs: ["100.90.199.68/32", "fd7a:...:c747/128"]
-				// Dsts: [{IP: ".../32", Ports: 22}×2, {IP: ".../128", Ports: 22}×2]
-				// Headscale: 2 SEPARATE filter entries
 				"tagged-server": {
-					// Entry 1: group:admins (resolves to same IPs as user)
+					// Merged: 1 entry with deduplicated Srcs but duplicated Dsts
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -7206,16 +7025,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					// Entry 2: kratail2tid@ (same IPs)
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -8416,7 +8225,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.22: 3 refs to same user → same dest:port (3 rules)
-		// TODO: Tailscale merges into 1 entry, Headscale creates 3 separate entries (one per ACL rule)
+		// MERGED into 1 entry with 6 Dsts (not deduplicated)
 		{
 			name: "three_refs_same_user_same_dest_14_22",
 			policy: `{
@@ -8439,8 +8248,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// tagged-server: Headscale creates 3 separate entries (one per ACL rule)
 				"tagged-server": {
+					// Merged: 1 entry with 6 Dsts (not deduplicated)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -8449,26 +8258,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -8541,7 +8332,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.26: Same entity as both src and dst in 2 rules
-		// TODO: Tailscale merges into 1 entry with 4 Dsts (not deduplicated), Headscale creates 2 entries with 2 Dsts each (deduplicated)
+		// MERGED into 1 entry with 4 Dsts (not deduplicated)
 		{
 			name: "same_entity_src_and_dst_14_26",
 			policy: `{
@@ -8563,8 +8354,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// user1: Headscale creates 2 separate filter entries (unlike Tailscale which merges)
 				"user1": {
+					// Merged: 1 entry with 4 Dsts (not deduplicated)
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -8573,15 +8364,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -8591,7 +8373,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.27: User→user:22, group→user:80 (same Srcs, different ports)
-		// TODO: Tailscale merges into 1 entry with 4 Dsts, Headscale creates 2 separate entries
+		// MERGED into 1 entry with 4 Dsts
 		{
 			name: "user_to_user_22_group_to_user_80_14_27",
 			policy: `{
@@ -8613,8 +8395,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// user1: Headscale creates 2 separate filter entries (unlike Tailscale which merges)
 				"user1": {
+					// Merged: 1 entry with 4 Dsts
 					{
 						SrcIPs: []string{
 							"100.90.199.68/32",
@@ -8623,15 +8405,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -9013,7 +8786,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.47: Same src → 4 dests (4 rules)
-		// TODO: Tailscale merges per-node DstPorts, Headscale creates separate entries per ACL rule
 		{
 			name: "same_src_four_dests_14_47",
 			policy: `{
@@ -9035,7 +8807,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"user1":         nil,
 				"tagged-client": nil,
-				// tagged-server: 2 separate entries (ACL rule 1 for :22, ACL rule 4 for :443)
+				// tagged-server: merged entry for :22 and :443 (same SrcIPs)
 				"tagged-server": {
 					{
 						SrcIPs: []string{
@@ -9044,18 +8816,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						},
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.90.199.68/32",
-							"fd7a:115c:a1e0::2d01:c747/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							// webserver:443 resolves to tagged-server
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 443, Last: 443}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
@@ -9239,7 +9001,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.17: Wildcard → group and user (same person):22
-		// TODO: Tailscale merges into 1 entry with 4 Dsts (duplicated), Headscale creates 2 separate entries (deduplicated)
+		// Test 14.17: * → group:admins:22 and * → kratail2tid@:22
+		// MERGED into 1 entry with 4 Dsts (duplicated)
 		{
 			name: "wildcard_to_group_and_user_same_14_17",
 			policy: `{
@@ -9261,8 +9024,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// user1: Headscale creates 2 separate entries (unlike Tailscale which merges with duplicated Dsts)
 				"user1": {
+					// Merged: 1 entry with 4 Dsts (duplicated)
 					{
 						SrcIPs: []string{
 							"100.64.0.0/10",
@@ -9271,15 +9034,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -9289,7 +9043,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.18: Tag → member and group (same):22
-		// TODO: Tailscale merges into 1 entry with 4 Dsts (duplicated), Headscale creates 2 separate entries
+		// MERGED into 1 entry with 4 Dsts (duplicated)
 		{
 			name: "tag_to_member_and_group_same_14_18",
 			policy: `{
@@ -9311,8 +9065,8 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 				"tagged-client": nil,
 				"tagged-db":     nil,
 				"tagged-web":    nil,
-				// user1: receives 2 separate entries (one per ACL rule)
 				"user1": {
+					// Merged: 1 entry with 4 Dsts (duplicated)
 					{
 						SrcIPs: []string{
 							"100.80.238.75/32",
@@ -9321,15 +9075,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.90.199.68/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2d01:c747/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -9597,7 +9342,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 			},
 		},
 		// Test 14.37: Multiple wildcard src rules
-		// TODO: Tailscale merges into 1 entry, Headscale creates 3 separate entries (one per ACL rule)
+		// Rules with same SrcIPs going to the same node are MERGED
 		{
 			name: "multiple_wildcard_src_rules_14_37",
 			policy: `{
@@ -9629,7 +9374,7 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
 				},
-				// tagged-server: receives rule 1 (:22) and rule 3 (:80)
+				// tagged-server: receives rule 1 (:22) and rule 3 (:80) - MERGED
 				"tagged-server": {
 					{
 						SrcIPs: []string{
@@ -9639,22 +9384,13 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
 						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 					},
 				},
-				// tagged-db: receives rule 2 (:5432) and rule 3 (:80)
+				// tagged-db: receives rule 2 (:5432) and rule 3 (:80) - MERGED
 				"tagged-db": {
 					{
 						SrcIPs: []string{
@@ -9664,15 +9400,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.74.60.128/32", Ports: tailcfg.PortRange{First: 5432, Last: 5432}},
 							{IP: "fd7a:115c:a1e0::2f01:3c9c/128", Ports: tailcfg.PortRange{First: 5432, Last: 5432}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 							{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 80, Last: 80}},
 						},
@@ -9750,15 +9477,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
 							{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 0, Last: 65535}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -9955,15 +9673,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.108.74.26/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::b901:4a87/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
@@ -9980,15 +9689,6 @@ func TestTailscaleCompatComplexScenarios(t *testing.T) {
 						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.74.60.128/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2f01:3c9c/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-					{
-						SrcIPs: []string{
-							"100.80.238.75/32",
-							"fd7a:115c:a1e0::7901:ee86/128",
-						},
-						DstPorts: []tailcfg.NetPortRange{
 							{IP: "100.74.60.128/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 							{IP: "fd7a:115c:a1e0::2f01:3c9c/128", Ports: tailcfg.PortRange{First: 22, Last: 22}},
 						},
