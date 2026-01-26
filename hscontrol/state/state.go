@@ -1460,14 +1460,93 @@ func (s *State) HandleNodeFromAuthPath(
 		finalNode = updatedNodeView
 	} else {
 		// Node does not exist for this user with this machine key
-		// Check if node exists with this machine key for a different user (for netinfo preservation)
+		// Check if node exists with this machine key for a different user/owner
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(regEntry.Node.MachineKey)
 
-		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != user.ID {
-			// Node exists but belongs to a different user
+		// If an existing TAGGED node is found (regardless of UserID), update it to be owned by
+		// the new user. This handles the case where a node was registered with a tags-only
+		// PreAuthKey and is now being re-registered to a user.
+		if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.IsTagged() {
+			log.Info().
+				Caller().
+				Str("existing.node.name", existingNodeAnyUser.Hostname()).
+				Uint64("existing.node.id", existingNodeAnyUser.ID().Uint64()).
+				Str("machine.key", regEntry.Node.MachineKey.ShortString()).
+				Strs("old.tags", existingNodeAnyUser.Tags().AsSlice()).
+				Str("new.user", user.Name).
+				Str("method", registrationMethod).
+				Msg("Converting tagged node to user-owned node")
+
+			// Process RequestTags during conversion
+			var requestTags []string
+			if regEntry.Node.Hostinfo != nil {
+				requestTags = regEntry.Node.Hostinfo.RequestTags
+			}
+
+			oldTags := existingNodeAnyUser.Tags().AsSlice()
+
+			var rejectedTags []string
+
+			// Update existing node - convert from tagged to user-owned
+			updatedNodeView, ok := s.nodeStore.UpdateNode(existingNodeAnyUser.ID(), func(node *types.Node) {
+				node.NodeKey = regEntry.Node.NodeKey
+				node.DiscoKey = regEntry.Node.DiscoKey
+				node.Hostname = hostname
+				node.Hostinfo = validHostinfo
+				node.Hostinfo.NetInfo = preserveNetInfo(existingNodeAnyUser, existingNodeAnyUser.ID(), validHostinfo)
+				node.Endpoints = regEntry.Node.Endpoints
+				node.RegisterMethod = registrationMethod
+				node.IsOnline = ptr.To(false)
+				node.LastSeen = ptr.To(time.Now())
+
+				// Set expiry for user-owned node
+				if expiry != nil {
+					node.Expiry = expiry
+				} else {
+					node.Expiry = regEntry.Node.Expiry
+				}
+
+				rejectedTags = s.processReauthTags(node, requestTags, user, oldTags)
+			})
+
+			if !ok {
+				return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, existingNodeAnyUser.ID())
+			}
+
+			if len(rejectedTags) > 0 {
+				return types.NodeView{}, change.Change{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
+			}
+
+			_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
+				node := updatedNodeView.AsStruct()
+
+				err := tx.Omit("AuthKeyID", "AuthKey").Updates(node).Error
+				if err != nil {
+					return nil, fmt.Errorf("failed to save node: %w", err)
+				}
+
+				return node, nil
+			})
+			if err != nil {
+				return types.NodeView{}, change.Change{}, err
+			}
+
+			log.Trace().
+				Caller().
+				Str("node.name", updatedNodeView.Hostname()).
+				Uint64("node.id", updatedNodeView.ID().Uint64()).
+				Str("machine.key", regEntry.Node.MachineKey.ShortString()).
+				Str("node.key", updatedNodeView.NodeKey().ShortString()).
+				Str("user.name", user.Name).
+				Msg("Tagged node converted to user-owned")
+
+			finalNode = updatedNodeView
+		} else if existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != user.ID {
+			// Node exists but belongs to a different user (user-owned by someone else)
 			// Create a NEW node for the new user (do not transfer)
 			// This allows the same machine to have separate node identities per user
 			oldUser := existingNodeAnyUser.User()
+
 			log.Info().
 				Caller().
 				Str("existing.node.name", existingNodeAnyUser.Hostname()).
@@ -1477,33 +1556,60 @@ func (s *State) HandleNodeFromAuthPath(
 				Str("new.user", user.Name).
 				Str("method", registrationMethod).
 				Msg("Creating new node for different user (same machine key exists for another user)")
-		}
 
-		// Create a completely new node
-		log.Debug().
-			Caller().
-			Str("registration_id", registrationID.String()).
-			Str("user.name", user.Name).
-			Str("registrationMethod", registrationMethod).
-			Str("expiresAt", fmt.Sprintf("%v", expiry)).
-			Msg("Registering new node from auth callback")
+			// Create a completely new node
+			log.Debug().
+				Caller().
+				Str("registration_id", registrationID.String()).
+				Str("user.name", user.Name).
+				Str("registrationMethod", registrationMethod).
+				Str("expiresAt", fmt.Sprintf("%v", expiry)).
+				Msg("Registering new node from auth callback")
 
-		// Create and save new node
-		var err error
-		finalNode, err = s.createAndSaveNewNode(newNodeParams{
-			User:                   *user,
-			MachineKey:             regEntry.Node.MachineKey,
-			NodeKey:                regEntry.Node.NodeKey,
-			DiscoKey:               regEntry.Node.DiscoKey,
-			Hostname:               hostname,
-			Hostinfo:               validHostinfo,
-			Endpoints:              regEntry.Node.Endpoints,
-			Expiry:                 cmp.Or(expiry, regEntry.Node.Expiry),
-			RegisterMethod:         registrationMethod,
-			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
-		})
-		if err != nil {
-			return types.NodeView{}, change.Change{}, err
+			var err error
+
+			finalNode, err = s.createAndSaveNewNode(newNodeParams{
+				User:                   *user,
+				MachineKey:             regEntry.Node.MachineKey,
+				NodeKey:                regEntry.Node.NodeKey,
+				DiscoKey:               regEntry.Node.DiscoKey,
+				Hostname:               hostname,
+				Hostinfo:               validHostinfo,
+				Endpoints:              regEntry.Node.Endpoints,
+				Expiry:                 cmp.Or(expiry, regEntry.Node.Expiry),
+				RegisterMethod:         registrationMethod,
+				ExistingNodeForNetinfo: existingNodeAnyUser,
+			})
+			if err != nil {
+				return types.NodeView{}, change.Change{}, err
+			}
+		} else {
+			// No existing node found - create a completely new node
+			log.Debug().
+				Caller().
+				Str("registration_id", registrationID.String()).
+				Str("user.name", user.Name).
+				Str("registrationMethod", registrationMethod).
+				Str("expiresAt", fmt.Sprintf("%v", expiry)).
+				Msg("Registering new node from auth callback")
+
+			var err error
+
+			finalNode, err = s.createAndSaveNewNode(newNodeParams{
+				User:                   *user,
+				MachineKey:             regEntry.Node.MachineKey,
+				NodeKey:                regEntry.Node.NodeKey,
+				DiscoKey:               regEntry.Node.DiscoKey,
+				Hostname:               hostname,
+				Hostinfo:               validHostinfo,
+				Endpoints:              regEntry.Node.Endpoints,
+				Expiry:                 cmp.Or(expiry, regEntry.Node.Expiry),
+				RegisterMethod:         registrationMethod,
+				ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
+			})
+			if err != nil {
+				return types.NodeView{}, change.Change{}, err
+			}
 		}
 	}
 

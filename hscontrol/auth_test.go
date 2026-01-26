@@ -3832,3 +3832,91 @@ func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
 
 	t.Log("SUCCESS: PreAuthKey remained deleted after node update")
 }
+
+// TestTaggedNodeWithoutUserToDifferentUser tests that a node registered with a
+// tags-only PreAuthKey (no user) can be re-registered to a different user
+// without panicking. This reproduces the issue reported in #3038.
+func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Step 1: Create a tags-only PreAuthKey (no user, only tags)
+	// This is valid for tagged nodes where ownership is defined by tags, not users
+	tags := []string{"tag:server", "tag:prod"}
+	pak, err := app.state.CreatePreAuthKey(nil, true, false, nil, tags)
+	require.NoError(t, err, "Failed to create tags-only pre-auth key")
+	require.Nil(t, pak.User, "Tags-only PAK should have nil User")
+
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+
+	// Step 2: Register node with tags-only PreAuthKey
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey1.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-orphan-node",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err, "Initial registration should succeed")
+	require.True(t, resp.MachineAuthorized, "Node should be authorized")
+
+	// Verify initial state: node is tagged with no UserID
+	node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+	require.True(t, found, "Node should be found")
+	require.True(t, node.IsTagged(), "Node should be tagged")
+	require.ElementsMatch(t, tags, node.Tags().AsSlice(), "Node should have tags from PAK")
+	require.False(t, node.UserID().Valid(), "Node should NOT have a UserID (tags-only PAK)")
+	require.False(t, node.User().Valid(), "Node should NOT have a User (tags-only PAK)")
+
+	t.Logf("Initial registration complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID valid: %t",
+		node.ID().Uint64(), node.Tags().AsSlice(), node.IsTagged(), node.UserID().Valid())
+
+	// Step 3: Create a new user (alice) to re-register the node to
+	alice := app.state.CreateUserForTest("alice")
+	require.NotNil(t, alice, "Alice user should be created")
+
+	// Step 4: Re-register the node to alice via HandleNodeFromAuthPath
+	// This is what happens when running: headscale nodes register --user alice --key ...
+	nodeKey2 := key.NewNode()
+	registrationID := types.MustRegistrationID()
+	regEntry := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(), // Same machine key as the tagged node
+		NodeKey:    nodeKey2.Public(),
+		Hostname:   "tagged-orphan-node",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "tagged-orphan-node",
+			RequestTags: []string{}, // Empty - transition to user-owned
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID, regEntry)
+
+	// This should NOT panic - before the fix, this would panic with:
+	// panic: runtime error: invalid memory address or nil pointer dereference
+	// at UserView.Name() because the existing node has no User
+	nodeAfterReauth, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID,
+		types.UserID(alice.ID),
+		nil,
+		"cli",
+	)
+	require.NoError(t, err, "Re-registration to alice should succeed without panic")
+
+	// Verify the existing tagged node was converted to be owned by alice (same node ID)
+	require.True(t, nodeAfterReauth.Valid(), "Node should be valid")
+	require.True(t, nodeAfterReauth.UserID().Valid(), "Node should have a UserID")
+	require.Equal(t, alice.ID, nodeAfterReauth.UserID().Get(), "Node should be owned by alice")
+	require.Equal(t, node.ID(), nodeAfterReauth.ID(), "Should be the same node (converted, not new)")
+	require.False(t, nodeAfterReauth.IsTagged(), "Node should no longer be tagged")
+	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
+
+	t.Logf("Re-registration complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID: %d",
+		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
+		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
+}
