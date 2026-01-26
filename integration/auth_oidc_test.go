@@ -4,6 +4,7 @@ import (
 	"maps"
 	"net/netip"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"testing"
@@ -1914,4 +1915,119 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		"BUG #2896: routes should remain SERVING after OIDC logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
+}
+
+// TestOIDCUsernameClaimOrder validates configurable OIDC username claim mapping.
+// Tests that when preferred_username is absent (e.g., Google OAuth),
+// the system correctly derives usernames from configured claim order (email, name, sub).
+func TestOIDCUsernameClaimOrder(t *testing.T) {
+	IntegrationSkip(t)
+
+	type testCase struct {
+		name               string
+		usernameClaimOrder string // Empty uses default, otherwise specify: "email_localpart,sub"
+		oidcUsers          []mockoidc.MockUser
+		expectedUsernames  []string // Expected usernames after OIDC registration
+	}
+
+	tests := []testCase{
+		{
+			name:               "fallback-to-email-localpart-without-preferred-username",
+			usernameClaimOrder: "", // Use default: preferred_username, email_localpart, email, name, sub
+			oidcUsers: []mockoidc.MockUser{
+				oidcMockUserNoPreferredUsername("google-user1", "alice@example.com", true),
+				oidcMockUserNoPreferredUsername("google-user2", "bob@example.com", true),
+			},
+			expectedUsernames: []string{"alice", "bob"}, // Extracted from email local-part
+		},
+		{
+			name:               "custom-order-prioritize-email-localpart",
+			usernameClaimOrder: "email_localpart,sub",
+			oidcUsers: []mockoidc.MockUser{
+				oidcMockUserNoPreferredUsername("google-user3", "charlie@domain.io", true),
+			},
+			expectedUsernames: []string{"charlie"},
+		},
+		{
+			name:               "fallback-to-subject-when-email-empty",
+			usernameClaimOrder: "email_localpart,sub",
+			oidcUsers: []mockoidc.MockUser{
+				{
+					Subject:       "diana-unique-id-12345",
+					Email:         "", // Email is intentionally empty
+					EmailVerified: true,
+				},
+			},
+			expectedUsernames: []string{"diana-unique-id-12345"}, // Sub as fallback
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := ScenarioSpec{
+				NodesPerUser: 1,
+			}
+
+			// Create one user per expected username for Headscale CLI
+			spec.Users = tt.expectedUsernames
+
+			// Use provided OIDC users
+			spec.OIDCUsers = tt.oidcUsers
+
+			scenario, err := NewScenario(spec)
+			require.NoError(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			// Build OIDC configuration map
+			oidcMap := map[string]string{
+				"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+				"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+				"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+				"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+			}
+
+			// Add custom username claim order if specified
+			if tt.usernameClaimOrder != "" {
+				oidcMap["HEADSCALE_OIDC_USERNAME_CLAIM_ORDER"] = tt.usernameClaimOrder
+			}
+
+			err = scenario.CreateHeadscaleEnvWithLoginURL(
+				nil,
+				hsic.WithTestName("oidcusernameorder"),
+				hsic.WithConfigEnv(oidcMap),
+				hsic.WithTLS(),
+				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+			)
+			requireNoErrHeadscaleEnv(t, err)
+
+			// Wait for nodes to authenticate and trigger user creation via OIDC
+			err = scenario.WaitForTailscaleSync()
+			requireNoErrSync(t, err)
+
+			headscale, err := scenario.Headscale()
+			require.NoError(t, err)
+
+			// Verify users were created with expected usernames derived from claims
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				users, err := headscale.ListUsers()
+				assert.NoError(c, err)
+
+				// Filter to only OIDC users (Provider = "oidc")
+				var oidcUsernames []string
+				for _, u := range users {
+					if u.GetProvider() == "oidc" {
+						oidcUsernames = append(oidcUsernames, u.GetName())
+					}
+				}
+
+				// Sort for consistent comparison
+				slices.Sort(oidcUsernames)
+				expectedSorted := slices.Clone(tt.expectedUsernames)
+				slices.Sort(expectedSorted)
+
+				assert.Equal(c, expectedSorted, oidcUsernames,
+					"OIDC users should be created with usernames derived from configured claims")
+			}, 10*time.Second, 500*time.Millisecond, "OIDC users should be created with derived usernames")
+		})
+	}
 }
