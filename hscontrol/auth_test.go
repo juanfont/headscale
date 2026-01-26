@@ -3725,3 +3725,110 @@ func TestAuthKeyTaggedToUserOwnedViaReauth(t *testing.T) {
 		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
 		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())
 }
+
+// TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate tests that when a PreAuthKey is deleted,
+// subsequent node updates (like those triggered by MapRequests) do not recreate the key.
+//
+// This reproduces the bug where:
+//  1. Create a tagged preauthkey and register a node
+//  2. Delete the preauthkey (confirmed gone from pre_auth_keys DB table)
+//  3. Node sends MapRequest (e.g., after tailscaled restart)
+//  4. BUG: The preauthkey reappears because GORM's Updates() upserts the stale AuthKey
+//     data that still exists in the NodeStore's in-memory cache.
+//
+// The fix is to use Omit("AuthKey") on all node Updates() calls to prevent GORM
+// from touching the AuthKey association.
+func TestDeletedPreAuthKeyNotRecreatedOnNodeUpdate(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create user and tagged pre-auth key
+	user := app.state.CreateUserForTest("test-user")
+	pakNew, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:test"})
+	require.NoError(t, err)
+
+	pakID := pakNew.ID
+	t.Logf("Created PreAuthKey ID: %d", pakID)
+
+	// Register a node with the pre-auth key
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	registerReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pakNew.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "test-node",
+		},
+	}
+
+	resp, err := app.handleRegister(context.Background(), registerReq, machineKey.Public())
+	require.NoError(t, err, "registration should succeed")
+	require.True(t, resp.MachineAuthorized, "node should be authorized")
+
+	// Verify node exists and has AuthKey reference
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found, "node should exist")
+	require.True(t, node.AuthKeyID().Valid(), "node should have AuthKeyID set")
+	require.Equal(t, pakID, node.AuthKeyID().Get(), "node should reference the correct PreAuthKey")
+	t.Logf("Node ID: %d, AuthKeyID: %d", node.ID().Uint64(), node.AuthKeyID().Get())
+
+	// Verify the PreAuthKey exists in the database
+	var pakCount int64
+
+	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	require.NoError(t, err)
+	require.Equal(t, int64(1), pakCount, "PreAuthKey should exist in database")
+
+	// Delete the PreAuthKey
+	t.Log("Deleting PreAuthKey...")
+
+	err = app.state.DeletePreAuthKey(pakID)
+	require.NoError(t, err, "deleting PreAuthKey should succeed")
+
+	// Verify the PreAuthKey is gone from the database
+	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	require.NoError(t, err)
+	require.Equal(t, int64(0), pakCount, "PreAuthKey should be deleted from database")
+	t.Log("PreAuthKey deleted from database")
+
+	// Verify the node's auth_key_id is now NULL in the database
+	var dbNode types.Node
+
+	err = app.state.DB().DB.First(&dbNode, node.ID().Uint64()).Error
+	require.NoError(t, err)
+	require.Nil(t, dbNode.AuthKeyID, "node's AuthKeyID should be NULL after PreAuthKey deletion")
+	t.Log("Node's AuthKeyID is NULL in database")
+
+	// The NodeStore may still have stale AuthKey data in memory.
+	// Now simulate what happens when the node sends a MapRequest after a tailscaled restart.
+	// This triggers persistNodeToDB which calls GORM's Updates().
+
+	// Simulate a MapRequest by updating the node through the state layer
+	// This mimics what poll.go does when processing MapRequests
+	mapReq := tailcfg.MapRequest{
+		NodeKey:  nodeKey.Public(),
+		DiscoKey: node.DiscoKey(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:  "test-node",
+			GoVersion: "go1.21", // Some change to trigger an update
+		},
+	}
+
+	// Process the MapRequest-like update
+	// This calls UpdateNodeFromMapRequest which eventually calls persistNodeToDB
+	_, err = app.state.UpdateNodeFromMapRequest(node.ID(), mapReq)
+	require.NoError(t, err, "UpdateNodeFromMapRequest should succeed")
+	t.Log("Simulated MapRequest update completed")
+
+	// THE CRITICAL CHECK: Verify the PreAuthKey was NOT recreated
+	err = app.state.DB().DB.Model(&types.PreAuthKey{}).Where("id = ?", pakID).Count(&pakCount).Error
+	require.NoError(t, err)
+	require.Equal(t, int64(0), pakCount,
+		"BUG: PreAuthKey was recreated! The deleted PreAuthKey should NOT reappear after node update")
+
+	t.Log("SUCCESS: PreAuthKey remained deleted after node update")
+}
