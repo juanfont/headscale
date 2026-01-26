@@ -556,6 +556,38 @@
         ]
       }
     },
+    "/api/v1/policy/test": {
+      "post": {
+        "operationId": "HeadscaleService_TestACL",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1TestACLResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1TestACLRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/preauthkey": {
       "get": {
         "operationId": "HeadscaleService_ListPreAuthKeys",
@@ -861,6 +893,81 @@
             "type": "object",
             "$ref": "#/definitions/protobufAny"
           }
+        }
+      }
+    },
+    "v1ACLTest": {
+      "type": "object",
+      "properties": {
+        "src": {
+          "type": "string",
+          "description": "Source alias (user, group, tag, host, or IP) to test from."
+        },
+        "proto": {
+          "type": "string",
+          "description": "Protocol to test (tcp, udp, icmp). Defaults to TCP/UDP if empty."
+        },
+        "accept": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations (in \"host:port\" format) that should be allowed."
+        },
+        "deny": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations (in \"host:port\" format) that should be denied."
+        }
+      }
+    },
+    "v1ACLTestResult": {
+      "type": "object",
+      "properties": {
+        "src": {
+          "type": "string",
+          "description": "Source alias that was tested."
+        },
+        "passed": {
+          "type": "boolean",
+          "description": "Whether the test passed (all assertions correct)."
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Errors encountered during test execution."
+        },
+        "acceptOk": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations that were correctly allowed."
+        },
+        "acceptFail": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations that should have been allowed but were denied."
+        },
+        "denyOk": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations that were correctly denied."
+        },
+        "denyFail": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Destinations that should have been denied but were allowed."
         }
       }
     },
@@ -1309,6 +1416,40 @@
       "properties": {
         "node": {
           "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1TestACLRequest": {
+      "type": "object",
+      "properties": {
+        "tests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ACLTest"
+          },
+          "description": "Tests to run."
+        },
+        "policy": {
+          "type": "string",
+          "description": "Optional: policy content to test against a proposed policy.\nIf empty, tests run against the current active policy."
+        }
+      }
+    },
+    "v1TestACLResponse": {
+      "type": "object",
+      "properties": {
+        "allPassed": {
+          "type": "boolean",
+          "description": "Whether all tests passed."
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ACLTestResult"
+          },
+          "description": "Individual test results."
         }
       }
     },
