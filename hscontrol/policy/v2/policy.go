@@ -315,9 +315,14 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
 		filter, err := pm.compileFilterRulesForNodeLocked(node)
-		if err != nil || len(filter) == 0 {
+		if err != nil {
 			continue
 		}
+		// Include all nodes in nodeMatchers, even those with empty filters.
+		// Empty filters result in empty matchers where CanAccess() returns false,
+		// but the node still needs to be in the map so hasFilterX is true.
+		// This ensures symmetric visibility works correctly: if node A can access
+		// node B, both should see each other regardless of B's filter rules.
 		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(filter)
 	}
 
