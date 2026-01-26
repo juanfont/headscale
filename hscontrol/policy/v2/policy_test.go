@@ -888,3 +888,343 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 		return n.ID() == deviceA.ID
 	}), "device B should see device A as peer (symmetric visibility)")
 }
+
+// TestAutogroupSelfDoesNotBreakOtherUsersAccess reproduces the Discord scenario
+// where enabling autogroup:self for superadmins should NOT break access for
+// other users who don't use autogroup:self.
+//
+// Scenario:
+// - Rule 1: [superadmin, admin, direction] -> [tag:common:*]
+// - Rule 2: [superadmin, admin] -> [tag:tech:*]
+// - Rule 3: [superadmin] -> [tag:privileged:*, autogroup:self:*]
+//
+// Expected behavior:
+// - Superadmin sees: tag:common, tag:tech, tag:privileged, and own devices
+// - Admin sees: tag:common, tag:tech
+// - Direction sees: tag:common
+// - All tagged nodes should be visible to users who can access them.
+func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "superadmin", Email: "superadmin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "direction", Email: "direction@example.com"},
+		{Model: gorm.Model{ID: 4}, Name: "tagowner", Email: "tagowner@example.com"},
+	}
+
+	// Create nodes:
+	// - superadmin's device
+	// - admin's device
+	// - direction's device
+	// - tagged server (tag:common)
+	// - tagged server (tag:tech)
+	// - tagged server (tag:privileged)
+
+	superadminDevice := &types.Node{
+		ID:       1,
+		Hostname: "superadmin-laptop",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	adminDevice := &types.Node{
+		ID:       2,
+		Hostname: "admin-laptop",
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	directionDevice := &types.Node{
+		ID:       3,
+		Hostname: "direction-laptop",
+		User:     ptr.To(users[2]),
+		UserID:   ptr.To(users[2].ID),
+		IPv4:     ap("100.64.0.3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	commonServer := &types.Node{
+		ID:       4,
+		Hostname: "common-server",
+		User:     ptr.To(users[3]),
+		UserID:   ptr.To(users[3].ID),
+		IPv4:     ap("100.64.0.4"),
+		Tags:     []string{"tag:common"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	techServer := &types.Node{
+		ID:       5,
+		Hostname: "tech-server",
+		User:     ptr.To(users[3]),
+		UserID:   ptr.To(users[3].ID),
+		IPv4:     ap("100.64.0.5"),
+		Tags:     []string{"tag:tech"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	privilegedServer := &types.Node{
+		ID:       6,
+		Hostname: "privileged-server",
+		User:     ptr.To(users[3]),
+		UserID:   ptr.To(users[3].ID),
+		IPv4:     ap("100.64.0.6"),
+		Tags:     []string{"tag:privileged"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{
+		superadminDevice,
+		adminDevice,
+		directionDevice,
+		commonServer,
+		techServer,
+		privilegedServer,
+	}
+
+	policy := `{
+		"groups": {
+			"group:superadmin": ["superadmin@example.com"],
+			"group:admin": ["admin@example.com"],
+			"group:direction": ["direction@example.com"]
+		},
+		"tagOwners": {
+			"tag:common": ["tagowner@example.com"],
+			"tag:tech": ["tagowner@example.com"],
+			"tag:privileged": ["tagowner@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:superadmin", "group:admin", "group:direction"],
+				"dst": ["tag:common:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["group:superadmin", "group:admin"],
+				"dst": ["tag:tech:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["group:superadmin"],
+				"dst": ["tag:privileged:*", "autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// Helper to check if node A sees node B
+	canSee := func(a, b types.NodeID) bool {
+		peers := peerMap[a]
+
+		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
+			return n.ID() == b
+		})
+	}
+
+	// Superadmin should see all tagged servers
+	require.True(t, canSee(superadminDevice.ID, commonServer.ID),
+		"superadmin should see tag:common")
+	require.True(t, canSee(superadminDevice.ID, techServer.ID),
+		"superadmin should see tag:tech")
+	require.True(t, canSee(superadminDevice.ID, privilegedServer.ID),
+		"superadmin should see tag:privileged")
+
+	// Admin should see tag:common and tag:tech (but NOT tag:privileged)
+	require.True(t, canSee(adminDevice.ID, commonServer.ID),
+		"admin should see tag:common")
+	require.True(t, canSee(adminDevice.ID, techServer.ID),
+		"admin should see tag:tech")
+	require.False(t, canSee(adminDevice.ID, privilegedServer.ID),
+		"admin should NOT see tag:privileged")
+
+	// Direction should see tag:common only
+	require.True(t, canSee(directionDevice.ID, commonServer.ID),
+		"direction should see tag:common")
+	require.False(t, canSee(directionDevice.ID, techServer.ID),
+		"direction should NOT see tag:tech")
+	require.False(t, canSee(directionDevice.ID, privilegedServer.ID),
+		"direction should NOT see tag:privileged")
+
+	// Tagged servers should see their authorized users (symmetric visibility)
+	require.True(t, canSee(commonServer.ID, superadminDevice.ID),
+		"tag:common should see superadmin (symmetric)")
+	require.True(t, canSee(commonServer.ID, adminDevice.ID),
+		"tag:common should see admin (symmetric)")
+	require.True(t, canSee(commonServer.ID, directionDevice.ID),
+		"tag:common should see direction (symmetric)")
+
+	require.True(t, canSee(techServer.ID, superadminDevice.ID),
+		"tag:tech should see superadmin (symmetric)")
+	require.True(t, canSee(techServer.ID, adminDevice.ID),
+		"tag:tech should see admin (symmetric)")
+
+	require.True(t, canSee(privilegedServer.ID, superadminDevice.ID),
+		"tag:privileged should see superadmin (symmetric)")
+}
+
+// TestEmptyFilterNodesStillVisible verifies that nodes with empty filter rules
+// (e.g., tagged servers that are only destinations, never sources) are still
+// visible to nodes that can access them.
+func TestEmptyFilterNodesStillVisible(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@example.com"},
+	}
+
+	adminDevice := &types.Node{
+		ID:       1,
+		Hostname: "admin-laptop",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// Tagged server - only a destination, never a source in any rule
+	// This means its compiled filter rules will be empty
+	taggedServer := &types.Node{
+		ID:       2,
+		Hostname: "server",
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		Tags:     []string{"tag:server"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{adminDevice, taggedServer}
+
+	// Policy where tagged server is ONLY a destination
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:server": ["tagowner@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["tag:server:*", "autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// Admin should see the tagged server
+	adminPeers := peerMap[adminDevice.ID]
+	require.True(t, slices.ContainsFunc(adminPeers, func(n types.NodeView) bool {
+		return n.ID() == taggedServer.ID
+	}), "admin should see tagged server")
+
+	// Tagged server should see admin (symmetric visibility)
+	// Even though the server has no outbound rules (empty filter)
+	serverPeers := peerMap[taggedServer.ID]
+	require.True(t, slices.ContainsFunc(serverPeers, func(n types.NodeView) bool {
+		return n.ID() == adminDevice.ID
+	}), "tagged server should see admin (symmetric visibility)")
+}
+
+// TestAutogroupSelfCombinedWithTags verifies that autogroup:self combined with
+// specific tags in the same rule provides "combined access" - users get both
+// tagged nodes AND their own devices.
+func TestAutogroupSelfCombinedWithTags(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "tagowner", Email: "tagowner@example.com"},
+	}
+
+	// Admin has two devices
+	adminLaptop := &types.Node{
+		ID:       1,
+		Hostname: "admin-laptop",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	adminPhone := &types.Node{
+		ID:       2,
+		Hostname: "admin-phone",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// Tagged web server
+	webServer := &types.Node{
+		ID:       3,
+		Hostname: "web-server",
+		User:     ptr.To(users[1]),
+		UserID:   ptr.To(users[1].ID),
+		IPv4:     ap("100.64.0.3"),
+		Tags:     []string{"tag:web"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{adminLaptop, adminPhone, webServer}
+
+	// Combined rule: admin gets both tag:web AND autogroup:self
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:web": ["tagowner@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["tag:web:*", "autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	// Helper to check visibility
+	canSee := func(a, b types.NodeID) bool {
+		peers := peerMap[a]
+
+		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
+			return n.ID() == b
+		})
+	}
+
+	// Admin laptop should see: admin phone (autogroup:self) AND web server (tag:web)
+	require.True(t, canSee(adminLaptop.ID, adminPhone.ID),
+		"admin laptop should see admin phone (autogroup:self)")
+	require.True(t, canSee(adminLaptop.ID, webServer.ID),
+		"admin laptop should see web server (tag:web)")
+
+	// Admin phone should see: admin laptop (autogroup:self) AND web server (tag:web)
+	require.True(t, canSee(adminPhone.ID, adminLaptop.ID),
+		"admin phone should see admin laptop (autogroup:self)")
+	require.True(t, canSee(adminPhone.ID, webServer.ID),
+		"admin phone should see web server (tag:web)")
+
+	// Web server should see both admin devices (symmetric visibility)
+	require.True(t, canSee(webServer.ID, adminLaptop.ID),
+		"web server should see admin laptop (symmetric)")
+	require.True(t, canSee(webServer.ID, adminPhone.ID),
+		"web server should see admin phone (symmetric)")
+}
