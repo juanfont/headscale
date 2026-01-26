@@ -114,6 +114,11 @@
       policy = {
         mode = "file";
         path = "/var/lib/headscale/policy.hujson";
+
+        # Validate policy before starting (default: true)
+        # If validation fails, nixos-rebuild switch will fail
+        # Set to false to bypass validation for edge cases
+        validatePolicy = true;
       };
 
       # You can add ANY headscale configuration option here thanks to freeform settings
