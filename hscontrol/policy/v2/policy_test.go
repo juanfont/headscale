@@ -1228,3 +1228,109 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 	require.True(t, canSee(webServer.ID, adminPhone.ID),
 		"web server should see admin phone (symmetric)")
 }
+
+// TestIssue2990SameUserTaggedDevice reproduces the exact scenario from issue #2990:
+// - One user (user1) who is in group:admin
+// - node1: user device (not tagged), belongs to user1
+// - node2: tagged with tag:admin, ALSO belongs to user1 (same user!)
+// - Rule: group:admin -> *:*
+// - Rule: autogroup:member -> autogroup:self:*
+//
+// Expected: node1 should be able to reach node2 via group:admin -> *:* rule.
+func TestIssue2990SameUserTaggedDevice(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@"},
+	}
+
+	// node1: user device (not tagged), belongs to user1
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// node2: tagged with tag:admin, ALSO belongs to user1 (same user!)
+	node2 := &types.Node{
+		ID:       2,
+		Hostname: "node2",
+		User:     ptr.To(users[0]),
+		UserID:   ptr.To(users[0].ID),
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		Tags:     []string{"tag:admin"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{node1, node2}
+
+	// Exact policy from the issue report
+	policy := `{
+		"groups": {
+			"group:admin": ["user1@"]
+		},
+		"tagOwners": {
+			"tag:admin": ["group:admin"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Check peer visibility
+	peerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	canSee := func(a, b types.NodeID) bool {
+		peers := peerMap[a]
+
+		return slices.ContainsFunc(peers, func(n types.NodeView) bool {
+			return n.ID() == b
+		})
+	}
+
+	// node1 should see node2 (via group:admin -> *:* and symmetric visibility)
+	require.True(t, canSee(node1.ID, node2.ID),
+		"node1 should see node2 as peer")
+
+	// node2 should see node1 (symmetric visibility)
+	require.True(t, canSee(node2.ID, node1.ID),
+		"node2 should see node1 as peer (symmetric visibility)")
+
+	// Check packet filter for node1 - should allow access to node2
+	filter1, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	t.Logf("node1 filter rules: %d", len(filter1))
+
+	for i, rule := range filter1 {
+		t.Logf("  rule %d: SrcIPs=%v DstPorts=%v", i, rule.SrcIPs, rule.DstPorts)
+	}
+
+	// node1's filter should include a rule allowing access to node2's IP
+	// (via the group:admin -> *:* rule)
+	require.NotEmpty(t, filter1,
+		"node1's packet filter should have rules (group:admin -> *:*)")
+
+	// Check packet filter for node2 - tagged device, should have limited access
+	filter2, err := pm.FilterForNode(node2.View())
+	require.NoError(t, err)
+	t.Logf("node2 filter rules: %d", len(filter2))
+
+	for i, rule := range filter2 {
+		t.Logf("  rule %d: SrcIPs=%v DstPorts=%v", i, rule.SrcIPs, rule.DstPorts)
+	}
+}
