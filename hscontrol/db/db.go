@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"github.com/tailscale/squibble"
 	"gorm.io/driver/postgres"
@@ -425,7 +426,7 @@ AND auth_key_id NOT IN (
 					// Drop old tables only after everything succeeds
 					for _, table := range tablesToRename {
 						if err := tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error; err != nil {
-							log.Warn().Str("table", table+"_old").Err(err).Msg("Failed to drop old table, but migration succeeded")
+							log.Warn().Str(zf.Table, table+"_old").Err(err).Msg("Failed to drop old table, but migration succeeded")
 						}
 					}
 
@@ -444,7 +445,7 @@ AND auth_key_id NOT IN (
 					for _, oldTable := range []string{"namespaces", "machines", "shared_machines", "kvs", "pre_auth_key_acl_tags", "routes"} {
 						err := tx.Migrator().DropTable(oldTable)
 						if err != nil {
-							log.Trace().Str("table", oldTable).
+							log.Trace().Str(zf.Table, oldTable).
 								Err(err).
 								Msg("Error dropping old table, continuing...")
 						}
@@ -472,7 +473,7 @@ AND auth_key_id NOT IN (
 						if err != nil {
 							log.Trace().
 								Str("index", oldIdx.name).
-								Str("table", oldIdx.table).
+								Str(zf.Table, oldIdx.table).
 								Err(err).
 								Msg("Error dropping old index, continuing...")
 						}
@@ -652,8 +653,8 @@ AND auth_key_id NOT IN (
 						if len(validatedTags) == 0 {
 							if len(rejectedTags) > 0 {
 								log.Debug().
-									Uint64("node.id", uint64(node.ID)).
-									Str("node.name", node.Hostname).
+									Uint64(zf.NodeID, uint64(node.ID)).
+									Str(zf.NodeName, node.Hostname).
 									Strs("rejected_tags", rejectedTags).
 									Msg("RequestTags rejected during migration (not authorized)")
 							}
@@ -676,8 +677,8 @@ AND auth_key_id NOT IN (
 						}
 
 						log.Info().
-							Uint64("node.id", uint64(node.ID)).
-							Str("node.name", node.Hostname).
+							Uint64(zf.NodeID, uint64(node.ID)).
+							Str(zf.NodeName, node.Hostname).
 							Strs("validated_tags", validatedTags).
 							Strs("rejected_tags", rejectedTags).
 							Strs("existing_tags", existingTags).
@@ -812,7 +813,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 		log.Info().
 			Str("database", types.DatabaseSqlite).
-			Str("path", cfg.Sqlite.Path).
+			Str(zf.Path, cfg.Sqlite.Path).
 			Msg("Opening database")
 
 		// Build SQLite configuration with pragmas set at connection time
@@ -855,7 +856,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 
 		log.Info().
 			Str("database", types.DatabasePostgres).
-			Str("path", dbString).
+			Str(zf.Path, dbString).
 			Msg("Opening database")
 
 		if sslEnabled, err := strconv.ParseBool(cfg.Postgres.Ssl); err == nil {
@@ -937,7 +938,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		}
 
 		for _, migrationID := range migrationIDs {
-			log.Trace().Caller().Str("migration_id", migrationID).Msg("Running migration")
+			log.Trace().Caller().Str(zf.MigrationID, migrationID).Msg("Running migration")
 			needsFKDisabled := migrationsRequiringFKDisabled[migrationID]
 
 			if needsFKDisabled {
@@ -995,7 +996,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		if len(violatedConstraints) > 0 {
 			for _, violation := range violatedConstraints {
 				log.Error().
-					Str("table", violation.Table).
+					Str(zf.Table, violation.Table).
 					Int("row_id", violation.RowID).
 					Str("parent", violation.Parent).
 					Msg("Foreign key constraint violated")

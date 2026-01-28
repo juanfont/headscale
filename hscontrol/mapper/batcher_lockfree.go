@@ -10,19 +10,27 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/puzpuzpuz/xsync/v4"
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
 
 var errConnectionClosed = errors.New("connection channel already closed")
 
+// errInitialMapTimeout is returned when the initial map send times out.
+var errInitialMapTimeout = errors.New("initial map send timeout")
+
+// initialMapSendTimeout is the timeout for sending the initial map to a node.
+const initialMapSendTimeout = 5 * time.Second
+
 // LockFreeBatcher uses atomic operations and concurrent maps to eliminate mutex contention.
 type LockFreeBatcher struct {
 	tick    *time.Ticker
 	mapper  *mapper
 	workers int
+	log     zerolog.Logger
 
 	nodes     *xsync.Map[types.NodeID, *multiChannelNodeConn]
 	connected *xsync.Map[types.NodeID, *time.Time]
@@ -64,7 +72,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	newEntry.lastUsed.Store(now.Unix())
 
 	// Get or create multiChannelNodeConn - this reuses existing offline nodes for rapid reconnection
-	nodeConn, loaded := b.nodes.LoadOrStore(id, newMultiChannelNodeConn(id, b.mapper))
+	nodeConn, loaded := b.nodes.LoadOrStore(id, newMultiChannelNodeConn(id, b.mapper, b.log))
 
 	if !loaded {
 		b.totalNodes.Add(1)
@@ -76,7 +84,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	// Use the worker pool for controlled concurrency instead of direct generation
 	initialMap, err := b.MapResponseFromChange(id, change.FullSelf(id))
 	if err != nil {
-		log.Error().Uint64("node.id", id.Uint64()).Err(err).Msg("Initial map generation failed")
+		b.log.Error().Uint64(zf.NodeID, id.Uint64()).Err(err).Msg("Initial map generation failed")
 		nodeConn.removeConnectionByChannel(c)
 		return fmt.Errorf("failed to generate initial map for node %d: %w", id, err)
 	}
@@ -86,12 +94,13 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	select {
 	case c <- initialMap:
 		// Success
-	case <-time.After(5 * time.Second):
-		log.Error().Uint64("node.id", id.Uint64()).Err(fmt.Errorf("timeout")).Msg("Initial map send timeout")
-		log.Debug().Caller().Uint64("node.id", id.Uint64()).Dur("timeout.duration", 5*time.Second).
+	case <-time.After(initialMapSendTimeout):
+		b.log.Error().Uint64(zf.NodeID, id.Uint64()).Err(errInitialMapTimeout).Msg("Initial map send timeout")
+		b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).Dur(zf.TimeoutDuration, initialMapSendTimeout).
 			Msg("Initial map send timed out because channel was blocked or receiver not ready")
 		nodeConn.removeConnectionByChannel(c)
-		return fmt.Errorf("failed to send initial map to node %d: timeout", id)
+
+		return fmt.Errorf("failed to send initial map to node %d: %w", id, errInitialMapTimeout)
 	}
 
 	// Update connection status
@@ -100,7 +109,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	// Node will automatically receive updates through the normal flow
 	// The initial full map already contains all current state
 
-	log.Debug().Caller().Uint64("node.id", id.Uint64()).Dur("total.duration", time.Since(addNodeStart)).
+	b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).Dur(zf.TotalDuration, time.Since(addNodeStart)).
 		Int("active.connections", nodeConn.getActiveConnectionCount()).
 		Msg("Node connection established in batcher because AddNode completed successfully")
 
@@ -114,20 +123,20 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool {
 	nodeConn, exists := b.nodes.Load(id)
 	if !exists {
-		log.Debug().Caller().Uint64("node.id", id.Uint64()).Msg("RemoveNode called for non-existent node because node not found in batcher")
+		b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).Msg("RemoveNode called for non-existent node because node not found in batcher")
 		return false
 	}
 
 	// Remove specific connection
 	removed := nodeConn.removeConnectionByChannel(c)
 	if !removed {
-		log.Debug().Caller().Uint64("node.id", id.Uint64()).Msg("RemoveNode: channel not found because connection already removed or invalid")
+		b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).Msg("RemoveNode: channel not found because connection already removed or invalid")
 		return false
 	}
 
 	// Check if node has any remaining active connections
 	if nodeConn.hasActiveConnections() {
-		log.Debug().Caller().Uint64("node.id", id.Uint64()).
+		b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).
 			Int("active.connections", nodeConn.getActiveConnectionCount()).
 			Msg("Node connection removed but keeping online because other connections remain")
 		return true // Node still has active connections
@@ -135,7 +144,7 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 
 	// No active connections - keep the node entry alive for rapid reconnections
 	// The node will get a fresh full map when it reconnects
-	log.Debug().Caller().Uint64("node.id", id.Uint64()).Msg("Node disconnected from batcher because all connections removed, keeping entry for rapid reconnection")
+	b.log.Debug().Caller().Uint64(zf.NodeID, id.Uint64()).Msg("Node disconnected from batcher because all connections removed, keeping entry for rapid reconnection")
 	b.connected.Store(id, ptr.To(time.Now()))
 
 	return false
@@ -189,7 +198,7 @@ func (b *LockFreeBatcher) doWork() {
 			// Clean up nodes that have been offline for too long
 			b.cleanupOfflineNodes()
 		case <-b.done:
-			log.Info().Msg("batcher done channel closed, stopping to feed workers")
+			b.log.Info().Msg("batcher done channel closed, stopping to feed workers")
 			return
 		}
 	}
@@ -200,7 +209,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 		select {
 		case w, ok := <-b.workCh:
 			if !ok {
-				log.Debug().Int("worker.id", workerID).Msgf("worker channel closing, shutting down worker %d", workerID)
+				b.log.Debug().Int(zf.WorkerID, workerID).Msgf("worker channel closing, shutting down worker %d", workerID)
 				return
 			}
 
@@ -219,10 +228,10 @@ func (b *LockFreeBatcher) worker(workerID int) {
 					result.err = err
 					if result.err != nil {
 						b.workErrors.Add(1)
-						log.Error().Err(result.err).
-							Int("worker.id", workerID).
-							Uint64("node.id", w.nodeID.Uint64()).
-							Str("reason", w.c.Reason).
+						b.log.Error().Err(result.err).
+							Int(zf.WorkerID, workerID).
+							Uint64(zf.NodeID, w.nodeID.Uint64()).
+							Str(zf.Reason, w.c.Reason).
 							Msg("failed to generate map response for synchronous work")
 					} else if result.mapResponse != nil {
 						// Update peer tracking for synchronous responses too
@@ -232,9 +241,9 @@ func (b *LockFreeBatcher) worker(workerID int) {
 					result.err = fmt.Errorf("node %d not found", w.nodeID)
 
 					b.workErrors.Add(1)
-					log.Error().Err(result.err).
-						Int("worker.id", workerID).
-						Uint64("node.id", w.nodeID.Uint64()).
+					b.log.Error().Err(result.err).
+						Int(zf.WorkerID, workerID).
+						Uint64(zf.NodeID, w.nodeID.Uint64()).
 						Msg("node not found for synchronous work")
 				}
 
@@ -257,15 +266,15 @@ func (b *LockFreeBatcher) worker(workerID int) {
 				err := nc.change(w.c)
 				if err != nil {
 					b.workErrors.Add(1)
-					log.Error().Err(err).
-						Int("worker.id", workerID).
-						Uint64("node.id", w.nodeID.Uint64()).
-						Str("reason", w.c.Reason).
+					b.log.Error().Err(err).
+						Int(zf.WorkerID, workerID).
+						Uint64(zf.NodeID, w.nodeID.Uint64()).
+						Str(zf.Reason, w.c.Reason).
 						Msg("failed to apply change")
 				}
 			}
 		case <-b.done:
-			log.Debug().Int("worker.id", workerID).Msg("batcher shutting down, exiting worker")
+			b.log.Debug().Int(zf.WorkerID, workerID).Msg("batcher shutting down, exiting worker")
 			return
 		}
 	}
@@ -309,8 +318,8 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 		for _, removedID := range ch.PeersRemoved {
 			if _, existed := b.nodes.LoadAndDelete(removedID); existed {
 				b.totalNodes.Add(-1)
-				log.Debug().
-					Uint64("node.id", removedID.Uint64()).
+				b.log.Debug().
+					Uint64(zf.NodeID, removedID.Uint64()).
 					Msg("Removed deleted node from batcher")
 			}
 
@@ -403,7 +412,7 @@ func (b *LockFreeBatcher) cleanupOfflineNodes() {
 
 	// Clean up the identified nodes
 	for _, nodeID := range nodesToCleanup {
-		log.Info().Uint64("node.id", nodeID.Uint64()).
+		b.log.Info().Uint64(zf.NodeID, nodeID.Uint64()).
 			Dur("offline_duration", cleanupThreshold).
 			Msg("Cleaning up node that has been offline for too long")
 
@@ -413,7 +422,7 @@ func (b *LockFreeBatcher) cleanupOfflineNodes() {
 	}
 
 	if len(nodesToCleanup) > 0 {
-		log.Info().Int("cleaned_nodes", len(nodesToCleanup)).
+		b.log.Info().Int(zf.CleanedNodes, len(nodesToCleanup)).
 			Msg("Completed cleanup of long-offline nodes")
 	}
 }
@@ -502,6 +511,7 @@ type connectionEntry struct {
 type multiChannelNodeConn struct {
 	id     types.NodeID
 	mapper *mapper
+	log    zerolog.Logger
 
 	mutex       sync.RWMutex
 	connections []*connectionEntry
@@ -523,10 +533,15 @@ func generateConnectionID() string {
 }
 
 // newMultiChannelNodeConn creates a new multi-channel node connection.
-func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeConn {
+func newMultiChannelNodeConn(id types.NodeID, mapper *mapper, parentLog zerolog.Logger) *multiChannelNodeConn {
+	nodeLog := parentLog.With().
+		Uint64(zf.NodeID, id.Uint64()).
+		Logger()
+
 	return &multiChannelNodeConn{
 		id:            id,
 		mapper:        mapper,
+		log:           nodeLog,
 		lastSentPeers: xsync.NewMap[tailcfg.NodeID, struct{}](),
 	}
 }
@@ -546,7 +561,8 @@ func (mc *multiChannelNodeConn) close() {
 // addConnection adds a new connection.
 func (mc *multiChannelNodeConn) addConnection(entry *connectionEntry) {
 	mutexWaitStart := time.Now()
-	log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", entry.c)).Str("conn.id", entry.id).
+
+	mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", entry.c)).Str(zf.ConnID, entry.id).
 		Msg("addConnection: waiting for mutex - POTENTIAL CONTENTION POINT")
 
 	mc.mutex.Lock()
@@ -554,7 +570,7 @@ func (mc *multiChannelNodeConn) addConnection(entry *connectionEntry) {
 	defer mc.mutex.Unlock()
 
 	mc.connections = append(mc.connections, entry)
-	log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", entry.c)).Str("conn.id", entry.id).
+	mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", entry.c)).Str(zf.ConnID, entry.id).
 		Int("total_connections", len(mc.connections)).
 		Dur("mutex_wait_time", mutexWaitDur).
 		Msg("Successfully added connection after mutex wait")
@@ -569,7 +585,7 @@ func (mc *multiChannelNodeConn) removeConnectionByChannel(c chan<- *tailcfg.MapR
 		if entry.c == c {
 			// Remove this connection
 			mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
-			log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", c)).
+			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", c)).
 				Int("remaining_connections", len(mc.connections)).
 				Msg("Successfully removed connection")
 			return true
@@ -606,12 +622,12 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	if len(mc.connections) == 0 {
 		// During rapid reconnection, nodes may temporarily have no active connections
 		// This is not an error - the node will receive a full map when it reconnects
-		log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).
+		mc.log.Debug().Caller().
 			Msg("send: skipping send to node with no active connections (likely rapid reconnection)")
 		return nil // Return success instead of error
 	}
 
-	log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).
+	mc.log.Debug().Caller().
 		Int("total_connections", len(mc.connections)).
 		Msg("send: broadcasting to all connections")
 
@@ -621,21 +637,21 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 	// Send to all connections
 	for i, conn := range mc.connections {
-		log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", conn.c)).
-			Str("conn.id", conn.id).Int("connection_index", i).
+		mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
+			Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
 			Msg("send: attempting to send to connection")
 
 		if err := conn.send(data); err != nil {
 			lastErr = err
 			failedConnections = append(failedConnections, i)
-			log.Warn().Err(err).
-				Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", conn.c)).
-				Str("conn.id", conn.id).Int("connection_index", i).
+			mc.log.Warn().Err(err).Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
+				Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
 				Msg("send: connection send failed")
 		} else {
 			successCount++
-			log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).Str("chan", fmt.Sprintf("%p", conn.c)).
-				Str("conn.id", conn.id).Int("connection_index", i).
+
+			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
+				Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
 				Msg("send: successfully sent to connection")
 		}
 	}
@@ -643,15 +659,15 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	// Remove failed connections (in reverse order to maintain indices)
 	for i := len(failedConnections) - 1; i >= 0; i-- {
 		idx := failedConnections[i]
-		log.Debug().Caller().Uint64("node.id", mc.id.Uint64()).
-			Str("conn.id", mc.connections[idx].id).
+		mc.log.Debug().Caller().
+			Str(zf.ConnID, mc.connections[idx].id).
 			Msg("send: removing failed connection")
 		mc.connections = append(mc.connections[:idx], mc.connections[idx+1:]...)
 	}
 
 	mc.updateCount.Add(1)
 
-	log.Debug().Uint64("node.id", mc.id.Uint64()).
+	mc.log.Debug().
 		Int("successful_sends", successCount).
 		Int("failed_connections", len(failedConnections)).
 		Int("remaining_connections", len(mc.connections)).
@@ -695,6 +711,11 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 // nodeID returns the node ID.
 func (mc *multiChannelNodeConn) nodeID() types.NodeID {
 	return mc.id
+}
+
+// logger returns the node-scoped logger for this connection.
+func (mc *multiChannelNodeConn) logger() zerolog.Logger {
+	return mc.log
 }
 
 // version returns the capability version from the first active connection.

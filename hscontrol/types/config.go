@@ -12,6 +12,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -569,7 +570,7 @@ func derpConfig() DERPConfig {
 		if err != nil {
 			log.Error().
 				Caller().
-				Str("url", urlStr).
+				Str(zf.URL, urlStr).
 				Err(err).
 				Msg("Failed to parse url, ignoring...")
 		}

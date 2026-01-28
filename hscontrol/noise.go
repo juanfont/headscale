@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/http2"
 	"tailscale.com/control/controlbase"
@@ -51,14 +52,14 @@ func (h *Headscale) NoiseUpgradeHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
+	h.log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
 
 	upgrade := req.Header.Get("Upgrade")
 	if upgrade == "" {
 		// This probably means that the user is running Headscale behind an
 		// improperly configured reverse proxy. TS2021 requires WebSockets to
 		// be passed to Headscale. Let's give them a hint.
-		log.Warn().
+		h.log.Warn().
 			Caller().
 			Msg("No Upgrade header in TS2021 request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
@@ -172,8 +173,8 @@ func rejectUnsupported(
 			Int("client_cap_ver", int(version)).
 			Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 			Str("client_version", capver.TailscaleVersion(version)).
-			Str("node.key", nkey.ShortString()).
-			Str("machine.key", mkey.ShortString()).
+			Str(zf.NodeKey, nkey.ShortString()).
+			Str(zf.MachineKey, mkey.ShortString()).
 			Msg("unsupported client connected")
 		http.Error(writer, unsupportedClientError(version).Error(), http.StatusBadRequest)
 
@@ -218,7 +219,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	ns.nodeKey = nv.NodeKey()
 
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
-	sess.tracef("a node sending a MapRequest with Noise protocol")
+	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 	if !sess.isStreaming() {
 		sess.serve()
 	} else {
@@ -279,7 +280,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(writer).Encode(registerResponse); err != nil {
-		log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
+		ns.headscale.log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
 		return
 	}
 
