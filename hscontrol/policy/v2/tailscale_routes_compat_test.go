@@ -1124,31 +1124,15 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				"user1":         wildcardFilter,
 			},
 		},
-		// TODO: Fix autogroup:internet to not generate filters
-		//
 		// B8: autogroup:internet generates no filters
 		//
-		// TAILSCALE BEHAVIOR:
-		// - autogroup:internet is handled by exit node routing, not packet filters
-		// - ALL nodes should get null/empty filters for autogroup:internet destination
-		// - Traffic is routed through exit nodes via AllowedIPs, not filtered
-		//
-		// HEADSCALE BEHAVIOR:
-		// - Exit nodes (exit-node, multi-router) incorrectly receive filters
-		// - Because 0.0.0.0/0 "covers" autogroup:internet destinations
-		//
-		// ROOT CAUSE:
-		// Headscale treats autogroup:internet like a regular destination and
-		// distributes filters to nodes whose routes cover it (exit nodes)
-		//
-		// FIX REQUIRED:
-		// autogroup:internet should never generate packet filters
+		// autogroup:internet is handled by exit node routing via AllowedIPs,
+		// not by packet filtering. ALL nodes should get null/empty filters.
 		{
 			name: "B8_autogroup_internet_no_filters",
 			policy: makeRoutesPolicy(`
 		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:internet:*"]}
 	`),
-			/* EXPECTED (Tailscale):
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"client1":       nil,
 				"client2":       nil,
@@ -1159,26 +1143,6 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				"ha-router2":    nil,
 				"big-router":    nil,
 				"user1":         nil,
-			},
-			*/
-			// ACTUAL (Headscale):
-			// Non-exit nodes correctly get nil.
-			// INCORRECT: exit-node and multi-router get filters with expanded public
-			// CIDR ranges from util.TheInternet() (all public IPs excluding CGNAT,
-			// private ranges, and Tailscale ULA). The exact CIDRs are complex and
-			// impractical to list here. Skipping comparison for exit nodes but
-			// documenting the difference: Tailscale returns nil, Headscale returns
-			// filters with SrcIPs=member IPs and DstPorts=expanded public CIDRs.
-			wantFilters: map[string][]tailcfg.FilterRule{
-				"client1":       nil,
-				"client2":       nil,
-				"subnet-router": nil,
-				"ha-router1":    nil,
-				"ha-router2":    nil,
-				"big-router":    nil,
-				"user1":         nil,
-				// exit-node and multi-router omitted - they incorrectly receive filters
-				// with expanded autogroup:internet CIDRs in Headscale (Tailscale: nil)
 			},
 		},
 		// B3: Exit node advertises exit routes (verify RoutableIPs)

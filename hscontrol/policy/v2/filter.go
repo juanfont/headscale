@@ -61,6 +61,12 @@ func (pol *Policy) compileFilterRules(
 				continue
 			}
 
+			// autogroup:internet does not generate packet filters - it's handled
+			// by exit node routing via AllowedIPs, not by packet filtering.
+			if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+				continue
+			}
+
 			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
@@ -256,6 +262,12 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 						})
 					}
 
+					continue
+				}
+
+				// autogroup:internet does not generate packet filters - it's handled
+				// by exit node routing via AllowedIPs, not by packet filtering.
+				if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
 					continue
 				}
 
