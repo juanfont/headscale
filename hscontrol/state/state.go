@@ -1113,7 +1113,6 @@ type newNodeParams struct {
 }
 
 // authNodeUpdateParams contains parameters for updating an existing node during auth.
-// Used by both reauthExistingNode and convertTaggedNodeToUser to share common logic.
 type authNodeUpdateParams struct {
 	// Node to update; must be valid and in NodeStore.
 	ExistingNode types.NodeView
@@ -1137,6 +1136,21 @@ type authNodeUpdateParams struct {
 // an existing node. It updates the node in NodeStore, processes RequestTags, and
 // persists changes to the database.
 func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView, error) {
+	// Log the operation type
+	if params.IsConvertFromTag {
+		log.Info().
+			Str("node.name", params.ExistingNode.Hostname()).
+			Uint64("node.id", params.ExistingNode.ID().Uint64()).
+			Strs("old.tags", params.ExistingNode.Tags().AsSlice()).
+			Msg("Converting tagged node to user-owned node")
+	} else {
+		log.Info().
+			Str("node.name", params.ExistingNode.Hostname()).
+			Uint64("node.id", params.ExistingNode.ID().Uint64()).
+			Interface("hostinfo", params.RegEntry.Node.Hostinfo).
+			Msg("Updating existing node registration via reauth")
+	}
+
 	// Process RequestTags during reauth (#2979)
 	// Due to json:",omitempty", we treat empty/nil as "clear tags"
 	var requestTags []string
@@ -1206,7 +1220,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			// Personal → Tagged: clear expiry (tagged nodes don't expire)
 			node.Expiry = nil
 		case params.IsConvertFromTag:
-			// Explicit conversion path (convertTaggedNodeToUser)
+			// Explicit conversion from tagged to user-owned: set expiry from client request
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
 			} else {
@@ -1241,56 +1255,22 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		return types.NodeView{}, err
 	}
 
+	// Log completion
+	if params.IsConvertFromTag {
+		log.Trace().
+			Str("node.name", updatedNodeView.Hostname()).
+			Uint64("node.id", updatedNodeView.ID().Uint64()).
+			Str("node.key", updatedNodeView.NodeKey().ShortString()).
+			Msg("Tagged node converted to user-owned")
+	} else {
+		log.Trace().
+			Str("node.name", updatedNodeView.Hostname()).
+			Uint64("node.id", updatedNodeView.ID().Uint64()).
+			Str("node.key", updatedNodeView.NodeKey().ShortString()).
+			Msg("Node re-authorized")
+	}
+
 	return updatedNodeView, nil
-}
-
-// reauthExistingNode handles re-authentication of an existing node that belongs
-// to the same user. This updates the node in place with new keys and hostinfo.
-func (s *State) reauthExistingNode(logger zerolog.Logger, p authNodeUpdateParams) (types.NodeView, error) {
-	logger.Info().
-		Str("node.name", p.ExistingNode.Hostname()).
-		Uint64("node.id", p.ExistingNode.ID().Uint64()).
-		Interface("hostinfo", p.RegEntry.Node.Hostinfo).
-		Msg("Updating existing node registration via reauth")
-
-	updatedNode, err := s.applyAuthNodeUpdate(p)
-	if err != nil {
-		return types.NodeView{}, err
-	}
-
-	logger.Trace().
-		Str("node.name", updatedNode.Hostname()).
-		Uint64("node.id", updatedNode.ID().Uint64()).
-		Str("node.key", updatedNode.NodeKey().ShortString()).
-		Msg("Node re-authorized")
-
-	return updatedNode, nil
-}
-
-// convertTaggedNodeToUser converts a tagged node to be owned by a user.
-// This handles the case where a node was registered with a tags-only PreAuthKey
-// and is now being re-registered via OIDC or other user auth method.
-func (s *State) convertTaggedNodeToUser(logger zerolog.Logger, p authNodeUpdateParams) (types.NodeView, error) {
-	logger.Info().
-		Str("node.name", p.ExistingNode.Hostname()).
-		Uint64("node.id", p.ExistingNode.ID().Uint64()).
-		Strs("old.tags", p.ExistingNode.Tags().AsSlice()).
-		Msg("Converting tagged node to user-owned node")
-
-	p.IsConvertFromTag = true
-
-	updatedNode, err := s.applyAuthNodeUpdate(p)
-	if err != nil {
-		return types.NodeView{}, err
-	}
-
-	logger.Trace().
-		Str("node.name", updatedNode.Hostname()).
-		Uint64("node.id", updatedNode.ID().Uint64()).
-		Str("node.key", updatedNode.NodeKey().ShortString()).
-		Msg("Tagged node converted to user-owned")
-
-	return updatedNode, nil
 }
 
 // createAndSaveNewNode creates a new node, allocates IPs, saves to DB, and adds to NodeStore.
@@ -1612,14 +1592,15 @@ func (s *State) HandleNodeFromAuthPath(
 	if nodeExistsForSameUser {
 		updateParams.ExistingNode = existingNodeSameUser
 
-		finalNode, err = s.reauthExistingNode(logger, updateParams)
+		finalNode, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, change.Change{}, err
 		}
 	} else if existingNodeIsTagged {
 		updateParams.ExistingNode = existingNodeAnyUser
+		updateParams.IsConvertFromTag = true
 
-		finalNode, err = s.convertTaggedNodeToUser(logger, updateParams)
+		finalNode, err = s.applyAuthNodeUpdate(updateParams)
 		if err != nil {
 			return types.NodeView{}, change.Change{}, err
 		}
