@@ -1376,7 +1376,8 @@ func (p Protocol) parseProtocol() ([]int, bool) {
 	case ProtoNameSCTP:
 		return []int{ProtocolSCTP}, false
 	case ProtoNameICMP:
-		return []int{ProtocolICMP, ProtocolIPv6ICMP}, true
+		// ICMP only - use "ipv6-icmp" or protocol number 58 for ICMPv6
+		return []int{ProtocolICMP}, true
 	default:
 		// Try to parse as a numeric protocol number
 		// This should not fail since validation happened during unmarshaling
