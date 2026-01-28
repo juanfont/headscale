@@ -37,6 +37,13 @@ linters:
             time.Sleep is forbidden.
             In tests: use assert.EventuallyWithT for polling/waiting patterns.
             In production code: use a backoff strategy (e.g., cenkalti/backoff) or proper synchronization primitives.
+        # Forbid inline string literals in zerolog field methods - use zf.* constants
+        - pattern: '\.(Str|Int|Int8|Int16|Int32|Int64|Uint|Uint8|Uint16|Uint32|Uint64|Float32|Float64|Bool|Dur|Time|TimeDiff|Strs|Ints|Uints|Floats|Bools|Any|Interface)\("[^"]+"'
+          msg: >-
+            Use zf.* constants for zerolog field names instead of string literals.
+            Import "github.com/juanfont/headscale/hscontrol/util/zlog/zf" and use
+            constants like zf.NodeID, zf.UserName, etc. Add new constants to
+            hscontrol/util/zlog/zf/fields.go if needed.
       analyze-types: true
     gocritic:
       disabled-checks:
