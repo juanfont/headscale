@@ -136,6 +136,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	for _, node := range nodes {
 		node.IsOnline = ptr.To(false)
 	}
+
 	users, err := db.ListUsers()
 	if err != nil {
 		return nil, fmt.Errorf("loading users: %w", err)
@@ -157,6 +158,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	if batchSize == 0 {
 		batchSize = defaultNodeStoreBatchSize
 	}
+
 	batchTimeout := cfg.Tuning.NodeStoreBatchTimeout
 	if batchTimeout == 0 {
 		batchTimeout = defaultNodeStoreBatchTimeout
@@ -190,7 +192,8 @@ func NewState(cfg *types.Config) (*State, error) {
 func (s *State) Close() error {
 	s.nodeStore.Stop()
 
-	if err := s.db.Close(); err != nil {
+	err := s.db.Close()
+	if err != nil {
 		return fmt.Errorf("closing database: %w", err)
 	}
 
@@ -573,12 +576,14 @@ func (s *State) ListNodes(nodeIDs ...types.NodeID) views.Slice[types.NodeView] {
 
 	// Filter nodes by the requested IDs
 	allNodes := s.nodeStore.ListNodes()
+
 	nodeIDSet := make(map[types.NodeID]struct{}, len(nodeIDs))
 	for _, id := range nodeIDs {
 		nodeIDSet[id] = struct{}{}
 	}
 
 	var filteredNodes []types.NodeView
+
 	for _, node := range allNodes.All() {
 		if _, exists := nodeIDSet[node.ID()]; exists {
 			filteredNodes = append(filteredNodes, node)
@@ -601,12 +606,14 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 
 	// For specific peerIDs, filter from all nodes
 	allNodes := s.nodeStore.ListNodes()
+
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
 	for _, id := range peerIDs {
 		nodeIDSet[id] = struct{}{}
 	}
 
 	var filteredNodes []types.NodeView
+
 	for _, node := range allNodes.All() {
 		if _, exists := nodeIDSet[node.ID()]; exists {
 			filteredNodes = append(filteredNodes, node)
@@ -619,6 +626,7 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 // ListEphemeralNodes retrieves all ephemeral (temporary) nodes in the system.
 func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 	allNodes := s.nodeStore.ListNodes()
+
 	var ephemeralNodes []types.NodeView
 
 	for _, node := range allNodes.All() {
@@ -750,7 +758,8 @@ func (s *State) SetApprovedRoutes(nodeID types.NodeID, routes []netip.Prefix) (t
 
 // RenameNode changes the display name of a node.
 func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView, change.Change, error) {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("renaming node: %w", err)
 	}
 
@@ -1080,6 +1089,7 @@ func preserveNetInfo(existingNode types.NodeView, nodeID types.NodeID, validHost
 	if existingNode.Valid() {
 		existingHostinfo = existingNode.Hostinfo().AsStruct()
 	}
+
 	return netInfoFromMapRequest(nodeID, existingHostinfo, validHostinfo)
 }
 
@@ -1164,19 +1174,43 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			node.RegisterMethod = params.RegEntry.Node.RegisterMethod
 		}
 
-		// Expiry handling differs based on node type:
-		// - Tagged nodes keep their existing expiry (disabled)
-		// - User-owned nodes update expiry from the provided value or registration entry
-		// - Converting from tagged to user-owned: always set expiry
-		if params.IsConvertFromTag || !node.IsTagged() {
+		// Track tagged status BEFORE processing tags
+		wasTagged := node.IsTagged()
+
+		// Process tags - may change node.Tags and node.UserID
+		rejectedTags = s.processReauthTags(node, requestTags, params.User, oldTags)
+
+		// Handle expiry AFTER tag processing, based on transition
+		// This ensures expiry is correctly set/cleared based on the NEW tagged status
+		isTagged := node.IsTagged()
+
+		switch {
+		case wasTagged && !isTagged:
+			// Tagged → Personal: set expiry from client request
+			if params.Expiry != nil {
+				node.Expiry = params.Expiry
+			} else {
+				node.Expiry = params.RegEntry.Node.Expiry
+			}
+		case !wasTagged && isTagged:
+			// Personal → Tagged: clear expiry (tagged nodes don't expire)
+			node.Expiry = nil
+		case params.IsConvertFromTag:
+			// Explicit conversion path (convertTaggedNodeToUser)
+			if params.Expiry != nil {
+				node.Expiry = params.Expiry
+			} else {
+				node.Expiry = params.RegEntry.Node.Expiry
+			}
+		case !isTagged:
+			// Personal → Personal: update expiry from client
 			if params.Expiry != nil {
 				node.Expiry = params.Expiry
 			} else {
 				node.Expiry = params.RegEntry.Node.Expiry
 			}
 		}
-
-		rejectedTags = s.processReauthTags(node, requestTags, params.User, oldTags)
+		// Tagged → Tagged: keep existing expiry (nil) - no action needed
 	})
 
 	if !ok {
@@ -1304,6 +1338,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			nodeToRegister.User = params.PreAuthKey.User
 			nodeToRegister.Tags = nil
 		}
+
 		nodeToRegister.AuthKey = params.PreAuthKey
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
 	} else {
@@ -1373,12 +1408,14 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		if err != nil {
 			return types.NodeView{}, fmt.Errorf("failed to ensure unique given name: %w", err)
 		}
+
 		nodeToRegister.GivenName = givenName
 	}
 
 	// New node - database first to get ID, then NodeStore
 	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		if err := tx.Save(&nodeToRegister).Error; err != nil {
+		err := tx.Save(&nodeToRegister).Error
+		if err != nil {
 			return nil, fmt.Errorf("failed to save node: %w", err)
 		}
 
@@ -1874,6 +1911,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 
 		var err error
+
 		finalNode, err = s.createAndSaveNewNode(newNodeParams{
 			User:                   pakUser,
 			MachineKey:             machineKey,
@@ -2011,7 +2049,9 @@ func (s *State) autoApproveNodes() ([]change.Change, error) {
 				}
 
 				mu.Lock()
+
 				cs = append(cs, c)
+
 				mu.Unlock()
 			}
 
@@ -2081,6 +2121,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		if hi := req.Hostinfo; hi != nil {
 			hasNewRoutes = len(hi.RoutableIPs) > 0
 		}
+
 		needsRouteApproval = hostinfoChanged && (routesChanged(currentNode.View(), req.Hostinfo) || (hasNewRoutes && len(currentNode.ApprovedRoutes) == 0))
 		if needsRouteApproval {
 			// Extract announced routes from request
@@ -2233,6 +2274,7 @@ func hostinfoEqual(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 	if !oldNode.Valid() || newHI == nil {
 		return false
 	}
+
 	old := oldNode.AsStruct().Hostinfo
 
 	return old.Equal(newHI)
