@@ -1146,9 +1146,18 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	oldTags := params.ExistingNode.Tags().AsSlice()
 
-	var rejectedTags []string
+	// Validate tags BEFORE calling UpdateNode to ensure we don't modify NodeStore
+	// if validation fails. This maintains consistency between NodeStore and database.
+	rejectedTags := s.validateRequestTags(params.ExistingNode, requestTags)
+	if len(rejectedTags) > 0 {
+		return types.NodeView{}, fmt.Errorf(
+			"%w %v are invalid or not permitted",
+			ErrRequestedTagsInvalidOrNotPermitted,
+			rejectedTags,
+		)
+	}
 
-	// Update existing node in NodeStore
+	// Update existing node in NodeStore - validation passed, safe to mutate
 	updatedNodeView, ok := s.nodeStore.UpdateNode(params.ExistingNode.ID(), func(node *types.Node) {
 		node.NodeKey = params.RegEntry.Node.NodeKey
 		node.DiscoKey = params.RegEntry.Node.DiscoKey
@@ -1178,7 +1187,8 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		wasTagged := node.IsTagged()
 
 		// Process tags - may change node.Tags and node.UserID
-		rejectedTags = s.processReauthTags(node, requestTags, params.User, oldTags)
+		// Tags were pre-validated, so this will always succeed (no rejected tags)
+		_ = s.processReauthTags(node, requestTags, params.User, oldTags)
 
 		// Handle expiry AFTER tag processing, based on transition
 		// This ensures expiry is correctly set/cleared based on the NEW tagged status
@@ -1215,14 +1225,6 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 
 	if !ok {
 		return types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
-	}
-
-	if len(rejectedTags) > 0 {
-		return types.NodeView{}, fmt.Errorf(
-			"%w %v are invalid or not permitted",
-			ErrRequestedTagsInvalidOrNotPermitted,
-			rejectedTags,
-		)
 	}
 
 	// Persist to database
@@ -1357,21 +1359,14 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	// Process RequestTags (from tailscale up --advertise-tags) ONLY for non-PreAuthKey registrations.
 	// Validate early before IP allocation to avoid resource leaks on failure.
 	if params.PreAuthKey == nil && params.Hostinfo != nil && len(params.Hostinfo.RequestTags) > 0 {
-		var approvedTags, rejectedTags []string
-
-		for _, tag := range params.Hostinfo.RequestTags {
-			if s.polMan.NodeCanHaveTag(nodeToRegister.View(), tag) {
-				approvedTags = append(approvedTags, tag)
-			} else {
-				rejectedTags = append(rejectedTags, tag)
-			}
-		}
-
-		// Reject registration if any requested tags are unauthorized
+		// Validate all tags before applying - reject if any tag is not permitted
+		rejectedTags := s.validateRequestTags(nodeToRegister.View(), params.Hostinfo.RequestTags)
 		if len(rejectedTags) > 0 {
 			return types.NodeView{}, fmt.Errorf("%w %v are invalid or not permitted", ErrRequestedTagsInvalidOrNotPermitted, rejectedTags)
 		}
 
+		// All tags are approved - apply them
+		approvedTags := params.Hostinfo.RequestTags
 		if len(approvedTags) > 0 {
 			nodeToRegister.Tags = approvedTags
 			slices.Sort(nodeToRegister.Tags)
@@ -1434,6 +1429,26 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 	// Add to NodeStore after database creates the ID
 	return s.nodeStore.PutNode(*savedNode), nil
+}
+
+// validateRequestTags validates that the requested tags are permitted for the node.
+// This should be called BEFORE UpdateNode to ensure we don't modify NodeStore
+// if validation fails. Returns the list of rejected tags (empty if all valid).
+func (s *State) validateRequestTags(node types.NodeView, requestTags []string) []string {
+	// Empty tags = clear tags, always permitted
+	if len(requestTags) == 0 {
+		return nil
+	}
+
+	var rejectedTags []string
+
+	for _, tag := range requestTags {
+		if !s.polMan.NodeCanHaveTag(node, tag) {
+			rejectedTags = append(rejectedTags, tag)
+		}
+	}
+
+	return rejectedTags
 }
 
 // processReauthTags handles tag changes during node re-authentication.
