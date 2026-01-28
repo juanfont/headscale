@@ -353,10 +353,12 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
+				// Only the internal:* rule generates filters.
+				// autogroup:internet does NOT generate packet filters - it's handled
+				// by exit node routing via AllowedIPs, not by packet filtering.
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: append([]tailcfg.NetPortRange{
+					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100/32",
 							Ports: tailcfg.PortRangeAny,
@@ -365,7 +367,7 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "fd7a:115c:a1e0::100/128",
 							Ports: tailcfg.PortRangeAny,
 						},
-					}, hsExitNodeDestForTest...),
+					},
 					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
