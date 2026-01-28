@@ -49,6 +49,18 @@ func (pol *Policy) compileFilterRules(
 
 		var destPorts []tailcfg.NetPortRange
 		for _, dest := range acl.Destinations {
+			// Check if destination is a wildcard - use "*" directly instead of expanding
+			if _, isWildcard := dest.Alias.(Asterix); isWildcard {
+				for _, port := range dest.Ports {
+					destPorts = append(destPorts, tailcfg.NetPortRange{
+						IP:    "*",
+						Ports: port,
+					})
+				}
+
+				continue
+			}
+
 			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
@@ -235,6 +247,18 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 			var destPorts []tailcfg.NetPortRange
 
 			for _, dest := range otherDests {
+				// Check if destination is a wildcard - use "*" directly instead of expanding
+				if _, isWildcard := dest.Alias.(Asterix); isWildcard {
+					for _, port := range dest.Ports {
+						destPorts = append(destPorts, tailcfg.NetPortRange{
+							IP:    "*",
+							Ports: port,
+						})
+					}
+
+					continue
+				}
+
 				ips, err := dest.Resolve(pol, users, nodes)
 				if err != nil {
 					log.Trace().Caller().Err(err).Msgf("resolving destination ips")

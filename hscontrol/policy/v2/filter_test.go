@@ -97,10 +97,8 @@ func TestParsing(t *testing.T) {
 				{
 					SrcIPs: []string{"100.100.101.0/24", "192.168.1.0/24"},
 					DstPorts: []tailcfg.NetPortRange{
-						{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "100.64.0.0/10", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
-						{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "fd7a:115c:a1e0::/48", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "*", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "*", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
 					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
@@ -171,7 +169,8 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{ProtocolICMP, ProtocolIPv6ICMP},
+					// proto:icmp only includes ICMP (1), not ICMPv6 (58)
+					IPProto: []int{ProtocolICMP},
 				},
 			},
 			wantErr: false,
