@@ -15,6 +15,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -39,10 +40,10 @@ func httpError(w http.ResponseWriter, err error) {
 	var herr HTTPError
 	if errors.As(err, &herr) {
 		http.Error(w, herr.Msg, herr.Code)
-		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
+		log.Error().Err(herr.Err).Int(zf.Code, herr.Code).Msgf("user msg: %s", herr.Msg)
 	} else {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
-		log.Error().Err(err).Int("code", http.StatusInternalServerError).Msg("http internal server error")
+		log.Error().Err(err).Int(zf.Code, http.StatusInternalServerError).Msg("http internal server error")
 	}
 }
 
@@ -201,7 +202,7 @@ func (h *Headscale) RobotsHandler(
 
 	_, err := writer.Write([]byte("User-agent: *\nDisallow: /"))
 	if err != nil {
-		log.Error().
+		h.log.Error().
 			Caller().
 			Err(err).
 			Msg("Failed to write HTTP response")
@@ -220,7 +221,7 @@ func (h *Headscale) VersionHandler(
 	versionInfo := types.GetVersionInfo()
 	err := json.NewEncoder(writer).Encode(versionInfo)
 	if err != nil {
-		log.Error().
+		h.log.Error().
 			Caller().
 			Err(err).
 			Msg("Failed to write version response")

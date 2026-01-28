@@ -10,6 +10,7 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/fsnotify/fsnotify"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/set"
@@ -63,7 +64,7 @@ func NewExtraRecordsManager(path string) (*ExtraRecordsMan, error) {
 		return nil, fmt.Errorf("adding path to watcher: %w", err)
 	}
 
-	log.Trace().Caller().Strs("watching", watcher.WatchList()).Msg("started filewatcher")
+	log.Trace().Caller().Strs(zf.Watching, watcher.WatchList()).Msg("started filewatcher")
 
 	return er, nil
 }
@@ -87,7 +88,7 @@ func (e *ExtraRecordsMan) Run() {
 			}
 			switch event.Op {
 			case fsnotify.Create, fsnotify.Write, fsnotify.Chmod:
-				log.Trace().Caller().Str("path", event.Name).Str("op", event.Op.String()).Msg("extra records received filewatch event")
+				log.Trace().Caller().Str(zf.Path, event.Name).Str(zf.Op, event.Op.String()).Msg("extra records received filewatch event")
 				if event.Name != e.path {
 					continue
 				}
@@ -113,7 +114,7 @@ func (e *ExtraRecordsMan) Run() {
 					log.Error().Caller().Err(err).Msgf("extra records filewatcher re-adding file after delete failed, giving up.")
 					return
 				} else {
-					log.Trace().Caller().Str("path", e.path).Msg("extra records file re-added after delete")
+					log.Trace().Caller().Str(zf.Path, e.path).Msg("extra records file re-added after delete")
 					e.updateRecords()
 				}
 			}

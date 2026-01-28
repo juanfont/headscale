@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -29,6 +28,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -235,14 +235,14 @@ func (api headscaleV1APIServer) RegisterNode(
 	// Generate ephemeral registration key for tracking this registration flow in logs
 	registrationKey, err := util.GenerateRegistrationKey()
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to generate registration key")
+		api.h.log.Warn().Err(err).Msg("Failed to generate registration key")
 		registrationKey = "" // Continue without key if generation fails
 	}
 
-	log.Trace().
+	api.h.log.Trace().
 		Caller().
-		Str("user", request.GetUser()).
-		Str("registration_id", request.GetKey()).
+		Str(zf.UserName, request.GetUser()).
+		Str(zf.RegistrationID, request.GetKey()).
 		Str("registration_key", registrationKey).
 		Msg("Registering node")
 
@@ -263,14 +263,14 @@ func (api headscaleV1APIServer) RegisterNode(
 		util.RegisterMethodCLI,
 	)
 	if err != nil {
-		log.Error().
+		api.h.log.Error().
 			Str("registration_key", registrationKey).
 			Err(err).
 			Msg("Failed to register node")
 		return nil, err
 	}
 
-	log.Info().
+	api.h.log.Info().
 		Str("registration_key", registrationKey).
 		Str("node_id", fmt.Sprintf("%d", node.ID())).
 		Str("hostname", node.Hostname()).
@@ -353,7 +353,7 @@ func (api headscaleV1APIServer) SetTags(
 
 	api.h.Change(nodeChange)
 
-	log.Trace().
+	api.h.log.Trace().
 		Caller().
 		Str("node", node.Hostname()).
 		Strs("tags", request.GetTags()).
@@ -366,9 +366,9 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	ctx context.Context,
 	request *v1.SetApprovedRoutesRequest,
 ) (*v1.SetApprovedRoutesResponse, error) {
-	log.Debug().
+	api.h.log.Debug().
 		Caller().
-		Uint64("node.id", request.GetNodeId()).
+		Uint64(zf.NodeID, request.GetNodeId()).
 		Strs("requestedRoutes", request.GetRoutes()).
 		Msg("gRPC SetApprovedRoutes called")
 
@@ -404,9 +404,9 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 	primaryRoutes := api.h.state.GetNodePrimaryRoutes(node.ID())
 	proto.SubnetRoutes = util.PrefixesToString(primaryRoutes)
 
-	log.Debug().
+	api.h.log.Debug().
 		Caller().
-		Uint64("node.id", node.ID().Uint64()).
+		Uint64(zf.NodeID, node.ID().Uint64()).
 		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
 		Strs("primaryRoutes", util.PrefixesToString(primaryRoutes)).
 		Strs("finalSubnetRoutes", proto.SubnetRoutes).
@@ -464,7 +464,7 @@ func (api headscaleV1APIServer) ExpireNode(
 	// TODO(kradalby): Ensure that both the selfupdate and peer updates are sent
 	api.h.Change(nodeChange)
 
-	log.Trace().
+	api.h.log.Trace().
 		Caller().
 		Str("node", node.Hostname()).
 		Time("expiry", *node.AsStruct().Expiry).
@@ -485,7 +485,7 @@ func (api headscaleV1APIServer) RenameNode(
 	// TODO(kradalby): investigate if we need selfupdate
 	api.h.Change(nodeChange)
 
-	log.Trace().
+	api.h.log.Trace().
 		Caller().
 		Str("node", node.Hostname()).
 		Str("new_name", request.GetNewName()).
@@ -546,7 +546,7 @@ func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,
 ) (*v1.BackfillNodeIPsResponse, error) {
-	log.Trace().Caller().Msg("Backfill called")
+	api.h.log.Trace().Caller().Msg("Backfill called")
 
 	if !request.Confirmed {
 		return nil, errors.New("not confirmed, aborting")
@@ -736,7 +736,7 @@ func (api headscaleV1APIServer) SetPolicy(
 	if len(cs) > 0 {
 		api.h.Change(cs...)
 	} else {
-		log.Debug().
+		api.h.log.Debug().
 			Caller().
 			Msg("No policy changes to distribute because ReloadPolicy returned empty changeset")
 	}
@@ -746,7 +746,7 @@ func (api headscaleV1APIServer) SetPolicy(
 		UpdatedAt: timestamppb.New(updated.UpdatedAt),
 	}
 
-	log.Debug().
+	api.h.log.Debug().
 		Caller().
 		Msg("gRPC SetPolicy completed successfully because response prepared")
 
@@ -768,7 +768,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		return nil, err
 	}
 
-	log.Trace().
+	api.h.log.Trace().
 		Caller().
 		Interface("route-prefix", routes).
 		Interface("route-str", request.GetRoutes()).
@@ -799,9 +799,9 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		},
 	)
 
-	log.Debug().
+	api.h.log.Debug().
 		Caller().
-		Str("registration_id", registrationId.String()).
+		Str(zf.RegistrationID, registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 
 	api.h.state.SetRegistrationCacheEntry(registrationId, newNode)
@@ -823,7 +823,7 @@ func (api headscaleV1APIServer) Health(
 	}
 
 	if healthErr != nil {
-		log.Error().Err(healthErr).Msg("Health check failed")
+		api.h.log.Error().Err(healthErr).Msg("Health check failed")
 	}
 
 	return response, healthErr

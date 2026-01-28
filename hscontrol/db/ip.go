@@ -11,6 +11,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"gorm.io/gorm"
@@ -283,7 +284,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 		}
 
 		for _, node := range nodes {
-			log.Trace().Caller().Uint64("node.id", node.ID.Uint64()).Str("node.name", node.Hostname).Msg("IP backfill check started because node found in database")
+			log.Trace().Caller().Uint64(zf.NodeID, node.ID.Uint64()).Str(zf.NodeName, node.Hostname).Msg("IP backfill check started because node found in database")
 
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc

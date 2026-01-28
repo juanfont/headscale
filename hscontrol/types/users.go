@@ -12,6 +12,8 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"gorm.io/gorm"
@@ -192,6 +194,30 @@ func (u *User) Proto() *v1.User {
 		Provider:      u.Provider,
 		ProfilePicUrl: u.ProfilePicURL,
 	}
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+func (u *User) MarshalZerologObject(e *zerolog.Event) {
+	if u == nil {
+		return
+	}
+
+	e.Uint(zf.UserID, u.ID)
+	e.Str(zf.UserName, u.Username())
+	e.Str(zf.UserDisplay, u.Display())
+
+	if u.Provider != "" {
+		e.Str(zf.UserProvider, u.Provider)
+	}
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for UserView.
+func (u UserView) MarshalZerologObject(e *zerolog.Event) {
+	if !u.Valid() {
+		return
+	}
+
+	u.ж.MarshalZerologObject(e)
 }
 
 // JumpCloud returns a JSON where email_verified is returned as a

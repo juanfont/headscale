@@ -13,6 +13,8 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -487,6 +489,36 @@ func (node *Node) String() string {
 	return node.Hostname
 }
 
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// This method is used with zerolog's EmbedObject() for flat field embedding
+// or Object() for nested logging when multiple nodes are logged.
+func (node *Node) MarshalZerologObject(e *zerolog.Event) {
+	if node == nil {
+		return
+	}
+
+	e.Uint64(zf.NodeID, node.ID.Uint64())
+	e.Str(zf.NodeName, node.Hostname)
+	e.Str(zf.MachineKey, node.MachineKey.ShortString())
+	e.Str(zf.NodeKey, node.NodeKey.ShortString())
+	e.Bool(zf.NodeIsTagged, node.IsTagged())
+	e.Bool(zf.NodeExpired, node.IsExpired())
+
+	if node.IsOnline != nil {
+		e.Bool(zf.NodeOnline, *node.IsOnline)
+	}
+
+	if len(node.Tags) > 0 {
+		e.Strs(zf.NodeTags, node.Tags)
+	}
+
+	if node.User != nil {
+		e.Str(zf.UserName, node.User.Username())
+	} else if node.UserID != nil {
+		e.Uint(zf.UserID, *node.UserID)
+	}
+}
+
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
 // to produce a PeerChange struct that can be used to updated the node and
 // inform peers about smaller changes to the node.
@@ -717,6 +749,16 @@ func (node Node) DebugString() string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for NodeView.
+// This delegates to the underlying Node's implementation.
+func (nv NodeView) MarshalZerologObject(e *zerolog.Event) {
+	if !nv.Valid() {
+		return
+	}
+
+	nv.ж.MarshalZerologObject(e)
 }
 
 // Owner returns the owner for display purposes.

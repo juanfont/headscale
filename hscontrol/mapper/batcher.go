@@ -8,9 +8,11 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -37,10 +39,15 @@ type Batcher interface {
 }
 
 func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *LockFreeBatcher {
+	batcherLog := log.With().
+		Str(zf.Component, "batcher").
+		Logger()
+
 	return &LockFreeBatcher{
 		mapper:  mapper,
 		workers: workers,
 		tick:    time.NewTicker(batchTime),
+		log:     batcherLog,
 
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
 		workCh:         make(chan work, workers*200),
@@ -68,6 +75,8 @@ type nodeConnection interface {
 	computePeerDiff(currentPeers []tailcfg.NodeID) (removed []tailcfg.NodeID)
 	// updateSentPeers updates the tracking of which peers have been sent to this node.
 	updateSentPeers(resp *tailcfg.MapResponse)
+	// logger returns the node-scoped logger for this connection.
+	logger() zerolog.Logger
 }
 
 // generateMapResponse generates a [tailcfg.MapResponse] for the given NodeID based on the provided [change.Change].
@@ -139,8 +148,9 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error 
 	}
 
 	nodeID := nc.nodeID()
+	nodeLog := nc.logger()
 
-	log.Debug().Caller().Uint64("node.id", nodeID.Uint64()).Str("reason", r.Reason).Msg("Node change processing started because change notification received")
+	nodeLog.Debug().Caller().Str(zf.Reason, r.Reason).Msg("Node change processing started because change notification received")
 
 	data, err := generateMapResponse(nc, mapper, r)
 	if err != nil {

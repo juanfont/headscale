@@ -7,6 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"github.com/samber/lo"
 	"tailscale.com/net/tsaddr"
@@ -136,8 +137,8 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 
 		if len(added) > 0 {
 			log.Debug().
-				Uint64("node.id", nv.ID().Uint64()).
-				Str("node.name", nv.Hostname()).
+				Uint64(zf.NodeID, nv.ID().Uint64()).
+				Str(zf.NodeName, nv.Hostname()).
 				Strs("routes.added", util.PrefixesToString(added)).
 				Strs("routes.kept", util.PrefixesToString(kept)).
 				Int("routes.total", len(newApproved)).

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 )
 
@@ -47,8 +48,8 @@ func validateNodeOwnership(node *types.Node) error {
 func logTagOperation(existingNode types.NodeView, newTags []string) {
 	if existingNode.IsTagged() {
 		log.Info().
-			Uint64("node.id", existingNode.ID().Uint64()).
-			Str("node.name", existingNode.Hostname()).
+			Uint64(zf.NodeID, existingNode.ID().Uint64()).
+			Str(zf.NodeName, existingNode.Hostname()).
 			Strs("old.tags", existingNode.Tags().AsSlice()).
 			Strs("new.tags", newTags).
 			Msg("Updating tags on already-tagged node")
@@ -59,8 +60,8 @@ func logTagOperation(existingNode types.NodeView, newTags []string) {
 		}
 
 		log.Info().
-			Uint64("node.id", existingNode.ID().Uint64()).
-			Str("node.name", existingNode.Hostname()).
+			Uint64(zf.NodeID, existingNode.ID().Uint64()).
+			Str(zf.NodeName, existingNode.Hostname()).
 			Uint("created.by.user", userID).
 			Strs("new.tags", newTags).
 			Msg("Converting user-owned node to tagged node")

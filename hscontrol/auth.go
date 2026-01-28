@@ -12,7 +12,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
@@ -33,17 +33,17 @@ func (h *Headscale) handleRegister(
 	// Tailscale clients may send logout requests with BOTH a past expiry AND an auth key.
 	// A past expiry takes precedence - it's a logout regardless of other fields.
 	if !req.Expiry.IsZero() && req.Expiry.Before(time.Now()) {
-		log.Debug().
-			Str("node.key", req.NodeKey.ShortString()).
+		h.log.Debug().
+			Str(zf.NodeKey, req.NodeKey.ShortString()).
 			Time("expiry", req.Expiry).
 			Bool("has_auth", req.Auth != nil).
 			Msg("Detected logout attempt with past expiry")
 
 		// This is a logout attempt (expiry in the past)
 		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
-			log.Debug().
-				Uint64("node.id", node.ID().Uint64()).
-				Str("node.name", node.Hostname()).
+			h.log.Debug().
+				Uint64(zf.NodeID, node.ID().Uint64()).
+				Str(zf.NodeName, node.Hostname()).
 				Bool("is_ephemeral", node.IsEphemeral()).
 				Bool("has_authkey", node.AuthKey().Valid()).
 				Msg("Found existing node for logout, calling handleLogout")
@@ -56,8 +56,8 @@ func (h *Headscale) handleRegister(
 				return resp, nil
 			}
 		} else {
-			log.Warn().
-				Str("node.key", req.NodeKey.ShortString()).
+			h.log.Warn().
+				Str(zf.NodeKey, req.NodeKey.ShortString()).
 				Msg("Logout attempt but node not found in NodeStore")
 		}
 	}
@@ -91,9 +91,9 @@ func (h *Headscale) handleRegister(
 			// If the register request is not attempting to register a node, and
 			// we cannot match it with an existing node, we consider that unexpected
 			// as only register nodes should attempt to log out.
-			log.Debug().
-				Str("node.key", req.NodeKey.ShortString()).
-				Str("machine.key", machineKey.ShortString()).
+			h.log.Debug().
+				Str(zf.NodeKey, req.NodeKey.ShortString()).
+				Str(zf.MachineKey, machineKey.ShortString()).
 				Bool("unexpected", true).
 				Msg("received register request with no auth, and no existing node")
 		}
@@ -155,8 +155,8 @@ func (h *Headscale) handleLogout(
 	// force the client to re-authenticate.
 	// TODO(kradalby): I wonder if this is a path we ever hit?
 	if node.IsExpired() {
-		log.Trace().Str("node.name", node.Hostname()).
-			Uint64("node.id", node.ID().Uint64()).
+		h.log.Trace().Str(zf.NodeName, node.Hostname()).
+			Uint64(zf.NodeID, node.ID().Uint64()).
 			Interface("reg.req", req).
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
@@ -181,18 +181,18 @@ func (h *Headscale) handleLogout(
 	// If the request expiry is in the past, we consider it a logout.
 	// Zero expiry is handled in handleRegister() before calling this function.
 	if req.Expiry.Before(time.Now()) {
-		log.Debug().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+		h.log.Debug().
+			Uint64(zf.NodeID, node.ID().Uint64()).
+			Str(zf.NodeName, node.Hostname()).
 			Bool("is_ephemeral", node.IsEphemeral()).
 			Bool("has_authkey", node.AuthKey().Valid()).
 			Time("req.expiry", req.Expiry).
 			Msg("Processing logout request with past expiry")
 
 		if node.IsEphemeral() {
-			log.Info().
-				Uint64("node.id", node.ID().Uint64()).
-				Str("node.name", node.Hostname()).
+			h.log.Info().
+				Uint64(zf.NodeID, node.ID().Uint64()).
+				Str(zf.NodeName, node.Hostname()).
 				Msg("Deleting ephemeral node during logout")
 
 			c, err := h.state.DeleteNode(node)
@@ -208,9 +208,9 @@ func (h *Headscale) handleLogout(
 			}, nil
 		}
 
-		log.Debug().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+		h.log.Debug().
+			Uint64(zf.NodeID, node.ID().Uint64()).
+			Str(zf.NodeName, node.Hostname()).
 			Msg("Node is not ephemeral, setting expiry instead of deleting")
 	}
 
@@ -324,7 +324,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 		nodeToRegister.Node.Expiry = &req.Expiry
 	}
 
-	log.Info().Msgf("New followup node registration using key: %s", newRegID)
+	h.log.Info().Msgf("New followup node registration using key: %s", newRegID)
 	h.state.SetRegistrationCacheEntry(newRegID, nodeToRegister)
 
 	return &tailcfg.RegisterResponse{
@@ -393,12 +393,12 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		Login:             node.Owner().TailscaleLogin(),
 	}
 
-	log.Trace().
+	h.log.Trace().
 		Caller().
 		Interface("reg.resp", resp).
 		Interface("reg.req", req).
-		Str("node.name", node.Hostname()).
-		Uint64("node.id", node.ID().Uint64()).
+		Str(zf.NodeName, node.Hostname()).
+		Uint64(zf.NodeID, node.ID().Uint64()).
 		Msg("RegisterResponse")
 
 	return resp, nil
@@ -423,15 +423,15 @@ func (h *Headscale) handleRegisterInteractive(
 	// Ensure we have valid hostinfo
 	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
 	if req.Hostinfo == nil {
-		log.Warn().
-			Str("machine.key", machineKey.ShortString()).
-			Str("node.key", req.NodeKey.ShortString()).
+		h.log.Warn().
+			Str(zf.MachineKey, machineKey.ShortString()).
+			Str(zf.NodeKey, req.NodeKey.ShortString()).
 			Str("generated.hostname", hostname).
 			Msg("Received registration request with nil hostinfo, generated default hostname")
 	} else if req.Hostinfo.Hostname == "" {
-		log.Warn().
-			Str("machine.key", machineKey.ShortString()).
-			Str("node.key", req.NodeKey.ShortString()).
+		h.log.Warn().
+			Str(zf.MachineKey, machineKey.ShortString()).
+			Str(zf.NodeKey, req.NodeKey.ShortString()).
 			Str("generated.hostname", hostname).
 			Msg("Received registration request with empty hostname, generated default")
 	}
@@ -456,7 +456,7 @@ func (h *Headscale) handleRegisterInteractive(
 		nodeToRegister,
 	)
 
-	log.Info().Msgf("Starting node registration using key: %s", registrationId)
+	h.log.Info().Msgf("Starting node registration using key: %s", registrationId)
 
 	return &tailcfg.RegisterResponse{
 		AuthURL: h.authProvider.AuthURL(registrationId),

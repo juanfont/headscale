@@ -18,6 +18,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/oauth2"
 	"zgo.at/zcache/v2"
@@ -302,7 +303,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
 		if err != nil {
 			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
-				log.Debug().Caller().Str("registration_id", registrationId.String()).Msg("registration session expired before authorization completed")
+				log.Debug().Caller().Str(zf.RegistrationID, registrationId.String()).Msg("registration session expired before authorization completed")
 				httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", err))
 
 				return

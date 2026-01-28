@@ -6,6 +6,7 @@ package state
 
 import (
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
@@ -26,7 +27,7 @@ func netInfoFromMapRequest(
 	if currentHostinfo != nil && currentHostinfo.NetInfo != nil {
 		log.Debug().
 			Caller().
-			Uint64("node.id", nodeID.Uint64()).
+			Uint64(zf.NodeID, nodeID.Uint64()).
 			Int("preferredDERP", currentHostinfo.NetInfo.PreferredDERP).
 			Msg("using NetInfo from previous Hostinfo in MapRequest")
 		return currentHostinfo.NetInfo
@@ -42,7 +43,7 @@ func netInfoFromMapRequest(
 
 	log.Debug().
 		Caller().
-		Uint64("node.id", nodeID.Uint64()).
+		Uint64(zf.NodeID, nodeID.Uint64()).
 		Str("node.hostname", hostname).
 		Msg("node sent update but has no NetInfo in request or database")
 
