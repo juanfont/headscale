@@ -625,6 +625,152 @@ func TestTaggedNodeReauthPreservesDisabledExpiry(t *testing.T) {
 		"Tagged node should have expiry PRESERVED as disabled after re-auth")
 }
 
+// TestExpiryDuringPersonalToTaggedConversion tests that when a personal node
+// is converted to tagged via reauth with RequestTags, the expiry is cleared to nil.
+// BUG #3048: Previously expiry was NOT cleared because expiry handling ran
+// BEFORE processReauthTags.
+func TestExpiryDuringPersonalToTaggedConversion(t *testing.T) {
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("expiry-test-user")
+
+	// Update policy to allow user to own tags
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	policy := `{
+		"tagOwners": {
+			"tag:server": ["expiry-test-user@"]
+		},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`
+	_, err = app.state.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+
+	// Step 1: Create user-owned node WITH expiry set
+	clientExpiry := time.Now().Add(24 * time.Hour)
+	registrationID1 := types.MustRegistrationID()
+	regEntry1 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey1.Public(),
+		Hostname:   "personal-to-tagged",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "personal-to-tagged",
+			RequestTags: []string{}, // No tags - user-owned
+		},
+		Expiry: &clientExpiry,
+	})
+	app.state.SetRegistrationCacheEntry(registrationID1, regEntry1)
+
+	node, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID1, types.UserID(user.ID), nil, "webauth",
+	)
+	require.NoError(t, err)
+	require.False(t, node.IsTagged(), "Node should be user-owned initially")
+	require.True(t, node.Expiry().Valid(), "User-owned node should have expiry set")
+
+	// Step 2: Re-auth with tags (Personal → Tagged conversion)
+	nodeKey2 := key.NewNode()
+	registrationID2 := types.MustRegistrationID()
+	regEntry2 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey2.Public(),
+		Hostname:   "personal-to-tagged",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "personal-to-tagged",
+			RequestTags: []string{"tag:server"}, // Adding tags
+		},
+		Expiry: &clientExpiry, // Client still sends expiry
+	})
+	app.state.SetRegistrationCacheEntry(registrationID2, regEntry2)
+
+	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID2, types.UserID(user.ID), nil, "webauth",
+	)
+	require.NoError(t, err)
+	require.True(t, nodeAfter.IsTagged(), "Node should be tagged after conversion")
+
+	// CRITICAL ASSERTION: Tagged nodes should NOT have expiry
+	assert.False(t, nodeAfter.Expiry().Valid(),
+		"Tagged node should have expiry cleared to nil")
+}
+
+// TestExpiryDuringTaggedToPersonalConversion tests that when a tagged node
+// is converted to personal via reauth with empty RequestTags, expiry is set
+// from the client request.
+// BUG #3048: Previously expiry was NOT set because expiry handling ran
+// BEFORE processReauthTags (node was still tagged at check time).
+func TestExpiryDuringTaggedToPersonalConversion(t *testing.T) {
+	app := createTestApp(t)
+	user := app.state.CreateUserForTest("expiry-test-user2")
+
+	// Update policy to allow user to own tags
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	policy := `{
+		"tagOwners": {
+			"tag:server": ["expiry-test-user2@"]
+		},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`
+	_, err = app.state.SetPolicy([]byte(policy))
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey1 := key.NewNode()
+
+	// Step 1: Create tagged node (expiry should be nil)
+	registrationID1 := types.MustRegistrationID()
+	regEntry1 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey1.Public(),
+		Hostname:   "tagged-to-personal",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "tagged-to-personal",
+			RequestTags: []string{"tag:server"}, // Tagged node
+		},
+	})
+	app.state.SetRegistrationCacheEntry(registrationID1, regEntry1)
+
+	node, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID1, types.UserID(user.ID), nil, "webauth",
+	)
+	require.NoError(t, err)
+	require.True(t, node.IsTagged(), "Node should be tagged initially")
+	require.False(t, node.Expiry().Valid(), "Tagged node should have nil expiry")
+
+	// Step 2: Re-auth with empty tags (Tagged → Personal conversion)
+	nodeKey2 := key.NewNode()
+	clientExpiry := time.Now().Add(48 * time.Hour)
+	registrationID2 := types.MustRegistrationID()
+	regEntry2 := types.NewRegisterNode(types.Node{
+		MachineKey: machineKey.Public(),
+		NodeKey:    nodeKey2.Public(),
+		Hostname:   "tagged-to-personal",
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname:    "tagged-to-personal",
+			RequestTags: []string{}, // Empty tags - convert to user-owned
+		},
+		Expiry: &clientExpiry, // Client requests expiry
+	})
+	app.state.SetRegistrationCacheEntry(registrationID2, regEntry2)
+
+	nodeAfter, _, err := app.state.HandleNodeFromAuthPath(
+		registrationID2, types.UserID(user.ID), nil, "webauth",
+	)
+	require.NoError(t, err)
+	require.False(t, nodeAfter.IsTagged(), "Node should be user-owned after conversion")
+
+	// CRITICAL ASSERTION: User-owned nodes should have expiry from client
+	assert.True(t, nodeAfter.Expiry().Valid(),
+		"User-owned node should have expiry set")
+	assert.WithinDuration(t, clientExpiry, nodeAfter.Expiry().Get(), 5*time.Second,
+		"Expiry should match client request")
+}
+
 // TestReAuthWithDifferentMachineKey tests the edge case where a node attempts
 // to re-authenticate with the same NodeKey but a DIFFERENT MachineKey.
 // This scenario should be handled gracefully (currently creates a new node).
