@@ -1181,48 +1181,15 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				// with expanded autogroup:internet CIDRs in Headscale (Tailscale: nil)
 			},
 		},
-		// TODO: Verify Tailscale DstPorts format for wildcard destinations
-		//
 		// B3: Exit node advertises exit routes (verify RoutableIPs)
 		//
 		// This test verifies that exit-node has 0.0.0.0/0 and ::/0 in RoutableIPs.
-		// The filter test is a proxy for this - all nodes get wildcard filters.
-		//
-		// TAILSCALE BEHAVIOR:
-		// - Uses "*" in DstPorts.IP for wildcard destinations
-		//
-		// HEADSCALE BEHAVIOR:
-		// - Uses explicit CIDR ranges (100.64.0.0/10, fd7a:115c:a1e0::/48)
-		//
-		// ROOT CAUSE:
-		// Different representation of wildcard destinations in filter rules
-		//
-		// FIX REQUIRED:
-		// Verify if Tailscale actually uses "*" or if our expected values are wrong
+		// All nodes get wildcard filters with {IP: "*"} format matching Tailscale.
 		{
 			name: "B3_exit_node_advertises_routes",
 			policy: makeRoutesPolicy(`
 				{"action": "accept", "src": ["*"], "dst": ["*:*"]}
 			`),
-			/* EXPECTED (Tailscale) - if it uses "*" format:
-			wantFilters: map[string][]tailcfg.FilterRule{
-				"client1": {
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "*", Ports: tailcfg.PortRangeAny},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-				},
-				// Other nodes would also get filters - need Tailscale verification
-			},
-			*/
-			// ACTUAL (Headscale):
-			// All nodes receive the same wildcard filter with explicit CIDRs
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"client1":       wildcardFilter,
 				"client2":       wildcardFilter,
@@ -1235,46 +1202,15 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				"user1":         wildcardFilter,
 			},
 		},
-		// TODO: Verify Tailscale DstPorts format for wildcard destinations
-		//
 		// B5: Exit node with wildcard destination has ExitNodeOption
 		//
 		// Exit nodes should have ExitNodeOption=true in MapResponse.
-		// The filter test is a proxy - all nodes should get wildcard filters.
-		//
-		// TAILSCALE BEHAVIOR:
-		// - Exit nodes with approved exit routes have ExitNodeOption=true
-		// - DstPorts may use "*" format
-		//
-		// HEADSCALE BEHAVIOR:
-		// - All nodes get filters with explicit CIDR ranges
-		//
-		// ROOT CAUSE:
-		// Different DstPorts format; need to verify Tailscale's actual format
+		// All nodes get wildcard filters with {IP: "*"} format matching Tailscale.
 		{
 			name: "B5_exit_with_wildcard_dst",
 			policy: makeRoutesPolicy(`
 				{"action": "accept", "src": ["*"], "dst": ["*:*"]}
 			`),
-			/* EXPECTED (Tailscale) - if it uses "*" format:
-			wantFilters: map[string][]tailcfg.FilterRule{
-				"client1": {
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "*", Ports: tailcfg.PortRangeAny},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-				},
-				// Other nodes - need Tailscale verification
-			},
-			*/
-			// ACTUAL (Headscale):
-			// All nodes receive the same wildcard filter with explicit CIDRs
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"client1":       wildcardFilter,
 				"client2":       wildcardFilter,
@@ -1602,42 +1538,15 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				},
 			},
 		},
-		// TODO: Verify Tailscale DstPorts format for wildcard destinations
-		//
 		// B9: Exit routes appear in peer AllowedIPs
 		//
 		// When viewing exit-node as a peer, AllowedIPs should include exit routes.
-		// This is a MapResponse property test, filter test is a proxy.
-		//
-		// TAILSCALE BEHAVIOR:
-		// - Need to verify actual format (may use "*" in DstPorts.IP)
-		//
-		// HEADSCALE BEHAVIOR:
-		// - All nodes get wildcard filter with explicit CIDR ranges
+		// All nodes get wildcard filters with {IP: "*"} format matching Tailscale.
 		{
 			name: "B9_exit_routes_in_allowedips",
 			policy: makeRoutesPolicy(`
 				{"action": "accept", "src": ["*"], "dst": ["*:*"]}
 			`),
-			/* EXPECTED (Tailscale) - if it uses "*" format:
-			wantFilters: map[string][]tailcfg.FilterRule{
-				"client1": {
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "*", Ports: tailcfg.PortRangeAny},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-				},
-				// Other nodes - need Tailscale verification
-			},
-			*/
-			// ACTUAL (Headscale):
-			// All nodes receive the same wildcard filter with explicit CIDRs
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"client1":       wildcardFilter,
 				"client2":       wildcardFilter,
@@ -1650,42 +1559,16 @@ func TestTailscaleRoutesCompatExitNodes(t *testing.T) {
 				"user1":         wildcardFilter,
 			},
 		},
-		// TODO: Verify Tailscale DstPorts format for wildcard destinations
-		//
 		// B10: Exit routes NOT in PrimaryRoutes field
 		//
 		// PrimaryRoutes is for subnet routes only, not exit routes.
 		// Exit routes (0.0.0.0/0, ::/0) should NOT appear in PrimaryRoutes.
-		//
-		// TAILSCALE BEHAVIOR:
-		// - Need to verify actual format
-		//
-		// HEADSCALE BEHAVIOR:
-		// - All nodes get wildcard filter with explicit CIDR ranges
+		// All nodes get wildcard filters with {IP: "*"} format matching Tailscale.
 		{
 			name: "B10_exit_routes_not_in_primaryroutes",
 			policy: makeRoutesPolicy(`
 				{"action": "accept", "src": ["*"], "dst": ["*:*"]}
 			`),
-			/* EXPECTED (Tailscale) - if it uses "*" format:
-			wantFilters: map[string][]tailcfg.FilterRule{
-				"client1": {
-					{
-						SrcIPs: []string{
-							"100.64.0.0/10",
-							"fd7a:115c:a1e0::/48",
-						},
-						DstPorts: []tailcfg.NetPortRange{
-							{IP: "*", Ports: tailcfg.PortRangeAny},
-						},
-						IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
-					},
-				},
-				// Other nodes - need Tailscale verification
-			},
-			*/
-			// ACTUAL (Headscale):
-			// All nodes receive the same wildcard filter with explicit CIDRs
 			wantFilters: map[string][]tailcfg.FilterRule{
 				"client1":       wildcardFilter,
 				"client2":       wildcardFilter,
