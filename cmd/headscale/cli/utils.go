@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -118,7 +119,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		}
 	}
 
-	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
+	log.Trace().Caller().Str(zf.Address, address).Msg("Connecting via gRPC")
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
 		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)

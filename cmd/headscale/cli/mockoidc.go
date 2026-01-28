@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -78,7 +79,7 @@ func mockOIDC() error {
 		return fmt.Errorf("unmarshalling users: %w", err)
 	}
 
-	log.Info().Interface("users", users).Msg("loading users from JSON")
+	log.Info().Interface(zf.Users, users).Msg("loading users from JSON")
 
 	log.Info().Msgf("Access token TTL: %s", accessTTL)
 
