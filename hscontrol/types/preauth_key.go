@@ -4,6 +4,8 @@ import (
 	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -120,19 +122,10 @@ func (pak *PreAuthKey) Validate() error {
 		return PAKError("invalid authkey")
 	}
 
+	// Use EmbedObject for safe logging - never log full key
 	log.Debug().
 		Caller().
-		Str("key", pak.Key).
-		Bool("hasExpiration", pak.Expiration != nil).
-		Time("expiration", func() time.Time {
-			if pak.Expiration != nil {
-				return *pak.Expiration
-			}
-			return time.Time{}
-		}()).
-		Time("now", time.Now()).
-		Bool("reusable", pak.Reusable).
-		Bool("used", pak.Used).
+		EmbedObject(pak).
 		Msg("PreAuthKey.Validate: checking key")
 
 	if pak.Expiration != nil && pak.Expiration.Before(time.Now()) {
@@ -155,4 +148,46 @@ func (pak *PreAuthKey) Validate() error {
 // When a PreAuthKey has tags, nodes registered with it will be tagged nodes.
 func (pak *PreAuthKey) IsTagged() bool {
 	return len(pak.Tags) > 0
+}
+
+// maskedPrefix returns the key prefix in masked format for safe logging.
+// SECURITY: Never log the full key or hash, only the masked prefix.
+func (pak *PreAuthKey) maskedPrefix() string {
+	if pak.Prefix != "" {
+		return "hskey-auth-" + pak.Prefix + "-***"
+	}
+
+	return ""
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// SECURITY: This method intentionally does NOT log the full key or hash.
+// Only the masked prefix is logged for identification purposes.
+func (pak *PreAuthKey) MarshalZerologObject(e *zerolog.Event) {
+	if pak == nil {
+		return
+	}
+
+	e.Uint64(zf.PAKID, pak.ID)
+	e.Bool(zf.PAKReusable, pak.Reusable)
+	e.Bool(zf.PAKEphemeral, pak.Ephemeral)
+	e.Bool(zf.PAKUsed, pak.Used)
+	e.Bool(zf.PAKIsTagged, pak.IsTagged())
+
+	// SECURITY: Only log masked prefix, never full key or hash
+	if masked := pak.maskedPrefix(); masked != "" {
+		e.Str(zf.PAKPrefix, masked)
+	}
+
+	if len(pak.Tags) > 0 {
+		e.Strs(zf.PAKTags, pak.Tags)
+	}
+
+	if pak.User != nil {
+		e.Str(zf.UserName, pak.User.Username())
+	}
+
+	if pak.Expiration != nil {
+		e.Time(zf.PAKExpiration, *pak.Expiration)
+	}
 }
