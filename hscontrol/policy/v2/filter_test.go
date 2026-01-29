@@ -97,13 +97,11 @@ func TestParsing(t *testing.T) {
 				{
 					SrcIPs: []string{"100.100.101.0/24", "192.168.1.0/24"},
 					DstPorts: []tailcfg.NetPortRange{
-						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "0.0.0.0/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
-						{IP: "::/0", Ports: tailcfg.PortRange{First: 22, Last: 22}},
-						{IP: "::/0", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
+						{IP: "*", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "*", Ports: tailcfg.PortRange{First: 3389, Last: 3389}},
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -153,25 +151,26 @@ func TestParsing(t *testing.T) {
 }`,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP},
+					IPProto: []int{ProtocolTCP},
 				},
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRange{First: 53, Last: 53}},
 					},
-					IPProto: []int{protocolUDP},
+					IPProto: []int{ProtocolUDP},
 				},
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolICMP, protocolIPv6ICMP},
+					// proto:icmp only includes ICMP (1), not ICMPv6 (58)
+					IPProto: []int{ProtocolICMP},
 				},
 			},
 			wantErr: false,
@@ -201,11 +200,11 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -242,7 +241,7 @@ func TestParsing(t *testing.T) {
 							Ports: tailcfg.PortRange{First: 5400, Last: 5500},
 						},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -282,7 +281,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -316,7 +315,7 @@ func TestParsing(t *testing.T) {
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -346,11 +345,11 @@ func TestParsing(t *testing.T) {
 `,
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"0.0.0.0/0", "::/0"},
+					SrcIPs: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"},
 					DstPorts: []tailcfg.NetPortRange{
 						{IP: "100.100.100.100/32", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{protocolTCP, protocolUDP},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
 				},
 			},
 			wantErr: false,
@@ -941,7 +940,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 		}
 	}
 
-	expectedDestIPs := []string{"100.64.0.1", "100.64.0.2"}
+	expectedDestIPs := []string{"100.64.0.1/32", "100.64.0.2/32"}
 
 	actualDestIPs := make([]string, 0, len(rule.DstPorts))
 	for _, dst := range rule.DstPorts {
@@ -957,7 +956,7 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 	}
 
 	// Verify that other users' devices and tagged devices are not in destinations
-	excludedDestIPs := []string{"100.64.0.3", "100.64.0.4", "100.64.0.5", "100.64.0.6"}
+	excludedDestIPs := []string{"100.64.0.3/32", "100.64.0.4/32", "100.64.0.5/32", "100.64.0.6/32"}
 	for _, excludedIP := range excludedDestIPs {
 		for _, actualIP := range actualDestIPs {
 			if actualIP == excludedIP {
@@ -1294,7 +1293,8 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 		actualDestIPs = append(actualDestIPs, dst.IP)
 	}
 
-	assert.ElementsMatch(t, expectedSourceIPs, actualDestIPs)
+	expectedDestIPs := []string{"100.64.0.1/32", "100.64.0.2/32"}
+	assert.ElementsMatch(t, expectedDestIPs, actualDestIPs)
 
 	node2 := nodes[2].View()
 	rules2, err := policy.compileFilterRulesForNode(users, node2, nodes.ViewSlice())
@@ -1686,4 +1686,213 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	require.Contains(t, routerPrincipals, "100.64.0.1", "router rule should include user1's device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.2", "router rule should include user1's other device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.3", "router rule should include user2's device (unfiltered sources)")
+}
+
+func TestMergeFilterRules(t *testing.T) {
+	tests := []struct {
+		name  string
+		input []tailcfg.FilterRule
+		want  []tailcfg.FilterRule
+	}{
+		{
+			name:  "empty input",
+			input: []tailcfg.FilterRule{},
+			want:  []tailcfg.FilterRule{},
+		},
+		{
+			name: "single rule unchanged",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+		},
+		{
+			name: "merge two rules with same key",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP},
+				},
+			},
+		},
+		{
+			name: "different SrcIPs not merged",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+		},
+		{
+			name: "different IPProto not merged",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 53, Last: 53}},
+					},
+					IPProto: []int{ProtocolUDP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 53, Last: 53}},
+					},
+					IPProto: []int{ProtocolUDP},
+				},
+			},
+		},
+		{
+			name: "DstPorts combined without deduplication",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "100.64.0.2/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP},
+				},
+			},
+		},
+		{
+			name: "merge three rules with same key",
+			input: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.4/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 22, Last: 22}},
+						{IP: "100.64.0.3/32", Ports: tailcfg.PortRange{First: 80, Last: 80}},
+						{IP: "100.64.0.4/32", Ports: tailcfg.PortRange{First: 443, Last: 443}},
+					},
+					IPProto: []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeFilterRules(tt.input)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("mergeFilterRules() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
 }

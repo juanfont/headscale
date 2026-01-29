@@ -93,11 +93,24 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 	return slices.ContainsFunc(prefixes, m.dests.OverlapsPrefix)
 }
 
-// DestsIsTheInternet reports if the destination is equal to "the internet"
+// DestsIsTheInternet reports if the destination contains "the internet"
 // which is a IPSet that represents "autogroup:internet" and is special
 // cased for exit nodes.
+// This checks if dests is a superset of TheInternet(), which handles
+// merged filter rules where TheInternet is combined with other destinations.
 func (m Match) DestsIsTheInternet() bool {
-	return m.dests.Equal(util.TheInternet()) ||
-		m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
-		m.dests.ContainsPrefix(tsaddr.AllIPv6())
+	if m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
+		m.dests.ContainsPrefix(tsaddr.AllIPv6()) {
+		return true
+	}
+
+	// Check if dests contains all prefixes of TheInternet (superset check)
+	theInternet := util.TheInternet()
+	for _, prefix := range theInternet.Prefixes() {
+		if !m.dests.ContainsPrefix(prefix) {
+			return false
+		}
+	}
+
+	return true
 }

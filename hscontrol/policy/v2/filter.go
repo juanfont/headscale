@@ -3,7 +3,10 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -46,6 +49,24 @@ func (pol *Policy) compileFilterRules(
 
 		var destPorts []tailcfg.NetPortRange
 		for _, dest := range acl.Destinations {
+			// Check if destination is a wildcard - use "*" directly instead of expanding
+			if _, isWildcard := dest.Alias.(Asterix); isWildcard {
+				for _, port := range dest.Ports {
+					destPorts = append(destPorts, tailcfg.NetPortRange{
+						IP:    "*",
+						Ports: port,
+					})
+				}
+
+				continue
+			}
+
+			// autogroup:internet does not generate packet filters - it's handled
+			// by exit node routing via AllowedIPs, not by packet filtering.
+			if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+				continue
+			}
+
 			ips, err := dest.Resolve(pol, users, nodes)
 			if err != nil {
 				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
@@ -80,7 +101,7 @@ func (pol *Policy) compileFilterRules(
 		})
 	}
 
-	return rules, nil
+	return mergeFilterRules(rules), nil
 }
 
 // compileFilterRulesForNode compiles filter rules for a specific node.
@@ -113,7 +134,7 @@ func (pol *Policy) compileFilterRulesForNode(
 		}
 	}
 
-	return rules, nil
+	return mergeFilterRules(rules), nil
 }
 
 // compileACLWithAutogroupSelf compiles a single ACL rule, handling
@@ -164,11 +185,13 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	}
 
 	// Handle autogroup:self destinations (if any)
-	if len(autogroupSelfDests) > 0 {
+	// Note: Tagged nodes can't match autogroup:self, so skip this block for tagged nodes
+	if len(autogroupSelfDests) > 0 && !node.IsTagged() {
 		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
 		sameUserNodes := make([]types.NodeView, 0)
 		for _, n := range nodes.All() {
-			if n.User().ID() == node.User().ID() && !n.IsTagged() {
+			// Check !n.IsTagged() first to short-circuit and avoid nil User access
+			if !n.IsTagged() && n.User().ID() == node.User().ID() {
 				sameUserNodes = append(sameUserNodes, n)
 			}
 		}
@@ -197,7 +220,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 						for _, port := range dest.Ports {
 							for _, ip := range n.IPs() {
 								destPorts = append(destPorts, tailcfg.NetPortRange{
-									IP:    ip.String(),
+									IP:    netip.PrefixFrom(ip, ip.BitLen()).String(),
 									Ports: port,
 								})
 							}
@@ -232,6 +255,24 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 			var destPorts []tailcfg.NetPortRange
 
 			for _, dest := range otherDests {
+				// Check if destination is a wildcard - use "*" directly instead of expanding
+				if _, isWildcard := dest.Alias.(Asterix); isWildcard {
+					for _, port := range dest.Ports {
+						destPorts = append(destPorts, tailcfg.NetPortRange{
+							IP:    "*",
+							Ports: port,
+						})
+					}
+
+					continue
+				}
+
+				// autogroup:internet does not generate packet filters - it's handled
+				// by exit node routing via AllowedIPs, not by packet filtering.
+				if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+					continue
+				}
+
 				ips, err := dest.Resolve(pol, users, nodes)
 				if err != nil {
 					log.Trace().Err(err).Msgf("resolving destination ips")
@@ -460,4 +501,46 @@ func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
 	}
 
 	return out
+}
+
+// filterRuleKey generates a unique key for merging based on SrcIPs and IPProto.
+func filterRuleKey(rule tailcfg.FilterRule) string {
+	srcKey := strings.Join(rule.SrcIPs, ",")
+
+	protoStrs := make([]string, len(rule.IPProto))
+	for i, p := range rule.IPProto {
+		protoStrs[i] = strconv.Itoa(p)
+	}
+
+	return srcKey + "|" + strings.Join(protoStrs, ",")
+}
+
+// mergeFilterRules merges rules with identical SrcIPs and IPProto by combining
+// their DstPorts. DstPorts are NOT deduplicated to match Tailscale behavior.
+func mergeFilterRules(rules []tailcfg.FilterRule) []tailcfg.FilterRule {
+	if len(rules) <= 1 {
+		return rules
+	}
+
+	keyToIdx := make(map[string]int)
+	result := make([]tailcfg.FilterRule, 0, len(rules))
+
+	for _, rule := range rules {
+		key := filterRuleKey(rule)
+
+		if idx, exists := keyToIdx[key]; exists {
+			// Merge: append DstPorts to existing rule
+			result[idx].DstPorts = append(result[idx].DstPorts, rule.DstPorts...)
+		} else {
+			// New unique combination
+			keyToIdx[key] = len(result)
+			result = append(result, tailcfg.FilterRule{
+				SrcIPs:   rule.SrcIPs,
+				DstPorts: slices.Clone(rule.DstPorts),
+				IPProto:  rule.IPProto,
+			})
+		}
+	}
+
+	return result
 }

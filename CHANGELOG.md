@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## Next
+
+### Tailscale ACL compatibility improvements
+
+Tests generated using Tailscale's mts.go test harness to run virtual nodes, set ACL policies
+via tscli, and capture PacketFilter from each node's netmap. Several bugs were found and fixed.
+[#3036](https://github.com/juanfont/headscale/pull/3036)
+
+### BREAKING
+
+- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
+  - Policies relying on wildcard to match non-Tailscale IPs will need to use explicit CIDR ranges instead
+
+### Changes
+
+- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules and export protocol constants [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
+
 ## 0.28.0 (202x-xx-xx)
 
 **Minimum supported Tailscale client version: v1.74.0**
