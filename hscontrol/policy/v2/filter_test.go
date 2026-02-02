@@ -1687,3 +1687,176 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	require.Contains(t, routerPrincipals, "100.64.0.2", "router rule should include user1's other device (unfiltered sources)")
 	require.Contains(t, routerPrincipals, "100.64.0.3", "router rule should include user2's device (unfiltered sources)")
 }
+
+// TestAutogroupSelfWithNonExistentUserInGroup verifies that when a group
+// contains a non-existent user, partial resolution still works correctly.
+// This reproduces the issue from https://github.com/juanfont/headscale/issues/2990
+// where autogroup:self breaks when groups contain users that don't have
+// registered nodes.
+func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "superadmin"},
+		{Model: gorm.Model{ID: 2}, Name: "admin"},
+		{Model: gorm.Model{ID: 3}, Name: "direction"},
+	}
+
+	nodes := types.Nodes{
+		// superadmin's device
+		{ID: 1, User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "superadmin-device"},
+		// admin's device
+		{ID: 2, User: ptr.To(users[1]), IPv4: ap("100.64.0.2"), Hostname: "admin-device"},
+		// direction's device
+		{ID: 3, User: ptr.To(users[2]), IPv4: ap("100.64.0.3"), Hostname: "direction-device"},
+		// tagged servers
+		{ID: 4, IPv4: ap("100.64.0.10"), Hostname: "common-server", Tags: []string{"tag:common"}},
+		{ID: 5, IPv4: ap("100.64.0.11"), Hostname: "tech-server", Tags: []string{"tag:tech"}},
+		{ID: 6, IPv4: ap("100.64.0.12"), Hostname: "privileged-server", Tags: []string{"tag:privileged"}},
+	}
+
+	policy := &Policy{
+		Groups: Groups{
+			// group:superadmin contains "phantom_user" who doesn't exist
+			Group("group:superadmin"): []Username{Username("superadmin@"), Username("phantom_user@")},
+			Group("group:admin"):      []Username{Username("admin@")},
+			Group("group:direction"):  []Username{Username("direction@")},
+		},
+		TagOwners: TagOwners{
+			Tag("tag:common"):     Owners{gp("group:superadmin")},
+			Tag("tag:tech"):       Owners{gp("group:superadmin")},
+			Tag("tag:privileged"): Owners{gp("group:superadmin")},
+		},
+		ACLs: []ACL{
+			{
+				// Rule 1: all groups -> tag:common
+				Action:  "accept",
+				Sources: []Alias{gp("group:superadmin"), gp("group:admin"), gp("group:direction")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(tp("tag:common"), tailcfg.PortRangeAny),
+				},
+			},
+			{
+				// Rule 2: superadmin + admin -> tag:tech
+				Action:  "accept",
+				Sources: []Alias{gp("group:superadmin"), gp("group:admin")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(tp("tag:tech"), tailcfg.PortRangeAny),
+				},
+			},
+			{
+				// Rule 3: superadmin -> tag:privileged + autogroup:self
+				Action:  "accept",
+				Sources: []Alias{gp("group:superadmin")},
+				Destinations: []AliasWithPorts{
+					aliasWithPorts(tp("tag:privileged"), tailcfg.PortRangeAny),
+					aliasWithPorts(agp("autogroup:self"), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err := policy.validate()
+	require.NoError(t, err)
+
+	containsIP := func(rules []tailcfg.FilterRule, ip string) bool {
+		addr := netip.MustParseAddr(ip)
+
+		for _, rule := range rules {
+			for _, dp := range rule.DstPorts {
+				// DstPort IPs may be bare addresses or CIDR prefixes
+				pref, err := netip.ParsePrefix(dp.IP)
+				if err != nil {
+					// Try as bare address
+					a, err2 := netip.ParseAddr(dp.IP)
+					if err2 != nil {
+						continue
+					}
+
+					if a == addr {
+						return true
+					}
+
+					continue
+				}
+
+				if pref.Contains(addr) {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	containsSrcIP := func(rules []tailcfg.FilterRule, ip string) bool {
+		addr := netip.MustParseAddr(ip)
+
+		for _, rule := range rules {
+			for _, srcIP := range rule.SrcIPs {
+				pref, err := netip.ParsePrefix(srcIP)
+				if err != nil {
+					a, err2 := netip.ParseAddr(srcIP)
+					if err2 != nil {
+						continue
+					}
+
+					if a == addr {
+						return true
+					}
+
+					continue
+				}
+
+				if pref.Contains(addr) {
+					return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	// Test superadmin's device: should have rules with tag:common, tag:tech, tag:privileged destinations
+	// and superadmin's IP should appear in sources (partial resolution of group:superadmin works)
+	superadminNode := nodes[0].View()
+	superadminRules, err := policy.compileFilterRulesForNode(users, superadminNode, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, containsIP(superadminRules, "100.64.0.10"), "rules should include tag:common server")
+	assert.True(t, containsIP(superadminRules, "100.64.0.11"), "rules should include tag:tech server")
+	assert.True(t, containsIP(superadminRules, "100.64.0.12"), "rules should include tag:privileged server")
+
+	// Key assertion: superadmin's IP should appear as a source in rules
+	// despite phantom_user in group:superadmin causing a partial resolution error
+	assert.True(t, containsSrcIP(superadminRules, "100.64.0.1"),
+		"superadmin's IP should appear in sources despite phantom_user in group:superadmin")
+
+	// Test admin's device: admin is in group:admin which has NO phantom users.
+	// The key bug was: when group:superadmin (with phantom_user) appeared as a source
+	// alongside group:admin, the error from resolving group:superadmin caused its
+	// partial result to be discarded via `continue`. With the fix, superadmin's IPs
+	// from group:superadmin are retained alongside admin's IPs from group:admin.
+	adminNode := nodes[1].View()
+	adminRules, err := policy.compileFilterRulesForNode(users, adminNode, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Rule 1 sources: [group:superadmin, group:admin, group:direction]
+	// Without fix: group:superadmin discarded -> only admin + direction IPs in sources
+	// With fix: superadmin IP preserved -> superadmin + admin + direction IPs in sources
+	assert.True(t, containsIP(adminRules, "100.64.0.10"),
+		"admin rules should include tag:common server (group:admin resolves correctly)")
+	assert.True(t, containsSrcIP(adminRules, "100.64.0.1"),
+		"superadmin's IP should be in sources for rules seen by admin (partial resolution preserved)")
+	assert.True(t, containsSrcIP(adminRules, "100.64.0.2"),
+		"admin's own IP should be in sources")
+
+	// Test direction's device: similar to admin, verifies group:direction sources work
+	directionNode := nodes[2].View()
+	directionRules, err := policy.compileFilterRulesForNode(users, directionNode, nodes.ViewSlice())
+	require.NoError(t, err)
+	assert.True(t, containsIP(directionRules, "100.64.0.10"),
+		"direction rules should include tag:common server")
+	assert.True(t, containsSrcIP(directionRules, "100.64.0.3"),
+		"direction's own IP should be in sources")
+	// With fix: superadmin's IP preserved in rules that include group:superadmin
+	assert.True(t, containsSrcIP(directionRules, "100.64.0.1"),
+		"superadmin's IP should be in sources for rule 1 (partial resolution preserved)")
+}
