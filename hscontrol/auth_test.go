@@ -3916,6 +3916,13 @@ func TestTaggedNodeWithoutUserToDifferentUser(t *testing.T) {
 	require.False(t, nodeAfterReauth.IsTagged(), "Node should no longer be tagged")
 	require.Empty(t, nodeAfterReauth.Tags().AsSlice(), "Node should have no tags")
 
+	// Verify Owner() works without panicking - this is what the mapper's
+	// generateUserProfiles calls, and it would panic with a nil pointer
+	// dereference if node.User was not set during the tag→user conversion.
+	owner := nodeAfterReauth.Owner()
+	require.True(t, owner.Valid(), "Owner should be valid after conversion (mapper would panic if nil)")
+	require.Equal(t, alice.ID, owner.Model().ID, "Owner should be alice")
+
 	t.Logf("Re-registration complete - Node ID: %d, Tags: %v, IsTagged: %t, UserID: %d",
 		nodeAfterReauth.ID().Uint64(), nodeAfterReauth.Tags().AsSlice(),
 		nodeAfterReauth.IsTagged(), nodeAfterReauth.UserID().Get())

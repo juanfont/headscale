@@ -247,6 +247,7 @@ jobs:
           - TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags
           - TestTagsAuthKeyWithoutUserInheritsTags
           - TestTagsAuthKeyWithoutUserRejectsAdvertisedTags
+          - TestTagsAuthKeyConvertToUserViaCLIRegister
     uses: ./.github/workflows/integration-test-template.yml
     secrets: inherit
     with:

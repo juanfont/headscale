@@ -3116,3 +3116,122 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 		t.Fail()
 	}
 }
+
+// =============================================================================
+// Test Suite 6: Tagged→User Conversion via CLI Register (#3038)
+// =============================================================================
+
+// TestTagsAuthKeyConvertToUserViaCLIRegister reproduces the panic from
+// issue #3038: register a node with a tags-only preauthkey (no user), then
+// convert it to a user-owned node via "headscale nodes register --user <user> --key ...".
+// The crash happens in the mapper's generateUserProfiles when node.User is nil
+// after the tag→user conversion in processReauthTags.
+//
+// The key detail is using a tags-only PreAuthKey (User: nil). When created under
+// a user, the node inherits User from the PreAuthKey and the bug is masked.
+func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
+	IntegrationSkip(t)
+
+	policy := tagsTestPolicy()
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{tagTestUser},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		[]tsic.Option{},
+		hsic.WithACLPolicy(policy),
+		hsic.WithTestName("tags-authkey-to-user-cli-3038"),
+		hsic.WithTLS(),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	// Step 1: Create a tags-only preauthkey WITHOUT a user.
+	// This is the critical detail: when PreAuthKey.UserID is nil, the node
+	// enters the NodeStore with node.User == nil. The processReauthTags
+	// conversion then sets UserID but not User, leaving it nil for the mapper.
+	authKey, err := scenario.CreatePreAuthKeyWithOptions(hsic.AuthKeyOptions{
+		User:      nil,
+		Reusable:  false,
+		Ephemeral: false,
+		Tags:      []string{"tag:valid-owned"},
+	})
+	require.NoError(t, err)
+	t.Logf("Created tags-only PreAuthKey (no user) with tags: %v", authKey.GetAclTags())
+
+	client, err := scenario.CreateTailscaleNode(
+		"head",
+		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
+	)
+	require.NoError(t, err)
+
+	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
+	require.NoError(t, err)
+
+	err = client.WaitForRunning(120 * time.Second)
+	require.NoError(t, err)
+
+	// Verify initial state: node is tagged
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
+			t.Logf("Initial state - Node ID: %d, Tags: %v", nodes[0].GetId(), nodes[0].GetTags())
+		}
+	}, 30*time.Second, 500*time.Millisecond, "node should be tagged initially")
+
+	// Step 2: Force reauth with empty tags (triggers web auth flow)
+	command := []string{
+		"tailscale", "up",
+		"--login-server=" + headscale.GetEndpoint(),
+		"--hostname=" + client.Hostname(),
+		"--advertise-tags=",
+		"--force-reauth",
+	}
+
+	stdout, stderr, _ := client.Execute(command)
+	t.Logf("Reauth command output: stdout=%s stderr=%s", stdout, stderr)
+
+	loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
+	require.NoError(t, err, "Failed to parse login URL from reauth command")
+
+	body, err := doLoginURL(client.Hostname(), loginURL)
+	require.NoError(t, err)
+
+	// Step 3: Register via CLI with user (this is the exact step that triggers the panic)
+	err = scenario.runHeadscaleRegister(tagTestUser, body)
+	require.NoError(t, err)
+
+	err = client.WaitForRunning(120 * time.Second)
+	require.NoError(t, err)
+
+	// Step 4: Verify node is now user-owned and the mapper didn't panic.
+	// The panic would occur when the mapper builds the MapResponse and calls
+	// node.Owner().Model().ID with a nil User pointer.
+	// ShutdownAssertNoPanics in the defer catches any panics in headscale logs.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err := headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 1)
+
+		if len(nodes) == 1 {
+			assertNodeHasNoTagsWithCollect(c, nodes[0])
+			assert.Equal(c, tagTestUser, nodes[0].GetUser().GetName(),
+				"Node ownership should be returned to user after untagging")
+			t.Logf("After conversion - Node ID: %d, Tags: %v, User: %s",
+				nodes[0].GetId(), nodes[0].GetTags(), nodes[0].GetUser().GetName())
+		}
+	}, 60*time.Second, 1*time.Second, "node should be user-owned after conversion via CLI register")
+}
