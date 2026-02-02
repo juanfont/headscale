@@ -409,7 +409,6 @@ func (pol *Policy) compileSSHPolicy(
 				ips, err := dst.Resolve(pol, users, nodes)
 				if err != nil {
 					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
-					continue
 				}
 				if ips != nil {
 					dest.AddSet(ips)
