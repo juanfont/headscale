@@ -150,7 +150,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 
 		ips, err := src.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Err(err).Msgf("resolving source ips")
+			log.Trace().Caller().Err(err).Msgf("resolving source ips")
 		}
 
 		if ips != nil {
@@ -234,11 +234,11 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 			for _, dest := range otherDests {
 				ips, err := dest.Resolve(pol, users, nodes)
 				if err != nil {
-					log.Trace().Err(err).Msgf("resolving destination ips")
+					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
 				}
 
 				if ips == nil {
-					log.Debug().Msgf("destination resolved to nil ips: %v", dest)
+					log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
 					continue
 				}
 
