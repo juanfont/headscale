@@ -1464,6 +1464,7 @@ func (s *State) processReauthTags(
 
 			node.Tags = []string{}
 			node.UserID = &user.ID
+			node.User = user
 		}
 
 		return nil
