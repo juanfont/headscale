@@ -77,11 +77,22 @@ func generateUserProfiles(
 	userMap := make(map[uint]*types.UserView)
 	ids := make([]uint, 0, len(userMap))
 	user := node.Owner()
+	if !user.Valid() {
+		log.Error().
+			Uint64("node.id", node.ID().Uint64()).
+			Str("node.name", node.Hostname()).
+			Msg("node has no valid owner, skipping user profile generation")
+
+		return nil
+	}
 	userID := user.Model().ID
 	userMap[userID] = &user
 	ids = append(ids, userID)
 	for _, peer := range peers.All() {
 		peerUser := peer.Owner()
+		if !peerUser.Valid() {
+			continue
+		}
 		peerUserID := peerUser.Model().ID
 		userMap[peerUserID] = &peerUser
 		ids = append(ids, peerUserID)
