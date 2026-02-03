@@ -23,6 +23,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	xmaps "golang.org/x/exp/maps"
@@ -3067,4 +3068,483 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 		}
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, 60*time.Second, 200*time.Millisecond, "Verifying traceroute goes through router")
+}
+
+// TestPeerRouteInstallation verifies that peer /32 routes are installed in
+// the kernel routing table (table 52) when Headscale uses non-CGNAT IP
+// prefixes, and that peers can reach each other.
+//
+// This is a regression test for:
+//   - tailscale/tailscale#18587: Client >= 1.94 does not install peer /32
+//     routes when using Headscale control server
+//   - juanfont/headscale#3043: Cannot ping any host
+//
+// Tailscale PR #18173 (commit c3b7f240) changed peerRoutes() to gate
+// non-CGNAT AllowedIPs on --accept-routes (RouteAll). Since Headscale
+// users may configure non-CGNAT prefixes (e.g. 10.x.x.x), those peer
+// /32 routes are no longer installed in table 52, breaking connectivity.
+//
+// The test verifies the full chain described in #18587:
+//  1. Peers appear in tailscale status
+//  2. Peers appear in tailscale debug netmap with correct AllowedIPs
+//  3. Peer /32 routes are present in ip route show table 52
+//  4. Peers can ping each other
+func TestPeerRouteInstallation(t *testing.T) {
+	IntegrationSkip(t)
+
+	tests := []struct {
+		name    string
+		version string
+		opts    []tsic.Option
+	}{
+		{
+			name:    "1.92",
+			version: "1.92",
+		},
+		{
+			// v1.94.1 contains the regression from PR #18173.
+			// No Docker image exists on Docker Hub, so we build from source.
+			name:    "v1.94.1",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("v1.94.1")},
+		},
+		{
+			// Parent of suspect commit c3b7f240 (PR #18173).
+			// Should PASS if c3b7f240 is indeed the bad commit.
+			name:    "before-c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("e9d82767e507108ed0f4eb0ff3b46a5625af7b0c")},
+		},
+		{
+			// The suspect commit: "ipn,ipn/local: always accept routes
+			// for Tailscale Services (cgnat range) (#18173)"
+			// Should FAIL if this is the bad commit.
+			name:    "c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("c3b7f2405155c39b563b85801724dc8855d1fbdb")},
+		},
+		{
+			// First commit after c3b7f240 on main.
+			// Should also FAIL if c3b7f240 introduced the regression.
+			name:    "after-c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("5aeee1d8a576b29ddc6b6b0a8c3b526142fa9c9b")},
+		},
+		{
+			name:    "head",
+			version: "head",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := ScenarioSpec{
+				NodesPerUser: 2,
+				Users:        []string{"user"},
+				Versions:     []string{tt.version},
+			}
+
+			scenario, err := NewScenario(spec)
+
+			require.NoErrorf(t, err, "failed to create scenario: %s", err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			err = scenario.CreateHeadscaleEnv(
+				tt.opts,
+				hsic.WithTestName("peerroute"),
+				hsic.WithEmbeddedDERPServerOnly(),
+				hsic.WithTLS(),
+				// Use a non-CGNAT prefix to reproduce the regression.
+				// The bug only manifests with IPs outside 100.64.0.0/10 because
+				// peerRoutes() in Tailscale >= 1.94 unconditionally routes CGNAT
+				// single IPs but gates everything else on --accept-routes.
+				hsic.WithConfigEnv(map[string]string{
+					"HEADSCALE_PREFIXES_V4": "10.64.0.0/10",
+				}),
+			)
+			requireNoErrHeadscaleEnv(t, err)
+
+			allClients, err := scenario.ListTailscaleClients()
+			requireNoErrListClients(t, err)
+
+			allIps, err := scenario.ListTailscaleClientsIPs()
+			requireNoErrListClientIPs(t, err)
+
+			err = scenario.WaitForTailscaleSync()
+			requireNoErrSync(t, err)
+
+			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+				return x.String()
+			})
+
+			// Log the Tailscale version and assigned IPs for debugging.
+			for _, client := range allClients {
+				ver, _, _ := client.Execute([]string{"tailscale", "version"})
+				t.Logf("client %s running: %s",
+					client.Hostname(),
+					strings.TrimSpace(strings.Split(ver, "\n")[0]))
+			}
+
+			t.Logf("all IPs: %v", allAddrs)
+
+			// Diagnostic 1: Verify peers appear in tailscale status with
+			// correct IPs (as described in #18587: "peers visible in
+			// tailscale status").
+			for _, client := range allClients {
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := client.Status()
+					assert.NoError(c, err)
+
+					assert.True(c, status.Self.Online,
+						"client %s should be online", client.Hostname())
+					assert.NotEmpty(c, status.Peer,
+						"client %s should have peers", client.Hostname())
+
+					for peerKey, peerStatus := range status.Peer {
+						assert.True(c, peerStatus.Online,
+							"peer %s should be online from %s perspective",
+							peerKey.ShortString(), client.Hostname())
+
+						// Verify peer has TailscaleIPs assigned from our
+						// non-CGNAT prefix.
+						assert.NotEmpty(c, peerStatus.TailscaleIPs,
+							"peer %s should have TailscaleIPs",
+							peerStatus.HostName)
+					}
+				}, 10*time.Second, 1*time.Second,
+					"peers should be visible in tailscale status for %s",
+					client.Hostname())
+			}
+
+			// Diagnostic 2: Verify netmap contains peers with AllowedIPs
+			// including the non-CGNAT /32 addresses (as described in #18587:
+			// "peers present in tailscale debug netmap, AllowedIPs include
+			// peer /32").
+			for _, client := range allClients {
+				clientIPv4 := client.MustIPv4()
+
+				peerIPs := lo.Filter(allIps, func(ip netip.Addr, _ int) bool {
+					return ip.Is4() && ip != clientIPv4
+				})
+
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					nm, err := client.Netmap()
+					assert.NoError(c, err)
+
+					for _, peerIP := range peerIPs {
+						peerPrefix := netip.PrefixFrom(peerIP, peerIP.BitLen())
+						found := false
+
+						for _, peer := range nm.Peers {
+							aips := peer.AllowedIPs()
+							for i := range aips.Len() {
+								if aips.At(i) == peerPrefix {
+									found = true
+									break
+								}
+							}
+
+							if found {
+								break
+							}
+						}
+
+						assert.Truef(c, found,
+							"client %s: peer IP %s/32 not found in any peer's AllowedIPs in netmap",
+							clientIPv4, peerIP)
+					}
+				}, 10*time.Second, 1*time.Second,
+					"netmap should contain peer AllowedIPs for %s",
+					clientIPv4)
+			}
+
+			// Diagnostic 3: Dump routing diagnostics to the tailscale
+			// container's PID 1 stderr so they appear in extracted
+			// log files (docker exec stdout goes to the test runner
+			// which isn't captured).
+			for _, client := range allClients {
+				clientIPv4 := client.MustIPv4()
+				diagScript := `exec 3>/proc/1/fd/2
+echo "=== DIAG: ip rule show ===" >&3; ip rule show >&3 2>&1
+echo "=== DIAG: ip route show table 52 ===" >&3; ip route show table 52 >&3 2>&1
+echo "=== DIAG: ip -6 route show table 52 ===" >&3; ip -6 route show table 52 >&3 2>&1
+echo "=== DIAG: ip route show table all ===" >&3; ip route show table all >&3 2>&1`
+				_, _, _ = client.Execute([]string{"sh", "-c", diagScript})
+
+				peerIPs := lo.Filter(allIps, func(ip netip.Addr, _ int) bool {
+					return ip.Is4() && ip != clientIPv4
+				})
+				for _, peerIP := range peerIPs {
+					_, _, _ = client.Execute([]string{
+						"sh", "-c",
+						fmt.Sprintf(
+							"echo '=== DIAG: ip route get %s ===' >/proc/1/fd/2; ip route get %s >/proc/1/fd/2 2>&1",
+							peerIP, peerIP),
+					})
+				}
+			}
+
+			// Assertion 3: Each client has /32 routes for its peers in
+			// table 52. This is the primary regression check — in Tailscale
+			// >= 1.94, non-CGNAT peer /32 routes are missing from table 52
+			// because peerRoutes() gates them on --accept-routes.
+			for _, client := range allClients {
+				clientIPv4 := client.MustIPv4()
+
+				peerIPs := lo.Filter(allIps, func(ip netip.Addr, _ int) bool {
+					return ip.Is4() && ip != clientIPv4
+				})
+
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					stdout, _, err := client.Execute([]string{
+						"ip", "route", "show", "table", "52",
+					})
+					assert.NoErrorf(c, err,
+						"failed to get routing table for client %s", clientIPv4)
+
+					for _, peerIP := range peerIPs {
+						route := peerIP.String() + " "
+						assert.Containsf(c, stdout, route,
+							"client %s missing peer route for %s in table 52.\n"+
+								"Routing table contents:\n%s",
+							clientIPv4, peerIP, stdout,
+						)
+					}
+				}, 15*time.Second, 1*time.Second,
+					"peer /32 routes should be installed in table 52 for client %s",
+					clientIPv4)
+			}
+
+			// Assertion 4: Peers can ping each other. Skip self-pings
+			// because tailscale ping to own non-CGNAT IP fails with
+			// "no matching peer" (IsTailscaleIP doesn't recognize it).
+			for _, client := range allClients {
+				for _, addr := range allAddrs {
+					if isSelfClient(client, addr) {
+						continue
+					}
+
+					err := client.Ping(addr)
+					require.NoErrorf(t, err,
+						"failed to ping %s from %s", addr, client.Hostname())
+				}
+			}
+		})
+	}
+}
+
+// TestSubnetRouteInstallation verifies that subnet routes advertised by a
+// peer are installed into kernel routing table 52 on accepting clients.
+// This is a regression test for tailscale/tailscale#18587 and
+// juanfont/headscale#3043: Tailscale >= 1.94 changed peerRoutes() to gate
+// non-CGNAT AllowedIPs on routeAll (--accept-routes), which can prevent
+// subnet routes from being installed even when --accept-routes is set.
+//
+// Unlike TestPeerRouteInstallation (which uses non-CGNAT peer addressing),
+// this test uses the standard CGNAT range for peer IPs and tests subnet
+// routes outside CGNAT — matching the real user scenario.
+func TestSubnetRouteInstallation(t *testing.T) {
+	IntegrationSkip(t)
+
+	tests := []struct {
+		name    string
+		version string
+		opts    []tsic.Option
+	}{
+		{
+			name:    "1.92",
+			version: "1.92",
+		},
+		{
+			// Parent of suspect commit c3b7f240 (PR #18173).
+			name:    "before-c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("e9d82767e507108ed0f4eb0ff3b46a5625af7b0c")},
+		},
+		{
+			// The suspect commit: "ipn,ipn/local: always accept routes
+			// for Tailscale Services (cgnat range) (#18173)"
+			name:    "c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("c3b7f2405155c39b563b85801724dc8855d1fbdb")},
+		},
+		{
+			// First commit after c3b7f240 on main.
+			name:    "after-c3b7f240",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("5aeee1d8a576b29ddc6b6b0a8c3b526142fa9c9b")},
+		},
+		{
+			// v1.94.1 contains the regression from PR #18173.
+			// No Docker image exists on Docker Hub, so we build from source.
+			name:    "v1.94.1",
+			version: "head",
+			opts:    []tsic.Option{tsic.WithTailscaleRef("v1.94.1")},
+		},
+		{
+			name:    "head",
+			version: "head",
+		},
+	}
+
+	subnetRoute := netip.MustParsePrefix("10.4.0.0/24")
+	hostRoute := netip.MustParsePrefix("10.4.1.1/32")
+	autoApprovePrefix := netip.MustParsePrefix("10.4.0.0/16")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := ScenarioSpec{
+				NodesPerUser: 3,
+				Users:        []string{"user"},
+				Versions:     []string{tt.version},
+			}
+
+			scenario, err := NewScenario(spec)
+
+			require.NoErrorf(t, err, "failed to create scenario: %s", err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			opts := append(tt.opts,
+				tsic.WithAcceptRoutes(),
+			)
+
+			err = scenario.CreateHeadscaleEnv(
+				opts,
+				hsic.WithTestName("subnetroute"),
+				hsic.WithEmbeddedDERPServerOnly(),
+				hsic.WithTLS(),
+				hsic.WithACLPolicy(&policyv2.Policy{
+					ACLs: []policyv2.ACL{
+						{
+							Action:  "accept",
+							Sources: []policyv2.Alias{wildcard()},
+							Destinations: []policyv2.AliasWithPorts{
+								aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+							},
+						},
+					},
+					AutoApprovers: policyv2.AutoApproverPolicy{
+						Routes: map[netip.Prefix]policyv2.AutoApprovers{
+							autoApprovePrefix: {usernameApprover("user@")},
+						},
+					},
+				}),
+			)
+			requireNoErrHeadscaleEnv(t, err)
+
+			allClients, err := scenario.ListTailscaleClients()
+			requireNoErrListClients(t, err)
+
+			allIps, err := scenario.ListTailscaleClientsIPs()
+			requireNoErrListClientIPs(t, err)
+
+			err = scenario.WaitForTailscaleSync()
+			requireNoErrSync(t, err)
+
+			headscale, err := scenario.Headscale()
+			requireNoErrGetHeadscale(t, err)
+
+			// Log the Tailscale version for debugging.
+			for _, client := range allClients {
+				ver, _, _ := client.Execute([]string{"tailscale", "version"})
+				t.Logf("client %s running: %s",
+					client.Hostname(),
+					strings.TrimSpace(strings.Split(ver, "\n")[0]))
+			}
+
+			// Designate the first client as the subnet router.
+			subnetRouter := allClients[0]
+			clients := allClients[1:]
+
+			advertiseRoutes := subnetRoute.String() + "," + hostRoute.String()
+			_, _, err = subnetRouter.Execute([]string{
+				"tailscale", "set",
+				"--advertise-routes=" + advertiseRoutes,
+			})
+			require.NoErrorf(t, err, "failed to advertise routes: %s", err)
+
+			// Wait for route propagation: the router node should have
+			// 2 available, 2 approved, 2 subnet routes.
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				nodes, err := headscale.ListNodes()
+				assert.NoError(c, err)
+
+				for _, node := range nodes {
+					if node.GetName() == subnetRouter.Hostname() {
+						requireNodeRouteCountWithCollect(c, node, 2, 2, 2)
+					}
+				}
+			}, 30*time.Second, 500*time.Millisecond,
+				"subnet router should have 2 available, 2 approved, 2 subnet routes")
+
+			// Verify non-router clients see the subnet routes in peer status.
+			expectedPrefixes := []netip.Prefix{subnetRoute, hostRoute}
+
+			for _, client := range clients {
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := client.Status()
+					assert.NoError(c, err)
+
+					routerKey := subnetRouter.MustStatus().Self.PublicKey
+					peerStatus, ok := status.Peer[routerKey]
+					assert.True(c, ok, "client %s should see subnet router as peer", client.Hostname())
+
+					if ok {
+						requirePeerSubnetRoutesWithCollect(c, peerStatus, expectedPrefixes)
+					}
+				}, 15*time.Second, 500*time.Millisecond,
+					"client %s should see subnet routes from router", client.Hostname())
+			}
+
+			// Dump routing diagnostics to container PID 1 stderr so they
+			// appear in extracted log files.
+			for _, client := range clients {
+				diagScript := `exec 3>/proc/1/fd/2
+echo "=== DIAG: ip rule show ===" >&3; ip rule show >&3 2>&1
+echo "=== DIAG: ip route show table 52 ===" >&3; ip route show table 52 >&3 2>&1
+echo "=== DIAG: ip -6 route show table 52 ===" >&3; ip -6 route show table 52 >&3 2>&1`
+				_, _, _ = client.Execute([]string{"sh", "-c", diagScript})
+			}
+
+			// Assert table 52 routes: each non-router client must have
+			// the subnet routes installed in kernel routing table 52.
+			for _, client := range clients {
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					stdout, _, err := client.Execute([]string{
+						"ip", "route", "show", "table", "52",
+					})
+					assert.NoErrorf(c, err,
+						"failed to get routing table for client %s", client.Hostname())
+
+					assert.Containsf(c, stdout, "10.4.0.0/24",
+						"client %s missing subnet route 10.4.0.0/24 in table 52.\n"+
+							"Routing table contents:\n%s",
+						client.Hostname(), stdout)
+
+					assert.Containsf(c, stdout, "10.4.1.1",
+						"client %s missing host route 10.4.1.1/32 in table 52.\n"+
+							"Routing table contents:\n%s",
+						client.Hostname(), stdout)
+				}, 15*time.Second, 1*time.Second,
+					"subnet routes should be installed in table 52 for client %s",
+					client.Hostname())
+			}
+
+			// Peer connectivity: all clients can ping each other over CGNAT IPs.
+			allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+				return x.String()
+			})
+			for _, client := range allClients {
+				for _, addr := range allAddrs {
+					if isSelfClient(client, addr) {
+						continue
+					}
+
+					err := client.Ping(addr)
+					require.NoErrorf(t, err,
+						"failed to ping %s from %s", addr, client.Hostname())
+				}
+			}
+		})
+	}
 }
