@@ -18,6 +18,11 @@ RUN git clone https://github.com/tailscale/tailscale.git
 
 WORKDIR /go/src/tailscale
 
+# Optional: checkout a specific ref (tag, branch, or commit hash).
+# When empty, builds from HEAD of the default branch.
+ARG TAILSCALE_REF=""
+RUN if [ -n "$TAILSCALE_REF" ]; then git checkout "$TAILSCALE_REF"; fi
+
 
 # see build_docker.sh
 ARG VERSION_LONG=""

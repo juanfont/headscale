@@ -105,6 +105,7 @@ type TailscaleInContainer struct {
 
 type TailscaleInContainerBuildConfig struct {
 	tags []string
+	ref  string // git ref (tag, branch, commit) to checkout; empty means HEAD
 }
 
 // Option represent optional settings that can be given to a
@@ -202,6 +203,19 @@ func WithBuildTag(tag string) Option {
 		tsic.buildConfig.tags = append(
 			tsic.buildConfig.tags, tag,
 		)
+	}
+}
+
+// WithTailscaleRef sets the git ref (tag, branch, or commit hash) to checkout
+// when building the Tailscale client from source. This option is only meaningful
+// when invoked on HEAD versions of the client.
+func WithTailscaleRef(ref string) Option {
+	return func(tsic *TailscaleInContainer) {
+		if tsic.version != VersionHead {
+			panic(errInvalidClientConfig)
+		}
+
+		tsic.buildConfig.ref = ref
 	}
 }
 
@@ -398,12 +412,20 @@ func New(
 		// Check if a pre-built image is available via environment variable
 		prebuiltImage := os.Getenv("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE")
 
-		// If custom build tags are required (e.g., for websocket DERP), we cannot use
+		// If custom build tags or a specific ref are required, we cannot use
 		// the pre-built image as it won't have the necessary code compiled in.
 		hasBuildTags := len(tsic.buildConfig.tags) > 0
+
+		hasRef := tsic.buildConfig.ref != ""
 		if hasBuildTags && prebuiltImage != "" {
 			log.Printf("Ignoring pre-built image %s because custom build tags are required: %v",
 				prebuiltImage, tsic.buildConfig.tags)
+			prebuiltImage = ""
+		}
+
+		if hasRef && prebuiltImage != "" {
+			log.Printf("Ignoring pre-built image %s because a specific ref is required: %s",
+				prebuiltImage, tsic.buildConfig.ref)
 			prebuiltImage = ""
 		}
 
@@ -429,8 +451,8 @@ func New(
 			if err != nil {
 				return nil, fmt.Errorf("could not run pre-built tailscale container %q: %w", prebuiltImage, err)
 			}
-		} else if util.IsCI() && !hasBuildTags {
-			// In CI, we require a pre-built image unless custom build tags are needed
+		} else if util.IsCI() && !hasBuildTags && !hasRef {
+			// In CI, we require a pre-built image unless custom build tags or ref are needed
 			return nil, errTailscaleImageRequiredInCI
 		} else {
 			buildOptions := &dockertest.BuildOptions{
@@ -446,6 +468,16 @@ func New(
 					docker.BuildArg{
 						Name:  "BUILD_TAGS",
 						Value: buildTags,
+					},
+				)
+			}
+
+			if tsic.buildConfig.ref != "" {
+				buildOptions.BuildArgs = append(
+					buildOptions.BuildArgs,
+					docker.BuildArg{
+						Name:  "TAILSCALE_REF",
+						Value: tsic.buildConfig.ref,
 					},
 				)
 			}
