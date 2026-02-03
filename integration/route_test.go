@@ -1473,7 +1473,7 @@ func TestSubnetRouteACL(t *testing.T) {
 	wantClientFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP,
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
 			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
@@ -1505,10 +1505,12 @@ func TestSubnetRouteACL(t *testing.T) {
 	}, 10*time.Second, 200*time.Millisecond, "Waiting for client packet filter to update")
 
 	// Wait for packet filter updates to propagate to subnet router netmap
+	// The two ACL rules (group:admins -> group:admins:* and group:admins -> 10.33.0.0/16:*)
+	// are merged into one filter rule since they share the same SrcIPs and IPProto.
 	wantSubnetFilter := []filter.Match{
 		{
 			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP,
+				ipproto.TCP, ipproto.UDP, ipproto.ICMPv4, ipproto.ICMPv6,
 			}),
 			Srcs: []netip.Prefix{
 				netip.MustParsePrefix("100.64.0.1/32"),
@@ -1525,20 +1527,6 @@ func TestSubnetRouteACL(t *testing.T) {
 					Net:   netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
 					Ports: allPorts,
 				},
-			},
-			Caps: []filter.CapMatch{},
-		},
-		{
-			IPProto: views.SliceOf([]ipproto.Proto{
-				ipproto.TCP, ipproto.UDP,
-			}),
-			Srcs: []netip.Prefix{
-				netip.MustParsePrefix("100.64.0.1/32"),
-				netip.MustParsePrefix("100.64.0.2/32"),
-				netip.MustParsePrefix("fd7a:115c:a1e0::1/128"),
-				netip.MustParsePrefix("fd7a:115c:a1e0::2/128"),
-			},
-			Dsts: []filter.NetPortRange{
 				{
 					Net:   netip.MustParsePrefix("10.33.0.0/16"),
 					Ports: allPorts,
