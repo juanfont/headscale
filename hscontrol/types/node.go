@@ -585,15 +585,23 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 		return
 	}
 
-	newHostname := strings.ToLower(hostInfo.Hostname)
-	if err := util.ValidateHostname(newHostname); err != nil {
+	newHostname, err := util.NormaliseHostname(hostInfo.Hostname)
+	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
 			Str("current_hostname", node.Hostname).
-			Str("rejected_hostname", hostInfo.Hostname).
+			Str("original_hostname", hostInfo.Hostname).
 			Err(err).
-			Msg("Rejecting invalid hostname update from hostinfo")
+			Msg("Hostname normalization failed, keeping current hostname")
 		return
+	}
+
+	if hostInfo.Hostname != newHostname {
+		log.Info().
+			Str("node.id", node.ID.String()).
+			Str("original", hostInfo.Hostname).
+			Str("sanitized", newHostname).
+			Msg("Hostname sanitized during update")
 	}
 
 	if node.Hostname != newHostname {
