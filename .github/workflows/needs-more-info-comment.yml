@@ -1,0 +1,28 @@
+name: Needs More Info - Post Comment
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  post-comment:
+    if: >-
+      github.event.label.name == 'needs-more-info' &&
+      github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: .github/label-response/needs-more-info.md
+          sparse-checkout-cone-mode: false
+
+      - name: Post instruction comment
+        run: gh issue comment "$NUMBER" --body-file .github/label-response/needs-more-info.md
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}

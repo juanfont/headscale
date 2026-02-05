@@ -1,0 +1,33 @@
+name: Needs More Info - Timer
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # Daily at midnight UTC
+  issue_comment:
+    types: [created]
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+
+jobs:
+  manage-needs-more-info:
+    if: >-
+      github.repository == 'juanfont/headscale' &&
+      (github.event_name != 'issue_comment' || github.event.comment.user.type != 'Bot')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Manage needs-more-info issues
+        uses: tiangolo/issue-manager@2fb3484ec9279485df8659e8ec73de262431737d # v0.6.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config: >
+            {
+              "needs-more-info": {
+                "delay": "P3D",
+                "message": "This issue has been automatically closed because no additional information was provided within 3 days.\n\nIf you now have the requested information, please feel free to reopen this issue and provide the details. We're happy to help once we have enough context to investigate.\n\nThank you for your understanding.",
+                "remove_label_on_comment": true,
+                "remove_label_on_close": true
+              }
+            }
