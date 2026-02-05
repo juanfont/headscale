@@ -460,7 +460,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		assert.True(t,
 			strings.Contains(outputStr, "unauthenticated") ||
 				strings.Contains(outputStr, "invalid token") ||
-				strings.Contains(outputStr, "failed to validate token") ||
+				strings.Contains(outputStr, "validating token") ||
 				strings.Contains(outputStr, "authentication"),
 			"Error should indicate authentication failure, got: %s", output)
 
@@ -610,7 +610,7 @@ cli:
 		assert.True(t,
 			strings.Contains(outputStr, "unauthenticated") ||
 				strings.Contains(outputStr, "invalid token") ||
-				strings.Contains(outputStr, "failed to validate token") ||
+				strings.Contains(outputStr, "validating token") ||
 				strings.Contains(outputStr, "authentication"),
 			"Error should indicate authentication failure, got: %s", output)
 
