@@ -23,6 +23,7 @@ const (
 	NodeExpired        = "node.expired"
 	NodeHostname       = "node.hostname"
 	ExistingNodeName   = "existing.node.name"
+	ExistingNodeID     = "existing.node.id"
 	CurrentHostname    = "current_hostname"
 	RejectedHostname   = "rejected_hostname"
 	OldHostname        = "old_hostname"
@@ -34,6 +35,17 @@ const (
 	RegistrationKey    = "registration_key" //nolint:gosec // G101: not a credential
 	RegistrationMethod = "registrationMethod"
 	ExpiresAt          = "expiresAt"
+)
+
+// Tag fields for reauth and tag operations.
+const (
+	CurrentTags      = "current.tags"
+	RemovedTags      = "removed.tags"
+	RejectedTags     = "rejected.tags"
+	NewTags          = "new.tags"
+	OldTags          = "old.tags"
+	IsTagged         = "is.tagged"
+	WasAuthKeyTagged = "was.authkey.tagged"
 )
 
 // Machine fields.
@@ -54,14 +66,19 @@ const (
 
 // PreAuthKey fields.
 const (
-	PAKID         = "pak.id"
-	PAKPrefix     = "pak.prefix"
-	PAKTags       = "pak.tags"
-	PAKReusable   = "pak.reusable"
-	PAKEphemeral  = "pak.ephemeral"
-	PAKUsed       = "pak.used"
-	PAKIsTagged   = "pak.is_tagged"
-	PAKExpiration = "pak.expiration"
+	PAKID           = "pak.id"
+	PAKPrefix       = "pak.prefix"
+	PAKTags         = "pak.tags"
+	PAKReusable     = "pak.reusable"
+	PAKEphemeral    = "pak.ephemeral"
+	PAKUsed         = "pak.used"
+	PAKIsTagged     = "pak.is_tagged"
+	PAKExpiration   = "pak.expiration"
+	AuthKeyID       = "authkey.id"
+	AuthKeyUsed     = "authkey.used"
+	AuthKeyExpired  = "authkey.expired"
+	AuthKeyReusable = "authkey.reusable"
+	NodeKeyRotation = "nodekey.rotation"
 )
 
 // APIKey fields.
@@ -74,11 +91,21 @@ const (
 
 // Route fields.
 const (
-	RoutesAnnounced = "routes.announced"
-	RoutesApproved  = "routes.approved"
-	Prefix          = "prefix"
-	FinalState      = "finalState"
-	NewState        = "newState"
+	RoutesAnnounced    = "routes.announced"
+	RoutesApproved     = "routes.approved"
+	RoutesApprovedOld  = "routes.approved.old"
+	RoutesApprovedNew  = "routes.approved.new"
+	OldAnnouncedRoutes = "oldAnnouncedRoutes"
+	NewAnnouncedRoutes = "newAnnouncedRoutes"
+	ApprovedRoutes     = "approvedRoutes"
+	OldApprovedRoutes  = "oldApprovedRoutes"
+	NewApprovedRoutes  = "newApprovedRoutes"
+	AutoApprovedRoutes = "autoApprovedRoutes"
+	AllApprovedRoutes  = "allApprovedRoutes"
+	RouteChanged       = "routeChanged"
+	Prefix             = "prefix"
+	FinalState         = "finalState"
+	NewState           = "newState"
 )
 
 // Request/Response fields.
