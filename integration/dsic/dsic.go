@@ -75,7 +75,7 @@ func WithOrCreateNetwork(network *dockertest.Network) Option {
 			dsic.hostname+"-network",
 		)
 		if err != nil {
-			log.Fatalf("failed to create network: %s", err)
+			log.Fatalf("creating network: %s", err)
 		}
 
 		dsic.networks = append(dsic.networks, network)
@@ -161,7 +161,7 @@ func New(
 	}
 	tlsCert, tlsKey, err := integrationutil.CreateCertificate(hostname)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create certificates for headscale test: %w", err)
+		return nil, fmt.Errorf("creating certificates for headscale test: %w", err)
 	}
 	dsic := &DERPServerInContainer{
 		version:  version,
@@ -243,7 +243,7 @@ func New(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"%s could not start tailscale DERPer container (version: %s): %w",
+			"%s starting tailscale DERPer container (version: %s): %w",
 			hostname,
 			version,
 			err,
@@ -256,19 +256,19 @@ func New(
 	for i, cert := range dsic.caCerts {
 		err = dsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 	}
 	if len(dsic.tlsCert) != 0 {
 		err = dsic.WriteFile(fmt.Sprintf("%s/%s.crt", DERPerCertRoot, dsic.hostname), dsic.tlsCert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 	}
 	if len(dsic.tlsKey) != 0 {
 		err = dsic.WriteFile(fmt.Sprintf("%s/%s.key", DERPerCertRoot, dsic.hostname), dsic.tlsKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+			return nil, fmt.Errorf("writing TLS key to container: %w", err)
 		}
 	}
 
@@ -280,9 +280,9 @@ func (t *DERPServerInContainer) Shutdown() error {
 	err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save log from %s: %s",
+			"saving log from %s: %s",
 			t.hostname,
-			fmt.Errorf("failed to save log: %w", err),
+			fmt.Errorf("saving log: %w", err),
 		)
 	}
 
@@ -336,7 +336,7 @@ func (t *DERPServerInContainer) WaitForRunning() error {
 	return t.pool.Retry(func() error {
 		resp, err := client.Get(url) //nolint
 		if err != nil {
-			return fmt.Errorf("headscale is not ready: %w", err)
+			return fmt.Errorf("DERPer is not ready: %w", err)
 		}
 
 		if resp.StatusCode != http.StatusOK {

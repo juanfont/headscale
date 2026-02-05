@@ -231,7 +231,7 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
 	err := json.Unmarshal(data, &val)
 	if err != nil {
-		return fmt.Errorf("could not unmarshal data: %w", err)
+		return fmt.Errorf("unmarshalling data: %w", err)
 	}
 
 	switch v := val.(type) {
@@ -240,12 +240,12 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	case string:
 		pv, err := strconv.ParseBool(v)
 		if err != nil {
-			return fmt.Errorf("could not parse %s as boolean: %w", v, err)
+			return fmt.Errorf("parsing %s as boolean: %w", v, err)
 		}
 		*bit = FlexibleBoolean(pv)
 
 	default:
-		return fmt.Errorf("could not parse %v as boolean", v)
+		return fmt.Errorf("parsing %v as boolean", v)
 	}
 
 	return nil

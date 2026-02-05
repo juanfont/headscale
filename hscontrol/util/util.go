@@ -48,7 +48,7 @@ func ParseLoginURLFromCLILogin(output string) (*url.URL, error) {
 
 	loginURL, err := url.Parse(urlStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
+		return nil, fmt.Errorf("parsing URL: %w", err)
 	}
 
 	return loginURL, nil

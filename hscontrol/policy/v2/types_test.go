@@ -380,7 +380,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			wantErr: `Username has to contain @, got: "invalid"`,
+			wantErr: `username must contain @, got: "invalid"`,
 		},
 		{
 			name: "invalid-group",
@@ -393,7 +393,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			wantErr: `Group has to start with "group:", got: "grou:example"`,
+			wantErr: `group must start with "group:", got: "grou:example"`,
 		},
 		{
 			name: "group-in-group",
@@ -407,8 +407,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			// wantErr: `Username has to contain @, got: "group:inner"`,
-			wantErr: `Nested groups are not allowed, found "group:inner" inside "group:example"`,
+			// wantErr: `username must contain @, got: "group:inner"`,
+			wantErr: `nested groups are not allowed, found "group:inner" inside "group:example"`,
 		},
 		{
 			name: "invalid-addr",
@@ -419,7 +419,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	},
 }
 `,
-			wantErr: `Hostname "derp" contains an invalid IP address: "10.0"`,
+			wantErr: `hostname "derp" contains an invalid IP address: "10.0"`,
 		},
 		{
 			name: "invalid-prefix",
@@ -430,7 +430,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			},
 }
 `,
-			wantErr: `Hostname "derp" contains an invalid IP address: "10.0/42"`,
+			wantErr: `hostname "derp" contains an invalid IP address: "10.0/42"`,
 		},
 		// TODO(kradalby): Figure out why this doesn't work.
 		// 		{
@@ -459,7 +459,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 	],
 }
 `,
-			wantErr: `AutoGroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged autogroup:self]`,
+			wantErr: `autogroup is invalid, got: "autogroup:invalid", must be one of [autogroup:internet autogroup:member autogroup:nonroot autogroup:tagged autogroup:self]`,
 		},
 		{
 			name: "undefined-hostname-errors-2490",
@@ -478,7 +478,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `Host "user1" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `host "user1" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "defined-hostname-does-not-err-2490",
@@ -854,7 +854,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "tag-must-be-defined-acl-dst",
@@ -873,7 +873,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "tag-must-be-defined-acl-ssh-src",
@@ -892,7 +892,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "tag-must-be-defined-acl-ssh-dst",
@@ -914,7 +914,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "tag-must-be-defined-acl-autoapprover-route",
@@ -927,7 +927,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "tag-must-be-defined-acl-autoapprover-exitnode",
@@ -938,7 +938,7 @@ func TestUnmarshalPolicy(t *testing.T) {
    },
 }
 `,
-			wantErr: `Tag "tag:notdefined" is not defined in the Policy, please define or remove the reference to it`,
+			wantErr: `tag "tag:notdefined" is not defined in the policy, please define or remove the reference to it`,
 		},
 		{
 			name: "missing-dst-port-is-err",
@@ -1010,7 +1010,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }
 }
 `,
-			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
+			wantErr: `group must start with "group:", got: "INVALID_GROUP_FIELD"`,
 		},
 		{
 			name: "invalid-group-datatype",
@@ -1022,7 +1022,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }
 }
 `,
-			wantErr: `Group "group:invalid" value must be an array of users, got string: "should fail"`,
+			wantErr: `group "group:invalid" value must be an array of users, got string: "should fail"`,
 		},
 		{
 			name: "invalid-group-name-and-datatype-fails-on-name-first",
@@ -1034,7 +1034,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }
 }
 `,
-			wantErr: `Group has to start with "group:", got: "INVALID_GROUP_FIELD"`,
+			wantErr: `group must start with "group:", got: "INVALID_GROUP_FIELD"`,
 		},
 		{
 			name: "disallow-unsupported-fields-hosts-level",
@@ -1046,7 +1046,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   }
 }
 `,
-			wantErr: `Hostname "INVALID_HOST_FIELD" contains an invalid IP address: "should fail"`,
+			wantErr: `hostname "INVALID_HOST_FIELD" contains an invalid IP address: "should fail"`,
 		},
 		{
 			name: "disallow-unsupported-fields-tagowners-level",
@@ -2045,7 +2045,7 @@ func TestResolvePolicy(t *testing.T) {
 					"testhost": p("100.100.101.102/32"),
 				},
 			},
-			wantErr: `unable to resolve host: "invalidhost"`,
+			wantErr: `resolving host: "invalidhost"`,
 		},
 		{
 			name:      "multiple-groups",
@@ -2909,7 +2909,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			node:    nodes[0],
 			tag:     "tag:test",
 			want:    false,
-			wantErr: "Username has to contain @",
+			wantErr: "username must contain @",
 		},
 		{
 			name: "node-cannot-have-tag",

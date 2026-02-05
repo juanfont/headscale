@@ -290,7 +290,7 @@ func RenameNode(tx *gorm.DB,
 
 	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
 	if err != nil {
-		return fmt.Errorf("failed to check name uniqueness: %w", err)
+		return fmt.Errorf("checking name uniqueness: %w", err)
 	}
 
 	if count > 0 {
@@ -298,7 +298,7 @@ func RenameNode(tx *gorm.DB,
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
-		return fmt.Errorf("failed to rename node in the database: %w", err)
+		return fmt.Errorf("renaming node in database: %w", err)
 	}
 
 	return nil
@@ -396,7 +396,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	// adding it to the registrationCache
 	if node.IPv4 != nil || node.IPv6 != nil {
 		if err := tx.Save(&node).Error; err != nil {
-			return nil, fmt.Errorf("failed register existing node in the database: %w", err)
+			return nil, fmt.Errorf("registering existing node in database: %w", err)
 		}
 
 		log.Trace().
@@ -425,14 +425,14 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	if node.GivenName == "" {
 		givenName, err := EnsureUniqueGivenName(tx, node.Hostname)
 		if err != nil {
-			return nil, fmt.Errorf("failed to ensure unique given name: %w", err)
+			return nil, fmt.Errorf("ensuring unique given name: %w", err)
 		}
 
 		node.GivenName = givenName
 	}
 
 	if err := tx.Save(&node).Error; err != nil {
-		return nil, fmt.Errorf("failed register(save) node in the database: %w", err)
+		return nil, fmt.Errorf("saving node to database: %w", err)
 	}
 
 	log.Trace().

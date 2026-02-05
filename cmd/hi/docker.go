@@ -32,7 +32,7 @@ var (
 func runTestContainer(ctx context.Context, config *RunConfig) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -48,12 +48,12 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	absLogsDir, err := filepath.Abs(logsDir)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path for logs directory: %w", err)
+		return fmt.Errorf("getting absolute path for logs directory: %w", err)
 	}
 
 	const dirPerm = 0o755
 	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+		return fmt.Errorf("creating logs directory: %w", err)
 	}
 
 	if config.CleanBefore {
@@ -72,12 +72,12 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	imageName := "golang:" + config.GoVersion
 	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil {
-		return fmt.Errorf("failed to ensure image availability: %w", err)
+		return fmt.Errorf("ensuring image availability: %w", err)
 	}
 
 	resp, err := createGoTestContainer(ctx, cli, config, containerName, absLogsDir, goTestCmd)
 	if err != nil {
-		return fmt.Errorf("failed to create container: %w", err)
+		return fmt.Errorf("creating container: %w", err)
 	}
 
 	if config.Verbose {
@@ -85,7 +85,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
+		return fmt.Errorf("starting container: %w", err)
 	}
 
 	log.Printf("Starting test: %s", config.TestPattern)
@@ -176,7 +176,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	if err != nil {
-		return fmt.Errorf("test execution failed: %w", err)
+		return fmt.Errorf("executing test: %w", err)
 	}
 
 	if exitCode != 0 {
@@ -210,7 +210,7 @@ func buildGoTestCommand(config *RunConfig) []string {
 func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunConfig, containerName, logsDir string, goTestCmd []string) (container.CreateResponse, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
-		return container.CreateResponse{}, fmt.Errorf("failed to get working directory: %w", err)
+		return container.CreateResponse{}, fmt.Errorf("getting working directory: %w", err)
 	}
 
 	projectRoot := findProjectRoot(pwd)
@@ -312,7 +312,7 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 		Follow:     true,
 	})
 	if err != nil {
-		return -1, fmt.Errorf("failed to get container logs: %w", err)
+		return -1, fmt.Errorf("getting container logs: %w", err)
 	}
 	defer out.Close()
 
@@ -324,7 +324,7 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 	select {
 	case err := <-errCh:
 		if err != nil {
-			return -1, fmt.Errorf("error waiting for container: %w", err)
+			return -1, fmt.Errorf("waiting for container: %w", err)
 		}
 	case status := <-statusCh:
 		return int(status.StatusCode), nil
@@ -338,7 +338,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	// First, get all related test containers
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
 	}
 
 	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
@@ -462,12 +462,12 @@ func getCurrentDockerContext() (*DockerContext, error) {
 	cmd := exec.Command("docker", "context", "inspect")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get docker context: %w", err)
+		return nil, fmt.Errorf("getting docker context: %w", err)
 	}
 
 	var contexts []DockerContext
 	if err := json.Unmarshal(output, &contexts); err != nil {
-		return nil, fmt.Errorf("failed to parse docker context: %w", err)
+		return nil, fmt.Errorf("parsing docker context: %w", err)
 	}
 
 	if len(contexts) > 0 {
@@ -491,7 +491,7 @@ func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageNa
 		if client.IsErrNotFound(err) {
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
+		return false, fmt.Errorf("inspecting image %s: %w", imageName, err)
 	}
 
 	return true, nil
@@ -502,7 +502,7 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 	// First check if image is available locally
 	available, err := checkImageAvailableLocally(ctx, cli, imageName)
 	if err != nil {
-		return fmt.Errorf("failed to check local image availability: %w", err)
+		return fmt.Errorf("checking local image availability: %w", err)
 	}
 
 	if available {
@@ -519,19 +519,19 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 
 	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
+		return fmt.Errorf("pulling image %s: %w", imageName, err)
 	}
 	defer reader.Close()
 
 	if verbose {
 		_, err = io.Copy(os.Stdout, reader)
 		if err != nil {
-			return fmt.Errorf("failed to read pull output: %w", err)
+			return fmt.Errorf("reading pull output: %w", err)
 		}
 	} else {
 		_, err = io.Copy(io.Discard, reader)
 		if err != nil {
-			return fmt.Errorf("failed to read pull output: %w", err)
+			return fmt.Errorf("reading pull output: %w", err)
 		}
 		log.Printf("Image %s pulled successfully", imageName)
 	}
@@ -598,14 +598,14 @@ func listControlFiles(logsDir string) {
 func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
 	// List all containers
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
 	}
 
 	// Get containers from the specific test run
@@ -691,12 +691,12 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Ensure the logs directory exists
 	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+		return fmt.Errorf("creating logs directory: %w", err)
 	}
 
 	// Extract container logs
 	if err := extractContainerLogs(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
-		return fmt.Errorf("failed to extract logs: %w", err)
+		return fmt.Errorf("extracting logs: %w", err)
 	}
 
 	// Extract tar files for headscale containers only
@@ -723,7 +723,7 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 		Tail:       "all",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get container logs: %w", err)
+		return fmt.Errorf("getting container logs: %w", err)
 	}
 	defer logReader.Close()
 
@@ -737,17 +737,17 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	// Demultiplex the Docker logs stream to separate stdout and stderr
 	_, err = stdcopy.StdCopy(&stdoutBuf, &stderrBuf, logReader)
 	if err != nil {
-		return fmt.Errorf("failed to demultiplex container logs: %w", err)
+		return fmt.Errorf("demultiplexing container logs: %w", err)
 	}
 
 	// Write stdout logs
 	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("failed to write stdout log: %w", err)
+		return fmt.Errorf("writing stdout log: %w", err)
 	}
 
 	// Write stderr logs
 	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("failed to write stderr log: %w", err)
+		return fmt.Errorf("writing stderr log: %w", err)
 	}
 
 	if verbose {

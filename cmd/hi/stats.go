@@ -47,7 +47,7 @@ type StatsCollector struct {
 func NewStatsCollector() (*StatsCollector, error) {
 	cli, err := createDockerClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+		return nil, fmt.Errorf("creating Docker client: %w", err)
 	}
 
 	return &StatsCollector{

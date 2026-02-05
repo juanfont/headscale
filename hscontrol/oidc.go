@@ -32,8 +32,8 @@ const (
 
 var (
 	errEmptyOIDCCallbackParams = errors.New("empty OIDC callback params")
-	errNoOIDCIDToken           = errors.New("could not extract ID Token for OIDC callback")
-	errNoOIDCRegistrationInfo  = errors.New("could not get registration info from cache")
+	errNoOIDCIDToken           = errors.New("extracting ID token")
+	errNoOIDCRegistrationInfo  = errors.New("registration info not in cache")
 	errOIDCAllowedDomains      = errors.New(
 		"authenticated principal does not match any allowed domain",
 	)
@@ -377,7 +377,7 @@ func (a *AuthProviderOIDC) getOauth2Token(
 
 	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, exchangeOpts...)
 	if err != nil {
-		return nil, NewHTTPError(http.StatusForbidden, "invalid code", fmt.Errorf("could not exchange code for token: %w", err))
+		return nil, NewHTTPError(http.StatusForbidden, "invalid code", fmt.Errorf("exchanging code for token: %w", err))
 	}
 
 	return oauth2Token, err
@@ -396,7 +396,7 @@ func (a *AuthProviderOIDC) extractIDToken(
 	verifier := a.oidcProvider.Verifier(&oidc.Config{ClientID: a.cfg.ClientID})
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
-		return nil, NewHTTPError(http.StatusForbidden, "failed to verify id_token", fmt.Errorf("failed to verify ID token: %w", err))
+		return nil, NewHTTPError(http.StatusForbidden, "failed to verify id_token", fmt.Errorf("verifying ID token: %w", err))
 	}
 
 	return idToken, nil
@@ -561,7 +561,7 @@ func (a *AuthProviderOIDC) handleRegistration(
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
-		return false, fmt.Errorf("could not register node: %w", err)
+		return false, fmt.Errorf("registering node: %w", err)
 	}
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg

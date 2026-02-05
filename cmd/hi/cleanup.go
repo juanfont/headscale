@@ -22,11 +22,11 @@ import (
 func cleanupBeforeTest(ctx context.Context) error {
 	err := cleanupStaleTestContainers(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to clean stale test containers: %w", err)
+		return fmt.Errorf("cleaning stale test containers: %w", err)
 	}
 
 	if err := pruneDockerNetworks(ctx); err != nil {
-		return fmt.Errorf("failed to prune networks: %w", err)
+		return fmt.Errorf("pruning networks: %w", err)
 	}
 
 	return nil
@@ -39,14 +39,14 @@ func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID, runI
 		Force: true,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to remove test container: %w", err)
+		return fmt.Errorf("removing test container: %w", err)
 	}
 
 	// Clean up integration test containers for this run only
 	if runID != "" {
 		err := killTestContainersByRunID(ctx, runID)
 		if err != nil {
-			return fmt.Errorf("failed to clean up containers for run %s: %w", runID, err)
+			return fmt.Errorf("cleaning up containers for run %s: %w", runID, err)
 		}
 	}
 
@@ -57,7 +57,7 @@ func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID, runI
 func killTestContainers(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -65,7 +65,7 @@ func killTestContainers(ctx context.Context) error {
 		All: true,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
 	}
 
 	removed := 0
@@ -109,7 +109,7 @@ func killTestContainers(ctx context.Context) error {
 func killTestContainersByRunID(ctx context.Context, runID string) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -121,7 +121,7 @@ func killTestContainersByRunID(ctx context.Context, runID string) error {
 		),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list containers for run %s: %w", runID, err)
+		return fmt.Errorf("listing containers for run %s: %w", runID, err)
 	}
 
 	removed := 0
@@ -151,7 +151,7 @@ func killTestContainersByRunID(ctx context.Context, runID string) error {
 func cleanupStaleTestContainers(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -164,7 +164,7 @@ func cleanupStaleTestContainers(ctx context.Context) error {
 		),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list stopped containers: %w", err)
+		return fmt.Errorf("listing stopped containers: %w", err)
 	}
 
 	removed := 0
@@ -225,13 +225,13 @@ func removeContainerWithRetry(ctx context.Context, cli *client.Client, container
 func pruneDockerNetworks(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
 	report, err := cli.NetworksPrune(ctx, filters.Args{})
 	if err != nil {
-		return fmt.Errorf("failed to prune networks: %w", err)
+		return fmt.Errorf("pruning networks: %w", err)
 	}
 
 	if len(report.NetworksDeleted) > 0 {
@@ -247,7 +247,7 @@ func pruneDockerNetworks(ctx context.Context) error {
 func cleanOldImages(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -255,7 +255,7 @@ func cleanOldImages(ctx context.Context) error {
 		All: true,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list images: %w", err)
+		return fmt.Errorf("listing images: %w", err)
 	}
 
 	removed := 0
@@ -297,7 +297,7 @@ func cleanOldImages(ctx context.Context) error {
 func cleanCacheVolume(ctx context.Context) error {
 	cli, err := createDockerClient()
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -330,7 +330,7 @@ func cleanCacheVolume(ctx context.Context) error {
 func cleanupSuccessfulTestArtifacts(logsDir string, verbose bool) error {
 	entries, err := os.ReadDir(logsDir)
 	if err != nil {
-		return fmt.Errorf("failed to read logs directory: %w", err)
+		return fmt.Errorf("reading logs directory: %w", err)
 	}
 
 	var (

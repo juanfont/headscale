@@ -290,7 +290,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			if i.prefix4 != nil && node.IPv4 == nil {
 				ret4, err := i.nextLocked(i.prev4, i.prefix4)
 				if err != nil {
-					return fmt.Errorf("failed to allocate ipv4 for node(%d): %w", node.ID, err)
+					return fmt.Errorf("allocating IPv4 for node(%d): %w", node.ID, err)
 				}
 
 				node.IPv4 = ret4
@@ -302,7 +302,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 			if i.prefix6 != nil && node.IPv6 == nil {
 				ret6, err := i.nextLocked(i.prev6, i.prefix6)
 				if err != nil {
-					return fmt.Errorf("failed to allocate ipv6 for node(%d): %w", node.ID, err)
+					return fmt.Errorf("allocating IPv6 for node(%d): %w", node.ID, err)
 				}
 
 				node.IPv6 = ret6

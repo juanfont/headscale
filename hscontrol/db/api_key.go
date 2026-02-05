@@ -78,7 +78,7 @@ func (hsdb *HSDatabase) CreateAPIKey(
 	}
 
 	if err := hsdb.DB.Save(&key).Error; err != nil {
-		return "", nil, fmt.Errorf("failed to save API key to database: %w", err)
+		return "", nil, fmt.Errorf("saving API key to database: %w", err)
 	}
 
 	return keyStr, &key, nil

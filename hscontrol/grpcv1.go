@@ -55,7 +55,7 @@ func (api headscaleV1APIServer) CreateUser(
 	}
 	user, policyChanged, err := api.h.state.CreateUser(newUser)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
+		return nil, status.Errorf(codes.Internal, "creating user: %s", err)
 	}
 
 	// CreateUser returns a policy change response if the user creation affected policy.
@@ -423,7 +423,7 @@ func validateTag(tag string) error {
 		return errors.New("tag should be lowercase")
 	}
 	if len(strings.Fields(tag)) > 1 {
-		return errors.New("tag should not contains space")
+		return errors.New("tags must not contain spaces")
 	}
 	return nil
 }
@@ -817,7 +817,7 @@ func (api headscaleV1APIServer) Health(
 	response := &v1.HealthResponse{}
 
 	if err := api.h.state.PingDB(ctx); err != nil {
-		healthErr = fmt.Errorf("database ping failed: %w", err)
+		healthErr = fmt.Errorf("pinging database: %w", err)
 	} else {
 		response.DatabaseConnectivity = true
 	}

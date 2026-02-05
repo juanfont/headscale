@@ -25,8 +25,8 @@ import (
 )
 
 var (
-	ErrNodeAddressesInvalid = errors.New("failed to parse node addresses")
-	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
+	ErrNodeAddressesInvalid = errors.New("parsing node addresses")
+	ErrHostnameTooLong      = errors.New("hostname too long, cannot accept more than 255 ASCII chars")
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
@@ -417,7 +417,7 @@ func (node *Node) Proto() *v1.Node {
 
 func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	if node.GivenName == "" {
-		return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
+		return "", fmt.Errorf("creating valid FQDN: %w", ErrNodeHasNoGivenName)
 	}
 
 	hostname := node.GivenName
@@ -432,7 +432,7 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 
 	if len(hostname) > MaxHostnameLength {
 		return "", fmt.Errorf(
-			"failed to create valid FQDN (%s): %w",
+			"creating valid FQDN (%s): %w",
 			hostname,
 			ErrHostnameTooLong,
 		)
@@ -897,7 +897,7 @@ func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.Peer
 // GetFQDN returns the fully qualified domain name for the node.
 func (nv NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !nv.Valid() {
-		return "", errors.New("failed to create valid FQDN: node view is invalid")
+		return "", errors.New("creating valid FQDN: node view is invalid")
 	}
 
 	return nv.ж.GetFQDN(baseDomain)

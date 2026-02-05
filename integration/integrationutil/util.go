@@ -59,17 +59,17 @@ func WriteFileToContainer(
 
 	err := tarWriter.WriteHeader(header)
 	if err != nil {
-		return fmt.Errorf("failed write file header to tar: %w", err)
+		return fmt.Errorf("writing file header to tar: %w", err)
 	}
 
 	_, err = io.Copy(tarWriter, file)
 	if err != nil {
-		return fmt.Errorf("failed to copy file to tar: %w", err)
+		return fmt.Errorf("copying file to tar: %w", err)
 	}
 
 	err = tarWriter.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close tar: %w", err)
+		return fmt.Errorf("closing tar: %w", err)
 	}
 
 	// Ensure the directory is present inside the container
@@ -79,7 +79,7 @@ func WriteFileToContainer(
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to ensure directory: %w", err)
+		return fmt.Errorf("ensuring directory: %w", err)
 	}
 
 	err = pool.Client.UploadToContainer(
