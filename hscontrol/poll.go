@@ -11,6 +11,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/sasha-s/go-deadlock"
@@ -43,6 +44,8 @@ type mapSession struct {
 
 	node *types.Node
 	w    http.ResponseWriter
+
+	log zerolog.Logger
 }
 
 func (h *Headscale) newMapSession(
@@ -67,6 +70,13 @@ func (h *Headscale) newMapSession(
 
 		keepAlive:       ka,
 		keepAliveTicker: nil,
+
+		log: log.With().
+			Str(zf.Component, "poll").
+			EmbedObject(node).
+			Bool(zf.OmitPeers, req.OmitPeers).
+			Bool(zf.Stream, req.Stream).
+			Logger(),
 	}
 }
 
@@ -132,7 +142,7 @@ func (m *mapSession) serve() {
 func (m *mapSession) serveLongPoll() {
 	m.beforeServeLongPoll()
 
-	log.Trace().Caller().EmbedObject(m.node).Msg("Long poll session started because client connected")
+	m.log.Trace().Caller().Msg("long poll session started")
 
 	// Clean up the session when the client disconnects
 	defer func() {
@@ -166,12 +176,12 @@ func (m *mapSession) serveLongPoll() {
 		if disconnected {
 			disconnectChanges, err := m.h.state.Disconnect(m.node.ID)
 			if err != nil {
-				m.errf(err, "Failed to disconnect node %s", m.node.Hostname)
+				m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
 			}
 
 			m.h.Change(disconnectChanges...)
 			m.afterServeLongPoll()
-			m.infof("node has disconnected, mapSession: %p, chan: %p", m, m.ch)
+			m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has disconnected")
 		}
 	}()
 
@@ -193,7 +203,7 @@ func (m *mapSession) serveLongPoll() {
 	// the node to be incorrectly removed from AvailableRoutes.
 	mapReqChange, err := m.h.state.UpdateNodeFromMapRequest(m.node.ID, m.req)
 	if err != nil {
-		m.errf(err, "failed to update node from initial MapRequest")
+		m.log.Error().Caller().Err(err).Msg("failed to update node from initial MapRequest")
 		return
 	}
 
@@ -205,7 +215,7 @@ func (m *mapSession) serveLongPoll() {
 	// primary route selection occurs, which is critical for proper HA subnet router failover.
 	connectChanges := m.h.state.Connect(m.node.ID)
 
-	m.infof("node has connected, mapSession: %p, chan: %p", m, m.ch)
+	m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has connected")
 
 	// TODO(kradalby): Redo the comments here
 	// Add node to batcher so it can receive updates,
@@ -213,12 +223,11 @@ func (m *mapSession) serveLongPoll() {
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
-		m.errf(err, "failed to add node to batcher")
-		log.Error().EmbedObject(m.node).Err(err).Msg("AddNode failed in poll session")
+		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
 		return
 	}
 
-	log.Debug().Caller().EmbedObject(m.node).Msg("AddNode succeeded in poll session because node added to batcher")
+	m.log.Debug().Caller().Msg("node added to batcher")
 
 	m.h.Change(mapReqChange)
 	m.h.Change(connectChanges...)
@@ -229,34 +238,34 @@ func (m *mapSession) serveLongPoll() {
 		// consume channels with update, keep alives or "batch" blocking signals
 		select {
 		case <-m.cancelCh:
-			m.tracef("poll cancelled received")
+			m.log.Trace().Caller().Msg("poll cancelled received")
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
 			return
 
 		case <-ctx.Done():
-			m.tracef("poll context done chan:%p", m.ch)
+			m.log.Trace().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("poll context done")
 			mapResponseEnded.WithLabelValues("done").Inc()
 			return
 
 		// Consume updates sent to node
 		case update, ok := <-m.ch:
-			m.tracef("received update from channel, ok: %t", ok)
+			m.log.Trace().Caller().Bool(zf.OK, ok).Msg("received update from channel")
 			if !ok {
-				m.tracef("update channel closed, streaming session is likely being replaced")
+				m.log.Trace().Caller().Msg("update channel closed, streaming session is likely being replaced")
 				return
 			}
 
 			if err := m.writeMap(update); err != nil {
-				m.errf(err, "cannot write update to client")
+				m.log.Error().Caller().Err(err).Msg("cannot write update to client")
 				return
 			}
 
-			m.tracef("update sent")
+			m.log.Trace().Caller().Msg("update sent")
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
 			if err := m.writeMap(&keepAlive); err != nil {
-				m.errf(err, "cannot write keep alive")
+				m.log.Error().Caller().Err(err).Msg("cannot write keep alive")
 				return
 			}
 
@@ -299,43 +308,21 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		if f, ok := m.w.(http.Flusher); ok {
 			f.Flush()
 		} else {
-			m.errf(nil, "ResponseWriter does not implement http.Flusher, cannot flush")
+			m.log.Error().Caller().Msg("ResponseWriter does not implement http.Flusher, cannot flush")
 		}
 	}
 
-	log.Trace().
+	m.log.Trace().
 		Caller().
-		Str("node.name", m.node.Hostname).
-		Uint64("node.id", m.node.ID.Uint64()).
-		Str("chan", fmt.Sprintf("%p", m.ch)).
+		Str(zf.Chan, fmt.Sprintf("%p", m.ch)).
 		TimeDiff("timeSpent", time.Now(), startWrite).
-		Str("machine.key", m.node.MachineKey.String()).
+		Str(zf.MachineKey, m.node.MachineKey.String()).
 		Bool("keepalive", msg.KeepAlive).
-		Msgf("finished writing mapresp to node chan(%p)", m.ch)
+		Msg("finished writing mapresp to node")
 
 	return nil
 }
 
 var keepAlive = tailcfg.MapResponse{
 	KeepAlive: true,
-}
-
-// logf adds common mapSession context to a zerolog event.
-func (m *mapSession) logf(event *zerolog.Event) *zerolog.Event {
-	return event.
-		Bool("omitPeers", m.req.OmitPeers).
-		Bool("stream", m.req.Stream).
-		Uint64("node.id", m.node.ID.Uint64()).
-		Str("node.name", m.node.Hostname)
-}
-
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
-func (m *mapSession) infof(msg string, a ...any) { m.logf(log.Info().Caller()).Msgf(msg, a...) }
-
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
-func (m *mapSession) tracef(msg string, a ...any) { m.logf(log.Trace().Caller()).Msgf(msg, a...) }
-
-//nolint:zerologlint // logf returns *zerolog.Event which is properly terminated with Msgf
-func (m *mapSession) errf(err error, msg string, a ...any) {
-	m.logf(log.Error().Caller()).Err(err).Msgf(msg, a...)
 }

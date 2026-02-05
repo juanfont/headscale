@@ -218,7 +218,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	ns.nodeKey = nv.NodeKey()
 
 	sess := ns.headscale.newMapSession(req.Context(), mapRequest, writer, nv.AsStruct())
-	sess.tracef("a node sending a MapRequest with Noise protocol")
+	sess.log.Trace().Caller().Msg("a node sending a MapRequest with Noise protocol")
 	if !sess.isStreaming() {
 		sess.serve()
 	} else {
