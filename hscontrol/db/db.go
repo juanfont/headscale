@@ -245,11 +245,11 @@ AND auth_key_id NOT IN (
 				Migrate: func(tx *gorm.DB) error {
 					// Only run on SQLite
 					if cfg.Database.Type != types.DatabaseSqlite {
-						log.Info().Msg("Skipping schema migration on non-SQLite database")
+						log.Info().Msg("skipping schema migration on non-SQLite database")
 						return nil
 					}
 
-					log.Info().Msg("Starting schema recreation with table renaming")
+					log.Info().Msg("starting schema recreation with table renaming")
 
 					// Rename existing tables to _old versions
 					tablesToRename := []string{"users", "pre_auth_keys", "api_keys", "nodes", "policies"}
@@ -258,7 +258,7 @@ AND auth_key_id NOT IN (
 					var routesExists bool
 					err := tx.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='routes'").Row().Scan(&routesExists)
 					if err == nil && routesExists {
-						log.Info().Msg("Dropping leftover routes table")
+						log.Info().Msg("dropping leftover routes table")
 						if err := tx.Exec("DROP TABLE routes").Error; err != nil {
 							return fmt.Errorf("dropping routes table: %w", err)
 						}
@@ -425,11 +425,11 @@ AND auth_key_id NOT IN (
 					// Drop old tables only after everything succeeds
 					for _, table := range tablesToRename {
 						if err := tx.Exec("DROP TABLE IF EXISTS " + table + "_old").Error; err != nil {
-							log.Warn().Str("table", table+"_old").Err(err).Msg("Failed to drop old table, but migration succeeded")
+							log.Warn().Str("table", table+"_old").Err(err).Msg("failed to drop old table, but migration succeeded")
 						}
 					}
 
-					log.Info().Msg("Schema recreation completed successfully")
+					log.Info().Msg("schema recreation completed successfully")
 
 					return nil
 				},
@@ -595,12 +595,12 @@ AND auth_key_id NOT IN (
 					// 1. Load policy from file or database based on configuration
 					policyData, err := PolicyBytes(tx, cfg)
 					if err != nil {
-						log.Warn().Err(err).Msg("Failed to load policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						log.Warn().Err(err).Msg("failed to load policy, skipping RequestTags migration (tags will be validated on node reconnect)")
 						return nil
 					}
 
 					if len(policyData) == 0 {
-						log.Info().Msg("No policy found, skipping RequestTags migration (tags will be validated on node reconnect)")
+						log.Info().Msg("no policy found, skipping RequestTags migration (tags will be validated on node reconnect)")
 						return nil
 					}
 
@@ -618,7 +618,7 @@ AND auth_key_id NOT IN (
 					// 3. Create PolicyManager (handles HuJSON parsing, groups, nested tags, etc.)
 					polMan, err := policy.NewPolicyManager(policyData, users, nodes.ViewSlice())
 					if err != nil {
-						log.Warn().Err(err).Msg("Failed to parse policy, skipping RequestTags migration (tags will be validated on node reconnect)")
+						log.Warn().Err(err).Msg("failed to parse policy, skipping RequestTags migration (tags will be validated on node reconnect)")
 						return nil
 					}
 
@@ -935,7 +935,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		}
 
 		for _, migrationID := range migrationIDs {
-			log.Trace().Caller().Str("migration_id", migrationID).Msg("Running migration")
+			log.Trace().Caller().Str("migration_id", migrationID).Msg("running migration")
 			needsFKDisabled := migrationsRequiringFKDisabled[migrationID]
 
 			if needsFKDisabled {

@@ -280,7 +280,7 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 		c = change.PolicyChange()
 	}
 
-	log.Info().Str(zf.UserName, user.Name).Msg("User created")
+	log.Info().Str(zf.UserName, user.Name).Msg("user created")
 
 	return &user, c, nil
 }
@@ -487,7 +487,7 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 	c := []change.Change{change.NodeOnlineFor(node)}
 
-	log.Info().EmbedObject(node).Msg("Node connected")
+	log.Info().EmbedObject(node).Msg("node connected")
 
 	// Use the node's current routes for primary route update
 	// AllApprovedRoutes() returns only the intersection of announced AND approved routes
@@ -515,7 +515,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 		return nil, fmt.Errorf("node not found: %d", id)
 	}
 
-	log.Info().EmbedObject(node).Msg("Node disconnected")
+	log.Info().EmbedObject(node).Msg("node disconnected")
 
 	// Special error handling for disconnect - we log errors but continue
 	// because NodeStore is already updated and we need to notify peers
@@ -523,7 +523,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 	if err != nil {
 		// Log error but don't fail the disconnection - NodeStore is already updated
 		// and we need to send change notifications to peers
-		log.Error().Err(err).EmbedObject(node).Msg("Failed to update last seen in database")
+		log.Error().Err(err).EmbedObject(node).Msg("failed to update last seen in database")
 
 		c = change.Change{}
 	}
@@ -905,7 +905,7 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 			return change.Change{}, err
 		}
 
-		log.Info().EmbedObject(nv).Strs(zf.RoutesApproved, util.PrefixesToString(approved)).Msg("Routes approved")
+		log.Info().EmbedObject(nv).Strs(zf.RoutesApproved, util.PrefixesToString(approved)).Msg("routes approved")
 
 		return c, nil
 	}
@@ -1441,7 +1441,7 @@ func (s *State) processReauthTags(
 		Strs(zf.CurrentTags, node.Tags).
 		Bool(zf.IsTagged, node.IsTagged()).
 		Bool(zf.WasAuthKeyTagged, wasAuthKeyTagged)
-	logEvent.Msg("Processing RequestTags during reauth")
+	logEvent.Msg("processing RequestTags during reauth")
 
 	// Empty RequestTags means untag node (transition to user-owned)
 	if len(requestTags) == 0 {
@@ -1952,14 +1952,14 @@ func (s *State) updatePolicyManagerUsers() (change.Change, error) {
 		return change.Change{}, fmt.Errorf("listing users for policy update: %w", err)
 	}
 
-	log.Debug().Caller().Int("user.count", len(users)).Msg("Policy manager user update initiated because user list modification detected")
+	log.Debug().Caller().Int("user.count", len(users)).Msg("policy manager user update initiated because user list modification detected")
 
 	changed, err := s.polMan.SetUsers(users)
 	if err != nil {
 		return change.Change{}, fmt.Errorf("updating policy manager users: %w", err)
 	}
 
-	log.Debug().Caller().Bool("policy.changed", changed).Msg("Policy manager user update completed because SetUsers operation finished")
+	log.Debug().Caller().Bool("policy.changed", changed).Msg("policy manager user update completed because SetUsers operation finished")
 
 	if changed {
 		return change.PolicyChange(), nil

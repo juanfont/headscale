@@ -29,12 +29,12 @@ var serveCmd = &cobra.Command{
 				fmt.Println(squibbleErr.Diff)
 			}
 
-			log.Fatal().Caller().Err(err).Msg("Error initializing")
+			log.Fatal().Caller().Err(err).Msg("error initializing")
 		}
 
 		err = app.Serve()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal().Caller().Err(err).Msg("Headscale ran into an error and had to shut down.")
+			log.Fatal().Caller().Err(err).Msg("headscale ran into an error and had to shut down")
 		}
 	},
 }

@@ -392,7 +392,7 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	if err == nil {
 		u.Name = claims.Username
 	} else {
-		log.Debug().Caller().Err(err).Msgf("Username %s is not valid", claims.Username)
+		log.Debug().Caller().Err(err).Msgf("username %s is not valid", claims.Username)
 	}
 
 	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {

@@ -236,7 +236,7 @@ func (api headscaleV1APIServer) RegisterNode(
 	// Generate ephemeral registration key for tracking this registration flow in logs
 	registrationKey, err := util.GenerateRegistrationKey()
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to generate registration key")
+		log.Warn().Err(err).Msg("failed to generate registration key")
 		registrationKey = "" // Continue without key if generation fails
 	}
 
@@ -546,7 +546,7 @@ func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,
 ) (*v1.BackfillNodeIPsResponse, error) {
-	log.Trace().Caller().Msg("Backfill called")
+	log.Trace().Caller().Msg("backfill called")
 
 	if !request.Confirmed {
 		return nil, errors.New("not confirmed, aborting")
@@ -823,7 +823,7 @@ func (api headscaleV1APIServer) Health(
 	}
 
 	if healthErr != nil {
-		log.Error().Err(healthErr).Msg("Health check failed")
+		log.Error().Err(healthErr).Msg("health check failed")
 	}
 
 	return response, healthErr

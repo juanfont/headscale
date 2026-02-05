@@ -312,7 +312,7 @@ func (pol *Policy) compileSSHPolicy(
 		// Resolve sources once - we'll use them differently for each destination type
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("SSH policy compilation failed resolving source ips for rule %+v", rule)
+			log.Trace().Caller().Err(err).Msgf("ssh policy compilation failed resolving source ips for rule %+v", rule)
 		}
 
 		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {

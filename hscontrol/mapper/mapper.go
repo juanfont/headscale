@@ -328,7 +328,7 @@ func writeDebugMapResponse(
 		fmt.Sprintf("%s-%s.json", now, t),
 	)
 
-	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
+	log.Trace().Msgf("writing MapResponse to %s", mapResponsePath)
 	err = os.WriteFile(mapResponsePath, body, perms)
 	if err != nil {
 		panic(err)
@@ -357,7 +357,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		nodeIDu, err := strconv.ParseUint(node.Name(), 10, 64)
 		if err != nil {
-			log.Error().Err(err).Msgf("Parsing node ID from dir %s", node.Name())
+			log.Error().Err(err).Msgf("parsing node ID from dir %s", node.Name())
 			continue
 		}
 
@@ -365,7 +365,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		files, err := os.ReadDir(path.Join(dir, node.Name()))
 		if err != nil {
-			log.Error().Err(err).Msgf("Reading dir %s", node.Name())
+			log.Error().Err(err).Msgf("reading dir %s", node.Name())
 			continue
 		}
 
@@ -380,14 +380,14 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 			body, err := os.ReadFile(path.Join(dir, node.Name(), file.Name()))
 			if err != nil {
-				log.Error().Err(err).Msgf("Reading file %s", file.Name())
+				log.Error().Err(err).Msgf("reading file %s", file.Name())
 				continue
 			}
 
 			var resp tailcfg.MapResponse
 			err = json.Unmarshal(body, &resp)
 			if err != nil {
-				log.Error().Err(err).Msgf("Unmarshalling file %s", file.Name())
+				log.Error().Err(err).Msgf("unmarshalling file %s", file.Name())
 				continue
 			}
 

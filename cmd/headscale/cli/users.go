@@ -82,7 +82,7 @@ var createUserCmd = &cobra.Command{
 		defer cancel()
 		defer conn.Close()
 
-		log.Trace().Interface(zf.Client, client).Msg("Obtained gRPC client")
+		log.Trace().Interface(zf.Client, client).Msg("obtained gRPC client")
 
 		request := &v1.CreateUserRequest{Name: userName}
 
@@ -108,7 +108,7 @@ var createUserCmd = &cobra.Command{
 			request.PictureUrl = pictureURL
 		}
 
-		log.Trace().Interface(zf.Request, request).Msg("Sending CreateUser request")
+		log.Trace().Interface(zf.Request, request).Msg("sending CreateUser request")
 		response, err := client.CreateUser(ctx, request)
 		if err != nil {
 			ErrorOutput(

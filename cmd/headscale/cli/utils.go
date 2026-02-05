@@ -93,7 +93,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
+			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set")
 		}
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
@@ -119,10 +119,10 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		}
 	}
 
-	log.Trace().Caller().Str(zf.Address, address).Msg("Connecting via gRPC")
+	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via gRPC")
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
 	if err != nil {
-		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)
+		log.Fatal().Caller().Err(err).Msgf("could not connect: %v", err)
 		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)
 	}
 

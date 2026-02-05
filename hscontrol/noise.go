@@ -51,7 +51,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	log.Trace().Caller().Msgf("Noise upgrade handler for client %s", req.RemoteAddr)
+	log.Trace().Caller().Msgf("noise upgrade handler for client %s", req.RemoteAddr)
 
 	upgrade := req.Header.Get("Upgrade")
 	if upgrade == "" {
@@ -60,7 +60,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		// be passed to Headscale. Let's give them a hint.
 		log.Warn().
 			Caller().
-			Msg("No Upgrade header in TS2021 request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
+			Msg("no upgrade header in TS2021 request. If headscale is behind a reverse proxy, make sure it is configured to pass WebSockets through.")
 		http.Error(writer, "Internal error", http.StatusInternalServerError)
 
 		return
@@ -279,7 +279,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(writer).Encode(registerResponse); err != nil {
-		log.Error().Caller().Err(err).Msg("NoiseRegistrationHandler: failed to encode RegisterResponse")
+		log.Error().Caller().Err(err).Msg("noise registration handler: failed to encode RegisterResponse")
 		return
 	}
 

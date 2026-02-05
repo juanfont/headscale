@@ -169,7 +169,7 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	a.registrationCache.Set(state, registrationInfo)
 
 	authURL := a.oauth2Config.AuthCodeURL(state, extras...)
-	log.Debug().Caller().Msgf("Redirecting to %s for authentication", authURL)
+	log.Debug().Caller().Msgf("redirecting to %s for authentication", authURL)
 
 	http.Redirect(writer, req, authURL, http.StatusFound)
 }
