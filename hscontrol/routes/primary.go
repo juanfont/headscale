@@ -10,6 +10,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	xmaps "golang.org/x/exp/maps"
 	"tailscale.com/net/tsaddr"
@@ -79,7 +80,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 	for prefix, nodes := range allPrimaries {
 		log.Debug().
 			Caller().
-			Str("prefix", prefix.String()).
+			Str(zf.Prefix, prefix.String()).
 			Uints64("availableNodes", func() []uint64 {
 				ids := make([]uint64, len(nodes))
 				for i, id := range nodes {
@@ -88,24 +89,24 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 
 				return ids
 			}()).
-			Msg("Processing prefix for primary route selection")
+			Msg("processing prefix for primary route selection")
 
 		if node, ok := pr.primaries[prefix]; ok {
 			// If the current primary is still available, continue.
 			if slices.Contains(nodes, node) {
 				log.Debug().
 					Caller().
-					Str("prefix", prefix.String()).
+					Str(zf.Prefix, prefix.String()).
 					Uint64("currentPrimary", node.Uint64()).
-					Msg("Current primary still available, keeping it")
+					Msg("current primary still available, keeping it")
 
 				continue
 			} else {
 				log.Debug().
 					Caller().
-					Str("prefix", prefix.String()).
+					Str(zf.Prefix, prefix.String()).
 					Uint64("oldPrimary", node.Uint64()).
-					Msg("Current primary no longer available")
+					Msg("current primary no longer available")
 			}
 		}
 		if len(nodes) >= 1 {
@@ -113,9 +114,9 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 			changed = true
 			log.Debug().
 				Caller().
-				Str("prefix", prefix.String()).
+				Str(zf.Prefix, prefix.String()).
 				Uint64("newPrimary", nodes[0].Uint64()).
-				Msg("Selected new primary for prefix")
+				Msg("selected new primary for prefix")
 		}
 	}
 
@@ -124,8 +125,8 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 		if _, ok := allPrimaries[prefix]; !ok {
 			log.Debug().
 				Caller().
-				Str("prefix", prefix.String()).
-				Msg("Cleaning up primary route that no longer has available nodes")
+				Str(zf.Prefix, prefix.String()).
+				Msg("cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
 			changed = true
 		}
@@ -138,8 +139,8 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 
 	log.Debug().
 		Caller().
-		Bool("changed", changed).
-		Str("finalState", pr.stringLocked()).
+		Bool(zf.Changes, changed).
+		Str(zf.FinalState, pr.stringLocked()).
 		Msg("updatePrimaryLocked completed")
 
 	return changed
@@ -153,9 +154,10 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
-	log.Debug().
+	nlog := log.With().Uint64(zf.NodeID, node.Uint64()).Logger()
+
+	nlog.Debug().
 		Caller().
-		Uint64("node.id", node.Uint64()).
 		Strs("prefixes", util.PrefixesToString(prefixes)).
 		Msg("PrimaryRoutes.SetRoutes called")
 
@@ -165,18 +167,17 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
 			wasPresent = true
-			log.Debug().
+
+			nlog.Debug().
 				Caller().
-				Uint64("node.id", node.Uint64()).
-				Msg("Removed node from primary routes (no prefixes)")
+				Msg("removed node from primary routes (no prefixes)")
 		}
 		changed := pr.updatePrimaryLocked()
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
 			Bool("wasPresent", wasPresent).
-			Bool("changed", changed).
-			Str("newState", pr.stringLocked()).
+			Bool(zf.Changes, changed).
+			Str(zf.NewState, pr.stringLocked()).
 			Msg("SetRoutes completed (remove)")
 
 		return changed
@@ -191,25 +192,22 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 
 	if rs.Len() != 0 {
 		pr.routes[node] = rs
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
 			Strs("routes", util.PrefixesToString(rs.Slice())).
-			Msg("Updated node routes in primary route manager")
+			Msg("updated node routes in primary route manager")
 	} else {
 		delete(pr.routes, node)
-		log.Debug().
+		nlog.Debug().
 			Caller().
-			Uint64("node.id", node.Uint64()).
-			Msg("Removed node from primary routes (only exit routes)")
+			Msg("removed node from primary routes (only exit routes)")
 	}
 
 	changed := pr.updatePrimaryLocked()
-	log.Debug().
+	nlog.Debug().
 		Caller().
-		Uint64("node.id", node.Uint64()).
-		Bool("changed", changed).
-		Str("newState", pr.stringLocked()).
+		Bool(zf.Changes, changed).
+		Str(zf.NewState, pr.stringLocked()).
 		Msg("SetRoutes completed (update)")
 
 	return changed
