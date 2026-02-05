@@ -406,7 +406,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 
 	log.Debug().
 		Caller().
-		Uint64("node.id", node.ID().Uint64()).
+		EmbedObject(node).
 		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
 		Strs("primaryRoutes", util.PrefixesToString(primaryRoutes)).
 		Strs("finalSubnetRoutes", proto.SubnetRoutes).

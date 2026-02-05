@@ -79,8 +79,7 @@ func generateUserProfiles(
 	user := node.Owner()
 	if !user.Valid() {
 		log.Error().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+			EmbedObject(node).
 			Msg("node has no valid owner, skipping user profile generation")
 
 		return nil

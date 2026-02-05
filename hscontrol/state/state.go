@@ -22,6 +22,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
@@ -397,8 +398,7 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	_, exists := s.nodeStore.GetNode(node.ID())
 	if !exists {
 		log.Warn().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+			EmbedObject(node).
 			Bool("is_ephemeral", node.IsEphemeral()).
 			Msg("Node no longer exists in NodeStore, skipping database persist to prevent race condition")
 
@@ -487,7 +487,7 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 	c := []change.Change{change.NodeOnlineFor(node)}
 
-	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node connected")
+	log.Info().EmbedObject(node).Msg("Node connected")
 
 	// Use the node's current routes for primary route update
 	// AllApprovedRoutes() returns only the intersection of announced AND approved routes
@@ -515,7 +515,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 		return nil, fmt.Errorf("node not found: %d", id)
 	}
 
-	log.Info().Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Node disconnected")
+	log.Info().EmbedObject(node).Msg("Node disconnected")
 
 	// Special error handling for disconnect - we log errors but continue
 	// because NodeStore is already updated and we need to notify peers
@@ -523,7 +523,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 	if err != nil {
 		// Log error but don't fail the disconnection - NodeStore is already updated
 		// and we need to send change notifications to peers
-		log.Error().Err(err).Uint64("node.id", id.Uint64()).Str("node.name", node.Hostname()).Msg("Failed to update last seen in database")
+		log.Error().Err(err).EmbedObject(node).Msg("Failed to update last seen in database")
 
 		c = change.Change{}
 	}
@@ -887,8 +887,7 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 	approved, changed := policy.ApproveRoutesWithPolicy(s.polMan, nv, nv.ApprovedRoutes().AsSlice(), nv.AnnouncedRoutes())
 	if changed {
 		log.Debug().
-			Uint64("node.id", nv.ID().Uint64()).
-			Str("node.name", nv.Hostname()).
+			EmbedObject(nv).
 			Strs("routes.announced", util.PrefixesToString(nv.AnnouncedRoutes())).
 			Strs("routes.approved.old", util.PrefixesToString(nv.ApprovedRoutes().AsSlice())).
 			Strs("routes.approved.new", util.PrefixesToString(approved)).
@@ -899,15 +898,14 @@ func (s *State) AutoApproveRoutes(nv types.NodeView) (change.Change, error) {
 		_, c, err := s.SetApprovedRoutes(nv.ID(), approved)
 		if err != nil {
 			log.Error().
-				Uint64("node.id", nv.ID().Uint64()).
-				Str("node.name", nv.Hostname()).
+				EmbedObject(nv).
 				Err(err).
 				Msg("Failed to persist auto-approved routes")
 
 			return change.Change{}, err
 		}
 
-		log.Info().Uint64("node.id", nv.ID().Uint64()).Str("node.name", nv.Hostname()).Strs("routes.approved", util.PrefixesToString(approved)).Msg("Routes approved")
+		log.Info().EmbedObject(nv).Strs(zf.RoutesApproved, util.PrefixesToString(approved)).Msg("Routes approved")
 
 		return c, nil
 	}
@@ -1139,14 +1137,12 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Log the operation type
 	if params.IsConvertFromTag {
 		log.Info().
-			Str("node.name", params.ExistingNode.Hostname()).
-			Uint64("node.id", params.ExistingNode.ID().Uint64()).
+			EmbedObject(params.ExistingNode).
 			Strs("old.tags", params.ExistingNode.Tags().AsSlice()).
 			Msg("Converting tagged node to user-owned node")
 	} else {
 		log.Info().
-			Str("node.name", params.ExistingNode.Hostname()).
-			Uint64("node.id", params.ExistingNode.ID().Uint64()).
+			EmbedObject(params.ExistingNode).
 			Interface("hostinfo", params.RegEntry.Node.Hostinfo).
 			Msg("Updating existing node registration via reauth")
 	}
@@ -1258,15 +1254,11 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	// Log completion
 	if params.IsConvertFromTag {
 		log.Trace().
-			Str("node.name", updatedNodeView.Hostname()).
-			Uint64("node.id", updatedNodeView.ID().Uint64()).
-			Str("node.key", updatedNodeView.NodeKey().ShortString()).
+			EmbedObject(updatedNodeView).
 			Msg("Tagged node converted to user-owned")
 	} else {
 		log.Trace().
-			Str("node.name", updatedNodeView.Hostname()).
-			Uint64("node.id", updatedNodeView.ID().Uint64()).
-			Str("node.key", updatedNodeView.NodeKey().ShortString()).
+			EmbedObject(updatedNodeView).
 			Msg("Node re-authorized")
 	}
 

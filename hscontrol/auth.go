@@ -42,8 +42,7 @@ func (h *Headscale) handleRegister(
 		// This is a logout attempt (expiry in the past)
 		if node, ok := h.state.GetNodeByNodeKey(req.NodeKey); ok {
 			log.Debug().
-				Uint64("node.id", node.ID().Uint64()).
-				Str("node.name", node.Hostname()).
+				EmbedObject(node).
 				Bool("is_ephemeral", node.IsEphemeral()).
 				Bool("has_authkey", node.AuthKey().Valid()).
 				Msg("Found existing node for logout, calling handleLogout")
@@ -155,8 +154,8 @@ func (h *Headscale) handleLogout(
 	// force the client to re-authenticate.
 	// TODO(kradalby): I wonder if this is a path we ever hit?
 	if node.IsExpired() {
-		log.Trace().Str("node.name", node.Hostname()).
-			Uint64("node.id", node.ID().Uint64()).
+		log.Trace().
+			EmbedObject(node).
 			Interface("reg.req", req).
 			Bool("unexpected", true).
 			Msg("Node key expired, forcing re-authentication")
@@ -182,8 +181,7 @@ func (h *Headscale) handleLogout(
 	// Zero expiry is handled in handleRegister() before calling this function.
 	if req.Expiry.Before(time.Now()) {
 		log.Debug().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+			EmbedObject(node).
 			Bool("is_ephemeral", node.IsEphemeral()).
 			Bool("has_authkey", node.AuthKey().Valid()).
 			Time("req.expiry", req.Expiry).
@@ -191,8 +189,7 @@ func (h *Headscale) handleLogout(
 
 		if node.IsEphemeral() {
 			log.Info().
-				Uint64("node.id", node.ID().Uint64()).
-				Str("node.name", node.Hostname()).
+				EmbedObject(node).
 				Msg("Deleting ephemeral node during logout")
 
 			c, err := h.state.DeleteNode(node)
@@ -209,8 +206,7 @@ func (h *Headscale) handleLogout(
 		}
 
 		log.Debug().
-			Uint64("node.id", node.ID().Uint64()).
-			Str("node.name", node.Hostname()).
+			EmbedObject(node).
 			Msg("Node is not ephemeral, setting expiry instead of deleting")
 	}
 
@@ -397,8 +393,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 		Caller().
 		Interface("reg.resp", resp).
 		Interface("reg.req", req).
-		Str("node.name", node.Hostname()).
-		Uint64("node.id", node.ID().Uint64()).
+		EmbedObject(node).
 		Msg("RegisterResponse")
 
 	return resp, nil
