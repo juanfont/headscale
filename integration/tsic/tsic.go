@@ -427,7 +427,7 @@ func New(
 				dockertestutil.DockerMemoryLimit,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("could not run pre-built tailscale container %q: %w", prebuiltImage, err)
+				return nil, fmt.Errorf("running pre-built tailscale container %q: %w", prebuiltImage, err)
 			}
 		} else if util.IsCI() && !hasBuildTags {
 			// In CI, we require a pre-built image unless custom build tags are needed
@@ -555,7 +555,7 @@ func New(
 	for i, cert := range tsic.caCerts {
 		err = tsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 	}
 
@@ -567,9 +567,9 @@ func (t *TailscaleInContainer) Shutdown() (string, string, error) {
 	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save log from %s: %s",
+			"saving log from %s: %s",
 			t.hostname,
-			fmt.Errorf("failed to save log: %w", err),
+			fmt.Errorf("saving log: %w", err),
 		)
 	}
 
@@ -720,7 +720,7 @@ func (t *TailscaleInContainer) Logout() error {
 
 	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
 	if !strings.Contains(stdout+stderr, "Logged out.") {
-		return fmt.Errorf("failed to logout, stdout: %s, stderr: %s", stdout, stderr)
+		return fmt.Errorf("logging out, stdout: %s, stderr: %s", stdout, stderr)
 	}
 
 	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
@@ -738,7 +738,7 @@ func (t *TailscaleInContainer) Restart() error {
 	// Use Docker API to restart the container
 	err := t.pool.Client.RestartContainer(t.container.Container.ID, 30)
 	if err != nil {
-		return fmt.Errorf("failed to restart container %s: %w", t.hostname, err)
+		return fmt.Errorf("restarting container %s: %w", t.hostname, err)
 	}
 
 	// Wait for the container to be back up and tailscaled to be ready
@@ -825,7 +825,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 
 			ip, err := netip.ParseAddr(address)
 			if err != nil {
-				return nil, fmt.Errorf("failed to parse IP %s: %w", address, err)
+				return nil, fmt.Errorf("parsing IP %s: %w", address, err)
 			}
 
 			ips = append(ips, ip)
@@ -838,7 +838,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		return ips, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get IPs for %s after retries: %w", t.hostname, err)
+		return nil, fmt.Errorf("getting IPs for %s after retries: %w", t.hostname, err)
 	}
 
 	return ips, nil
@@ -898,14 +898,14 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 
 	result, _, err := t.Execute(command)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute tailscale status command: %w", err)
+		return nil, fmt.Errorf("executing tailscale status command: %w", err)
 	}
 
 	var status ipnstate.Status
 
 	err = json.Unmarshal([]byte(result), &status)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tailscale status: %w", err)
+		return nil, fmt.Errorf("unmarshalling tailscale status: %w", err)
 	}
 
 	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(result), 0o755)
@@ -935,7 +935,7 @@ func (t *TailscaleInContainer) MustID() types.NodeID {
 
 	id, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
 	if err != nil {
-		panic(fmt.Sprintf("failed to parse ID: %s", err))
+		panic(fmt.Sprintf("parsing ID: %s", err))
 	}
 
 	return types.NodeID(id)
@@ -958,14 +958,14 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 	result, stderr, err := t.Execute(command)
 	if err != nil {
 		fmt.Printf("stderr: %s\n", stderr)
-		return nil, fmt.Errorf("failed to execute tailscale debug netmap command: %w", err)
+		return nil, fmt.Errorf("executing tailscale debug netmap command: %w", err)
 	}
 
 	var nm netmap.NetworkMap
 
 	err = json.Unmarshal([]byte(result), &nm)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tailscale netmap: %w", err)
+		return nil, fmt.Errorf("unmarshalling tailscale netmap: %w", err)
 	}
 
 	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_netmap.json", t.hostname), []byte(result), 0o755)
@@ -1019,7 +1019,7 @@ func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error
 			"/bin/sh", "-c", `kill $(ps aux | grep "tailscale debug watch-ipn" | grep -v grep | awk '{print $1}') || true`,
 		})
 		if err != nil {
-			log.Printf("failed to kill tailscale watcher, \nstdout: %s\nstderr: %s\nerr: %s", stdout, stderr, err)
+			log.Printf("killing tailscale watcher, \nstdout: %s\nstderr: %s\nerr: %s", stdout, stderr, err)
 		}
 	}
 
@@ -1085,14 +1085,14 @@ func (t *TailscaleInContainer) DebugDERPRegion(region string) (*ipnstate.DebugDE
 	if err != nil {
 		fmt.Printf("stderr: %s\n", stderr) // nolint
 
-		return nil, fmt.Errorf("failed to execute tailscale debug derp command: %w", err)
+		return nil, fmt.Errorf("executing tailscale debug derp command: %w", err)
 	}
 
 	var report ipnstate.DebugDERPRegionReport
 
 	err = json.Unmarshal([]byte(result), &report)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tailscale derp region report: %w", err)
+		return nil, fmt.Errorf("unmarshalling tailscale derp region report: %w", err)
 	}
 
 	return &report, err
@@ -1109,14 +1109,14 @@ func (t *TailscaleInContainer) Netcheck() (*netcheck.Report, error) {
 	result, stderr, err := t.Execute(command)
 	if err != nil {
 		fmt.Printf("stderr: %s\n", stderr)
-		return nil, fmt.Errorf("failed to execute tailscale debug netcheck command: %w", err)
+		return nil, fmt.Errorf("executing tailscale debug netcheck command: %w", err)
 	}
 
 	var nm netcheck.Report
 
 	err = json.Unmarshal([]byte(result), &nm)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal tailscale netcheck: %w", err)
+		return nil, fmt.Errorf("unmarshalling tailscale netcheck: %w", err)
 	}
 
 	return &nm, err
@@ -1132,7 +1132,7 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 	fqdn, err := backoff.Retry(context.Background(), func() (string, error) {
 		status, err := t.Status()
 		if err != nil {
-			return "", fmt.Errorf("failed to get status: %w", err)
+			return "", fmt.Errorf("getting status: %w", err)
 		}
 
 		if status.Self.DNSName == "" {
@@ -1142,7 +1142,7 @@ func (t *TailscaleInContainer) FQDN() (string, error) {
 		return status.Self.DNSName, nil
 	}, backoff.WithBackOff(backoff.NewExponentialBackOff()), backoff.WithMaxElapsedTime(10*time.Second))
 	if err != nil {
-		return "", fmt.Errorf("failed to get FQDN for %s after retries: %w", t.hostname, err)
+		return "", fmt.Errorf("getting FQDN for %s after retries: %w", t.hostname, err)
 	}
 
 	return fqdn, nil
@@ -1163,7 +1163,7 @@ func (t *TailscaleInContainer) MustFQDN() string {
 func (t *TailscaleInContainer) FailingPeersAsString() (string, bool, error) {
 	status, err := t.Status()
 	if err != nil {
-		return "", false, fmt.Errorf("failed to get FQDN: %w", err)
+		return "", false, fmt.Errorf("getting FQDN: %w", err)
 	}
 
 	var b strings.Builder
@@ -1373,7 +1373,7 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 	if err != nil {
 		log.Printf("command: %v", command)
 		log.Printf(
-			"failed to run ping command from %s to %s, err: %s",
+			"running ping command from %s to %s, err: %s",
 			t.Hostname(),
 			hostnameOrIP,
 			err,
@@ -1477,7 +1477,7 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	result, _, err := t.Execute(command)
 	if err != nil {
 		log.Printf(
-			"failed to run curl command from %s to %s, err: %s",
+			"running curl command from %s to %s, err: %s",
 			t.Hostname(),
 			url,
 			err,
@@ -1587,27 +1587,27 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	state, err := t.ReadFile(paths.DefaultTailscaledStateFile())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read state file: %w", err)
+		return nil, fmt.Errorf("reading state file: %w", err)
 	}
 
 	store := &mem.Store{}
 	if err = store.LoadFromJSON(state); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal state file: %w", err)
+		return nil, fmt.Errorf("unmarshalling state file: %w", err)
 	}
 
 	currentProfileKey, err := store.ReadState(ipn.CurrentProfileStateKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read current profile state key: %w", err)
+		return nil, fmt.Errorf("reading current profile state key: %w", err)
 	}
 
 	currentProfile, err := store.ReadState(ipn.StateKey(currentProfileKey))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read current profile state: %w", err)
+		return nil, fmt.Errorf("reading current profile state: %w", err)
 	}
 
 	p := &ipn.Prefs{}
 	if err = json.Unmarshal(currentProfile, &p); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal current profile state: %w", err)
+		return nil, fmt.Errorf("unmarshalling current profile state: %w", err)
 	}
 
 	return &p.Persist.PrivateNodeKey, nil
@@ -1622,7 +1622,7 @@ func (t *TailscaleInContainer) PacketFilter() ([]filter.Match, error) {
 
 	nm, err := t.Netmap()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get netmap: %w", err)
+		return nil, fmt.Errorf("getting netmap: %w", err)
 	}
 
 	return nm.PacketFilter, nil

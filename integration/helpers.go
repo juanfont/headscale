@@ -924,7 +924,7 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 	users, err := headscale.ListUsers()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list users: %w", err)
+		return nil, fmt.Errorf("listing users: %w", err)
 	}
 
 	for _, u := range users {
@@ -973,13 +973,13 @@ func (s *Scenario) AddAndLoginClient(
 	// Get the original client list
 	originalClients, err := s.ListTailscaleClients(username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list original clients: %w", err)
+		return nil, fmt.Errorf("listing original clients: %w", err)
 	}
 
 	// Create the new node
 	err = s.CreateTailscaleNodesInUser(username, version, 1, tsOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tailscale node: %w", err)
+		return nil, fmt.Errorf("creating tailscale node: %w", err)
 	}
 
 	// Wait for the new node to appear in the client list
@@ -988,7 +988,7 @@ func (s *Scenario) AddAndLoginClient(
 	_, err = backoff.Retry(t.Context(), func() (struct{}, error) {
 		updatedClients, err := s.ListTailscaleClients(username)
 		if err != nil {
-			return struct{}{}, fmt.Errorf("failed to list updated clients: %w", err)
+			return struct{}{}, fmt.Errorf("listing updated clients: %w", err)
 		}
 
 		if len(updatedClients) != len(originalClients)+1 {
@@ -997,7 +997,7 @@ func (s *Scenario) AddAndLoginClient(
 
 		newClient, err = FindNewClient(originalClients, updatedClients)
 		if err != nil {
-			return struct{}{}, fmt.Errorf("failed to find new client: %w", err)
+			return struct{}{}, fmt.Errorf("finding new client: %w", err)
 		}
 
 		return struct{}{}, nil
@@ -1009,18 +1009,18 @@ func (s *Scenario) AddAndLoginClient(
 	// Get the user and create preauth key
 	user, err := GetUserByName(headscale, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("getting user: %w", err)
 	}
 
 	authKey, err := s.CreatePreAuthKey(user.GetId(), true, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create preauth key: %w", err)
+		return nil, fmt.Errorf("creating preauth key: %w", err)
 	}
 
 	// Login the new client
 	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey())
 	if err != nil {
-		return nil, fmt.Errorf("failed to login new client: %w", err)
+		return nil, fmt.Errorf("logging in new client: %w", err)
 	}
 
 	return newClient, nil

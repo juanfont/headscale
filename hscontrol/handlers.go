@@ -64,7 +64,7 @@ func NewHTTPError(code int, msg string, err error) HTTPError {
 var errMethodNotAllowed = NewHTTPError(http.StatusMethodNotAllowed, "method not allowed", nil)
 
 var ErrRegisterMethodCLIDoesNotSupportExpire = errors.New(
-	"machines registered with CLI does not support expire",
+	"machines registered with CLI do not support expiry",
 )
 
 func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error) {
@@ -76,7 +76,7 @@ func parseCapabilityVersion(req *http.Request) (tailcfg.CapabilityVersion, error
 
 	clientCapabilityVersion, err := strconv.Atoi(clientCapabilityStr)
 	if err != nil {
-		return 0, NewHTTPError(http.StatusBadRequest, "invalid capability version", fmt.Errorf("failed to parse capability version: %w", err))
+		return 0, NewHTTPError(http.StatusBadRequest, "invalid capability version", fmt.Errorf("parsing capability version: %w", err))
 	}
 
 	return tailcfg.CapabilityVersion(clientCapabilityVersion), nil
@@ -88,12 +88,12 @@ func (h *Headscale) handleVerifyRequest(
 ) error {
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		return fmt.Errorf("cannot read request body: %w", err)
+		return fmt.Errorf("reading request body: %w", err)
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
 	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
-		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("cannot parse derpAdmitClientRequest: %w", err))
+		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 
 	nodes := h.state.ListNodes()

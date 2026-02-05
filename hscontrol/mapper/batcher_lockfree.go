@@ -81,7 +81,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 	if err != nil {
 		nlog.Error().Err(err).Msg("initial map generation failed")
 		nodeConn.removeConnectionByChannel(c)
-		return fmt.Errorf("failed to generate initial map for node %d: %w", id, err)
+		return fmt.Errorf("generating initial map for node %d: %w", id, err)
 	}
 
 	// Use a blocking send with timeout for initial map since the channel should be ready
@@ -94,7 +94,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second).           //nolint:mnd
 											Msg("initial map send timed out because channel was blocked or receiver not ready")
 		nodeConn.removeConnectionByChannel(c)
-		return fmt.Errorf("failed to send initial map to node %d: timeout", id)
+		return fmt.Errorf("sending initial map to node %d: timeout", id)
 	}
 
 	// Update connection status

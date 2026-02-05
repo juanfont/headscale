@@ -117,7 +117,7 @@ func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
 		cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
 		if err != nil {
-			log.Fatalf("failed to create certificates for headscale test: %s", err)
+			log.Fatalf("creating certificates for headscale test: %s", err)
 		}
 
 		hsic.tlsCert = cert
@@ -239,7 +239,7 @@ func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 	return func(hsic *HeadscaleInContainer) {
 		contents, err := yaml.Marshal(derpMap)
 		if err != nil {
-			log.Fatalf("failed to marshal DERP map: %s", err)
+			log.Fatalf("marshalling DERP map: %s", err)
 
 			return
 		}
@@ -504,7 +504,7 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("could not run pre-built headscale container %q: %w", prebuiltImage, err)
+			return nil, fmt.Errorf("running pre-built headscale container %q: %w", prebuiltImage, err)
 		}
 	} else if util.IsCI() {
 		return nil, errHeadscaleImageRequiredInCI
@@ -536,16 +536,16 @@ func New(
 
 			if buildErr != nil {
 				// The diagnostic build also failed - this is the real error
-				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+				return nil, fmt.Errorf("starting headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
 			}
 
 			if buildOutput != "" {
 				// Build succeeded on retry but container creation still failed
-				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+				return nil, fmt.Errorf("starting headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
 			}
 
 			// No output at all - diagnostic build command may have failed
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
+			return nil, fmt.Errorf("starting headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 		}
 	}
 	log.Printf("Created %s container\n", hsic.hostname)
@@ -566,13 +566,13 @@ func New(
 	for i, cert := range hsic.caCerts {
 		err = hsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 	}
 
 	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(MinimumConfigYAML()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
+		return nil, fmt.Errorf("writing headscale config to container: %w", err)
 	}
 
 	if hsic.aclPolicy != nil {
@@ -585,18 +585,18 @@ func New(
 	if hsic.hasTLS() {
 		err = hsic.WriteFile(tlsCertPath, hsic.tlsCert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 
 		err = hsic.WriteFile(tlsKeyPath, hsic.tlsKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+			return nil, fmt.Errorf("writing TLS key to container: %w", err)
 		}
 	}
 
 	for _, f := range hsic.filesInContainer {
 		if err := hsic.WriteFile(f.path, f.contents); err != nil {
-			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
+			return nil, fmt.Errorf("writing %q: %w", f.path, err)
 		}
 	}
 
@@ -625,15 +625,15 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save log from control: %s",
-			fmt.Errorf("failed to save log from control: %w", err),
+			"saving log from control: %s",
+			fmt.Errorf("saving log from control: %w", err),
 		)
 	}
 
 	err = t.SaveMetrics(fmt.Sprintf("/tmp/control/%s_metrics.txt", t.hostname))
 	if err != nil {
 		log.Printf(
-			"Failed to metrics from control: %s",
+			"saving metrics from control: %s",
 			err,
 		)
 	}
@@ -644,24 +644,24 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 	err = t.SendInterrupt()
 	if err != nil {
 		log.Printf(
-			"Failed to send graceful interrupt to control: %s",
-			fmt.Errorf("failed to send graceful interrupt to control: %w", err),
+			"sending graceful interrupt to control: %s",
+			fmt.Errorf("sending graceful interrupt to control: %w", err),
 		)
 	}
 
 	err = t.SaveProfile("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save profile from control: %s",
-			fmt.Errorf("failed to save profile from control: %w", err),
+			"saving profile from control: %s",
+			fmt.Errorf("saving profile from control: %w", err),
 		)
 	}
 
 	err = t.SaveMapResponses("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save mapresponses from control: %s",
-			fmt.Errorf("failed to save mapresponses from control: %w", err),
+			"saving mapresponses from control: %s",
+			fmt.Errorf("saving mapresponses from control: %w", err),
 		)
 	}
 
@@ -670,8 +670,8 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 		err = t.SaveDatabase("/tmp/control")
 		if err != nil {
 			log.Printf(
-				"Failed to save database from control: %s",
-				fmt.Errorf("failed to save database from control: %w", err),
+				"saving database from control: %s",
+				fmt.Errorf("saving database from control: %w", err),
 			)
 		}
 	}
@@ -718,7 +718,7 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 // extractTarToDirectory extracts a tar archive to a directory.
 func extractTarToDirectory(tarData []byte, targetDir string) error {
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+		return fmt.Errorf("creating directory %s: %w", targetDir, err)
 	}
 
 	tarReader := tar.NewReader(bytes.NewReader(tarData))
@@ -732,7 +732,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		if header.Typeflag == tar.TypeDir && topLevelDir == "" {
@@ -748,7 +748,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		// Clean the path to prevent directory traversal
@@ -776,29 +776,29 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		case tar.TypeDir:
 			// Create directory
 			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+				return fmt.Errorf("creating directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
 			// Ensure parent directories exist
 			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
+				return fmt.Errorf("creating parent directories for %s: %w", targetPath, err)
 			}
 
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
-				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+				return fmt.Errorf("creating file %s: %w", targetPath, err)
 			}
 
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				outFile.Close()
-				return fmt.Errorf("failed to copy file contents: %w", err)
+				return fmt.Errorf("copying file contents: %w", err)
 			}
 			outFile.Close()
 
 			// Set file permissions
 			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to set file permissions: %w", err)
+				return fmt.Errorf("setting file permissions: %w", err)
 			}
 		}
 	}
@@ -853,7 +853,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 	// Check if the database has any tables (schema)
 	schemaCheck, err := t.Execute([]string{"sqlite3", dbPath, ".schema"})
 	if err != nil {
-		return fmt.Errorf("failed to check database schema (sqlite3 command failed): %w", err)
+		return fmt.Errorf("checking database schema (sqlite3 command failed): %w", err)
 	}
 
 	if strings.TrimSpace(schemaCheck) == "" {
@@ -862,7 +862,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
-		return fmt.Errorf("failed to fetch database file: %w", err)
+		return fmt.Errorf("fetching database file: %w", err)
 	}
 
 	// For database, extract the first regular file (should be the SQLite file)
@@ -873,7 +873,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		log.Printf(
@@ -888,13 +888,13 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 			dbPath := path.Join(savePath, t.hostname+".db")
 			outFile, err := os.Create(dbPath)
 			if err != nil {
-				return fmt.Errorf("failed to create database file: %w", err)
+				return fmt.Errorf("creating database file: %w", err)
 			}
 
 			written, err := io.Copy(outFile, tarReader)
 			outFile.Close()
 			if err != nil {
-				return fmt.Errorf("failed to copy database file: %w", err)
+				return fmt.Errorf("copying database file: %w", err)
 			}
 
 			log.Printf(
@@ -1061,7 +1061,7 @@ func (t *HeadscaleInContainer) CreateUser(
 	var u v1.User
 	err = json.Unmarshal([]byte(result), &u)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+		return nil, fmt.Errorf("unmarshalling user: %w", err)
 	}
 
 	return &u, nil
@@ -1119,14 +1119,14 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v
 		[]string{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute create auth key command: %w", err)
+		return nil, fmt.Errorf("executing create auth key command: %w", err)
 	}
 
 	var preAuthKey v1.PreAuthKey
 
 	err = json.Unmarshal([]byte(result), &preAuthKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
+		return nil, fmt.Errorf("unmarshalling auth key: %w", err)
 	}
 
 	return &preAuthKey, nil
@@ -1182,7 +1182,7 @@ func (t *HeadscaleInContainer) DeleteAuthKey(
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute delete auth key command: %w", err)
+		return fmt.Errorf("executing delete auth key command: %w", err)
 	}
 
 	return nil
@@ -1202,13 +1202,13 @@ func (t *HeadscaleInContainer) ListNodes(
 			[]string{},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to execute list node command: %w", err)
+			return fmt.Errorf("executing list node command: %w", err)
 		}
 
 		var nodes []*v1.Node
 		err = json.Unmarshal([]byte(result), &nodes)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal nodes: %w", err)
+			return fmt.Errorf("unmarshalling nodes: %w", err)
 		}
 
 		ret = append(ret, nodes...)
@@ -1257,7 +1257,7 @@ func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute delete node command: %w", err)
+		return fmt.Errorf("executing delete node command: %w", err)
 	}
 
 	return nil
@@ -1305,13 +1305,13 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 		[]string{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute list node command: %w", err)
+		return nil, fmt.Errorf("executing list node command: %w", err)
 	}
 
 	var users []*v1.User
 	err = json.Unmarshal([]byte(result), &users)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+		return nil, fmt.Errorf("unmarshalling nodes: %w", err)
 	}
 
 	return users, nil
@@ -1352,7 +1352,7 @@ func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute delete user command: %w", err)
+		return fmt.Errorf("executing delete user command: %w", err)
 	}
 
 	return nil
@@ -1402,7 +1402,7 @@ func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
 func (h *HeadscaleInContainer) writePolicy(pol *policyv2.Policy) error {
 	pBytes, err := json.Marshal(pol)
 	if err != nil {
-		return fmt.Errorf("marshalling pol: %w", err)
+		return fmt.Errorf("marshalling policy: %w", err)
 	}
 
 	err = h.WriteFile(aclPolicyPath, pBytes)
@@ -1486,7 +1486,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to execute approve routes command (node %d, routes %v): %w",
+			"executing approve routes command (node %d, routes %v): %w",
 			id,
 			routes,
 			err,
@@ -1496,7 +1496,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	var node *v1.Node
 	err = json.Unmarshal([]byte(result), &node)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node response: %q, error: %w", result, err)
+		return nil, fmt.Errorf("unmarshalling node response: %q, error: %w", result, err)
 	}
 
 	return node, nil
@@ -1526,7 +1526,7 @@ func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute set tags command (node %d, tags %v): %w", nodeID, tags, err)
+		return fmt.Errorf("executing set tags command (node %d, tags %v): %w", nodeID, tags, err)
 	}
 
 	return nil

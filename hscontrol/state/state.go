@@ -119,12 +119,12 @@ func NewState(cfg *types.Config) (*State, error) {
 		registrationCache,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("init database: %w", err)
+		return nil, fmt.Errorf("initializing database: %w", err)
 	}
 
 	ipAlloc, err := hsdb.NewIPAllocator(db, cfg.PrefixV4, cfg.PrefixV6, cfg.IPAllocation)
 	if err != nil {
-		return nil, fmt.Errorf("init ip allocatior: %w", err)
+		return nil, fmt.Errorf("initializing IP allocator: %w", err)
 	}
 
 	nodes, err := db.ListNodes()
@@ -150,7 +150,7 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	polMan, err := policy.NewPolicyManager(pol, users, nodes.ViewSlice())
 	if err != nil {
-		return nil, fmt.Errorf("init policy manager: %w", err)
+		return nil, fmt.Errorf("initializing policy manager: %w", err)
 	}
 
 	// Apply defaults for NodeStore batch configuration if not set.
@@ -268,7 +268,7 @@ func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) 
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
 		// Log the error but don't fail the user creation
-		return &user, change.Change{}, fmt.Errorf("failed to update policy manager after user creation: %w", err)
+		return &user, change.Change{}, fmt.Errorf("updating policy manager after user creation: %w", err)
 	}
 
 	// Even if the policy manager doesn't detect a filter change, SSH policies
@@ -313,7 +313,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return user, change.Change{}, fmt.Errorf("failed to update policy manager after user update: %w", err)
+		return user, change.Change{}, fmt.Errorf("updating policy manager after user update: %w", err)
 	}
 
 	// TODO(kradalby): We might want to update nodestore with the user data
@@ -422,7 +422,7 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return nodePtr.View(), change.Change{}, fmt.Errorf("failed to update policy manager after node save: %w", err)
+		return nodePtr.View(), change.Change{}, fmt.Errorf("updating policy manager after node save: %w", err)
 	}
 
 	if c.IsEmpty() {
@@ -459,7 +459,7 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 	// Check if policy manager needs updating after node deletion
 	policyChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return change.Change{}, fmt.Errorf("failed to update policy manager after node deletion: %w", err)
+		return change.Change{}, fmt.Errorf("updating policy manager after node deletion: %w", err)
 	}
 
 	if !policyChange.IsEmpty() {
@@ -797,7 +797,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 	if len(changes) > 0 {
 		nodes, err := s.db.ListNodes()
 		if err != nil {
-			return changes, fmt.Errorf("failed to refresh NodeStore after IP backfill: %w", err)
+			return changes, fmt.Errorf("refreshing NodeStore after IP backfill: %w", err)
 		}
 
 		for _, node := range nodes {
@@ -1242,7 +1242,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
 		if err != nil {
-			return nil, fmt.Errorf("failed to save node: %w", err)
+			return nil, fmt.Errorf("saving node: %w", err)
 		}
 
 		return nil, nil //nolint:nilnil // side-effect only write
@@ -1373,7 +1373,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	if nodeToRegister.GivenName == "" {
 		givenName, err := hsdb.EnsureUniqueGivenName(s.db.DB, nodeToRegister.Hostname)
 		if err != nil {
-			return types.NodeView{}, fmt.Errorf("failed to ensure unique given name: %w", err)
+			return types.NodeView{}, fmt.Errorf("ensuring unique given name: %w", err)
 		}
 
 		nodeToRegister.GivenName = givenName
@@ -1383,7 +1383,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	savedNode, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
 		err := tx.Save(&nodeToRegister).Error
 		if err != nil {
-			return nil, fmt.Errorf("failed to save node: %w", err)
+			return nil, fmt.Errorf("saving node: %w", err)
 		}
 
 		if params.PreAuthKey != nil && !params.PreAuthKey.Reusable {
@@ -1527,7 +1527,7 @@ func (s *State) HandleNodeFromAuthPath(
 	// Get the user
 	user, err := s.db.GetUserByID(userID)
 	if err != nil {
-		return types.NodeView{}, change.Change{}, fmt.Errorf("failed to find user: %w", err)
+		return types.NodeView{}, change.Change{}, fmt.Errorf("finding user: %w", err)
 	}
 
 	// Ensure we have a valid hostname from the registration cache entry
@@ -1632,12 +1632,12 @@ func (s *State) HandleNodeFromAuthPath(
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager users: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager users: %w", err)
 	}
 
 	nodesChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
 	var c change.Change
@@ -1840,7 +1840,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Omit AuthKeyID/AuthKey to prevent stale PreAuthKey references from causing FK errors.
 			err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
 			if err != nil {
-				return nil, fmt.Errorf("failed to save node: %w", err)
+				return nil, fmt.Errorf("saving node: %w", err)
 			}
 
 			if !pak.Reusable {
@@ -1922,12 +1922,12 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// Update policy managers
 	usersChange, err := s.updatePolicyManagerUsers()
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager users: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager users: %w", err)
 	}
 
 	nodesChange, err := s.updatePolicyManagerNodes()
 	if err != nil {
-		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("failed to update policy manager nodes: %w", err)
+		return finalNode, change.NodeAdded(finalNode.ID()), fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
 	var c change.Change

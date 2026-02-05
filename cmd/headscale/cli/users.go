@@ -149,7 +149,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+			err := errors.New("multiple users match query, specify an ID")
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),
@@ -277,7 +277,7 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("Unable to determine user to delete, query returned multiple users, use ID")
+			err := errors.New("multiple users match query, specify an ID")
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),

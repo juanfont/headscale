@@ -79,7 +79,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		noiseServer.earlyNoise,
 	)
 	if err != nil {
-		httpError(writer, fmt.Errorf("noise upgrade failed: %w", err))
+		httpError(writer, fmt.Errorf("upgrading noise connection: %w", err))
 		return
 	}
 

@@ -138,17 +138,17 @@ func output(result any, override string, outputFormat string) string {
 	case "json":
 		jsonBytes, err = json.MarshalIndent(result, "", "\t")
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	case "json-line":
 		jsonBytes, err = json.Marshal(result)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	case "yaml":
 		jsonBytes, err = yaml.Marshal(result)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	default:
 		// nolint

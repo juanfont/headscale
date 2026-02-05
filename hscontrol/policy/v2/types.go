@@ -138,7 +138,7 @@ func (u Username) Validate() error {
 	if isUser(string(u)) {
 		return nil
 	}
-	return fmt.Errorf("Username has to contain @, got: %q", u)
+	return fmt.Errorf("username must contain @, got: %q", u)
 }
 
 func (u *Username) String() string {
@@ -243,7 +243,7 @@ func (g Group) Validate() error {
 	if isGroup(string(g)) {
 		return nil
 	}
-	return fmt.Errorf(`Group has to start with "group:", got: %q`, g)
+	return fmt.Errorf(`group must start with "group:", got: %q`, g)
 }
 
 func (g *Group) UnmarshalJSON(b []byte) error {
@@ -354,7 +354,7 @@ func (h Host) Validate() error {
 	if isHost(string(h)) {
 		return nil
 	}
-	return fmt.Errorf("Hostname %q is invalid", h)
+	return fmt.Errorf("hostname %q is invalid", h)
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -372,7 +372,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView
 
 	pref, ok := p.Hosts[h]
 	if !ok {
-		return nil, fmt.Errorf("unable to resolve host: %q", h)
+		return nil, fmt.Errorf("resolving host: %q", h)
 	}
 	err := pref.Validate()
 	if err != nil {
@@ -406,7 +406,7 @@ func (p Prefix) Validate() error {
 	if netip.Prefix(p).IsValid() {
 		return nil
 	}
-	return fmt.Errorf("Prefix %q is invalid", p)
+	return fmt.Errorf("prefix %q is invalid", p)
 }
 
 func (p Prefix) String() string {
@@ -505,7 +505,7 @@ func (ag AutoGroup) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf("AutoGroup is invalid, got: %q, must be one of %v", ag, autogroups)
+	return fmt.Errorf("autogroup is invalid, got: %q, must be one of %v", ag, autogroups)
 }
 
 func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
@@ -1003,14 +1003,14 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 				if str, ok := item.(string); ok {
 					stringSlice = append(stringSlice, str)
 				} else {
-					return fmt.Errorf(`Group "%s" contains invalid member type, expected string but got %T`, key, item)
+					return fmt.Errorf(`group "%s" contains invalid member type, expected string but got %T`, key, item)
 				}
 			}
 			rawGroups[key] = stringSlice
 		case string:
-			return fmt.Errorf(`Group "%s" value must be an array of users, got string: "%s"`, key, v)
+			return fmt.Errorf(`group "%s" value must be an array of users, got string: "%s"`, key, v)
 		default:
-			return fmt.Errorf(`Group "%s" value must be an array of users, got %T`, key, v)
+			return fmt.Errorf(`group "%s" value must be an array of users, got %T`, key, v)
 		}
 	}
 
@@ -1024,7 +1024,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 			username := Username(u)
 			if err := username.Validate(); err != nil {
 				if isGroup(u) {
-					return fmt.Errorf("Nested groups are not allowed, found %q inside %q", u, group)
+					return fmt.Errorf("nested groups are not allowed, found %q inside %q", u, group)
 				}
 
 				return err
@@ -1056,7 +1056,7 @@ func (h *Hosts) UnmarshalJSON(b []byte) error {
 
 		var prefix Prefix
 		if err := prefix.parseString(value); err != nil {
-			return fmt.Errorf(`Hostname "%s" contains an invalid IP address: "%s"`, key, value)
+			return fmt.Errorf(`hostname "%s" contains an invalid IP address: "%s"`, key, value)
 		}
 
 		(*h)[host] = prefix
@@ -1128,7 +1128,7 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 		}
 	}
 
-	return fmt.Errorf(`Tag %q is not defined in the Policy, please define or remove the reference to it`, tagOwner)
+	return fmt.Errorf(`tag %q is not defined in the policy, please define or remove the reference to it`, tagOwner)
 }
 
 type AutoApproverPolicy struct {
@@ -1750,7 +1750,7 @@ func (p *Policy) validate() error {
 			case *Host:
 				h := src
 				if !p.Hosts.exist(*h) {
-					errs = append(errs, fmt.Errorf(`Host %q is not defined in the Policy, please define or remove the reference to it`, *h))
+					errs = append(errs, fmt.Errorf(`host %q is not defined in the policy, please define or remove the reference to it`, *h))
 				}
 			case *AutoGroup:
 				ag := src
@@ -1782,7 +1782,7 @@ func (p *Policy) validate() error {
 			case *Host:
 				h := dst.Alias.(*Host)
 				if !p.Hosts.exist(*h) {
-					errs = append(errs, fmt.Errorf(`Host %q is not defined in the Policy, please define or remove the reference to it`, *h))
+					errs = append(errs, fmt.Errorf(`host %q is not defined in the policy, please define or remove the reference to it`, *h))
 				}
 			case *AutoGroup:
 				ag := dst.Alias.(*AutoGroup)

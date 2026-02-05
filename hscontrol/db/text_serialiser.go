@@ -24,7 +24,7 @@ func maybeInstantiatePtr(rv reflect.Value) {
 }
 
 func decodingError(name string, err error) error {
-	return fmt.Errorf("error decoding to %s: %w", name, err)
+	return fmt.Errorf("decoding to %s: %w", name, err)
 }
 
 // TextSerialiser implements the Serialiser interface for fields that
@@ -48,7 +48,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 		case string:
 			bytes = []byte(v)
 		default:
-			return fmt.Errorf("failed to unmarshal text value: %#v", dbValue)
+			return fmt.Errorf("unmarshalling text value: %#v", dbValue)
 		}
 
 		if isTextUnmarshaler(fieldValue) {
