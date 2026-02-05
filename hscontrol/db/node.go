@@ -16,6 +16,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
@@ -207,6 +208,7 @@ func SetTags(
 
 	slices.Sort(tags)
 	tags = slices.Compact(tags)
+
 	b, err := json.Marshal(tags)
 	if err != nil {
 		return err
@@ -228,7 +230,8 @@ func SetApprovedRoutes(
 ) error {
 	if len(routes) == 0 {
 		// if no routes are provided, we remove all
-		if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error; err != nil {
+		err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", "[]").Error
+		if err != nil {
 			return fmt.Errorf("removing approved routes: %w", err)
 		}
 
@@ -277,13 +280,16 @@ func SetLastSeen(tx *gorm.DB, nodeID types.NodeID, lastSeen time.Time) error {
 func RenameNode(tx *gorm.DB,
 	nodeID types.NodeID, newName string,
 ) error {
-	if err := util.ValidateHostname(newName); err != nil {
+	err := util.ValidateHostname(newName)
+	if err != nil {
 		return fmt.Errorf("renaming node: %w", err)
 	}
 
 	// Check if the new name is unique
 	var count int64
-	if err := tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error; err != nil {
+
+	err = tx.Model(&types.Node{}).Where("given_name = ? AND id != ?", newName, nodeID).Count(&count).Error
+	if err != nil {
 		return fmt.Errorf("failed to check name uniqueness: %w", err)
 	}
 
@@ -352,16 +358,16 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	}
 
 	logEvent := log.Debug().
-		Str("node", node.Hostname).
-		Str("machine_key", node.MachineKey.ShortString()).
-		Str("node_key", node.NodeKey.ShortString())
+		Str(zf.NodeHostname, node.Hostname).
+		Str(zf.MachineKey, node.MachineKey.ShortString()).
+		Str(zf.NodeKey, node.NodeKey.ShortString())
 
 	if node.User != nil {
-		logEvent = logEvent.Str("user", node.User.Username())
+		logEvent = logEvent.Str(zf.UserName, node.User.Username())
 	} else if node.UserID != nil {
-		logEvent = logEvent.Uint("user_id", *node.UserID)
+		logEvent = logEvent.Uint(zf.UserID, *node.UserID)
 	} else {
-		logEvent = logEvent.Str("user", "none")
+		logEvent = logEvent.Str(zf.UserName, "none")
 	}
 
 	logEvent.Msg("Registering test node")
@@ -379,6 +385,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		if ipv4 == nil {
 			ipv4 = oldNode.IPv4
 		}
+
 		if ipv6 == nil {
 			ipv6 = oldNode.IPv6
 		}
@@ -394,10 +401,10 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 
 		log.Trace().
 			Caller().
-			Str("node", node.Hostname).
-			Str("machine_key", node.MachineKey.ShortString()).
-			Str("node_key", node.NodeKey.ShortString()).
-			Str("user", node.User.Username()).
+			Str(zf.NodeHostname, node.Hostname).
+			Str(zf.MachineKey, node.MachineKey.ShortString()).
+			Str(zf.NodeKey, node.NodeKey.ShortString()).
+			Str(zf.UserName, node.User.Username()).
 			Msg("Test node authorized again")
 
 		return &node, nil
@@ -407,10 +414,11 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	node.IPv6 = ipv6
 
 	var err error
+
 	node.Hostname, err = util.NormaliseHostname(node.Hostname)
 	if err != nil {
 		newHostname := util.InvalidString()
-		log.Info().Err(err).Str("invalid-hostname", node.Hostname).Str("new-hostname", newHostname).Msgf("Invalid hostname, replacing")
+		log.Info().Err(err).Str(zf.InvalidHostname, node.Hostname).Str(zf.NewHostname, newHostname).Msgf("Invalid hostname, replacing")
 		node.Hostname = newHostname
 	}
 
@@ -429,7 +437,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname).
+		Str(zf.NodeHostname, node.Hostname).
 		Msg("Test node registered with the database")
 
 	return &node, nil
@@ -491,8 +499,10 @@ func generateGivenName(suppliedName string, randomSuffix bool) (string, error) {
 
 func isUniqueName(tx *gorm.DB, name string) (bool, error) {
 	nodes := types.Nodes{}
-	if err := tx.
-		Where("given_name = ?", name).Find(&nodes).Error; err != nil {
+
+	err := tx.
+		Where("given_name = ?", name).Find(&nodes).Error
+	if err != nil {
 		return false, err
 	}
 
@@ -694,9 +704,12 @@ func (hsdb *HSDatabase) CreateRegisteredNodeForTest(user *types.User, hostname .
 	}
 
 	var registeredNode *types.Node
+
 	err = hsdb.DB.Transaction(func(tx *gorm.DB) error {
 		var err error
+
 		registeredNode, err = RegisterNodeForTest(tx, *node, ipv4, ipv6)
+
 		return err
 	})
 	if err != nil {
