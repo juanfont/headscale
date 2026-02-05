@@ -136,8 +136,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 
 		if len(added) > 0 {
 			log.Debug().
-				Uint64("node.id", nv.ID().Uint64()).
-				Str("node.name", nv.Hostname()).
+				EmbedObject(nv).
 				Strs("routes.added", util.PrefixesToString(added)).
 				Strs("routes.kept", util.PrefixesToString(kept)).
 				Int("routes.total", len(newApproved)).

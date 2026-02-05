@@ -652,8 +652,7 @@ AND auth_key_id NOT IN (
 						if len(validatedTags) == 0 {
 							if len(rejectedTags) > 0 {
 								log.Debug().
-									Uint64("node.id", uint64(node.ID)).
-									Str("node.name", node.Hostname).
+									EmbedObject(node).
 									Strs("rejected_tags", rejectedTags).
 									Msg("RequestTags rejected during migration (not authorized)")
 							}
@@ -676,8 +675,7 @@ AND auth_key_id NOT IN (
 						}
 
 						log.Info().
-							Uint64("node.id", uint64(node.ID)).
-							Str("node.name", node.Hostname).
+							EmbedObject(node).
 							Strs("validated_tags", validatedTags).
 							Strs("rejected_tags", rejectedTags).
 							Strs("existing_tags", existingTags).

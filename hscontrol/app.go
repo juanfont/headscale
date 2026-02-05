@@ -147,12 +147,12 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 
 		policyChanged, err := app.state.DeleteNode(node)
 		if err != nil {
-			log.Error().Err(err).Uint64("node.id", ni.Uint64()).Str("node.name", node.Hostname()).Msg("Ephemeral node deletion failed")
+			log.Error().Err(err).EmbedObject(node).Msg("Ephemeral node deletion failed")
 			return
 		}
 
 		app.Change(policyChanged)
-		log.Debug().Caller().Uint64("node.id", ni.Uint64()).Str("node.name", node.Hostname()).Msg("Ephemeral node deleted because garbage collection timeout reached")
+		log.Debug().Caller().EmbedObject(node).Msg("Ephemeral node deleted because garbage collection timeout reached")
 	})
 	app.ephemeralGC = ephemeralGC
 

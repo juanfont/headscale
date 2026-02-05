@@ -47,8 +47,7 @@ func validateNodeOwnership(node *types.Node) error {
 func logTagOperation(existingNode types.NodeView, newTags []string) {
 	if existingNode.IsTagged() {
 		log.Info().
-			Uint64("node.id", existingNode.ID().Uint64()).
-			Str("node.name", existingNode.Hostname()).
+			EmbedObject(existingNode).
 			Strs("old.tags", existingNode.Tags().AsSlice()).
 			Strs("new.tags", newTags).
 			Msg("Updating tags on already-tagged node")
@@ -59,8 +58,7 @@ func logTagOperation(existingNode types.NodeView, newTags []string) {
 		}
 
 		log.Info().
-			Uint64("node.id", existingNode.ID().Uint64()).
-			Str("node.name", existingNode.Hostname()).
+			EmbedObject(existingNode).
 			Uint("created.by.user", userID).
 			Strs("new.tags", newTags).
 			Msg("Converting user-owned node to tagged node")

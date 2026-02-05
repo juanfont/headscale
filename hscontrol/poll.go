@@ -132,7 +132,7 @@ func (m *mapSession) serve() {
 func (m *mapSession) serveLongPoll() {
 	m.beforeServeLongPoll()
 
-	log.Trace().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("Long poll session started because client connected")
+	log.Trace().Caller().EmbedObject(m.node).Msg("Long poll session started because client connected")
 
 	// Clean up the session when the client disconnects
 	defer func() {
@@ -214,10 +214,11 @@ func (m *mapSession) serveLongPoll() {
 	// time between the node connecting and the batcher being ready.
 	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
 		m.errf(err, "failed to add node to batcher")
-		log.Error().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Err(err).Msg("AddNode failed in poll session")
+		log.Error().EmbedObject(m.node).Err(err).Msg("AddNode failed in poll session")
 		return
 	}
-	log.Debug().Caller().Uint64("node.id", m.node.ID.Uint64()).Str("node.name", m.node.Hostname).Msg("AddNode succeeded in poll session because node added to batcher")
+
+	log.Debug().Caller().EmbedObject(m.node).Msg("AddNode succeeded in poll session because node added to batcher")
 
 	m.h.Change(mapReqChange)
 	m.h.Change(connectChanges...)
