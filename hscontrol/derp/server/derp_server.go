@@ -54,7 +54,7 @@ func NewDERPServer(
 	derpKey key.NodePrivate,
 	cfg *types.DERPConfig,
 ) (*DERPServer, error) {
-	log.Trace().Caller().Msg("Creating new embedded DERP server")
+	log.Trace().Caller().Msg("creating new embedded DERP server")
 	server := derpserver.New(derpKey, util.TSLogfWrapper()) // nolint // zerolinter complains
 
 	if cfg.ServerVerifyClients {
@@ -100,11 +100,11 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	if debugUseDERPIP {
 		ips, err := net.LookupIP(host)
 		if err != nil {
-			log.Error().Caller().Err(err).Msgf("Failed to resolve DERP hostname %s to IP, using hostname", host)
+			log.Error().Caller().Err(err).Msgf("failed to resolve DERP hostname %s to IP, using hostname", host)
 		} else if len(ips) > 0 {
 			// Use the first IP address
 			ipStr := ips[0].String()
-			log.Info().Caller().Msgf("HEADSCALE_DEBUG_DERP_USE_IP: Resolved %s to %s", host, ipStr)
+			log.Info().Caller().Msgf("HEADSCALE_DEBUG_DERP_USE_IP: resolved %s to %s", host, ipStr)
 			host = ipStr
 		}
 	}
@@ -136,8 +136,8 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 	}
 	localDERPregion.Nodes[0].STUNPort = portSTUN
 
-	log.Info().Caller().Msgf("DERP region: %+v", localDERPregion)
-	log.Info().Caller().Msgf("DERP Nodes[0]: %+v", localDERPregion.Nodes[0])
+	log.Info().Caller().Msgf("derp region: %+v", localDERPregion)
+	log.Info().Caller().Msgf("derp nodes[0]: %+v", localDERPregion.Nodes[0])
 
 	return localDERPregion, nil
 }
@@ -222,7 +222,7 @@ func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 
 	hijacker, ok := writer.(http.Hijacker)
 	if !ok {
-		log.Error().Caller().Msg("DERP requires Hijacker interface from Gin")
+		log.Error().Caller().Msg("derp requires Hijacker interface from Gin")
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, err := writer.Write([]byte("HTTP does not support general TCP support"))
@@ -238,7 +238,7 @@ func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 
 	netConn, conn, err := hijacker.Hijack()
 	if err != nil {
-		log.Error().Caller().Err(err).Msgf("Hijack failed")
+		log.Error().Caller().Err(err).Msgf("hijack failed")
 		writer.Header().Set("Content-Type", "text/plain")
 		writer.WriteHeader(http.StatusInternalServerError)
 		_, err = writer.Write([]byte("HTTP does not support general TCP support"))
@@ -251,7 +251,8 @@ func (d *DERPServer) servePlain(writer http.ResponseWriter, req *http.Request) {
 
 		return
 	}
-	log.Trace().Caller().Msgf("Hijacked connection from %v", req.RemoteAddr)
+
+	log.Trace().Caller().Msgf("hijacked connection from %v", req.RemoteAddr)
 
 	if !fastStart {
 		pubKey := d.key.Public()
@@ -342,11 +343,12 @@ func (d *DERPServer) ServeSTUN() {
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}
-	log.Info().Msgf("STUN server started at %s", packetConn.LocalAddr())
+
+	log.Info().Msgf("stun server started at %s", packetConn.LocalAddr())
 
 	udpConn, ok := packetConn.(*net.UDPConn)
 	if !ok {
-		log.Fatal().Msg("STUN listener is not a UDP listener")
+		log.Fatal().Msg("stun listener is not a UDP listener")
 	}
 	serverSTUNListener(context.Background(), udpConn)
 }
@@ -364,7 +366,8 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 			if ctx.Err() != nil {
 				return
 			}
-			log.Error().Caller().Err(err).Msgf("STUN ReadFrom")
+
+			log.Error().Caller().Err(err).Msgf("stun ReadFrom")
 
 			// Rate limit error logging - wait before retrying, but respect context cancellation
 			select {
@@ -375,16 +378,17 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 
 			continue
 		}
-		log.Trace().Caller().Msgf("STUN request from %v", udpAddr)
+
+		log.Trace().Caller().Msgf("stun request from %v", udpAddr)
 		pkt := buf[:bytesRead]
 		if !stun.Is(pkt) {
-			log.Trace().Caller().Msgf("UDP packet is not STUN")
+			log.Trace().Caller().Msgf("udp packet is not stun")
 
 			continue
 		}
 		txid, err := stun.ParseBindingRequest(pkt)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("STUN parse error")
+			log.Trace().Caller().Err(err).Msgf("stun parse error")
 
 			continue
 		}
@@ -393,7 +397,7 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port)))
 		_, err = packetConn.WriteTo(res, udpAddr)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("Issue writing to UDP")
+			log.Trace().Caller().Err(err).Msgf("issue writing to UDP")
 
 			continue
 		}
@@ -413,7 +417,7 @@ type DERPVerifyTransport struct {
 func (t *DERPVerifyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	buf := new(bytes.Buffer)
 	if err := t.handleVerifyRequest(req, buf); err != nil {
-		log.Error().Caller().Err(err).Msg("Failed to handle client verify request: ")
+		log.Error().Caller().Err(err).Msg("failed to handle client verify request")
 
 		return nil, err
 	}

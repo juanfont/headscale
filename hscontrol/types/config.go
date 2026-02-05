@@ -403,7 +403,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	if err := viper.ReadInConfig(); err != nil {
 		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			log.Warn().Msg("No config file found, using defaults")
+			log.Warn().Msg("no config file found, using defaults")
 			return nil
 		}
 
@@ -450,7 +450,7 @@ func validateServerConfig() error {
 	depr.Log()
 
 	if viper.IsSet("dns.extra_records") && viper.IsSet("dns.extra_records_path") {
-		log.Fatal().Msg("Fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
+		log.Fatal().Msg("fatal config error: dns.extra_records and dns.extra_records_path are mutually exclusive. Please remove one of them from your config file")
 	}
 
 	// Collect any validation errors and return them all at once

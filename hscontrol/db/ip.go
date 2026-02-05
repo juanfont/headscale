@@ -283,7 +283,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 		}
 
 		for _, node := range nodes {
-			log.Trace().Caller().EmbedObject(node).Msg("IP backfill check started because node found in database")
+			log.Trace().Caller().EmbedObject(node).Msg("ip backfill check started because node found in database")
 
 			changed := false
 			// IPv4 prefix is set, but node ip is missing, alloc

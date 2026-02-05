@@ -140,19 +140,19 @@ func NewHeadscale(cfg *types.Config) (*Headscale, error) {
 	ephemeralGC := db.NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		node, ok := app.state.GetNodeByID(ni)
 		if !ok {
-			log.Error().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed")
-			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("Ephemeral node deletion failed because node not found in NodeStore")
+			log.Error().Uint64("node.id", ni.Uint64()).Msg("ephemeral node deletion failed")
+			log.Debug().Caller().Uint64("node.id", ni.Uint64()).Msg("ephemeral node deletion failed because node not found in NodeStore")
 			return
 		}
 
 		policyChanged, err := app.state.DeleteNode(node)
 		if err != nil {
-			log.Error().Err(err).EmbedObject(node).Msg("Ephemeral node deletion failed")
+			log.Error().Err(err).EmbedObject(node).Msg("ephemeral node deletion failed")
 			return
 		}
 
 		app.Change(policyChanged)
-		log.Debug().Caller().EmbedObject(node).Msg("Ephemeral node deleted because garbage collection timeout reached")
+		log.Debug().Caller().EmbedObject(node).Msg("ephemeral node deleted because garbage collection timeout reached")
 	})
 	app.ephemeralGC = ephemeralGC
 
@@ -286,7 +286,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 			}
 
 		case <-derpTickerChan:
-			log.Info().Msg("Fetching DERPMap updates")
+			log.Info().Msg("fetching DERPMap updates")
 			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
 				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
 				if err != nil {
@@ -506,7 +506,7 @@ func (h *Headscale) Serve() error {
 	}
 
 	versionInfo := types.GetVersionInfo()
-	log.Info().Str("version", versionInfo.Version).Str("commit", versionInfo.Commit).Msg("Starting Headscale")
+	log.Info().Str("version", versionInfo.Version).Str("commit", versionInfo.Commit).Msg("starting headscale")
 	log.Info().
 		Str("minimum_version", capver.TailscaleVersion(capver.MinSupportedCapabilityVersion)).
 		Msg("Clients with a lower minimum version will be rejected")
@@ -662,7 +662,7 @@ func (h *Headscale) Serve() error {
 	var grpcServer *grpc.Server
 	var grpcListener net.Listener
 	if tlsConfig != nil || h.cfg.GRPCAllowInsecure {
-		log.Info().Msgf("Enabling remote gRPC at %s", h.cfg.GRPCAddr)
+		log.Info().Msgf("enabling remote gRPC at %s", h.cfg.GRPCAddr)
 
 		grpcOptions := []grpc.ServerOption{
 			grpc.ChainUnaryInterceptor(
@@ -940,13 +940,13 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 	} else if h.cfg.TLS.CertPath == "" {
 		if !strings.HasPrefix(h.cfg.ServerURL, "http://") {
-			log.Warn().Msg("Listening without TLS but ServerURL does not start with http://")
+			log.Warn().Msg("listening without TLS but ServerURL does not start with http://")
 		}
 
 		return nil, err
 	} else {
 		if !strings.HasPrefix(h.cfg.ServerURL, "https://") {
-			log.Warn().Msg("Listening with TLS but ServerURL does not start with https://")
+			log.Warn().Msg("listening with TLS but ServerURL does not start with https://")
 		}
 
 		tlsConfig := &tls.Config{
@@ -970,7 +970,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 
 	privateKey, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		log.Info().Str("path", path).Msg("No private key file at path, creating...")
+		log.Info().Str("path", path).Msg("no private key file at path, creating...")
 
 		machineKey := key.NewMachine()
 
@@ -1023,7 +1023,7 @@ type acmeLogger struct {
 func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := l.rt.RoundTrip(req)
 	if err != nil {
-		log.Error().Err(err).Str("url", req.URL.String()).Msg("ACME request failed")
+		log.Error().Err(err).Str("url", req.URL.String()).Msg("acme request failed")
 		return nil, err
 	}
 
@@ -1031,7 +1031,7 @@ func (l *acmeLogger) RoundTrip(req *http.Request) (*http.Response, error) {
 		defer resp.Body.Close()
 
 		body, _ := io.ReadAll(resp.Body)
-		log.Error().Int("status_code", resp.StatusCode).Str("url", req.URL.String()).Bytes("body", body).Msg("ACME request returned error")
+		log.Error().Int("status_code", resp.StatusCode).Str("url", req.URL.String()).Bytes("body", body).Msg("acme request returned error")
 	}
 
 	return resp, nil

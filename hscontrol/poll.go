@@ -308,7 +308,7 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		if f, ok := m.w.(http.Flusher); ok {
 			f.Flush()
 		} else {
-			m.log.Error().Caller().Msg("ResponseWriter does not implement http.Flusher, cannot flush")
+			m.log.Error().Caller().Msg("responseWriter does not implement http.Flusher, cannot flush")
 		}
 	}
 

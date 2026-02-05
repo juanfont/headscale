@@ -48,12 +48,12 @@ func initConfig() {
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("Error loading config file %s", cfgFile)
+			log.Fatal().Caller().Err(err).Msgf("error loading config file %s", cfgFile)
 		}
 	} else {
 		err := types.LoadConfig("", false)
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("Error loading config")
+			log.Fatal().Caller().Err(err).Msgf("error loading config")
 		}
 	}
 

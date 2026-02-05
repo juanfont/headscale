@@ -16,7 +16,7 @@ var configTestCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		_, err := newHeadscaleServerWithConfig()
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msg("Error initializing")
+			log.Fatal().Caller().Err(err).Msg("error initializing")
 		}
 	},
 }

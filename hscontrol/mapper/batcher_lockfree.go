@@ -119,14 +119,14 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 
 	nodeConn, exists := b.nodes.Load(id)
 	if !exists {
-		nlog.Debug().Caller().Msg("RemoveNode called for non-existent node")
+		nlog.Debug().Caller().Msg("removeNode called for non-existent node")
 		return false
 	}
 
 	// Remove specific connection
 	removed := nodeConn.removeConnectionByChannel(c)
 	if !removed {
-		nlog.Debug().Caller().Msg("RemoveNode: channel not found, connection already removed or invalid")
+		nlog.Debug().Caller().Msg("removeNode: channel not found, connection already removed or invalid")
 		return false
 	}
 
