@@ -258,7 +258,7 @@ func TestNodeExpiry(t *testing.T) {
 		},
 		{
 			name:         "localtime",
-			exp:          tp(time.Time{}.Local()),
+			exp:          tp(time.Time{}.Local()), //nolint:gosmopolitan
 			wantTimeZero: true,
 		},
 	}

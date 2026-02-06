@@ -351,11 +351,10 @@ func TestReadConfigFromEnv(t *testing.T) {
 }
 
 func TestTLSConfigValidation(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "headscale")
-	if err != nil {
-		t.Fatal(err)
-	}
-	// defer os.RemoveAll(tmpDir)
+	tmpDir := t.TempDir()
+
+	var err error
+
 	configYaml := []byte(`---
 tls_letsencrypt_hostname: example.com
 tls_letsencrypt_challenge_type: ""

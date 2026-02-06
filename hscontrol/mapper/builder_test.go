@@ -339,8 +339,8 @@ func TestMapResponseBuilder_MultipleErrors(t *testing.T) {
 
 	// Build should return a multierr
 	data, err := result.Build()
-	assert.Nil(t, data)
-	assert.Error(t, err)
+	require.Nil(t, data)
+	require.Error(t, err)
 
 	// The error should contain information about multiple errors
 	assert.Contains(t, err.Error(), "multiple errors")

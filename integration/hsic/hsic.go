@@ -326,6 +326,8 @@ func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
 }
 
 // New returns a new HeadscaleInContainer instance.
+//
+//nolint:gocyclo // complex container setup with many options
 func New(
 	pool *dockertest.Pool,
 	networks []*dockertest.Network,

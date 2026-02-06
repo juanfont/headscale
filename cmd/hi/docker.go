@@ -32,6 +32,8 @@ var (
 )
 
 // runTestContainer executes integration tests in a Docker container.
+//
+//nolint:gocyclo // complex test orchestration function
 func runTestContainer(ctx context.Context, config *RunConfig) error {
 	cli, err := createDockerClient(ctx)
 	if err != nil {

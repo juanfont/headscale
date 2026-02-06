@@ -55,8 +55,8 @@ var (
 	})
 	nodeStoreNodesCount = promauto.NewGauge(prometheus.GaugeOpts{
 		Namespace: prometheusNamespace,
-		Name:      "nodestore_nodes_total",
-		Help:      "Total number of nodes in the NodeStore",
+		Name:      "nodestore_nodes",
+		Help:      "Number of nodes in the NodeStore",
 	})
 	nodeStorePeersCalculationDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,

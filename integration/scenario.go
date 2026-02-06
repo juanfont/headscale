@@ -314,6 +314,7 @@ func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
+	t.Helper()
 	defer func() { _ = dockertestutil.CleanUnreferencedNetworks(s.pool) }()
 	defer func() { _ = dockertestutil.CleanImagesInCI(s.pool) }()
 
@@ -1162,7 +1163,7 @@ var errParseAuthPage = errors.New("parsing auth page")
 
 func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	// see api.go HTML template
-	codeSep := strings.Split(string(body), "</code>")
+	codeSep := strings.Split(body, "</code>")
 	if len(codeSep) != 2 {
 		return errParseAuthPage
 	}

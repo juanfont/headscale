@@ -1896,6 +1896,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // complex integration test scenario
 func TestACLPolicyPropagationOverTime(t *testing.T) {
 	IntegrationSkip(t)
 

@@ -504,6 +504,8 @@ func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
 }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.
+//
+//nolint:gocyclo // complex server startup function
 func (h *Headscale) Serve() error {
 	var err error
 

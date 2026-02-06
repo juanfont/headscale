@@ -53,6 +53,8 @@ type HSDatabase struct {
 
 // NewHeadscaleDatabase creates a new database connection and runs migrations.
 // It accepts the full configuration to allow migrations access to policy settings.
+//
+//nolint:gocyclo // complex database initialization with many migrations
 func NewHeadscaleDatabase(
 	cfg *types.Config,
 	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
@@ -995,6 +997,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 		if err != nil {
 			return err
 		}
+		defer rows.Close()
 
 		for rows.Next() {
 			var violation constraintViolation
@@ -1007,7 +1010,9 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 			violatedConstraints = append(violatedConstraints, violation)
 		}
 
-		_ = rows.Close()
+		if err := rows.Err(); err != nil { //nolint:noinlineerr
+			return err
+		}
 
 		if len(violatedConstraints) > 0 {
 			for _, violation := range violatedConstraints {

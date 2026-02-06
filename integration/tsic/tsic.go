@@ -295,6 +295,8 @@ func (t *TailscaleInContainer) buildEntrypoint() []string {
 }
 
 // New returns a new TailscaleInContainer instance.
+//
+//nolint:gocyclo // complex container setup with many options
 func New(
 	pool *dockertest.Pool,
 	version string,
@@ -687,7 +689,7 @@ func (t *TailscaleInContainer) Login(
 // This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
-) (loginURL *url.URL, err error) {
+) (*url.URL, error) {
 	command := t.buildLoginCommand(loginServer, "")
 
 	stdout, stderr, err := t.Execute(command)
@@ -701,7 +703,7 @@ func (t *TailscaleInContainer) LoginWithURL(
 		}
 	}()
 
-	loginURL, err = util.ParseLoginURLFromCLILogin(stdout + stderr)
+	loginURL, err := util.ParseLoginURLFromCLILogin(stdout + stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -711,12 +713,12 @@ func (t *TailscaleInContainer) LoginWithURL(
 
 // Logout runs the logout routine on the given Tailscale instance.
 func (t *TailscaleInContainer) Logout() error {
-	stdout, stderr, err := t.Execute([]string{"tailscale", "logout"})
+	_, _, err := t.Execute([]string{"tailscale", "logout"})
 	if err != nil {
 		return err
 	}
 
-	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
+	stdout, stderr, _ := t.Execute([]string{"tailscale", "status"})
 	if !strings.Contains(stdout+stderr, "Logged out.") {
 		return fmt.Errorf("logging out, stdout: %s, stderr: %s", stdout, stderr) //nolint:err113
 	}

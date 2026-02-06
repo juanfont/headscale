@@ -34,6 +34,7 @@ type interactiveStep struct {
 	callAuthPath     bool // Real call to HandleNodeFromAuthPath, not mocked
 }
 
+//nolint:gocyclo // comprehensive test function with many scenarios
 func TestAuthenticationFlows(t *testing.T) {
 	// Shared test keys for consistent behavior across test cases
 	machineKey1 := key.NewMachine()
@@ -3109,7 +3110,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 		user1Nodes := 0
 		user2Nodes := 0
 
-		for i := 0; i < allNodesSlice.Len(); i++ {
+		for i := range allNodesSlice.Len() {
 			n := allNodesSlice.At(i)
 			if n.UserID().Get() == user1.ID {
 				user1Nodes++

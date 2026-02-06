@@ -185,6 +185,8 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 }
 
 // requireAllClientsOnlineWithSingleTimeout is the original validation logic for online state.
+//
+//nolint:gocyclo // complex validation with multiple node states
 func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, expectedOnline bool, message string, timeout time.Duration) {
 	t.Helper()
 
@@ -446,7 +448,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 				if slices.Contains(expectedNodes, nodeID) {
 					allMapResponsesOffline = false
 
-					assert.False(c, true, "Node %d should not appear in map responses", nodeID)
+					assert.Fail(c, fmt.Sprintf("Node %d should not appear in map responses", nodeID))
 				}
 			}
 		} else {
@@ -539,6 +541,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 // assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
 func assertLastSeenSet(t *testing.T, node *v1.Node) {
+	t.Helper()
 	assert.NotNil(t, node)
 	assert.NotNil(t, node.GetLastSeen())
 }

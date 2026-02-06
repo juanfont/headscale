@@ -146,6 +146,8 @@ func (pol *Policy) compileFilterRulesForNode(
 // It returns a slice of filter rules because when an ACL has both autogroup:self
 // and other destinations, they need to be split into separate rules with different
 // source filtering logic.
+//
+//nolint:gocyclo // complex ACL compilation logic
 func (pol *Policy) compileACLWithAutogroupSelf(
 	acl ACL,
 	users types.Users,
@@ -328,6 +330,7 @@ func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 	}
 }
 
+//nolint:gocyclo // complex SSH policy compilation logic
 func (pol *Policy) compileSSHPolicy(
 	users types.Users,
 	node types.NodeView,

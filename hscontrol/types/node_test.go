@@ -407,7 +407,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",
@@ -491,7 +491,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
+				Hostname: "server-北京-01", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",
@@ -505,7 +505,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",

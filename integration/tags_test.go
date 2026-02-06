@@ -2502,7 +2502,7 @@ func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClie
 	var actualTagsSlice []string
 
 	if nm.SelfNode.Valid() {
-		for _, tag := range nm.SelfNode.Tags().All() {
+		for _, tag := range nm.SelfNode.Tags().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 			actualTagsSlice = append(actualTagsSlice, tag)
 		}
 	}
@@ -2647,7 +2647,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	var netmapTagsAfterFirstCall []string
 
 	if nmErr == nil && nm != nil && nm.SelfNode.Valid() {
-		for _, tag := range nm.SelfNode.Tags().All() {
+		for _, tag := range nm.SelfNode.Tags().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 			netmapTagsAfterFirstCall = append(netmapTagsAfterFirstCall, tag)
 		}
 	}

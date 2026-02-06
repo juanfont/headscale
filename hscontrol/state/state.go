@@ -766,7 +766,7 @@ func (s *State) RenameNode(nodeID types.NodeID, newName string) (types.NodeView,
 
 	// Check name uniqueness against NodeStore
 	allNodes := s.nodeStore.ListNodes()
-	for i := 0; i < allNodes.Len(); i++ {
+	for i := range allNodes.Len() {
 		node := allNodes.At(i)
 		if node.ID() != nodeID && node.AsStruct().GivenName == newName {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %s", ErrNodeNameNotUnique, newName)

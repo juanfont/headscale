@@ -1280,6 +1280,7 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
+			t.Parallel()
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
 
 			result := EnsureHostname(hostinfo, "mkey", "nkey")

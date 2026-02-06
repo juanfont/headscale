@@ -518,7 +518,7 @@ func (p *Prefix) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := p.Validate(); err != nil {
+	if err := p.Validate(); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -715,7 +715,7 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 			return err
 		}
 
-		if err := ve.Validate(); err != nil {
+		if err := ve.Validate(); err != nil { //nolint:noinlineerr
 			return err
 		}
 
@@ -1585,7 +1585,7 @@ type ACL struct {
 func (a *ACL) UnmarshalJSON(b []byte) error {
 	// First unmarshal into a map to filter out comment fields
 	var raw map[string]any
-	if err := json.Unmarshal(b, &raw, policyJSONOpts...); err != nil {
+	if err := json.Unmarshal(b, &raw, policyJSONOpts...); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -1850,6 +1850,8 @@ func validateACLSrcDstCombination(sources Aliases, destinations []AliasWithPorts
 // the unmarshaling process.
 // It runs through all rules and checks if there are any inconsistencies
 // in the policy that needs to be addressed before it can be used.
+//
+//nolint:gocyclo // comprehensive policy validation
 func (p *Policy) validate() error {
 	if p == nil {
 		panic("passed nil policy")

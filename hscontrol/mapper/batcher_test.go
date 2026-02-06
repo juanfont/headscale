@@ -235,8 +235,8 @@ func setupBatcherWithTestData(
 	}
 
 	derpMap, err := derp.GetDERPMap(cfg.DERP)
-	assert.NoError(t, err)
-	assert.NotNil(t, derpMap)
+	require.NoError(t, err)
+	require.NotNil(t, derpMap)
 
 	state.SetDERPMap(derpMap)
 
@@ -1124,6 +1124,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 // even when real node updates are being processed, ensuring no race conditions
 // occur during channel replacement with actual workload.
 func XTestBatcherChannelClosingRace(t *testing.T) {
+	t.Helper()
 	for _, batcherFunc := range allBatcherFunctions {
 		t.Run(batcherFunc.name, func(t *testing.T) {
 			// Create test environment with real database and nodes
@@ -1345,6 +1346,8 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 // real node data. The test validates that stable clients continue to function
 // normally and receive proper updates despite the connection churn from other clients,
 // ensuring system stability under concurrent load.
+//
+//nolint:gocyclo // complex concurrent test scenario
 func TestBatcherConcurrentClients(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping concurrent client test in short mode")
@@ -1629,6 +1632,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 // It validates that the system remains stable with no deadlocks, panics, or
 // missed updates under sustained high load. The test uses real node data to
 // generate authentic update scenarios and tracks comprehensive statistics.
+//
+//nolint:gocyclo // complex scalability test scenario
 func XTestBatcherScalability(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping scalability test in short mode")
@@ -2422,6 +2427,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // complex multi-connection test scenario
 func TestBatcherMultiConnection(t *testing.T) {
 	for _, batcherFunc := range allBatcherFunctions {
 		t.Run(batcherFunc.name, func(t *testing.T) {

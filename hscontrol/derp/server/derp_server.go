@@ -324,8 +324,8 @@ func DERPBootstrapDNSHandler(
 
 		var resolver net.Resolver
 
-		for _, region := range derpMap.Regions().All() {
-			for _, node := range region.Nodes().All() { // we don't care if we override some nodes
+		for _, region := range derpMap.Regions().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
+			for _, node := range region.Nodes().All() { //nolint:unqueryvet // not SQLBoiler, tailcfg iterator
 				addrs, err := resolver.LookupIP(resolvCtx, "ip", node.HostName())
 				if err != nil {
 					log.Trace().

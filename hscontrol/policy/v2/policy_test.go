@@ -77,6 +77,7 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{Model: gorm.Model{ID: 3}, Name: "user3", Email: "user3@headscale.net"},
 	}
 
+	//nolint:goconst // test-specific inline policy for clarity
 	policy := `{
 		"acls": [
 			{

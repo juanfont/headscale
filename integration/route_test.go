@@ -220,6 +220,7 @@ func TestEnablingRoutes(t *testing.T) {
 	}
 }
 
+//nolint:gocyclo // complex HA failover test scenario
 func TestHASubnetRouterFailover(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -1601,7 +1602,7 @@ func TestSubnetRouteACL(t *testing.T) {
 func TestEnablingExitRoutes(t *testing.T) {
 	IntegrationSkip(t)
 
-	user := "user2"
+	user := "user2" //nolint:goconst // test-specific value, not related to userToDelete constant
 
 	spec := ScenarioSpec{
 		NodesPerUser: 2,
@@ -2031,6 +2032,8 @@ func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
 //   - Verify that peers can no longer use node
 //   - Policy is changed back to auto approve route, check that routes already existing is approved.
 //   - Verify that routes can now be seen by peers.
+//
+//nolint:gocyclo // complex multi-network auto-approve test scenario
 func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
 
