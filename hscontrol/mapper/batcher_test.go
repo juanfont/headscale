@@ -130,8 +130,6 @@ const (
 	SMALL_BUFFER_SIZE  = 3
 	TINY_BUFFER_SIZE   = 1 // For maximum contention
 	LARGE_BUFFER_SIZE  = 200
-
-	reservedResponseHeaderSize = 4
 )
 
 // TestData contains all test entities created for a test scenario.
@@ -320,6 +318,8 @@ func (ut *updateTracker) recordUpdate(nodeID types.NodeID, updateSize int) {
 }
 
 // getStats returns a copy of the statistics for a node.
+//
+//nolint:unused
 func (ut *updateTracker) getStats(nodeID types.NodeID) UpdateStats {
 	ut.mu.RLock()
 	defer ut.mu.RUnlock()

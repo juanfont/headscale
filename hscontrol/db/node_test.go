@@ -624,6 +624,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 	}
 }
 
+//nolint:unused
 func generateRandomNumber(t *testing.T, max int64) int64 {
 	t.Helper()
 

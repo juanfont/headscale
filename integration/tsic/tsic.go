@@ -52,8 +52,6 @@ var (
 	errTailscaleNotLoggedIn            = errors.New("tailscale not logged in")
 	errTailscaleWrongPeerCount         = errors.New("wrong peer count")
 	errTailscaleCannotUpWithoutAuthkey = errors.New("cannot up without authkey")
-	errTailscaleNotConnected           = errors.New("tailscale not connected")
-	errTailscaledNotReadyForLogin      = errors.New("tailscaled not ready for login")
 	errInvalidClientConfig             = errors.New("verifiably invalid client config requested")
 	errInvalidTailscaleImageFormat     = errors.New("invalid HEADSCALE_INTEGRATION_TAILSCALE_IMAGE format, expected repository:tag")
 	errTailscaleImageRequiredInCI      = errors.New("HEADSCALE_INTEGRATION_TAILSCALE_IMAGE must be set in CI for HEAD version")
@@ -1001,6 +999,8 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 
 // watchIPN watches `tailscale debug watch-ipn` for a ipn.Notify object until
 // it gets one that has a netmap.NetworkMap.
+//
+//nolint:unused
 func (t *TailscaleInContainer) watchIPN(ctx context.Context) (*ipn.Notify, error) {
 	pr, pw := io.Pipe()
 

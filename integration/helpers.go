@@ -634,6 +634,8 @@ func isSelfClient(client TailscaleClient, addr string) bool {
 // assertClientsState validates the status and netmap of a list of clients for general connectivity.
 // Runs parallel validation of status, netcheck, and netmap for all clients to ensure
 // they have proper network configuration for all-to-all connectivity tests.
+//
+//nolint:unused
 func assertClientsState(t *testing.T, clients []TailscaleClient) {
 	t.Helper()
 
@@ -661,6 +663,8 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 // Checks self node and all peers for essential networking data including hostinfo, addresses,
 // endpoints, and DERP configuration. Skips validation for Tailscale versions below 1.56.
 // This test is not suitable for ACL/partial connection tests.
+//
+//nolint:unused
 func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
@@ -723,6 +727,8 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 // assertValidStatus validates that a client's status has all required fields for proper operation.
 // Checks self and peer status for essential data including hostinfo, tailscale IPs, endpoints,
 // and network map presence. This test is not suitable for ACL/partial connection tests.
+//
+//nolint:unused
 func assertValidStatus(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
@@ -781,6 +787,8 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 // assertValidNetcheck validates that a client has a proper DERP relay configured.
 // Ensures the client has discovered and selected a DERP server for relay functionality,
 // which is essential for NAT traversal and connectivity in restricted networks.
+//
+//nolint:unused
 func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
@@ -932,6 +940,8 @@ func usernameOwner(name string) policyv2.Owner {
 
 // groupOwner returns a Group as an Owner for use in TagOwners policies.
 // Specifies which groups can assign and manage specific tags in ACL configurations.
+//
+//nolint:unused
 func groupOwner(name string) policyv2.Owner {
 	return ptr.To(policyv2.Group(name))
 }

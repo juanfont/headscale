@@ -24,7 +24,6 @@ import (
 
 const (
 	nextDNSDoHPrefix     = "https://dns.nextdns.io"
-	mapperIDLength       = 8
 	debugMapResponsePerm = 0o755
 )
 
@@ -50,6 +49,7 @@ type mapper struct {
 	created time.Time
 }
 
+//nolint:unused
 type patch struct {
 	timestamp time.Time
 	change    *tailcfg.PeerChange
@@ -154,6 +154,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 }
 
 // fullMapResponse returns a MapResponse for the given node.
+//
+//nolint:unused
 func (m *mapper) fullMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
