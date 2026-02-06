@@ -52,7 +52,8 @@ func init() {
 	userCmd.AddCommand(renameUserCmd)
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	renameNodeCmd.MarkFlagRequired("new-name")
+
+	_ = renameNodeCmd.MarkFlagRequired("new-name")
 }
 
 var errMissingParameter = errors.New("missing parameters")

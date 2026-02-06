@@ -799,7 +799,7 @@ func (h *Headscale) Serve() error {
 
 		tailsqlContext = context.Background()
 
-		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path)
+		go runTailSQLService(ctx, util.TSLogfWrapper(), tailsqlStateDir, h.cfg.Database.Sqlite.Path) //nolint:errcheck
 	}
 
 	// Handle common process-killing signals so we can gracefully shut down:

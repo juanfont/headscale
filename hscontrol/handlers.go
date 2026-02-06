@@ -155,7 +155,11 @@ func (h *Headscale) KeyHandler(
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(writer).Encode(resp)
+
+		err := json.NewEncoder(writer).Encode(resp)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to encode public key response")
+		}
 
 		return
 	}
@@ -180,7 +184,10 @@ func (h *Headscale) HealthHandler(
 			res.Status = "fail"
 		}
 
-		json.NewEncoder(writer).Encode(res)
+		encErr := json.NewEncoder(writer).Encode(res)
+		if encErr != nil {
+			log.Error().Err(encErr).Msg("failed to encode health response")
+		}
 	}
 
 	err := h.state.PingDB(req.Context())
@@ -269,7 +276,11 @@ func (a *AuthProviderWeb) RegisterHandler(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+
+	_, err = writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+	if err != nil {
+		log.Error().Err(err).Msg("failed to write register response")
+	}
 }
 
 func FaviconHandler(writer http.ResponseWriter, req *http.Request) {

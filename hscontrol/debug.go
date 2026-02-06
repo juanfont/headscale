@@ -34,14 +34,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(overviewJSON)
+			_, _ = w.Write(overviewJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			overview := h.state.DebugOverview()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(overview))
+			_, _ = w.Write([]byte(overview))
 		}
 	}))
 
@@ -57,7 +57,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(configJSON)
+		_, _ = w.Write(configJSON)
 	}))
 
 	// Policy endpoint

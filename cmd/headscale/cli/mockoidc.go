@@ -142,7 +142,7 @@ func getMockOIDC(clientID string, clientSecret string, users []mockoidc.MockUser
 		ErrorQueue:                    &mockoidc.ErrorQueue{},
 	}
 
-	mock.AddMiddleware(func(h http.Handler) http.Handler {
+	_ = mock.AddMiddleware(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			log.Info().Msgf("request: %+v", r)
 			h.ServeHTTP(w, r)

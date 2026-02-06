@@ -78,10 +78,12 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 
 		base := "https://" + certDomains[0]
 
-		go http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			target := base + r.RequestURI
-			http.Redirect(w, r, target, http.StatusPermanentRedirect)
-		}))
+		go func() {
+			_ = http.Serve(lst, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { //nolint:gosec
+				target := base + r.RequestURI
+				http.Redirect(w, r, target, http.StatusPermanentRedirect)
+			}))
+		}()
 		// log.Printf("Redirecting HTTP to HTTPS at %q", base)
 
 		// For the real service, start a separate listener.
@@ -99,7 +101,9 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 	mux := tsql.NewMux()
 	tsweb.Debugger(mux)
 
-	go http.Serve(lst, mux)
+	go func() {
+		_ = http.Serve(lst, mux) //nolint:gosec
+	}()
 
 	logf("TailSQL started")
 	<-ctx.Done()
