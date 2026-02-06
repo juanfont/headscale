@@ -167,7 +167,7 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 }
 
 // IsExpired returns whether the node registration has expired.
-func (node Node) IsExpired() bool {
+func (node *Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -738,7 +738,7 @@ func (nodes Nodes) DebugString() string {
 	return sb.String()
 }
 
-func (node Node) DebugString() string {
+func (node *Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
 

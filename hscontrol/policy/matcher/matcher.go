@@ -16,7 +16,7 @@ type Match struct {
 	dests *netipx.IPSet
 }
 
-func (m Match) DebugString() string {
+func (m *Match) DebugString() string {
 	var sb strings.Builder
 
 	sb.WriteString("Match:\n")
@@ -101,7 +101,7 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 // cased for exit nodes.
 // This checks if dests is a superset of TheInternet(), which handles
 // merged filter rules where TheInternet is combined with other destinations.
-func (m Match) DestsIsTheInternet() bool {
+func (m *Match) DestsIsTheInternet() bool {
 	if m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
 		m.dests.ContainsPrefix(tsaddr.AllIPv6()) {
 		return true

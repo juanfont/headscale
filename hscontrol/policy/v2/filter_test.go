@@ -1150,7 +1150,8 @@ func TestAutogroupTagged(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify autogroup:tagged includes all tagged nodes
-	taggedIPs, err := AutoGroupTagged.Resolve(policy, users, nodes.ViewSlice())
+	ag := AutoGroupTagged
+	taggedIPs, err := ag.Resolve(policy, users, nodes.ViewSlice())
 	require.NoError(t, err)
 	require.NotNil(t, taggedIPs)
 
