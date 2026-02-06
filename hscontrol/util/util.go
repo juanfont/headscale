@@ -22,6 +22,7 @@ var (
 	ErrNoURLFound            = errors.New("no URL found")
 	ErrEmptyTracerouteOutput = errors.New("empty traceroute output")
 	ErrTracerouteHeaderParse = errors.New("parsing traceroute header")
+	ErrTracerouteDidNotReach = errors.New("traceroute did not reach target")
 )
 
 func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
@@ -263,7 +264,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 
 	// If we didn't reach the target, it's unsuccessful
 	if !result.Success {
-		result.Err = errors.New("traceroute did not reach target")
+		result.Err = ErrTracerouteDidNotReach
 	}
 
 	return result, nil

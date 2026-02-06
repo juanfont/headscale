@@ -18,8 +18,10 @@ import (
 
 // Mapper errors.
 var (
-	ErrInvalidNodeID = errors.New("invalid nodeID")
-	ErrMapperNil     = errors.New("mapper is nil")
+	ErrInvalidNodeID      = errors.New("invalid nodeID")
+	ErrMapperNil          = errors.New("mapper is nil")
+	ErrNodeConnectionNil  = errors.New("nodeConnection is nil")
+	ErrNodeNotFoundMapper = errors.New("node not found")
 )
 
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -142,7 +144,7 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.Change].
 func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error {
 	if nc == nil {
-		return errors.New("nodeConnection is nil")
+		return ErrNodeConnectionNil
 	}
 
 	nodeID := nc.nodeID()

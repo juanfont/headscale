@@ -901,7 +901,7 @@ func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.Peer
 // GetFQDN returns the fully qualified domain name for the node.
 func (nv NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !nv.Valid() {
-		return "", errors.New("creating valid FQDN: node view is invalid")
+		return "", fmt.Errorf("creating valid FQDN: %w", ErrInvalidNodeView)
 	}
 
 	return nv.ж.GetFQDN(baseDomain)

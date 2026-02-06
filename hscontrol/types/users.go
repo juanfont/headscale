@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/mail"
 	"net/url"
@@ -19,6 +20,9 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
+
+// ErrCannotParseBoolean is returned when a value cannot be parsed as boolean.
+var ErrCannotParseBoolean = errors.New("cannot parse value as boolean")
 
 type UserID uint64
 
@@ -252,7 +256,7 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		*bit = FlexibleBoolean(pv)
 
 	default:
-		return fmt.Errorf("parsing %v as boolean", v)
+		return fmt.Errorf("%w: %v", ErrCannotParseBoolean, v)
 	}
 
 	return nil
