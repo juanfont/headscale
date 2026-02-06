@@ -15,6 +15,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// CLI user errors.
+var (
+	errFlagRequired       = errors.New("--name or --identifier flag is required")
+	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
+)
+
 func usernameAndIDFlag(cmd *cobra.Command) {
 	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
 	cmd.Flags().StringP("name", "n", "", "Username")
@@ -27,10 +33,9 @@ func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
 		ErrorOutput(
-			err,
-			"Cannot rename user: "+status.Convert(err).Message(),
+			errFlagRequired,
+			"Cannot rename user: "+status.Convert(errFlagRequired).Message(),
 			"",
 		)
 	}
@@ -151,7 +156,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("multiple users match query, specify an ID")
+			err := errMultipleUsersMatch
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),
@@ -279,7 +284,7 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("multiple users match query, specify an ID")
+			err := errMultipleUsersMatch
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),

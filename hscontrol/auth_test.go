@@ -2718,7 +2718,7 @@ func extractRegistrationIDFromAuthURL(authURL string) (types.RegistrationID, err
 
 	idx := strings.LastIndex(authURL, registerPrefix)
 	if idx == -1 {
-		return "", fmt.Errorf("invalid AuthURL format: %s", authURL)
+		return "", fmt.Errorf("invalid AuthURL format: %s", authURL) //nolint:err113
 	}
 
 	idStr := authURL[idx+len(registerPrefix):]

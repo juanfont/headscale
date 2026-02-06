@@ -1004,19 +1004,19 @@ func TestNodeStoreRaceConditions(t *testing.T) {
 						n.Hostname = "race-updated"
 					})
 					if !resultNode.Valid() {
-						errors <- fmt.Errorf("UpdateNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("UpdateNode failed in goroutine %d, op %d", gid, j) //nolint:err113
 					}
 				case 1:
 					retrieved, found := store.GetNode(nodeID)
 					if !found || !retrieved.Valid() {
-						errors <- fmt.Errorf("GetNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("GetNode failed in goroutine %d, op %d", gid, j) //nolint:err113
 					}
 				case 2:
 					newNode := createConcurrentTestNode(nodeID, "race-put")
 
 					resultNode := store.PutNode(newNode)
 					if !resultNode.Valid() {
-						errors <- fmt.Errorf("PutNode failed in goroutine %d, op %d", gid, j)
+						errors <- fmt.Errorf("PutNode failed in goroutine %d, op %d", gid, j) //nolint:err113
 					}
 				}
 			}
@@ -1116,7 +1116,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: PutNode(%d) finished, valid=%v, duration=%v\n", endPut.Format("15:04:05.000"), id, resultNode.Valid(), endPut.Sub(startPut))
 
 			if !resultNode.Valid() {
-				putResults[idx-1] = fmt.Errorf("PutNode failed for node %d", id)
+				putResults[idx-1] = fmt.Errorf("PutNode failed for node %d", id) //nolint:err113
 			}
 		}(i, nodeID)
 	}
@@ -1143,7 +1143,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 			fmt.Printf("[TestNodeStoreOperationTimeout] %s: UpdateNode(%d) finished, valid=%v, ok=%v, duration=%v\n", endUpdate.Format("15:04:05.000"), id, resultNode.Valid(), ok, endUpdate.Sub(startUpdate))
 
 			if !ok || !resultNode.Valid() {
-				updateResults[idx-1] = fmt.Errorf("UpdateNode failed for node %d", id)
+				updateResults[idx-1] = fmt.Errorf("UpdateNode failed for node %d", id) //nolint:err113
 			}
 		}(i, nodeID)
 	}

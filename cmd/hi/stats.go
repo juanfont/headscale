@@ -18,6 +18,9 @@ import (
 	"github.com/docker/docker/client"
 )
 
+// ErrStatsCollectionAlreadyStarted is returned when trying to start stats collection that is already running.
+var ErrStatsCollectionAlreadyStarted = errors.New("stats collection already started")
+
 // ContainerStats represents statistics for a single container.
 type ContainerStats struct {
 	ContainerID   string
@@ -63,7 +66,7 @@ func (sc *StatsCollector) StartCollection(ctx context.Context, runID string, ver
 	defer sc.mutex.Unlock()
 
 	if sc.collectionStarted {
-		return errors.New("stats collection already started")
+		return ErrStatsCollectionAlreadyStarted
 	}
 
 	sc.collectionStarted = true
