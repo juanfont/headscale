@@ -38,13 +38,13 @@ func runDoctorCheck(ctx context.Context) error {
 	}
 
 	// Check 3: Go installation
-	results = append(results, checkGoInstallation())
+	results = append(results, checkGoInstallation(ctx))
 
 	// Check 4: Git repository
-	results = append(results, checkGitRepository())
+	results = append(results, checkGitRepository(ctx))
 
 	// Check 5: Required files
-	results = append(results, checkRequiredFiles())
+	results = append(results, checkRequiredFiles(ctx))
 
 	// Display results
 	displayDoctorResults(results)
@@ -86,7 +86,7 @@ func checkDockerBinary() DoctorResult {
 
 // checkDockerDaemon verifies Docker daemon is running and accessible.
 func checkDockerDaemon(ctx context.Context) DoctorResult {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return DoctorResult{
 			Name:    "Docker Daemon",
@@ -124,8 +124,8 @@ func checkDockerDaemon(ctx context.Context) DoctorResult {
 }
 
 // checkDockerContext verifies Docker context configuration.
-func checkDockerContext(_ context.Context) DoctorResult {
-	contextInfo, err := getCurrentDockerContext()
+func checkDockerContext(ctx context.Context) DoctorResult {
+	contextInfo, err := getCurrentDockerContext(ctx)
 	if err != nil {
 		return DoctorResult{
 			Name:    "Docker Context",
@@ -155,7 +155,7 @@ func checkDockerContext(_ context.Context) DoctorResult {
 
 // checkDockerSocket verifies Docker socket accessibility.
 func checkDockerSocket(ctx context.Context) DoctorResult {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return DoctorResult{
 			Name:    "Docker Socket",
@@ -192,7 +192,7 @@ func checkDockerSocket(ctx context.Context) DoctorResult {
 
 // checkGolangImage verifies the golang Docker image is available locally or can be pulled.
 func checkGolangImage(ctx context.Context) DoctorResult {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return DoctorResult{
 			Name:    "Golang Image",
@@ -251,7 +251,7 @@ func checkGolangImage(ctx context.Context) DoctorResult {
 }
 
 // checkGoInstallation verifies Go is installed and working.
-func checkGoInstallation() DoctorResult {
+func checkGoInstallation(ctx context.Context) DoctorResult {
 	_, err := exec.LookPath("go")
 	if err != nil {
 		return DoctorResult{
@@ -265,7 +265,8 @@ func checkGoInstallation() DoctorResult {
 		}
 	}
 
-	cmd := exec.Command("go", "version")
+	cmd := exec.CommandContext(ctx, "go", "version")
+
 	output, err := cmd.Output()
 	if err != nil {
 		return DoctorResult{
@@ -285,8 +286,9 @@ func checkGoInstallation() DoctorResult {
 }
 
 // checkGitRepository verifies we're in a git repository.
-func checkGitRepository() DoctorResult {
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+func checkGitRepository(ctx context.Context) DoctorResult {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--git-dir")
+
 	err := cmd.Run()
 	if err != nil {
 		return DoctorResult{
@@ -308,7 +310,7 @@ func checkGitRepository() DoctorResult {
 }
 
 // checkRequiredFiles verifies required files exist.
-func checkRequiredFiles() DoctorResult {
+func checkRequiredFiles(ctx context.Context) DoctorResult {
 	requiredFiles := []string{
 		"go.mod",
 		"integration/",
@@ -316,9 +318,12 @@ func checkRequiredFiles() DoctorResult {
 	}
 
 	var missingFiles []string
+
 	for _, file := range requiredFiles {
-		cmd := exec.Command("test", "-e", file)
-		if err := cmd.Run(); err != nil {
+		cmd := exec.CommandContext(ctx, "test", "-e", file)
+
+		err := cmd.Run()
+		if err != nil {
 			missingFiles = append(missingFiles, file)
 		}
 	}
@@ -350,6 +355,7 @@ func displayDoctorResults(results []DoctorResult) {
 
 	for _, result := range results {
 		var icon string
+
 		switch result.Status {
 		case "PASS":
 			icon = "✅"

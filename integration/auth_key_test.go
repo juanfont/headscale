@@ -31,6 +31,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
@@ -69,18 +70,24 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
+
 			for _, client := range allClients {
 				ips, err := client.IPs()
 				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
+
 				clientIPs[client] = ips
 			}
 
-			var listNodes []*v1.Node
-			var nodeCountBeforeLogout int
+			var (
+				listNodes             []*v1.Node
+				nodeCountBeforeLogout int
+			)
+
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, len(allClients))
@@ -111,6 +118,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after logout")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
@@ -148,6 +156,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			t.Logf("Validating node persistence after relogin at %s", time.Now().Format(TimestampFormat))
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after relogin")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after relogin - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
@@ -201,6 +210,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, nodeCountBeforeLogout)
@@ -255,10 +265,14 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-	var listNodes []*v1.Node
-	var nodeCountBeforeLogout int
+	var (
+		listNodes             []*v1.Node
+		nodeCountBeforeLogout int
+	)
+
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, listNodes, len(allClients))
@@ -301,9 +315,11 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	var user1Nodes []*v1.Node
+
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(ct, err, "Failed to list nodes for user1 after relogin")
 		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all %d clients after relogin, got %d nodes", len(allClients), len(user1Nodes))
@@ -323,21 +339,24 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	// When nodes re-authenticate with a different user's pre-auth key, NEW nodes are created
 	// for the new user. The original nodes remain with the original user.
 	var user2Nodes []*v1.Node
+
 	t.Logf("Validating user2 node persistence after user1 relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user2Nodes, err = headscale.ListNodes("user2")
 		assert.NoError(ct, err, "Failed to list nodes for user2 after user1 relogin")
 		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d clients after user1 relogin, got %d nodes", len(allClients)/2, len(user2Nodes))
 	}, 30*time.Second, 2*time.Second, "validating user2 nodes persist after user1 relogin (should not be affected)")
 
 	t.Logf("Validating client login states after user switch at %s", time.Now().Format(TimestampFormat))
+
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, fmt.Sprintf("validating %s is logged in as user1 after auth key user switch", client.Hostname()))
+		}, 30*time.Second, 2*time.Second, "validating %s is logged in as user1 after auth key user switch", client.Hostname())
 	}
 }
 
@@ -352,6 +371,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
@@ -377,11 +397,13 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			// assertClientsState(t, allClients)
 
 			clientIPs := make(map[TailscaleClient][]netip.Addr)
+
 			for _, client := range allClients {
 				ips, err := client.IPs()
 				if err != nil {
 					t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 				}
+
 				clientIPs[client] = ips
 			}
 
@@ -395,10 +417,14 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
-			var listNodes []*v1.Node
-			var nodeCountBeforeLogout int
+			var (
+				listNodes             []*v1.Node
+				nodeCountBeforeLogout int
+			)
+
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				var err error
+
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, len(allClients))

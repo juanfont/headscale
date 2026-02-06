@@ -798,10 +798,14 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range policy.PolicyManagerFuncsForTest([]byte(tt.pol)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm policy.PolicyManager
-				var err error
+				var (
+					pm  policy.PolicyManager
+					err error
+				)
+
 				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
+
 				got, _ := pm.Filter()
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = policyutil.ReduceFilterRules(tt.node.View(), got)

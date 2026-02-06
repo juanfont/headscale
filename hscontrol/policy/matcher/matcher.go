@@ -16,15 +16,18 @@ type Match struct {
 	dests *netipx.IPSet
 }
 
-func (m Match) DebugString() string {
+func (m *Match) DebugString() string {
 	var sb strings.Builder
 
 	sb.WriteString("Match:\n")
 	sb.WriteString("  Sources:\n")
+
 	for _, prefix := range m.srcs.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
+
 	sb.WriteString("  Destinations:\n")
+
 	for _, prefix := range m.dests.Prefixes() {
 		sb.WriteString("    " + prefix.String() + "\n")
 	}
@@ -42,7 +45,7 @@ func MatchesFromFilterRules(rules []tailcfg.FilterRule) []Match {
 }
 
 func MatchFromFilterRule(rule tailcfg.FilterRule) Match {
-	dests := []string{}
+	dests := make([]string, 0, len(rule.DstPorts))
 	for _, dest := range rule.DstPorts {
 		dests = append(dests, dest.IP)
 	}
@@ -98,7 +101,7 @@ func (m *Match) DestsOverlapsPrefixes(prefixes ...netip.Prefix) bool {
 // cased for exit nodes.
 // This checks if dests is a superset of TheInternet(), which handles
 // merged filter rules where TheInternet is combined with other destinations.
-func (m Match) DestsIsTheInternet() bool {
+func (m *Match) DestsIsTheInternet() bool {
 	if m.dests.ContainsPrefix(tsaddr.AllIPv4()) ||
 		m.dests.ContainsPrefix(tsaddr.AllIPv6()) {
 		return true

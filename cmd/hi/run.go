@@ -48,7 +48,9 @@ func runIntegrationTest(env *command.Env) error {
 	if runConfig.Verbose {
 		log.Printf("Running pre-flight system checks...")
 	}
-	if err := runDoctorCheck(env.Context()); err != nil {
+
+	err := runDoctorCheck(env.Context())
+	if err != nil {
 		return fmt.Errorf("pre-flight checks failed: %w", err)
 	}
 
@@ -66,9 +68,9 @@ func runIntegrationTest(env *command.Env) error {
 func detectGoVersion() string {
 	goModPath := filepath.Join("..", "..", "go.mod")
 
-	if _, err := os.Stat("go.mod"); err == nil {
+	if _, err := os.Stat("go.mod"); err == nil { //nolint:noinlineerr
 		goModPath = "go.mod"
-	} else if _, err := os.Stat("../../go.mod"); err == nil {
+	} else if _, err := os.Stat("../../go.mod"); err == nil { //nolint:noinlineerr
 		goModPath = "../../go.mod"
 	}
 
@@ -94,8 +96,10 @@ func detectGoVersion() string {
 
 // splitLines splits a string into lines without using strings.Split.
 func splitLines(s string) []string {
-	var lines []string
-	var current string
+	var (
+		lines   []string
+		current string
+	)
 
 	for _, char := range s {
 		if char == '\n' {

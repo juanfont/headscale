@@ -203,7 +203,7 @@ func TestUserCommand(t *testing.T) {
 			"--identifier=1",
 		},
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
 	var listAfterIDDelete []*v1.User
@@ -245,7 +245,7 @@ func TestUserCommand(t *testing.T) {
 			"--name=newname",
 		},
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Contains(t, deleteResult, "User destroyed")
 
 	var listAfterNameDelete []v1.User
@@ -571,7 +571,9 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
 
+	//nolint:goconst // test data, not worth extracting
 	user1 := "user1"
+	//nolint:goconst // test data, not worth extracting
 	user2 := "user2"
 
 	spec := ScenarioSpec{
@@ -829,7 +831,7 @@ func TestApiKeyCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.NotEmpty(t, apiResult)
 
 		keys[idx] = apiResult
@@ -907,7 +909,7 @@ func TestApiKeyCommand(t *testing.T) {
 				listedAPIKeys[idx].GetPrefix(),
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		expiredPrefixes[listedAPIKeys[idx].GetPrefix()] = true
 	}
@@ -952,7 +954,7 @@ func TestApiKeyCommand(t *testing.T) {
 			"--prefix",
 			listedAPIKeys[0].GetPrefix(),
 		})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	var listedAPIKeysAfterDelete []v1.ApiKey
 
@@ -1071,7 +1073,7 @@ func TestNodeCommand(t *testing.T) {
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -1089,7 +1091,7 @@ func TestNodeCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		var node v1.Node
 
@@ -1156,7 +1158,7 @@ func TestNodeCommand(t *testing.T) {
 	}
 	otherUserMachines := make([]*v1.Node, len(otherUserRegIDs))
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for index, regID := range otherUserRegIDs {
 		_, err := headscale.Execute(
@@ -1174,7 +1176,7 @@ func TestNodeCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		var node v1.Node
 
@@ -1281,7 +1283,7 @@ func TestNodeCommand(t *testing.T) {
 			"--force",
 		},
 	)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Test: list main user after node is deleted
 	var listOnlyMachineUserAfterDelete []v1.Node
@@ -1348,7 +1350,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				"json",
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		var node v1.Node
 
@@ -1411,7 +1413,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				strconv.FormatUint(listAll[idx].GetId(), 10),
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	}
 
 	var listAllAfterExpiry []v1.Node
@@ -1467,7 +1469,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	for index, regID := range regIDs {
 		_, err := headscale.Execute(
@@ -1549,7 +1551,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				fmt.Sprintf("newnode-%d", idx+1),
 			},
 		)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 
 		assert.Contains(t, res, "Node renamed")
 	}
@@ -1590,7 +1592,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			strings.Repeat("t", 64),
 		},
 	)
-	assert.ErrorContains(t, err, "must not exceed 63 characters")
+	require.ErrorContains(t, err, "must not exceed 63 characters")
 
 	var listAllAfterRenameAttempt []v1.Node
 
@@ -1658,7 +1660,7 @@ func TestPolicyCommand(t *testing.T) {
 		},
 	}
 
-	pBytes, _ := json.Marshal(p)
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
 
 	policyFilePath := "/etc/headscale/policy.json"
 
@@ -1745,7 +1747,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 		},
 	}
 
-	pBytes, _ := json.Marshal(p)
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
 
 	policyFilePath := "/etc/headscale/policy.json"
 
@@ -1763,7 +1765,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			policyFilePath,
 		},
 	)
-	assert.ErrorContains(t, err, `invalid action "unknown-action"`)
+	require.ErrorContains(t, err, `invalid ACL action: "unknown-action"`)
 
 	// The new policy was invalid, the old one should still be in place, which
 	// is none.

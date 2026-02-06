@@ -19,6 +19,7 @@ import (
 func TestTailNode(t *testing.T) {
 	mustNK := func(str string) key.NodePublic {
 		var k key.NodePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -26,6 +27,7 @@ func TestTailNode(t *testing.T) {
 
 	mustDK := func(str string) key.DiscoPublic {
 		var k key.DiscoPublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -33,6 +35,7 @@ func TestTailNode(t *testing.T) {
 
 	mustMK := func(str string) key.MachinePublic {
 		var k key.MachinePublic
+
 		_ = k.UnmarshalText([]byte(str))
 
 		return k
@@ -255,7 +258,7 @@ func TestNodeExpiry(t *testing.T) {
 		},
 		{
 			name:         "localtime",
-			exp:          tp(time.Time{}.Local()),
+			exp:          tp(time.Time{}.Local()), //nolint:gosmopolitan
 			wantTimeZero: true,
 		},
 	}
@@ -284,7 +287,9 @@ func TestNodeExpiry(t *testing.T) {
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)
 			}
+
 			var deseri tailcfg.Node
+
 			err = json.Unmarshal(seri, &deseri)
 			if err != nil {
 				t.Fatalf("nodeExpiry() error = %v", err)

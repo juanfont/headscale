@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// The CapabilityVersion is used by Tailscale clients to indicate
+	// NoiseCapabilityVersion is used by Tailscale clients to indicate
 	// their codebase version. Tailscale clients can communicate over TS2021
 	// from CapabilityVersion 28, but we only have good support for it
 	// since https://github.com/tailscale/tailscale/pull/4323 (Noise in any HTTPS port).
@@ -56,7 +56,7 @@ type HTTPError struct {
 func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
 func (e HTTPError) Unwrap() error { return e.Err }
 
-// Error returns an HTTPError containing the given information.
+// NewHTTPError returns an HTTPError containing the given information.
 func NewHTTPError(code int, msg string, err error) HTTPError {
 	return HTTPError{Code: code, Msg: msg, Err: err}
 }
@@ -92,7 +92,7 @@ func (h *Headscale) handleVerifyRequest(
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
-	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil { //nolint:noinlineerr
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 
@@ -155,7 +155,11 @@ func (h *Headscale) KeyHandler(
 		}
 
 		writer.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(writer).Encode(resp)
+
+		err := json.NewEncoder(writer).Encode(resp)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to encode public key response")
+		}
 
 		return
 	}
@@ -180,8 +184,12 @@ func (h *Headscale) HealthHandler(
 			res.Status = "fail"
 		}
 
-		json.NewEncoder(writer).Encode(res)
+		encErr := json.NewEncoder(writer).Encode(res)
+		if encErr != nil {
+			log.Error().Err(encErr).Msg("failed to encode health response")
+		}
 	}
+
 	err := h.state.PingDB(req.Context())
 	if err != nil {
 		respond(err)
@@ -218,6 +226,7 @@ func (h *Headscale) VersionHandler(
 	writer.WriteHeader(http.StatusOK)
 
 	versionInfo := types.GetVersionInfo()
+
 	err := json.NewEncoder(writer).Encode(versionInfo)
 	if err != nil {
 		log.Error().
@@ -244,7 +253,7 @@ func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
 		registrationId.String())
 }
 
-// RegisterWebAPI shows a simple message in the browser to point to the CLI
+// RegisterHandler shows a simple message in the browser to point to the CLI
 // Listens in /register/:registration_id.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL
@@ -267,7 +276,11 @@ func (a *AuthProviderWeb) RegisterHandler(
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+
+	_, err = writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+	if err != nil {
+		log.Error().Err(err).Msg("failed to write register response")
+	}
 }
 
 func FaviconHandler(writer http.ResponseWriter, req *http.Request) {

@@ -126,6 +126,7 @@ func ApproveRoutesWithPolicy(pm PolicyManager, nv types.NodeView, currentApprove
 	if !slices.Equal(sortedCurrent, newApproved) {
 		// Log what changed
 		var added, kept []netip.Prefix
+
 		for _, route := range newApproved {
 			if !slices.Contains(sortedCurrent, route) {
 				added = append(added, route)

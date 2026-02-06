@@ -28,6 +28,7 @@ func PeerSyncTimeout() time.Duration {
 	if util.IsCI() {
 		return 120 * time.Second
 	}
+
 	return 60 * time.Second
 }
 
@@ -205,25 +206,27 @@ func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[type
 	res := make(map[types.NodeID]map[types.NodeID]bool)
 	for nid, mrs := range all {
 		res[nid] = make(map[types.NodeID]bool)
+
 		for _, mr := range mrs {
 			for _, peer := range mr.Peers {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChanged {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChangedPatch {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.NodeID)] = *peer.Online
+					res[nid][types.NodeID(peer.NodeID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 		}
 	}
+
 	return res
 }

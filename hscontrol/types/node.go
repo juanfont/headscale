@@ -53,7 +53,7 @@ func (id NodeID) StableID() tailcfg.StableNodeID {
 }
 
 func (id NodeID) NodeID() tailcfg.NodeID {
-	return tailcfg.NodeID(id)
+	return tailcfg.NodeID(id) //nolint:gosec // NodeID is bounded
 }
 
 func (id NodeID) Uint64() uint64 {
@@ -162,11 +162,12 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 	// Strip invalid DNS characters for givenName comparison
 	normalised := strings.ToLower(node.Hostname)
 	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+
 	return node.GivenName == normalised
 }
 
 // IsExpired returns whether the node registration has expired.
-func (node Node) IsExpired() bool {
+func (node *Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -245,8 +246,14 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
-	var addrs []netip.Prefix
-	for _, nodeAddress := range node.IPs() {
+	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
+
+	addrs := make([]netip.Prefix, 0, len(ips))
+
+	for _, nodeAddress := range ips {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
@@ -274,9 +281,14 @@ func (node *Node) IsExitNode() bool {
 }
 
 func (node *Node) IPsAsString() []string {
-	var ret []string
+	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
 
-	for _, ip := range node.IPs() {
+	ret := make([]string, 0, len(ips))
+
+	for _, ip := range ips {
 		ret = append(ret, ip.String())
 	}
 
@@ -480,7 +492,7 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
@@ -527,7 +539,7 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 // - logTracePeerChange in poll.go.
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
+		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
 	}
 
 	if node.NodeKey.String() != req.NodeKey.String() {
@@ -553,11 +565,9 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		} else if node.Hostinfo.NetInfo == nil {
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-		} else {
+		} else if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
 			// If there is a PreferredDERP check if it has changed.
-			if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
-				ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-			}
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		}
 	}
 
@@ -618,13 +628,16 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	newHostname := strings.ToLower(hostInfo.Hostname)
-	if err := util.ValidateHostname(newHostname); err != nil {
+
+	err := util.ValidateHostname(newHostname)
+	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
 			Str("current_hostname", node.Hostname).
 			Str("rejected_hostname", hostInfo.Hostname).
 			Err(err).
 			Msg("Rejecting invalid hostname update from hostinfo")
+
 		return
 	}
 
@@ -716,6 +729,7 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 func (nodes Nodes) DebugString() string {
 	var sb strings.Builder
 	sb.WriteString("Nodes:\n")
+
 	for _, node := range nodes {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")
@@ -724,7 +738,7 @@ func (nodes Nodes) DebugString() string {
 	return sb.String()
 }
 
-func (node Node) DebugString() string {
+func (node *Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
 
@@ -897,7 +911,7 @@ func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.Peer
 // GetFQDN returns the fully qualified domain name for the node.
 func (nv NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !nv.Valid() {
-		return "", errors.New("creating valid FQDN: node view is invalid")
+		return "", fmt.Errorf("creating valid FQDN: %w", ErrInvalidNodeView)
 	}
 
 	return nv.ж.GetFQDN(baseDomain)

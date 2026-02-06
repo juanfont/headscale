@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -16,14 +17,16 @@ import (
 	"tailscale.com/types/key"
 )
 
-// Interactive step type constants
+// Interactive step type constants.
 const (
 	stepTypeInitialRequest  = "initial_request"
 	stepTypeAuthCompletion  = "auth_completion"
 	stepTypeFollowupRequest = "followup_request"
 )
 
-// interactiveStep defines a step in the interactive authentication workflow
+var errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+
+// interactiveStep defines a step in the interactive authentication workflow.
 type interactiveStep struct {
 	stepType         string // stepTypeInitialRequest, stepTypeAuthCompletion, or stepTypeFollowupRequest
 	expectAuthURL    bool
@@ -31,6 +34,7 @@ type interactiveStep struct {
 	callAuthPath     bool // Real call to HandleNodeFromAuthPath, not mocked
 }
 
+//nolint:gocyclo // comprehensive test function with many scenarios
 func TestAuthenticationFlows(t *testing.T) {
 	// Shared test keys for consistent behavior across test cases
 	machineKey1 := key.NewMachine()
@@ -68,13 +72,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Pre-auth keys enable automated/headless node registration without user interaction
 		{
 			name: "preauth_key_valid_new_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper // not a test helper, inline closure
 				user := app.state.CreateUserForTest("preauth-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -89,9 +94,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper // not a test helper, inline closure
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 				assert.NotEmpty(t, resp.User.DisplayName)
@@ -110,7 +115,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Reusable keys allow multiple machines to join using one key (useful for fleet deployments)
 		{
 			name: "preauth_key_reusable_multiple_nodes",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("reusable-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -129,6 +134,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(firstReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -154,15 +160,16 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() },
+			machineKey: machineKey2.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
 				// Verify both nodes exist
 				node1, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				node2, found2 := app.state.GetNodeByNodeKey(nodeKey2.Public())
+
 				assert.True(t, found1)
 				assert.True(t, found2)
 				assert.Equal(t, "reusable-node-1", node1.Hostname())
@@ -177,7 +184,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Single-use keys provide security by preventing key reuse after initial registration
 		{
 			name: "preauth_key_single_use_exhausted",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("single-use-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
@@ -196,6 +203,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(firstReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -221,12 +229,13 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() },
+			machineKey: machineKey2.Public,
 			wantError:  true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				// First node should exist, second should not
 				_, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				_, found2 := app.state.GetNodeByNodeKey(nodeKey2.Public())
+
 				assert.True(t, found1)
 				assert.False(t, found2)
 			},
@@ -239,7 +248,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Invalid keys must be rejected to prevent unauthorized node registration
 		{
 			name: "preauth_key_invalid",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				return "invalid-key-12345", nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -254,7 +263,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -265,13 +274,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Ephemeral nodes auto-cleanup when disconnected, useful for temporary/CI environments
 		{
 			name: "preauth_key_ephemeral_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("ephemeral-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -286,9 +296,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -311,7 +321,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Interactive flow is the standard user-facing authentication method for new nodes
 		{
 			name: "full_interactive_workflow_new_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -323,7 +333,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -339,7 +349,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates handling of requests without Auth field, same as empty auth
 		{
 			name: "interactive_workflow_no_auth_struct",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -352,7 +362,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -372,7 +382,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Nodes signal logout by setting expiry to past time; system updates node state accordingly
 		{
 			name: "existing_node_logout",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("logout-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -391,6 +401,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				resp, err := app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -400,8 +411,10 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Wait for node to be available in NodeStore with debug info
 				var attemptCount int
+
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					attemptCount++
+
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					if assert.True(c, found, "node should be available in NodeStore") {
 						t.Logf("Node found in NodeStore after %d attempts", attemptCount)
@@ -417,10 +430,10 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour), // Past expiry = logout
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuth:    true,
 			wantExpired: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.True(t, resp.NodeKeyExpired)
 			},
@@ -432,7 +445,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Machine key must match to prevent node hijacking/impersonation
 		{
 			name: "existing_node_machine_key_mismatch",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("mismatch-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -451,6 +464,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -471,7 +485,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() }, // Different machine key
+			machineKey: machineKey2.Public, // Different machine key
 			wantError:  true,
 		},
 		// TEST: Existing node cannot extend expiry without re-auth
@@ -481,7 +495,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Prevents nodes from extending their own lifetime; must re-authenticate
 		{
 			name: "existing_node_key_extension_not_allowed",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("extend-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -500,6 +514,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -520,7 +535,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(48 * time.Hour), // Future time = extend attempt
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Expired node must re-authenticate
@@ -530,7 +545,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Expired nodes must go through authentication again for security
 		{
 			name: "existing_node_expired_forces_reauth",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("reauth-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -549,25 +564,31 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
 				}
 
 				// Wait for node to be available in NodeStore
-				var node types.NodeView
-				var found bool
+				var (
+					node  types.NodeView
+					found bool
+				)
+
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					node, found = app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
+
 				if !found {
-					return "", fmt.Errorf("node not found after setup")
+					return "", errNodeNotFoundAfterSetup
 				}
 
 				// Expire the node
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				_, _, err = app.state.SetNodeExpiry(node.ID(), expiredTime)
+
 				return "", err
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -577,9 +598,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(24 * time.Hour), // Future expiry
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantExpired: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.NodeKeyExpired)
 				assert.False(t, resp.MachineAuthorized)
 			},
@@ -591,7 +612,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Ephemeral nodes should not persist after logout; auto-cleanup
 		{
 			name: "ephemeral_node_logout_deletion",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("ephemeral-logout-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
@@ -610,6 +631,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -630,9 +652,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour), // Logout
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantExpired: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.NodeKeyExpired)
 				assert.False(t, resp.MachineAuthorized)
 
@@ -653,7 +675,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Followup mechanism allows nodes to poll/wait for auth completion
 		{
 			name: "followup_registration_success",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				regID, err := types.NewRegistrationID()
 				if err != nil {
 					return "", err
@@ -673,6 +695,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// and handleRegister will receive the value when it starts waiting
 				go func() {
 					user := app.state.CreateUserForTest("followup-user")
+
 					node := app.state.CreateNodeForTest(user, "followup-success-node")
 					registered <- node
 				}()
@@ -685,9 +708,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 			},
@@ -699,7 +722,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Prevents indefinite waiting; nodes must retry if auth takes too long
 		{
 			name: "followup_registration_timeout",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				regID, err := types.NewRegistrationID()
 				if err != nil {
 					return "", err
@@ -723,7 +746,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Invalid followup URL is rejected
@@ -733,7 +756,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates URL format to prevent errors and potential exploits
 		{
 			name: "followup_invalid_url",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				return "invalid://url[malformed", nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
@@ -742,7 +765,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Non-existent registration ID is rejected
@@ -752,7 +775,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Registration must exist in cache; prevents invalid/expired registrations
 		{
 			name: "followup_registration_not_found",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				return "http://localhost:8080/register/nonexistent-id", nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
@@ -761,7 +784,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -775,13 +798,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Defensive code prevents errors from missing hostnames; generates sensible default
 		{
 			name: "empty_hostname",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("empty-hostname-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -796,9 +820,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
 				// Node should be created with generated hostname
@@ -814,13 +838,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Defensive code prevents nil pointer panics; creates valid default hostinfo
 		{
 			name: "nil_hostinfo",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("nil-hostinfo-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -833,9 +858,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:   time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
 				// Node should be created with generated hostname from defensive code
@@ -857,7 +882,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Expired keys must be rejected to maintain security and key lifecycle management
 		{
 			name: "preauth_key_expired",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("expired-pak-user")
 				expiry := time.Now().Add(-1 * time.Hour) // Expired 1 hour ago
 
@@ -865,6 +890,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -879,7 +905,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -890,7 +916,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Pre-auth keys can enforce ACL policies on nodes during registration
 		{
 			name: "preauth_key_with_acl_tags",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper //nolint:thelper
 				user := app.state.CreateUserForTest("tagged-pak-user")
 				tags := []string{"tag:server", "tag:database"}
 
@@ -898,6 +924,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -912,9 +939,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -922,6 +949,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found)
 				assert.Equal(t, "tagged-pak-node", node.Hostname())
+
 				if node.AuthKey().Valid() {
 					assert.NotEmpty(t, node.AuthKey().Tags())
 				}
@@ -938,7 +966,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: PreAuthKey nodes get their tags from the key itself, not from client requests
 		{
 			name: "preauth_key_rejects_request_tags",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				t.Helper()
 
 				user := app.state.CreateUserForTest("pak-requesttags-user")
@@ -974,7 +1002,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Tags-as-identity: PreAuthKey tags are authoritative, client cannot override
 		{
 			name: "tagged_preauth_key_rejects_client_request_tags",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				t.Helper()
 
 				user := app.state.CreateUserForTest("tagged-pak-clienttags-user")
@@ -1012,7 +1040,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Allows nodes to refresh authentication using pre-auth keys
 		{
 			name: "existing_node_reauth_with_new_authkey",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("reauth-user")
 
 				// First, register with initial auth key
@@ -1031,6 +1059,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1047,6 +1076,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak2.Key, nil
 			},
 			request: func(newAuthKey string) tailcfg.RegisterRequest {
@@ -1061,9 +1091,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(48 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1080,7 +1110,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Allows expired nodes to re-authenticate without pre-auth keys
 		{
 			name: "existing_node_reauth_interactive_flow",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("interactive-reauth-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -1099,6 +1129,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1124,9 +1155,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(48 * time.Hour),
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuthURL: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.Contains(t, resp.AuthURL, "register/")
 				assert.False(t, resp.MachineAuthorized)
 			},
@@ -1142,7 +1173,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Same machine key means same physical device; node key rotation updates, doesn't duplicate
 		{
 			name: "node_key_rotation_same_machine",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("rotation-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -1161,6 +1192,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1177,6 +1209,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pakRotation.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1191,9 +1224,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1219,13 +1252,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Zero time is valid Go default; should be handled gracefully
 		{
 			name: "malformed_expiry_zero_time",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("zero-expiry-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1240,9 +1274,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Time{}, // Zero time
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
 				// Node should be created with default expiry handling
@@ -1258,13 +1292,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Defensive code enforces DNS label limit (RFC 1123); prevents errors
 		{
 			name: "malformed_hostinfo_invalid_data",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("invalid-hostinfo-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1286,9 +1321,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 
 				// Node should be created even with malformed hostinfo
@@ -1309,7 +1344,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Nil response means cache expired - give client new AuthURL instead of error
 		{
 			name: "followup_registration_node_nil_response",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				regID, err := types.NewRegistrationID()
 				if err != nil {
 					return "", err
@@ -1342,9 +1377,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Should get a new AuthURL, not an error
 				assert.NotEmpty(t, resp.AuthURL, "should receive new AuthURL when cache returns nil")
 				assert.Contains(t, resp.AuthURL, "/register/", "AuthURL should contain registration path")
@@ -1358,7 +1393,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Path validation prevents processing of corrupted/invalid URLs
 		{
 			name: "followup_registration_malformed_path",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "http://localhost:8080/register/", nil // Missing registration ID
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
@@ -1367,7 +1402,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Wrong followup path format is rejected
@@ -1377,7 +1412,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Strict path validation ensures only valid registration URLs accepted
 		{
 			name: "followup_registration_wrong_path_format",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "http://localhost:8080/wrong/path/format", nil
 			},
 			request: func(followupURL string) tailcfg.RegisterRequest {
@@ -1386,7 +1421,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -1402,7 +1437,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// claim tags via RequestTags - they must use a tagged PreAuthKey instead.
 		{
 			name: "interactive_workflow_with_custom_hostinfo",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -1417,7 +1452,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1425,10 +1460,11 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			validateCompleteResponse: true,
 			expectedAuthURLPattern:   "/register/",
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Verify custom hostinfo was preserved through interactive workflow
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be found after interactive registration")
+
 				if found {
 					assert.Equal(t, "custom-interactive-node", node.Hostname())
 					assert.Equal(t, "linux", node.Hostinfo().OS())
@@ -1448,13 +1484,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Usage tracking enables monitoring and auditing of pre-auth key usage
 		{
 			name: "preauth_key_usage_count_tracking",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("usage-count-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil) // Single use
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1469,9 +1506,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1495,7 +1532,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Registration IDs must be unique and valid for cache lookup
 		{
 			name: "interactive_workflow_registration_id_generation",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -1508,7 +1545,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1516,10 +1553,11 @@ func TestAuthenticationFlows(t *testing.T) {
 			},
 			validateCompleteResponse: true,
 			expectedAuthURLPattern:   "/register/",
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Verify registration ID was properly generated and used
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered after interactive workflow")
+
 				if found {
 					assert.Equal(t, "registration-id-test-node", node.Hostname())
 					assert.Equal(t, "test-os", node.Hostinfo().OS())
@@ -1528,13 +1566,14 @@ func TestAuthenticationFlows(t *testing.T) {
 		},
 		{
 			name: "concurrent_registration_same_node_key",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("concurrent-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1549,9 +1588,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1568,7 +1607,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Request expiry overrides key expiry; allows logout with valid key
 		{
 			name: "auth_key_with_future_expiry_past_request_expiry",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("future-expiry-user")
 				// Auth key expires in the future
 				expiry := time.Now().Add(48 * time.Hour)
@@ -1577,6 +1616,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1592,9 +1632,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(12 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1611,7 +1651,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates device reassignment scenarios where a machine moves between users
 		{
 			name: "reauth_existing_node_different_user_auth_key",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				// Create two users
 				user1 := app.state.CreateUserForTest("user1-context")
 				user2 := app.state.CreateUserForTest("user2-context")
@@ -1632,6 +1672,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1648,6 +1689,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak2.Key, nil
 			},
 			request: func(user2AuthKey string) tailcfg.RegisterRequest {
@@ -1662,9 +1704,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.False(t, resp.NodeKeyExpired)
 
@@ -1692,7 +1734,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Same physical machine can have separate node identities per user
 		{
 			name: "interactive_reauth_existing_node_different_user_creates_new_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				// Create user1 and register a node with auth key
 				user1 := app.state.CreateUserForTest("interactive-user-1")
 
@@ -1712,6 +1754,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegister(context.Background(), initialReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1735,14 +1778,14 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() }, // Same machine key
+			machineKey:              machineKey1.Public, // Same machine key
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 				{stepType: stepTypeAuthCompletion, callAuthPath: true, expectCacheEntry: false},
 			},
 			validateCompleteResponse: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// User1's original node should STILL exist (not transferred)
 				node1, found1 := app.state.GetNodeByMachineKey(machineKey1.Public(), types.UserID(1))
 				require.True(t, found1, "user1's original node should still exist")
@@ -1769,7 +1812,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates new reqToNewRegisterResponse functionality - prevents client getting stuck
 		{
 			name: "followup_request_after_cache_expiry",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				// Generate a registration ID that doesn't exist in cache
 				// This simulates an expired/missing cache entry
 				regID, err := types.NewRegistrationID()
@@ -1789,9 +1832,9 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Should get a new AuthURL, not an error
 				assert.NotEmpty(t, resp.AuthURL, "should receive new AuthURL when registration expired")
 				assert.Contains(t, resp.AuthURL, "/register/", "AuthURL should contain registration path")
@@ -1799,13 +1842,13 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Verify the response contains a valid registration URL
 				authURL, err := url.Parse(resp.AuthURL)
-				assert.NoError(t, err, "AuthURL should be a valid URL")
+				assert.NoError(t, err, "AuthURL should be a valid URL") //nolint:testifylint // inside closure, uses assert pattern
 				assert.True(t, strings.HasPrefix(authURL.Path, "/register/"), "AuthURL path should start with /register/")
 
 				// Extract and validate the new registration ID exists in cache
 				newRegIDStr := strings.TrimPrefix(authURL.Path, "/register/")
 				newRegID, err := types.RegistrationIDFromString(newRegIDStr)
-				assert.NoError(t, err, "should be able to parse new registration ID")
+				assert.NoError(t, err, "should be able to parse new registration ID") //nolint:testifylint // inside closure
 
 				// Verify new registration entry exists in cache
 				_, found := app.state.GetRegistrationCacheEntry(newRegID)
@@ -1819,7 +1862,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Edge case: current time should be treated as expired
 		{
 			name: "logout_with_exactly_now_expiry",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				user := app.state.CreateUserForTest("exact-now-user")
 
 				pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
@@ -1838,6 +1881,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1858,10 +1902,10 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now(), // Exactly now (edge case between past and future)
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuth:    true,
 			wantExpired: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				assert.True(t, resp.MachineAuthorized)
 				assert.True(t, resp.NodeKeyExpired)
 
@@ -1878,7 +1922,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Prevents cache bloat from abandoned registrations
 		{
 			name: "interactive_workflow_timeout_cleanup",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -1890,14 +1934,14 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey2.Public() },
+			machineKey:              machineKey2.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 				// NOTE: No auth_completion step - simulates timeout scenario
 			},
 			validateRegistrationCache: true, // should be cleaned up eventually
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Verify AuthURL was generated but registration not completed
 				assert.Contains(t, resp.AuthURL, "/register/")
 				assert.False(t, resp.MachineAuthorized)
@@ -1912,7 +1956,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Same physical machine can have separate node identities per user
 		{
 			name: "interactive_workflow_with_existing_node_different_user_creates_new_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				// First create a node under user1
 				user1 := app.state.CreateUserForTest("existing-user-1")
 
@@ -1932,6 +1976,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegister(context.Background(), initialReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1955,14 +2000,14 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 				{stepType: stepTypeAuthCompletion, callAuthPath: true, expectCacheEntry: false},
 			},
 			validateCompleteResponse: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// User1's original node with nodeKey1 should STILL exist
 				node1, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				require.True(t, found1, "user1's original node with nodeKey1 should still exist")
@@ -1989,7 +2034,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates followup URLs to prevent errors
 		{
 			name: "interactive_workflow_malformed_followup_url",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2001,12 +2046,12 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 			},
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Test malformed followup URLs after getting initial AuthURL
 				authURL := resp.AuthURL
 				assert.Contains(t, authURL, "/register/")
@@ -2043,7 +2088,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: System should handle concurrent interactive flows without conflicts
 		{
 			name: "interactive_workflow_concurrent_registrations",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2055,8 +2100,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			machineKey: machineKey1.Public,
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// This test validates concurrent interactive registration attempts
 				assert.Contains(t, resp.AuthURL, "/register/")
 
@@ -2097,6 +2142,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Collect results - at least one should succeed
 				successCount := 0
+
 				for range numConcurrent {
 					select {
 					case err := <-results:
@@ -2119,7 +2165,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Interactive flow creates new nodes with new users; doesn't rotate existing nodes
 		{
 			name: "interactive_workflow_node_key_rotation",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				// Register initial node
 				user := app.state.CreateUserForTest("rotation-user")
 
@@ -2162,14 +2208,14 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 				{stepType: stepTypeAuthCompletion, callAuthPath: true, expectCacheEntry: false},
 			},
 			validateCompleteResponse: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// User1's original node with nodeKey1 should STILL exist
 				oldNode, foundOld := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				require.True(t, foundOld, "user1's original node with nodeKey1 should still exist")
@@ -2196,7 +2242,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Defensive code handles nil hostinfo in interactive flow
 		{
 			name: "interactive_workflow_with_nil_hostinfo",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2206,17 +2252,18 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:   time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
 				{stepType: stepTypeAuthCompletion, callAuthPath: true, expectCacheEntry: false},
 			},
 			validateCompleteResponse: true,
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Should handle nil hostinfo gracefully
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered despite nil hostinfo")
+
 				if found {
 					// Should have some default hostname or handle nil gracefully
 					hostname := node.Hostname()
@@ -2231,7 +2278,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Failed registrations should clean up to prevent stale cache entries
 		{
 			name: "interactive_workflow_registration_cache_cleanup_on_error",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2243,8 +2290,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			machineKey: machineKey1.Public,
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Get initial AuthURL and extract registration ID
 				authURL := resp.AuthURL
 				assert.Contains(t, authURL, "/register/")
@@ -2265,7 +2312,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					nil,
 					"error-test-method",
 				)
-				assert.Error(t, err, "should fail with invalid user ID")
+				assert.Error(t, err, "should fail with invalid user ID") //nolint:testifylint // inside closure, uses assert pattern
 
 				// Cache entry should still exist after auth error (for retry scenarios)
 				_, stillFound := app.state.GetRegistrationCacheEntry(registrationID)
@@ -2284,7 +2331,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates that multiple pending registrations don't interfere with each other
 		{
 			name: "interactive_workflow_multiple_steps_same_node",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2297,8 +2344,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			machineKey: machineKey1.Public,
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				// Test multiple interactive registration attempts for the same node can coexist
 				authURL1 := resp.AuthURL
 				assert.Contains(t, authURL1, "/register/")
@@ -2315,12 +2362,14 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				resp2, err := app.handleRegister(context.Background(), secondReq, machineKey1.Public())
 				require.NoError(t, err)
+
 				authURL2 := resp2.AuthURL
 				assert.Contains(t, authURL2, "/register/")
 
 				// Both should have different registration IDs
 				regID1, err1 := extractRegistrationIDFromAuthURL(authURL1)
 				regID2, err2 := extractRegistrationIDFromAuthURL(authURL2)
+
 				require.NoError(t, err1)
 				require.NoError(t, err2)
 				assert.NotEqual(t, regID1, regID2, "different registration attempts should have different IDs")
@@ -2328,6 +2377,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Both cache entries should exist simultaneously
 				_, found1 := app.state.GetRegistrationCacheEntry(regID1)
 				_, found2 := app.state.GetRegistrationCacheEntry(regID2)
+
 				assert.True(t, found1, "first registration cache entry should exist")
 				assert.True(t, found2, "second registration cache entry should exist")
 
@@ -2342,7 +2392,7 @@ func TestAuthenticationFlows(t *testing.T) {
 		// WHY: Validates that you can complete any pending registration, not just the first
 		{
 			name: "interactive_workflow_complete_second_of_multiple_pending",
-			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) { //nolint:thelper
 				return "", nil
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -2354,8 +2404,8 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
-			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
+			machineKey: machineKey1.Public,
+			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) { //nolint:thelper
 				authURL1 := resp.AuthURL
 				regID1, err := extractRegistrationIDFromAuthURL(authURL1)
 				require.NoError(t, err)
@@ -2371,6 +2421,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				resp2, err := app.handleRegister(context.Background(), secondReq, machineKey1.Public())
 				require.NoError(t, err)
+
 				authURL2 := resp2.AuthURL
 				regID2, err := extractRegistrationIDFromAuthURL(authURL2)
 				require.NoError(t, err)
@@ -2378,6 +2429,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify both exist
 				_, found1 := app.state.GetRegistrationCacheEntry(regID1)
 				_, found2 := app.state.GetRegistrationCacheEntry(regID2)
+
 				assert.True(t, found1, "first cache entry should exist")
 				assert.True(t, found2, "second cache entry should exist")
 
@@ -2403,6 +2455,7 @@ func TestAuthenticationFlows(t *testing.T) {
 						errorChan <- err
 						return
 					}
+
 					responseChan <- resp
 				}()
 
@@ -2430,6 +2483,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify the node was created with the second registration's data
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered")
+
 				if found {
 					assert.Equal(t, "pending-node-2", node.Hostname())
 					assert.Equal(t, "second-registration-user", node.User().Name())
@@ -2463,8 +2517,10 @@ func TestAuthenticationFlows(t *testing.T) {
 
 			// Set up context with timeout for followup tests
 			ctx := context.Background()
+
 			if req.Followup != "" {
 				var cancel context.CancelFunc
+
 				ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
 				defer cancel()
 			}
@@ -2516,7 +2572,7 @@ func TestAuthenticationFlows(t *testing.T) {
 	}
 }
 
-// runInteractiveWorkflowTest executes a multi-step interactive authentication workflow
+// runInteractiveWorkflowTest executes a multi-step interactive authentication workflow.
 func runInteractiveWorkflowTest(t *testing.T, tt struct {
 	name                      string
 	setupFunc                 func(*testing.T, *Headscale) (string, error)
@@ -2535,6 +2591,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 	validateCompleteResponse  bool
 }, app *Headscale, dynamicValue string,
 ) {
+	t.Helper()
 	// Build initial request
 	req := tt.request(dynamicValue)
 	machineKey := tt.machineKey()
@@ -2597,6 +2654,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 						errorChan <- err
 						return
 					}
+
 					responseChan <- resp
 				}()
 
@@ -2650,25 +2708,29 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 		if responseToValidate == nil {
 			responseToValidate = initialResp
 		}
+
 		tt.validate(t, responseToValidate, app)
 	}
 }
 
-// extractRegistrationIDFromAuthURL extracts the registration ID from an AuthURL
+// extractRegistrationIDFromAuthURL extracts the registration ID from an AuthURL.
 func extractRegistrationIDFromAuthURL(authURL string) (types.RegistrationID, error) {
 	// AuthURL format: "http://localhost/register/abc123"
 	const registerPrefix = "/register/"
+
 	idx := strings.LastIndex(authURL, registerPrefix)
 	if idx == -1 {
-		return "", fmt.Errorf("invalid AuthURL format: %s", authURL)
+		return "", fmt.Errorf("invalid AuthURL format: %s", authURL) //nolint:err113
 	}
 
 	idStr := authURL[idx+len(registerPrefix):]
+
 	return types.RegistrationIDFromString(idStr)
 }
 
-// validateCompleteRegistrationResponse performs comprehensive validation of a registration response
-func validateCompleteRegistrationResponse(t *testing.T, resp *tailcfg.RegisterResponse, originalReq tailcfg.RegisterRequest) {
+// validateCompleteRegistrationResponse performs comprehensive validation of a registration response.
+func validateCompleteRegistrationResponse(t *testing.T, resp *tailcfg.RegisterResponse, _ tailcfg.RegisterRequest) {
+	t.Helper()
 	// Basic response validation
 	require.NotNil(t, resp, "response should not be nil")
 	require.True(t, resp.MachineAuthorized, "machine should be authorized")
@@ -2681,7 +2743,7 @@ func validateCompleteRegistrationResponse(t *testing.T, resp *tailcfg.RegisterRe
 	// Additional validation can be added here as needed
 }
 
-// Simple test to validate basic node creation and lookup
+// Simple test to validate basic node creation and lookup.
 func TestNodeStoreLookup(t *testing.T) {
 	app := createTestApp(t)
 
@@ -2713,8 +2775,10 @@ func TestNodeStoreLookup(t *testing.T) {
 
 	// Wait for node to be available in NodeStore
 	var node types.NodeView
+
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var found bool
+
 		node, found = app.state.GetNodeByNodeKey(nodeKey.Public())
 		assert.True(c, found, "Node should be found in NodeStore")
 	}, 1*time.Second, 100*time.Millisecond, "waiting for node to be available in NodeStore")
@@ -2783,8 +2847,10 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 
 		// Get the node ID
 		var registeredNode types.NodeView
+
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			var found bool
+
 			registeredNode, found = app.state.GetNodeByNodeKey(node.nodeKey.Public())
 			assert.True(c, found, "Node should be found in NodeStore")
 		}, 1*time.Second, 100*time.Millisecond, "waiting for node to be available")
@@ -2796,6 +2862,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	// Verify initial state: user1 has 2 nodes, user2 has 2 nodes
 	user1Nodes := app.state.ListNodesByUser(types.UserID(user1.ID))
 	user2Nodes := app.state.ListNodesByUser(types.UserID(user2.ID))
+
 	require.Equal(t, 2, user1Nodes.Len(), "user1 should have 2 nodes initially")
 	require.Equal(t, 2, user2Nodes.Len(), "user2 should have 2 nodes initially")
 
@@ -2876,6 +2943,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 
 	// Verify new nodes were created for user1 with the same machine keys
 	t.Logf("Verifying new nodes created for user1 from user2's machine keys...")
+
 	for i := 2; i < 4; i++ {
 		node := nodes[i]
 		// Should be able to find a node with user1 and this machine key (the new one)
@@ -2899,7 +2967,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 // Expected behavior:
 // - User1's original node should STILL EXIST (expired)
 // - User2 should get a NEW node created (NOT transfer)
-// - Both nodes share the same machine key (same physical device)
+// - Both nodes share the same machine key (same physical device).
 func TestWebFlowReauthDifferentUser(t *testing.T) {
 	machineKey := key.NewMachine()
 	nodeKey1 := key.NewNode()
@@ -3043,7 +3111,8 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 		// Count nodes per user
 		user1Nodes := 0
 		user2Nodes := 0
-		for i := 0; i < allNodesSlice.Len(); i++ {
+
+		for i := range allNodesSlice.Len() {
 			n := allNodesSlice.At(i)
 			if n.UserID().Get() == user1.ID {
 				user1Nodes++
@@ -3060,7 +3129,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	})
 }
 
-// Helper function to create test app
+// Helper function to create test app.
 func createTestApp(t *testing.T) *Headscale {
 	t.Helper()
 
@@ -3147,6 +3216,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	}
 
 	t.Log("Step 1: Initial registration with pre-auth key")
+
 	initialResp, err := app.handleRegister(context.Background(), initialReq, machineKey.Public())
 	require.NoError(t, err, "initial registration should succeed")
 	require.NotNil(t, initialResp)
@@ -3172,6 +3242,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	// - System reboots
 	// The Tailscale client persists the pre-auth key in its state and sends it on every registration
 	t.Log("Step 2: Node restart - re-registration with same (now used) pre-auth key")
+
 	restartReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
 			AuthKey: pakNew.Key, // Same key, now marked as Used=true
@@ -3188,10 +3259,12 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	restartResp, err := app.handleRegister(context.Background(), restartReq, machineKey.Public())
 
 	// This is the assertion that currently FAILS in v0.27.0
-	assert.NoError(t, err, "BUG: existing node re-registration with its own used pre-auth key should succeed")
+	assert.NoError(t, err, "BUG: existing node re-registration with its own used pre-auth key should succeed") //nolint:testifylint // intentionally uses assert to show bug
+
 	if err != nil {
 		t.Logf("Error received (this is the bug): %v", err)
 		t.Logf("Expected behavior: Node should be able to re-register with the same pre-auth key it used initially")
+
 		return // Stop here to show the bug clearly
 	}
 
@@ -3289,7 +3362,7 @@ func TestNodeReregistrationWithExpiredPreAuthKey(t *testing.T) {
 	}
 
 	_, err = app.handleRegister(context.Background(), req, machineKey.Public())
-	assert.Error(t, err, "expired pre-auth key should be rejected")
+	require.Error(t, err, "expired pre-auth key should be rejected")
 	assert.Contains(t, err.Error(), "authkey expired", "error should mention key expiration")
 }
 

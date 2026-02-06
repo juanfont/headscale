@@ -15,6 +15,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// CLI user errors.
+var (
+	errFlagRequired       = errors.New("--name or --identifier flag is required")
+	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
+)
+
 func usernameAndIDFlag(cmd *cobra.Command) {
 	cmd.Flags().Int64P("identifier", "i", -1, "User identifier (ID)")
 	cmd.Flags().StringP("name", "n", "", "Username")
@@ -24,12 +30,12 @@ func usernameAndIDFlag(cmd *cobra.Command) {
 // If both are empty, it will exit the program with an error.
 func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
 	username, _ := cmd.Flags().GetString("name")
+
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
-		err := errors.New("--name or --identifier flag is required")
 		ErrorOutput(
-			err,
-			"Cannot rename user: "+status.Convert(err).Message(),
+			errFlagRequired,
+			"Cannot rename user: "+status.Convert(errFlagRequired).Message(),
 			"",
 		)
 	}
@@ -51,7 +57,8 @@ func init() {
 	userCmd.AddCommand(renameUserCmd)
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
-	renameNodeCmd.MarkFlagRequired("new-name")
+
+	_ = renameNodeCmd.MarkFlagRequired("new-name")
 }
 
 var errMissingParameter = errors.New("missing parameters")
@@ -95,7 +102,7 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil {
+			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
 				ErrorOutput(
 					err,
 					fmt.Sprintf(
@@ -149,7 +156,7 @@ var destroyUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("multiple users match query, specify an ID")
+			err := errMultipleUsersMatch
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),
@@ -277,7 +284,7 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errors.New("multiple users match query, specify an ID")
+			err := errMultipleUsersMatch
 			ErrorOutput(
 				err,
 				"Error: "+status.Convert(err).Message(),

@@ -16,6 +16,15 @@ import (
 	"tailscale.com/util/cmpver"
 )
 
+// URL parsing errors.
+var (
+	ErrMultipleURLsFound     = errors.New("multiple URLs found")
+	ErrNoURLFound            = errors.New("no URL found")
+	ErrEmptyTracerouteOutput = errors.New("empty traceroute output")
+	ErrTracerouteHeaderParse = errors.New("parsing traceroute header")
+	ErrTracerouteDidNotReach = errors.New("traceroute did not reach target")
+)
+
 func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
 	if cmpver.Compare(minimum, toCheck) <= 0 ||
 		toCheck == "unstable" ||
@@ -30,20 +39,22 @@ func TailscaleVersionNewerOrEqual(minimum, toCheck string) bool {
 // It returns an error if not exactly one URL is found.
 func ParseLoginURLFromCLILogin(output string) (*url.URL, error) {
 	lines := strings.Split(output, "\n")
+
 	var urlStr string
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
 			if urlStr != "" {
-				return nil, fmt.Errorf("multiple URLs found: %s and %s", urlStr, line)
+				return nil, fmt.Errorf("%w: %s and %s", ErrMultipleURLsFound, urlStr, line)
 			}
+
 			urlStr = line
 		}
 	}
 
 	if urlStr == "" {
-		return nil, errors.New("no URL found")
+		return nil, ErrNoURLFound
 	}
 
 	loginURL, err := url.Parse(urlStr)
@@ -89,14 +100,15 @@ type Traceroute struct {
 func ParseTraceroute(output string) (Traceroute, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	if len(lines) < 1 {
-		return Traceroute{}, errors.New("empty traceroute output")
+		return Traceroute{}, ErrEmptyTracerouteOutput
 	}
 
 	// Parse the header line - handle both 'traceroute' and 'tracert' (Windows)
 	headerRegex := regexp.MustCompile(`(?i)(?:traceroute|tracing route) to ([^ ]+) (?:\[([^\]]+)\]|\(([^)]+)\))`)
+
 	headerMatches := headerRegex.FindStringSubmatch(lines[0])
 	if len(headerMatches) < 2 {
-		return Traceroute{}, fmt.Errorf("parsing traceroute header: %s", lines[0])
+		return Traceroute{}, fmt.Errorf("%w: %s", ErrTracerouteHeaderParse, lines[0])
 	}
 
 	hostname := headerMatches[1]
@@ -105,6 +117,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 	if ipStr == "" {
 		ipStr = headerMatches[3]
 	}
+
 	ip, err := netip.ParseAddr(ipStr)
 	if err != nil {
 		return Traceroute{}, fmt.Errorf("parsing IP address %s: %w", ipStr, err)
@@ -144,19 +157,23 @@ func ParseTraceroute(output string) (Traceroute, error) {
 		}
 
 		remainder := strings.TrimSpace(matches[2])
-		var hopHostname string
-		var hopIP netip.Addr
-		var latencies []time.Duration
+
+		var (
+			hopHostname string
+			hopIP       netip.Addr
+			latencies   []time.Duration
+		)
 
 		// Check for Windows tracert format which has latencies before hostname
 		// Format: "  1    <1 ms    <1 ms    <1 ms  router.local [192.168.1.1]"
 		latencyFirst := false
+
 		if strings.Contains(remainder, " ms ") && !strings.HasPrefix(remainder, "*") {
 			// Check if latencies appear before any hostname/IP
 			firstSpace := strings.Index(remainder, " ")
 			if firstSpace > 0 {
 				firstPart := remainder[:firstSpace]
-				if _, err := strconv.ParseFloat(strings.TrimPrefix(firstPart, "<"), 64); err == nil {
+				if _, err := strconv.ParseFloat(strings.TrimPrefix(firstPart, "<"), 64); err == nil { //nolint:noinlineerr
 					latencyFirst = true
 				}
 			}
@@ -171,12 +188,14 @@ func ParseTraceroute(output string) (Traceroute, error) {
 				}
 				// Extract and remove the latency from the beginning
 				latStr := strings.TrimPrefix(remainder[latMatch[2]:latMatch[3]], "<")
+
 				ms, err := strconv.ParseFloat(latStr, 64)
 				if err == nil {
 					// Round to nearest microsecond to avoid floating point precision issues
 					duration := time.Duration(ms * float64(time.Millisecond))
 					latencies = append(latencies, duration.Round(time.Microsecond))
 				}
+
 				remainder = strings.TrimSpace(remainder[latMatch[1]:])
 			}
 		}
@@ -202,9 +221,10 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			parts := strings.Fields(remainder)
 			if len(parts) > 0 {
 				hopHostname = parts[0]
-				if ip, err := netip.ParseAddr(parts[0]); err == nil {
+				if ip, err := netip.ParseAddr(parts[0]); err == nil { //nolint:noinlineerr
 					hopIP = ip
 				}
+
 				remainder = strings.TrimSpace(strings.Join(parts[1:], " "))
 			}
 		}
@@ -216,6 +236,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 				if len(match) > 1 {
 					// Remove '<' prefix if present (e.g., "<1 ms")
 					latStr := strings.TrimPrefix(match[1], "<")
+
 					ms, err := strconv.ParseFloat(latStr, 64)
 					if err == nil {
 						// Round to nearest microsecond to avoid floating point precision issues
@@ -243,7 +264,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 
 	// If we didn't reach the target, it's unsuccessful
 	if !result.Success {
-		result.Err = errors.New("traceroute did not reach target")
+		result.Err = ErrTracerouteDidNotReach
 	}
 
 	return result, nil
@@ -261,11 +282,11 @@ func IsCI() bool {
 	return false
 }
 
-// SafeHostname extracts a hostname from Hostinfo, providing sensible defaults
+// EnsureHostname guarantees a valid hostname for node registration.
+// It extracts a hostname from Hostinfo, providing sensible defaults
 // if Hostinfo is nil or Hostname is empty. This prevents nil pointer dereferences
 // and ensures nodes always have a valid hostname.
 // The hostname is truncated to 63 characters to comply with DNS label length limits (RFC 1123).
-// EnsureHostname guarantees a valid hostname for node registration.
 // This function never fails - it always returns a valid hostname.
 //
 // Strategy:
@@ -280,15 +301,19 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 		if key == "" {
 			return "unknown-node"
 		}
+
 		keyPrefix := key
 		if len(key) > 8 {
 			keyPrefix = key[:8]
 		}
-		return fmt.Sprintf("node-%s", keyPrefix)
+
+		return "node-" + keyPrefix
 	}
 
 	lowercased := strings.ToLower(hostinfo.Hostname)
-	if err := ValidateHostname(lowercased); err == nil {
+
+	err := ValidateHostname(lowercased)
+	if err == nil {
 		return lowercased
 	}
 

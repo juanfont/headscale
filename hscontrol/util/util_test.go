@@ -1,7 +1,6 @@
 package util
 
 import (
-	"errors"
 	"net/netip"
 	"strings"
 	"testing"
@@ -11,11 +10,14 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+const testUnknownNode = "unknown-node"
+
 func TestTailscaleVersionNewerOrEqual(t *testing.T) {
 	type args struct {
 		minimum string
 		toCheck string
 	}
+
 	tests := []struct {
 		name string
 		args args
@@ -180,6 +182,7 @@ Success.`,
 				if err != nil {
 					t.Errorf("ParseLoginURLFromCLILogin() error = %v, wantErr %v", err, tt.wantErr)
 				}
+
 				if gotURL.String() != tt.wantURL {
 					t.Errorf("ParseLoginURLFromCLILogin() = %v, want %v", gotURL, tt.wantURL)
 				}
@@ -321,7 +324,7 @@ func TestParseTraceroute(t *testing.T) {
 					},
 				},
 				Success: false,
-				Err:     errors.New("traceroute did not reach target"),
+				Err:     ErrTracerouteDidNotReach,
 			},
 			wantErr: false,
 		},
@@ -489,7 +492,7 @@ over a maximum of 30 hops:
 					},
 				},
 				Success: false,
-				Err:     errors.New("traceroute did not reach target"),
+				Err:     ErrTracerouteDidNotReach,
 			},
 			wantErr: false,
 		},
@@ -834,7 +837,7 @@ func TestEnsureHostname(t *testing.T) {
 			hostinfo:   nil,
 			machineKey: "",
 			nodeKey:    "",
-			want:       "unknown-node",
+			want:       testUnknownNode,
 		},
 		{
 			name: "empty_hostname_with_machine_key",
@@ -861,7 +864,7 @@ func TestEnsureHostname(t *testing.T) {
 			},
 			machineKey: "",
 			nodeKey:    "",
-			want:       "unknown-node",
+			want:       testUnknownNode,
 		},
 		{
 			name: "hostname_exactly_63_chars",
@@ -902,7 +905,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "hostname_with_unicode",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "node-ñoño-测试",
+				Hostname: "node-ñoño-测试", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -983,7 +986,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_chars_with_dash_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
+				Hostname: "server-北京-01", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -992,7 +995,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_only_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1010,7 +1013,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "mixed_chinese_emoji_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "测试💻机器",
+				Hostname: "测试💻机器", //nolint:gosmopolitan // intentional i18n test data
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1066,6 +1069,7 @@ func TestEnsureHostname(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			got := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.want, "invalid-") {
@@ -1099,13 +1103,15 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "test-node",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "test-node" {
 					t.Errorf("hostname = %v, want test-node", hi.Hostname)
 				}
+
 				if hi.OS != "linux" {
 					t.Errorf("OS = %v, want linux", hi.OS)
 				}
@@ -1143,10 +1149,11 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "",
 			nodeKey:      "nkey12345678",
 			wantHostname: "node-nkey1234",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
+
 				if hi.Hostname != "node-nkey1234" {
 					t.Errorf("hostname = %v, want node-nkey1234", hi.Hostname)
 				}
@@ -1157,12 +1164,13 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			hostinfo:     nil,
 			machineKey:   "",
 			nodeKey:      "",
-			wantHostname: "unknown-node",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			wantHostname: testUnknownNode,
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
-				if hi.Hostname != "unknown-node" {
+
+				if hi.Hostname != testUnknownNode {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
 			},
@@ -1174,12 +1182,13 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			},
 			machineKey:   "",
 			nodeKey:      "",
-			wantHostname: "unknown-node",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			wantHostname: testUnknownNode,
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
-				if hi.Hostname != "unknown-node" {
+
+				if hi.Hostname != testUnknownNode {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
 			},
@@ -1196,22 +1205,27 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "test",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
-				if hi.Hostname != "test" {
+
+				if hi.Hostname != "test" { //nolint:staticcheck // SA5011: nil check is above
 					t.Errorf("hostname = %v, want test", hi.Hostname)
 				}
+
 				if hi.OS != "windows" {
 					t.Errorf("OS = %v, want windows", hi.OS)
 				}
+
 				if hi.OSVersion != "10.0.19044" {
 					t.Errorf("OSVersion = %v, want 10.0.19044", hi.OSVersion)
 				}
+
 				if hi.DeviceModel != "test-device" {
 					t.Errorf("DeviceModel = %v, want test-device", hi.DeviceModel)
 				}
+
 				if hi.BackendLogID != "log123" {
 					t.Errorf("BackendLogID = %v, want log123", hi.BackendLogID)
 				}
@@ -1225,11 +1239,12 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
-				if len(hi.Hostname) != 63 {
+
+				if len(hi.Hostname) != 63 { //nolint:staticcheck // SA5011: nil check is above
 					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
 				}
 			},
@@ -1239,6 +1254,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
 			gotHostname := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.wantHostname, "invalid-") {
@@ -1264,7 +1280,10 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
+			t.Parallel()
+
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
+
 			result := EnsureHostname(hostinfo, "mkey", "nkey")
 			if len(result) > 63 {
 				t.Errorf("test case %d: hostname length = %d, want <= 63", i, len(result))

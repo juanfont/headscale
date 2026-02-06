@@ -17,7 +17,11 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
-var errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
+var (
+	errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
+	errGeneratedIPNotInPrefix  = errors.New("generated ip not in prefix")
+	errIPAllocatorNil          = errors.New("ip allocator was nil")
+)
 
 // IPAllocator is a singleton responsible for allocating
 // IP addresses for nodes and making sure the same
@@ -62,8 +66,10 @@ func NewIPAllocator(
 		strategy: strategy,
 	}
 
-	var v4s []sql.NullString
-	var v6s []sql.NullString
+	var (
+		v4s []sql.NullString
+		v6s []sql.NullString
+	)
 
 	if db != nil {
 		err := db.Read(func(rx *gorm.DB) error {
@@ -135,15 +141,18 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	var err error
-	var ret4 *netip.Addr
-	var ret6 *netip.Addr
+	var (
+		err  error
+		ret4 *netip.Addr
+		ret6 *netip.Addr
+	)
 
 	if i.prefix4 != nil {
 		ret4, err = i.next(i.prev4, i.prefix4)
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv4 address: %w", err)
 		}
+
 		i.prev4 = *ret4
 	}
 
@@ -152,6 +161,7 @@ func (i *IPAllocator) Next() (*netip.Addr, *netip.Addr, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("allocating IPv6 address: %w", err)
 		}
+
 		i.prev6 = *ret6
 	}
 
@@ -168,8 +178,10 @@ func (i *IPAllocator) nextLocked(prev netip.Addr, prefix *netip.Prefix) (*netip.
 }
 
 func (i *IPAllocator) next(prev netip.Addr, prefix *netip.Prefix) (*netip.Addr, error) {
-	var err error
-	var ip netip.Addr
+	var (
+		err error
+		ip  netip.Addr
+	)
 
 	switch i.strategy {
 	case types.IPAllocationStrategySequential:
@@ -243,7 +255,8 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 
 	if !pfx.Contains(ip) {
 		return netip.Addr{}, fmt.Errorf(
-			"generated ip(%s) not in prefix(%s)",
+			"%w: ip(%s) not in prefix(%s)",
+			errGeneratedIPNotInPrefix,
 			ip.String(),
 			pfx.String(),
 		)
@@ -268,11 +281,14 @@ func isTailscaleReservedIP(ip netip.Addr) bool {
 // If a prefix type has been removed (IPv4 or IPv6), it
 // will remove the IPs in that family from the node.
 func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
-	var err error
-	var ret []string
+	var (
+		err error
+		ret []string
+	)
+
 	err = db.Write(func(tx *gorm.DB) error {
 		if i == nil {
-			return errors.New("backfilling IPs: ip allocator was nil")
+			return fmt.Errorf("backfilling IPs: %w", errIPAllocatorNil)
 		}
 
 		log.Trace().Caller().Msgf("starting to backfill IPs")
@@ -295,6 +311,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 				node.IPv4 = ret4
 				changed = true
+
 				ret = append(ret, fmt.Sprintf("assigned IPv4 %q to Node(%d) %q", ret4.String(), node.ID, node.Hostname))
 			}
 
@@ -307,6 +324,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 				node.IPv6 = ret6
 				changed = true
+
 				ret = append(ret, fmt.Sprintf("assigned IPv6 %q to Node(%d) %q", ret6.String(), node.ID, node.Hostname))
 			}
 

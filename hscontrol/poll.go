@@ -30,7 +30,7 @@ const nodeNameContextKey = contextKey("nodeName")
 type mapSession struct {
 	h      *Headscale
 	req    tailcfg.MapRequest
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	capVer tailcfg.CapabilityVersion
 
 	cancelChMu deadlock.Mutex
@@ -54,7 +54,7 @@ func (h *Headscale) newMapSession(
 	w http.ResponseWriter,
 	node *types.Node,
 ) *mapSession {
-	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
+	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond) //nolint:gosec // weak random is fine for jitter
 
 	return &mapSession{
 		h:      h,
@@ -162,6 +162,7 @@ func (m *mapSession) serveLongPoll() {
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+
 		disconnected := true
 		// Wait up to 10 seconds for the node to reconnect.
 		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
@@ -170,6 +171,7 @@ func (m *mapSession) serveLongPoll() {
 				disconnected = false
 				break
 			}
+
 			<-ticker.C
 		}
 
@@ -222,7 +224,7 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
+	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
 		return
 	}
@@ -240,22 +242,26 @@ func (m *mapSession) serveLongPoll() {
 		case <-m.cancelCh:
 			m.log.Trace().Caller().Msg("poll cancelled received")
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
+
 			return
 
 		case <-ctx.Done():
 			m.log.Trace().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("poll context done")
 			mapResponseEnded.WithLabelValues("done").Inc()
+
 			return
 
 		// Consume updates sent to node
 		case update, ok := <-m.ch:
 			m.log.Trace().Caller().Bool(zf.OK, ok).Msg("received update from channel")
+
 			if !ok {
 				m.log.Trace().Caller().Msg("update channel closed, streaming session is likely being replaced")
 				return
 			}
 
-			if err := m.writeMap(update); err != nil {
+			err := m.writeMap(update)
+			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write update to client")
 				return
 			}
@@ -264,7 +270,8 @@ func (m *mapSession) serveLongPoll() {
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
-			if err := m.writeMap(&keepAlive); err != nil {
+			err := m.writeMap(&keepAlive)
+			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write keep alive")
 				return
 			}
@@ -272,6 +279,7 @@ func (m *mapSession) serveLongPoll() {
 			if debugHighCardinalityMetrics {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
 			}
+
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 			m.resetKeepAlive()
 		}
@@ -292,7 +300,7 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
 	}
 
-	data := make([]byte, reservedResponseHeaderSize)
+	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
 	//nolint:gosec // G115: JSON response size will not exceed uint32 max
 	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
 	data = append(data, jsonBody...)

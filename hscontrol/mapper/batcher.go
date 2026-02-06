@@ -16,6 +16,14 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+// Mapper errors.
+var (
+	ErrInvalidNodeID      = errors.New("invalid nodeID")
+	ErrMapperNil          = errors.New("mapper is nil")
+	ErrNodeConnectionNil  = errors.New("nodeConnection is nil")
+	ErrNodeNotFoundMapper = errors.New("node not found")
+)
+
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "headscale",
 	Name:      "mapresponse_generated_total",
@@ -81,11 +89,11 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 	}
 
 	if nodeID == 0 {
-		return nil, fmt.Errorf("invalid nodeID: %d", nodeID)
+		return nil, fmt.Errorf("%w: %d", ErrInvalidNodeID, nodeID)
 	}
 
 	if mapper == nil {
-		return nil, fmt.Errorf("mapper is nil for nodeID %d", nodeID)
+		return nil, fmt.Errorf("%w for nodeID %d", ErrMapperNil, nodeID)
 	}
 
 	// Handle self-only responses
@@ -136,7 +144,7 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.Change].
 func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error {
 	if nc == nil {
-		return errors.New("nodeConnection is nil")
+		return ErrNodeConnectionNil
 	}
 
 	nodeID := nc.nodeID()

@@ -138,7 +138,7 @@ func CreatePreAuthKey(
 		Hash:       hash,    // Store hash
 	}
 
-	if err := tx.Save(&key).Error; err != nil {
+	if err := tx.Save(&key).Error; err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("creating key in database: %w", err)
 	}
 
@@ -155,9 +155,7 @@ func CreatePreAuthKey(
 }
 
 func (hsdb *HSDatabase) ListPreAuthKeys() ([]types.PreAuthKey, error) {
-	return Read(hsdb.DB, func(rx *gorm.DB) ([]types.PreAuthKey, error) {
-		return ListPreAuthKeys(rx)
-	})
+	return Read(hsdb.DB, ListPreAuthKeys)
 }
 
 // ListPreAuthKeys returns all PreAuthKeys in the database.
@@ -329,10 +327,11 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	}
 
 	k.Used = true
+
 	return nil
 }
 
-// MarkExpirePreAuthKey marks a PreAuthKey as expired.
+// ExpirePreAuthKey marks a PreAuthKey as expired.
 func ExpirePreAuthKey(tx *gorm.DB, id uint64) error {
 	now := time.Now()
 	return tx.Model(&types.PreAuthKey{}).Where("id = ?", id).Update("expiration", now).Error

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// 90 days.
+	// DefaultAPIKeyExpiry is 90 days.
 	DefaultAPIKeyExpiry = "90d"
 )
 

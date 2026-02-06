@@ -9,6 +9,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
@@ -76,7 +77,7 @@ func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 	}`
 
 	pm, err := policyv2.NewPolicyManager([]byte(policyJSON), users, views.SliceOf([]types.NodeView{node1.View(), node2.View()}))
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name            string
@@ -313,11 +314,14 @@ func TestApproveRoutesWithPolicy_NilAndEmptyCases(t *testing.T) {
 				nodes := types.Nodes{&node}
 
 				// Create policy manager or use nil if specified
-				var pm PolicyManager
-				var err error
+				var (
+					pm  PolicyManager
+					err error
+				)
+
 				if tt.name != "nil_policy_manager" {
 					pm, err = pmf(users, nodes.ViewSlice())
-					assert.NoError(t, err)
+					require.NoError(t, err)
 				} else {
 					pm = nil
 				}

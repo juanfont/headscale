@@ -77,6 +77,7 @@ func (s *State) DebugOverview() string {
 	ephemeralCount := 0
 
 	now := time.Now()
+
 	for _, node := range allNodes.All() {
 		if node.Valid() {
 			userName := node.Owner().Name()
@@ -103,17 +104,21 @@ func (s *State) DebugOverview() string {
 
 	// User statistics
 	sb.WriteString(fmt.Sprintf("Users: %d total\n", len(users)))
+
 	for userName, nodeCount := range userNodeCounts {
 		sb.WriteString(fmt.Sprintf("  - %s: %d nodes\n", userName, nodeCount))
 	}
+
 	sb.WriteString("\n")
 
 	// Policy information
 	sb.WriteString("Policy:\n")
 	sb.WriteString(fmt.Sprintf("  - Mode: %s\n", s.cfg.Policy.Mode))
+
 	if s.cfg.Policy.Mode == types.PolicyModeFile {
 		sb.WriteString(fmt.Sprintf("  - Path: %s\n", s.cfg.Policy.Path))
 	}
+
 	sb.WriteString("\n")
 
 	// DERP information
@@ -123,6 +128,7 @@ func (s *State) DebugOverview() string {
 	} else {
 		sb.WriteString("DERP: not configured\n")
 	}
+
 	sb.WriteString("\n")
 
 	// Route information
@@ -130,6 +136,7 @@ func (s *State) DebugOverview() string {
 	if s.primaryRoutes.String() == "" {
 		routeCount = 0
 	}
+
 	sb.WriteString(fmt.Sprintf("Primary Routes: %d active\n", routeCount))
 	sb.WriteString("\n")
 
@@ -165,10 +172,12 @@ func (s *State) DebugDERPMap() string {
 		for _, node := range region.Nodes {
 			sb.WriteString(fmt.Sprintf("    - %s (%s:%d)\n",
 				node.Name, node.HostName, node.DERPPort))
+
 			if node.STUNPort != 0 {
 				sb.WriteString(fmt.Sprintf("      STUN: %d\n", node.STUNPort))
 			}
 		}
+
 		sb.WriteString("\n")
 	}
 
@@ -236,7 +245,7 @@ func (s *State) DebugPolicy() (string, error) {
 
 		return string(pol), nil
 	default:
-		return "", fmt.Errorf("unsupported policy mode: %s", s.cfg.Policy.Mode)
+		return "", fmt.Errorf("%w: %s", ErrUnsupportedPolicyMode, s.cfg.Policy.Mode)
 	}
 }
 
@@ -319,6 +328,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 	if s.primaryRoutes.String() == "" {
 		routeCount = 0
 	}
+
 	info.PrimaryRoutes = routeCount
 
 	return info

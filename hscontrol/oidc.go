@@ -68,7 +68,7 @@ func NewAuthProviderOIDC(
 ) (*AuthProviderOIDC, error) {
 	var err error
 	// grab oidc config if it hasn't been already
-	oidcProvider, err := oidc.NewProvider(context.Background(), cfg.Issuer)
+	oidcProvider, err := oidc.NewProvider(context.Background(), cfg.Issuer) //nolint:contextcheck
 	if err != nil {
 		return nil, fmt.Errorf("creating OIDC provider from issuer config: %w", err)
 	}
@@ -163,6 +163,7 @@ func (a *AuthProviderOIDC) RegisterHandler(
 	for k, v := range a.cfg.ExtraParams {
 		extras = append(extras, oauth2.SetAuthURLParam(k, v))
 	}
+
 	extras = append(extras, oidc.Nonce(nonce))
 
 	// Cache the registration info
@@ -190,6 +191,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	}
 
 	stateCookieName := getCookieName("state", state)
+
 	cookieState, err := req.Cookie(stateCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "state not found", err))
@@ -212,17 +214,20 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		httpError(writer, err)
 		return
 	}
+
 	if idToken.Nonce == "" {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found in IDToken", err))
 		return
 	}
 
 	nonceCookieName := getCookieName("nonce", idToken.Nonce)
+
 	nonce, err := req.Cookie(nonceCookieName)
 	if err != nil {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "nonce not found", err))
 		return
 	}
+
 	if idToken.Nonce != nonce.Value {
 		httpError(writer, NewHTTPError(http.StatusForbidden, "nonce did not match", nil))
 		return
@@ -231,7 +236,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
 
 	var claims types.OIDCClaims
-	if err := idToken.Claims(&claims); err != nil {
+	if err := idToken.Claims(&claims); err != nil { //nolint:noinlineerr
 		httpError(writer, fmt.Errorf("decoding ID token claims: %w", err))
 		return
 	}
@@ -239,6 +244,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Fetch user information (email, groups, name, etc) from the userinfo endpoint
 	// https://openid.net/specs/openid-connect-core-1_0.html#UserInfo
 	var userinfo *oidc.UserInfo
+
 	userinfo, err = a.oidcProvider.UserInfo(req.Context(), oauth2.StaticTokenSource(oauth2Token))
 	if err != nil {
 		util.LogErr(err, "could not get userinfo; only using claims from id token")
@@ -255,6 +261,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		claims.EmailVerified = cmp.Or(userinfo2.EmailVerified, claims.EmailVerified)
 		claims.Username = cmp.Or(userinfo2.PreferredUsername, claims.Username)
 		claims.Name = cmp.Or(userinfo2.Name, claims.Name)
+
 		claims.ProfilePictureURL = cmp.Or(userinfo2.Picture, claims.ProfilePictureURL)
 		if userinfo2.Groups != nil {
 			claims.Groups = userinfo2.Groups
@@ -279,6 +286,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			Msgf("could not create or update user")
 		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		writer.WriteHeader(http.StatusInternalServerError)
+
 		_, werr := writer.Write([]byte("Could not create or update user"))
 		if werr != nil {
 			log.Error().
@@ -299,6 +307,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	// Register the node if it does not exist.
 	if registrationId != nil {
 		verb := "Reauthenticated"
+
 		newNode, err := a.handleRegistration(user, *registrationId, nodeExpiry)
 		if err != nil {
 			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
@@ -307,7 +316,9 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 				return
 			}
+
 			httpError(writer, err)
+
 			return
 		}
 
@@ -316,15 +327,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		}
 
 		// TODO(kradalby): replace with go-elem
-		content, err := renderOIDCCallbackTemplate(user, verb)
-		if err != nil {
-			httpError(writer, err)
-			return
-		}
+		content := renderOIDCCallbackTemplate(user, verb)
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
-		if _, err := writer.Write(content.Bytes()); err != nil {
+
+		if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr
 			util.LogErr(err, "Failed to write HTTP response")
 		}
 
@@ -370,6 +378,7 @@ func (a *AuthProviderOIDC) getOauth2Token(
 		if !ok {
 			return nil, NewHTTPError(http.StatusNotFound, "registration not found", errNoOIDCRegistrationInfo)
 		}
+
 		if regInfo.Verifier != nil {
 			exchangeOpts = []oauth2.AuthCodeOption{oauth2.VerifierOption(*regInfo.Verifier)}
 		}
@@ -394,6 +403,7 @@ func (a *AuthProviderOIDC) extractIDToken(
 	}
 
 	verifier := a.oidcProvider.Verifier(&oidc.Config{ClientID: a.cfg.ClientID})
+
 	idToken, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		return nil, NewHTTPError(http.StatusForbidden, "failed to verify id_token", fmt.Errorf("verifying ID token: %w", err))
@@ -516,6 +526,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		newUser bool
 		c       change.Change
 	)
+
 	user, err = a.h.state.GetUserByOIDCIdentifier(claims.Identifier())
 	if err != nil && !errors.Is(err, db.ErrUserNotFound) {
 		return nil, change.Change{}, fmt.Errorf("creating or updating user: %w", err)
@@ -589,9 +600,9 @@ func (a *AuthProviderOIDC) handleRegistration(
 func renderOIDCCallbackTemplate(
 	user *types.User,
 	verb string,
-) (*bytes.Buffer, error) {
+) *bytes.Buffer {
 	html := templates.OIDCCallback(user.Display(), verb).Render()
-	return bytes.NewBufferString(html), nil
+	return bytes.NewBufferString(html)
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.

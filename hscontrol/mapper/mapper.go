@@ -24,7 +24,6 @@ import (
 
 const (
 	nextDNSDoHPrefix     = "https://dns.nextdns.io"
-	mapperIDLength       = 8
 	debugMapResponsePerm = 0o755
 )
 
@@ -50,6 +49,7 @@ type mapper struct {
 	created time.Time
 }
 
+//nolint:unused
 type patch struct {
 	timestamp time.Time
 	change    *tailcfg.PeerChange
@@ -60,7 +60,6 @@ func newMapper(
 	state *state.State,
 ) *mapper {
 	// uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
-
 	return &mapper{
 		state: state,
 		cfg:   cfg,
@@ -76,6 +75,7 @@ func generateUserProfiles(
 ) []tailcfg.UserProfile {
 	userMap := make(map[uint]*types.UserView)
 	ids := make([]uint, 0, len(userMap))
+
 	user := node.Owner()
 	if !user.Valid() {
 		log.Error().
@@ -84,14 +84,17 @@ func generateUserProfiles(
 
 		return nil
 	}
+
 	userID := user.Model().ID
 	userMap[userID] = &user
 	ids = append(ids, userID)
+
 	for _, peer := range peers.All() {
 		peerUser := peer.Owner()
 		if !peerUser.Valid() {
 			continue
 		}
+
 		peerUserID := peerUser.Model().ID
 		userMap[peerUserID] = &peerUser
 		ids = append(ids, peerUserID)
@@ -99,7 +102,9 @@ func generateUserProfiles(
 
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+
 	var profiles []tailcfg.UserProfile
+
 	for _, id := range ids {
 		if userMap[id] != nil {
 			profiles = append(profiles, userMap[id].TailscaleUserProfile())
@@ -149,6 +154,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 }
 
 // fullMapResponse returns a MapResponse for the given node.
+//
+//nolint:unused
 func (m *mapper) fullMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
@@ -316,6 +323,7 @@ func writeDebugMapResponse(
 
 	perms := fs.FileMode(debugMapResponsePerm)
 	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", nodeID))
+
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -329,6 +337,7 @@ func writeDebugMapResponse(
 	)
 
 	log.Trace().Msgf("writing MapResponse to %s", mapResponsePath)
+
 	err = os.WriteFile(mapResponsePath, body, perms)
 	if err != nil {
 		panic(err)
@@ -337,7 +346,7 @@ func writeDebugMapResponse(
 
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: no data when debug path not set
 	}
 
 	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)
@@ -350,6 +359,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 	}
 
 	result := make(map[types.NodeID][]tailcfg.MapResponse)
+
 	for _, node := range nodes {
 		if !node.IsDir() {
 			continue
@@ -385,6 +395,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 			}
 
 			var resp tailcfg.MapResponse
+
 			err = json.Unmarshal(body, &resp)
 			if err != nil {
 				log.Error().Err(err).Msgf("unmarshalling file %s", file.Name())
