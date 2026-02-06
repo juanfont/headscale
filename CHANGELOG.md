@@ -2,6 +2,8 @@
 
 ## 0.29.0 (202x-xx-xx)
 
+**Minimum supported Tailscale client version: v1.76.0**
+
 ### Tailscale ACL compatibility improvements
 
 Extensive test cases were systematically generated using Tailscale clients and the official SaaS
