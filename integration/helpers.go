@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,8 +26,6 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/ptr"
 )
@@ -318,7 +318,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 		var failureReport strings.Builder
 
-		ids := types.NodeIDs(maps.Keys(nodeStatus))
+		ids := types.NodeIDs(slices.AppendSeq(make([]types.NodeID, 0, len(nodeStatus)), maps.Keys(nodeStatus)))
 		slices.Sort(ids)
 
 		for _, nodeID := range ids {

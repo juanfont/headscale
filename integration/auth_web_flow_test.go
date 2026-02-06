@@ -247,8 +247,12 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
 
-	allIps, err := scenario.ListTailscaleClientsIPs()
+	var allIps []netip.Addr
+
+	allIps, err = scenario.ListTailscaleClientsIPs()
 	requireNoErrListClientIPs(t, err)
+
+	_ = allIps // used below after user switch
 
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)

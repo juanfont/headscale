@@ -18,6 +18,7 @@ const (
 	ipv4AddressLength = 32
 	ipv6AddressLength = 128
 
+	// LabelHostnameLength is the maximum length for a DNS label,
 	// value related to RFC 1123 and 952.
 	LabelHostnameLength = 63
 )
@@ -172,6 +173,7 @@ func NormaliseHostname(name string) (string, error) {
 // and do not make use of RFC2317 ("Classless IN-ADDR.ARPA delegation") - hence generating the entries for the next
 // class block only.
 
+// GenerateIPv4DNSRootDomain generates the IPv4 reverse DNS root domains.
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
@@ -230,6 +232,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 // and do not make use of RFC2317 ("Classless IN-ADDR.ARPA delegation") - hence generating the entries for the next
 // class block only.
 
+// GenerateIPv6DNSRootDomain generates the IPv6 reverse DNS root domains.
 // From the netmask we can find out the wildcard bits (the bits that are not set in the netmask).
 // This allows us to then calculate the subnets included in the subsequent class block and generate the entries.
 func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {

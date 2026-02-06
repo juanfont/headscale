@@ -555,11 +555,9 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		} else if node.Hostinfo.NetInfo == nil {
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-		} else {
+		} else if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
 			// If there is a PreferredDERP check if it has changed.
-			if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
-				ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-			}
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		}
 	}
 

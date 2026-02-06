@@ -609,14 +609,14 @@ func (ag *AutoGroup) Is(c AutoGroup) bool {
 
 type Alias interface {
 	Validate() error
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(b []byte) error
 
 	// Resolve resolves the Alias to an IPSet. The IPSet will contain all the IP
 	// addresses that the Alias represents within Headscale. It is the product
 	// of the Alias and the Policy, Users and Nodes.
 	// This is an interface definition and the implementation is independent of
 	// the Alias type.
-	Resolve(*Policy, types.Users, views.Slice[types.NodeView]) (*netipx.IPSet, error)
+	Resolve(pol *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error)
 }
 
 type AliasWithPorts struct {
@@ -839,7 +839,7 @@ func unmarshalPointer[T any](
 
 type AutoApprover interface {
 	CanBeAutoApprover() bool
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(b []byte) error
 	String() string
 }
 
@@ -921,7 +921,7 @@ func (ve *AutoApproverEnc) UnmarshalJSON(b []byte) error {
 
 type Owner interface {
 	CanBeTagOwner() bool
-	UnmarshalJSON([]byte) error
+	UnmarshalJSON(b []byte) error
 	String() string
 }
 
@@ -1863,37 +1863,30 @@ func (p *Policy) validate() error {
 		}
 
 		for _, dst := range acl.Destinations {
-			switch dst.Alias.(type) {
+			switch h := dst.Alias.(type) {
 			case *Host:
-				h := dst.Alias.(*Host)
 				if !p.Hosts.exist(*h) {
 					errs = append(errs, fmt.Errorf(`host %q is not defined in the policy, please define or remove the reference to it`, *h))
 				}
 			case *AutoGroup:
-				ag := dst.Alias.(*AutoGroup)
-
-				err := validateAutogroupSupported(ag)
+				err := validateAutogroupSupported(h)
 				if err != nil {
 					errs = append(errs, err)
 					continue
 				}
 
-				err = validateAutogroupForDst(ag)
+				err = validateAutogroupForDst(h)
 				if err != nil {
 					errs = append(errs, err)
 					continue
 				}
 			case *Group:
-				g := dst.Alias.(*Group)
-
-				err := p.Groups.Contains(g)
+				err := p.Groups.Contains(h)
 				if err != nil {
 					errs = append(errs, err)
 				}
 			case *Tag:
-				tagOwner := dst.Alias.(*Tag)
-
-				err := p.TagOwners.Contains(tagOwner)
+				err := p.TagOwners.Contains(h)
 				if err != nil {
 					errs = append(errs, err)
 				}

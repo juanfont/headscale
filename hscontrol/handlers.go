@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	// The CapabilityVersion is used by Tailscale clients to indicate
+	// NoiseCapabilityVersion is used by Tailscale clients to indicate
 	// their codebase version. Tailscale clients can communicate over TS2021
 	// from CapabilityVersion 28, but we only have good support for it
 	// since https://github.com/tailscale/tailscale/pull/4323 (Noise in any HTTPS port).
@@ -56,7 +56,7 @@ type HTTPError struct {
 func (e HTTPError) Error() string { return fmt.Sprintf("http error[%d]: %s, %s", e.Code, e.Msg, e.Err) }
 func (e HTTPError) Unwrap() error { return e.Err }
 
-// Error returns an HTTPError containing the given information.
+// NewHTTPError returns an HTTPError containing the given information.
 func NewHTTPError(code int, msg string, err error) HTTPError {
 	return HTTPError{Code: code, Msg: msg, Err: err}
 }
@@ -246,7 +246,7 @@ func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
 		registrationId.String())
 }
 
-// RegisterWebAPI shows a simple message in the browser to point to the CLI
+// RegisterHandler shows a simple message in the browser to point to the CLI
 // Listens in /register/:registration_id.
 //
 // This is not part of the Tailscale control API, as we could send whatever URL

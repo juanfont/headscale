@@ -58,6 +58,7 @@ func (u Users) String() string {
 // that contain our machines.
 type User struct {
 	gorm.Model
+
 	// The index `idx_name_provider_identifier` is to enforce uniqueness
 	// between Name and ProviderIdentifier. This ensures that
 	// you can have multiple users with the same name in OIDC,
@@ -224,7 +225,7 @@ func (u UserView) MarshalZerologObject(e *zerolog.Event) {
 	u.ж.MarshalZerologObject(e)
 }
 
-// JumpCloud returns a JSON where email_verified is returned as a
+// FlexibleBoolean handles JumpCloud's JSON where email_verified is returned as a
 // string "true" or "false" instead of a boolean.
 // This maps bool to a specific type with a custom unmarshaler to
 // ensure we can decode it from a string.

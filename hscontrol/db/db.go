@@ -173,7 +173,7 @@ AND auth_key_id NOT IN (
 						tsaddr.SortPrefixes(routes)
 						routes = slices.Compact(routes)
 
-						data, err := json.Marshal(routes)
+						data, _ := json.Marshal(routes)
 
 						err = tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", data).Error
 						if err != nil {

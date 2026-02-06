@@ -586,7 +586,7 @@ func (t *TailscaleInContainer) Version() string {
 	return t.version
 }
 
-// ID returns the Docker container ID of the TailscaleInContainer
+// ContainerID returns the Docker container ID of the TailscaleInContainer
 // instance.
 func (t *TailscaleInContainer) ContainerID() string {
 	return t.container.Container.ID
@@ -621,7 +621,7 @@ func (t *TailscaleInContainer) Execute(
 	return stdout, stderr, nil
 }
 
-// Retrieve container logs.
+// Logs retrieves the container logs.
 func (t *TailscaleInContainer) Logs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(
 		t.pool,
@@ -685,7 +685,7 @@ func (t *TailscaleInContainer) Login(
 	return nil
 }
 
-// Up runs the login routine on the given Tailscale instance.
+// LoginWithURL runs the login routine on the given Tailscale instance.
 // This login mechanism uses web + command line flow for authentication.
 func (t *TailscaleInContainer) LoginWithURL(
 	loginServer string,
@@ -759,7 +759,7 @@ func (t *TailscaleInContainer) Restart() error {
 	return nil
 }
 
-// Helper that runs `tailscale up` with no arguments.
+// Up runs `tailscale up` with no arguments.
 func (t *TailscaleInContainer) Up() error {
 	command := []string{
 		"tailscale",
@@ -778,7 +778,7 @@ func (t *TailscaleInContainer) Up() error {
 	return nil
 }
 
-// Helper that runs `tailscale down` with no arguments.
+// Down runs `tailscale down` with no arguments.
 func (t *TailscaleInContainer) Down() error {
 	command := []string{
 		"tailscale",

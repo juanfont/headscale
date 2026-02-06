@@ -93,7 +93,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -159,7 +159,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() },
+			machineKey: machineKey2.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -228,7 +228,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() },
+			machineKey: machineKey2.Public,
 			wantError:  true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// First node should exist, second should not
@@ -262,7 +262,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -295,7 +295,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -332,7 +332,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -361,7 +361,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -429,7 +429,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour), // Past expiry = logout
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuth:    true,
 			wantExpired: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
@@ -484,7 +484,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey2.Public() }, // Different machine key
+			machineKey: machineKey2.Public, // Different machine key
 			wantError:  true,
 		},
 		// TEST: Existing node cannot extend expiry without re-auth
@@ -534,7 +534,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(48 * time.Hour), // Future time = extend attempt
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Expired node must re-authenticate
@@ -597,7 +597,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(24 * time.Hour), // Future expiry
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantExpired: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.NodeKeyExpired)
@@ -651,7 +651,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now().Add(-1 * time.Hour), // Logout
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantExpired: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.NodeKeyExpired)
@@ -707,7 +707,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -745,7 +745,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Invalid followup URL is rejected
@@ -764,7 +764,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Non-existent registration ID is rejected
@@ -783,7 +783,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -819,7 +819,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -857,7 +857,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:   time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -904,7 +904,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -938,7 +938,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1090,7 +1090,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(48 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1154,7 +1154,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(48 * time.Hour),
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuthURL: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.Contains(t, resp.AuthURL, "register/")
@@ -1223,7 +1223,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1273,7 +1273,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Time{}, // Zero time
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1320,7 +1320,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1376,7 +1376,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// Should get a new AuthURL, not an error
@@ -1401,7 +1401,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 		// TEST: Wrong followup path format is rejected
@@ -1420,7 +1420,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					NodeKey:  nodeKey1.Public(),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantError:  true,
 		},
 
@@ -1451,7 +1451,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1505,7 +1505,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1544,7 +1544,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1587,7 +1587,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1631,7 +1631,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(12 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1703,7 +1703,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				assert.True(t, resp.MachineAuthorized)
@@ -1777,7 +1777,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() }, // Same machine key
+			machineKey:              machineKey1.Public, // Same machine key
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1831,7 +1831,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			wantAuth:   false, // Should not be authorized yet - needs to use new AuthURL
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// Should get a new AuthURL, not an error
@@ -1901,7 +1901,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:  time.Now(), // Exactly now (edge case between past and future)
 				}
 			},
-			machineKey:  func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:  machineKey1.Public,
 			wantAuth:    true,
 			wantExpired: true,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
@@ -1933,7 +1933,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey2.Public() },
+			machineKey:              machineKey2.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -1999,7 +1999,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -2045,7 +2045,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -2099,7 +2099,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// This test validates concurrent interactive registration attempts
 				assert.Contains(t, resp.AuthURL, "/register/")
@@ -2207,7 +2207,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -2251,7 +2251,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry:   time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			machineKey:              machineKey1.Public,
 			requiresInteractiveFlow: true,
 			interactiveSteps: []interactiveStep{
 				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
@@ -2289,7 +2289,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// Get initial AuthURL and extract registration ID
 				authURL := resp.AuthURL
@@ -2343,7 +2343,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				// Test multiple interactive registration attempts for the same node can coexist
 				authURL1 := resp.AuthURL
@@ -2403,7 +2403,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
 			},
-			machineKey: func() key.MachinePublic { return machineKey1.Public() },
+			machineKey: machineKey1.Public,
 			validate: func(t *testing.T, resp *tailcfg.RegisterResponse, app *Headscale) {
 				authURL1 := resp.AuthURL
 				regID1, err := extractRegistrationIDFromAuthURL(authURL1)

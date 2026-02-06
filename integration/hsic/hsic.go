@@ -199,7 +199,7 @@ func WithPostgres() Option {
 	}
 }
 
-// WithPolicy sets the policy mode for headscale.
+// WithPolicyMode sets the policy mode for headscale.
 func WithPolicyMode(mode types.PolicyMode) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.policyMode = mode

@@ -20,8 +20,8 @@ import (
 )
 
 type AuthProvider interface {
-	RegisterHandler(http.ResponseWriter, *http.Request)
-	AuthURL(types.RegistrationID) string
+	RegisterHandler(w http.ResponseWriter, r *http.Request)
+	AuthURL(regID types.RegistrationID) string
 }
 
 func (h *Headscale) handleRegister(
