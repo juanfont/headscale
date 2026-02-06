@@ -162,6 +162,7 @@ func (m *mapSession) serveLongPoll() {
 		// This is not my favourite solution, but it kind of works in our eventually consistent world.
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
+
 		disconnected := true
 		// Wait up to 10 seconds for the node to reconnect.
 		// 10 seconds was arbitrary chosen as a reasonable time to reconnect.
@@ -170,6 +171,7 @@ func (m *mapSession) serveLongPoll() {
 				disconnected = false
 				break
 			}
+
 			<-ticker.C
 		}
 
@@ -240,22 +242,26 @@ func (m *mapSession) serveLongPoll() {
 		case <-m.cancelCh:
 			m.log.Trace().Caller().Msg("poll cancelled received")
 			mapResponseEnded.WithLabelValues("cancelled").Inc()
+
 			return
 
 		case <-ctx.Done():
 			m.log.Trace().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("poll context done")
 			mapResponseEnded.WithLabelValues("done").Inc()
+
 			return
 
 		// Consume updates sent to node
 		case update, ok := <-m.ch:
 			m.log.Trace().Caller().Bool(zf.OK, ok).Msg("received update from channel")
+
 			if !ok {
 				m.log.Trace().Caller().Msg("update channel closed, streaming session is likely being replaced")
 				return
 			}
 
-			if err := m.writeMap(update); err != nil {
+			err := m.writeMap(update)
+			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write update to client")
 				return
 			}
@@ -264,7 +270,8 @@ func (m *mapSession) serveLongPoll() {
 			m.resetKeepAlive()
 
 		case <-m.keepAliveTicker.C:
-			if err := m.writeMap(&keepAlive); err != nil {
+			err := m.writeMap(&keepAlive)
+			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("cannot write keep alive")
 				return
 			}
@@ -272,6 +279,7 @@ func (m *mapSession) serveLongPoll() {
 			if debugHighCardinalityMetrics {
 				mapResponseLastSentSeconds.WithLabelValues("keepalive", m.node.ID.String()).Set(float64(time.Now().Unix()))
 			}
+
 			mapResponseSent.WithLabelValues("ok", "keepalive").Inc()
 			m.resetKeepAlive()
 		}

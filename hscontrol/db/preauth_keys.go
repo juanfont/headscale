@@ -329,6 +329,7 @@ func UsePreAuthKey(tx *gorm.DB, k *types.PreAuthKey) error {
 	}
 
 	k.Used = true
+
 	return nil
 }
 

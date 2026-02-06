@@ -37,6 +37,7 @@ func (h *Headscale) ApplePlatformConfig(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
+
 	platform, ok := vars["platform"]
 	if !ok {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "no platform specified", nil))
@@ -64,17 +65,20 @@ func (h *Headscale) ApplePlatformConfig(
 
 	switch platform {
 	case "macos-standalone":
-		if err := macosStandaloneTemplate.Execute(&payload, platformConfig); err != nil {
+		err := macosStandaloneTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "macos-app-store":
-		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
+		err := macosAppStoreTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "ios":
-		if err := iosTemplate.Execute(&payload, platformConfig); err != nil {
+		err := iosTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}

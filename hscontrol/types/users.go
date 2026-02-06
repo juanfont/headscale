@@ -42,9 +42,11 @@ var TaggedDevices = User{
 func (u Users) String() string {
 	var sb strings.Builder
 	sb.WriteString("[ ")
+
 	for _, user := range u {
 		fmt.Fprintf(&sb, "%d: %s, ", user.ID, user.Name)
 	}
+
 	sb.WriteString(" ]")
 
 	return sb.String()
@@ -91,6 +93,7 @@ func (u *User) StringID() string {
 	if u == nil {
 		return ""
 	}
+
 	return strconv.FormatUint(uint64(u.ID), 10)
 }
 
@@ -184,6 +187,7 @@ func (u *User) Proto() *v1.User {
 	if name == "" {
 		name = u.Username()
 	}
+
 	return &v1.User{
 		Id:            uint64(u.ID),
 		Name:          name,
@@ -229,6 +233,7 @@ type FlexibleBoolean bool
 
 func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 	var val any
+
 	err := json.Unmarshal(data, &val)
 	if err != nil {
 		return fmt.Errorf("unmarshalling data: %w", err)
@@ -242,6 +247,7 @@ func (bit *FlexibleBoolean) UnmarshalJSON(data []byte) error {
 		if err != nil {
 			return fmt.Errorf("parsing %s as boolean: %w", v, err)
 		}
+
 		*bit = FlexibleBoolean(pv)
 
 	default:
@@ -279,9 +285,11 @@ func (c *OIDCClaims) Identifier() string {
 	if c.Iss == "" && c.Sub == "" {
 		return ""
 	}
+
 	if c.Iss == "" {
 		return CleanIdentifier(c.Sub)
 	}
+
 	if c.Sub == "" {
 		return CleanIdentifier(c.Iss)
 	}
@@ -366,6 +374,7 @@ func CleanIdentifier(identifier string) string {
 			cleanParts = append(cleanParts, trimmed)
 		}
 	}
+
 	if len(cleanParts) == 0 {
 		return ""
 	}
@@ -408,6 +417,7 @@ func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
 	if claims.Iss == "" && !strings.HasPrefix(identifier, "/") {
 		identifier = "/" + identifier
 	}
+
 	u.ProviderIdentifier = sql.NullString{String: identifier, Valid: true}
 	u.DisplayName = claims.Name
 	u.ProfilePicURL = claims.ProfilePictureURL

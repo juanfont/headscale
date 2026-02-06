@@ -52,12 +52,14 @@ func (hsdb *HSDatabase) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) 
 // If at least one peer ID is given, only these peer nodes will be returned.
 func ListPeers(tx *gorm.DB, nodeID types.NodeID, peerIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
-	if err := tx.
+
+	err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
 		Where("id <> ?", nodeID).
-		Where(peerIDs).Find(&nodes).Error; err != nil {
+		Where(peerIDs).Find(&nodes).Error
+	if err != nil {
 		return types.Nodes{}, err
 	}
 
@@ -76,11 +78,13 @@ func (hsdb *HSDatabase) ListNodes(nodeIDs ...types.NodeID) (types.Nodes, error) 
 // or for the given nodes if at least one node ID is given as parameter.
 func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 	nodes := types.Nodes{}
-	if err := tx.
+
+	err := tx.
 		Preload("AuthKey").
 		Preload("AuthKey.User").
 		Preload("User").
-		Where(nodeIDs).Find(&nodes).Error; err != nil {
+		Where(nodeIDs).Find(&nodes).Error
+	if err != nil {
 		return nil, err
 	}
 
@@ -90,7 +94,9 @@ func ListNodes(tx *gorm.DB, nodeIDs ...types.NodeID) (types.Nodes, error) {
 func (hsdb *HSDatabase) ListEphemeralNodes() (types.Nodes, error) {
 	return Read(hsdb.DB, func(rx *gorm.DB) (types.Nodes, error) {
 		nodes := types.Nodes{}
-		if err := rx.Joins("AuthKey").Where(`"AuthKey"."ephemeral" = true`).Find(&nodes).Error; err != nil {
+
+		err := rx.Joins("AuthKey").Where(`"AuthKey"."ephemeral" = true`).Find(&nodes).Error
+		if err != nil {
 			return nil, err
 		}
 
@@ -329,7 +335,8 @@ func DeleteNode(tx *gorm.DB,
 	node *types.Node,
 ) error {
 	// Unscoped causes the node to be fully removed from the database.
-	if err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error; err != nil {
+	err := tx.Unscoped().Delete(&types.Node{}, node.ID).Error
+	if err != nil {
 		return err
 	}
 
@@ -343,9 +350,11 @@ func (hsdb *HSDatabase) DeleteEphemeralNode(
 	nodeID types.NodeID,
 ) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
-		if err := tx.Unscoped().Delete(&types.Node{}, nodeID).Error; err != nil {
+		err := tx.Unscoped().Delete(&types.Node{}, nodeID).Error
+		if err != nil {
 			return err
 		}
+
 		return nil
 	})
 }
@@ -395,7 +404,8 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 	// so we store the node.Expire and node.Nodekey that has been set when
 	// adding it to the registrationCache
 	if node.IPv4 != nil || node.IPv6 != nil {
-		if err := tx.Save(&node).Error; err != nil {
+		err := tx.Save(&node).Error
+		if err != nil {
 			return nil, fmt.Errorf("registering existing node in database: %w", err)
 		}
 

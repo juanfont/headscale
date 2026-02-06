@@ -86,6 +86,7 @@ func TestYesNo(t *testing.T) {
 			// Write test input
 			go func() {
 				defer w.Close()
+
 				w.WriteString(tt.input)
 			}()
 
@@ -95,6 +96,7 @@ func TestYesNo(t *testing.T) {
 			// Restore stdin and stderr
 			os.Stdin = oldStdin
 			os.Stderr = oldStderr
+
 			stderrW.Close()
 
 			// Check the result
@@ -108,6 +110,7 @@ func TestYesNo(t *testing.T) {
 			stderrR.Close()
 
 			expectedPrompt := "Test question [y/n] "
+
 			actualPrompt := stderrBuf.String()
 			if actualPrompt != expectedPrompt {
 				t.Errorf("Expected prompt %q, got %q", expectedPrompt, actualPrompt)
@@ -130,6 +133,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 	// Write test input
 	go func() {
 		defer w.Close()
+
 		w.WriteString("n\n")
 	}()
 
@@ -140,6 +144,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 	// Restore stdin and stderr
 	os.Stdin = oldStdin
 	os.Stderr = oldStderr
+
 	stderrW.Close()
 
 	// Check that the custom message was included in the prompt
@@ -148,6 +153,7 @@ func TestYesNoPromptMessage(t *testing.T) {
 	stderrR.Close()
 
 	expectedPrompt := customMessage + " [y/n] "
+
 	actualPrompt := stderrBuf.String()
 	if actualPrompt != expectedPrompt {
 		t.Errorf("Expected prompt %q, got %q", expectedPrompt, actualPrompt)
@@ -186,6 +192,7 @@ func TestYesNoCaseInsensitive(t *testing.T) {
 			// Write test input
 			go func() {
 				defer w.Close()
+
 				w.WriteString(tc.input)
 			}()
 
@@ -195,6 +202,7 @@ func TestYesNoCaseInsensitive(t *testing.T) {
 			// Restore stdin and stderr
 			os.Stdin = oldStdin
 			os.Stderr = oldStderr
+
 			stderrW.Close()
 
 			// Drain stderr

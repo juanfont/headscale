@@ -187,6 +187,7 @@ func TestHeadscale_generateGivenName(t *testing.T) {
 		suppliedName string
 		randomSuffix bool
 	}
+
 	tests := []struct {
 		name    string
 		args    args
@@ -498,6 +499,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes1) == 0 {
 					expectedRoutes1 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes1, node1ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -509,6 +511,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 				if len(expectedRoutes2) == 0 {
 					expectedRoutes2 = nil
 				}
+
 				if diff := cmp.Diff(expectedRoutes2, node2ByID.AllApprovedRoutes(), util.Comparers...); diff != "" {
 					t.Errorf("unexpected enabled routes (-want +got):\n%s", diff)
 				}
@@ -520,6 +523,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	want := []types.NodeID{1, 3}
 	got := []types.NodeID{}
+
 	var mu sync.Mutex
 
 	deletionCount := make(chan struct{}, 10)
@@ -527,6 +531,7 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 	e := NewEphemeralGarbageCollector(func(ni types.NodeID) {
 		mu.Lock()
 		defer mu.Unlock()
+
 		got = append(got, ni)
 
 		deletionCount <- struct{}{}
@@ -576,8 +581,10 @@ func TestEphemeralGarbageCollectorOrder(t *testing.T) {
 }
 
 func TestEphemeralGarbageCollectorLoads(t *testing.T) {
-	var got []types.NodeID
-	var mu sync.Mutex
+	var (
+		got []types.NodeID
+		mu  sync.Mutex
+	)
 
 	want := 1000
 
@@ -589,6 +596,7 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 		// Yield to other goroutines to introduce variability
 		runtime.Gosched()
+
 		got = append(got, ni)
 
 		atomic.AddInt64(&deletedCount, 1)
@@ -618,7 +626,9 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 
 func generateRandomNumber(t *testing.T, max int64) int64 {
 	t.Helper()
+
 	maxB := big.NewInt(max)
+
 	n, err := rand.Int(rand.Reader, maxB)
 	if err != nil {
 		t.Fatalf("getting random number: %s", err)
@@ -746,12 +756,15 @@ func TestNodeNaming(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
 		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
+
 		return err
 	})
 	require.NoError(t, err)
@@ -1000,6 +1013,7 @@ func TestListPeers(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err
@@ -1085,6 +1099,7 @@ func TestListNodes(t *testing.T) {
 		if err != nil {
 			return err
 		}
+
 		_, err = RegisterNodeForTest(tx, node2, nil, nil)
 
 		return err

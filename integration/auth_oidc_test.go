@@ -148,6 +148,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -175,6 +176,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	syncCompleteTime := time.Now()
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
+
 	loginDuration := time.Since(syncCompleteTime)
 	t.Logf("Login and sync completed in %v", loginDuration)
 
@@ -206,6 +208,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		// Check each client's status individually to provide better diagnostics
 		expiredCount := 0
+
 		for _, client := range allClients {
 			status, err := client.Status()
 			if assert.NoError(ct, err, "failed to get status for client %s", client.Hostname()) {
@@ -355,6 +358,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 			}
 
 			scenario, err := NewScenario(spec)
+
 			require.NoError(t, err)
 			defer scenario.ShutdownAssertNoPanics(t)
 
@@ -412,6 +416,7 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -469,6 +474,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			oidcMockUser("user1", true),
 		},
 	})
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -507,6 +513,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		listUsers, err := headscale.ListUsers()
 		assert.NoError(ct, err, "Failed to list users during initial validation")
 		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
+
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -527,9 +534,12 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
+
 	var listNodes []*v1.Node
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes during initial validation")
 		assert.Len(ct, listNodes, 1, "Expected exactly 1 node after first login, got %d", len(listNodes))
@@ -537,14 +547,19 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
+
 	var nodeID uint64
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		status := ts.MustStatus()
 		assert.NotEmpty(ct, status.Self.ID, "Node ID should be populated in status")
+
 		var err error
+
 		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
 		assert.NoError(ct, err, "Failed to parse node ID from status")
 	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
+
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
 	// Validate initial connection state for user1
@@ -582,6 +597,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		listUsers, err := headscale.ListUsers()
 		assert.NoError(ct, err, "Failed to list users after user2 login")
 		assert.Len(ct, listUsers, 2, "Expected exactly 2 users after user2 login, got %d users", len(listUsers))
+
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -637,10 +653,12 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	// Security validation: Only user2's node should be active after user switch
 	var activeUser2NodeID types.NodeID
+
 	for _, node := range listNodesAfterNewUserLogin {
 		if node.GetUser().GetId() == 2 { // user2
 			activeUser2NodeID = types.NodeID(node.GetId())
 			t.Logf("Active user2 node: %d (User: %s)", node.GetId(), node.GetUser().GetName())
+
 			break
 		}
 	}
@@ -654,6 +672,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		// Check user2 node is online
 		if node, exists := nodeStore[activeUser2NodeID]; exists {
 			assert.NotNil(c, node.IsOnline, "User2 node should have online status")
+
 			if node.IsOnline != nil {
 				assert.True(c, *node.IsOnline, "User2 node should be online after login")
 			}
@@ -746,6 +765,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		listUsers, err := headscale.ListUsers()
 		assert.NoError(ct, err, "Failed to list users during final validation")
 		assert.Len(ct, listUsers, 2, "Should still have exactly 2 users after user1 relogin, got %d", len(listUsers))
+
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -815,10 +835,12 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	// Security validation: Only user1's node should be active after relogin
 	var activeUser1NodeID types.NodeID
+
 	for _, node := range listNodesAfterLoggingBackIn {
 		if node.GetUser().GetId() == 1 { // user1
 			activeUser1NodeID = types.NodeID(node.GetId())
 			t.Logf("Active user1 node after relogin: %d (User: %s)", node.GetId(), node.GetUser().GetName())
+
 			break
 		}
 	}
@@ -832,6 +854,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		// Check user1 node is online
 		if node, exists := nodeStore[activeUser1NodeID]; exists {
 			assert.NotNil(c, node.IsOnline, "User1 node should have online status after relogin")
+
 			if node.IsOnline != nil {
 				assert.True(c, *node.IsOnline, "User1 node should be online after relogin")
 			}
@@ -906,6 +929,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 	time.Sleep(2 * time.Minute)
 
 	var newUrl *url.URL
+
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		st, err := ts.Status()
 		assert.NoError(c, err)
@@ -1106,6 +1130,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 			oidcMockUser("user1", true), // Relogin with same user
 		},
 	})
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -1145,6 +1170,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		listUsers, err := headscale.ListUsers()
 		assert.NoError(ct, err, "Failed to list users during initial validation")
 		assert.Len(ct, listUsers, 1, "Expected exactly 1 user after first login, got %d", len(listUsers))
+
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -1165,9 +1191,12 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
+
 	var initialNodes []*v1.Node
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		initialNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes during initial validation")
 		assert.Len(ct, initialNodes, 1, "Expected exactly 1 node after first login, got %d", len(initialNodes))
@@ -1175,14 +1204,19 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
+
 	var nodeID uint64
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		status := ts.MustStatus()
 		assert.NotEmpty(ct, status.Self.ID, "Node ID should be populated in status")
+
 		var err error
+
 		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
 		assert.NoError(ct, err, "Failed to parse node ID from status")
 	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
+
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
 	// Validate initial connection state for user1
@@ -1239,6 +1273,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		listUsers, err := headscale.ListUsers()
 		assert.NoError(ct, err, "Failed to list users during final validation")
 		assert.Len(ct, listUsers, 1, "Should still have exactly 1 user after same-user relogin, got %d", len(listUsers))
+
 		wantUsers := []*v1.User{
 			{
 				Id:         1,
@@ -1259,6 +1294,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 	}, 30*time.Second, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")
 
 	var finalNodes []*v1.Node
+
 	t.Logf("Final node validation: checking node stability after same-user relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		finalNodes, err = headscale.ListNodes()
@@ -1282,6 +1318,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 
 	// Security validation: user1's node should be active after relogin
 	activeUser1NodeID := types.NodeID(finalNodes[0].GetId())
+
 	t.Logf("Validating user1 node is online after same-user relogin at %s", time.Now().Format(TimestampFormat))
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodeStore, err := headscale.DebugNodeStore()
@@ -1290,6 +1327,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		// Check user1 node is online
 		if node, exists := nodeStore[activeUser1NodeID]; exists {
 			assert.NotNil(c, node.IsOnline, "User1 node should have online status after same-user relogin")
+
 			if node.IsOnline != nil {
 				assert.True(c, *node.IsOnline, "User1 node should be online after same-user relogin")
 			}
@@ -1359,6 +1397,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 
 	// Verify initial expiry is set
 	var initialExpiry time.Time
+
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(ct, err)

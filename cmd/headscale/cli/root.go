@@ -45,6 +45,7 @@ func initConfig() {
 	if cfgFile == "" {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
+
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
@@ -80,6 +81,7 @@ func initConfig() {
 				Repository:    "headscale",
 				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
+
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
@@ -101,6 +103,7 @@ func isPreReleaseVersion(version string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -140,7 +143,8 @@ https://github.com/juanfont/headscale`,
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

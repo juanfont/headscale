@@ -97,6 +97,7 @@ func NewNodeStore(allNodes types.Nodes, peersFunc PeersFunc, batchSize int, batc
 	for _, n := range allNodes {
 		nodes[n.ID] = *n
 	}
+
 	snap := snapshotFromNodes(nodes, peersFunc)
 
 	store := &NodeStore{
@@ -165,11 +166,14 @@ func (s *NodeStore) PutNode(n types.Node) types.NodeView {
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	resultNode := <-work.nodeResult
+
 	nodeStoreOperations.WithLabelValues("put").Inc()
 
 	return resultNode
@@ -205,11 +209,14 @@ func (s *NodeStore) UpdateNode(nodeID types.NodeID, updateFn func(n *types.Node)
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
 	resultNode := <-work.nodeResult
+
 	nodeStoreOperations.WithLabelValues("update").Inc()
 
 	// Return the node and whether it exists (is valid)
@@ -229,7 +236,9 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 	}
 
 	nodeStoreQueueDepth.Inc()
+
 	s.writeQueue <- work
+
 	<-work.result
 	nodeStoreQueueDepth.Dec()
 
@@ -262,8 +271,10 @@ func (s *NodeStore) processWrite() {
 				if len(batch) != 0 {
 					s.applyBatch(batch)
 				}
+
 				return
 			}
+
 			batch = append(batch, w)
 			if len(batch) >= s.batchSize {
 				s.applyBatch(batch)
@@ -321,6 +332,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 				w.updateFn(&n)
 				nodes[w.nodeID] = n
 			}
+
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
 			}
@@ -349,12 +361,14 @@ func (s *NodeStore) applyBatch(batch []work) {
 			nodeView := node.View()
 			for _, w := range workItems {
 				w.nodeResult <- nodeView
+
 				close(w.nodeResult)
 			}
 		} else {
 			// Node was deleted or doesn't exist
 			for _, w := range workItems {
 				w.nodeResult <- types.NodeView{} // Send invalid view
+
 				close(w.nodeResult)
 			}
 		}
@@ -400,6 +414,7 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		peersByNode: func() map[types.NodeID][]types.NodeView {
 			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
 			defer peersTimer.ObserveDuration()
+
 			return peersFunc(allNodes)
 		}(),
 		nodesByUser: make(map[types.UserID][]types.NodeView),
@@ -417,6 +432,7 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
 			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
 		}
+
 		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
 	}
 
@@ -511,10 +527,12 @@ func (s *NodeStore) DebugString() string {
 
 	// User distribution (shows internal UserID tracking, not display owner)
 	sb.WriteString("Nodes by Internal User ID:\n")
+
 	for userID, nodes := range snapshot.nodesByUser {
 		if len(nodes) > 0 {
 			userName := "unknown"
 			taggedCount := 0
+
 			if len(nodes) > 0 && nodes[0].Valid() {
 				userName = nodes[0].User().Name()
 				// Count tagged nodes (which have UserID set but are owned by "tagged-devices")
@@ -532,23 +550,29 @@ func (s *NodeStore) DebugString() string {
 			}
 		}
 	}
+
 	sb.WriteString("\n")
 
 	// Peer relationships summary
 	sb.WriteString("Peer Relationships:\n")
+
 	totalPeers := 0
+
 	for nodeID, peers := range snapshot.peersByNode {
 		peerCount := len(peers)
+
 		totalPeers += peerCount
 		if node, exists := snapshot.nodesByID[nodeID]; exists {
 			sb.WriteString(fmt.Sprintf("  - Node %d (%s): %d peers\n",
 				nodeID, node.Hostname, peerCount))
 		}
 	}
+
 	if len(snapshot.peersByNode) > 0 {
 		avgPeers := float64(totalPeers) / float64(len(snapshot.peersByNode))
 		sb.WriteString(fmt.Sprintf("  - Average peers per node: %.1f\n", avgPeers))
 	}
+
 	sb.WriteString("\n")
 
 	// Node key index
@@ -591,6 +615,7 @@ func (s *NodeStore) RebuildPeerMaps() {
 	}
 
 	s.writeQueue <- w
+
 	<-result
 }
 

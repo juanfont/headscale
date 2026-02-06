@@ -75,12 +75,14 @@ func ValidateHostname(name string) error {
 			name,
 		)
 	}
+
 	if len(name) > LabelHostnameLength {
 		return fmt.Errorf(
 			"hostname %q is too long, must not exceed 63 characters",
 			name,
 		)
 	}
+
 	if strings.ToLower(name) != name {
 		return fmt.Errorf(
 			"hostname %q must be lowercase (try %q)",
@@ -193,6 +195,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	for i := lastOctet - 1; i >= 0; i-- {
 		rdnsSlice = append(rdnsSlice, strconv.FormatUint(uint64(netRange.IP[i]), 10))
 	}
+
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
 	rdnsBase := strings.Join(rdnsSlice, ".")
 
@@ -202,6 +205,7 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 		if err != nil {
 			continue
 		}
+
 		fqdns = append(fqdns, fqdn)
 	}
 
@@ -259,18 +263,22 @@ func GenerateIPv6DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	}
 
 	var fqdns []dnsname.FQDN
+
 	if maskBits%4 == 0 {
 		dom, _ := makeDomain()
 		fqdns = append(fqdns, dom)
 	} else {
 		domCount := 1 << (maskBits % nibbleLen)
+
 		fqdns = make([]dnsname.FQDN, 0, domCount)
 		for i := range domCount {
 			varNibble := fmt.Sprintf("%x", i)
+
 			dom, err := makeDomain(varNibble)
 			if err != nil {
 				continue
 			}
+
 			fqdns = append(fqdns, dom)
 		}
 	}

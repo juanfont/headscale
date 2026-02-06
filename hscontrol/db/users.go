@@ -26,10 +26,13 @@ func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
 // CreateUser creates a new User. Returns error if could not be created
 // or another user already exists.
 func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
-	if err := util.ValidateHostname(user.Name); err != nil {
+	err := util.ValidateHostname(user.Name)
+	if err != nil {
 		return nil, err
 	}
-	if err := tx.Create(&user).Error; err != nil {
+
+	err = tx.Create(&user).Error
+	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
@@ -54,6 +57,7 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	if err != nil {
 		return err
 	}
+
 	if len(nodes) > 0 {
 		return ErrUserStillHasNodes
 	}
@@ -62,6 +66,7 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	if err != nil {
 		return err
 	}
+
 	for _, key := range keys {
 		err = DestroyPreAuthKey(tx, key.ID)
 		if err != nil {
@@ -88,10 +93,12 @@ var ErrCannotChangeOIDCUser = errors.New("cannot edit OIDC user")
 // not exist or if another User exists with the new name.
 func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	var err error
+
 	oldUser, err := GetUserByID(tx, uid)
 	if err != nil {
 		return err
 	}
+
 	if err = util.ValidateHostname(newName); err != nil {
 		return err
 	}
@@ -160,7 +167,9 @@ func ListUsers(tx *gorm.DB, where ...*types.User) ([]types.User, error) {
 	}
 
 	users := []types.User{}
-	if err := tx.Where(user).Find(&users).Error; err != nil {
+
+	err := tx.Where(user).Find(&users).Error
+	if err != nil {
 		return nil, err
 	}
 

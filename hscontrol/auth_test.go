@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -16,14 +17,16 @@ import (
 	"tailscale.com/types/key"
 )
 
-// Interactive step type constants
+// Interactive step type constants.
 const (
 	stepTypeInitialRequest  = "initial_request"
 	stepTypeAuthCompletion  = "auth_completion"
 	stepTypeFollowupRequest = "followup_request"
 )
 
-// interactiveStep defines a step in the interactive authentication workflow
+var errNodeNotFoundAfterSetup = errors.New("node not found after setup")
+
+// interactiveStep defines a step in the interactive authentication workflow.
 type interactiveStep struct {
 	stepType         string // stepTypeInitialRequest, stepTypeAuthCompletion, or stepTypeFollowupRequest
 	expectAuthURL    bool
@@ -75,6 +78,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -129,6 +133,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(firstReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -163,6 +168,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify both nodes exist
 				node1, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				node2, found2 := app.state.GetNodeByNodeKey(nodeKey2.Public())
+
 				assert.True(t, found1)
 				assert.True(t, found2)
 				assert.Equal(t, "reusable-node-1", node1.Hostname())
@@ -196,6 +202,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(firstReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -227,6 +234,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// First node should exist, second should not
 				_, found1 := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				_, found2 := app.state.GetNodeByNodeKey(nodeKey2.Public())
+
 				assert.True(t, found1)
 				assert.False(t, found2)
 			},
@@ -272,6 +280,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -391,6 +400,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				resp, err := app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -400,8 +410,10 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Wait for node to be available in NodeStore with debug info
 				var attemptCount int
+
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					attemptCount++
+
 					_, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 					if assert.True(c, found, "node should be available in NodeStore") {
 						t.Logf("Node found in NodeStore after %d attempts", attemptCount)
@@ -451,6 +463,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -500,6 +513,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -549,25 +563,31 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
 				}
 
 				// Wait for node to be available in NodeStore
-				var node types.NodeView
-				var found bool
+				var (
+					node  types.NodeView
+					found bool
+				)
+
 				require.EventuallyWithT(t, func(c *assert.CollectT) {
 					node, found = app.state.GetNodeByNodeKey(nodeKey1.Public())
 					assert.True(c, found, "node should be available in NodeStore")
 				}, 1*time.Second, 50*time.Millisecond, "waiting for node to be available in NodeStore")
+
 				if !found {
-					return "", fmt.Errorf("node not found after setup")
+					return "", errNodeNotFoundAfterSetup
 				}
 
 				// Expire the node
 				expiredTime := time.Now().Add(-1 * time.Hour)
 				_, _, err = app.state.SetNodeExpiry(node.ID(), expiredTime)
+
 				return "", err
 			},
 			request: func(_ string) tailcfg.RegisterRequest {
@@ -610,6 +630,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -673,6 +694,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// and handleRegister will receive the value when it starts waiting
 				go func() {
 					user := app.state.CreateUserForTest("followup-user")
+
 					node := app.state.CreateNodeForTest(user, "followup-success-node")
 					registered <- node
 				}()
@@ -782,6 +804,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -821,6 +844,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -865,6 +889,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -898,6 +923,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -922,6 +948,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found)
 				assert.Equal(t, "tagged-pak-node", node.Hostname())
+
 				if node.AuthKey().Valid() {
 					assert.NotEmpty(t, node.AuthKey().Tags())
 				}
@@ -1031,6 +1058,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1047,6 +1075,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak2.Key, nil
 			},
 			request: func(newAuthKey string) tailcfg.RegisterRequest {
@@ -1099,6 +1128,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1161,6 +1191,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1177,6 +1208,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pakRotation.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1226,6 +1258,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1265,6 +1298,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1429,6 +1463,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify custom hostinfo was preserved through interactive workflow
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be found after interactive registration")
+
 				if found {
 					assert.Equal(t, "custom-interactive-node", node.Hostname())
 					assert.Equal(t, "linux", node.Hostinfo().OS())
@@ -1455,6 +1490,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1520,6 +1556,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify registration ID was properly generated and used
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered after interactive workflow")
+
 				if found {
 					assert.Equal(t, "registration-id-test-node", node.Hostname())
 					assert.Equal(t, "test-os", node.Hostinfo().OS())
@@ -1535,6 +1572,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1577,6 +1615,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak.Key, nil
 			},
 			request: func(authKey string) tailcfg.RegisterRequest {
@@ -1632,6 +1671,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1648,6 +1688,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				if err != nil {
 					return "", err
 				}
+
 				return pak2.Key, nil
 			},
 			request: func(user2AuthKey string) tailcfg.RegisterRequest {
@@ -1712,6 +1753,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegister(context.Background(), initialReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1838,6 +1880,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegisterWithAuthKey(regReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -1932,6 +1975,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					},
 					Expiry: time.Now().Add(24 * time.Hour),
 				}
+
 				_, err = app.handleRegister(context.Background(), initialReq, machineKey1.Public())
 				if err != nil {
 					return "", err
@@ -2097,6 +2141,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Collect results - at least one should succeed
 				successCount := 0
+
 				for range numConcurrent {
 					select {
 					case err := <-results:
@@ -2217,6 +2262,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Should handle nil hostinfo gracefully
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered despite nil hostinfo")
+
 				if found {
 					// Should have some default hostname or handle nil gracefully
 					hostname := node.Hostname()
@@ -2315,12 +2361,14 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				resp2, err := app.handleRegister(context.Background(), secondReq, machineKey1.Public())
 				require.NoError(t, err)
+
 				authURL2 := resp2.AuthURL
 				assert.Contains(t, authURL2, "/register/")
 
 				// Both should have different registration IDs
 				regID1, err1 := extractRegistrationIDFromAuthURL(authURL1)
 				regID2, err2 := extractRegistrationIDFromAuthURL(authURL2)
+
 				require.NoError(t, err1)
 				require.NoError(t, err2)
 				assert.NotEqual(t, regID1, regID2, "different registration attempts should have different IDs")
@@ -2328,6 +2376,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Both cache entries should exist simultaneously
 				_, found1 := app.state.GetRegistrationCacheEntry(regID1)
 				_, found2 := app.state.GetRegistrationCacheEntry(regID2)
+
 				assert.True(t, found1, "first registration cache entry should exist")
 				assert.True(t, found2, "second registration cache entry should exist")
 
@@ -2371,6 +2420,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				resp2, err := app.handleRegister(context.Background(), secondReq, machineKey1.Public())
 				require.NoError(t, err)
+
 				authURL2 := resp2.AuthURL
 				regID2, err := extractRegistrationIDFromAuthURL(authURL2)
 				require.NoError(t, err)
@@ -2378,6 +2428,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify both exist
 				_, found1 := app.state.GetRegistrationCacheEntry(regID1)
 				_, found2 := app.state.GetRegistrationCacheEntry(regID2)
+
 				assert.True(t, found1, "first cache entry should exist")
 				assert.True(t, found2, "second cache entry should exist")
 
@@ -2403,6 +2454,7 @@ func TestAuthenticationFlows(t *testing.T) {
 						errorChan <- err
 						return
 					}
+
 					responseChan <- resp
 				}()
 
@@ -2430,6 +2482,7 @@ func TestAuthenticationFlows(t *testing.T) {
 				// Verify the node was created with the second registration's data
 				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
 				assert.True(t, found, "node should be registered")
+
 				if found {
 					assert.Equal(t, "pending-node-2", node.Hostname())
 					assert.Equal(t, "second-registration-user", node.User().Name())
@@ -2463,8 +2516,10 @@ func TestAuthenticationFlows(t *testing.T) {
 
 			// Set up context with timeout for followup tests
 			ctx := context.Background()
+
 			if req.Followup != "" {
 				var cancel context.CancelFunc
+
 				ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
 				defer cancel()
 			}
@@ -2516,7 +2571,7 @@ func TestAuthenticationFlows(t *testing.T) {
 	}
 }
 
-// runInteractiveWorkflowTest executes a multi-step interactive authentication workflow
+// runInteractiveWorkflowTest executes a multi-step interactive authentication workflow.
 func runInteractiveWorkflowTest(t *testing.T, tt struct {
 	name                      string
 	setupFunc                 func(*testing.T, *Headscale) (string, error)
@@ -2597,6 +2652,7 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 						errorChan <- err
 						return
 					}
+
 					responseChan <- resp
 				}()
 
@@ -2650,24 +2706,27 @@ func runInteractiveWorkflowTest(t *testing.T, tt struct {
 		if responseToValidate == nil {
 			responseToValidate = initialResp
 		}
+
 		tt.validate(t, responseToValidate, app)
 	}
 }
 
-// extractRegistrationIDFromAuthURL extracts the registration ID from an AuthURL
+// extractRegistrationIDFromAuthURL extracts the registration ID from an AuthURL.
 func extractRegistrationIDFromAuthURL(authURL string) (types.RegistrationID, error) {
 	// AuthURL format: "http://localhost/register/abc123"
 	const registerPrefix = "/register/"
+
 	idx := strings.LastIndex(authURL, registerPrefix)
 	if idx == -1 {
 		return "", fmt.Errorf("invalid AuthURL format: %s", authURL)
 	}
 
 	idStr := authURL[idx+len(registerPrefix):]
+
 	return types.RegistrationIDFromString(idStr)
 }
 
-// validateCompleteRegistrationResponse performs comprehensive validation of a registration response
+// validateCompleteRegistrationResponse performs comprehensive validation of a registration response.
 func validateCompleteRegistrationResponse(t *testing.T, resp *tailcfg.RegisterResponse, originalReq tailcfg.RegisterRequest) {
 	// Basic response validation
 	require.NotNil(t, resp, "response should not be nil")
@@ -2681,7 +2740,7 @@ func validateCompleteRegistrationResponse(t *testing.T, resp *tailcfg.RegisterRe
 	// Additional validation can be added here as needed
 }
 
-// Simple test to validate basic node creation and lookup
+// Simple test to validate basic node creation and lookup.
 func TestNodeStoreLookup(t *testing.T) {
 	app := createTestApp(t)
 
@@ -2713,8 +2772,10 @@ func TestNodeStoreLookup(t *testing.T) {
 
 	// Wait for node to be available in NodeStore
 	var node types.NodeView
+
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		var found bool
+
 		node, found = app.state.GetNodeByNodeKey(nodeKey.Public())
 		assert.True(c, found, "Node should be found in NodeStore")
 	}, 1*time.Second, 100*time.Millisecond, "waiting for node to be available in NodeStore")
@@ -2783,8 +2844,10 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 
 		// Get the node ID
 		var registeredNode types.NodeView
+
 		require.EventuallyWithT(t, func(c *assert.CollectT) {
 			var found bool
+
 			registeredNode, found = app.state.GetNodeByNodeKey(node.nodeKey.Public())
 			assert.True(c, found, "Node should be found in NodeStore")
 		}, 1*time.Second, 100*time.Millisecond, "waiting for node to be available")
@@ -2796,6 +2859,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 	// Verify initial state: user1 has 2 nodes, user2 has 2 nodes
 	user1Nodes := app.state.ListNodesByUser(types.UserID(user1.ID))
 	user2Nodes := app.state.ListNodesByUser(types.UserID(user2.ID))
+
 	require.Equal(t, 2, user1Nodes.Len(), "user1 should have 2 nodes initially")
 	require.Equal(t, 2, user2Nodes.Len(), "user2 should have 2 nodes initially")
 
@@ -2876,6 +2940,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 
 	// Verify new nodes were created for user1 with the same machine keys
 	t.Logf("Verifying new nodes created for user1 from user2's machine keys...")
+
 	for i := 2; i < 4; i++ {
 		node := nodes[i]
 		// Should be able to find a node with user1 and this machine key (the new one)
@@ -2899,7 +2964,7 @@ func TestPreAuthKeyLogoutAndReloginDifferentUser(t *testing.T) {
 // Expected behavior:
 // - User1's original node should STILL EXIST (expired)
 // - User2 should get a NEW node created (NOT transfer)
-// - Both nodes share the same machine key (same physical device)
+// - Both nodes share the same machine key (same physical device).
 func TestWebFlowReauthDifferentUser(t *testing.T) {
 	machineKey := key.NewMachine()
 	nodeKey1 := key.NewNode()
@@ -3043,6 +3108,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 		// Count nodes per user
 		user1Nodes := 0
 		user2Nodes := 0
+
 		for i := 0; i < allNodesSlice.Len(); i++ {
 			n := allNodesSlice.At(i)
 			if n.UserID().Get() == user1.ID {
@@ -3060,7 +3126,7 @@ func TestWebFlowReauthDifferentUser(t *testing.T) {
 	})
 }
 
-// Helper function to create test app
+// Helper function to create test app.
 func createTestApp(t *testing.T) *Headscale {
 	t.Helper()
 
@@ -3147,6 +3213,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	}
 
 	t.Log("Step 1: Initial registration with pre-auth key")
+
 	initialResp, err := app.handleRegister(context.Background(), initialReq, machineKey.Public())
 	require.NoError(t, err, "initial registration should succeed")
 	require.NotNil(t, initialResp)
@@ -3172,6 +3239,7 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 	// - System reboots
 	// The Tailscale client persists the pre-auth key in its state and sends it on every registration
 	t.Log("Step 2: Node restart - re-registration with same (now used) pre-auth key")
+
 	restartReq := tailcfg.RegisterRequest{
 		Auth: &tailcfg.RegisterResponseAuth{
 			AuthKey: pakNew.Key, // Same key, now marked as Used=true
@@ -3189,9 +3257,11 @@ func TestGitHubIssue2830_NodeRestartWithUsedPreAuthKey(t *testing.T) {
 
 	// This is the assertion that currently FAILS in v0.27.0
 	assert.NoError(t, err, "BUG: existing node re-registration with its own used pre-auth key should succeed")
+
 	if err != nil {
 		t.Logf("Error received (this is the bug): %v", err)
 		t.Logf("Expected behavior: Node should be able to re-register with the same pre-auth key it used initially")
+
 		return // Stop here to show the bug clearly
 	}
 

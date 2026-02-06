@@ -29,6 +29,7 @@ func netInfoFromMapRequest(
 			Uint64("node.id", nodeID.Uint64()).
 			Int("preferredDERP", currentHostinfo.NetInfo.PreferredDERP).
 			Msg("using NetInfo from previous Hostinfo in MapRequest")
+
 		return currentHostinfo.NetInfo
 	}
 

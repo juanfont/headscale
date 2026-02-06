@@ -266,6 +266,7 @@ func checkGoInstallation() DoctorResult {
 	}
 
 	cmd := exec.Command("go", "version")
+
 	output, err := cmd.Output()
 	if err != nil {
 		return DoctorResult{
@@ -287,6 +288,7 @@ func checkGoInstallation() DoctorResult {
 // checkGitRepository verifies we're in a git repository.
 func checkGitRepository() DoctorResult {
 	cmd := exec.Command("git", "rev-parse", "--git-dir")
+
 	err := cmd.Run()
 	if err != nil {
 		return DoctorResult{
@@ -316,9 +318,12 @@ func checkRequiredFiles() DoctorResult {
 	}
 
 	var missingFiles []string
+
 	for _, file := range requiredFiles {
 		cmd := exec.Command("test", "-e", file)
-		if err := cmd.Run(); err != nil {
+
+		err := cmd.Run()
+		if err != nil {
 			missingFiles = append(missingFiles, file)
 		}
 	}
@@ -350,6 +355,7 @@ func displayDoctorResults(results []DoctorResult) {
 
 	for _, result := range results {
 		var icon string
+
 		switch result.Status {
 		case "PASS":
 			icon = "✅"

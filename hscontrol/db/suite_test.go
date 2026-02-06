@@ -53,16 +53,19 @@ func newPostgresDBForTest(t *testing.T) *url.URL {
 	t.Helper()
 
 	ctx := t.Context()
+
 	srv, err := postgrestest.Start(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(srv.Cleanup)
 
 	u, err := srv.CreateDatabase(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Logf("created local postgres: %s", u)
 	pu, _ := url.Parse(u)
 

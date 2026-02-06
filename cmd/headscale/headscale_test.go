@@ -16,6 +16,7 @@ import (
 func TestConfigFileLoading(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "headscale")
 	require.NoError(t, err)
+
 	defer os.RemoveAll(tmpDir)
 
 	path, err := os.Getwd()
@@ -50,6 +51,7 @@ func TestConfigFileLoading(t *testing.T) {
 func TestConfigLoading(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "headscale")
 	require.NoError(t, err)
+
 	defer os.RemoveAll(tmpDir)
 
 	path, err := os.Getwd()

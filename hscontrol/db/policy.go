@@ -17,7 +17,8 @@ func (hsdb *HSDatabase) SetPolicy(policy string) (*types.Policy, error) {
 		Data: policy,
 	}
 
-	if err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error; err != nil {
+	err := hsdb.DB.Clauses(clause.Returning{}).Create(&p).Error
+	if err != nil {
 		return nil, err
 	}
 

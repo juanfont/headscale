@@ -38,8 +38,11 @@ type PolicyManager interface {
 
 // NewPolicyManager returns a new policy manager.
 func NewPolicyManager(pol []byte, users []types.User, nodes views.Slice[types.NodeView]) (PolicyManager, error) {
-	var polMan PolicyManager
-	var err error
+	var (
+		polMan PolicyManager
+		err    error
+	)
+
 	polMan, err = policyv2.NewPolicyManager(pol, users, nodes)
 	if err != nil {
 		return nil, err
@@ -59,6 +62,7 @@ func PolicyManagersForTest(pol []byte, users []types.User, nodes views.Slice[typ
 		if err != nil {
 			return nil, err
 		}
+
 		polMans = append(polMans, pm)
 	}
 

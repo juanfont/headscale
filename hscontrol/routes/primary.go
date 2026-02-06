@@ -109,9 +109,11 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 					Msg("current primary no longer available")
 			}
 		}
+
 		if len(nodes) >= 1 {
 			pr.primaries[prefix] = nodes[0]
 			changed = true
+
 			log.Debug().
 				Caller().
 				Str(zf.Prefix, prefix.String()).
@@ -128,6 +130,7 @@ func (pr *PrimaryRoutes) updatePrimaryLocked() bool {
 				Str(zf.Prefix, prefix.String()).
 				Msg("cleaning up primary route that no longer has available nodes")
 			delete(pr.primaries, prefix)
+
 			changed = true
 		}
 	}
@@ -164,14 +167,17 @@ func (pr *PrimaryRoutes) SetRoutes(node types.NodeID, prefixes ...netip.Prefix) 
 	// If no routes are being set, remove the node from the routes map.
 	if len(prefixes) == 0 {
 		wasPresent := false
+
 		if _, ok := pr.routes[node]; ok {
 			delete(pr.routes, node)
+
 			wasPresent = true
 
 			nlog.Debug().
 				Caller().
 				Msg("removed node from primary routes (no prefixes)")
 		}
+
 		changed := pr.updatePrimaryLocked()
 		nlog.Debug().
 			Caller().
@@ -253,12 +259,14 @@ func (pr *PrimaryRoutes) stringLocked() string {
 
 	ids := types.NodeIDs(xmaps.Keys(pr.routes))
 	sort.Sort(ids)
+
 	for _, id := range ids {
 		prefixes := pr.routes[id]
 		fmt.Fprintf(&sb, "\nNode %d: %s", id, strings.Join(util.PrefixesToString(prefixes.Slice()), ", "))
 	}
 
 	fmt.Fprintln(&sb, "\n\nCurrent primary routes:")
+
 	for route, nodeID := range pr.primaries {
 		fmt.Fprintf(&sb, "\nRoute %s: %d", route, nodeID)
 	}
