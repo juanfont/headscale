@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"os"
 	"os/exec"
@@ -177,7 +178,7 @@ func createSQLiteFromSQLFile(sqlFilePath, dbPath string) error {
 		return err
 	}
 
-	_, err = db.Exec(string(schemaContent))
+	_, err = db.ExecContext(context.Background(), string(schemaContent))
 
 	return err
 }
@@ -322,7 +323,7 @@ func TestPostgresMigrationAndDataValidation(t *testing.T) {
 			}
 
 			// Construct the pg_restore command
-			cmd := exec.Command(pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
+			cmd := exec.CommandContext(context.Background(), pgRestorePath, "--verbose", "--if-exists", "--clean", "--no-owner", "--dbname", u.String(), tt.dbPath)
 
 			// Set the output streams
 			cmd.Stdout = os.Stdout

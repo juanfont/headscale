@@ -571,7 +571,9 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
 
+	//nolint:goconst // test data, not worth extracting
 	user1 := "user1"
+	//nolint:goconst // test data, not worth extracting
 	user2 := "user2"
 
 	spec := ScenarioSpec{

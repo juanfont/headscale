@@ -27,6 +27,9 @@ import (
 const (
 	NodeGivenNameHashLength = 8
 	NodeGivenNameTrimSize   = 2
+
+	// defaultTestNodePrefix is the default hostname prefix for nodes created in tests.
+	defaultTestNodePrefix = "testnode"
 )
 
 // ErrNodeNameNotUnique is returned when a node name is not unique.
@@ -669,7 +672,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		panic("CreateNodeForTest requires a valid user")
 	}
 
-	nodeName := "testnode"
+	nodeName := defaultTestNodePrefix
 	if len(hostname) > 0 && hostname[0] != "" {
 		nodeName = hostname[0]
 	}
@@ -741,7 +744,7 @@ func (hsdb *HSDatabase) CreateNodesForTest(user *types.User, count int, hostname
 		panic("CreateNodesForTest requires a valid user")
 	}
 
-	prefix := "testnode"
+	prefix := defaultTestNodePrefix
 	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
 		prefix = hostnamePrefix[0]
 	}
@@ -764,7 +767,7 @@ func (hsdb *HSDatabase) CreateRegisteredNodesForTest(user *types.User, count int
 		panic("CreateRegisteredNodesForTest requires a valid user")
 	}
 
-	prefix := "testnode"
+	prefix := defaultTestNodePrefix
 	if len(hostnamePrefix) > 0 && hostnamePrefix[0] != "" {
 		prefix = hostnamePrefix[0]
 	}

@@ -10,6 +10,8 @@ import (
 	"tailscale.com/tailcfg"
 )
 
+const testUnknownNode = "unknown-node"
+
 func TestTailscaleVersionNewerOrEqual(t *testing.T) {
 	type args struct {
 		minimum string
@@ -835,7 +837,7 @@ func TestEnsureHostname(t *testing.T) {
 			hostinfo:   nil,
 			machineKey: "",
 			nodeKey:    "",
-			want:       "unknown-node",
+			want:       testUnknownNode,
 		},
 		{
 			name: "empty_hostname_with_machine_key",
@@ -862,7 +864,7 @@ func TestEnsureHostname(t *testing.T) {
 			},
 			machineKey: "",
 			nodeKey:    "",
-			want:       "unknown-node",
+			want:       testUnknownNode,
 		},
 		{
 			name: "hostname_exactly_63_chars",
@@ -1162,13 +1164,13 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			hostinfo:     nil,
 			machineKey:   "",
 			nodeKey:      "",
-			wantHostname: "unknown-node",
+			wantHostname: testUnknownNode,
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
 
-				if hi.Hostname != "unknown-node" {
+				if hi.Hostname != testUnknownNode {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
 			},
@@ -1180,13 +1182,13 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			},
 			machineKey:   "",
 			nodeKey:      "",
-			wantHostname: "unknown-node",
+			wantHostname: testUnknownNode,
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
 
-				if hi.Hostname != "unknown-node" {
+				if hi.Hostname != testUnknownNode {
 					t.Errorf("hostname = %v, want unknown-node", hi.Hostname)
 				}
 			},

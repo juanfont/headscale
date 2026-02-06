@@ -265,7 +265,7 @@ func checkGoInstallation() DoctorResult {
 		}
 	}
 
-	cmd := exec.Command("go", "version")
+	cmd := exec.CommandContext(context.Background(), "go", "version")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -287,7 +287,7 @@ func checkGoInstallation() DoctorResult {
 
 // checkGitRepository verifies we're in a git repository.
 func checkGitRepository() DoctorResult {
-	cmd := exec.Command("git", "rev-parse", "--git-dir")
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "--git-dir")
 
 	err := cmd.Run()
 	if err != nil {
@@ -320,7 +320,7 @@ func checkRequiredFiles() DoctorResult {
 	var missingFiles []string
 
 	for _, file := range requiredFiles {
-		cmd := exec.Command("test", "-e", file)
+		cmd := exec.CommandContext(context.Background(), "test", "-e", file)
 
 		err := cmd.Run()
 		if err != nil {

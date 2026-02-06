@@ -382,16 +382,14 @@ type UpdateInfo struct {
 }
 
 // parseUpdateAndAnalyze parses an update and returns detailed information.
-func parseUpdateAndAnalyze(resp *tailcfg.MapResponse) (UpdateInfo, error) {
-	info := UpdateInfo{
+func parseUpdateAndAnalyze(resp *tailcfg.MapResponse) UpdateInfo {
+	return UpdateInfo{
 		PeerCount:  len(resp.Peers),
 		PatchCount: len(resp.PeersChangedPatch),
 		IsFull:     len(resp.Peers) > 0,
 		IsPatch:    len(resp.PeersChangedPatch) > 0,
 		IsDERP:     resp.DERPMap != nil,
 	}
-
-	return info, nil
 }
 
 // start begins consuming updates from the node's channel and tracking stats.
@@ -413,7 +411,8 @@ func (n *node) start() {
 				atomic.AddInt64(&n.updateCount, 1)
 
 				// Parse update and track detailed stats
-				if info, err := parseUpdateAndAnalyze(data); err == nil {
+				info := parseUpdateAndAnalyze(data)
+				{
 					// Track update types
 					if info.IsFull {
 						atomic.AddInt64(&n.fullCount, 1)
@@ -840,7 +839,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			}
 
 			// Drain any initial messages from first node
-			drainChannelTimeout(tn.ch, "first node before second", 100*time.Millisecond)
+			drainChannelTimeout(tn.ch, 100*time.Millisecond)
 
 			// Add the second node and verify update message
 			_ = batcher.AddNode(tn2.n.ID, tn2.ch, 100)
@@ -909,18 +908,14 @@ func TestBatcherBasicOperations(t *testing.T) {
 	}
 }
 
-func drainChannelTimeout(ch <-chan *tailcfg.MapResponse, name string, timeout time.Duration) {
-	count := 0
-
+func drainChannelTimeout(ch <-chan *tailcfg.MapResponse, timeout time.Duration) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	for {
 		select {
-		case data := <-ch:
-			count++
-			// Optional: add debug output if needed
-			_ = data
+		case <-ch:
+			// Drain message
 		case <-timer.C:
 			return
 		}
@@ -1431,6 +1426,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 				for i := range numCycles {
 					for j := range churningNodes {
 						node := &churningNodes[j]
+
 						wg.Add(2)
 
 						// Connect churning node
@@ -1661,7 +1657,7 @@ func XTestBatcherScalability(t *testing.T) {
 		description string
 	}
 
-	var testCases []testCase
+	testCases := make([]testCase, 0, len(chaosTypes)*len(bufferSizes)*len(cycles)*len(nodes))
 
 	// Generate all combinations of the test matrix
 	for _, nodeCount := range nodes {
@@ -1773,6 +1769,7 @@ func XTestBatcherScalability(t *testing.T) {
 					for i := range testNodes {
 						node := &testNodes[i]
 						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+
 						connectedNodesMutex.Lock()
 
 						connectedNodes[node.n.ID] = true
@@ -2303,6 +2300,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 
 			for i := range allNodes {
 				node := &allNodes[i]
+
 				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
 				if err != nil {
 					t.Fatalf("Failed to add node %d: %v", i, err)

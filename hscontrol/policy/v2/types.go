@@ -1455,55 +1455,49 @@ func (p Protocol) Description() string {
 	}
 }
 
-// parseProtocol converts a Protocol to its IANA protocol numbers and wildcard requirement.
+// parseProtocol converts a Protocol to its IANA protocol numbers.
 // Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
-func (p Protocol) parseProtocol() ([]int, bool) {
+func (p Protocol) parseProtocol() []int {
 	switch p {
 	case "":
 		// Empty protocol applies to TCP, UDP, ICMP, and ICMPv6 traffic
 		// This matches Tailscale's behavior for protocol defaults
-		return []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}, false
+		return []int{ProtocolTCP, ProtocolUDP, ProtocolICMP, ProtocolIPv6ICMP}
 	case ProtocolNameWildcard:
 		// Wildcard protocol - defensive handling (should not reach here due to validation)
-		return nil, false
+		return nil
 	case ProtocolNameIGMP:
-		return []int{ProtocolIGMP}, true
+		return []int{ProtocolIGMP}
 	case ProtocolNameIPv4, ProtocolNameIPInIP:
-		return []int{ProtocolIPv4}, true
+		return []int{ProtocolIPv4}
 	case ProtocolNameTCP:
-		return []int{ProtocolTCP}, false
+		return []int{ProtocolTCP}
 	case ProtocolNameEGP:
-		return []int{ProtocolEGP}, true
+		return []int{ProtocolEGP}
 	case ProtocolNameIGP:
-		return []int{ProtocolIGP}, true
+		return []int{ProtocolIGP}
 	case ProtocolNameUDP:
-		return []int{ProtocolUDP}, false
+		return []int{ProtocolUDP}
 	case ProtocolNameGRE:
-		return []int{ProtocolGRE}, true
+		return []int{ProtocolGRE}
 	case ProtocolNameESP:
-		return []int{ProtocolESP}, true
+		return []int{ProtocolESP}
 	case ProtocolNameAH:
-		return []int{ProtocolAH}, true
+		return []int{ProtocolAH}
 	case ProtocolNameSCTP:
-		return []int{ProtocolSCTP}, false
+		return []int{ProtocolSCTP}
 	case ProtocolNameICMP:
 		// ICMP only - use "ipv6-icmp" or protocol number 58 for ICMPv6
-		return []int{ProtocolICMP}, true
+		return []int{ProtocolICMP}
 	case ProtocolNameIPv6ICMP:
-		return []int{ProtocolIPv6ICMP}, true
+		return []int{ProtocolIPv6ICMP}
 	case ProtocolNameFC:
-		return []int{ProtocolFC}, true
+		return []int{ProtocolFC}
 	default:
 		// Try to parse as a numeric protocol number
 		// This should not fail since validation happened during unmarshaling
 		protocolNumber, _ := strconv.Atoi(string(p))
-
-		// Determine if wildcard is needed based on protocol number
-		needsWildcard := protocolNumber != ProtocolTCP &&
-			protocolNumber != ProtocolUDP &&
-			protocolNumber != ProtocolSCTP
-
-		return []int{protocolNumber}, needsWildcard
+		return []int{protocolNumber}
 	}
 }
 

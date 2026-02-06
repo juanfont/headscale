@@ -47,6 +47,11 @@ const (
 	// TimestampFormatRunID is used for generating unique run identifiers
 	// Format: "20060102-150405" provides compact date-time for file/directory names.
 	TimestampFormatRunID = "20060102-150405"
+
+	// stateOnline is the string representation for online state in logs.
+	stateOnline = "online"
+	// stateOffline is the string representation for offline state in logs.
+	stateOffline = "offline"
 )
 
 var errNoNewClientFound = errors.New("no new client found")
@@ -160,9 +165,9 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 
 	startTime := time.Now()
 
-	stateStr := "offline"
+	stateStr := stateOffline
 	if expectedOnline {
-		stateStr = "online"
+		stateStr = stateOnline
 	}
 
 	t.Logf("requireAllSystemsOnline: Starting %s validation for %d nodes at %s - %s", stateStr, len(expectedNodes), startTime.Format(TimestampFormat), message)
@@ -172,7 +177,7 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 		requireAllClientsOnlineWithSingleTimeout(t, headscale, expectedNodes, expectedOnline, message, timeout)
 	} else {
 		// For offline validation, use staged approach with component-specific timeouts
-		requireAllClientsOfflineStaged(t, headscale, expectedNodes, message, timeout)
+		requireAllClientsOfflineStaged(t, headscale, expectedNodes)
 	}
 
 	endTime := time.Now()
@@ -330,9 +335,9 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			if !systemsMatch {
 				allMatch = false
 
-				stateStr := "offline"
+				stateStr := stateOffline
 				if expectedOnline {
-					stateStr = "online"
+					stateStr = stateOnline
 				}
 
 				failureReport.WriteString(fmt.Sprintf("node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat)))
@@ -359,9 +364,9 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			assert.Fail(c, failureReport.String())
 		}
 
-		stateStr := "offline"
+		stateStr := stateOffline
 		if expectedOnline {
-			stateStr = "online"
+			stateStr = stateOnline
 		}
 
 		assert.True(c, allMatch, "Not all %d nodes are %s across all systems (batcher, mapresponses, nodestore)", len(expectedNodes), stateStr)
@@ -369,7 +374,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 }
 
 // requireAllClientsOfflineStaged validates offline state with staged timeouts for different components.
-func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, totalTimeout time.Duration) {
+func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
 	// Stage 1: Verify batcher disconnection (should be immediate)
@@ -470,6 +475,8 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 // requireAllClientsNetInfoAndDERP validates that all nodes have NetInfo in the database
 // and a valid DERP server based on the NetInfo. This function follows the pattern of
 // requireAllClientsOnline by using hsic.DebugNodeStore to get the database state.
+//
+//nolint:unparam // timeout is configurable for flexibility even though callers currently use same value
 func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, timeout time.Duration) {
 	t.Helper()
 
@@ -559,6 +566,8 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 // pingAllHelper performs ping tests between all clients and addresses, returning success count.
 // This is used to validate network connectivity in integration tests.
 // Returns the total number of successful ping operations.
+//
+//nolint:unparam // opts is variadic for extensibility even though callers currently don't pass options
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
 	t.Helper()
 

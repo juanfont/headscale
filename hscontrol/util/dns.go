@@ -181,10 +181,10 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	// wildcardBits is the number of bits not under the mask in the lastOctet
 	wildcardBits := ByteSize - maskBits%ByteSize
 
-	// min is the value in the lastOctet byte of the IP
-	// max is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
-	min := uint(netRange.IP[lastOctet])
-	max := (min + 1<<uint(wildcardBits)) - 1
+	// minVal is the value in the lastOctet byte of the IP
+	// maxVal is basically 2^wildcardBits - i.e., the value when all the wildcardBits are set to 1
+	minVal := uint(netRange.IP[lastOctet])
+	maxVal := (minVal + 1<<uint(wildcardBits)) - 1 //nolint:gosec // wildcardBits is always < 8, no overflow
 
 	// here we generate the base domain (e.g., 100.in-addr.arpa., 16.172.in-addr.arpa., etc.)
 	rdnsSlice := []string{}
@@ -195,8 +195,8 @@ func GenerateIPv4DNSRootDomain(ipPrefix netip.Prefix) []dnsname.FQDN {
 	rdnsSlice = append(rdnsSlice, "in-addr.arpa.")
 	rdnsBase := strings.Join(rdnsSlice, ".")
 
-	fqdns := make([]dnsname.FQDN, 0, max-min+1)
-	for i := min; i <= max; i++ {
+	fqdns := make([]dnsname.FQDN, 0, maxVal-minVal+1)
+	for i := minVal; i <= maxVal; i++ {
 		fqdn, err := dnsname.ToFQDN(fmt.Sprintf("%d.%s", i, rdnsBase))
 		if err != nil {
 			continue

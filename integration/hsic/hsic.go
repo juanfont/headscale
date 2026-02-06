@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"cmp"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"log"
 	"maps"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -218,6 +220,8 @@ func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
 // and only use the embedded DERP server.
 // It requires WithTLS and WithHostnameAsServerURL to be
 // set.
+//
+//nolint:goconst // env var values like "true" and "headscale" are clearer inline
 func WithEmbeddedDERPServerOnly() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_DERP_URLS"] = ""
@@ -700,7 +704,12 @@ func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
 }
 
 func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
-	resp, err := http.Get(fmt.Sprintf("http://%s:9090/metrics", t.hostname))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+net.JoinHostPort(t.hostname, "9090")+"/metrics", nil)
+	if err != nil {
+		return fmt.Errorf("creating metrics request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("getting metrics: %w", err)
 	}

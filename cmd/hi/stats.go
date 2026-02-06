@@ -403,25 +403,25 @@ func calculateStatsSummary(values []float64) StatsSummary {
 		return StatsSummary{}
 	}
 
-	min := values[0]
-	max := values[0]
+	minVal := values[0]
+	maxVal := values[0]
 	sum := 0.0
 
 	for _, value := range values {
-		if value < min {
-			min = value
+		if value < minVal {
+			minVal = value
 		}
 
-		if value > max {
-			max = value
+		if value > maxVal {
+			maxVal = value
 		}
 
 		sum += value
 	}
 
 	return StatsSummary{
-		Min:     min,
-		Max:     max,
+		Min:     minVal,
+		Max:     maxVal,
 		Average: sum / float64(len(values)),
 	}
 }

@@ -86,13 +86,12 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	const erPath = "/tmp/extra_records.json"
 
-	extraRecords := []tailcfg.DNSRecord{
-		{
-			Name:  "test.myvpn.example.com",
-			Type:  "A",
-			Value: "6.6.6.6",
-		},
-	}
+	extraRecords := make([]tailcfg.DNSRecord, 0, 2)
+	extraRecords = append(extraRecords, tailcfg.DNSRecord{
+		Name:  "test.myvpn.example.com",
+		Type:  "A",
+		Value: "6.6.6.6",
+	})
 	b, _ := json.Marshal(extraRecords) //nolint:errchkjson
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{

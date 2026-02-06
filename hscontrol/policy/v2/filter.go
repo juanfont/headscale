@@ -48,7 +48,7 @@ func (pol *Policy) compileFilterRules(
 			continue
 		}
 
-		protocols, _ := acl.Protocol.parseProtocol()
+		protocols := acl.Protocol.parseProtocol()
 
 		var destPorts []tailcfg.NetPortRange
 
@@ -165,7 +165,7 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		}
 	}
 
-	protocols, _ := acl.Protocol.parseProtocol()
+	protocols := acl.Protocol.parseProtocol()
 
 	var rules []*tailcfg.FilterRule
 

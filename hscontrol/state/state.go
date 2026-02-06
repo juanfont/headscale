@@ -230,6 +230,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 	// propagate correctly when switching between policy types.
 	s.nodeStore.RebuildPeerMaps()
 
+	//nolint:prealloc // cs starts with one element and may grow
 	cs := []change.Change{change.PolicyChange()}
 
 	// Always call autoApproveNodes during policy reload, regardless of whether

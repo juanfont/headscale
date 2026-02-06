@@ -931,8 +931,6 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 
 // --- Batching: concurrent ops fit in one batch ---.
 func TestNodeStoreBatchingEfficiency(t *testing.T) {
-	const batchSize = 10
-
 	const ops = 15 // more than batchSize
 
 	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)

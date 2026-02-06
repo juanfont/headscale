@@ -243,10 +243,7 @@ var listNodeRoutesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodeRoutesToPtables(nodes)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-		}
+		tableData := nodeRoutesToPtables(nodes)
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
@@ -629,7 +626,7 @@ func nodesToPtables(
 
 func nodeRoutesToPtables(
 	nodes []*v1.Node,
-) (pterm.TableData, error) {
+) pterm.TableData {
 	tableHeader := []string{
 		"ID",
 		"Hostname",
@@ -653,7 +650,7 @@ func nodeRoutesToPtables(
 		)
 	}
 
-	return tableData, nil
+	return tableData
 }
 
 var tagCmd = &cobra.Command{

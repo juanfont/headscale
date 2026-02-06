@@ -327,11 +327,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		}
 
 		// TODO(kradalby): replace with go-elem
-		content, err := renderOIDCCallbackTemplate(user, verb)
-		if err != nil {
-			httpError(writer, err)
-			return
-		}
+		content := renderOIDCCallbackTemplate(user, verb)
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
@@ -604,9 +600,9 @@ func (a *AuthProviderOIDC) handleRegistration(
 func renderOIDCCallbackTemplate(
 	user *types.User,
 	verb string,
-) (*bytes.Buffer, error) {
+) *bytes.Buffer {
 	html := templates.OIDCCallback(user.Display(), verb).Render()
-	return bytes.NewBufferString(html), nil
+	return bytes.NewBufferString(html)
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.

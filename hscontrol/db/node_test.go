@@ -625,10 +625,10 @@ func TestEphemeralGarbageCollectorLoads(t *testing.T) {
 }
 
 //nolint:unused
-func generateRandomNumber(t *testing.T, max int64) int64 {
+func generateRandomNumber(t *testing.T, maxVal int64) int64 {
 	t.Helper()
 
-	maxB := big.NewInt(max)
+	maxB := big.NewInt(maxVal)
 
 	n, err := rand.Int(rand.Reader, maxB)
 	if err != nil {

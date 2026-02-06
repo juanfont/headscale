@@ -623,7 +623,7 @@ func (h *Headscale) Serve() error {
 		return fmt.Errorf("setting up unix socket: %w", err)
 	}
 
-	socketListener, err := net.Listen("unix", h.cfg.UnixSocket)
+	socketListener, err := new(net.ListenConfig).Listen(context.Background(), "unix", h.cfg.UnixSocket)
 	if err != nil {
 		return fmt.Errorf("setting up gRPC socket: %w", err)
 	}
@@ -716,7 +716,7 @@ func (h *Headscale) Serve() error {
 		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
 		reflection.Register(grpcServer)
 
-		grpcListener, err = net.Listen("tcp", h.cfg.GRPCAddr)
+		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
 		if err != nil {
 			return fmt.Errorf("binding to TCP address: %w", err)
 		}
@@ -751,7 +751,7 @@ func (h *Headscale) Serve() error {
 		httpServer.TLSConfig = tlsConfig
 		httpListener, err = tls.Listen("tcp", h.cfg.Addr, tlsConfig)
 	} else {
-		httpListener, err = net.Listen("tcp", h.cfg.Addr)
+		httpListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.Addr)
 	}
 
 	if err != nil {
@@ -788,12 +788,14 @@ func (h *Headscale) Serve() error {
 
 	if tailsqlEnabled {
 		if h.cfg.Database.Type != types.DatabaseSqlite {
+			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
 			log.Fatal().
 				Str("type", h.cfg.Database.Type).
 				Msgf("tailsql only support %q", types.DatabaseSqlite)
 		}
 
 		if tailsqlTSKey == "" {
+			//nolint:gocritic // exitAfterDefer: Fatal exits during initialization before servers start
 			log.Fatal().Msg("tailsql requires TS_AUTHKEY to be set")
 		}
 

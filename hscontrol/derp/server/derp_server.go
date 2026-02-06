@@ -101,12 +101,12 @@ func (d *DERPServer) GenerateRegion() (tailcfg.DERPRegion, error) {
 
 	// If debug flag is set, resolve hostname to IP address
 	if debugUseDERPIP {
-		ips, err := net.LookupIP(host)
+		ips, err := new(net.Resolver).LookupIPAddr(context.Background(), host)
 		if err != nil {
 			log.Error().Caller().Err(err).Msgf("failed to resolve DERP hostname %s to IP, using hostname", host)
 		} else if len(ips) > 0 {
 			// Use the first IP address
-			ipStr := ips[0].String()
+			ipStr := ips[0].IP.String()
 			log.Info().Caller().Msgf("HEADSCALE_DEBUG_DERP_USE_IP: resolved %s to %s", host, ipStr)
 			host = ipStr
 		}
@@ -355,7 +355,7 @@ func DERPBootstrapDNSHandler(
 
 // ServeSTUN starts a STUN server on the configured addr.
 func (d *DERPServer) ServeSTUN() {
-	packetConn, err := net.ListenPacket("udp", d.cfg.STUNAddr)
+	packetConn, err := new(net.ListenConfig).ListenPacket(context.Background(), "udp", d.cfg.STUNAddr)
 	if err != nil {
 		log.Fatal().Msgf("failed to open STUN listener: %v", err)
 	}

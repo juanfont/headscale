@@ -799,7 +799,7 @@ func TestReduceNodes(t *testing.T) {
 
 func TestReduceNodesFromPolicy(t *testing.T) {
 	n := func(id types.NodeID, ip, hostname, username string, routess ...string) *types.Node {
-		var routes []netip.Prefix
+		routes := make([]netip.Prefix, 0, len(routess))
 		for _, route := range routess {
 			routes = append(routes, netip.MustParsePrefix(route))
 		}

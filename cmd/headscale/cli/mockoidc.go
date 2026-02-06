@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -99,7 +100,7 @@ func mockOIDC() error {
 		return err
 	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addrStr, port))
+	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", fmt.Sprintf("%s:%d", addrStr, port))
 	if err != nil {
 		return err
 	}

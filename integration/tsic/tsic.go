@@ -1355,14 +1355,14 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 		opt(&args)
 	}
 
-	command := []string{
+	command := make([]string, 0, 6)
+	command = append(command,
 		"tailscale", "ping",
 		fmt.Sprintf("--timeout=%s", args.timeout),
 		fmt.Sprintf("--c=%d", args.count),
-		"--until-direct=" + strconv.FormatBool(args.direct),
-	}
-
-	command = append(command, hostnameOrIP)
+		"--until-direct="+strconv.FormatBool(args.direct),
+		hostnameOrIP,
+	)
 
 	result, _, err := t.Execute(
 		command,

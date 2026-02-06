@@ -14,7 +14,7 @@ import (
 	"tailscale.com/types/ptr"
 )
 
-func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) *types.Node {
+func node(name, ipv4, ipv6 string, user types.User) *types.Node {
 	return &types.Node{
 		ID:       0,
 		Hostname: name,
@@ -22,7 +22,6 @@ func node(name, ipv4, ipv6 string, user types.User, hostinfo *tailcfg.Hostinfo) 
 		IPv6:     ap(ipv6),
 		User:     ptr.To(user),
 		UserID:   ptr.To(user.ID),
-		Hostinfo: hostinfo,
 	}
 }
 
@@ -89,10 +88,10 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 	}`
 
 	initialNodes := types.Nodes{
-		node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0], nil),
-		node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0], nil),
-		node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-		node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+		node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+		node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+		node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+		node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 	}
 
 	for i, n := range initialNodes {
@@ -119,10 +118,10 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{
 			name: "no_changes",
 			newNodes: types.Nodes{
-				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0], nil),
-				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0], nil),
-				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 			},
 			expectedCleared: 0,
 			description:     "No changes should clear no cache entries",
@@ -130,11 +129,11 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{
 			name: "node_added",
 			newNodes: types.Nodes{
-				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0], nil),
-				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0], nil),
-				node("user1-node3", "100.64.0.5", "fd7a:115c:a1e0::5", users[0], nil), // New node
-				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+				node("user1-node3", "100.64.0.5", "fd7a:115c:a1e0::5", users[0]), // New node
+				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 			},
 			expectedCleared: 2, // user1's existing nodes should be cleared
 			description:     "Adding a node should clear cache for that user's existing nodes",
@@ -142,10 +141,10 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{
 			name: "node_removed",
 			newNodes: types.Nodes{
-				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0], nil),
+				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
 				// user1-node2 removed
-				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 			},
 			expectedCleared: 2, // user1's remaining node + removed node should be cleared
 			description:     "Removing a node should clear cache for that user's remaining nodes",
@@ -153,10 +152,10 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{
 			name: "user_changed",
 			newNodes: types.Nodes{
-				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0], nil),
-				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[2], nil), // Changed to user3
-				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+				node("user1-node1", "100.64.0.1", "fd7a:115c:a1e0::1", users[0]),
+				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[2]), // Changed to user3
+				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 			},
 			expectedCleared: 3, // user1's node + user2's node + user3's nodes should be cleared
 			description:     "Changing a node's user should clear cache for both old and new users",
@@ -164,10 +163,10 @@ func TestInvalidateAutogroupSelfCache(t *testing.T) {
 		{
 			name: "ip_changed",
 			newNodes: types.Nodes{
-				node("user1-node1", "100.64.0.10", "fd7a:115c:a1e0::10", users[0], nil), // IP changed
-				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0], nil),
-				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1], nil),
-				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2], nil),
+				node("user1-node1", "100.64.0.10", "fd7a:115c:a1e0::10", users[0]), // IP changed
+				node("user1-node2", "100.64.0.2", "fd7a:115c:a1e0::2", users[0]),
+				node("user2-node1", "100.64.0.3", "fd7a:115c:a1e0::3", users[1]),
+				node("user3-node1", "100.64.0.4", "fd7a:115c:a1e0::4", users[2]),
 			},
 			expectedCleared: 2, // user1's nodes should be cleared
 			description:     "Changing a node's IP should clear cache for that user's nodes",
@@ -381,9 +380,9 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 	users := types.Users{user1, user2}
 
 	// Create two nodes
-	node1 := node("node1", "100.64.0.1", "fd7a:115c:a1e0::1", user1, nil)
+	node1 := node("node1", "100.64.0.1", "fd7a:115c:a1e0::1", user1)
 	node1.ID = 1
-	node2 := node("node2", "100.64.0.2", "fd7a:115c:a1e0::2", user2, nil)
+	node2 := node("node2", "100.64.0.2", "fd7a:115c:a1e0::2", user2)
 	node2.ID = 2
 	nodes := types.Nodes{node1, node2}
 
