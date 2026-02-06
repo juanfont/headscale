@@ -1053,7 +1053,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 	require.NotEqual(t, redirect1.String(), redirect2.String())
 
 	// complete auth with the first opened "browser tab"
-	_, redirect1, err = doLoginURLWithClient(ts.Hostname(), redirect1, loginClient, true)
+	_, _, err = doLoginURLWithClient(ts.Hostname(), redirect1, loginClient, true)
 	require.NoError(t, err)
 
 	listUsers, err = headscale.ListUsers()

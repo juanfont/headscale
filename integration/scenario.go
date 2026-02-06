@@ -96,7 +96,7 @@ type User struct {
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
-	controlServers *xsync.MapOf[string, ControlServer]
+	controlServers *xsync.Map[string, ControlServer]
 	derpServers    []*dsic.DERPServerInContainer
 
 	users map[string]*User
@@ -180,7 +180,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 	testHashPrefix := "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
 	s := &Scenario{
-		controlServers: xsync.NewMapOf[string, ControlServer](),
+		controlServers: xsync.NewMap[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool: pool,
