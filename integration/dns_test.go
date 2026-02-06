@@ -169,7 +169,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 
 	// Write a new file and copy it to the path to ensure the reload
 	// works when a file is copied into place.
-	b3, _ := json.Marshal([]tailcfg.DNSRecord{
+	b3, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "copy.myvpn.example.com",
 			Type:  "A",
@@ -187,7 +187,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	}
 
 	// Write in place to ensure pipe like behaviour works
-	b4, _ := json.Marshal([]tailcfg.DNSRecord{
+	b4, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
