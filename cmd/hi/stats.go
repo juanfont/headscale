@@ -47,8 +47,8 @@ type StatsCollector struct {
 }
 
 // NewStatsCollector creates a new stats collector instance.
-func NewStatsCollector() (*StatsCollector, error) {
-	cli, err := createDockerClient()
+func NewStatsCollector(ctx context.Context) (*StatsCollector, error) {
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("creating Docker client: %w", err)
 	}

@@ -55,7 +55,7 @@ func cleanupAfterTest(ctx context.Context, cli *client.Client, containerID, runI
 
 // killTestContainers terminates and removes all test containers.
 func killTestContainers(ctx context.Context) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -109,7 +109,7 @@ func killTestContainers(ctx context.Context) error {
 // This function filters containers by the hi.run-id label to only affect containers
 // belonging to the specified test run, leaving other concurrent test runs untouched.
 func killTestContainersByRunID(ctx context.Context, runID string) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -151,7 +151,7 @@ func killTestContainersByRunID(ctx context.Context, runID string) error {
 // This is useful for cleaning up leftover containers from previous crashed or interrupted test runs
 // without interfering with currently running concurrent tests.
 func cleanupStaleTestContainers(ctx context.Context) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -225,7 +225,7 @@ func removeContainerWithRetry(ctx context.Context, cli *client.Client, container
 
 // pruneDockerNetworks removes unused Docker networks.
 func pruneDockerNetworks(ctx context.Context) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -247,7 +247,7 @@ func pruneDockerNetworks(ctx context.Context) error {
 
 // cleanOldImages removes test-related and old dangling Docker images.
 func cleanOldImages(ctx context.Context) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -299,7 +299,7 @@ func cleanOldImages(ctx context.Context) error {
 
 // cleanCacheVolume removes the Docker volume used for Go module cache.
 func cleanCacheVolume(ctx context.Context) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}

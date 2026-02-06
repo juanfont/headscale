@@ -33,7 +33,7 @@ var (
 
 // runTestContainer executes integration tests in a Docker container.
 func runTestContainer(ctx context.Context, config *RunConfig) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
@@ -104,7 +104,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	if config.Stats {
 		var err error
 
-		statsCollector, err = NewStatsCollector()
+		statsCollector, err = NewStatsCollector(ctx)
 		if err != nil {
 			if config.Verbose {
 				log.Printf("Warning: failed to create stats collector: %v", err)
@@ -447,8 +447,8 @@ type DockerContext struct {
 }
 
 // createDockerClient creates a Docker client with context detection.
-func createDockerClient() (*client.Client, error) {
-	contextInfo, err := getCurrentDockerContext()
+func createDockerClient(ctx context.Context) (*client.Client, error) {
+	contextInfo, err := getCurrentDockerContext(ctx)
 	if err != nil {
 		return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	}
@@ -479,8 +479,8 @@ func createDockerClient() (*client.Client, error) {
 }
 
 // getCurrentDockerContext retrieves the current Docker context information.
-func getCurrentDockerContext() (*DockerContext, error) {
-	cmd := exec.CommandContext(context.Background(), "docker", "context", "inspect")
+func getCurrentDockerContext(ctx context.Context) (*DockerContext, error) {
+	cmd := exec.CommandContext(ctx, "docker", "context", "inspect")
 
 	output, err := cmd.Output()
 	if err != nil {
@@ -626,7 +626,7 @@ func listControlFiles(logsDir string) {
 
 // extractArtifactsFromContainers collects container logs and files from the specific test run.
 func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Docker client: %w", err)
 	}
