@@ -969,3 +969,46 @@ func TestHasNetworkChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeProto_ClientVersion(t *testing.T) {
+	tests := []struct {
+		name        string
+		hostinfo    *tailcfg.Hostinfo
+		wantVersion string
+	}{
+		{
+			name:        "node-with-client-version",
+			hostinfo:    &tailcfg.Hostinfo{IPNVersion: "1.50.0"},
+			wantVersion: "1.50.0",
+		},
+		{
+			name:        "node-with-different-version",
+			hostinfo:    &tailcfg.Hostinfo{IPNVersion: "1.76.1"},
+			wantVersion: "1.76.1",
+		},
+		{
+			name:        "node-without-hostinfo",
+			hostinfo:    nil,
+			wantVersion: "",
+		},
+		{
+			name:        "node-with-empty-version",
+			hostinfo:    &tailcfg.Hostinfo{IPNVersion: ""},
+			wantVersion: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			node := &Node{
+				ID:       1,
+				Hostname: "test-node",
+				Hostinfo: tt.hostinfo,
+			}
+			proto := node.Proto()
+			if got := proto.GetClientVersion(); got != tt.wantVersion {
+				t.Errorf("Proto().GetClientVersion() = %q, want %q", got, tt.wantVersion)
+			}
+		})
+	}
+}
