@@ -29,6 +29,9 @@ const (
 	NodeGivenNameTrimSize   = 2
 )
 
+// ErrNodeNameNotUnique is returned when a node name is not unique.
+var ErrNodeNameNotUnique = errors.New("node name is not unique")
+
 var invalidDNSRegex = regexp.MustCompile("[^a-z0-9-.]+")
 
 var (
@@ -300,7 +303,7 @@ func RenameNode(tx *gorm.DB,
 	}
 
 	if count > 0 {
-		return errors.New("name is not unique")
+		return ErrNodeNameNotUnique
 	}
 
 	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {

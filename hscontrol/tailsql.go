@@ -13,6 +13,9 @@ import (
 	"tailscale.com/types/logger"
 )
 
+// ErrNoCertDomains is returned when no cert domains are available for HTTPS.
+var ErrNoCertDomains = errors.New("no cert domains available for HTTPS")
+
 func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath string) error {
 	opts := tailsql.Options{
 		Hostname: "tailsql-headscale",
@@ -73,7 +76,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 		// When serving TLS, add a redirect from HTTP on port 80 to HTTPS on 443.
 		certDomains := tsNode.CertDomains()
 		if len(certDomains) == 0 {
-			return errors.New("no cert domains available for HTTPS")
+			return ErrNoCertDomains
 		}
 
 		base := "https://" + certDomains[0]

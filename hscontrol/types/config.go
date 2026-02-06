@@ -845,7 +845,7 @@ func prefixV4() (*netip.Prefix, error) {
 	prefixV4Str := viper.GetString("prefixes.v4")
 
 	if prefixV4Str == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // empty prefix is valid, not an error
 	}
 
 	prefixV4, err := netip.ParsePrefix(prefixV4Str)
@@ -870,7 +870,7 @@ func prefixV6() (*netip.Prefix, error) {
 	prefixV6Str := viper.GetString("prefixes.v6")
 
 	if prefixV6Str == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // empty prefix is valid, not an error
 	}
 
 	prefixV6, err := netip.ParsePrefix(prefixV6Str)

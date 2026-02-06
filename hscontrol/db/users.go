@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	ErrUserExists        = errors.New("user already exists")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserStillHasNodes = errors.New("user not empty: node(s) found")
+	ErrUserExists            = errors.New("user already exists")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrUserStillHasNodes     = errors.New("user not empty: node(s) found")
+	ErrUserWhereInvalidCount = errors.New("expect 0 or 1 where User structs")
+	ErrUserNotUnique         = errors.New("expected exactly one user")
 )
 
 func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
@@ -158,7 +160,7 @@ func (hsdb *HSDatabase) ListUsers(where ...*types.User) ([]types.User, error) {
 // ListUsers gets all the existing users.
 func ListUsers(tx *gorm.DB, where ...*types.User) ([]types.User, error) {
 	if len(where) > 1 {
-		return nil, fmt.Errorf("expect 0 or 1 where User structs, got %d", len(where))
+		return nil, fmt.Errorf("%w, got %d", ErrUserWhereInvalidCount, len(where))
 	}
 
 	var user *types.User
@@ -189,7 +191,7 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 	}
 
 	if len(users) != 1 {
-		return nil, fmt.Errorf("expected exactly one user, found %d", len(users))
+		return nil, fmt.Errorf("%w, found %d", ErrUserNotUnique, len(users))
 	}
 
 	return &users[0], nil

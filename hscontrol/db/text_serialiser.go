@@ -3,10 +3,17 @@ package db
 import (
 	"context"
 	"encoding"
+	"errors"
 	"fmt"
 	"reflect"
 
 	"gorm.io/gorm/schema"
+)
+
+var (
+	errUnmarshalTextValue = errors.New("unmarshalling text value")
+	errUnsupportedType    = errors.New("unsupported type")
+	errTextMarshalerOnly  = errors.New("only encoding.TextMarshaler is supported")
 )
 
 // Got from https://github.com/xdg-go/strum/blob/main/types.go
@@ -49,7 +56,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 		case string:
 			bytes = []byte(v)
 		default:
-			return fmt.Errorf("unmarshalling text value: %#v", dbValue)
+			return fmt.Errorf("%w: %#v", errUnmarshalTextValue, dbValue)
 		}
 
 		if isTextUnmarshaler(fieldValue) {
@@ -75,7 +82,7 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 			return nil
 		} else {
-			return fmt.Errorf("unsupported type: %T", fieldValue.Interface())
+			return fmt.Errorf("%w: %T", errUnsupportedType, fieldValue.Interface())
 		}
 	}
 
@@ -99,6 +106,6 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 
 		return string(b), nil
 	default:
-		return nil, fmt.Errorf("only encoding.TextMarshaler is supported, got %t", v)
+		return nil, fmt.Errorf("%w, got %T", errTextMarshalerOnly, v)
 	}
 }

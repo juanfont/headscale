@@ -19,6 +19,9 @@ import (
 	"tailscale.com/types/key"
 )
 
+// ErrUnsupportedClientVersion is returned when a client connects with an unsupported protocol version.
+var ErrUnsupportedClientVersion = errors.New("unsupported client version")
+
 const (
 	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade.
 	ts2021UpgradePath = "/ts2021"
@@ -117,7 +120,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 }
 
 func unsupportedClientError(version tailcfg.CapabilityVersion) error {
-	return fmt.Errorf("unsupported client version: %s (%d)", capver.TailscaleVersion(version), version)
+	return fmt.Errorf("%w: %s (%d)", ErrUnsupportedClientVersion, capver.TailscaleVersion(version), version)
 }
 
 func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {

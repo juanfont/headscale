@@ -17,7 +17,11 @@ import (
 	"tailscale.com/net/tsaddr"
 )
 
-var errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
+var (
+	errGeneratedIPBytesInvalid = errors.New("generated ip bytes are invalid ip")
+	errGeneratedIPNotInPrefix  = errors.New("generated ip not in prefix")
+	errIPAllocatorNil          = errors.New("ip allocator was nil")
+)
 
 // IPAllocator is a singleton responsible for allocating
 // IP addresses for nodes and making sure the same
@@ -251,7 +255,8 @@ func randomNext(pfx netip.Prefix) (netip.Addr, error) {
 
 	if !pfx.Contains(ip) {
 		return netip.Addr{}, fmt.Errorf(
-			"generated ip(%s) not in prefix(%s)",
+			"%w: ip(%s) not in prefix(%s)",
+			errGeneratedIPNotInPrefix,
 			ip.String(),
 			pfx.String(),
 		)
@@ -283,7 +288,7 @@ func (db *HSDatabase) BackfillNodeIPs(i *IPAllocator) ([]string, error) {
 
 	err = db.Write(func(tx *gorm.DB) error {
 		if i == nil {
-			return errors.New("backfilling IPs: ip allocator was nil")
+			return fmt.Errorf("backfilling IPs: %w", errIPAllocatorNil)
 		}
 
 		log.Trace().Caller().Msgf("starting to backfill IPs")
