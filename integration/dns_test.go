@@ -93,7 +93,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			Value: "6.6.6.6",
 		},
 	}
-	b, _ := json.Marshal(extraRecords)
+	b, _ := json.Marshal(extraRecords) //nolint:errchkjson
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithPackages("python3", "curl", "bind-tools"),
@@ -133,7 +133,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 	require.NoError(t, err)
 
 	// Write the file directly into place from the docker API.
-	b0, _ := json.Marshal([]tailcfg.DNSRecord{
+	b0, _ := json.Marshal([]tailcfg.DNSRecord{ //nolint:errchkjson
 		{
 			Name:  "docker.myvpn.example.com",
 			Type:  "A",
@@ -155,7 +155,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 		Type:  "A",
 		Value: "7.7.7.7",
 	})
-	b2, _ := json.Marshal(extraRecords)
+	b2, _ := json.Marshal(extraRecords) //nolint:errchkjson
 
 	err = hs.WriteFile(erPath+"2", b2)
 	require.NoError(t, err)

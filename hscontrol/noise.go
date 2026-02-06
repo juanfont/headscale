@@ -248,7 +248,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		return
 	}
 
-	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) {
+	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) { //nolint:contextcheck
 		var resp *tailcfg.RegisterResponse
 
 		body, err := io.ReadAll(req.Body)

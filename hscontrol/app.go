@@ -299,7 +299,7 @@ func (h *Headscale) scheduledTasks(ctx context.Context) {
 		case <-derpTickerChan:
 			log.Info().Msg("fetching DERPMap updates")
 
-			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) {
+			derpMap, err := backoff.Retry(ctx, func() (*tailcfg.DERPMap, error) { //nolint:contextcheck
 				derpMap, err := derp.GetDERPMap(h.cfg.DERP)
 				if err != nil {
 					return nil, err

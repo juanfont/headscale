@@ -1658,7 +1658,7 @@ func TestPolicyCommand(t *testing.T) {
 		},
 	}
 
-	pBytes, _ := json.Marshal(p)
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
 
 	policyFilePath := "/etc/headscale/policy.json"
 
@@ -1745,7 +1745,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 		},
 	}
 
-	pBytes, _ := json.Marshal(p)
+	pBytes, _ := json.Marshal(p) //nolint:errchkjson
 
 	policyFilePath := "/etc/headscale/policy.json"
 

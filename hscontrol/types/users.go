@@ -61,7 +61,7 @@ func (u Users) String() string {
 // At the end of the day, users in Tailscale are some kind of 'bubbles' or users
 // that contain our machines.
 type User struct {
-	gorm.Model
+	gorm.Model //nolint:embeddedstructfieldcheck
 
 	// The index `idx_name_provider_identifier` is to enforce uniqueness
 	// between Name and ProviderIdentifier. This ensures that

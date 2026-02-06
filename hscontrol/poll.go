@@ -30,7 +30,7 @@ const nodeNameContextKey = contextKey("nodeName")
 type mapSession struct {
 	h      *Headscale
 	req    tailcfg.MapRequest
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	capVer tailcfg.CapabilityVersion
 
 	cancelChMu deadlock.Mutex
