@@ -669,7 +669,7 @@ func databaseConfig() DatabaseConfig {
 	type_ := viper.GetString("database.type")
 
 	skipErrRecordNotFound := viper.GetBool("database.gorm.skip_err_record_not_found")
-	slowThreshold := viper.GetDuration("database.gorm.slow_threshold") * time.Millisecond
+	slowThreshold := time.Duration(viper.GetInt64("database.gorm.slow_threshold")) * time.Millisecond
 	parameterizedQueries := viper.GetBool("database.gorm.parameterized_queries")
 	prepareStmt := viper.GetBool("database.gorm.prepare_stmt")
 

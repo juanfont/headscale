@@ -643,6 +643,11 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[type
 		// specially during policy compilation per-node for security.
 		return nil, ErrAutogroupSelfRequiresPerNodeResolution
 
+	case AutoGroupNonRoot:
+		// autogroup:nonroot represents non-root users on multi-user devices.
+		// This is not supported in headscale and requires OS-level user detection.
+		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, ag)
+
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, ag)
 	}
@@ -1441,6 +1446,8 @@ func (p Protocol) Description() string {
 		return "Stream Control Transmission Protocol"
 	case ProtocolNameFC:
 		return "Fibre Channel"
+	case ProtocolNameIPInIP:
+		return "IP-in-IP Encapsulation"
 	case ProtocolNameWildcard:
 		return "Wildcard (not supported - use specific protocol)"
 	default:
@@ -1482,6 +1489,10 @@ func (p Protocol) parseProtocol() ([]int, bool) {
 	case ProtocolNameICMP:
 		// ICMP only - use "ipv6-icmp" or protocol number 58 for ICMPv6
 		return []int{ProtocolICMP}, true
+	case ProtocolNameIPv6ICMP:
+		return []int{ProtocolIPv6ICMP}, true
+	case ProtocolNameFC:
+		return []int{ProtocolFC}, true
 	default:
 		// Try to parse as a numeric protocol number
 		// This should not fail since validation happened during unmarshaling
@@ -1517,7 +1528,7 @@ func (p Protocol) validate() error {
 	switch p {
 	case "", ProtocolNameICMP, ProtocolNameIGMP, ProtocolNameIPv4, ProtocolNameIPInIP,
 		ProtocolNameTCP, ProtocolNameEGP, ProtocolNameIGP, ProtocolNameUDP, ProtocolNameGRE,
-		ProtocolNameESP, ProtocolNameAH, ProtocolNameSCTP:
+		ProtocolNameESP, ProtocolNameAH, ProtocolNameSCTP, ProtocolNameIPv6ICMP, ProtocolNameFC:
 		return nil
 	case ProtocolNameWildcard:
 		// Wildcard "*" is not allowed - Tailscale rejects it

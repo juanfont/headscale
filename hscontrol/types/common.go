@@ -104,6 +104,10 @@ func (su *StateUpdate) Empty() bool {
 		return len(su.ChangePatches) == 0
 	case StatePeerRemoved:
 		return len(su.Removed) == 0
+	case StateFullUpdate, StateSelfUpdate, StateDERPUpdated:
+		// These update types don't have associated data to check,
+		// so they are never considered empty.
+		return false
 	}
 
 	return false

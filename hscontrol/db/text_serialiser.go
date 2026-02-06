@@ -66,7 +66,9 @@ func (TextSerialiser) Scan(ctx context.Context, field *schema.Field, dst reflect
 
 			ret := f.Call(args)
 			if !ret[0].IsNil() {
-				return decodingError(field.Name, ret[0].Interface().(error))
+				if err, ok := ret[0].Interface().(error); ok {
+					return decodingError(field.Name, err)
+				}
 			}
 
 			// If the underlying field is to a pointer type, we need to
