@@ -1241,7 +1241,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: `invalid SSH action "invalid", must be one of: accept, check`,
+			errorMessage: `invalid SSH action: "invalid", must be one of: accept, check`,
 		},
 		{
 			name:       "invalid-check-period",
@@ -1288,7 +1288,7 @@ func TestSSHPolicyRules(t *testing.T) {
 				]
 			}`,
 			expectErr:    true,
-			errorMessage: "autogroup \"autogroup:invalid\" is not supported",
+			errorMessage: "autogroup not supported for SSH user",
 		},
 		{
 			name:       "autogroup-nonroot-should-use-wildcard-with-root-excluded",

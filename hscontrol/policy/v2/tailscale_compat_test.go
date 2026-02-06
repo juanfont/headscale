@@ -9655,7 +9655,7 @@ func TestTailscaleCompatErrorCases(t *testing.T) {
 					{"action": "accept", "src": ["tag:nonexistent"], "dst": ["tag:server:22"]}
 				]
 			}`,
-			wantErr:   `Tag "tag:nonexistent" is not defined in the Policy`,
+			wantErr:   `tag not defined in policy: "tag:nonexistent"`,
 			reference: "Test 6.4: tag:nonexistent → tag:server:22",
 		},
 
@@ -9674,7 +9674,7 @@ func TestTailscaleCompatErrorCases(t *testing.T) {
 					{"action": "accept", "src": ["autogroup:self"], "dst": ["tag:server:22"]}
 				]
 			}`,
-			wantErr:   `"autogroup:self" used in source, it can only be used in ACL destinations`,
+			wantErr:   `autogroup:self can only be used in ACL destinations`,
 			reference: "Test 13.41: autogroup:self as SOURCE",
 		},
 

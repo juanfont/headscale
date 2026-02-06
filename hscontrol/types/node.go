@@ -247,6 +247,10 @@ func (node *Node) RequestTags() []string {
 
 func (node *Node) Prefixes() []netip.Prefix {
 	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
+
 	addrs := make([]netip.Prefix, 0, len(ips))
 
 	for _, nodeAddress := range ips {
@@ -278,6 +282,10 @@ func (node *Node) IsExitNode() bool {
 
 func (node *Node) IPsAsString() []string {
 	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
+
 	ret := make([]string, 0, len(ips))
 
 	for _, ip := range ips {
