@@ -21,6 +21,9 @@ const (
 	PermissionFallback = 0o700
 )
 
+// ErrDirectoryPermission is returned when creating a directory fails due to permission issues.
+var ErrDirectoryPermission = errors.New("creating directory failed with permission error")
+
 func AbsolutePathFromConfigPath(path string) string {
 	// If a relative path is provided, prefix it with the directory where
 	// the config file was found.
@@ -50,10 +53,7 @@ func EnsureDir(dir string) error {
 		err := os.MkdirAll(dir, PermissionFallback)
 		if err != nil {
 			if errors.Is(err, os.ErrPermission) {
-				return fmt.Errorf(
-					"creating directory %s, failed with permission error, is it located somewhere Headscale can write?",
-					dir,
-				)
+				return fmt.Errorf("%w: %s", ErrDirectoryPermission, dir)
 			}
 
 			return fmt.Errorf("creating directory %s: %w", dir, err)

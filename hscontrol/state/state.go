@@ -512,7 +512,7 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 	})
 
 	if !ok {
-		return nil, fmt.Errorf("node not found: %d", id)
+		return nil, fmt.Errorf("%w: %d", ErrNodeNotFound, id)
 	}
 
 	log.Info().EmbedObject(node).Msg("node disconnected")
