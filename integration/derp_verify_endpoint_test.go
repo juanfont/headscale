@@ -115,7 +115,7 @@ func DERPVerify(
 	if m, err := c.Recv(); err != nil {
 		result = fmt.Errorf("client first Recv: %w", err)
 	} else if v, ok := m.(derp.ServerInfoMessage); !ok {
-		result = fmt.Errorf("client first Recv was unexpected type %T", v)
+		result = fmt.Errorf("client first Recv was unexpected type %T", v) //nolint:err113
 	}
 
 	if expectSuccess && result != nil {

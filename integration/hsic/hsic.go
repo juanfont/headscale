@@ -872,7 +872,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 	}
 
 	if strings.TrimSpace(schemaCheck) == "" {
-		return errors.New("database file exists but has no schema (empty database)")
+		return errors.New("database file exists but has no schema (empty database)") //nolint:err113
 	}
 
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
@@ -924,7 +924,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 			// Check if we actually wrote something
 			if written == 0 {
-				return fmt.Errorf(
+				return fmt.Errorf( //nolint:err113
 					"database file is empty (size: %d, header size: %d)",
 					written,
 					header.Size,
@@ -935,7 +935,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		}
 	}
 
-	return errors.New("no regular file found in database tar archive")
+	return errors.New("no regular file found in database tar archive") //nolint:err113
 }
 
 // Execute runs a command inside the Headscale container and returns the

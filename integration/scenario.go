@@ -203,7 +203,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 			for _, user := range users {
 				if n2, ok := userToNetwork[user]; ok {
-					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name)
+					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name) //nolint:err113
 				}
 
 				mak.Set(&userToNetwork, user, network)
@@ -280,7 +280,7 @@ func (s *Scenario) Networks() []*dockertest.Network {
 func (s *Scenario) Network(name string) (*dockertest.Network, error) {
 	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	return net, nil
@@ -289,11 +289,11 @@ func (s *Scenario) Network(name string) (*dockertest.Network, error) {
 func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	if len(net.Network.IPAM.Config) == 0 {
-		return nil, fmt.Errorf("no IPAM config found in network: %s", name)
+		return nil, fmt.Errorf("no IPAM config found in network: %s", name) //nolint:err113
 	}
 
 	pref, err := netip.ParsePrefix(net.Network.IPAM.Config[0].Subnet)
@@ -307,7 +307,7 @@ func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 	res, ok := s.extraServices[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	return res, nil
@@ -1087,11 +1087,11 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 	error,
 ) {
 	if hc == nil {
-		return "", nil, fmt.Errorf("%s http client is nil", hostname)
+		return "", nil, fmt.Errorf("%s http client is nil", hostname) //nolint:err113
 	}
 
 	if loginURL == nil {
-		return "", nil, fmt.Errorf("%s login url is nil", hostname)
+		return "", nil, fmt.Errorf("%s login url is nil", hostname) //nolint:err113
 	}
 
 	log.Printf("%s logging in with url: %s", hostname, loginURL.String())
@@ -1138,13 +1138,13 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 	if followRedirects && resp.StatusCode != http.StatusOK {
 		log.Printf("body: %s", body)
 
-		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		log.Printf("body: %s", body)
 
-		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
 
 	if hc.Jar != nil {
@@ -1529,7 +1529,7 @@ func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 
 	network, ok := s.networks[s.prefixedNetworkName(networkName)]
 	if !ok {
-		return nil, fmt.Errorf("network does not exist: %s", networkName)
+		return nil, fmt.Errorf("network does not exist: %s", networkName) //nolint:err113
 	}
 
 	webOpts := &dockertest.RunOptions{

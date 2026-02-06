@@ -336,7 +336,7 @@ func New(
 	}
 
 	if tsic.network == nil {
-		return nil, fmt.Errorf("no network set, called from: \n%s", string(debug.Stack()))
+		return nil, fmt.Errorf("no network set, called from: \n%s", string(debug.Stack())) //nolint:err113
 	}
 
 	tailscaleOptions := &dockertest.RunOptions{
@@ -718,7 +718,7 @@ func (t *TailscaleInContainer) Logout() error {
 
 	stdout, stderr, _ = t.Execute([]string{"tailscale", "status"})
 	if !strings.Contains(stdout+stderr, "Logged out.") {
-		return fmt.Errorf("logging out, stdout: %s, stderr: %s", stdout, stderr)
+		return fmt.Errorf("logging out, stdout: %s, stderr: %s", stdout, stderr) //nolint:err113
 	}
 
 	return t.waitForBackendState("NeedsLogin", integrationutil.PeerSyncTimeout())
@@ -830,7 +830,7 @@ func (t *TailscaleInContainer) IPs() ([]netip.Addr, error) {
 		}
 
 		if len(ips) == 0 {
-			return nil, fmt.Errorf("no IPs returned yet for %s", t.hostname)
+			return nil, fmt.Errorf("no IPs returned yet for %s", t.hostname) //nolint:err113
 		}
 
 		return ips, nil
@@ -864,7 +864,7 @@ func (t *TailscaleInContainer) IPv4() (netip.Addr, error) {
 		}
 	}
 
-	return netip.Addr{}, fmt.Errorf("no IPv4 address found for %s", t.hostname)
+	return netip.Addr{}, fmt.Errorf("no IPv4 address found for %s", t.hostname) //nolint:err113
 }
 
 func (t *TailscaleInContainer) MustIPv4() netip.Addr {
@@ -1211,7 +1211,7 @@ func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Du
 	for {
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("timeout waiting for backend state %s on %s after %v", state, t.hostname, timeout)
+			return fmt.Errorf("timeout waiting for backend state %s on %s after %v", state, t.hostname, timeout) //nolint:err113
 		case <-ticker.C:
 			status, err := t.Status()
 			if err != nil {
@@ -1256,7 +1256,7 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 				return fmt.Errorf("timeout waiting for %d peers on %s after %v, errors: %w", expected, t.hostname, timeout, multierr.New(lastErrs...))
 			}
 
-			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout)
+			return fmt.Errorf("timeout waiting for %d peers on %s after %v", expected, t.hostname, timeout) //nolint:err113
 		case <-ticker.C:
 			status, err := t.Status()
 			if err != nil {
@@ -1284,15 +1284,15 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 				peer := status.Peer[peerKey]
 
 				if !peer.Online {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not online", t.hostname, peer.HostName)) //nolint:err113
 				}
 
 				if peer.HostName == "" {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a Hostname", t.hostname, peer.HostName)) //nolint:err113
 				}
 
 				if peer.Relay == "" {
-					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName))
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)) //nolint:err113
 				}
 			}
 
@@ -1566,7 +1566,7 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 		}
 
 		if !strings.Contains(path, hdr.Name) {
-			return nil, fmt.Errorf("file not found in tar archive, looking for: %s, header was: %s", path, hdr.Name)
+			return nil, fmt.Errorf("file not found in tar archive, looking for: %s, header was: %s", path, hdr.Name) //nolint:err113
 		}
 
 		if _, err := io.Copy(&out, tr); err != nil {
@@ -1578,7 +1578,7 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 	}
 
 	if out.Len() == 0 {
-		return nil, errors.New("file is empty")
+		return nil, errors.New("file is empty") //nolint:err113
 	}
 
 	return out.Bytes(), nil
@@ -1617,7 +1617,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 // This is useful for verifying that policy changes have propagated to the client.
 func (t *TailscaleInContainer) PacketFilter() ([]filter.Match, error) {
 	if !util.TailscaleVersionNewerOrEqual("1.56", t.version) {
-		return nil, fmt.Errorf("tsic.PacketFilter() requires Tailscale 1.56+, current version: %s", t.version)
+		return nil, fmt.Errorf("tsic.PacketFilter() requires Tailscale 1.56+, current version: %s", t.version) //nolint:err113
 	}
 
 	nm, err := t.Netmap()

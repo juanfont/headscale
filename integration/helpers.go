@@ -817,7 +817,7 @@ func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []stri
 		}
 
 		if !strings.Contains(stdout, contains) {
-			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout) //nolint:err113
 		}
 
 		return struct{}{}, nil
@@ -990,7 +990,7 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("user %s not found", username)
+	return nil, fmt.Errorf("user %s not found", username) //nolint:err113
 }
 
 // FindNewClient finds a client that is in the new list but not in the original list.
@@ -1052,7 +1052,7 @@ func (s *Scenario) AddAndLoginClient(
 		}
 
 		if len(updatedClients) != len(originalClients)+1 {
-			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients))
+			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients)) //nolint:err113
 		}
 
 		newClient, err = FindNewClient(originalClients, updatedClients)
