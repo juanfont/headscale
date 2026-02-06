@@ -246,9 +246,10 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
-	var addrs []netip.Prefix
+	ips := node.IPs()
+	addrs := make([]netip.Prefix, 0, len(ips))
 
-	for _, nodeAddress := range node.IPs() {
+	for _, nodeAddress := range ips {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
@@ -276,9 +277,10 @@ func (node *Node) IsExitNode() bool {
 }
 
 func (node *Node) IPsAsString() []string {
-	var ret []string
+	ips := node.IPs()
+	ret := make([]string, 0, len(ips))
 
-	for _, ip := range node.IPs() {
+	for _, ip := range ips {
 		ret = append(ret, ip.String())
 	}
 

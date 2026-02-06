@@ -407,7 +407,7 @@ func (s *Scenario) Shutdown() {
 
 // Users returns the name of all users associated with the Scenario.
 func (s *Scenario) Users() []string {
-	users := make([]string, 0)
+	users := make([]string, 0, len(s.users))
 	for user := range s.users {
 		users = append(users, user)
 	}

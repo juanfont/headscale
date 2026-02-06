@@ -300,7 +300,7 @@ func (m *mapSession) writeMap(msg *tailcfg.MapResponse) error {
 		jsonBody = zstdframe.AppendEncode(nil, jsonBody, zstdframe.FastestCompression)
 	}
 
-	data := make([]byte, reservedResponseHeaderSize)
+	data := make([]byte, reservedResponseHeaderSize, reservedResponseHeaderSize+len(jsonBody))
 	//nolint:gosec // G115: JSON response size will not exceed uint32 max
 	binary.LittleEndian.PutUint32(data, uint32(len(jsonBody)))
 	data = append(data, jsonBody...)

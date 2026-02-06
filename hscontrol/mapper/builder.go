@@ -277,7 +277,7 @@ func (b *MapResponseBuilder) WithPeerChangedPatch(changes []*tailcfg.PeerChange)
 
 // WithPeersRemoved adds removed peer IDs.
 func (b *MapResponseBuilder) WithPeersRemoved(removedIDs ...types.NodeID) *MapResponseBuilder {
-	var tailscaleIDs []tailcfg.NodeID
+	tailscaleIDs := make([]tailcfg.NodeID, 0, len(removedIDs))
 	for _, id := range removedIDs {
 		tailscaleIDs = append(tailscaleIDs, id.NodeID())
 	}
