@@ -10,7 +10,7 @@ import (
 )
 
 var PrefixComparer = cmp.Comparer(func(x, y netip.Prefix) bool {
-	return x == y
+	return x.Compare(y) == 0
 })
 
 var IPComparer = cmp.Comparer(func(x, y netip.Addr) bool {

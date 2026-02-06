@@ -26,7 +26,7 @@
       overlays.default = _: prev:
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
-          buildGo = pkgs.buildGo125Module;
+          buildGo = pkgs.buildGo126Module;
           vendorHash = "sha256-9BvphYDAxzwooyVokI3l+q1wRuRsWn/qM+NpWUgqJH0=";
         in
         {
@@ -94,14 +94,46 @@
             subPackages = [ "." ];
           };
 
-          # Upstream does not override buildGoModule properly,
-          # importing a specific module, so comment out for now.
-          # golangci-lint = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
-          # golangci-lint-langserver = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
+          # Build golangci-lint with Go 1.26 (upstream uses hardcoded Go version)
+          golangci-lint = buildGo rec {
+            pname = "golangci-lint";
+            version = "2.8.0";
+
+            src = pkgs.fetchFromGitHub {
+              owner = "golangci";
+              repo = "golangci-lint";
+              rev = "v${version}";
+              hash = "sha256-w6MAOirj8rPHYbKrW4gJeemXCS64fNtteV6IioqIQTQ=";
+            };
+
+            vendorHash = "sha256-/Vqo/yrmGh6XipELQ9NDtlMEO2a654XykmvnMs0BdrI=";
+
+            subPackages = [ "cmd/golangci-lint" ];
+
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=${version}"
+              "-X main.commit=v${version}"
+              "-X main.date=1970-01-01T00:00:00Z"
+            ];
+
+            postInstall = ''
+              for shell in bash zsh fish; do
+                HOME=$TMPDIR $out/bin/golangci-lint completion $shell > golangci-lint.$shell
+                installShellCompletion golangci-lint.$shell
+              done
+            '';
+
+            meta = {
+              description = "Fast linters runner for Go";
+              homepage = "https://golangci-lint.run/";
+              changelog = "https://github.com/golangci/golangci-lint/blob/v${version}/CHANGELOG.md";
+              mainProgram = "golangci-lint";
+            };
+          };
 
           # The package uses buildGo125Module, not the convention.
           # goreleaser = prev.goreleaser.override {
@@ -132,7 +164,7 @@
           overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_25 gnumake ];
+        buildDeps = with pkgs; [ git go_1_26 gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [

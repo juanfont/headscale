@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func isSSHNoAccessStdError(stderr string) bool {
@@ -85,8 +84,8 @@ func TestSSHOneUserToAll(t *testing.T) {
 					// Use autogroup:member and autogroup:tagged instead of wildcard
 					// since wildcard (*) is no longer supported for SSH destinations
 					Destinations: policyv2.SSHDstAliases{
-						ptr.To(policyv2.AutoGroupMember),
-						ptr.To(policyv2.AutoGroupTagged),
+						new(policyv2.AutoGroupMember),
+						new(policyv2.AutoGroupTagged),
 					},
 					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
@@ -160,7 +159,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 					// Username destinations (e.g., "user1@") now require the source
 					// to be that exact same user only. For group-to-group SSH access,
 					// use autogroup:self instead.
-					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
+					Destinations: policyv2.SSHDstAliases{new(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
@@ -285,7 +284,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:integration-test")},
-					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
+					Destinations: policyv2.SSHDstAliases{new(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
@@ -340,13 +339,13 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh1")},
-					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
+					Destinations: policyv2.SSHDstAliases{new(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 				{
 					Action:       "accept",
 					Sources:      policyv2.SSHSrcAliases{groupp("group:ssh2")},
-					Destinations: policyv2.SSHDstAliases{ptr.To(policyv2.AutoGroupSelf)},
+					Destinations: policyv2.SSHDstAliases{new(policyv2.AutoGroupSelf)},
 					Users:        []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},
 			},
@@ -522,10 +521,10 @@ func TestSSHAutogroupSelf(t *testing.T) {
 				{
 					Action: "accept",
 					Sources: policyv2.SSHSrcAliases{
-						ptr.To(policyv2.AutoGroupMember),
+						new(policyv2.AutoGroupMember),
 					},
 					Destinations: policyv2.SSHDstAliases{
-						ptr.To(policyv2.AutoGroupSelf),
+						new(policyv2.AutoGroupSelf),
 					},
 					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
 				},

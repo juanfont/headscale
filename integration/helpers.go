@@ -27,7 +27,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const (
@@ -906,32 +905,32 @@ func wildcard() policyv2.Alias {
 // usernamep returns a pointer to a Username as an Alias for policy v2 configurations.
 // Used in ACL rules to reference specific users in network access policies.
 func usernamep(name string) policyv2.Alias {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // hostp returns a pointer to a Host as an Alias for policy v2 configurations.
 // Used in ACL rules to reference specific hosts in network access policies.
 func hostp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Host(name))
+	return new(policyv2.Host(name))
 }
 
 // groupp returns a pointer to a Group as an Alias for policy v2 configurations.
 // Used in ACL rules to reference user groups in network access policies.
 func groupp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // tagp returns a pointer to a Tag as an Alias for policy v2 configurations.
 // Used in ACL rules to reference node tags in network access policies.
 func tagp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Tag(name))
+	return new(policyv2.Tag(name))
 }
 
 // prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
 	prefix := netip.MustParsePrefix(cidr)
-	return ptr.To(policyv2.Prefix(prefix))
+	return new(policyv2.Prefix(prefix))
 }
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and port ranges.
@@ -947,7 +946,7 @@ func aliasWithPorts(alias policyv2.Alias, ports ...tailcfg.PortRange) policyv2.A
 // usernameOwner returns a Username as an Owner for use in TagOwners policies.
 // Specifies which users can assign and manage specific tags in ACL configurations.
 func usernameOwner(name string) policyv2.Owner {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // groupOwner returns a Group as an Owner for use in TagOwners policies.
@@ -955,25 +954,25 @@ func usernameOwner(name string) policyv2.Owner {
 //
 //nolint:unused
 func groupOwner(name string) policyv2.Owner {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // usernameApprover returns a Username as an AutoApprover for subnet route policies.
 // Specifies which users can automatically approve subnet route advertisements.
 func usernameApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // groupApprover returns a Group as an AutoApprover for subnet route policies.
 // Specifies which groups can automatically approve subnet route advertisements.
 func groupApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // tagApprover returns a Tag as an AutoApprover for subnet route policies.
 // Specifies which tagged nodes can automatically approve subnet route advertisements.
 func tagApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Tag(name))
+	return new(policyv2.Tag(name))
 }
 
 // oidcMockUser creates a MockUser for OIDC authentication testing.

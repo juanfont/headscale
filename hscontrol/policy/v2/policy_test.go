@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func node(name, ipv4, ipv6 string, user types.User) *types.Node {
@@ -20,8 +19,8 @@ func node(name, ipv4, ipv6 string, user types.User) *types.Node {
 		Hostname: name,
 		IPv4:     ap(ipv4),
 		IPv6:     ap(ipv6),
-		User:     ptr.To(user),
-		UserID:   ptr.To(user.ID),
+		User:     new(user),
+		UserID:   new(user.ID),
 	}
 }
 
@@ -463,8 +462,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -474,8 +473,8 @@ func TestAutogroupSelfWithOtherRules(t *testing.T) {
 		Hostname: "test-2-router",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:node-router"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -543,8 +542,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-1-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -553,8 +552,8 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 		Hostname: "test-2-device",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -653,8 +652,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user1-node",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Tags:     []string{"tag:web", "tag:internal"},
 	}
 
@@ -664,8 +663,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user2-node",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 	}
 
 	initialNodes := types.Nodes{user1Node, user2Node}
@@ -692,8 +691,8 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 		Hostname: "user1-node",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Tags:     []string{"tag:internal"}, // tag:web removed!
 	}
 
@@ -755,8 +754,8 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 		Hostname: "admin-device",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -766,8 +765,8 @@ func TestAutogroupSelfWithAdminOverride(t *testing.T) {
 		Hostname: "user1-server",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:server"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -838,8 +837,8 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 		Hostname: "device-a",
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
 
@@ -849,8 +848,8 @@ func TestAutogroupSelfSymmetricVisibility(t *testing.T) {
 		Hostname: "device-b",
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		Tags:     []string{"tag:web"},
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -928,8 +927,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	superadminDevice := &types.Node{
 		ID:       1,
 		Hostname: "superadmin-laptop",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.1"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -937,8 +936,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	adminDevice := &types.Node{
 		ID:       2,
 		Hostname: "admin-laptop",
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		IPv4:     ap("100.64.0.2"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -946,8 +945,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	directionDevice := &types.Node{
 		ID:       3,
 		Hostname: "direction-laptop",
-		User:     ptr.To(users[2]),
-		UserID:   ptr.To(users[2].ID),
+		User:     new(users[2]),
+		UserID:   new(users[2].ID),
 		IPv4:     ap("100.64.0.3"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -955,8 +954,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	commonServer := &types.Node{
 		ID:       4,
 		Hostname: "common-server",
-		User:     ptr.To(users[3]),
-		UserID:   ptr.To(users[3].ID),
+		User:     new(users[3]),
+		UserID:   new(users[3].ID),
 		IPv4:     ap("100.64.0.4"),
 		Tags:     []string{"tag:common"},
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -965,8 +964,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	techServer := &types.Node{
 		ID:       5,
 		Hostname: "tech-server",
-		User:     ptr.To(users[3]),
-		UserID:   ptr.To(users[3].ID),
+		User:     new(users[3]),
+		UserID:   new(users[3].ID),
 		IPv4:     ap("100.64.0.5"),
 		Tags:     []string{"tag:tech"},
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -975,8 +974,8 @@ func TestAutogroupSelfDoesNotBreakOtherUsersAccess(t *testing.T) {
 	privilegedServer := &types.Node{
 		ID:       6,
 		Hostname: "privileged-server",
-		User:     ptr.To(users[3]),
-		UserID:   ptr.To(users[3].ID),
+		User:     new(users[3]),
+		UserID:   new(users[3].ID),
 		IPv4:     ap("100.64.0.6"),
 		Tags:     []string{"tag:privileged"},
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -1088,8 +1087,8 @@ func TestEmptyFilterNodesStillVisible(t *testing.T) {
 	adminDevice := &types.Node{
 		ID:       1,
 		Hostname: "admin-laptop",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.1"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -1099,8 +1098,8 @@ func TestEmptyFilterNodesStillVisible(t *testing.T) {
 	taggedServer := &types.Node{
 		ID:       2,
 		Hostname: "server",
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		IPv4:     ap("100.64.0.2"),
 		Tags:     []string{"tag:server"},
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -1157,8 +1156,8 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 	adminLaptop := &types.Node{
 		ID:       1,
 		Hostname: "admin-laptop",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.1"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -1166,8 +1165,8 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 	adminPhone := &types.Node{
 		ID:       2,
 		Hostname: "admin-phone",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.2"),
 		Hostinfo: &tailcfg.Hostinfo{},
 	}
@@ -1176,8 +1175,8 @@ func TestAutogroupSelfCombinedWithTags(t *testing.T) {
 	webServer := &types.Node{
 		ID:       3,
 		Hostname: "web-server",
-		User:     ptr.To(users[1]),
-		UserID:   ptr.To(users[1].ID),
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
 		IPv4:     ap("100.64.0.3"),
 		Tags:     []string{"tag:web"},
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -1252,8 +1251,8 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 	node1 := &types.Node{
 		ID:       1,
 		Hostname: "node1",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.1"),
 		IPv6:     ap("fd7a:115c:a1e0::1"),
 		Hostinfo: &tailcfg.Hostinfo{},
@@ -1263,8 +1262,8 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 	node2 := &types.Node{
 		ID:       2,
 		Hostname: "node2",
-		User:     ptr.To(users[0]),
-		UserID:   ptr.To(users[0].ID),
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
 		IPv4:     ap("100.64.0.2"),
 		IPv6:     ap("fd7a:115c:a1e0::2"),
 		Tags:     []string{"tag:admin"},

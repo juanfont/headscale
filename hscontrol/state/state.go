@@ -27,10 +27,8 @@ import (
 	"github.com/rs/zerolog/log"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
-	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	zcache "zgo.at/zcache/v2"
 )
@@ -135,7 +133,7 @@ func NewState(cfg *types.Config) (*State, error) {
 	// On startup, all nodes should be marked as offline until they reconnect
 	// This ensures we don't have stale online status from previous runs
 	for _, node := range nodes {
-		node.IsOnline = ptr.To(false)
+		node.IsOnline = new(false)
 	}
 
 	users, err := db.ListUsers()
@@ -479,7 +477,7 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 	// the NodeStore already reflects the correct online status for full map generation.
 	// now := time.Now()
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.IsOnline = ptr.To(true)
+		n.IsOnline = new(true)
 		// n.LastSeen = ptr.To(now)
 	})
 	if !ok {
@@ -507,9 +505,9 @@ func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
 	now := time.Now()
 
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.LastSeen = ptr.To(now)
+		n.LastSeen = new(now)
 		// NodeStore is the source of truth for all node state including online status.
-		n.IsOnline = ptr.To(false)
+		n.IsOnline = new(false)
 	})
 
 	if !ok {
@@ -805,7 +803,7 @@ func (s *State) BackfillNodeIPs() ([]string, error) {
 			// Preserve online status and NetInfo when refreshing from database
 			existingNode, exists := s.nodeStore.GetNode(node.ID)
 			if exists && existingNode.Valid() {
-				node.IsOnline = ptr.To(existingNode.IsOnline().Get())
+				node.IsOnline = new(existingNode.IsOnline().Get())
 
 				// TODO(kradalby): We should ensure we use the same hostinfo and node merge semantics
 				// when a node re-registers as we do when it sends a map request (UpdateNodeFromMapRequest).
@@ -1183,8 +1181,8 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		)
 
 		node.Endpoints = params.RegEntry.Node.Endpoints
-		node.IsOnline = ptr.To(false)
-		node.LastSeen = ptr.To(time.Now())
+		node.IsOnline = new(false)
+		node.LastSeen = new(time.Now())
 
 		// Set RegisterMethod - for conversion this is the new method,
 		// for reauth we preserve the existing one from regEntry
@@ -1286,7 +1284,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		DiscoKey:       params.DiscoKey,
 		Hostinfo:       params.Hostinfo,
 		Endpoints:      params.Endpoints,
-		LastSeen:       ptr.To(time.Now()),
+		LastSeen:       new(time.Now()),
 		RegisterMethod: params.RegisterMethod,
 		Expiry:         params.Expiry,
 	}
@@ -1822,8 +1820,8 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Only update AuthKey reference
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
-			node.IsOnline = ptr.To(false)
-			node.LastSeen = ptr.To(time.Now())
+			node.IsOnline = new(false)
+			node.LastSeen = new(time.Now())
 
 			// Tagged nodes keep their existing expiry (disabled).
 			// User-owned nodes update expiry from the client request.
@@ -2281,8 +2279,8 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 		newRoutes = []netip.Prefix{}
 	}
 
-	tsaddr.SortPrefixes(oldRoutes)
-	tsaddr.SortPrefixes(newRoutes)
+	slices.SortFunc(oldRoutes, netip.Prefix.Compare)
+	slices.SortFunc(newRoutes, netip.Prefix.Compare)
 
 	return !slices.Equal(oldRoutes, newRoutes)
 }

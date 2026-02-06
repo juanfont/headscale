@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and ports.
@@ -411,15 +410,15 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 	nodeTaggedServer := types.Node{
 		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 		Tags:     []string{"tag:server"},
 	}
 	nodeTaggedDB := types.Node{
 		Hostname: "tagged-db",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 		Tags:     []string{"tag:database"},
 	}
 	// Add untagged node for user2 - this will be the SSH source
@@ -427,8 +426,8 @@ func TestCompileSSHPolicy_UserMapping(t *testing.T) {
 	nodeUser2Untagged := types.Node{
 		Hostname: "user2-device",
 		IPv4:     createAddr("100.64.0.3"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{&nodeTaggedServer, &nodeTaggedDB, &nodeUser2Untagged}
@@ -658,15 +657,15 @@ func TestCompileSSHPolicy_CheckAction(t *testing.T) {
 	nodeTaggedServer := types.Node{
 		Hostname: "tagged-server",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 		Tags:     []string{"tag:server"},
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{&nodeTaggedServer, &nodeUser2}
@@ -723,15 +722,15 @@ func TestSSHIntegrationReproduction(t *testing.T) {
 	node1 := &types.Node{
 		Hostname: "user1-node",
 		IPv4:     createAddr("100.64.0.1"),
-		UserID:   ptr.To(users[0].ID),
-		User:     ptr.To(users[0]),
+		UserID:   new(users[0].ID),
+		User:     new(users[0]),
 	}
 
 	node2 := &types.Node{
 		Hostname: "user2-node",
 		IPv4:     createAddr("100.64.0.2"),
-		UserID:   ptr.To(users[1].ID),
-		User:     ptr.To(users[1]),
+		UserID:   new(users[1].ID),
+		User:     new(users[1]),
 	}
 
 	nodes := types.Nodes{node1, node2}
@@ -848,19 +847,19 @@ func TestCompileFilterRulesForNodeWithAutogroupSelf(t *testing.T) {
 
 	nodes := types.Nodes{
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.2"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.3"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.4"),
 		},
 		// Tagged device for user1
@@ -983,11 +982,11 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 	nodes := types.Nodes{
 		// User-owned nodes
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.2"),
 		},
 		// Tagged nodes
@@ -1005,8 +1004,8 @@ func TestTagUserMutualExclusivity(t *testing.T) {
 
 	policy := &Policy{
 		TagOwners: TagOwners{
-			Tag("tag:server"):   Owners{ptr.To(Username("user1@"))},
-			Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
+			Tag("tag:server"):   Owners{new(Username("user1@"))},
+			Tag("tag:database"): Owners{new(Username("user2@"))},
 		},
 		ACLs: []ACL{
 			// Rule 1: user1 (user-owned) should NOT be able to reach tagged nodes
@@ -1101,11 +1100,11 @@ func TestAutogroupTagged(t *testing.T) {
 	nodes := types.Nodes{
 		// User-owned nodes (not tagged)
 		{
-			User: ptr.To(users[0]),
+			User: new(users[0]),
 			IPv4: ap("100.64.0.1"),
 		},
 		{
-			User: ptr.To(users[1]),
+			User: new(users[1]),
 			IPv4: ap("100.64.0.2"),
 		},
 		// Tagged nodes
@@ -1128,10 +1127,10 @@ func TestAutogroupTagged(t *testing.T) {
 
 	policy := &Policy{
 		TagOwners: TagOwners{
-			Tag("tag:server"):   Owners{ptr.To(Username("user1@"))},
-			Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
-			Tag("tag:web"):      Owners{ptr.To(Username("user1@"))},
-			Tag("tag:prod"):     Owners{ptr.To(Username("user1@"))},
+			Tag("tag:server"):   Owners{new(Username("user1@"))},
+			Tag("tag:database"): Owners{new(Username("user2@"))},
+			Tag("tag:web"):      Owners{new(Username("user1@"))},
+			Tag("tag:prod"):     Owners{new(Username("user1@"))},
 		},
 		ACLs: []ACL{
 			// Rule: autogroup:tagged can reach user-owned nodes
@@ -1252,10 +1251,10 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
 	}
 
 	policy := &Policy{
@@ -1320,11 +1319,11 @@ func TestAutogroupSelfWithGroupSource(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
-		{User: ptr.To(users[2]), IPv4: ap("100.64.0.5")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[2]), IPv4: ap("100.64.0.5")},
 	}
 
 	policy := &Policy{
@@ -1389,13 +1388,13 @@ func TestSSHWithAutogroupSelfInDestination(t *testing.T) {
 
 	nodes := types.Nodes{
 		// User1's nodes
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-node1"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-node2"},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-node1"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-node2"},
 		// User2's nodes
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-node1"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-node2"},
+		{User: new(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-node1"},
+		{User: new(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-node2"},
 		// Tagged node for user1 (should be excluded)
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.5"), Hostname: "user1-tagged", Tags: []string{"tag:server"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.5"), Hostname: "user1-tagged", Tags: []string{"tag:server"}},
 	}
 
 	policy := &Policy{
@@ -1470,10 +1469,10 @@ func TestSSHWithAutogroupSelfAndSpecificUser(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
 	}
 
 	policy := &Policy{
@@ -1526,11 +1525,11 @@ func TestSSHWithAutogroupSelfAndGroup(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1")},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3")},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4")},
-		{User: ptr.To(users[2]), IPv4: ap("100.64.0.5")},
+		{User: new(users[0]), IPv4: ap("100.64.0.1")},
+		{User: new(users[0]), IPv4: ap("100.64.0.2")},
+		{User: new(users[1]), IPv4: ap("100.64.0.3")},
+		{User: new(users[1]), IPv4: ap("100.64.0.4")},
+		{User: new(users[2]), IPv4: ap("100.64.0.5")},
 	}
 
 	policy := &Policy{
@@ -1585,10 +1584,10 @@ func TestSSHWithAutogroupSelfExcludesTaggedDevices(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "untagged1"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "untagged2"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.3"), Hostname: "tagged1", Tags: []string{"tag:server"}},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.4"), Hostname: "tagged2", Tags: []string{"tag:web"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "untagged1"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "untagged2"},
+		{User: new(users[0]), IPv4: ap("100.64.0.3"), Hostname: "tagged1", Tags: []string{"tag:server"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.4"), Hostname: "tagged2", Tags: []string{"tag:web"}},
 	}
 
 	policy := &Policy{
@@ -1647,10 +1646,10 @@ func TestSSHWithAutogroupSelfAndMixedDestinations(t *testing.T) {
 	}
 
 	nodes := types.Nodes{
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-device"},
-		{User: ptr.To(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-device2"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-device"},
-		{User: ptr.To(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-router", Tags: []string{"tag:router"}},
+		{User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "user1-device"},
+		{User: new(users[0]), IPv4: ap("100.64.0.2"), Hostname: "user1-device2"},
+		{User: new(users[1]), IPv4: ap("100.64.0.3"), Hostname: "user2-device"},
+		{User: new(users[1]), IPv4: ap("100.64.0.4"), Hostname: "user2-router", Tags: []string{"tag:router"}},
 	}
 
 	policy := &Policy{
@@ -1722,11 +1721,11 @@ func TestAutogroupSelfWithNonExistentUserInGroup(t *testing.T) {
 
 	nodes := types.Nodes{
 		// superadmin's device
-		{ID: 1, User: ptr.To(users[0]), IPv4: ap("100.64.0.1"), Hostname: "superadmin-device"},
+		{ID: 1, User: new(users[0]), IPv4: ap("100.64.0.1"), Hostname: "superadmin-device"},
 		// admin's device
-		{ID: 2, User: ptr.To(users[1]), IPv4: ap("100.64.0.2"), Hostname: "admin-device"},
+		{ID: 2, User: new(users[1]), IPv4: ap("100.64.0.2"), Hostname: "admin-device"},
 		// direction's device
-		{ID: 3, User: ptr.To(users[2]), IPv4: ap("100.64.0.3"), Hostname: "direction-device"},
+		{ID: 3, User: new(users[2]), IPv4: ap("100.64.0.3"), Hostname: "direction-device"},
 		// tagged servers
 		{ID: 4, IPv4: ap("100.64.0.10"), Hostname: "common-server", Tags: []string{"tag:common"}},
 		{ID: 5, IPv4: ap("100.64.0.11"), Hostname: "tech-server", Tags: []string{"tag:tech"}},

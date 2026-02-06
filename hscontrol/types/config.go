@@ -407,8 +407,7 @@ func LoadConfig(path string, isFile bool) error {
 
 	err := viper.ReadInConfig()
 	if err != nil {
-		var configFileNotFoundError viper.ConfigFileNotFoundError
-		if errors.As(err, &configFileNotFoundError) {
+		if _, ok := errors.AsType[viper.ConfigFileNotFoundError](err); ok {
 			log.Warn().Msg("no config file found, using defaults")
 			return nil
 		}

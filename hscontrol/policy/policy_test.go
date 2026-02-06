@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -1084,21 +1083,21 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 	}
 
 	taggedClient := types.Node{
 		Hostname: "tagged-client",
 		IPv4:     ap("100.64.0.4"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 		Tags:     []string{"tag:client"},
 	}
 
@@ -1106,8 +1105,8 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeTaggedServer := types.Node{
 		Hostname: "tagged-server",
 		IPv4:     ap("100.64.0.5"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 		Tags:     []string{"tag:server"},
 	}
 

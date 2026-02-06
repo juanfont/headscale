@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const tagTestUser = "taguser"
@@ -30,9 +29,9 @@ const tagTestUser = "taguser"
 func tagsTestPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
-			"tag:valid-owned":   policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:second":        policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:valid-unowned": policyv2.Owners{ptr.To(policyv2.Username("other-user@"))},
+			"tag:valid-owned":   policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:second":        policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:valid-unowned": policyv2.Owners{new(policyv2.Username("other-user@"))},
 			// Note: tag:nonexistent deliberately NOT defined
 		},
 		ACLs: []policyv2.ACL{
