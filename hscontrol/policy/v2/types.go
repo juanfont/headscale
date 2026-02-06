@@ -1610,7 +1610,7 @@ func (a *ACL) UnmarshalJSON(b []byte) error {
 	var temp aclAlias
 
 	// Unmarshal into the temporary struct using the v2 JSON options
-	if err := json.Unmarshal(filteredBytes, &temp, policyJSONOpts...); err != nil {
+	if err := json.Unmarshal(filteredBytes, &temp, policyJSONOpts...); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -1932,7 +1932,7 @@ func (p *Policy) validate() error {
 		}
 
 		// Validate protocol-port compatibility
-		if err := validateProtocolPortCompatibility(acl.Protocol, acl.Destinations); err != nil {
+		if err := validateProtocolPortCompatibility(acl.Protocol, acl.Destinations); err != nil { //nolint:noinlineerr
 			errs = append(errs, err)
 		}
 
@@ -2286,7 +2286,7 @@ func (u SSHUser) MarshalJSON() ([]byte, error) {
 // This is the only entrypoint of reading a policy from a file or other source.
 func unmarshalPolicy(b []byte) (*Policy, error) {
 	if len(b) == 0 {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: no policy when empty input
 	}
 
 	var policy Policy
@@ -2298,7 +2298,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 
 	ast.Standardize()
 
-	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil {
+	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil { //nolint:noinlineerr
 		var serr *json.SemanticError
 		if errors.As(err, &serr) && errors.Is(serr.Err, json.ErrUnknownName) {
 			ptr := serr.JSONPointer
@@ -2310,7 +2310,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
 	}
 
-	if err := policy.validate(); err != nil {
+	if err := policy.validate(); err != nil { //nolint:noinlineerr
 		return nil, err
 	}
 

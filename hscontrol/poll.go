@@ -54,7 +54,7 @@ func (h *Headscale) newMapSession(
 	w http.ResponseWriter,
 	node *types.Node,
 ) *mapSession {
-	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond)
+	ka := keepAliveInterval + (time.Duration(rand.IntN(9000)) * time.Millisecond) //nolint:gosec // weak random is fine for jitter
 
 	return &mapSession{
 		h:      h,
@@ -224,7 +224,7 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil {
+	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
 		return
 	}

@@ -173,7 +173,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			firstSpace := strings.Index(remainder, " ")
 			if firstSpace > 0 {
 				firstPart := remainder[:firstSpace]
-				if _, err := strconv.ParseFloat(strings.TrimPrefix(firstPart, "<"), 64); err == nil {
+				if _, err := strconv.ParseFloat(strings.TrimPrefix(firstPart, "<"), 64); err == nil { //nolint:noinlineerr
 					latencyFirst = true
 				}
 			}
@@ -221,7 +221,7 @@ func ParseTraceroute(output string) (Traceroute, error) {
 			parts := strings.Fields(remainder)
 			if len(parts) > 0 {
 				hopHostname = parts[0]
-				if ip, err := netip.ParseAddr(parts[0]); err == nil {
+				if ip, err := netip.ParseAddr(parts[0]); err == nil { //nolint:noinlineerr
 					hopIP = ip
 				}
 

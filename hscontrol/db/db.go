@@ -78,7 +78,7 @@ func NewHeadscaleDatabase(
 				ID: "202501221827",
 				Migrate: func(tx *gorm.DB) error {
 					// Remove any invalid routes associated with a node that does not exist.
-					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) {
+					if tx.Migrator().HasTable(&types.Route{}) && tx.Migrator().HasTable(&types.Node{}) { //nolint:staticcheck // SA1019: Route kept for migrations
 						err := tx.Exec("delete from routes where node_id not in (select id from nodes)").Error
 						if err != nil {
 							return err
@@ -86,14 +86,14 @@ func NewHeadscaleDatabase(
 					}
 
 					// Remove any invalid routes without a node_id.
-					if tx.Migrator().HasTable(&types.Route{}) {
+					if tx.Migrator().HasTable(&types.Route{}) { //nolint:staticcheck // SA1019: Route kept for migrations
 						err := tx.Exec("delete from routes where node_id is null").Error
 						if err != nil {
 							return err
 						}
 					}
 
-					err := tx.AutoMigrate(&types.Route{})
+					err := tx.AutoMigrate(&types.Route{}) //nolint:staticcheck // SA1019: Route kept for migrations
 					if err != nil {
 						return fmt.Errorf("automigrating types.Route: %w", err)
 					}
@@ -158,7 +158,7 @@ AND auth_key_id NOT IN (
 
 					nodeRoutes := map[uint64][]netip.Prefix{}
 
-					var routes []types.Route
+					var routes []types.Route //nolint:staticcheck // SA1019: Route kept for migrations
 
 					err = tx.Find(&routes).Error
 					if err != nil {
@@ -184,7 +184,7 @@ AND auth_key_id NOT IN (
 					}
 
 					// Drop the old table.
-					_ = tx.Migrator().DropTable(&types.Route{})
+					_ = tx.Migrator().DropTable(&types.Route{}) //nolint:staticcheck // SA1019: Route kept for migrations
 
 					return nil
 				},
@@ -791,7 +791,7 @@ AND auth_key_id NOT IN (
 			},
 		}
 
-		if err := squibble.Validate(ctx, sqlConn, dbSchema, &opts); err != nil {
+		if err := squibble.Validate(ctx, sqlConn, dbSchema, &opts); err != nil { //nolint:noinlineerr
 			return nil, fmt.Errorf("validating schema: %w", err)
 		}
 	}
@@ -871,7 +871,7 @@ func openDB(cfg types.DatabaseConfig) (*gorm.DB, error) {
 			Str("path", dbString).
 			Msg("Opening database")
 
-		if sslEnabled, err := strconv.ParseBool(cfg.Postgres.Ssl); err == nil {
+		if sslEnabled, err := strconv.ParseBool(cfg.Postgres.Ssl); err == nil { //nolint:noinlineerr
 			if !sslEnabled {
 				dbString += " sslmode=disable"
 			}
@@ -926,7 +926,7 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 
 		// Get the current foreign key status
 		var fkOriginallyEnabled int
-		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkOriginallyEnabled).Error; err != nil {
+		if err := dbConn.Raw("PRAGMA foreign_keys").Scan(&fkOriginallyEnabled).Error; err != nil { //nolint:noinlineerr
 			return fmt.Errorf("checking foreign key status: %w", err)
 		}
 
@@ -974,12 +974,12 @@ func runMigrations(cfg types.DatabaseConfig, dbConn *gorm.DB, migrations *gormig
 			}
 		}
 
-		if err := dbConn.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
+		if err := dbConn.Exec("PRAGMA foreign_keys = ON").Error; err != nil { //nolint:noinlineerr
 			return fmt.Errorf("restoring foreign keys: %w", err)
 		}
 
 		// Run the rest of the migrations
-		if err := migrations.Migrate(); err != nil {
+		if err := migrations.Migrate(); err != nil { //nolint:noinlineerr
 			return err
 		}
 

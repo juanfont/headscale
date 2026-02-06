@@ -138,7 +138,7 @@ func (u *User) profilePicURL() string {
 
 func (u *User) TailscaleUser() tailcfg.User {
 	return tailcfg.User{
-		ID:            tailcfg.UserID(u.ID),
+		ID:            tailcfg.UserID(u.ID), //nolint:gosec // UserID is bounded
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
 		Created:       u.CreatedAt,
@@ -158,7 +158,7 @@ func (u UserView) ID() uint {
 
 func (u *User) TailscaleLogin() tailcfg.Login {
 	return tailcfg.Login{
-		ID:            tailcfg.LoginID(u.ID),
+		ID:            tailcfg.LoginID(u.ID), //nolint:gosec // safe conversion for user ID
 		Provider:      u.Provider,
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
@@ -172,7 +172,7 @@ func (u UserView) TailscaleLogin() tailcfg.Login {
 
 func (u *User) TailscaleUserProfile() tailcfg.UserProfile {
 	return tailcfg.UserProfile{
-		ID:            tailcfg.UserID(u.ID),
+		ID:            tailcfg.UserID(u.ID), //nolint:gosec // UserID is bounded
 		LoginName:     u.Username(),
 		DisplayName:   u.Display(),
 		ProfilePicURL: u.profilePicURL(),
@@ -305,9 +305,9 @@ func (c *OIDCClaims) Identifier() string {
 
 	var result string
 	// Try to parse as URL to handle URL joining correctly
-	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" {
+	if u, err := url.Parse(issuer); err == nil && u.Scheme != "" { //nolint:noinlineerr
 		// For URLs, use proper URL path joining
-		if joined, err := url.JoinPath(issuer, subject); err == nil {
+		if joined, err := url.JoinPath(issuer, subject); err == nil { //nolint:noinlineerr
 			result = joined
 		}
 	}

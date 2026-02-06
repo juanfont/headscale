@@ -346,7 +346,7 @@ func writeDebugMapResponse(
 
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: no data when debug path not set
 	}
 
 	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)

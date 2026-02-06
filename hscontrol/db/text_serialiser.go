@@ -98,7 +98,7 @@ func (TextSerialiser) Value(ctx context.Context, field *schema.Field, dst reflec
 		// always comparable, particularly when reflection is involved:
 		// https://dev.to/arxeiss/in-go-nil-is-not-equal-to-nil-sometimes-jn8
 		if v == nil || (reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil()) {
-			return nil, nil
+			return nil, nil //nolint:nilnil // intentional: nil value for GORM serializer
 		}
 
 		b, err := v.MarshalText()

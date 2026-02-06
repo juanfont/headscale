@@ -25,7 +25,7 @@ func cleanupBeforeTest(ctx context.Context) error {
 		return fmt.Errorf("cleaning stale test containers: %w", err)
 	}
 
-	if err := pruneDockerNetworks(ctx); err != nil {
+	if err := pruneDockerNetworks(ctx); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("pruning networks: %w", err)
 	}
 
@@ -309,9 +309,9 @@ func cleanCacheVolume(ctx context.Context) error {
 
 	err = cli.VolumeRemove(ctx, volumeName, true)
 	if err != nil {
-		if errdefs.IsNotFound(err) {
+		if errdefs.IsNotFound(err) { //nolint:staticcheck // SA1019: deprecated but functional
 			fmt.Printf("Go module cache volume not found: %s\n", volumeName)
-		} else if errdefs.IsConflict(err) {
+		} else if errdefs.IsConflict(err) { //nolint:staticcheck // SA1019: deprecated but functional
 			fmt.Printf("Go module cache volume is in use and cannot be removed: %s\n", volumeName)
 		} else {
 			fmt.Printf("Failed to remove Go module cache volume %s: %v\n", volumeName, err)

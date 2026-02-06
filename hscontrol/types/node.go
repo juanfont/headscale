@@ -53,7 +53,7 @@ func (id NodeID) StableID() tailcfg.StableNodeID {
 }
 
 func (id NodeID) NodeID() tailcfg.NodeID {
-	return tailcfg.NodeID(id)
+	return tailcfg.NodeID(id) //nolint:gosec // NodeID is bounded
 }
 
 func (id NodeID) Uint64() uint64 {
@@ -539,7 +539,7 @@ func (node *Node) MarshalZerologObject(e *zerolog.Event) {
 // - logTracePeerChange in poll.go.
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
+		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
 	}
 
 	if node.NodeKey.String() != req.NodeKey.String() {

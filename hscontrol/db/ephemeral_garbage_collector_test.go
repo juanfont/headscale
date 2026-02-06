@@ -57,7 +57,7 @@ func TestEphemeralGarbageCollectorGoRoutineLeak(t *testing.T) {
 	deletionWg.Add(numNodes)
 
 	for i := 1; i <= numNodes; i++ {
-		gc.Schedule(types.NodeID(i), expiry)
+		gc.Schedule(types.NodeID(i), expiry) //nolint:gosec // safe conversion in test
 	}
 
 	// Wait for all scheduled deletions to complete
@@ -70,7 +70,7 @@ func TestEphemeralGarbageCollectorGoRoutineLeak(t *testing.T) {
 
 	// Schedule and immediately cancel to test that part of the code
 	for i := numNodes + 1; i <= numNodes*2; i++ {
-		nodeID := types.NodeID(i)
+		nodeID := types.NodeID(i) //nolint:gosec // safe conversion in test
 		gc.Schedule(nodeID, time.Hour)
 		gc.Cancel(nodeID)
 	}
@@ -394,8 +394,8 @@ func TestEphemeralGarbageCollectorConcurrentScheduleAndClose(t *testing.T) {
 				case <-stopScheduling:
 					return
 				default:
-					nodeID := types.NodeID(baseNodeID + j + 1)
-					gc.Schedule(nodeID, 1*time.Hour) // Long expiry to ensure it doesn't trigger during test
+					nodeID := types.NodeID(baseNodeID + j + 1) //nolint:gosec // safe conversion in test
+					gc.Schedule(nodeID, 1*time.Hour)           // Long expiry to ensure it doesn't trigger during test
 					atomic.AddInt64(&scheduledCount, 1)
 
 					// Yield to other goroutines to introduce variability

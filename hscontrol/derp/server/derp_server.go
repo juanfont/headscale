@@ -414,7 +414,7 @@ func serverSTUNListener(ctx context.Context, packetConn *net.UDPConn) {
 		}
 
 		addr, _ := netip.AddrFromSlice(udpAddr.IP)
-		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port)))
+		res := stun.Response(txid, netip.AddrPortFrom(addr, uint16(udpAddr.Port))) //nolint:gosec // port is always <=65535
 
 		_, err = packetConn.WriteTo(res, udpAddr)
 		if err != nil {

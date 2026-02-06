@@ -77,7 +77,7 @@ func (hsdb *HSDatabase) CreateAPIKey(
 		Expiration: expiration,
 	}
 
-	if err := hsdb.DB.Save(&key).Error; err != nil {
+	if err := hsdb.DB.Save(&key).Error; err != nil { //nolint:noinlineerr
 		return "", nil, fmt.Errorf("saving API key to database: %w", err)
 	}
 

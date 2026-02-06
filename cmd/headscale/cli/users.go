@@ -102,7 +102,7 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil {
+			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
 				ErrorOutput(
 					err,
 					fmt.Sprintf(

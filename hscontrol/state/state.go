@@ -261,7 +261,7 @@ func (s *State) ReloadPolicy() ([]change.Change, error) {
 // CreateUser creates a new user and updates the policy manager.
 // Returns the created user, change set, and any error.
 func (s *State) CreateUser(user types.User) (*types.User, change.Change, error) {
-	if err := s.db.DB.Save(&user).Error; err != nil {
+	if err := s.db.DB.Save(&user).Error; err != nil { //nolint:noinlineerr
 		return nil, change.Change{}, fmt.Errorf("creating user: %w", err)
 	}
 
@@ -295,7 +295,7 @@ func (s *State) UpdateUser(userID types.UserID, updateFn func(*types.User) error
 			return nil, err
 		}
 
-		if err := updateFn(user); err != nil {
+		if err := updateFn(user); err != nil { //nolint:noinlineerr
 			return nil, err
 		}
 
@@ -833,7 +833,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 
 	var updates []change.Change
 
-	for _, node := range s.nodeStore.ListNodes().All() {
+	for _, node := range s.nodeStore.ListNodes().All() { //nolint:unqueryvet // NodeStore.ListNodes not a SQL query
 		if !node.Valid() {
 			continue
 		}
@@ -1851,7 +1851,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 				}
 			}
 
-			return nil, nil
+			return nil, nil //nolint:nilnil // intentional: transaction success
 		})
 		if err != nil {
 			return types.NodeView{}, change.Change{}, fmt.Errorf("writing node to database: %w", err)

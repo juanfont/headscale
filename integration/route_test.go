@@ -371,7 +371,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	)
 
 	// Helper function to check test failure and print route map if needed
-	checkFailureAndPrintRoutes := func(t *testing.T, client TailscaleClient) {
+	checkFailureAndPrintRoutes := func(t *testing.T, client TailscaleClient) { //nolint:thelper
 		if t.Failed() {
 			t.Logf("[%s] Test failed at this checkpoint", time.Now().Format(TimestampFormat))
 
@@ -2330,7 +2330,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						preAuthKeyTags = []string{tt.approver}
 						if tt.withURL {
 							// For webauth, only user1 can request tags (per tagOwners policy)
-							webauthTagUser = "user1"
+							webauthTagUser = "user1" //nolint:goconst // test value, not a constant
 						}
 					}
 
@@ -2884,7 +2884,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 func assertTracerouteViaIPWithCollect(c *assert.CollectT, tr util.Traceroute, ip netip.Addr) {
 	assert.NotNil(c, tr)
 	assert.True(c, tr.Success)
-	assert.NoError(c, tr.Err)
+	assert.NoError(c, tr.Err) //nolint:testifylint // using assert.CollectT
 	assert.NotEmpty(c, tr.Route)
 	// Since we're inside EventuallyWithT, we can't use require.Greater with t
 	// but assert.NotEmpty above ensures len(tr.Route) > 0
@@ -2898,6 +2898,7 @@ func SortPeerStatus(a, b *ipnstate.PeerStatus) int {
 }
 
 func printCurrentRouteMap(t *testing.T, routers ...*ipnstate.PeerStatus) {
+	t.Helper()
 	t.Logf("== Current routing map ==")
 	slices.SortFunc(routers, SortPeerStatus)
 

@@ -673,7 +673,7 @@ func (t *TailscaleInContainer) Login(
 ) error {
 	command := t.buildLoginCommand(loginServer, authKey)
 
-	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil { //nolint:noinlineerr
 		return fmt.Errorf(
 			"%s failed to join tailscale client (%s): %w",
 			t.hostname,
@@ -766,7 +766,7 @@ func (t *TailscaleInContainer) Up() error {
 		"up",
 	}
 
-	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil { //nolint:noinlineerr
 		return fmt.Errorf(
 			"%s failed to bring tailscale client up (%s): %w",
 			t.hostname,
@@ -785,7 +785,7 @@ func (t *TailscaleInContainer) Down() error {
 		"down",
 	}
 
-	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil {
+	if _, _, err := t.Execute(command, dockertestutil.ExecuteCommandTimeout(dockerExecuteTimeout)); err != nil { //nolint:noinlineerr
 		return fmt.Errorf(
 			"%s failed to bring tailscale client down (%s): %w",
 			t.hostname,
@@ -908,7 +908,7 @@ func (t *TailscaleInContainer) Status(save ...bool) (*ipnstate.Status, error) {
 		return nil, fmt.Errorf("unmarshalling tailscale status: %w", err)
 	}
 
-	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(result), 0o755)
+	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_status.json", t.hostname), []byte(result), 0o755) //nolint:gosec // test infrastructure log files
 	if err != nil {
 		return nil, fmt.Errorf("status netmap to /tmp/control: %w", err)
 	}
@@ -968,7 +968,7 @@ func (t *TailscaleInContainer) Netmap() (*netmap.NetworkMap, error) {
 		return nil, fmt.Errorf("unmarshalling tailscale netmap: %w", err)
 	}
 
-	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_netmap.json", t.hostname), []byte(result), 0o755)
+	err = os.WriteFile(fmt.Sprintf("/tmp/control/%s_netmap.json", t.hostname), []byte(result), 0o755) //nolint:gosec // test infrastructure log files
 	if err != nil {
 		return nil, fmt.Errorf("saving netmap to /tmp/control: %w", err)
 	}
@@ -1571,12 +1571,12 @@ func (t *TailscaleInContainer) ReadFile(path string) ([]byte, error) {
 			return nil, fmt.Errorf("file not found in tar archive, looking for: %s, header was: %s", path, hdr.Name) //nolint:err113
 		}
 
-		if _, err := io.Copy(&out, tr); err != nil {
+		if _, err := io.Copy(&out, tr); err != nil { //nolint:gosec,noinlineerr // trusted tar from test container
 			return nil, fmt.Errorf("copying file to buffer: %w", err)
 		}
 
 		// Only support reading the first tile
-		break
+		break //nolint:staticcheck // SA4004: intentional - only read first file
 	}
 
 	if out.Len() == 0 {
@@ -1593,7 +1593,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	store := &mem.Store{}
-	if err = store.LoadFromJSON(state); err != nil {
+	if err = store.LoadFromJSON(state); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("unmarshalling state file: %w", err)
 	}
 
@@ -1608,7 +1608,7 @@ func (t *TailscaleInContainer) GetNodePrivateKey() (*key.NodePrivate, error) {
 	}
 
 	p := &ipn.Prefs{}
-	if err = json.Unmarshal(currentProfile, &p); err != nil {
+	if err = json.Unmarshal(currentProfile, &p); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("unmarshalling current profile state: %w", err)
 	}
 

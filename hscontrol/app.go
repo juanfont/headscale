@@ -406,7 +406,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 		writeUnauthorized := func(statusCode int) {
 			writer.WriteHeader(statusCode)
 
-			if _, err := writer.Write([]byte("Unauthorized")); err != nil {
+			if _, err := writer.Write([]byte("Unauthorized")); err != nil { //nolint:noinlineerr
 				log.Error().Err(err).Msg("writing HTTP response failed")
 			}
 		}
@@ -450,7 +450,7 @@ func (h *Headscale) httpAuthenticationMiddleware(next http.Handler) http.Handler
 // and will remove it if it is not.
 func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	// File does not exist, all fine
-	if _, err := os.Stat(h.cfg.UnixSocket); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(h.cfg.UnixSocket); errors.Is(err, os.ErrNotExist) { //nolint:noinlineerr
 		return nil
 	}
 
@@ -631,14 +631,14 @@ func (h *Headscale) Serve() error {
 	}
 
 	// Change socket permissions
-	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil {
+	if err := os.Chmod(h.cfg.UnixSocket, h.cfg.UnixSocketPermission); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("changing gRPC socket permission: %w", err)
 	}
 
 	grpcGatewayMux := grpcRuntime.NewServeMux()
 
 	// Make the grpc-gateway connect to grpc over socket
-	grpcGatewayConn, err := grpc.Dial(
+	grpcGatewayConn, err := grpc.Dial( //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 		h.cfg.UnixSocket,
 		[]grpc.DialOption{
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -1045,7 +1045,7 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 	trimmedPrivateKey := strings.TrimSpace(string(privateKey))
 
 	var machineKey key.MachinePrivate
-	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil {
+	if err = machineKey.UnmarshalText([]byte(trimmedPrivateKey)); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("parsing private key: %w", err)
 	}
 

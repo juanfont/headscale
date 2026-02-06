@@ -757,7 +757,7 @@ func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
 	for _, nsStr := range d.Nameservers.Global {
-		if _, err := netip.ParseAddr(nsStr); err == nil {
+		if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
 			})
@@ -765,7 +765,7 @@ func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
 			continue
 		}
 
-		if _, err := url.Parse(nsStr); err == nil {
+		if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
 			})
@@ -790,7 +790,7 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 		var resolvers []*dnstype.Resolver
 
 		for _, nsStr := range nameservers {
-			if _, err := netip.ParseAddr(nsStr); err == nil {
+			if _, err := netip.ParseAddr(nsStr); err == nil { //nolint:noinlineerr
 				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nsStr,
 				})
@@ -798,7 +798,7 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 				continue
 			}
 
-			if _, err := url.Parse(nsStr); err == nil {
+			if _, err := url.Parse(nsStr); err == nil { //nolint:noinlineerr
 				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nsStr,
 				})
@@ -915,7 +915,7 @@ func LoadCLIConfig() (*Config, error) {
 // LoadServerConfig returns the full Headscale configuration to
 // host a Headscale server. This is called as part of `headscale serve`.
 func LoadServerConfig() (*Config, error) {
-	if err := validateServerConfig(); err != nil {
+	if err := validateServerConfig(); err != nil { //nolint:noinlineerr
 		return nil, err
 	}
 
@@ -1006,7 +1006,7 @@ func LoadServerConfig() (*Config, error) {
 
 		PrefixV4:     prefix4,
 		PrefixV6:     prefix6,
-		IPAllocation: IPAllocationStrategy(alloc),
+		IPAllocation: alloc,
 
 		NoisePrivateKeyPath: util.AbsolutePathFromConfigPath(
 			viper.GetString("noise.private_key_path"),

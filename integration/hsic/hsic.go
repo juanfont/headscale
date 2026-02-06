@@ -811,7 +811,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 				return fmt.Errorf("creating file %s: %w", targetPath, err)
 			}
 
-			if _, err := io.Copy(outFile, tarReader); err != nil {
+			if _, err := io.Copy(outFile, tarReader); err != nil { //nolint:gosec,noinlineerr // trusted tar from test container
 				outFile.Close()
 				return fmt.Errorf("copying file contents: %w", err)
 			}
@@ -819,7 +819,7 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 			outFile.Close()
 
 			// Set file permissions
-			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
+			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil { //nolint:gosec,noinlineerr // safe mode from tar header
 				return fmt.Errorf("setting file permissions: %w", err)
 			}
 		}
@@ -917,7 +917,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 				return fmt.Errorf("creating database file: %w", err)
 			}
 
-			written, err := io.Copy(outFile, tarReader)
+			written, err := io.Copy(outFile, tarReader) //nolint:gosec // trusted tar from test container
 			outFile.Close()
 
 			if err != nil {
@@ -1602,7 +1602,7 @@ func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.M
 	}
 
 	var res map[types.NodeID][]tailcfg.MapResponse
-	if err := json.Unmarshal([]byte(result), &res); err != nil {
+	if err := json.Unmarshal([]byte(result), &res); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
 
@@ -1622,7 +1622,7 @@ func (t *HeadscaleInContainer) PrimaryRoutes() (*routes.DebugRoutes, error) {
 	}
 
 	var debugRoutes routes.DebugRoutes
-	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil {
+	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
 
@@ -1642,7 +1642,7 @@ func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, erro
 	}
 
 	var debugInfo hscontrol.DebugBatcherInfo
-	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil {
+	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding batcher debug response: %w", err)
 	}
 
@@ -1662,7 +1662,7 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	var nodeStore map[types.NodeID]types.Node
-	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil {
+	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding nodestore debug response: %w", err)
 	}
 
@@ -1682,7 +1682,7 @@ func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
 	}
 
 	var filterRules []tailcfg.FilterRule
-	if err := json.Unmarshal([]byte(result), &filterRules); err != nil {
+	if err := json.Unmarshal([]byte(result), &filterRules); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding filter response: %w", err)
 	}
 

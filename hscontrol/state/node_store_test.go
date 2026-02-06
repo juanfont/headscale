@@ -32,7 +32,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
 				assert.Empty(t, snapshot.nodesByID)
 				assert.Empty(t, snapshot.allNodes)
 				assert.Empty(t, snapshot.peersByNode)
@@ -48,7 +48,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 1)
 				assert.Len(t, snapshot.allNodes, 1)
 				assert.Len(t, snapshot.peersByNode, 1)
@@ -71,7 +71,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 2)
 				assert.Len(t, snapshot.allNodes, 2)
 				assert.Len(t, snapshot.peersByNode, 2)
@@ -96,7 +96,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, allowAllPeersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 3)
 				assert.Len(t, snapshot.allNodes, 3)
 				assert.Len(t, snapshot.peersByNode, 3)
@@ -125,7 +125,7 @@ func TestSnapshotFromNodes(t *testing.T) {
 
 				return nodes, peersFunc
 			},
-			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) {
+			validate: func(t *testing.T, nodes map[types.NodeID]types.Node, snapshot Snapshot) { //nolint:thelper
 				assert.Len(t, snapshot.nodesByID, 4)
 				assert.Len(t, snapshot.allNodes, 4)
 				assert.Len(t, snapshot.peersByNode, 4)
@@ -241,7 +241,7 @@ func TestNodeStoreOperations(t *testing.T) {
 	}{
 		{
 			name: "create empty store and add single node",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				return NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
@@ -279,7 +279,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "create store with initial node and add more",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				node1 := createTestNode(1, 1, "user1", "node1")
 				initialNodes := types.Nodes{&node1}
 
@@ -347,7 +347,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "test node deletion",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				node3 := createTestNode(3, 2, "user2", "node3")
@@ -408,7 +408,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "test node updates",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
@@ -450,7 +450,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "test with odd-even peers filtering",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				return NewNodeStore(nil, oddEvenPeersFunc, TestBatchSize, TestBatchTimeout)
 			},
 			steps: []testStep{
@@ -509,7 +509,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "test batch modifications return correct node state",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
@@ -692,7 +692,7 @@ func TestNodeStoreOperations(t *testing.T) {
 		},
 		{
 			name: "test UpdateNode result is immutable for database save",
-			setupFunc: func(t *testing.T) *NodeStore {
+			setupFunc: func(t *testing.T) *NodeStore { //nolint:thelper
 				node1 := createTestNode(1, 1, "user1", "node1")
 				node2 := createTestNode(2, 1, "user1", "node2")
 				initialNodes := types.Nodes{&node1, &node2}
@@ -908,7 +908,7 @@ func TestNodeStoreConcurrentPutNode(t *testing.T) {
 		go func(nodeID int) {
 			defer wg.Done()
 
-			node := createConcurrentTestNode(types.NodeID(nodeID), "concurrent-node")
+			node := createConcurrentTestNode(types.NodeID(nodeID), "concurrent-node") //nolint:gosec // safe conversion in test
 
 			resultNode := store.PutNode(node)
 			results <- resultNode.Valid()
@@ -947,7 +947,7 @@ func TestNodeStoreBatchingEfficiency(t *testing.T) {
 		go func(nodeID int) {
 			defer wg.Done()
 
-			node := createConcurrentTestNode(types.NodeID(nodeID), "batch-node")
+			node := createConcurrentTestNode(types.NodeID(nodeID), "batch-node") //nolint:gosec // test code with small integers
 
 			resultNode := store.PutNode(node)
 			results <- resultNode.Valid()
@@ -1055,7 +1055,7 @@ func TestNodeStoreResourceCleanup(t *testing.T) {
 
 	const ops = 100
 	for i := range ops {
-		nodeID := types.NodeID(i + 1)
+		nodeID := types.NodeID(i + 1) //nolint:gosec // test code with small integers
 		node := createConcurrentTestNode(nodeID, "cleanup-node")
 		resultNode := store.PutNode(node)
 		assert.True(t, resultNode.Valid())
@@ -1099,7 +1099,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 
 	// Launch all PutNode operations concurrently
 	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i)
+		nodeID := types.NodeID(i) //nolint:gosec // test code with small integers
 
 		wg.Add(1)
 
@@ -1125,7 +1125,7 @@ func TestNodeStoreOperationTimeout(t *testing.T) {
 	wg = sync.WaitGroup{}
 
 	for i := 1; i <= ops; i++ {
-		nodeID := types.NodeID(i)
+		nodeID := types.NodeID(i) //nolint:gosec // test code with small integers
 
 		wg.Add(1)
 
@@ -1190,7 +1190,7 @@ func TestNodeStoreUpdateNonExistentNode(t *testing.T) {
 		store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
 		store.Start()
 
-		nonExistentID := types.NodeID(999 + i)
+		nonExistentID := types.NodeID(999 + i) //nolint:gosec // test code with small integers
 		updateCallCount := 0
 
 		fmt.Printf("[TestNodeStoreUpdateNonExistentNode] UpdateNode(%d) starting\n", nonExistentID)
@@ -1214,7 +1214,7 @@ func BenchmarkNodeStoreAllocations(b *testing.B) {
 	defer store.Stop()
 
 	for i := 0; b.Loop(); i++ {
-		nodeID := types.NodeID(i + 1)
+		nodeID := types.NodeID(i + 1) //nolint:gosec // benchmark code with small integers
 		node := createConcurrentTestNode(nodeID, "bench-node")
 		store.PutNode(node)
 		store.UpdateNode(nodeID, func(n *types.Node) {

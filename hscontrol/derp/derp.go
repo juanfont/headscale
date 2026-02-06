@@ -166,8 +166,8 @@ func derpRandom() *rand.Rand {
 
 	derpRandomOnce.Do(func() {
 		seed := cmp.Or(viper.GetString("dns.base_domain"), time.Now().String())
-		rnd := rand.New(rand.NewSource(0))
-		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table)))
+		rnd := rand.New(rand.NewSource(0))                        //nolint:gosec // weak random is fine for DERP scrambling
+		rnd.Seed(int64(crc64.Checksum([]byte(seed), crc64Table))) //nolint:gosec // safe conversion
 		derpRandomInst = rnd
 	})
 

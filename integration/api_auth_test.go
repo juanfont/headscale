@@ -218,7 +218,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		var response v1.ListUsersResponse
 
 		err = protojson.Unmarshal(body, &response)
-		assert.NoError(t, err, "Response should be valid protobuf JSON with valid API key")
+		require.NoError(t, err, "Response should be valid protobuf JSON with valid API key")
 
 		// Should contain our test users
 		users := response.GetUsers()
@@ -408,7 +408,7 @@ func TestAPIAuthenticationBypassCurl(t *testing.T) {
 		var response v1.ListUsersResponse
 
 		err = protojson.Unmarshal([]byte(responseBody), &response)
-		assert.NoError(t, err, "Response should be valid protobuf JSON")
+		require.NoError(t, err, "Response should be valid protobuf JSON")
 
 		users := response.GetUsers()
 		assert.Len(t, users, 2, "Should have 2 users")
@@ -490,7 +490,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		)
 
 		// Should fail with authentication error
-		assert.Error(t, err,
+		require.Error(t, err,
 			"gRPC connection with invalid API key should fail")
 
 		// Should contain authentication error message
@@ -519,7 +519,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		)
 
 		// Should succeed
-		assert.NoError(t, err,
+		require.NoError(t, err,
 			"gRPC connection with valid API key should succeed, output: %s", output)
 
 		// CLI outputs the users array directly, not wrapped in ListUsersResponse
@@ -527,7 +527,7 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 		var users []*v1.User
 
 		err = json.Unmarshal([]byte(output), &users)
-		assert.NoError(t, err, "Response should be valid JSON array")
+		require.NoError(t, err, "Response should be valid JSON array")
 		assert.Len(t, users, 2, "Should have 2 users")
 
 		userNames := make([]string, len(users))
@@ -644,7 +644,7 @@ cli:
 		)
 
 		// Should fail
-		assert.Error(t, err,
+		require.Error(t, err,
 			"CLI with invalid API key should fail")
 
 		// Should indicate authentication failure
@@ -679,7 +679,7 @@ cli:
 		)
 
 		// Should succeed
-		assert.NoError(t, err,
+		require.NoError(t, err,
 			"CLI with valid API key should succeed")
 
 		// CLI outputs the users array directly, not wrapped in ListUsersResponse
@@ -687,7 +687,7 @@ cli:
 		var users []*v1.User
 
 		err = json.Unmarshal([]byte(output), &users)
-		assert.NoError(t, err, "Response should be valid JSON array")
+		require.NoError(t, err, "Response should be valid JSON array")
 		assert.Len(t, users, 2, "Should have 2 users")
 
 		userNames := make([]string, len(users))

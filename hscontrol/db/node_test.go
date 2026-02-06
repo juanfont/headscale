@@ -468,10 +468,10 @@ func TestAutoApproveRoutes(t *testing.T) {
 				require.NoError(t, err)
 
 				users, err := adb.ListUsers()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				nodes, err := adb.ListNodes()
-				assert.NoError(t, err)
+				require.NoError(t, err)
 
 				pm, err := pmf(users, nodes.ViewSlice())
 				require.NoError(t, err)
@@ -733,7 +733,7 @@ func TestNodeNaming(t *testing.T) {
 	nodeInvalidHostname := types.Node{
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
-		Hostname:       "我的电脑",
+		Hostname:       "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 		UserID:         &user2.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
 	}
@@ -824,25 +824,25 @@ func TestNodeNaming(t *testing.T) {
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "test")
 	})
-	assert.ErrorContains(t, err, "name is not unique")
+	require.ErrorContains(t, err, "name is not unique")
 
 	// Rename invalid chars
 	err = db.Write(func(tx *gorm.DB) error {
-		return RenameNode(tx, nodes[2].ID, "我的电脑")
+		return RenameNode(tx, nodes[2].ID, "我的电脑") //nolint:gosmopolitan // intentional i18n test data
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename too short
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[3].ID, "a")
 	})
-	assert.ErrorContains(t, err, "at least 2 characters")
+	require.ErrorContains(t, err, "at least 2 characters")
 
 	// Rename with emoji
 	err = db.Write(func(tx *gorm.DB) error {
 		return RenameNode(tx, nodes[0].ID, "hostname-with-💩")
 	})
-	assert.ErrorContains(t, err, "invalid characters")
+	require.ErrorContains(t, err, "invalid characters")
 
 	// Rename with only emoji
 	err = db.Write(func(tx *gorm.DB) error {
@@ -910,12 +910,12 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "chinese_chars_with_dash_rejected",
-			newName: "server-北京-01",
+			newName: "server-北京-01", //nolint:gosmopolitan // intentional i18n test data
 			wantErr: "invalid characters",
 		},
 		{
 			name:    "chinese_only_rejected",
-			newName: "我的电脑",
+			newName: "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 			wantErr: "invalid characters",
 		},
 		{
@@ -925,7 +925,7 @@ func TestRenameNodeComprehensive(t *testing.T) {
 		},
 		{
 			name:    "mixed_chinese_emoji_rejected",
-			newName: "测试💻机器",
+			newName: "测试💻机器", //nolint:gosmopolitan // intentional i18n test data
 			wantErr: "invalid characters",
 		},
 		{

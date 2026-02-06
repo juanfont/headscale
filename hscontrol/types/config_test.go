@@ -26,7 +26,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "unmarshal-dns-full-config",
 			configPath: "testdata/dns_full.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -61,7 +61,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -92,7 +92,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "unmarshal-dns-full-no-magic",
 			configPath: "testdata/dns_full_no_magic.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -127,7 +127,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-to-tailcfg.DNSConfig",
 			configPath: "testdata/dns_full_no_magic.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				dns, err := dns()
 				if err != nil {
 					return nil, err
@@ -158,7 +158,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "base-domain-in-server-url-err",
 			configPath: "testdata/base-domain-in-server-url.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				return LoadServerConfig()
 			},
 			want:    nil,
@@ -167,7 +167,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "base-domain-not-in-server-url",
 			configPath: "testdata/base-domain-not-in-server-url.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -187,7 +187,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-override-true-errors",
 			configPath: "testdata/dns-override-true-error.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				return LoadServerConfig()
 			},
 			wantErr: "Fatal config error: dns.nameservers.global must be set when dns.override_local_dns is true",
@@ -195,7 +195,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "dns-override-true",
 			configPath: "testdata/dns-override-true.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper
 				_, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -221,7 +221,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			name:       "policy-path-is-loaded",
 			configPath: "testdata/policy-path-is-loaded.yaml",
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				cfg, err := LoadServerConfig()
 				if err != nil {
 					return nil, err
@@ -277,7 +277,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				"HEADSCALE_DATABASE_SQLITE_WRITE_AHEAD_LOG": "false",
 				"HEADSCALE_PREFIXES_V4":                     "100.64.0.0/10",
 			},
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				t.Logf("all settings: %#v", viper.AllSettings())
 
 				assert.Equal(t, "trace", viper.GetString("log.level"))
@@ -301,7 +301,7 @@ func TestReadConfigFromEnv(t *testing.T) {
 				// "HEADSCALE_DNS_NAMESERVERS_SPLIT":  `{foo.bar.com: ["1.1.1.1"]}`,
 				// "HEADSCALE_DNS_EXTRA_RECORDS":      `[{ name: "prometheus.myvpn.example.com", type: "A", value: "100.64.0.4" }]`,
 			},
-			setup: func(t *testing.T) (any, error) {
+			setup: func(t *testing.T) (any, error) { //nolint:thelper // inline test closure
 				t.Logf("all settings: %#v", viper.AllSettings())
 
 				dns, err := dns()

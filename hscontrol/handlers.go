@@ -92,7 +92,7 @@ func (h *Headscale) handleVerifyRequest(
 	}
 
 	var derpAdmitClientRequest tailcfg.DERPAdmitClientRequest
-	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil {
+	if err := json.Unmarshal(body, &derpAdmitClientRequest); err != nil { //nolint:noinlineerr
 		return NewHTTPError(http.StatusBadRequest, "Bad Request: invalid JSON", fmt.Errorf("parsing DERP client request: %w", err))
 	}
 

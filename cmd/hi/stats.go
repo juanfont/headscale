@@ -155,13 +155,13 @@ func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string,
 		case event := <-events:
 			if event.Type == "container" && event.Action == "start" {
 				// Get container details
-				containerInfo, err := sc.client.ContainerInspect(ctx, event.ID)
+				containerInfo, err := sc.client.ContainerInspect(ctx, event.ID) //nolint:staticcheck // SA1019: use Actor.ID
 				if err != nil {
 					continue
 				}
 
 				// Convert to types.Container format for consistency
-				cont := types.Container{
+				cont := types.Container{ //nolint:staticcheck // SA1019: use container.Summary
 					ID:     containerInfo.ID,
 					Names:  []string{containerInfo.Name},
 					Labels: containerInfo.Config.Labels,
@@ -182,7 +182,7 @@ func (sc *StatsCollector) monitorDockerEvents(ctx context.Context, runID string,
 }
 
 // shouldMonitorContainer determines if a container should be monitored.
-func (sc *StatsCollector) shouldMonitorContainer(cont types.Container, runID string) bool {
+func (sc *StatsCollector) shouldMonitorContainer(cont types.Container, runID string) bool { //nolint:staticcheck // SA1019: use container.Summary
 	// Check if it has the correct run ID label
 	if cont.Labels == nil || cont.Labels["hi.run-id"] != runID {
 		return false
@@ -243,7 +243,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 
 	decoder := json.NewDecoder(statsResponse.Body)
 
-	var prevStats *container.Stats
+	var prevStats *container.Stats //nolint:staticcheck // SA1019: use StatsResponse
 
 	for {
 		select {
@@ -252,7 +252,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 		case <-ctx.Done():
 			return
 		default:
-			var stats container.Stats
+			var stats container.Stats //nolint:staticcheck // SA1019: use StatsResponse
 
 			err := decoder.Decode(&stats)
 			if err != nil {
@@ -303,7 +303,7 @@ func (sc *StatsCollector) collectStatsForContainer(ctx context.Context, containe
 }
 
 // calculateCPUPercent calculates CPU usage percentage from Docker stats.
-func calculateCPUPercent(prevStats, stats *container.Stats) float64 {
+func calculateCPUPercent(prevStats, stats *container.Stats) float64 { //nolint:staticcheck // SA1019: use StatsResponse
 	// CPU calculation based on Docker's implementation
 	cpuDelta := float64(stats.CPUStats.CPUUsage.TotalUsage) - float64(prevStats.CPUStats.CPUUsage.TotalUsage)
 	systemDelta := float64(stats.CPUStats.SystemUsage) - float64(prevStats.CPUStats.SystemUsage)

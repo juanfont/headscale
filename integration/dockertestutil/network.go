@@ -20,7 +20,7 @@ func GetFirstOrCreateNetwork(pool *dockertest.Pool, name string) (*dockertest.Ne
 	}
 
 	if len(networks) == 0 {
-		if _, err := pool.CreateNetwork(name); err == nil {
+		if _, err := pool.CreateNetwork(name); err == nil { //nolint:noinlineerr // intentional inline check
 			// Create does not give us an updated version of the resource, so we need to
 			// get it again.
 			networks, err := pool.NetworksByName(name)

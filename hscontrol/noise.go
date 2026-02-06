@@ -142,14 +142,14 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 	copy(notH2Frame[:], earlyPayloadMagic)
 
 	var lenBuf [4]byte
-	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(earlyJSON)))
+	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(earlyJSON))) //nolint:gosec // JSON length is bounded
 	// These writes are all buffered by caller, so fine to do them
 	// separately:
-	if _, err := writer.Write(notH2Frame[:]); err != nil {
+	if _, err := writer.Write(notH2Frame[:]); err != nil { //nolint:noinlineerr
 		return err
 	}
 
-	if _, err := writer.Write(lenBuf[:]); err != nil {
+	if _, err := writer.Write(lenBuf[:]); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -257,7 +257,7 @@ func (ns *noiseServer) NoiseRegistrationHandler(
 		}
 
 		var regReq tailcfg.RegisterRequest
-		if err := json.Unmarshal(body, &regReq); err != nil {
+		if err := json.Unmarshal(body, &regReq); err != nil { //nolint:noinlineerr
 			return &regReq, regErr(err)
 		}
 

@@ -905,7 +905,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "hostname_with_unicode",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "node-ñoño-测试",
+				Hostname: "node-ñoño-测试", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -986,7 +986,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_chars_with_dash_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
+				Hostname: "server-北京-01", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -995,7 +995,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "chinese_only_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1013,7 +1013,7 @@ func TestEnsureHostname(t *testing.T) {
 		{
 			name: "mixed_chinese_emoji_invalid",
 			hostinfo: &tailcfg.Hostinfo{
-				Hostname: "测试💻机器",
+				Hostname: "测试💻机器", //nolint:gosmopolitan // intentional i18n test data
 			},
 			machineKey: "mkey12345678",
 			nodeKey:    "nkey12345678",
@@ -1103,7 +1103,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "test-node",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1149,7 +1149,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "",
 			nodeKey:      "nkey12345678",
 			wantHostname: "node-nkey1234",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1165,7 +1165,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "",
 			nodeKey:      "",
 			wantHostname: testUnknownNode,
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1183,7 +1183,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "",
 			nodeKey:      "",
 			wantHostname: testUnknownNode,
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Fatal("hostinfo should not be nil")
 				}
@@ -1205,12 +1205,12 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "test",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
 
-				if hi.Hostname != "test" {
+				if hi.Hostname != "test" { //nolint:staticcheck // SA5011: nil check is above
 					t.Errorf("hostname = %v, want test", hi.Hostname)
 				}
 
@@ -1239,12 +1239,12 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			machineKey:   "mkey12345678",
 			nodeKey:      "nkey12345678",
 			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
-			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) {
+			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
 					t.Error("hostinfo should not be nil")
 				}
 
-				if len(hi.Hostname) != 63 {
+				if len(hi.Hostname) != 63 { //nolint:staticcheck // SA5011: nil check is above
 					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
 				}
 			},
@@ -1281,6 +1281,7 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 	for i, hostname := range testCases {
 		t.Run(cmp.Diff("", ""), func(t *testing.T) {
 			t.Parallel()
+
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
 
 			result := EnsureHostname(hostinfo, "mkey", "nkey")

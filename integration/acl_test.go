@@ -1877,7 +1877,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 
 			result, err := client.Curl(url)
 			assert.Empty(t, result, "user1 should not be able to access user2's regular devices (autogroup:self isolation)")
-			assert.Error(t, err, "connection from user1 to user2 regular device should fail")
+			require.Error(t, err, "connection from user1 to user2 regular device should fail")
 		}
 	}
 

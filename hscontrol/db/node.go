@@ -266,7 +266,7 @@ func SetApprovedRoutes(
 		return err
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil {
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("approved_routes", string(b)).Error; err != nil { //nolint:noinlineerr
 		return fmt.Errorf("updating approved routes: %w", err)
 	}
 
@@ -309,7 +309,7 @@ func RenameNode(tx *gorm.DB,
 		return ErrNodeNameNotUnique
 	}
 
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil {
+	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("given_name", newName).Error; err != nil { //nolint:noinlineerr
 		return fmt.Errorf("renaming node in database: %w", err)
 	}
 
@@ -447,7 +447,7 @@ func RegisterNodeForTest(tx *gorm.DB, node types.Node, ipv4 *netip.Addr, ipv6 *n
 		node.GivenName = givenName
 	}
 
-	if err := tx.Save(&node).Error; err != nil {
+	if err := tx.Save(&node).Error; err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("saving node to database: %w", err)
 	}
 

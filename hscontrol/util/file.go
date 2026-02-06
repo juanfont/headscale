@@ -45,11 +45,11 @@ func GetFileMode(key string) fs.FileMode {
 		return PermissionFallback
 	}
 
-	return fs.FileMode(mode)
+	return fs.FileMode(mode) //nolint:gosec // file mode is bounded by ParseUint
 }
 
 func EnsureDir(dir string) error {
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err := os.Stat(dir); os.IsNotExist(err) { //nolint:noinlineerr
 		err := os.MkdirAll(dir, PermissionFallback)
 		if err != nil {
 			if errors.Is(err, os.ErrPermission) {

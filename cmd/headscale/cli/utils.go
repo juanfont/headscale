@@ -58,7 +58,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
 
 	grpcOptions := []grpc.DialOption{
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 	}
 
 	address := cfg.CLI.Address
@@ -123,7 +123,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 
 	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via gRPC")
 
-	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
+	conn, err := grpc.DialContext(ctx, address, grpcOptions...) //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 	if err != nil {
 		log.Fatal().Caller().Err(err).Msgf("could not connect: %v", err)
 		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)

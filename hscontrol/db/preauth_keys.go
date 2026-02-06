@@ -138,7 +138,7 @@ func CreatePreAuthKey(
 		Hash:       hash,    // Store hash
 	}
 
-	if err := tx.Save(&key).Error; err != nil {
+	if err := tx.Save(&key).Error; err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("creating key in database: %w", err)
 	}
 

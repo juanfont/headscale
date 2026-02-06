@@ -57,7 +57,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	const dirPerm = 0o755
-	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil {
+	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("creating logs directory: %w", err)
 	}
 
@@ -78,7 +78,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	imageName := "golang:" + config.GoVersion
-	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil {
+	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("ensuring image availability: %w", err)
 	}
 
@@ -91,7 +91,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		log.Printf("Created container: %s", resp.ID)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("starting container: %w", err)
 	}
 
@@ -139,7 +139,7 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	// Extract artifacts from test containers before cleanup
-	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose {
+	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose { //nolint:noinlineerr
 		log.Printf("Warning: failed to extract artifacts from containers: %v", err)
 	}
 
@@ -418,7 +418,7 @@ func isContainerFinalized(state *container.State) bool {
 func findProjectRoot(startPath string) string {
 	current := startPath
 	for {
-		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
+		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil { //nolint:noinlineerr
 			return current
 		}
 
@@ -490,7 +490,7 @@ func getCurrentDockerContext(ctx context.Context) (*DockerContext, error) {
 	}
 
 	var contexts []DockerContext
-	if err := json.Unmarshal(output, &contexts); err != nil {
+	if err := json.Unmarshal(output, &contexts); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("parsing docker context: %w", err)
 	}
 
@@ -510,9 +510,9 @@ func getDockerSocketPath() string {
 
 // checkImageAvailableLocally checks if the specified Docker image is available locally.
 func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
-	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	_, _, err := cli.ImageInspectWithRaw(ctx, imageName) //nolint:staticcheck // SA1019: deprecated but functional
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if client.IsErrNotFound(err) { //nolint:staticcheck // SA1019: deprecated but functional
 			return false, nil
 		}
 
@@ -781,12 +781,12 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	}
 
 	// Write stdout logs
-	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
 		return fmt.Errorf("writing stdout log: %w", err)
 	}
 
 	// Write stderr logs
-	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
+	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
 		return fmt.Errorf("writing stderr log: %w", err)
 	}
 

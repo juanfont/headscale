@@ -493,7 +493,7 @@ func assertSSHTimeout(t *testing.T, client TailscaleClient, peer TailscaleClient
 
 func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	t.Helper()
-	assert.Error(t, err)
+	require.Error(t, err)
 
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)

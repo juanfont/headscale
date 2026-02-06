@@ -236,7 +236,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	nodeExpiry := a.determineNodeExpiry(idToken.Expiry)
 
 	var claims types.OIDCClaims
-	if err := idToken.Claims(&claims); err != nil {
+	if err := idToken.Claims(&claims); err != nil { //nolint:noinlineerr
 		httpError(writer, fmt.Errorf("decoding ID token claims: %w", err))
 		return
 	}
@@ -332,7 +332,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
 
-		if _, err := writer.Write(content.Bytes()); err != nil {
+		if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr
 			util.LogErr(err, "Failed to write HTTP response")
 		}
 

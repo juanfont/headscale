@@ -201,7 +201,7 @@ func TestConstraints(t *testing.T) {
 	}{
 		{
 			name: "no-duplicate-username-if-no-oidc",
-			run: func(t *testing.T, db *gorm.DB) {
+			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				_, err := CreateUser(db, types.User{Name: "user1"})
 				require.NoError(t, err)
 				_, err = CreateUser(db, types.User{Name: "user1"})
@@ -210,7 +210,7 @@ func TestConstraints(t *testing.T) {
 		},
 		{
 			name: "no-oidc-duplicate-username-and-id",
-			run: func(t *testing.T, db *gorm.DB) {
+			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				user := types.User{
 					Model: gorm.Model{ID: 1},
 					Name:  "user1",
@@ -232,7 +232,7 @@ func TestConstraints(t *testing.T) {
 		},
 		{
 			name: "no-oidc-duplicate-id",
-			run: func(t *testing.T, db *gorm.DB) {
+			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				user := types.User{
 					Model: gorm.Model{ID: 1},
 					Name:  "user1",
@@ -254,7 +254,7 @@ func TestConstraints(t *testing.T) {
 		},
 		{
 			name: "allow-duplicate-username-cli-then-oidc",
-			run: func(t *testing.T, db *gorm.DB) {
+			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				_, err := CreateUser(db, types.User{Name: "user1"}) // Create CLI username
 				require.NoError(t, err)
 
@@ -269,7 +269,7 @@ func TestConstraints(t *testing.T) {
 		},
 		{
 			name: "allow-duplicate-username-oidc-then-cli",
-			run: func(t *testing.T, db *gorm.DB) {
+			run: func(t *testing.T, db *gorm.DB) { //nolint:thelper
 				user := types.User{
 					Name:               "user1",
 					ProviderIdentifier: sql.NullString{String: "http://test.com/user1", Valid: true},

@@ -1125,6 +1125,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 // occur during channel replacement with actual workload.
 func XTestBatcherChannelClosingRace(t *testing.T) {
 	t.Helper()
+
 	for _, batcherFunc := range allBatcherFunctions {
 		t.Run(batcherFunc.name, func(t *testing.T) {
 			// Create test environment with real database and nodes
@@ -1633,7 +1634,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 // missed updates under sustained high load. The test uses real node data to
 // generate authentic update scenarios and tracks comprehensive statistics.
 //
-//nolint:gocyclo // complex scalability test scenario
+//nolint:gocyclo,thelper // complex scalability test scenario
 func XTestBatcherScalability(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping scalability test in short mode")
