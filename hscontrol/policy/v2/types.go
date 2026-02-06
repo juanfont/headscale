@@ -51,6 +51,55 @@ var (
 	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self destination requires sources to be users, groups, or autogroup:member only")
 )
 
+// Policy validation errors.
+var (
+	ErrUnknownAliasType            = errors.New("unknown alias type")
+	ErrUnknownAutoApprover         = errors.New("unknown auto approver type")
+	ErrUnknownOwnerType            = errors.New("unknown owner type")
+	ErrInvalidUsername             = errors.New("username must contain @")
+	ErrUserNotFound                = errors.New("user not found")
+	ErrMultipleUsersFound          = errors.New("multiple users found")
+	ErrInvalidGroupFormat          = errors.New("group must start with 'group:'")
+	ErrInvalidTagFormat            = errors.New("tag must start with 'tag:'")
+	ErrInvalidHostname             = errors.New("invalid hostname")
+	ErrHostResolve                 = errors.New("error resolving host")
+	ErrInvalidPrefix               = errors.New("invalid prefix")
+	ErrInvalidAutogroup            = errors.New("invalid autogroup")
+	ErrUnknownAutogroup            = errors.New("unknown autogroup")
+	ErrHostportMissingColon        = errors.New("hostport must contain a colon")
+	ErrTypeNotSupported            = errors.New("type not supported")
+	ErrInvalidAlias                = errors.New("invalid alias format")
+	ErrInvalidAutoApprover         = errors.New("invalid auto approver format")
+	ErrInvalidOwner                = errors.New("invalid owner format")
+	ErrGroupNotDefined             = errors.New("group not defined in policy")
+	ErrInvalidGroupMember          = errors.New("invalid group member type")
+	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
+	ErrNestedGroups                = errors.New("nested groups are not allowed")
+	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
+	ErrTagNotDefined               = errors.New("tag not defined in policy")
+	ErrAutoApproverNotAlias        = errors.New("auto approver is not an alias")
+	ErrInvalidACLAction            = errors.New("invalid ACL action")
+	ErrInvalidSSHAction            = errors.New("invalid SSH action")
+	ErrInvalidProtocolNumber       = errors.New("invalid protocol number")
+	ErrProtocolLeadingZero         = errors.New("leading 0 not permitted in protocol number")
+	ErrProtocolOutOfRange          = errors.New("protocol number out of range (0-255)")
+	ErrAutogroupNotSupported       = errors.New("autogroup not supported in headscale")
+	ErrAutogroupInternetSrc        = errors.New("autogroup:internet can only be used in ACL destinations")
+	ErrAutogroupSelfSrc            = errors.New("autogroup:self can only be used in ACL destinations")
+	ErrAutogroupNotSupportedACLSrc = errors.New("autogroup not supported for ACL sources")
+	ErrAutogroupNotSupportedACLDst = errors.New("autogroup not supported for ACL destinations")
+	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
+	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
+	ErrAutogroupNotSupportedSSHUsr = errors.New("autogroup not supported for SSH user")
+	ErrHostNotDefined              = errors.New("host not defined in policy")
+	ErrSSHSourceAliasNotSupported  = errors.New("alias not supported for SSH source")
+	ErrSSHDestAliasNotSupported    = errors.New("alias not supported for SSH destination")
+	ErrUnknownSSHDestAlias         = errors.New("unknown SSH destination alias type")
+	ErrUnknownSSHSrcAlias          = errors.New("unknown SSH source alias type")
+	ErrUnknownField                = errors.New("unknown field")
+	ErrProtocolNoSpecificPorts     = errors.New("protocol does not support specific ports")
+)
+
 type Asterix int
 
 func (a Asterix) Validate() error {
@@ -90,7 +139,7 @@ func (a AliasWithPorts) MarshalJSON() ([]byte, error) {
 	case Asterix:
 		alias = "*"
 	default:
-		return nil, fmt.Errorf("unknown alias type: %T", v)
+		return nil, fmt.Errorf("%w: %T", ErrUnknownAliasType, v)
 	}
 
 	// If no ports are specified
@@ -141,7 +190,7 @@ func (u Username) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf("username must contain @, got: %q", u)
+	return fmt.Errorf("%w, got: %q", ErrInvalidUsername, u)
 }
 
 func (u *Username) String() string {
@@ -203,11 +252,11 @@ func (u Username) resolveUser(users types.Users) (types.User, error) {
 	}
 
 	if len(potentialUsers) == 0 {
-		return types.User{}, fmt.Errorf("user with token %q not found", u.String())
+		return types.User{}, fmt.Errorf("%w: token %q", ErrUserNotFound, u.String())
 	}
 
 	if len(potentialUsers) > 1 {
-		return types.User{}, fmt.Errorf("multiple users with token %q found: %s", u.String(), potentialUsers.String())
+		return types.User{}, fmt.Errorf("%w: token %q found: %s", ErrMultipleUsersFound, u.String(), potentialUsers.String())
 	}
 
 	return potentialUsers[0], nil
@@ -251,7 +300,7 @@ func (g Group) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf(`group must start with "group:", got: %q`, g)
+	return fmt.Errorf("%w, got: %q", ErrInvalidGroupFormat, g)
 }
 
 func (g *Group) UnmarshalJSON(b []byte) error {
@@ -318,7 +367,7 @@ func (t Tag) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf(`tag has to start with "tag:", got: %q`, t)
+	return fmt.Errorf("%w, got: %q", ErrInvalidTagFormat, t)
 }
 
 func (t *Tag) UnmarshalJSON(b []byte) error {
@@ -370,7 +419,7 @@ func (h Host) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf("hostname %q is invalid", h)
+	return fmt.Errorf("%w: %q", ErrInvalidHostname, h)
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -392,7 +441,7 @@ func (h Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView
 
 	pref, ok := p.Hosts[h]
 	if !ok {
-		return nil, fmt.Errorf("resolving host: %q", h)
+		return nil, fmt.Errorf("%w: %q", ErrHostResolve, h)
 	}
 
 	err := pref.Validate()
@@ -429,7 +478,7 @@ func (p Prefix) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf("prefix %q is invalid", p)
+	return fmt.Errorf("%w: %q", ErrInvalidPrefix, p)
 }
 
 func (p Prefix) String() string {
@@ -533,7 +582,7 @@ func (ag AutoGroup) Validate() error {
 		return nil
 	}
 
-	return fmt.Errorf("autogroup is invalid, got: %q, must be one of %v", ag, autogroups)
+	return fmt.Errorf("%w: got %q, must be one of %v", ErrInvalidAutogroup, ag, autogroups)
 }
 
 func (ag *AutoGroup) UnmarshalJSON(b []byte) error {
@@ -595,7 +644,7 @@ func (ag AutoGroup) Resolve(p *Policy, users types.Users, nodes views.Slice[type
 		return nil, ErrAutogroupSelfRequiresPerNodeResolution
 
 	default:
-		return nil, fmt.Errorf("unknown autogroup %q", ag)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownAutogroup, ag)
 	}
 }
 
@@ -653,7 +702,7 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 
 			ve.Ports = ports
 		} else {
-			return errors.New(`hostport must contain a colon (":")`)
+			return ErrHostportMissingColon
 		}
 
 		ve.Alias, err = parseAlias(vs)
@@ -666,7 +715,7 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 		}
 
 	default:
-		return fmt.Errorf("type %T not supported", vs)
+		return fmt.Errorf("%w: %T", ErrTypeNotSupported, vs)
 	}
 
 	return nil
@@ -721,15 +770,7 @@ func parseAlias(vs string) (Alias, error) {
 		return ptr.To(Host(vs)), nil
 	}
 
-	return nil, fmt.Errorf(`Invalid alias %q. An alias must be one of the following types:
-- wildcard (*)
-- user (containing an "@")
-- group (starting with "group:")
-- tag (starting with "tag:")
-- autogroup (starting with "autogroup:")
-- host
-
-Please check the format and try again.`, vs)
+	return nil, fmt.Errorf("%w: %q", ErrInvalidAlias, vs)
 }
 
 // AliasEnc is used to deserialize a Alias.
@@ -791,7 +832,7 @@ func (a Aliases) MarshalJSON() ([]byte, error) {
 		case Asterix:
 			aliases[i] = "*"
 		default:
-			return nil, fmt.Errorf("unknown alias type: %T", v)
+			return nil, fmt.Errorf("%w: %T", ErrUnknownAliasType, v)
 		}
 	}
 
@@ -877,7 +918,7 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 		case *Group:
 			approvers[i] = string(*v)
 		default:
-			return nil, fmt.Errorf("unknown auto approver type: %T", v)
+			return nil, fmt.Errorf("%w: %T", ErrUnknownAutoApprover, v)
 		}
 	}
 
@@ -894,12 +935,7 @@ func parseAutoApprover(s string) (AutoApprover, error) {
 		return ptr.To(Tag(s)), nil
 	}
 
-	return nil, fmt.Errorf(`Invalid AutoApprover %q. An alias must be one of the following types:
-- user (containing an "@")
-- group (starting with "group:")
-- tag (starting with "tag:")
-
-Please check the format and try again.`, s)
+	return nil, fmt.Errorf("%w: %q", ErrInvalidAutoApprover, s)
 }
 
 // AutoApproverEnc is used to deserialize a AutoApprover.
@@ -976,7 +1012,7 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 		case *Tag:
 			owners[i] = string(*v)
 		default:
-			return nil, fmt.Errorf("unknown owner type: %T", v)
+			return nil, fmt.Errorf("%w: %T", ErrUnknownOwnerType, v)
 		}
 	}
 
@@ -993,12 +1029,7 @@ func parseOwner(s string) (Owner, error) {
 		return ptr.To(Tag(s)), nil
 	}
 
-	return nil, fmt.Errorf(`Invalid Owner %q. An alias must be one of the following types:
-- user (containing an "@")
-- group (starting with "group:")
-- tag (starting with "tag:")
-
-Please check the format and try again.`, s)
+	return nil, fmt.Errorf("%w: %q", ErrInvalidOwner, s)
 }
 
 type Usernames []Username
@@ -1017,7 +1048,7 @@ func (g Groups) Contains(group *Group) error {
 		}
 	}
 
-	return fmt.Errorf(`Group %q is not defined in the Policy, please define or remove the reference to it`, group)
+	return fmt.Errorf("%w: %q", ErrGroupNotDefined, group)
 }
 
 // UnmarshalJSON overrides the default JSON unmarshalling for Groups to ensure
@@ -1056,15 +1087,15 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 				if str, ok := item.(string); ok {
 					stringSlice = append(stringSlice, str)
 				} else {
-					return fmt.Errorf(`group "%s" contains invalid member type, expected string but got %T`, key, item)
+					return fmt.Errorf("%w: group %q expected string but got %T", ErrInvalidGroupMember, key, item)
 				}
 			}
 
 			rawGroups[key] = stringSlice
 		case string:
-			return fmt.Errorf(`group "%s" value must be an array of users, got string: "%s"`, key, v)
+			return fmt.Errorf("%w: group %q got string: %q", ErrGroupValueNotArray, key, v)
 		default:
-			return fmt.Errorf(`group "%s" value must be an array of users, got %T`, key, v)
+			return fmt.Errorf("%w: group %q got %T", ErrGroupValueNotArray, key, v)
 		}
 	}
 
@@ -1081,7 +1112,7 @@ func (g *Groups) UnmarshalJSON(b []byte) error {
 			err := username.Validate()
 			if err != nil {
 				if isGroup(u) {
-					return fmt.Errorf("nested groups are not allowed, found %q inside %q", u, group)
+					return fmt.Errorf("%w: found %q inside %q", ErrNestedGroups, u, group)
 				}
 
 				return err
@@ -1121,7 +1152,7 @@ func (h *Hosts) UnmarshalJSON(b []byte) error {
 
 		err = prefix.parseString(value)
 		if err != nil {
-			return fmt.Errorf(`hostname "%s" contains an invalid IP address: "%s"`, key, value)
+			return fmt.Errorf("%w: hostname %q address %q", ErrInvalidHostIP, key, value)
 		}
 
 		(*h)[host] = prefix
@@ -1170,7 +1201,7 @@ func (to TagOwners) MarshalJSON() ([]byte, error) {
 			case *Tag:
 				ownerStrs[i] = string(*v)
 			default:
-				return nil, fmt.Errorf("unknown owner type: %T", v)
+				return nil, fmt.Errorf("%w: %T", ErrUnknownOwnerType, v)
 			}
 		}
 
@@ -1194,7 +1225,7 @@ func (to TagOwners) Contains(tagOwner *Tag) error {
 		}
 	}
 
-	return fmt.Errorf(`tag %q is not defined in the policy, please define or remove the reference to it`, tagOwner)
+	return fmt.Errorf("%w: %q", ErrTagNotDefined, tagOwner)
 }
 
 type AutoApproverPolicy struct {
@@ -1247,7 +1278,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
+				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
 			ips, _ := aa.Resolve(p, users, nodes)
@@ -1262,7 +1293,7 @@ func resolveAutoApprovers(p *Policy, users types.Users, nodes views.Slice[types.
 			aa, ok := autoApprover.(Alias)
 			if !ok {
 				// Should never happen
-				return nil, nil, fmt.Errorf("autoApprover %v is not an Alias", autoApprover)
+				return nil, nil, fmt.Errorf("%w: %v", ErrAutoApproverNotAlias, autoApprover)
 			}
 			// If it does not resolve, that means the autoApprover is not associated with any IP addresses.
 			ips, _ := aa.Resolve(p, users, nodes)
@@ -1319,7 +1350,7 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 	case "accept":
 		*a = ActionAccept
 	default:
-		return fmt.Errorf("invalid action %q, must be %q", str, ActionAccept)
+		return fmt.Errorf("%w: %q, must be %q", ErrInvalidACLAction, str, ActionAccept)
 	}
 
 	return nil
@@ -1344,7 +1375,7 @@ func (a *SSHAction) UnmarshalJSON(b []byte) error {
 	case "check":
 		*a = SSHActionCheck
 	default:
-		return fmt.Errorf("invalid SSH action %q, must be one of: accept, check", str)
+		return fmt.Errorf("%w: %q, must be one of: accept, check", ErrInvalidSSHAction, str)
 	}
 
 	return nil
@@ -1497,16 +1528,16 @@ func (p Protocol) validate() error {
 
 		// Check for leading zeros (not allowed by Tailscale)
 		if str == "0" || (len(str) > 1 && str[0] == '0') {
-			return fmt.Errorf("leading 0 not permitted in protocol number \"%s\"", str)
+			return fmt.Errorf("%w: %q", ErrProtocolLeadingZero, str)
 		}
 
 		protocolNumber, err := strconv.Atoi(str)
 		if err != nil {
-			return fmt.Errorf("invalid protocol %q: must be a known protocol name or valid protocol number 0-255", p)
+			return fmt.Errorf("%w: %q must be a known protocol name or valid protocol number 0-255", ErrInvalidProtocolNumber, p)
 		}
 
 		if protocolNumber < 0 || protocolNumber > 255 {
-			return fmt.Errorf("protocol number %d out of range (0-255)", protocolNumber)
+			return fmt.Errorf("%w: %d", ErrProtocolOutOfRange, protocolNumber)
 		}
 
 		return nil
@@ -1626,7 +1657,7 @@ func validateAutogroupSupported(ag *AutoGroup) error {
 	}
 
 	if slices.Contains(autogroupNotSupported, *ag) {
-		return fmt.Errorf("autogroup %q is not supported in headscale", *ag)
+		return fmt.Errorf("%w: %q", ErrAutogroupNotSupported, *ag)
 	}
 
 	return nil
@@ -1638,15 +1669,15 @@ func validateAutogroupForSrc(src *AutoGroup) error {
 	}
 
 	if src.Is(AutoGroupInternet) {
-		return errors.New(`"autogroup:internet" used in source, it can only be used in ACL destinations`)
+		return ErrAutogroupInternetSrc
 	}
 
 	if src.Is(AutoGroupSelf) {
-		return errors.New(`"autogroup:self" used in source, it can only be used in ACL destinations`)
+		return ErrAutogroupSelfSrc
 	}
 
 	if !slices.Contains(autogroupForSrc, *src) {
-		return fmt.Errorf("autogroup %q is not supported for ACL sources, can be %v", *src, autogroupForSrc)
+		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedACLSrc, *src, autogroupForSrc)
 	}
 
 	return nil
@@ -1658,7 +1689,7 @@ func validateAutogroupForDst(dst *AutoGroup) error {
 	}
 
 	if !slices.Contains(autogroupForDst, *dst) {
-		return fmt.Errorf("autogroup %q is not supported for ACL destinations, can be %v", *dst, autogroupForDst)
+		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedACLDst, *dst, autogroupForDst)
 	}
 
 	return nil
@@ -1670,11 +1701,11 @@ func validateAutogroupForSSHSrc(src *AutoGroup) error {
 	}
 
 	if src.Is(AutoGroupInternet) {
-		return errors.New(`"autogroup:internet" used in SSH source, it can only be used in ACL destinations`)
+		return ErrAutogroupInternetSrc
 	}
 
 	if !slices.Contains(autogroupForSSHSrc, *src) {
-		return fmt.Errorf("autogroup %q is not supported for SSH sources, can be %v", *src, autogroupForSSHSrc)
+		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHSrc, *src, autogroupForSSHSrc)
 	}
 
 	return nil
@@ -1686,11 +1717,11 @@ func validateAutogroupForSSHDst(dst *AutoGroup) error {
 	}
 
 	if dst.Is(AutoGroupInternet) {
-		return errors.New(`"autogroup:internet" used in SSH destination, it can only be used in ACL destinations`)
+		return ErrAutogroupInternetSrc
 	}
 
 	if !slices.Contains(autogroupForSSHDst, *dst) {
-		return fmt.Errorf("autogroup %q is not supported for SSH sources, can be %v", *dst, autogroupForSSHDst)
+		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHDst, *dst, autogroupForSSHDst)
 	}
 
 	return nil
@@ -1702,7 +1733,7 @@ func validateAutogroupForSSHUser(user *AutoGroup) error {
 	}
 
 	if !slices.Contains(autogroupForSSHUser, *user) {
-		return fmt.Errorf("autogroup %q is not supported for SSH user, can be %v", *user, autogroupForSSHUser)
+		return fmt.Errorf("%w: %q, can be %v", ErrAutogroupNotSupportedSSHUsr, *user, autogroupForSSHUser)
 	}
 
 	return nil
@@ -1829,7 +1860,7 @@ func (p *Policy) validate() error {
 			case *Host:
 				h := src
 				if !p.Hosts.exist(*h) {
-					errs = append(errs, fmt.Errorf(`host %q is not defined in the policy, please define or remove the reference to it`, *h))
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
 				}
 			case *AutoGroup:
 				ag := src
@@ -1866,7 +1897,7 @@ func (p *Policy) validate() error {
 			switch h := dst.Alias.(type) {
 			case *Host:
 				if !p.Hosts.exist(*h) {
-					errs = append(errs, fmt.Errorf(`host %q is not defined in the policy, please define or remove the reference to it`, *h))
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
 				}
 			case *AutoGroup:
 				err := validateAutogroupSupported(h)
@@ -2106,10 +2137,7 @@ func (a *SSHSrcAliases) UnmarshalJSON(b []byte) error {
 		case *Username, *Group, *Tag, *AutoGroup:
 			(*a)[i] = alias.Alias
 		default:
-			return fmt.Errorf(
-				"alias %T is not supported for SSH source",
-				alias.Alias,
-			)
+			return fmt.Errorf("%w: %T", ErrSSHSourceAliasNotSupported, alias.Alias)
 		}
 	}
 
@@ -2134,10 +2162,7 @@ func (a *SSHDstAliases) UnmarshalJSON(b []byte) error {
 				"'autogroup:tagged' for tagged devices, or specific tags/users",
 				ErrSSHWildcardDestination)
 		default:
-			return fmt.Errorf(
-				"alias %T is not supported for SSH destination",
-				alias.Alias,
-			)
+			return fmt.Errorf("%w: %T", ErrSSHDestAliasNotSupported, alias.Alias)
 		}
 	}
 
@@ -2166,7 +2191,7 @@ func (a SSHDstAliases) MarshalJSON() ([]byte, error) {
 			// with a proper error message explaining alternatives
 			aliases[i] = "*"
 		default:
-			return nil, fmt.Errorf("unknown SSH destination alias type: %T", v)
+			return nil, fmt.Errorf("%w: %T", ErrUnknownSSHDestAlias, v)
 		}
 	}
 
@@ -2193,7 +2218,7 @@ func (a SSHSrcAliases) MarshalJSON() ([]byte, error) {
 		case Asterix:
 			aliases[i] = "*"
 		default:
-			return nil, fmt.Errorf("unknown SSH source alias type: %T", v)
+			return nil, fmt.Errorf("%w: %T", ErrUnknownSSHSrcAlias, v)
 		}
 	}
 
@@ -2272,7 +2297,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 			ptr := serr.JSONPointer
 			name := ptr.LastToken()
 
-			return nil, fmt.Errorf("unknown field %q", name)
+			return nil, fmt.Errorf("%w: %q", ErrUnknownField, name)
 		}
 
 		return nil, fmt.Errorf("parsing policy from bytes: %w", err)
@@ -2300,7 +2325,7 @@ func validateProtocolPortCompatibility(protocol Protocol, destinations []AliasWi
 		for _, portRange := range dst.Ports {
 			// Check if it's not a wildcard port (0-65535)
 			if portRange.First != 0 || portRange.Last != 65535 {
-				return fmt.Errorf("protocol %q does not support specific ports; only \"*\" is allowed", protocol)
+				return fmt.Errorf("%w: %q, only \"*\" is allowed", ErrProtocolNoSpecificPorts, protocol)
 			}
 		}
 	}

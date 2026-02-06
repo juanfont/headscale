@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -24,9 +23,9 @@ func TestParseDestinationAndPort(t *testing.T) {
 		{"tag:api-server:443", "tag:api-server", "443", nil},
 		{"example-host-1:*", "example-host-1", "*", nil},
 		{"hostname:80-90", "hostname", "80-90", nil},
-		{"invalidinput", "", "", errors.New("input must contain a colon character separating destination and port")},
-		{":invalid", "", "", errors.New("input cannot start with a colon character")},
-		{"invalid:", "", "", errors.New("input cannot end with a colon character")},
+		{"invalidinput", "", "", ErrInputMissingColon},
+		{":invalid", "", "", ErrInputStartsWithColon},
+		{"invalid:", "", "", ErrInputEndsWithColon},
 	}
 
 	for _, testCase := range testCases {
