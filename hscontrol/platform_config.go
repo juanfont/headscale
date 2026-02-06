@@ -102,7 +102,7 @@ func (h *Headscale) ApplePlatformConfig(
 	writer.Header().
 		Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(content.Bytes())
+	_, _ = writer.Write(content.Bytes())
 }
 
 type AppleMobileConfig struct {

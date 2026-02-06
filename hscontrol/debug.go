@@ -77,7 +77,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(policy))
+		_, _ = w.Write([]byte(policy))
 	}))
 
 	// Filter rules endpoint
@@ -96,7 +96,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(filterJSON)
+		_, _ = w.Write(filterJSON)
 	}))
 
 	// SSH policies endpoint
@@ -111,7 +111,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(sshJSON)
+		_, _ = w.Write(sshJSON)
 	}))
 
 	// DERP map endpoint
@@ -131,14 +131,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(derpJSON)
+			_, _ = w.Write(derpJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			derpInfo := h.state.DebugDERPMap()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(derpInfo))
+			_, _ = w.Write([]byte(derpInfo))
 		}
 	}))
 
@@ -159,14 +159,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(nodeStoreJSON)
+			_, _ = w.Write(nodeStoreJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			nodeStoreInfo := h.state.DebugNodeStore()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(nodeStoreInfo))
+			_, _ = w.Write([]byte(nodeStoreInfo))
 		}
 	}))
 
@@ -182,7 +182,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(cacheJSON)
+		_, _ = w.Write(cacheJSON)
 	}))
 
 	// Routes endpoint
@@ -202,14 +202,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(routesJSON)
+			_, _ = w.Write(routesJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			routes := h.state.DebugRoutesString()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(routes))
+			_, _ = w.Write([]byte(routes))
 		}
 	}))
 
@@ -230,14 +230,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(policyManagerJSON)
+			_, _ = w.Write(policyManagerJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			policyManagerInfo := h.state.DebugPolicyManager()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(policyManagerInfo))
+			_, _ = w.Write([]byte(policyManagerInfo))
 		}
 	}))
 
@@ -250,7 +250,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		if res == nil {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH not set"))
+			_, _ = w.Write([]byte("HEADSCALE_DEBUG_DUMP_MAPRESPONSE_PATH not set"))
 
 			return
 		}
@@ -263,7 +263,7 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write(resJSON)
+		_, _ = w.Write(resJSON)
 	}))
 
 	// Batcher endpoint
@@ -283,14 +283,14 @@ func (h *Headscale) debugHTTPServer() *http.Server {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(batcherJSON)
+			_, _ = w.Write(batcherJSON)
 		} else {
 			// Default to text/plain for backward compatibility
 			batcherInfo := h.debugBatcher()
 
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(batcherInfo))
+			_, _ = w.Write([]byte(batcherInfo))
 		}
 	}))
 

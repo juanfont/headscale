@@ -681,7 +681,7 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 
 	// Cleanup postgres container if enabled.
 	if t.postgres {
-		t.pool.Purge(t.pgContainer)
+		_ = t.pool.Purge(t.pgContainer)
 	}
 
 	return stdoutPath, stderrPath, t.pool.Purge(t.container)
