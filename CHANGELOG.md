@@ -704,7 +704,7 @@ This will also affect the way you
 
 ## 0.23.0 (2024-09-18)
 
-This release was intended to be mainly a code reorganisation and refactoring,
+This release was intended to be mainly a code reorganization and refactoring,
 significantly improving the maintainability of the codebase. This should allow
 us to improve further and make it easier for the maintainers to keep on top of
 the project. However, as you all have noticed, it turned out to become a much
@@ -756,7 +756,7 @@ part of adopting [#1460](https://github.com/juanfont/headscale/pull/1460).
 
 ### BREAKING
 
-- Code reorganisation, a lot of code has moved, please review the following PRs
+- Code reorganization, a lot of code has moved, please review the following PRs
   accordingly [#1473](https://github.com/juanfont/headscale/pull/1473)
 - Change the structure of database configuration, see
   [config-example.yaml](./config-example.yaml) for the new structure.
