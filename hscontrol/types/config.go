@@ -755,16 +755,12 @@ func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
 	var resolvers []*dnstype.Resolver
 
 	for _, nsStr := range d.Nameservers.Global {
-		warn := ""
-
 		if _, err := netip.ParseAddr(nsStr); err == nil {
 			resolvers = append(resolvers, &dnstype.Resolver{
 				Addr: nsStr,
 			})
 
 			continue
-		} else {
-			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
 		}
 
 		if _, err := url.Parse(nsStr); err == nil {
@@ -773,13 +769,9 @@ func (d *DNSConfig) globalResolvers() []*dnstype.Resolver {
 			})
 
 			continue
-		} else {
-			warn = fmt.Sprintf("Invalid global nameserver %q. Parsing error: %s ignoring", nsStr, err)
 		}
 
-		if warn != "" {
-			log.Warn().Msg(warn)
-		}
+		log.Warn().Str("nameserver", nsStr).Msg("invalid global nameserver, ignoring")
 	}
 
 	return resolvers
@@ -796,16 +788,12 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 		var resolvers []*dnstype.Resolver
 
 		for _, nsStr := range nameservers {
-			warn := ""
-
 			if _, err := netip.ParseAddr(nsStr); err == nil {
 				resolvers = append(resolvers, &dnstype.Resolver{
 					Addr: nsStr,
 				})
 
 				continue
-			} else {
-				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
 			}
 
 			if _, err := url.Parse(nsStr); err == nil {
@@ -814,13 +802,9 @@ func (d *DNSConfig) splitResolvers() map[string][]*dnstype.Resolver {
 				})
 
 				continue
-			} else {
-				warn = fmt.Sprintf("Invalid split dns nameserver %q. Parsing error: %s ignoring", nsStr, err)
 			}
 
-			if warn != "" {
-				log.Warn().Msg(warn)
-			}
+			log.Warn().Str("nameserver", nsStr).Str("domain", domain).Msg("invalid split dns nameserver, ignoring")
 		}
 
 		routes[domain] = resolvers
@@ -1161,6 +1145,8 @@ type deprecator struct {
 
 // warnWithAlias will register an alias between the newKey and the oldKey,
 // and log a deprecation warning if the oldKey is set.
+//
+//nolint:unused
 func (d *deprecator) warnWithAlias(newKey, oldKey string) {
 	// NOTE: RegisterAlias is called with NEW KEY -> OLD KEY
 	viper.RegisterAlias(newKey, oldKey)
@@ -1207,6 +1193,8 @@ func (d *deprecator) fatalIfNewKeyIsNotUsed(newKey, oldKey string) {
 }
 
 // warn deprecates and adds an option to log a warning if the oldKey is set.
+//
+//nolint:unused
 func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 	if viper.IsSet(oldKey) {
 		d.warns.Add(
@@ -1221,6 +1209,8 @@ func (d *deprecator) warnNoAlias(newKey, oldKey string) {
 }
 
 // warn deprecates and adds an entry to the warn list of options if the oldKey is set.
+//
+//nolint:unused
 func (d *deprecator) warn(oldKey string) {
 	if viper.IsSet(oldKey) {
 		d.warns.Add(
