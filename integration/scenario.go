@@ -480,7 +480,7 @@ func (s *Scenario) CreatePreAuthKey(
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
-	if headscale, err := s.Headscale(); err == nil {
+	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		key, err := headscale.CreateAuthKey(user, reusable, ephemeral)
 		if err != nil {
 			return nil, fmt.Errorf("creating user: %w", err)
@@ -532,7 +532,7 @@ func (s *Scenario) CreatePreAuthKeyWithTags(
 // CreateUser creates a User to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreateUser(user string) (*v1.User, error) {
-	if headscale, err := s.Headscale(); err == nil {
+	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		u, err := headscale.CreateUser(user)
 		if err != nil {
 			return nil, fmt.Errorf("creating user: %w", err)

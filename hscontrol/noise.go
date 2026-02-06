@@ -153,7 +153,7 @@ func (ns *noiseServer) earlyNoise(protocolVersion int, writer io.Writer) error {
 		return err
 	}
 
-	if _, err := writer.Write(earlyJSON); err != nil {
+	if _, err := writer.Write(earlyJSON); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -205,7 +205,7 @@ func (ns *noiseServer) NoisePollNetMapHandler(
 	body, _ := io.ReadAll(req.Body)
 
 	var mapRequest tailcfg.MapRequest
-	if err := json.Unmarshal(body, &mapRequest); err != nil {
+	if err := json.Unmarshal(body, &mapRequest); err != nil { //nolint:noinlineerr
 		httpError(writer, err)
 		return
 	}

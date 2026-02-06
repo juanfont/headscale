@@ -54,7 +54,7 @@ func runTailSQLService(ctx context.Context, logf logger.Logf, stateDir, dbPath s
 
 	// Make sure the Tailscale node starts up. It might not, if it is a new node
 	// and the user did not provide an auth key.
-	if st, err := tsNode.Up(ctx); err != nil {
+	if st, err := tsNode.Up(ctx); err != nil { //nolint:noinlineerr
 		return fmt.Errorf("starting tailscale: %w", err)
 	} else {
 		logf("tailscale started, node state %q", st.BackendState)

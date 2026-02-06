@@ -94,7 +94,7 @@ func (h *Headscale) ApplePlatformConfig(
 	}
 
 	var content bytes.Buffer
-	if err := commonTemplate.Execute(&content, config); err != nil {
+	if err := commonTemplate.Execute(&content, config); err != nil { //nolint:noinlineerr
 		httpError(writer, err)
 		return
 	}
