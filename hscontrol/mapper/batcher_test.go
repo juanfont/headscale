@@ -818,8 +818,8 @@ func TestBatcherBasicOperations(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			tn := testData.Nodes[0]
-			tn2 := testData.Nodes[1]
+			tn := &testData.Nodes[0]
+			tn2 := &testData.Nodes[1]
 
 			// Test AddNode with real node ID
 			_ = batcher.AddNode(tn.n.ID, tn.ch, 100)
@@ -1136,7 +1136,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			testNode := testData.Nodes[0]
+			testNode := &testData.Nodes[0]
 
 			var (
 				channelIssues int
@@ -1230,7 +1230,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 			defer cleanup()
 
 			batcher := testData.Batcher
-			testNode := testData.Nodes[0]
+			testNode := &testData.Nodes[0]
 
 			var (
 				panics        int
@@ -1377,7 +1377,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			stableNodes := allNodes[:len(allNodes)/2] // Use first half as stable
 			stableChannels := make(map[types.NodeID]chan *tailcfg.MapResponse)
 
-			for _, node := range stableNodes {
+			for i := range stableNodes {
+				node := &stableNodes[i]
 				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
 				stableChannels[node.n.ID] = ch
 				_ = batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100))
