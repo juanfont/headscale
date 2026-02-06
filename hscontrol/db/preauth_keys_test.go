@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/types/ptr"
 )
 
 func TestCreatePreAuthKey(t *testing.T) {
@@ -24,7 +23,7 @@ func TestCreatePreAuthKey(t *testing.T) {
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
 
-				_, err := db.CreatePreAuthKey(ptr.To(types.UserID(12345)), true, false, nil, nil)
+				_, err := db.CreatePreAuthKey(new(types.UserID(12345)), true, false, nil, nil)
 				assert.Error(t, err)
 			},
 		},
@@ -127,7 +126,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 		Hostname:       "testest",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(key.ID),
+		AuthKeyID:      new(key.ID),
 	}
 	db.DB.Save(&node)
 

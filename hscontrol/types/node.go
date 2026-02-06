@@ -1104,7 +1104,7 @@ func (nv NodeView) TailNode(
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
 	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
-	tsaddr.SortPrefixes(allowedIPs)
+	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},

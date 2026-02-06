@@ -333,7 +333,7 @@ func NodeOnline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(true),
+				Online: new(true),
 			},
 		},
 	}
@@ -346,7 +346,7 @@ func NodeOffline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(false),
+				Online: new(false),
 			},
 		},
 	}
@@ -367,7 +367,7 @@ func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
 
 // ptrTo returns a pointer to the given value.
 func ptrTo[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // High-level change constructors

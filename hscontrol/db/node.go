@@ -21,7 +21,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 const (
@@ -694,7 +693,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		Hostname:       nodeName,
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      new(pak.ID),
 	}
 
 	err = hsdb.DB.Save(node).Error

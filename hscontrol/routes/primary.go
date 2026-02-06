@@ -240,7 +240,7 @@ func (pr *PrimaryRoutes) PrimaryRoutes(id types.NodeID) []netip.Prefix {
 		}
 	}
 
-	tsaddr.SortPrefixes(routes)
+	slices.SortFunc(routes, netip.Prefix.Compare)
 
 	return routes
 }
@@ -300,7 +300,7 @@ func (pr *PrimaryRoutes) DebugJSON() DebugRoutes {
 	// Populate available routes
 	for nodeID, routes := range pr.routes {
 		prefixes := routes.Slice()
-		tsaddr.SortPrefixes(prefixes)
+		slices.SortFunc(prefixes, netip.Prefix.Compare)
 		debug.AvailableRoutes[nodeID] = prefixes
 	}
 

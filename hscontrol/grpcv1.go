@@ -387,7 +387,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 
 	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)

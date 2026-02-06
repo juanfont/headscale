@@ -17,7 +17,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
@@ -634,7 +633,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 				},
 				AutoApprovers: policyv2.AutoApproverPolicy{
 					Routes: map[netip.Prefix]policyv2.AutoApprovers{
-						netip.MustParsePrefix(advertiseRoute): {ptr.To(policyv2.Username(user + "@test.no"))},
+						netip.MustParsePrefix(advertiseRoute): {new(policyv2.Username(user + "@test.no"))},
 					},
 				},
 			},

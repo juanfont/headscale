@@ -19,7 +19,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 // TestUnmarshalPolicy tests the unmarshalling of JSON into Policy objects and the marshalling
@@ -53,11 +52,11 @@ func TestMarshalJSON(t *testing.T) {
 				Action:   "accept",
 				Protocol: "tcp",
 				Sources: Aliases{
-					ptr.To(Username("user@example.com")),
+					new(Username("user@example.com")),
 				},
 				Destinations: []AliasWithPorts{
 					{
-						Alias: ptr.To(Username("other@example.com")),
+						Alias: new(Username("other@example.com")),
 						Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 					},
 				},
@@ -254,11 +253,11 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Action:   "accept",
 						Protocol: "tcp",
 						Sources: Aliases{
-							ptr.To(Username("testuser@headscale.net")),
+							new(Username("testuser@headscale.net")),
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(Username("otheruser@headscale.net")),
+								Alias: new(Username("otheruser@headscale.net")),
 								Ports: []tailcfg.PortRange{{First: 80, Last: 80}},
 							},
 						},
@@ -547,7 +546,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(AutoGroup("autogroup:internet")),
+								Alias: new(AutoGroup("autogroup:internet")),
 								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
 							},
 						},
@@ -684,8 +683,8 @@ func TestUnmarshalPolicy(t *testing.T) {
 `,
 			want: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:web"):    Owners{ptr.To(Username("admin@example.com"))},
-					Tag("tag:server"): Owners{ptr.To(Username("admin@example.com"))},
+					Tag("tag:web"):    Owners{new(Username("admin@example.com"))},
+					Tag("tag:server"): Owners{new(Username("admin@example.com"))},
 				},
 				SSHs: []SSH{
 					{
@@ -1157,7 +1156,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(AutoGroup("autogroup:internet")),
+								Alias: new(AutoGroup("autogroup:internet")),
 								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
 							},
 						},
@@ -1494,7 +1493,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 			want: &Policy{
 				TagOwners: TagOwners{
 					Tag("tag:bigbrother"):   {},
-					Tag("tag:smallbrother"): {ptr.To(Tag("tag:bigbrother"))},
+					Tag("tag:smallbrother"): {new(Tag("tag:bigbrother"))},
 				},
 				ACLs: []ACL{
 					{
@@ -1505,7 +1504,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						},
 						Destinations: []AliasWithPorts{
 							{
-								Alias: ptr.To(Tag("tag:smallbrother")),
+								Alias: new(Tag("tag:smallbrother")),
 								Ports: []tailcfg.PortRange{{First: 9000, Last: 9000}},
 							},
 						},
@@ -1829,14 +1828,14 @@ func TestUnmarshalPolicy(t *testing.T) {
 	}
 }
 
-func gp(s string) *Group          { return ptr.To(Group(s)) }
-func up(s string) *Username       { return ptr.To(Username(s)) }
-func hp(s string) *Host           { return ptr.To(Host(s)) }
-func tp(s string) *Tag            { return ptr.To(Tag(s)) }
-func agp(s string) *AutoGroup     { return ptr.To(AutoGroup(s)) }
+func gp(s string) *Group          { return new(Group(s)) }
+func up(s string) *Username       { return new(Username(s)) }
+func hp(s string) *Host           { return new(Host(s)) }
+func tp(s string) *Tag            { return new(Tag(s)) }
+func agp(s string) *AutoGroup     { return new(AutoGroup(s)) }
 func mp(pref string) netip.Prefix { return netip.MustParsePrefix(pref) }
-func ap(addr string) *netip.Addr  { return ptr.To(netip.MustParseAddr(addr)) }
-func pp(pref string) *Prefix      { return ptr.To(Prefix(mp(pref))) }
+func ap(addr string) *netip.Addr  { return new(netip.MustParseAddr(addr)) }
+func pp(pref string) *Prefix      { return new(Prefix(mp(pref))) }
 func p(pref string) Prefix        { return Prefix(mp(pref)) }
 
 func TestResolvePolicy(t *testing.T) {
@@ -1882,31 +1881,31 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "username",
-			toResolve: ptr.To(Username("testuser@")),
+			toResolve: new(Username("testuser@")),
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: ptr.To(notme),
+					User: new(notme),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Not matching forced tags
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:anything"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"alsotagged"},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.103"),
 				},
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.104"),
 				},
 			},
@@ -1914,31 +1913,31 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "group",
-			toResolve: ptr.To(Group("group:testgroup")),
+			toResolve: new(Group("group:testgroup")),
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: ptr.To(notme),
+					User: new(notme),
 					IPv4: ap("100.100.101.4"),
 				},
 				// Not matching forced tags
 				{
-					User: ptr.To(groupuser),
+					User: new(groupuser),
 					Tags: []string{"tag:anything"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: ptr.To(groupuser),
+					User: new(groupuser),
 					Tags: []string{"tag:alsotagged"},
 					IPv4: ap("100.100.101.6"),
 				},
 				{
-					User: ptr.To(groupuser),
+					User: new(groupuser),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: ptr.To(groupuser),
+					User: new(groupuser),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -1956,7 +1955,7 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: ptr.To(notme),
+					User: new(notme),
 					IPv4: ap("100.100.101.9"),
 				},
 				// Not matching forced tags
@@ -1992,7 +1991,7 @@ func TestResolvePolicy(t *testing.T) {
 			pol: &Policy{
 				TagOwners: TagOwners{
 					Tag("tag:bigbrother"):   {},
-					Tag("tag:smallbrother"): {ptr.To(Tag("tag:bigbrother"))},
+					Tag("tag:smallbrother"): {new(Tag("tag:bigbrother"))},
 				},
 			},
 			nodes: types.Nodes{
@@ -2015,7 +2014,7 @@ func TestResolvePolicy(t *testing.T) {
 			pol: &Policy{
 				TagOwners: TagOwners{
 					Tag("tag:bigbrother"):   {},
-					Tag("tag:smallbrother"): {ptr.To(Tag("tag:bigbrother"))},
+					Tag("tag:smallbrother"): {new(Tag("tag:bigbrother"))},
 				},
 			},
 			nodes: types.Nodes{
@@ -2050,14 +2049,14 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "multiple-groups",
-			toResolve: ptr.To(Group("group:testgroup")),
+			toResolve: new(Group("group:testgroup")),
 			nodes: types.Nodes{
 				{
-					User: ptr.To(groupuser1),
+					User: new(groupuser1),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: ptr.To(groupuser2),
+					User: new(groupuser2),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -2075,10 +2074,10 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "invalid-username",
-			toResolve: ptr.To(Username("invaliduser@")),
+			toResolve: new(Username("invaliduser@")),
 			nodes: types.Nodes{
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.103"),
 				},
 			},
@@ -2106,47 +2105,47 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "autogroup-member-comprehensive",
-			toResolve: ptr.To(AutoGroupMember),
+			toResolve: new(AutoGroupMember),
 			nodes: types.Nodes{
 				// Node with no tags (should be included - is a member)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with single tag (should be excluded - tagged nodes are not members)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// Node with multiple tags, all defined in policy (should be excluded)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test", "tag:other"},
 					IPv4: ap("100.100.101.3"),
 				},
 				// Node with tag not defined in policy (should be excluded - still tagged)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:undefined"},
 					IPv4: ap("100.100.101.4"),
 				},
 				// Node with mixed tags - some defined, some not (should be excluded)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test", "tag:undefined"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// Another untagged node from different user (should be included)
 				{
-					User: ptr.To(testuser2),
+					User: new(testuser2),
 					IPv4: ap("100.100.101.6"),
 				},
 			},
 			pol: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"):  Owners{ptr.To(Username("testuser@"))},
-					Tag("tag:other"): Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:test"):  Owners{new(Username("testuser@"))},
+					Tag("tag:other"): Owners{new(Username("testuser@"))},
 				},
 			},
 			want: []netip.Prefix{
@@ -2156,54 +2155,54 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "autogroup-tagged",
-			toResolve: ptr.To(AutoGroupTagged),
+			toResolve: new(AutoGroupTagged),
 			nodes: types.Nodes{
 				// Node with no tags (should be excluded - not tagged)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with single tag defined in policy (should be included)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// Node with multiple tags, all defined in policy (should be included)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test", "tag:other"},
 					IPv4: ap("100.100.101.3"),
 				},
 				// Node with tag not defined in policy (should be included - still tagged)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:undefined"},
 					IPv4: ap("100.100.101.4"),
 				},
 				// Node with mixed tags - some defined, some not (should be included)
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test", "tag:undefined"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// Another untagged node from different user (should be excluded)
 				{
-					User: ptr.To(testuser2),
+					User: new(testuser2),
 					IPv4: ap("100.100.101.6"),
 				},
 				// Tagged node from different user (should be included)
 				{
-					User: ptr.To(testuser2),
+					User: new(testuser2),
 					Tags: []string{"tag:server"},
 					IPv4: ap("100.100.101.7"),
 				},
 			},
 			pol: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"):   Owners{ptr.To(Username("testuser@"))},
-					Tag("tag:other"):  Owners{ptr.To(Username("testuser@"))},
-					Tag("tag:server"): Owners{ptr.To(Username("testuser2@"))},
+					Tag("tag:test"):   Owners{new(Username("testuser@"))},
+					Tag("tag:other"):  Owners{new(Username("testuser@"))},
+					Tag("tag:server"): Owners{new(Username("testuser2@"))},
 				},
 			},
 			want: []netip.Prefix{
@@ -2214,37 +2213,37 @@ func TestResolvePolicy(t *testing.T) {
 		},
 		{
 			name:      "autogroup-self",
-			toResolve: ptr.To(AutoGroupSelf),
+			toResolve: new(AutoGroupSelf),
 			nodes: types.Nodes{
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					IPv4: ap("100.100.101.1"),
 				},
 				{
-					User: ptr.To(testuser2),
+					User: new(testuser2),
 					IPv4: ap("100.100.101.2"),
 				},
 				{
-					User: ptr.To(testuser),
+					User: new(testuser),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: ptr.To(testuser2),
+					User: new(testuser2),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.4"),
 				},
 			},
 			pol: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("testuser@"))},
+					Tag("tag:test"): Owners{new(Username("testuser@"))},
 				},
 			},
 			wantErr: "autogroup:self requires per-node resolution",
 		},
 		{
 			name:      "autogroup-invalid",
-			toResolve: ptr.To(AutoGroup("autogroup:invalid")),
+			toResolve: new(AutoGroup("autogroup:invalid")),
 			wantErr:   "unknown autogroup",
 		},
 	}
@@ -2323,7 +2322,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
+						mp("10.0.0.0/24"): {new(Username("user1@"))},
 					},
 				},
 			},
@@ -2338,8 +2337,8 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user2@"))},
+						mp("10.0.0.0/24"): {new(Username("user1@"))},
+						mp("10.0.1.0/24"): {new(Username("user2@"))},
 					},
 				},
 			},
@@ -2354,7 +2353,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 			name: "exit-node",
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
-					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
+					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
 			want:            map[netip.Prefix]*netipx.IPSet{},
@@ -2369,7 +2368,7 @@ func TestResolveAutoApprovers(t *testing.T) {
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+						mp("10.0.0.0/24"): {new(Group("group:testgroup"))},
 					},
 				},
 			},
@@ -2384,20 +2383,20 @@ func TestResolveAutoApprovers(t *testing.T) {
 			policy: &Policy{
 				TagOwners: TagOwners{
 					"tag:testtag": Owners{
-						ptr.To(Username("user1@")),
-						ptr.To(Username("user2@")),
+						new(Username("user1@")),
+						new(Username("user2@")),
 					},
 					"tag:exittest": Owners{
-						ptr.To(Group("group:exitgroup")),
+						new(Group("group:exitgroup")),
 					},
 				},
 				Groups: Groups{
 					"group:exitgroup": Usernames{"user2@"},
 				},
 				AutoApprovers: AutoApproverPolicy{
-					ExitNode: AutoApprovers{ptr.To(Tag("tag:exittest"))},
+					ExitNode: AutoApprovers{new(Tag("tag:exittest"))},
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.1.0/24"): {ptr.To(Tag("tag:testtag"))},
+						mp("10.0.1.0/24"): {new(Tag("tag:testtag"))},
 					},
 				},
 			},
@@ -2415,10 +2414,10 @@ func TestResolveAutoApprovers(t *testing.T) {
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user3@"))},
+						mp("10.0.0.0/24"): {new(Group("group:testgroup"))},
+						mp("10.0.1.0/24"): {new(Username("user3@"))},
 					},
-					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
+					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
 			want: map[netip.Prefix]*netipx.IPSet{
@@ -2639,7 +2638,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
+						mp("10.0.0.0/24"): {new(Username("user1@"))},
 					},
 				},
 			},
@@ -2652,8 +2651,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user1@"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user2@"))},
+						mp("10.0.0.0/24"): {new(Username("user1@"))},
+						mp("10.0.1.0/24"): {new(Username("user2@"))},
 					},
 				},
 			},
@@ -2665,7 +2664,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			name: "exit-node-approval",
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
-					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
+					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
 			node:  nodes[0],
@@ -2680,7 +2679,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
+						mp("10.0.0.0/24"): {new(Group("group:testgroup"))},
 					},
 				},
 			},
@@ -2696,10 +2695,10 @@ func TestNodeCanApproveRoute(t *testing.T) {
 				},
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Group("group:testgroup"))},
-						mp("10.0.1.0/24"): {ptr.To(Username("user3@"))},
+						mp("10.0.0.0/24"): {new(Group("group:testgroup"))},
+						mp("10.0.1.0/24"): {new(Username("user3@"))},
 					},
-					ExitNode: AutoApprovers{ptr.To(Username("user1@"))},
+					ExitNode: AutoApprovers{new(Username("user1@"))},
 				},
 			},
 			node:  nodes[0],
@@ -2711,7 +2710,7 @@ func TestNodeCanApproveRoute(t *testing.T) {
 			policy: &Policy{
 				AutoApprovers: AutoApproverPolicy{
 					Routes: map[netip.Prefix]AutoApprovers{
-						mp("10.0.0.0/24"): {ptr.To(Username("user2@"))},
+						mp("10.0.0.0/24"): {new(Username("user2@"))},
 					},
 				},
 			},
@@ -2769,7 +2768,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "single-tag-owner",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:test"): Owners{new(Username("user1@"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -2781,7 +2780,7 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "multiple-tag-owners",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@")), ptr.To(Username("user2@"))},
+					Tag("tag:test"): Owners{new(Username("user1@")), new(Username("user2@"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -2796,7 +2795,7 @@ func TestResolveTagOwners(t *testing.T) {
 					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+					Tag("tag:test"): Owners{new(Group("group:testgroup"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -2808,8 +2807,8 @@ func TestResolveTagOwners(t *testing.T) {
 			name: "tag-owns-tag",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:bigbrother"):   Owners{ptr.To(Username("user1@"))},
-					Tag("tag:smallbrother"): Owners{ptr.To(Tag("tag:bigbrother"))},
+					Tag("tag:bigbrother"):   Owners{new(Username("user1@"))},
+					Tag("tag:smallbrother"): Owners{new(Tag("tag:bigbrother"))},
 				},
 			},
 			want: map[Tag]*netipx.IPSet{
@@ -2871,7 +2870,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "single-tag-owner",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:test"): Owners{new(Username("user1@"))},
 				},
 			},
 			node: nodes[0],
@@ -2882,7 +2881,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "multiple-tag-owners",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@")), ptr.To(Username("user2@"))},
+					Tag("tag:test"): Owners{new(Username("user1@")), new(Username("user2@"))},
 				},
 			},
 			node: nodes[1],
@@ -2896,7 +2895,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 					"group:testgroup": Usernames{"user1@", "user2@"},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+					Tag("tag:test"): Owners{new(Group("group:testgroup"))},
 				},
 			},
 			node: nodes[1],
@@ -2910,7 +2909,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 					"group:testgroup": Usernames{"invalid"},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Group("group:testgroup"))},
+					Tag("tag:test"): Owners{new(Group("group:testgroup"))},
 				},
 			},
 			node:    nodes[0],
@@ -2922,7 +2921,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-cannot-have-tag",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user2@"))},
+					Tag("tag:test"): Owners{new(Username("user2@"))},
 				},
 			},
 			node: nodes[0],
@@ -2933,7 +2932,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-with-unauthorized-tag-different-user",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:prod"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:prod"): Owners{new(Username("user1@"))},
 				},
 			},
 			node: nodes[2], // user3's node
@@ -2944,8 +2943,8 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-with-multiple-tags-one-unauthorized",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:web"):      Owners{ptr.To(Username("user1@"))},
-					Tag("tag:database"): Owners{ptr.To(Username("user2@"))},
+					Tag("tag:web"):      Owners{new(Username("user1@"))},
+					Tag("tag:database"): Owners{new(Username("user2@"))},
 				},
 			},
 			node: nodes[0], // user1's node
@@ -2965,7 +2964,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "tag-not-in-tagowners",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:prod"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:prod"): Owners{new(Username("user1@"))},
 				},
 			},
 			node: nodes[0],
@@ -2978,13 +2977,13 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-without-ip-user-owns-tag",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:test"): Owners{new(Username("user1@"))},
 				},
 			},
 			node: &types.Node{
 				// No IPv4 or IPv6 - simulates new node registration
 				User:   &users[0],
-				UserID: ptr.To(users[0].ID),
+				UserID: new(users[0].ID),
 			},
 			tag:  "tag:test",
 			want: true, // Should succeed via user-based fallback
@@ -2993,13 +2992,13 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-without-ip-user-does-not-own-tag",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user2@"))},
+					Tag("tag:test"): Owners{new(Username("user2@"))},
 				},
 			},
 			node: &types.Node{
 				// No IPv4 or IPv6 - simulates new node registration
 				User:   &users[0], // user1, but tag owned by user2
-				UserID: ptr.To(users[0].ID),
+				UserID: new(users[0].ID),
 			},
 			tag:  "tag:test",
 			want: false, // user1 does not own tag:test
@@ -3011,13 +3010,13 @@ func TestNodeCanHaveTag(t *testing.T) {
 					"group:admins": Usernames{"user1@", "user2@"},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:admin"): Owners{ptr.To(Group("group:admins"))},
+					Tag("tag:admin"): Owners{new(Group("group:admins"))},
 				},
 			},
 			node: &types.Node{
 				// No IPv4 or IPv6 - simulates new node registration
 				User:   &users[1], // user2 is in group:admins
-				UserID: ptr.To(users[1].ID),
+				UserID: new(users[1].ID),
 			},
 			tag:  "tag:admin",
 			want: true, // Should succeed via group membership
@@ -3029,13 +3028,13 @@ func TestNodeCanHaveTag(t *testing.T) {
 					"group:admins": Usernames{"user1@"},
 				},
 				TagOwners: TagOwners{
-					Tag("tag:admin"): Owners{ptr.To(Group("group:admins"))},
+					Tag("tag:admin"): Owners{new(Group("group:admins"))},
 				},
 			},
 			node: &types.Node{
 				// No IPv4 or IPv6 - simulates new node registration
 				User:   &users[1], // user2 is NOT in group:admins
-				UserID: ptr.To(users[1].ID),
+				UserID: new(users[1].ID),
 			},
 			tag:  "tag:admin",
 			want: false, // user2 is not in group:admins
@@ -3044,7 +3043,7 @@ func TestNodeCanHaveTag(t *testing.T) {
 			name: "node-without-ip-no-user",
 			policy: &Policy{
 				TagOwners: TagOwners{
-					Tag("tag:test"): Owners{ptr.To(Username("user1@"))},
+					Tag("tag:test"): Owners{new(Username("user1@"))},
 				},
 			},
 			node: &types.Node{
@@ -3061,14 +3060,14 @@ func TestNodeCanHaveTag(t *testing.T) {
 				},
 				TagOwners: TagOwners{
 					Tag("tag:server"): Owners{
-						ptr.To(Username("user1@")),
-						ptr.To(Group("group:ops")),
+						new(Username("user1@")),
+						new(Group("group:ops")),
 					},
 				},
 			},
 			node: &types.Node{
 				User:   &users[0], // user1 directly owns the tag
-				UserID: ptr.To(users[0].ID),
+				UserID: new(users[0].ID),
 			},
 			tag:  "tag:server",
 			want: true,
@@ -3081,14 +3080,14 @@ func TestNodeCanHaveTag(t *testing.T) {
 				},
 				TagOwners: TagOwners{
 					Tag("tag:server"): Owners{
-						ptr.To(Username("user1@")),
-						ptr.To(Group("group:ops")),
+						new(Username("user1@")),
+						new(Group("group:ops")),
 					},
 				},
 			},
 			node: &types.Node{
 				User:   &users[2], // user3 is in group:ops
-				UserID: ptr.To(users[2].ID),
+				UserID: new(users[2].ID),
 			},
 			tag:  "tag:server",
 			want: true,
@@ -3134,14 +3133,14 @@ func TestUserMatchesOwner(t *testing.T) {
 			name:   "username-match",
 			policy: &Policy{},
 			user:   users[0],
-			owner:  ptr.To(Username("user1@")),
+			owner:  new(Username("user1@")),
 			want:   true,
 		},
 		{
 			name:   "username-no-match",
 			policy: &Policy{},
 			user:   users[0],
-			owner:  ptr.To(Username("user2@")),
+			owner:  new(Username("user2@")),
 			want:   false,
 		},
 		{
@@ -3152,7 +3151,7 @@ func TestUserMatchesOwner(t *testing.T) {
 				},
 			},
 			user:  users[1], // user2 is in group:admins
-			owner: ptr.To(Group("group:admins")),
+			owner: new(Group("group:admins")),
 			want:  true,
 		},
 		{
@@ -3163,7 +3162,7 @@ func TestUserMatchesOwner(t *testing.T) {
 				},
 			},
 			user:  users[1], // user2 is NOT in group:admins
-			owner: ptr.To(Group("group:admins")),
+			owner: new(Group("group:admins")),
 			want:  false,
 		},
 		{
@@ -3172,7 +3171,7 @@ func TestUserMatchesOwner(t *testing.T) {
 				Groups: Groups{},
 			},
 			user:  users[0],
-			owner: ptr.To(Group("group:undefined")),
+			owner: new(Group("group:undefined")),
 			want:  false,
 		},
 		{
@@ -3517,20 +3516,20 @@ func TestFlattenTagOwners(t *testing.T) {
 		{
 			name: "tag-owns-tag",
 			input: TagOwners{
-				Tag("tag:bigbrother"):   Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{ptr.To(Tag("tag:bigbrother"))},
+				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
+				Tag("tag:smallbrother"): Owners{new(Tag("tag:bigbrother"))},
 			},
 			want: TagOwners{
-				Tag("tag:bigbrother"):   Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:smallbrother"): Owners{ptr.To(Group("group:user1"))},
+				Tag("tag:bigbrother"):   Owners{new(Group("group:user1"))},
+				Tag("tag:smallbrother"): Owners{new(Group("group:user1"))},
 			},
 			wantErr: "",
 		},
 		{
 			name: "circular-reference",
 			input: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Tag("tag:b"))},
-				Tag("tag:b"): Owners{ptr.To(Tag("tag:a"))},
+				Tag("tag:a"): Owners{new(Tag("tag:b"))},
+				Tag("tag:b"): Owners{new(Tag("tag:a"))},
 			},
 			want:    nil,
 			wantErr: "circular reference detected: tag:a -> tag:b",
@@ -3538,83 +3537,83 @@ func TestFlattenTagOwners(t *testing.T) {
 		{
 			name: "mixed-owners",
 			input: TagOwners{
-				Tag("tag:x"): Owners{ptr.To(Username("user1@")), ptr.To(Tag("tag:y"))},
-				Tag("tag:y"): Owners{ptr.To(Username("user2@"))},
+				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
+				Tag("tag:y"): Owners{new(Username("user2@"))},
 			},
 			want: TagOwners{
-				Tag("tag:x"): Owners{ptr.To(Username("user1@")), ptr.To(Username("user2@"))},
-				Tag("tag:y"): Owners{ptr.To(Username("user2@"))},
+				Tag("tag:x"): Owners{new(Username("user1@")), new(Username("user2@"))},
+				Tag("tag:y"): Owners{new(Username("user2@"))},
 			},
 			wantErr: "",
 		},
 		{
 			name: "mixed-dupe-owners",
 			input: TagOwners{
-				Tag("tag:x"): Owners{ptr.To(Username("user1@")), ptr.To(Tag("tag:y"))},
-				Tag("tag:y"): Owners{ptr.To(Username("user1@"))},
+				Tag("tag:x"): Owners{new(Username("user1@")), new(Tag("tag:y"))},
+				Tag("tag:y"): Owners{new(Username("user1@"))},
 			},
 			want: TagOwners{
-				Tag("tag:x"): Owners{ptr.To(Username("user1@"))},
-				Tag("tag:y"): Owners{ptr.To(Username("user1@"))},
+				Tag("tag:x"): Owners{new(Username("user1@"))},
+				Tag("tag:y"): Owners{new(Username("user1@"))},
 			},
 			wantErr: "",
 		},
 		{
 			name: "no-tag-owners",
 			input: TagOwners{
-				Tag("tag:solo"): Owners{ptr.To(Username("user1@"))},
+				Tag("tag:solo"): Owners{new(Username("user1@"))},
 			},
 			want: TagOwners{
-				Tag("tag:solo"): Owners{ptr.To(Username("user1@"))},
+				Tag("tag:solo"): Owners{new(Username("user1@"))},
 			},
 			wantErr: "",
 		},
 		{
 			name: "tag-long-owner-chain",
 			input: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:b"): Owners{ptr.To(Tag("tag:a"))},
-				Tag("tag:c"): Owners{ptr.To(Tag("tag:b"))},
-				Tag("tag:d"): Owners{ptr.To(Tag("tag:c"))},
-				Tag("tag:e"): Owners{ptr.To(Tag("tag:d"))},
-				Tag("tag:f"): Owners{ptr.To(Tag("tag:e"))},
-				Tag("tag:g"): Owners{ptr.To(Tag("tag:f"))},
+				Tag("tag:a"): Owners{new(Group("group:user1"))},
+				Tag("tag:b"): Owners{new(Tag("tag:a"))},
+				Tag("tag:c"): Owners{new(Tag("tag:b"))},
+				Tag("tag:d"): Owners{new(Tag("tag:c"))},
+				Tag("tag:e"): Owners{new(Tag("tag:d"))},
+				Tag("tag:f"): Owners{new(Tag("tag:e"))},
+				Tag("tag:g"): Owners{new(Tag("tag:f"))},
 			},
 			want: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:b"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:c"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:d"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:e"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:f"): Owners{ptr.To(Group("group:user1"))},
-				Tag("tag:g"): Owners{ptr.To(Group("group:user1"))},
+				Tag("tag:a"): Owners{new(Group("group:user1"))},
+				Tag("tag:b"): Owners{new(Group("group:user1"))},
+				Tag("tag:c"): Owners{new(Group("group:user1"))},
+				Tag("tag:d"): Owners{new(Group("group:user1"))},
+				Tag("tag:e"): Owners{new(Group("group:user1"))},
+				Tag("tag:f"): Owners{new(Group("group:user1"))},
+				Tag("tag:g"): Owners{new(Group("group:user1"))},
 			},
 			wantErr: "",
 		},
 		{
 			name: "tag-long-circular-chain",
 			input: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Tag("tag:g"))},
-				Tag("tag:b"): Owners{ptr.To(Tag("tag:a"))},
-				Tag("tag:c"): Owners{ptr.To(Tag("tag:b"))},
-				Tag("tag:d"): Owners{ptr.To(Tag("tag:c"))},
-				Tag("tag:e"): Owners{ptr.To(Tag("tag:d"))},
-				Tag("tag:f"): Owners{ptr.To(Tag("tag:e"))},
-				Tag("tag:g"): Owners{ptr.To(Tag("tag:f"))},
+				Tag("tag:a"): Owners{new(Tag("tag:g"))},
+				Tag("tag:b"): Owners{new(Tag("tag:a"))},
+				Tag("tag:c"): Owners{new(Tag("tag:b"))},
+				Tag("tag:d"): Owners{new(Tag("tag:c"))},
+				Tag("tag:e"): Owners{new(Tag("tag:d"))},
+				Tag("tag:f"): Owners{new(Tag("tag:e"))},
+				Tag("tag:g"): Owners{new(Tag("tag:f"))},
 			},
 			wantErr: "circular reference detected: tag:a -> tag:b -> tag:c -> tag:d -> tag:e -> tag:f -> tag:g",
 		},
 		{
 			name: "undefined-tag-reference",
 			input: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Tag("tag:nonexistent"))},
+				Tag("tag:a"): Owners{new(Tag("tag:nonexistent"))},
 			},
 			wantErr: `tag "tag:a" references undefined tag "tag:nonexistent"`,
 		},
 		{
 			name: "tag-with-empty-owners-is-valid",
 			input: TagOwners{
-				Tag("tag:a"): Owners{ptr.To(Tag("tag:b"))},
+				Tag("tag:a"): Owners{new(Tag("tag:b"))},
 				Tag("tag:b"): Owners{}, // empty owners but exists
 			},
 			want: TagOwners{
