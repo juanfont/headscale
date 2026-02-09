@@ -188,6 +188,7 @@ type OIDCConfig struct {
 	AllowedUsers               []string
 	AllowedGroups              []string
 	EmailVerifiedRequired      bool
+	UseEmailAsUsername         bool
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
@@ -390,6 +391,7 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
 	viper.SetDefault("oidc.email_verified_required", true)
+	viper.SetDefault("oidc.use_email_as_username", false)
 
 	viper.SetDefault("logtail.enabled", false)
 	viper.SetDefault("randomize_client_port", false)
@@ -1044,6 +1046,7 @@ func LoadServerConfig() (*Config, error) {
 			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
+			UseEmailAsUsername:    viper.GetBool("oidc.use_email_as_username"),
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {
