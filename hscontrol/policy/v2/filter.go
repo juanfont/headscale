@@ -12,6 +12,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
@@ -319,11 +320,27 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	return rules, nil
 }
 
-func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
+var sshAccept = tailcfg.SSHAction{
+	Reject:                    false,
+	Accept:                    true,
+	AllowAgentForwarding:      true,
+	AllowLocalPortForwarding:  true,
+	AllowRemotePortForwarding: true,
+}
+
+func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
 	return tailcfg.SSHAction{
-		Reject:                    !accept,
-		Accept:                    accept,
-		SessionDuration:           duration,
+		Reject:          false,
+		Accept:          false,
+		SessionDuration: duration,
+		// Replaced in the client:
+		//   * $SRC_NODE_IP (URL escaped)
+		//   * $SRC_NODE_ID (Node.ID as int64 string)
+		//   * $DST_NODE_IP (URL escaped)
+		//   * $DST_NODE_ID (Node.ID as int64 string)
+		//   * $SSH_USER (URL escaped, ssh user requested)
+		//   * $LOCAL_USER (URL escaped, local user mapped)
+		HoldAndDelegate:           fmt.Sprintf("%s/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID/ssh_user/$SSH_USER/local_user/$LOCAL_USER", baseURL),
 		AllowAgentForwarding:      true,
 		AllowLocalPortForwarding:  true,
 		AllowRemotePortForwarding: true,
@@ -375,11 +392,14 @@ func (pol *Policy) compileSSHPolicy(
 
 		var action tailcfg.SSHAction
 
+		// HACK HACK HACK
+		serverURL := viper.GetString("server_url")
+
 		switch rule.Action {
 		case SSHActionAccept:
-			action = sshAction(true, 0)
+			action = sshAccept
 		case SSHActionCheck:
-			action = sshAction(true, time.Duration(rule.CheckPeriod))
+			action = sshCheck(serverURL, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
 		}

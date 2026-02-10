@@ -116,6 +116,8 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/register", ns.RegistrationHandler)
 		r.Post("/map", ns.PollNetMapHandler)
 
+		r.Get("/ssh/action/from/{src_node_id}/to/{dst_node_id}/ssh_user/{ssh_user}/local_user/{local_user}", ns.SSHAction)
+
 		// Not implemented yet
 		//
 		// /whoami is a debug endpoint to validate that the client can communicate over the connection,
@@ -147,11 +149,9 @@ func (h *Headscale) NoiseUpgradeHandler(
 		r.Post("/update-health", ns.NotImplementedHandler)
 
 		r.Route("/webclient", func(r chi.Router) {})
+
+		r.Post("/c2n", ns.NotImplementedHandler)
 	})
-
-	r.Post("/c2n", ns.NotImplementedHandler)
-
-	r.Get("/ssh-action", ns.SSHAction)
 
 	ns.httpBaseConfig = &http.Server{
 		Handler:           r,
@@ -246,7 +246,39 @@ func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *ht
 // SSHAction handles the /ssh-action endpoint, it returns a [tailcfg.SSHAction]
 // to the client with the verdict of an SSH access request.
 func (ns *noiseServer) SSHAction(writer http.ResponseWriter, req *http.Request) {
-	log.Trace().Caller().Str("path", req.URL.String()).Msg("got SSH action request")
+	srcNodeID := chi.URLParam(req, "src_node_id")
+	dstNodeID := chi.URLParam(req, "dst_node_id")
+	sshUser := chi.URLParam(req, "ssh_user")
+	localUser := chi.URLParam(req, "local_user")
+	log.Trace().Caller().
+		Str("path", req.URL.String()).
+		Str("src_node_id", srcNodeID).
+		Str("dst_node_id", dstNodeID).
+		Str("ssh_user", sshUser).
+		Str("local_user", localUser).
+		Msg("got SSH action request")
+
+	accept := tailcfg.SSHAction{
+		Reject:                    false,
+		Accept:                    true,
+		AllowAgentForwarding:      true,
+		AllowLocalPortForwarding:  true,
+		AllowRemotePortForwarding: true,
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	err := json.NewEncoder(writer).Encode(accept)
+	if err != nil {
+		log.Error().Caller().Err(err).Msg("failed to encode SSH action response")
+		return
+	}
+
+	// Ensure response is flushed to client
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // PollNetMapHandler takes care of /machine/:id/map using the Noise protocol
