@@ -12,7 +12,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
 	"go4.org/netipx"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/views"
@@ -349,6 +348,7 @@ func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
 
 //nolint:gocyclo // complex SSH policy compilation logic
 func (pol *Policy) compileSSHPolicy(
+	baseURL string,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
@@ -392,14 +392,11 @@ func (pol *Policy) compileSSHPolicy(
 
 		var action tailcfg.SSHAction
 
-		// HACK HACK HACK
-		serverURL := viper.GetString("server_url")
-
 		switch rule.Action {
 		case SSHActionAccept:
 			action = sshAccept
 		case SSHActionCheck:
-			action = sshCheck(serverURL, time.Duration(rule.CheckPeriod))
+			action = sshCheck(baseURL, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
 		}

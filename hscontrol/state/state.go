@@ -851,7 +851,7 @@ func (s *State) ExpireExpiredNodes(lastCheck time.Time) (time.Time, []change.Cha
 
 // SSHPolicy returns the SSH access policy for a node.
 func (s *State) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
-	return s.polMan.SSHPolicy(node)
+	return s.polMan.SSHPolicy(s.cfg.ServerURL, node)
 }
 
 // Filter returns the current network filter rules and matches.

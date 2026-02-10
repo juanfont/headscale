@@ -19,7 +19,7 @@ type PolicyManager interface {
 	MatchersForNode(node types.NodeView) ([]matcher.Match, error)
 	// BuildPeerMap constructs peer relationship maps for the given nodes
 	BuildPeerMap(nodes views.Slice[types.NodeView]) map[types.NodeID][]types.NodeView
-	SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error)
+	SSHPolicy(baseURL string, node types.NodeView) (*tailcfg.SSHPolicy, error)
 	SetPolicy(pol []byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
 	SetNodes(nodes views.Slice[types.NodeView]) (bool, error)
