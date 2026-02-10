@@ -214,6 +214,13 @@ type AuthRequest struct {
 	closed   *atomic.Bool
 }
 
+func NewAuthRequest() AuthRequest {
+	return AuthRequest{
+		finished: make(chan AuthVerdict),
+		closed:   &atomic.Bool{},
+	}
+}
+
 func NewRegisterAuthRequest(node Node) AuthRequest {
 	return AuthRequest{
 		node:     &node,

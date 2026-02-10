@@ -339,7 +339,7 @@ func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
 		//   * $DST_NODE_ID (Node.ID as int64 string)
 		//   * $SSH_USER (URL escaped, ssh user requested)
 		//   * $LOCAL_USER (URL escaped, local user mapped)
-		HoldAndDelegate:           fmt.Sprintf("%s/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID/ssh_user/$SSH_USER/local_user/$LOCAL_USER", baseURL),
+		HoldAndDelegate:           baseURL + "/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
 		AllowAgentForwarding:      true,
 		AllowLocalPortForwarding:  true,
 		AllowRemotePortForwarding: true,
