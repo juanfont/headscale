@@ -2,6 +2,7 @@ package integration
 
 import (
 	"encoding/json"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -43,7 +44,7 @@ func TestAppConnectorBasic(t *testing.T) {
 				Name:       "VPN Apps",
 				Connectors: []string{"tag:connector"},
 				Domains:    []string{"vpn.example.com"},
-				Routes:     []string{"10.0.0.0/8"},
+				Routes:     []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
 			},
 		},
 	}
@@ -111,50 +112,42 @@ func TestAppConnectorBasic(t *testing.T) {
 	// Wait for the app connector capability to be propagated
 	t.Log("Waiting for app connector capability to be propagated")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		netmap, err := connectorNode.Netmap()
+		nm, err := connectorNode.Netmap()
 		assert.NoError(c, err)
 
-		if netmap == nil || netmap.SelfNode == nil {
-			assert.Fail(c, "Netmap or SelfNode is nil")
+		if nm == nil || !nm.SelfNode.Valid() {
+			assert.Fail(c, "Netmap or SelfNode is invalid")
 			return
 		}
 
-		// Check for the app-connectors capability in CapMap
-		capMap := netmap.SelfNode.CapMap
-		if capMap == nil {
+		capMap := nm.SelfNode.CapMap()
+		if capMap.IsNil() {
 			assert.Fail(c, "CapMap is nil")
 			return
 		}
 
 		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		attrs, hasCapability := capMap[appConnectorCap]
+		attrs, hasCapability := capMap.GetOk(appConnectorCap)
 		assert.True(c, hasCapability, "Node should have app-connectors capability")
 
 		if hasCapability {
 			// Verify we have the expected number of app connector configs
-			assert.Len(c, attrs, 2, "Should have 2 app connector configs")
+			assert.Equal(c, 2, attrs.Len(), "Should have 2 app connector configs")
 
 			// Verify the content of the configs
-			var configs []policyv2.AppConnectorAttr
-			for _, attr := range attrs {
-				var cfg policyv2.AppConnectorAttr
-				err := json.Unmarshal([]byte(attr), &cfg)
-				assert.NoError(c, err)
-				configs = append(configs, cfg)
-			}
-
-			// Check that we have the expected domains
 			var allDomains []string
-			for _, cfg := range configs {
+			for i := range attrs.Len() {
+				var cfg policyv2.AppConnectorAttr
+				err := json.Unmarshal([]byte(attrs.At(i)), &cfg)
+				assert.NoError(c, err)
 				allDomains = append(allDomains, cfg.Domains...)
 			}
+
 			assert.Contains(c, allDomains, "internal.example.com")
 			assert.Contains(c, allDomains, "*.corp.example.com")
 			assert.Contains(c, allDomains, "vpn.example.com")
 		}
 	}, 60*time.Second, 1*time.Second, "App connector capability should be propagated")
-
-	t.Log("TestAppConnectorBasic PASSED: App connector configuration propagated correctly")
 }
 
 // TestAppConnectorNonMatchingTag tests that nodes without matching tags
@@ -250,16 +243,14 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 	// Use a shorter timeout since we're checking for absence
 	time.Sleep(5 * time.Second)
 
-	netmap, err := otherNode.Netmap()
+	nm, err := otherNode.Netmap()
 	require.NoError(t, err)
 
-	if netmap != nil && netmap.SelfNode != nil && netmap.SelfNode.CapMap != nil {
+	if nm != nil && nm.SelfNode.Valid() && !nm.SelfNode.CapMap().IsNil() {
 		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		_, hasCapability := netmap.SelfNode.CapMap[appConnectorCap]
+		_, hasCapability := nm.SelfNode.CapMap().GetOk(appConnectorCap)
 		assert.False(t, hasCapability, "Node with non-matching tag should NOT have app-connectors capability")
 	}
-
-	t.Log("TestAppConnectorNonMatchingTag PASSED: Non-matching tag correctly excluded")
 }
 
 // TestAppConnectorWildcardConnector tests that a wildcard (*) connector
@@ -322,34 +313,32 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 
 	// Wait for the app connector capability to be propagated
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		netmap, err := regularNode.Netmap()
+		nm, err := regularNode.Netmap()
 		assert.NoError(c, err)
 
-		if netmap == nil || netmap.SelfNode == nil {
-			assert.Fail(c, "Netmap or SelfNode is nil")
+		if nm == nil || !nm.SelfNode.Valid() {
+			assert.Fail(c, "Netmap or SelfNode is invalid")
 			return
 		}
 
-		capMap := netmap.SelfNode.CapMap
-		if capMap == nil {
+		capMap := nm.SelfNode.CapMap()
+		if capMap.IsNil() {
 			assert.Fail(c, "CapMap is nil")
 			return
 		}
 
 		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		attrs, hasCapability := capMap[appConnectorCap]
+		attrs, hasCapability := capMap.GetOk(appConnectorCap)
 		assert.True(c, hasCapability, "Node should have app-connectors capability with wildcard connector")
 
 		if hasCapability {
-			assert.Len(c, attrs, 1, "Should have 1 app connector config")
+			assert.Equal(c, 1, attrs.Len(), "Should have 1 app connector config")
 
 			// Verify the domain
 			var cfg policyv2.AppConnectorAttr
-			err := json.Unmarshal([]byte(attrs[0]), &cfg)
+			err := json.Unmarshal([]byte(attrs.At(0)), &cfg)
 			assert.NoError(c, err)
 			assert.Contains(c, cfg.Domains, "*.internal.example.com")
 		}
 	}, 60*time.Second, 1*time.Second, "App connector capability should be propagated with wildcard")
-
-	t.Log("TestAppConnectorWildcardConnector PASSED: Wildcard connector works correctly")
 }
