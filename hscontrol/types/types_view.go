@@ -223,6 +223,7 @@ func (v NodeView) UserID() views.ValuePointer[uint] { return views.ValuePointerO
 
 func (v NodeView) User() UserView         { return v.ж.User.View() }
 func (v NodeView) RegisterMethod() string { return v.ж.RegisterMethod }
+func (v NodeView) Ephemeral() bool        { return v.ж.Ephemeral }
 
 // Tags is the definitive owner for tagged nodes.
 // When non-empty, the node is "tagged" and tags define its identity.
@@ -277,6 +278,7 @@ var _NodeViewNeedsRegeneration = Node(struct {
 	UserID         *uint
 	User           *User
 	RegisterMethod string
+	Ephemeral      bool
 	Tags           []string
 	AuthKeyID      *uint64
 	AuthKey        *PreAuthKey
