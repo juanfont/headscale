@@ -856,7 +856,9 @@ func prefixV4() (*netip.Prefix, error) {
 	ipSet, _ := builder.IPSet()
 	if !ipSet.ContainsPrefix(prefixV4) {
 		log.Warn().
-			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+			Msgf("`prefixes.v4` is set to %s, which is outside the supported %s range. "+
+				"Headscale only supports prefixes within this range (including subsets); "+
+				"custom ranges are unsupported and may break client connectivity.",
 				prefixV4Str, tsaddr.CGNATRange())
 	}
 
@@ -881,7 +883,9 @@ func prefixV6() (*netip.Prefix, error) {
 
 	if !ipSet.ContainsPrefix(prefixV6) {
 		log.Warn().
-			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
+			Msgf("`prefixes.v6` is set to %s, which is outside the supported %s range. "+
+				"Headscale only supports prefixes within this range (including subsets); "+
+				"custom ranges are unsupported and may break client connectivity.",
 				prefixV6Str, tsaddr.TailscaleULARange())
 	}
 
