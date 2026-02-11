@@ -295,8 +295,8 @@ func IsCI() bool {
 // 3. If normalisation fails → generate invalid-<random> replacement
 //
 // Returns the guaranteed-valid hostname to use.
-func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) string {
-	if hostinfo == nil || hostinfo.Hostname == "" {
+func EnsureHostname(hostinfo tailcfg.HostinfoView, machineKey, nodeKey string) string {
+	if !hostinfo.Valid() || hostinfo.Hostname() == "" {
 		key := cmp.Or(machineKey, nodeKey)
 		if key == "" {
 			return "unknown-node"
@@ -310,7 +310,7 @@ func EnsureHostname(hostinfo *tailcfg.Hostinfo, machineKey, nodeKey string) stri
 		return "node-" + keyPrefix
 	}
 
-	lowercased := strings.ToLower(hostinfo.Hostname)
+	lowercased := strings.ToLower(hostinfo.Hostname())
 
 	err := ValidateHostname(lowercased)
 	if err == nil {

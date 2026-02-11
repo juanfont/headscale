@@ -7,7 +7,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 )
 
-func RegisterWeb(registrationID types.RegistrationID) *elem.Element {
+func RegisterWeb(registrationID types.AuthID) *elem.Element {
 	return HtmlStructure(
 		elem.Title(nil, elem.Text("Registration - Headscale")),
 		mdTypesetBody(
