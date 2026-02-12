@@ -32,3 +32,20 @@ Headscale is open to code contributions for bug fixes without discussion.
 ## Documentation
 
 If you find mistakes in the documentation, please submit a fix to the documentation.
+
+## Building with Visual Studio Code
+
+If you prefer using VS Code for day-to-day development, use the integrated terminal from the repository root and:
+
+1. Start the Nix development environment first:
+
+   `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
+
+2. Run the standard Make targets:
+
+   - `make build` to compile the headscale binary
+   - `make test` to run the test suite
+   - `make fmt` to format code and docs
+   - `make lint` to run lint checks
+
+Recommended VS Code extensions: Go (`golang.go`), Nix IDE (`jnoortheen.nix-ide`), Prettier (`esbenp.prettier-vscode`), and YAML (`redhat.vscode-yaml`).
