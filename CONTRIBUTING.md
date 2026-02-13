@@ -37,6 +37,10 @@ If you find mistakes in the documentation, please submit a fix to the documentat
 
 If you prefer using VS Code for day-to-day development, use the integrated terminal from the repository root and:
 
+1. Start the Nix development environment first (choose one):
+
+   - Direct command: `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
+   - Make target: `make build-deps`
 1. Start the Nix development environment first:
 
    `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
