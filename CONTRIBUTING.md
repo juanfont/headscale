@@ -41,6 +41,9 @@ If you prefer using VS Code for day-to-day development, use the integrated termi
 
    - Direct command: `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
    - Make target: `make build-deps`
+1. Start the Nix development environment first:
+
+   `nix develop --extra-experimental-features nix-command --extra-experimental-features flakes`
 
 2. Run the standard Make targets:
 
