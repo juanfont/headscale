@@ -33,12 +33,6 @@ type DatabaseVersion struct {
 	UpdatedAt time.Time
 }
 
-const createDatabaseVersionsSQL = `CREATE TABLE IF NOT EXISTS database_versions(
-  id integer PRIMARY KEY,
-  version text NOT NULL,
-  updated_at datetime
-)`
-
 // semver holds parsed major.minor.patch components.
 type semver struct {
 	Major int
@@ -90,10 +84,11 @@ func parseVersion(s string) (semver, error) {
 }
 
 // ensureDatabaseVersionTable creates the database_versions table if it
-// does not already exist. Uses raw SQL to match schema.sql exactly.
+// does not already exist. Uses GORM AutoMigrate to handle dialect
+// differences between SQLite (datetime) and PostgreSQL (timestamp).
 // This runs before gormigrate migrations.
 func ensureDatabaseVersionTable(db *gorm.DB) error {
-	err := db.Exec(createDatabaseVersionsSQL).Error
+	err := db.AutoMigrate(&DatabaseVersion{})
 	if err != nil {
 		return fmt.Errorf("creating database version table: %w", err)
 	}
