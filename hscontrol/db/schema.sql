@@ -104,3 +104,9 @@ CREATE TABLE policies(
   deleted_at datetime
 );
 CREATE INDEX idx_policies_deleted_at ON policies(deleted_at);
+
+CREATE TABLE database_versions(
+  id integer PRIMARY KEY,
+  version text NOT NULL,
+  updated_at datetime
+);

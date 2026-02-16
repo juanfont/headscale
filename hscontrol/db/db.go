@@ -63,6 +63,11 @@ func NewHeadscaleDatabase(
 		return nil, err
 	}
 
+	err = checkVersionUpgradePath(dbConn)
+	if err != nil {
+		return nil, fmt.Errorf("version check: %w", err)
+	}
+
 	migrations := gormigrate.New(
 		dbConn,
 		gormigrate.DefaultOptions,
@@ -758,6 +763,20 @@ AND auth_key_id NOT IN (
 	err = runMigrations(cfg.Database, dbConn, migrations)
 	if err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
+	}
+
+	// Store the current version in the database after migrations succeed.
+	// Dev builds skip this to preserve the stored version for the next
+	// real versioned binary.
+	currentVersion := types.GetVersionInfo().Version
+	if !isDev(currentVersion) {
+		err = setDatabaseVersion(dbConn, currentVersion)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"storing database version: %w",
+				err,
+			)
+		}
 	}
 
 	// Validate that the schema ends up in the expected state.
