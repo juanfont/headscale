@@ -97,16 +97,16 @@
           # Build golangci-lint with Go 1.26 (upstream uses hardcoded Go version)
           golangci-lint = buildGo rec {
             pname = "golangci-lint";
-            version = "2.8.0";
+            version = "2.9.0";
 
             src = pkgs.fetchFromGitHub {
               owner = "golangci";
               repo = "golangci-lint";
               rev = "v${version}";
-              hash = "sha256-w6MAOirj8rPHYbKrW4gJeemXCS64fNtteV6IioqIQTQ=";
+              hash = "sha256-8LEtm1v0slKwdLBtS41OilKJLXytSxcI9fUlZbj5Gfw=";
             };
 
-            vendorHash = "sha256-/Vqo/yrmGh6XipELQ9NDtlMEO2a654XykmvnMs0BdrI=";
+            vendorHash = "sha256-w8JfF6n1ylrU652HEv/cYdsOdDZz9J2uRQDqxObyhkY=";
 
             subPackages = [ "cmd/golangci-lint" ];
 
