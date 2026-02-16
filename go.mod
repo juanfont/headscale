@@ -1,6 +1,6 @@
 module github.com/juanfont/headscale
 
-go 1.26rc2
+go 1.26.0
 
 require (
 	github.com/arl/statsviz v0.8.0
