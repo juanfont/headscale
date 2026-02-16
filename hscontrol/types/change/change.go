@@ -365,11 +365,6 @@ func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
 	}
 }
 
-// ptrTo returns a pointer to the given value.
-func ptrTo[T any](v T) *T {
-	return new(v)
-}
-
 // High-level change constructors
 
 // NodeAdded returns a Change for when a node is added or updated.

@@ -929,8 +929,8 @@ func tagp(name string) policyv2.Alias {
 // prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
-	prefix := netip.MustParsePrefix(cidr)
-	return new(policyv2.Prefix(prefix))
+	p := policyv2.Prefix(netip.MustParsePrefix(cidr))
+	return &p
 }
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and port ranges.

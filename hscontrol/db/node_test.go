@@ -101,6 +101,8 @@ func TestExpireNode(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -114,7 +116,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -145,6 +147,8 @@ func TestSetTags(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -158,7 +162,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	trx := db.DB.Save(node)
@@ -652,6 +656,9 @@ func TestListEphemeralNodes(t *testing.T) {
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+	pakEphID := pakEph.ID
+
 	node := types.Node{
 		ID:             0,
 		MachineKey:     key.NewMachine().Public(),
@@ -659,7 +666,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	nodeEph := types.Node{
@@ -669,7 +676,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pakEph.ID),
+		AuthKeyID:      &pakEphID,
 	}
 
 	err = db.DB.Save(&node).Error

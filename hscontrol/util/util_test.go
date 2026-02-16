@@ -1207,10 +1207,10 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "test",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
-				if hi.Hostname != "test" { //nolint:staticcheck // SA5011: nil check is above
+				if hi.Hostname != "test" {
 					t.Errorf("hostname = %v, want test", hi.Hostname)
 				}
 
@@ -1241,10 +1241,10 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
-				if len(hi.Hostname) != 63 { //nolint:staticcheck // SA5011: nil check is above
+				if len(hi.Hostname) != 63 {
 					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
 				}
 			},

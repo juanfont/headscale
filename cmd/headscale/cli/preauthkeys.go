@@ -80,6 +80,7 @@ var listPreAuthKeys = &cobra.Command{
 				"Owner",
 			},
 		}
+
 		for _, key := range response.GetPreAuthKeys() {
 			expiration := "-"
 			if key.GetExpiration() != nil {
@@ -105,8 +106,8 @@ var listPreAuthKeys = &cobra.Command{
 				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
 				owner,
 			})
-
 		}
+
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(

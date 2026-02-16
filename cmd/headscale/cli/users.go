@@ -112,10 +112,12 @@ var createUserCmd = &cobra.Command{
 					output,
 				)
 			}
+
 			request.PictureUrl = pictureURL
 		}
 
 		log.Trace().Interface(zf.Request, request).Msg("sending CreateUser request")
+
 		response, err := client.CreateUser(ctx, request)
 		if err != nil {
 			ErrorOutput(
@@ -167,6 +169,7 @@ var destroyUserCmd = &cobra.Command{
 		user := users.GetUsers()[0]
 
 		confirm := false
+
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
 			confirm = util.YesNo(fmt.Sprintf(
@@ -186,6 +189,7 @@ var destroyUserCmd = &cobra.Command{
 					output,
 				)
 			}
+
 			SuccessOutput(response, "User destroyed", output)
 		} else {
 			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
@@ -246,6 +250,7 @@ var listUsersCmd = &cobra.Command{
 				},
 			)
 		}
+
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(

@@ -56,9 +56,12 @@ var getPolicy = &cobra.Command{
 	Aliases: []string{"show", "view", "fetch"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		var policy string
+
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
 			confirm := false
+
 			force, _ := cmd.Flags().GetBool("force")
 			if !force {
 				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
@@ -134,6 +137,7 @@ var setPolicy = &cobra.Command{
 
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
 			confirm := false
+
 			force, _ := cmd.Flags().GetBool("force")
 			if !force {
 				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
