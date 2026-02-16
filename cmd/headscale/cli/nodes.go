@@ -105,6 +105,7 @@ var registerNodeCmd = &cobra.Command{
 	Short: "Registers a node to your network",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
@@ -152,6 +153,7 @@ var listNodesCmd = &cobra.Command{
 	Aliases: []string{"ls", "show"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
@@ -200,6 +202,7 @@ var listNodeRoutesCmd = &cobra.Command{
 	Aliases: []string{"lsr", "routes"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			ErrorOutput(
@@ -283,7 +286,9 @@ var expireNodeCmd = &cobra.Command{
 
 			return
 		}
+
 		now := time.Now()
+
 		expiryTime := now
 		if expiry != "" {
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
@@ -350,6 +355,7 @@ var renameNodeCmd = &cobra.Command{
 		if len(args) > 0 {
 			newName = args[0]
 		}
+
 		request := &v1.RenameNodeRequest{
 			NodeId:  identifier,
 			NewName: newName,
@@ -409,6 +415,7 @@ var deleteNodeCmd = &cobra.Command{
 		}
 
 		confirm := false
+
 		force, _ := cmd.Flags().GetBool("force")
 		if !force {
 			confirm = util.YesNo(fmt.Sprintf(
@@ -424,6 +431,7 @@ var deleteNodeCmd = &cobra.Command{
 
 				return
 			}
+
 			if err != nil {
 				ErrorOutput(
 					err,
@@ -431,6 +439,7 @@ var deleteNodeCmd = &cobra.Command{
 					output,
 				)
 			}
+
 			SuccessOutput(
 				map[string]string{"Result": "Node deleted"},
 				"Node deleted",
@@ -659,6 +668,7 @@ var tagCmd = &cobra.Command{
 	Aliases: []string{"tags", "t"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
@@ -672,6 +682,7 @@ var tagCmd = &cobra.Command{
 				output,
 			)
 		}
+
 		tagsToSet, err := cmd.Flags().GetStringSlice("tags")
 		if err != nil {
 			ErrorOutput(
@@ -686,6 +697,7 @@ var tagCmd = &cobra.Command{
 			NodeId: identifier,
 			Tags:   tagsToSet,
 		}
+
 		resp, err := client.SetTags(ctx, request)
 		if err != nil {
 			ErrorOutput(
@@ -710,6 +722,7 @@ var approveRoutesCmd = &cobra.Command{
 	Short: "Manage the approved routes of a node",
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
+
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
 		defer conn.Close()
@@ -723,6 +736,7 @@ var approveRoutesCmd = &cobra.Command{
 				output,
 			)
 		}
+
 		routes, err := cmd.Flags().GetStringSlice("routes")
 		if err != nil {
 			ErrorOutput(
@@ -737,6 +751,7 @@ var approveRoutesCmd = &cobra.Command{
 			NodeId: identifier,
 			Routes: routes,
 		}
+
 		resp, err := client.SetApprovedRoutes(ctx, request)
 		if err != nil {
 			ErrorOutput(

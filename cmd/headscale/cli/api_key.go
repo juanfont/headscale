@@ -71,6 +71,7 @@ var listAPIKeys = &cobra.Command{
 		tableData := pterm.TableData{
 			{"ID", "Prefix", "Expiration", "Created"},
 		}
+
 		for _, key := range response.GetApiKeys() {
 			expiration := "-"
 
@@ -84,8 +85,8 @@ var listAPIKeys = &cobra.Command{
 				expiration,
 				key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
 			})
-
 		}
+
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
 			ErrorOutput(

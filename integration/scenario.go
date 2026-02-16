@@ -1485,6 +1485,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 		httpClient := &http.Client{}
 		ctx := context.Background()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, oidcConfigURL, nil)
+
 		resp, err := httpClient.Do(req)
 		if err != nil {
 			log.Printf("headscale mock OIDC tests is not ready: %s\n", err)

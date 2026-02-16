@@ -502,10 +502,9 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
-	now := time.Now()
-
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.LastSeen = new(now)
+		now := time.Now()
+		n.LastSeen = &now
 		// NodeStore is the source of truth for all node state including online status.
 		n.IsOnline = new(false)
 	})

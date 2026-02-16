@@ -73,12 +73,14 @@ func TestDestroyUserErrors(t *testing.T) {
 				pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 				require.NoError(t, err)
 
+				pakID := pak.ID
+
 				node := types.Node{
 					ID:             0,
 					Hostname:       "testnode",
 					UserID:         &user.ID,
 					RegisterMethod: util.RegisterMethodAuthKey,
-					AuthKeyID:      new(pak.ID),
+					AuthKeyID:      &pakID,
 				}
 				trx := db.DB.Save(&node)
 				require.NoError(t, trx.Error)

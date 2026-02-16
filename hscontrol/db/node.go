@@ -682,6 +682,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		panic(fmt.Sprintf("failed to create preauth key for test node: %v", err))
 	}
 
+	pakID := pak.ID
 	nodeKey := key.NewNode()
 	machineKey := key.NewMachine()
 	discoKey := key.NewDisco()
@@ -693,7 +694,7 @@ func (hsdb *HSDatabase) CreateNodeForTest(user *types.User, hostname ...string) 
 		Hostname:       nodeName,
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	err = hsdb.DB.Save(node).Error

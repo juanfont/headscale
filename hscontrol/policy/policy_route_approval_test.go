@@ -330,6 +330,8 @@ func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
 		Name:  "test",
 	}
 
+	userID := user.ID
+
 	currentApproved := []netip.Prefix{
 		netip.MustParsePrefix("10.0.0.0/24"),
 	}
@@ -342,8 +344,8 @@ func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "testnode",
-		UserID:         new(user.ID),
-		User:           new(user),
+		UserID:         &userID,
+		User:           &user,
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo: &tailcfg.Hostinfo{
 			RoutableIPs: announcedRoutes,
