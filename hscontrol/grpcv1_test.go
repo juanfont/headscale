@@ -17,6 +17,7 @@ func Test_validateTag(t *testing.T) {
 	type args struct {
 		tag string
 	}
+
 	tests := []struct {
 		name    string
 		args    args
@@ -45,7 +46,8 @@ func Test_validateTag(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := validateTag(tt.args.tag); (err != nil) != tt.wantErr {
+			err := validateTag(tt.args.tag)
+			if (err != nil) != tt.wantErr {
 				t.Errorf("validateTag() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
@@ -259,4 +261,210 @@ func TestSetTags_CannotRemoveAllTags(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Contains(t, st.Message(), "cannot remove all tags")
 	assert.Nil(t, resp.GetNode())
+}
+
+// TestDeleteUser_ReturnsProperChangeSignal tests issue #2967 fix:
+// When a user is deleted, the state should return a non-empty change signal
+// to ensure policy manager is updated and clients are notified immediately.
+func TestDeleteUser_ReturnsProperChangeSignal(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	// Create a user
+	user := app.state.CreateUserForTest("test-user-to-delete")
+	require.NotNil(t, user)
+
+	// Delete the user and verify a non-empty change is returned
+	// Issue #2967: Without the fix, DeleteUser returned an empty change,
+	// causing stale policy state until another user operation triggered an update.
+	changeSignal, err := app.state.DeleteUser(*user.TypedID())
+	require.NoError(t, err, "DeleteUser should succeed")
+	assert.False(t, changeSignal.IsEmpty(), "DeleteUser should return a non-empty change signal (issue #2967)")
+}
+
+// TestExpireApiKey_ByID tests that API keys can be expired by ID.
+func TestExpireApiKey_ByID(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Create an API key
+	createResp, err := apiServer.CreateApiKey(context.Background(), &v1.CreateApiKeyRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, createResp.GetApiKey())
+
+	// List keys to get the ID
+	listResp, err := apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+
+	keyID := listResp.GetApiKeys()[0].GetId()
+
+	// Expire by ID
+	_, err = apiServer.ExpireApiKey(context.Background(), &v1.ExpireApiKeyRequest{
+		Id: keyID,
+	})
+	require.NoError(t, err)
+
+	// Verify key is expired (expiration is set to now or in the past)
+	listResp, err = apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+	assert.NotNil(t, listResp.GetApiKeys()[0].GetExpiration(), "expiration should be set")
+}
+
+// TestExpireApiKey_ByPrefix tests that API keys can still be expired by prefix.
+func TestExpireApiKey_ByPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Create an API key
+	createResp, err := apiServer.CreateApiKey(context.Background(), &v1.CreateApiKeyRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, createResp.GetApiKey())
+
+	// List keys to get the prefix
+	listResp, err := apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+
+	keyPrefix := listResp.GetApiKeys()[0].GetPrefix()
+
+	// Expire by prefix
+	_, err = apiServer.ExpireApiKey(context.Background(), &v1.ExpireApiKeyRequest{
+		Prefix: keyPrefix,
+	})
+	require.NoError(t, err)
+}
+
+// TestDeleteApiKey_ByID tests that API keys can be deleted by ID.
+func TestDeleteApiKey_ByID(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Create an API key
+	createResp, err := apiServer.CreateApiKey(context.Background(), &v1.CreateApiKeyRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, createResp.GetApiKey())
+
+	// List keys to get the ID
+	listResp, err := apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+
+	keyID := listResp.GetApiKeys()[0].GetId()
+
+	// Delete by ID
+	_, err = apiServer.DeleteApiKey(context.Background(), &v1.DeleteApiKeyRequest{
+		Id: keyID,
+	})
+	require.NoError(t, err)
+
+	// Verify key is deleted
+	listResp, err = apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, listResp.GetApiKeys())
+}
+
+// TestDeleteApiKey_ByPrefix tests that API keys can still be deleted by prefix.
+func TestDeleteApiKey_ByPrefix(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	// Create an API key
+	createResp, err := apiServer.CreateApiKey(context.Background(), &v1.CreateApiKeyRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, createResp.GetApiKey())
+
+	// List keys to get the prefix
+	listResp, err := apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetApiKeys(), 1)
+
+	keyPrefix := listResp.GetApiKeys()[0].GetPrefix()
+
+	// Delete by prefix
+	_, err = apiServer.DeleteApiKey(context.Background(), &v1.DeleteApiKeyRequest{
+		Prefix: keyPrefix,
+	})
+	require.NoError(t, err)
+
+	// Verify key is deleted
+	listResp, err = apiServer.ListApiKeys(context.Background(), &v1.ListApiKeysRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, listResp.GetApiKeys())
+}
+
+// TestExpireApiKey_NoIdentifier tests that an error is returned when neither ID nor prefix is provided.
+func TestExpireApiKey_NoIdentifier(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	_, err := apiServer.ExpireApiKey(context.Background(), &v1.ExpireApiKeyRequest{})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "must provide id or prefix")
+}
+
+// TestDeleteApiKey_NoIdentifier tests that an error is returned when neither ID nor prefix is provided.
+func TestDeleteApiKey_NoIdentifier(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	_, err := apiServer.DeleteApiKey(context.Background(), &v1.DeleteApiKeyRequest{})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "must provide id or prefix")
+}
+
+// TestExpireApiKey_BothIdentifiers tests that an error is returned when both ID and prefix are provided.
+func TestExpireApiKey_BothIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	_, err := apiServer.ExpireApiKey(context.Background(), &v1.ExpireApiKeyRequest{
+		Id:     1,
+		Prefix: "test",
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "provide either id or prefix, not both")
+}
+
+// TestDeleteApiKey_BothIdentifiers tests that an error is returned when both ID and prefix are provided.
+func TestDeleteApiKey_BothIdentifiers(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	_, err := apiServer.DeleteApiKey(context.Background(), &v1.DeleteApiKeyRequest{
+		Id:     1,
+		Prefix: "test",
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok, "error should be a gRPC status error")
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "provide either id or prefix, not both")
 }

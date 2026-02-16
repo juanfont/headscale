@@ -1,0 +1,30 @@
+name: Support Request - Close Issue
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  close-support-request:
+    if: >-
+      github.event.label.name == 'support-request' &&
+      github.repository == 'juanfont/headscale'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          sparse-checkout: .github/label-response/support-request.md
+          sparse-checkout-cone-mode: false
+
+      - name: Post comment and close issue
+        run: |
+          gh issue comment "$NUMBER" --body-file .github/label-response/support-request.md
+          gh issue close "$NUMBER" --reason "not planned"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}

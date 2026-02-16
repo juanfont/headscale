@@ -23,11 +23,11 @@
         default = headscale;
       };
 
-      overlay = _: prev:
+      overlays.default = _: prev:
         let
-          pkgs = nixpkgs.legacyPackages.${prev.system};
-          buildGo = pkgs.buildGo125Module;
-          vendorHash = "sha256-VOi4PGZ8I+2MiwtzxpKc/4smsL5KcH/pHVkjJfAFPJ0=";
+          pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
+          buildGo = pkgs.buildGo126Module;
+          vendorHash = "sha256-9BvphYDAxzwooyVokI3l+q1wRuRsWn/qM+NpWUgqJH0=";
         in
         {
           headscale = buildGo {
@@ -62,16 +62,16 @@
 
           protoc-gen-grpc-gateway = buildGo rec {
             pname = "grpc-gateway";
-            version = "2.24.0";
+            version = "2.27.7";
 
             src = pkgs.fetchFromGitHub {
               owner = "grpc-ecosystem";
               repo = "grpc-gateway";
               rev = "v${version}";
-              sha256 = "sha256-lUEoqXJF1k4/il9bdDTinkUV5L869njZNYqObG/mHyA=";
+              sha256 = "sha256-6R0EhNnOBEISJddjkbVTcBvUuU5U3r9Hu2UPfAZDep4=";
             };
 
-            vendorHash = "sha256-Ttt7bPKU+TMKRg5550BS6fsPwYp0QJqcZ7NLrhttSdw=";
+            vendorHash = "sha256-SOAbRrzMf2rbKaG9PGSnPSLY/qZVgbHcNjOLmVonycY=";
 
             nativeBuildInputs = [ pkgs.installShellFiles ];
 
@@ -80,28 +80,60 @@
 
           protobuf-language-server = buildGo rec {
             pname = "protobuf-language-server";
-            version = "2546944";
+            version = "1cf777d";
 
             src = pkgs.fetchFromGitHub {
               owner = "lasorda";
               repo = "protobuf-language-server";
-              rev = "${version}";
-              sha256 = "sha256-Cbr3ktT86RnwUntOiDKRpNTClhdyrKLTQG2ZEd6fKDc=";
+              rev = "1cf777de4d35a6e493a689e3ca1a6183ce3206b6";
+              sha256 = "sha256-9MkBQPxr/TDr/sNz/Sk7eoZwZwzdVbE5u6RugXXk5iY=";
             };
 
-            vendorHash = "sha256-PfT90dhfzJZabzLTb1D69JCO+kOh2khrlpF5mCDeypk=";
+            vendorHash = "sha256-4nTpKBe7ekJsfQf+P6edT/9Vp2SBYbKz1ITawD3bhkI=";
 
             subPackages = [ "." ];
           };
 
-          # Upstream does not override buildGoModule properly,
-          # importing a specific module, so comment out for now.
-          # golangci-lint = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
-          # golangci-lint-langserver = prev.golangci-lint.override {
-          #   buildGoModule = buildGo;
-          # };
+          # Build golangci-lint with Go 1.26 (upstream uses hardcoded Go version)
+          golangci-lint = buildGo rec {
+            pname = "golangci-lint";
+            version = "2.8.0";
+
+            src = pkgs.fetchFromGitHub {
+              owner = "golangci";
+              repo = "golangci-lint";
+              rev = "v${version}";
+              hash = "sha256-w6MAOirj8rPHYbKrW4gJeemXCS64fNtteV6IioqIQTQ=";
+            };
+
+            vendorHash = "sha256-/Vqo/yrmGh6XipELQ9NDtlMEO2a654XykmvnMs0BdrI=";
+
+            subPackages = [ "cmd/golangci-lint" ];
+
+            nativeBuildInputs = [ pkgs.installShellFiles ];
+
+            ldflags = [
+              "-s"
+              "-w"
+              "-X main.version=${version}"
+              "-X main.commit=v${version}"
+              "-X main.date=1970-01-01T00:00:00Z"
+            ];
+
+            postInstall = ''
+              for shell in bash zsh fish; do
+                HOME=$TMPDIR $out/bin/golangci-lint completion $shell > golangci-lint.$shell
+                installShellCompletion golangci-lint.$shell
+              done
+            '';
+
+            meta = {
+              description = "Fast linters runner for Go";
+              homepage = "https://golangci-lint.run/";
+              changelog = "https://github.com/golangci/golangci-lint/blob/v${version}/CHANGELOG.md";
+              mainProgram = "golangci-lint";
+            };
+          };
 
           # The package uses buildGo125Module, not the convention.
           # goreleaser = prev.goreleaser.override {
@@ -129,10 +161,10 @@
       (system:
       let
         pkgs = import nixpkgs {
-          overlays = [ self.overlay ];
+          overlays = [ self.overlays.default ];
           inherit system;
         };
-        buildDeps = with pkgs; [ git go_1_25 gnumake ];
+        buildDeps = with pkgs; [ git go_1_26 gnumake ];
         devDeps = with pkgs;
           buildDeps
           ++ [
@@ -182,9 +214,9 @@
           config.Entrypoint = [ (pkgs.headscale + "/bin/headscale") ];
         };
       in
-      rec {
+      {
         # `nix develop`
-        devShell = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           buildInputs =
             devDeps
             ++ [
@@ -219,17 +251,19 @@
         packages = with pkgs; {
           inherit headscale;
           inherit headscale-docker;
+          default = headscale;
         };
-        defaultPackage = pkgs.headscale;
 
         # `nix run`
         apps.headscale = flake-utils.lib.mkApp {
-          drv = packages.headscale;
+          drv = pkgs.headscale;
         };
-        apps.default = apps.headscale;
+        apps.default = flake-utils.lib.mkApp {
+          drv = pkgs.headscale;
+        };
 
         checks = {
-          headscale = pkgs.nixosTest (import ./nix/tests/headscale.nix);
+          headscale = pkgs.testers.nixosTest (import ./nix/tests/headscale.nix);
         };
       });
 }

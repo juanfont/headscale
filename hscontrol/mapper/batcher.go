@@ -8,11 +8,20 @@ import (
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
+)
+
+// Mapper errors.
+var (
+	ErrInvalidNodeID      = errors.New("invalid nodeID")
+	ErrMapperNil          = errors.New("mapper is nil")
+	ErrNodeConnectionNil  = errors.New("nodeConnection is nil")
+	ErrNodeNotFoundMapper = errors.New("node not found")
 )
 
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -80,17 +89,22 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 	}
 
 	if nodeID == 0 {
-		return nil, fmt.Errorf("invalid nodeID: %d", nodeID)
+		return nil, fmt.Errorf("%w: %d", ErrInvalidNodeID, nodeID)
 	}
 
 	if mapper == nil {
-		return nil, fmt.Errorf("mapper is nil for nodeID %d", nodeID)
+		return nil, fmt.Errorf("%w for nodeID %d", ErrMapperNil, nodeID)
 	}
 
 	// Handle self-only responses
 	if r.IsSelfOnly() && r.TargetNode != nodeID {
 		return nil, nil //nolint:nilnil // No response needed for other nodes when self-only
 	}
+
+	// Check if this is a self-update (the changed node is the receiving node).
+	// When true, ensure the response includes the node's self info so it sees
+	// its own attribute changes (e.g., tags changed via admin API).
+	isSelfUpdate := r.OriginNode != 0 && r.OriginNode == nodeID
 
 	var (
 		mapResp *tailcfg.MapResponse
@@ -110,7 +124,12 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 		}
 
 		removedPeers := nc.computePeerDiff(currentPeerIDs)
-		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers)
+		// Include self node when this is a self-update (e.g., node's own tags changed)
+		// so the node sees its updated self info along with new packet filters.
+		mapResp, err = mapper.policyChangeResponse(nodeID, version, removedPeers, currentPeers, isSelfUpdate)
+	} else if isSelfUpdate {
+		// Non-policy self-update: just send the self node info
+		mapResp, err = mapper.selfMapResponse(nodeID, version)
 	} else {
 		mapResp, err = mapper.buildFromChange(nodeID, version, &r)
 	}
@@ -125,12 +144,12 @@ func generateMapResponse(nc nodeConnection, mapper *mapper, r change.Change) (*t
 // handleNodeChange generates and sends a [tailcfg.MapResponse] for a given node and [change.Change].
 func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error {
 	if nc == nil {
-		return errors.New("nodeConnection is nil")
+		return ErrNodeConnectionNil
 	}
 
 	nodeID := nc.nodeID()
 
-	log.Debug().Caller().Uint64("node.id", nodeID.Uint64()).Str("reason", r.Reason).Msg("Node change processing started because change notification received")
+	log.Debug().Caller().Uint64(zf.NodeID, nodeID.Uint64()).Str(zf.Reason, r.Reason).Msg("node change processing started")
 
 	data, err := generateMapResponse(nc, mapper, r)
 	if err != nil {

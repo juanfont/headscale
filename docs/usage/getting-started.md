@@ -60,10 +60,9 @@ options, run:
 
 ## Manage headscale users
 
-In headscale, a node (also known as machine or device) is always assigned to a
-headscale user. Such a headscale user may have many nodes assigned to them and
-can be managed with the `headscale users` command. Invoke the built-in help for
-more information: `headscale users --help`.
+In headscale, a node (also known as machine or device) is [typically assigned to a headscale
+user](../ref/registration.md#identity-model). Such a headscale user may have many nodes assigned to them and can be
+managed with the `headscale users` command. Invoke the built-in help for more information: `headscale users --help`.
 
 ### Create a headscale user
 
@@ -97,11 +96,12 @@ more information: `headscale users --help`.
 
 ## Register a node
 
-One has to register a node first to use headscale as coordination with Tailscale. The following examples work for the
-Tailscale client on Linux/BSD operating systems. Alternatively, follow the instructions to connect
-[Android](connect/android.md), [Apple](connect/apple.md) or [Windows](connect/windows.md) devices.
+One has to [register a node](../ref/registration.md) first to use headscale as coordination server with Tailscale. The
+following examples work for the Tailscale client on Linux/BSD operating systems. Alternatively, follow the instructions
+to connect [Android](connect/android.md), [Apple](connect/apple.md) or [Windows](connect/windows.md) devices. Read
+[registration methods](../ref/registration.md) for an overview of available registration methods.
 
-### Normal, interactive login
+### [Web authentication](../ref/registration.md#web-authentication)
 
 On a client machine, run the `tailscale up` command and provide the FQDN of your headscale instance as argument:
 
@@ -109,23 +109,23 @@ On a client machine, run the `tailscale up` command and provide the FQDN of your
 tailscale up --login-server <YOUR_HEADSCALE_URL>
 ```
 
-Usually, a browser window with further instructions is opened and contains the value for `<YOUR_MACHINE_KEY>`. Approve
-and register the node on your headscale server:
+Usually, a browser window with further instructions is opened. This page explains how to complete the registration on
+your headscale server and it also prints the registration key required to approve the node:
 
 === "Native"
 
     ```shell
-    headscale nodes register --user <USER> --key <YOUR_MACHINE_KEY>
+    headscale nodes register --user <USER> --key <REGISTRATION_KEY>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale nodes register --user <USER> --key <YOUR_MACHINE_KEY>
+      headscale nodes register --user <USER> --key <REGISTRATION_KEY>
     ```
 
-### Using a preauthkey
+### [Pre authenticated key](../ref/registration.md#pre-authenticated-key)
 
 It is also possible to generate a preauthkey and register a node non-interactively. First, generate a preauthkey on the
 headscale instance. By default, the key is valid for one hour and can only be used once (see `headscale preauthkeys

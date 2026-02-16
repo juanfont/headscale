@@ -35,6 +35,7 @@ func TestHeadscale(t *testing.T) {
 	user := "test-space"
 
 	scenario, err := NewScenario(ScenarioSpec{})
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -83,6 +84,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	count := 1
 
 	scenario, err := NewScenario(ScenarioSpec{})
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 

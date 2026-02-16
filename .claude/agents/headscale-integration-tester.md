@@ -71,7 +71,7 @@ go run ./cmd/hi run "TestName" --timeout=60s
 - **Slow tests** (5+ min): Node expiration, HA failover
 - **Long-running tests** (10+ min): `TestNodeOnlineStatus` runs for 12 minutes
 
-**CRITICAL**: Only ONE test can run at a time due to Docker port conflicts and resource constraints.
+**CONCURRENT EXECUTION**: Multiple tests CAN run simultaneously. Each test run gets a unique Run ID for isolation. See "Concurrent Execution and Run ID Isolation" section below.
 
 ## Test Artifacts and Log Analysis
 
@@ -97,6 +97,97 @@ When tests fail, examine artifacts in this specific order:
 3. **MapResponse JSON files**: Protocol-level debugging for network map generation issues
 4. **Client status dumps** (`*_status.json`): Network state and peer connectivity information
 5. **Database snapshots** (`.db` files): For data consistency and state persistence issues
+
+## Concurrent Execution and Run ID Isolation
+
+### Overview
+
+The integration test system supports running multiple tests concurrently on the same Docker daemon. Each test run is isolated through a unique Run ID that ensures containers, networks, and cleanup operations don't interfere with each other.
+
+### Run ID Format and Usage
+
+Each test run generates a unique Run ID in the format: `YYYYMMDD-HHMMSS-{6-char-hash}`
+- Example: `20260109-104215-mdjtzx`
+
+The Run ID is used for:
+- **Container naming**: `ts-{runIDShort}-{version}-{hash}` (e.g., `ts-mdjtzx-1-74-fgdyls`)
+- **Docker labels**: All containers get `hi.run-id={runID}` label
+- **Log directories**: `control_logs/{runID}/`
+- **Cleanup isolation**: Only containers with matching run ID are cleaned up
+
+### Container Isolation Mechanisms
+
+1. **Unique Container Names**: Each container includes the run ID for identification
+2. **Docker Labels**: `hi.run-id` and `hi.test-type` labels on all containers
+3. **Dynamic Port Allocation**: All ports use `{HostPort: "0"}` to let kernel assign free ports
+4. **Per-Run Networks**: Network names include scenario hash for isolation
+5. **Isolated Cleanup**: `killTestContainersByRunID()` only removes containers matching the run ID
+
+### ⚠️ CRITICAL: Never Interfere with Other Test Runs
+
+**FORBIDDEN OPERATIONS** when other tests may be running:
+
+```bash
+# ❌ NEVER do global container cleanup while tests are running
+docker rm -f $(docker ps -q --filter "name=hs-")
+docker rm -f $(docker ps -q --filter "name=ts-")
+
+# ❌ NEVER kill all test containers
+# This will destroy other agents' test sessions!
+
+# ❌ NEVER prune all Docker resources during active tests
+docker system prune -f  # Only safe when NO tests are running
+```
+
+**SAFE OPERATIONS**:
+
+```bash
+# ✅ Clean up only YOUR test run's containers (by run ID)
+# The test runner does this automatically via cleanup functions
+
+# ✅ Clean stale (stopped/exited) containers only
+# Pre-test cleanup only removes stopped containers, not running ones
+
+# ✅ Check what's running before cleanup
+docker ps --filter "name=headscale-test-suite" --format "{{.Names}}"
+```
+
+### Running Concurrent Tests
+
+```bash
+# Start multiple tests in parallel - each gets unique run ID
+go run ./cmd/hi run "TestPingAllByIP" &
+go run ./cmd/hi run "TestACLAllowUserDst" &
+go run ./cmd/hi run "TestOIDCAuthenticationPingAll" &
+
+# Monitor running test suites
+docker ps --filter "name=headscale-test-suite" --format "table {{.Names}}\t{{.Status}}"
+```
+
+### Agent Session Isolation Rules
+
+When working as an agent:
+
+1. **Your run ID is unique**: Each test you start gets its own run ID
+2. **Never clean up globally**: Only use run ID-specific cleanup
+3. **Check before cleanup**: Verify no other tests are running if you need to prune resources
+4. **Respect other sessions**: Other agents may have tests running concurrently
+5. **Log directories are isolated**: Your artifacts are in `control_logs/{your-run-id}/`
+
+### Identifying Your Containers
+
+Your test containers can be identified by:
+- The run ID in the container name
+- The `hi.run-id` Docker label
+- The test suite container: `headscale-test-suite-{your-run-id}`
+
+```bash
+# List containers for a specific run ID
+docker ps --filter "label=hi.run-id=20260109-104215-mdjtzx"
+
+# Get your run ID from the test output
+# Look for: "Run ID: 20260109-104215-mdjtzx"
+```
 
 ## Common Failure Patterns and Root Cause Analysis
 
@@ -250,10 +341,10 @@ require.NotNil(t, targetNode, "should find expected node")
    - **Detection**: No progress in logs for >2 minutes during initialization
    - **Solution**: `docker system prune -f` and retry
 
-3. **Docker Port Conflicts**: Multiple tests trying to use same ports
-   - **Pattern**: "bind: address already in use" errors
-   - **Detection**: Port binding failures in Docker logs
-   - **Solution**: Only run ONE test at a time
+3. **Docker Resource Exhaustion**: Too many concurrent tests overwhelming system
+   - **Pattern**: Container creation timeouts, OOM kills, slow test execution
+   - **Detection**: System load high, Docker daemon slow to respond
+   - **Solution**: Reduce number of concurrent tests, wait for completion before starting more
 
 **CODE ISSUES (99% of failures)**:
 1. **Route Approval Process Failures**: Routes not getting approved when they should be
@@ -273,12 +364,22 @@ require.NotNil(t, targetNode, "should find expected node")
 
 ### Critical Test Environment Setup
 
-**Pre-Test Cleanup (MANDATORY)**:
+**Pre-Test Cleanup**:
+
+The test runner automatically handles cleanup:
+- **Before test**: Removes only stale (stopped/exited) containers - does NOT affect running tests
+- **After test**: Removes only containers belonging to the specific run ID
+
 ```bash
-# ALWAYS run this before each test
+# Only clean old log directories if disk space is low
 rm -rf control_logs/202507*
-docker system prune -f
 df -h  # Verify sufficient disk space
+
+# SAFE: Clean only stale/stopped containers (does not affect running tests)
+# The test runner does this automatically via cleanupStaleTestContainers()
+
+# ⚠️ DANGEROUS: Only use when NO tests are running
+docker system prune -f
 ```
 
 **Environment Verification**:
@@ -286,8 +387,8 @@ df -h  # Verify sufficient disk space
 # Verify system readiness
 go run ./cmd/hi doctor
 
-# Check for running containers that might conflict
-docker ps
+# Check what tests are currently running (ALWAYS check before global cleanup)
+docker ps --filter "name=headscale-test-suite" --format "{{.Names}}"
 ```
 
 ### Specific Test Categories and Known Issues
@@ -756,7 +857,13 @@ assert.EventuallyWithT(t, func(c *assert.CollectT) {
    - **Why security focus**: Integration tests are the last line of defense against security regressions
    - **EventuallyWithT Usage**: Proper use prevents race conditions without weakening security assertions
 
+6. **Concurrent Execution Awareness**: Respect run ID isolation and never interfere with other agents' test sessions. Each test run has a unique run ID - only clean up YOUR containers (by run ID label), never perform global cleanup while tests may be running.
+   - **Why this matters**: Multiple agents/users may run tests concurrently on the same Docker daemon
+   - **Key Rule**: NEVER use global container cleanup commands - the test runner handles cleanup automatically per run ID
+
 **CRITICAL PRINCIPLE**: Test expectations are sacred contracts that define correct system behavior. When tests fail, fix the code to match the test, never change the test to match broken code. Only timing and observability improvements are allowed - business logic expectations are immutable.
+
+**ISOLATION PRINCIPLE**: Each test run is isolated by its unique Run ID. Never interfere with other test sessions. The system handles cleanup automatically - manual global cleanup commands are forbidden when other tests may be running.
 
 **EventuallyWithT PRINCIPLE**: Every external call to headscale server or tailscale client must be wrapped in EventuallyWithT. Follow the five key rules strictly: one external call per block, proper variable scoping, no nesting, use CollectT for assertions, and provide descriptive messages.
 

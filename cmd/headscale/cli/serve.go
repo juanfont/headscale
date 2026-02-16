@@ -23,18 +23,17 @@ var serveCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
-			var squibbleErr squibble.ValidationError
-			if errors.As(err, &squibbleErr) {
+			if squibbleErr, ok := errors.AsType[squibble.ValidationError](err); ok {
 				fmt.Printf("SQLite schema failed to validate:\n")
 				fmt.Println(squibbleErr.Diff)
 			}
 
-			log.Fatal().Caller().Err(err).Msg("Error initializing")
+			log.Fatal().Caller().Err(err).Msg("error initializing")
 		}
 
 		err = app.Serve()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal().Caller().Err(err).Msg("Headscale ran into an error and had to shut down.")
+			log.Fatal().Caller().Err(err).Msg("headscale ran into an error and had to shut down")
 		}
 	},
 }

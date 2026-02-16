@@ -28,8 +28,8 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -55,7 +55,7 @@ func (api headscaleV1APIServer) CreateUser(
 	}
 	user, policyChanged, err := api.h.state.CreateUser(newUser)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
+		return nil, status.Errorf(codes.Internal, "creating user: %s", err)
 	}
 
 	// CreateUser returns a policy change response if the user creation affected policy.
@@ -99,13 +99,13 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	err = api.h.state.DeleteUser(types.UserID(user.ID))
+	policyChanged, err := api.h.state.DeleteUser(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
 
-	// User deletion may affect policy, trigger a full policy re-evaluation.
-	api.h.Change(change.UserRemoved())
+	// Use the change returned from DeleteUser which includes proper policy updates
+	api.h.Change(policyChanged)
 
 	return &v1.DeleteUserResponse{}, nil
 }
@@ -161,13 +161,17 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
+	var userID *types.UserID
+	if request.GetUser() != 0 {
+		user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
+		if err != nil {
+			return nil, err
+		}
+		userID = user.TypedID()
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		user.TypedID(),
+		userID,
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -184,16 +188,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
-	}
-
-	err = api.h.state.ExpirePreAuthKey(preAuthKey)
+	err := api.h.state.ExpirePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -205,16 +200,7 @@ func (api headscaleV1APIServer) DeletePreAuthKey(
 	ctx context.Context,
 	request *v1.DeletePreAuthKeyRequest,
 ) (*v1.DeletePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
-	}
-
-	err = api.h.state.DeletePreAuthKey(preAuthKey)
+	err := api.h.state.DeletePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -226,12 +212,7 @@ func (api headscaleV1APIServer) ListPreAuthKeys(
 	ctx context.Context,
 	request *v1.ListPreAuthKeysRequest,
 ) (*v1.ListPreAuthKeysResponse, error) {
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
-	}
-
-	preAuthKeys, err := api.h.state.ListPreAuthKeys(types.UserID(user.ID))
+	preAuthKeys, err := api.h.state.ListPreAuthKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -255,16 +236,16 @@ func (api headscaleV1APIServer) RegisterNode(
 	// Generate ephemeral registration key for tracking this registration flow in logs
 	registrationKey, err := util.GenerateRegistrationKey()
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to generate registration key")
+		log.Warn().Err(err).Msg("failed to generate registration key")
 		registrationKey = "" // Continue without key if generation fails
 	}
 
 	log.Trace().
 		Caller().
-		Str("user", request.GetUser()).
-		Str("registration_id", request.GetKey()).
-		Str("registration_key", registrationKey).
-		Msg("Registering node")
+		Str(zf.UserName, request.GetUser()).
+		Str(zf.RegistrationID, request.GetKey()).
+		Str(zf.RegistrationKey, registrationKey).
+		Msg("registering node")
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
 	if err != nil {
@@ -284,17 +265,16 @@ func (api headscaleV1APIServer) RegisterNode(
 	)
 	if err != nil {
 		log.Error().
-			Str("registration_key", registrationKey).
+			Str(zf.RegistrationKey, registrationKey).
 			Err(err).
-			Msg("Failed to register node")
+			Msg("failed to register node")
 		return nil, err
 	}
 
 	log.Info().
-		Str("registration_key", registrationKey).
-		Str("node_id", fmt.Sprintf("%d", node.ID())).
-		Str("hostname", node.Hostname()).
-		Msg("Node registered successfully")
+		Str(zf.RegistrationKey, registrationKey).
+		EmbedObject(node).
+		Msg("node registered successfully")
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -339,11 +319,11 @@ func (api headscaleV1APIServer) SetTags(
 	// Validate tags not empty - tagged nodes must have at least one tag
 	if len(request.GetTags()) == 0 {
 		return &v1.SetTagsResponse{
-			Node: nil,
-		}, status.Error(
-			codes.InvalidArgument,
-			"cannot remove all tags from a node - tagged nodes must have at least one tag",
-		)
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
 	}
 
 	// Validate tag format
@@ -375,9 +355,9 @@ func (api headscaleV1APIServer) SetTags(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
+		EmbedObject(node).
 		Strs("tags", request.GetTags()).
-		Msg("Changing tags of node")
+		Msg("changing tags of node")
 
 	return &v1.SetTagsResponse{Node: node.Proto()}, nil
 }
@@ -388,7 +368,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 ) (*v1.SetApprovedRoutesResponse, error) {
 	log.Debug().
 		Caller().
-		Uint64("node.id", request.GetNodeId()).
+		Uint64(zf.NodeID, request.GetNodeId()).
 		Strs("requestedRoutes", request.GetRoutes()).
 		Msg("gRPC SetApprovedRoutes called")
 
@@ -407,7 +387,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 
 	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)
@@ -426,7 +406,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 
 	log.Debug().
 		Caller().
-		Uint64("node.id", node.ID().Uint64()).
+		EmbedObject(node).
 		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
 		Strs("primaryRoutes", util.PrefixesToString(primaryRoutes)).
 		Strs("finalSubnetRoutes", proto.SubnetRoutes).
@@ -443,7 +423,7 @@ func validateTag(tag string) error {
 		return errors.New("tag should be lowercase")
 	}
 	if len(strings.Fields(tag)) > 1 {
-		return errors.New("tag should not contains space")
+		return errors.New("tags must not contain spaces")
 	}
 	return nil
 }
@@ -486,8 +466,8 @@ func (api headscaleV1APIServer) ExpireNode(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
-		Time("expiry", *node.AsStruct().Expiry).
+		EmbedObject(node).
+		Time(zf.ExpiresAt, *node.AsStruct().Expiry).
 		Msg("node expired")
 
 	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
@@ -507,8 +487,8 @@ func (api headscaleV1APIServer) RenameNode(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
-		Str("new_name", request.GetNewName()).
+		EmbedObject(node).
+		Str(zf.NewName, request.GetNewName()).
 		Msg("node renamed")
 
 	return &v1.RenameNodeResponse{Node: node.Proto()}, nil
@@ -551,8 +531,6 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 			resp.User = types.TaggedDevices.Proto()
 		}
 
-		resp.ValidTags = node.Tags().AsSlice()
-
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
 	}
@@ -568,7 +546,7 @@ func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,
 ) (*v1.BackfillNodeIPsResponse, error) {
-	log.Trace().Caller().Msg("Backfill called")
+	log.Trace().Caller().Msg("backfill called")
 
 	if !request.Confirmed {
 		return nil, errors.New("not confirmed, aborting")
@@ -599,14 +577,35 @@ func (api headscaleV1APIServer) CreateApiKey(
 	return &v1.CreateApiKeyResponse{ApiKey: apiKey}, nil
 }
 
+// apiKeyIdentifier is implemented by requests that identify an API key.
+type apiKeyIdentifier interface {
+	GetId() uint64
+	GetPrefix() string
+}
+
+// getAPIKey retrieves an API key by ID or prefix from the request.
+// Returns InvalidArgument if neither or both are provided.
+func (api headscaleV1APIServer) getAPIKey(req apiKeyIdentifier) (*types.APIKey, error) {
+	hasID := req.GetId() != 0
+	hasPrefix := req.GetPrefix() != ""
+
+	switch {
+	case hasID && hasPrefix:
+		return nil, status.Error(codes.InvalidArgument, "provide either id or prefix, not both")
+	case hasID:
+		return api.h.state.GetAPIKeyByID(req.GetId())
+	case hasPrefix:
+		return api.h.state.GetAPIKey(req.GetPrefix())
+	default:
+		return nil, status.Error(codes.InvalidArgument, "must provide id or prefix")
+	}
+}
+
 func (api headscaleV1APIServer) ExpireApiKey(
 	ctx context.Context,
 	request *v1.ExpireApiKeyRequest,
 ) (*v1.ExpireApiKeyResponse, error) {
-	var apiKey *types.APIKey
-	var err error
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
@@ -644,12 +643,7 @@ func (api headscaleV1APIServer) DeleteApiKey(
 	ctx context.Context,
 	request *v1.DeleteApiKeyRequest,
 ) (*v1.DeleteApiKeyResponse, error) {
-	var (
-		apiKey *types.APIKey
-		err    error
-	)
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
@@ -823,13 +817,13 @@ func (api headscaleV1APIServer) Health(
 	response := &v1.HealthResponse{}
 
 	if err := api.h.state.PingDB(ctx); err != nil {
-		healthErr = fmt.Errorf("database ping failed: %w", err)
+		healthErr = fmt.Errorf("pinging database: %w", err)
 	} else {
 		response.DatabaseConnectivity = true
 	}
 
 	if healthErr != nil {
-		log.Error().Err(healthErr).Msg("Health check failed")
+		log.Error().Err(healthErr).Msg("health check failed")
 	}
 
 	return response, healthErr

@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
+	v2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -16,7 +17,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/util/must"
 )
 
@@ -144,13 +144,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2221"),
-				User: ptr.To(users[0]),
+				User: new(users[0]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0:ab12:4843:2222:6273:2222"),
-					User: ptr.To(users[0]),
+					User: new(users[0]),
 				},
 			},
 			want: []tailcfg.FilterRule{},
@@ -191,7 +191,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{
 						netip.MustParsePrefix("10.33.0.0/16"),
@@ -202,10 +202,11 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
 				{
 					SrcIPs: []string{
 						"100.64.0.1/32",
@@ -222,23 +223,12 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "fd7a:115c:a1e0::1/128",
 							Ports: tailcfg.PortRangeAny,
 						},
-					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{
-						"100.64.0.1/32",
-						"100.64.0.2/32",
-						"fd7a:115c:a1e0::1/128",
-						"fd7a:115c:a1e0::2/128",
-					},
-					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "10.33.0.0/16",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -283,19 +273,19 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.1"),
 				IPv6: ap("fd7a:115c:a1e0::1"),
-				User: ptr.To(users[1]),
+				User: new(users[1]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				// "internal" exit node
 				&types.Node{
 					IPv4: ap("100.64.0.100"),
 					IPv6: ap("fd7a:115c:a1e0::100"),
-					User: ptr.To(users[3]),
+					User: new(users[3]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tsaddr.ExitRoutes(),
 					},
@@ -344,7 +334,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -353,15 +343,18 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Only the internal:* rule generates filters.
+				// autogroup:internet does NOT generate packet filters - it's handled
+				// by exit node routing via AllowedIPs, not by packet filtering.
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
@@ -374,12 +367,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs:   []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: hsExitNodeDestForTest,
-					IPProto:  []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -453,7 +441,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: tsaddr.ExitRoutes(),
 				},
@@ -462,15 +450,16 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
@@ -482,12 +471,6 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "fd7a:115c:a1e0::100/128",
 							Ports: tailcfg.PortRangeAny,
 						},
-					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
 						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
 						{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
@@ -519,7 +502,7 @@ func TestReduceFilterRules(t *testing.T) {
 						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
 						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -565,7 +548,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/16"), netip.MustParsePrefix("16.0.0.0/16")},
 				},
@@ -574,15 +557,16 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
@@ -594,12 +578,6 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "fd7a:115c:a1e0::100/128",
 							Ports: tailcfg.PortRangeAny,
 						},
-					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "8.0.0.0/8",
 							Ports: tailcfg.PortRangeAny,
@@ -609,7 +587,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -655,7 +633,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("8.0.0.0/8"), netip.MustParsePrefix("16.0.0.0/8")},
 				},
@@ -664,15 +642,16 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.2"),
 					IPv6: ap("fd7a:115c:a1e0::2"),
-					User: ptr.To(users[2]),
+					User: new(users[2]),
 				},
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
+				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
 				{
 					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
 					DstPorts: []tailcfg.NetPortRange{
@@ -684,12 +663,6 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "fd7a:115c:a1e0::100/128",
 							Ports: tailcfg.PortRangeAny,
 						},
-					},
-					IPProto: []int{6, 17},
-				},
-				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
-					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "8.0.0.0/16",
 							Ports: tailcfg.PortRangeAny,
@@ -699,7 +672,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -737,7 +710,7 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.100"),
 				IPv6: ap("fd7a:115c:a1e0::100"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 				Hostinfo: &tailcfg.Hostinfo{
 					RoutableIPs: []netip.Prefix{netip.MustParsePrefix("172.16.0.0/24")},
 				},
@@ -747,7 +720,7 @@ func TestReduceFilterRules(t *testing.T) {
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 				},
 			},
 			want: []tailcfg.FilterRule{
@@ -767,7 +740,7 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{6, 17},
+					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -804,13 +777,13 @@ func TestReduceFilterRules(t *testing.T) {
 			node: &types.Node{
 				IPv4: ap("100.64.0.2"),
 				IPv6: ap("fd7a:115c:a1e0::2"),
-				User: ptr.To(users[3]),
+				User: new(users[3]),
 			},
 			peers: types.Nodes{
 				&types.Node{
 					IPv4: ap("100.64.0.1"),
 					IPv6: ap("fd7a:115c:a1e0::1"),
-					User: ptr.To(users[1]),
+					User: new(users[1]),
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: []netip.Prefix{p("172.16.0.0/24"), p("10.10.11.0/24"), p("10.10.12.0/24")},
 					},
@@ -824,10 +797,14 @@ func TestReduceFilterRules(t *testing.T) {
 	for _, tt := range tests {
 		for idx, pmf := range policy.PolicyManagerFuncsForTest([]byte(tt.pol)) {
 			t.Run(fmt.Sprintf("%s-index%d", tt.name, idx), func(t *testing.T) {
-				var pm policy.PolicyManager
-				var err error
+				var (
+					pm  policy.PolicyManager
+					err error
+				)
+
 				pm, err = pmf(users, append(tt.peers, tt.node).ViewSlice())
 				require.NoError(t, err)
+
 				got, _ := pm.Filter()
 				t.Logf("full filter:\n%s", must.Get(json.MarshalIndent(got, "", "  ")))
 				got = policyutil.ReduceFilterRules(tt.node.View(), got)

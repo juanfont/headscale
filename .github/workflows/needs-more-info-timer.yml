@@ -1,0 +1,98 @@
+name: Needs More Info - Timer
+
+on:
+  schedule:
+    - cron: "0 0 * * *" # Daily at midnight UTC
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  # When a non-bot user comments on a needs-more-info issue, remove the label.
+  remove-label-on-response:
+    if: >-
+      github.repository == 'juanfont/headscale' &&
+      github.event_name == 'issue_comment' &&
+      github.event.comment.user.type != 'Bot' &&
+      contains(github.event.issue.labels.*.name, 'needs-more-info')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Remove needs-more-info label
+        run: gh issue edit "$NUMBER" --remove-label needs-more-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.issue.number }}
+
+  # On schedule, close issues that have had no human response for 3 days.
+  close-stale:
+    if: >-
+      github.repository == 'juanfont/headscale' &&
+      github.event_name != 'issue_comment'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: hustcer/setup-nu@920172d92eb04671776f3ba69d605d3b09351c30 # v3.22
+        with:
+          version: "*"
+
+      - name: Close stale needs-more-info issues
+        shell: nu {0}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          let issues = (gh issue list
+            --repo $env.GH_REPO
+            --label "needs-more-info"
+            --state open
+            --json number
+            | from json)
+
+          for issue in $issues {
+            let number = $issue.number
+            print $"Checking issue #($number)"
+
+            # Find when needs-more-info was last added
+            let events = (gh api $"repos/($env.GH_REPO)/issues/($number)/events"
+              --paginate | from json | flatten)
+            let label_event = ($events
+              | where event == "labeled" and label.name == "needs-more-info"
+              | last)
+            let label_added_at = ($label_event.created_at | into datetime)
+
+            # Check for non-bot comments after the label was added
+            let comments = (gh api $"repos/($env.GH_REPO)/issues/($number)/comments"
+              --paginate | from json | flatten)
+            let human_responses = ($comments
+              | where user.type != "Bot"
+              | where { ($in.created_at | into datetime) > $label_added_at })
+
+            if ($human_responses | length) > 0 {
+              print $"  Human responded, removing label"
+              gh issue edit $number --repo $env.GH_REPO --remove-label needs-more-info
+              continue
+            }
+
+            # Check if 3 days have passed
+            let elapsed = (date now) - $label_added_at
+            if $elapsed < 3day {
+              print $"  Only ($elapsed | format duration day) elapsed, skipping"
+              continue
+            }
+
+            print $"  No response for ($elapsed | format duration day), closing"
+            let message = [
+              "This issue has been automatically closed because no additional information was provided within 3 days."
+              ""
+              "If you have the requested information, please open a new issue and include the debug information requested above."
+              ""
+              "Thank you for your understanding."
+            ] | str join "\n"
+            gh issue comment $number --repo $env.GH_REPO --body $message
+            gh issue close $number --repo $env.GH_REPO --reason "not planned"
+            gh issue edit $number --repo $env.GH_REPO --remove-label needs-more-info
+          }

@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
@@ -92,8 +91,8 @@ func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
 			announcedRoutes: []netip.Prefix{}, // No routes announced anymore
 			nodeUser:        "test",
 			wantApproved: []netip.Prefix{
-				netip.MustParsePrefix("172.16.0.0/16"),
 				netip.MustParsePrefix("10.0.0.0/24"),
+				netip.MustParsePrefix("172.16.0.0/16"),
 				netip.MustParsePrefix("192.168.0.0/24"),
 			},
 			wantChanged: false,
@@ -124,8 +123,8 @@ func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
 			nodeUser: "test",
 			nodeTags: []string{"tag:approved"},
 			wantApproved: []netip.Prefix{
-				netip.MustParsePrefix("172.16.0.0/16"), // New tag-approved
 				netip.MustParsePrefix("10.0.0.0/24"),   // Previous approval preserved
+				netip.MustParsePrefix("172.16.0.0/16"), // New tag-approved
 			},
 			wantChanged: true,
 		},
@@ -168,13 +167,13 @@ func TestApproveRoutesWithPolicy_NeverRemovesRoutes(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       tt.nodeHostname,
-					UserID:         ptr.To(user.ID),
-					User:           ptr.To(user),
+					UserID:         new(user.ID),
+					User:           new(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.announcedRoutes,
 					},
-					IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4:           new(netip.MustParseAddr("100.64.0.1")),
 					ApprovedRoutes: tt.currentApproved,
 					Tags:           tt.nodeTags,
 				}
@@ -294,13 +293,13 @@ func TestApproveRoutesWithPolicy_EdgeCases(t *testing.T) {
 					MachineKey:     key.NewMachine().Public(),
 					NodeKey:        key.NewNode().Public(),
 					Hostname:       "testnode",
-					UserID:         ptr.To(user.ID),
-					User:           ptr.To(user),
+					UserID:         new(user.ID),
+					User:           new(user),
 					RegisterMethod: util.RegisterMethodAuthKey,
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.announcedRoutes,
 					},
-					IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4:           new(netip.MustParseAddr("100.64.0.1")),
 					ApprovedRoutes: tt.currentApproved,
 				}
 				nodes := types.Nodes{&node}
@@ -343,13 +342,13 @@ func TestApproveRoutesWithPolicy_NilPolicyManagerCase(t *testing.T) {
 		MachineKey:     key.NewMachine().Public(),
 		NodeKey:        key.NewNode().Public(),
 		Hostname:       "testnode",
-		UserID:         ptr.To(user.ID),
-		User:           ptr.To(user),
+		UserID:         new(user.ID),
+		User:           new(user),
 		RegisterMethod: util.RegisterMethodAuthKey,
 		Hostinfo: &tailcfg.Hostinfo{
 			RoutableIPs: announcedRoutes,
 		},
-		IPv4:           ptr.To(netip.MustParseAddr("100.64.0.1")),
+		IPv4:           new(netip.MustParseAddr("100.64.0.1")),
 		ApprovedRoutes: currentApproved,
 	}
 

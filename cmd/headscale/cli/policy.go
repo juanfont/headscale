@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	bypassFlag = "bypass-grpc-and-access-database-directly"
+	bypassFlag = "bypass-grpc-and-access-database-directly" //nolint:gosec // not a credential
 )
 
 func init() {
@@ -26,16 +26,22 @@ func init() {
 	policyCmd.AddCommand(getPolicy)
 
 	setPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	if err := setPolicy.MarkFlagRequired("file"); err != nil {
+
+	err := setPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-	if err := checkPolicy.MarkFlagRequired("file"); err != nil {
+
+	err = checkPolicy.MarkFlagRequired("file")
+	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	policyCmd.AddCommand(checkPolicy)
 }
 
@@ -69,8 +75,7 @@ var getPolicy = &cobra.Command{
 			}
 
 			d, err := db.NewHeadscaleDatabase(
-				cfg.Database,
-				cfg.BaseDomain,
+				cfg,
 				nil,
 			)
 			if err != nil {
@@ -145,8 +150,7 @@ var setPolicy = &cobra.Command{
 			}
 
 			d, err := db.NewHeadscaleDatabase(
-				cfg.Database,
-				cfg.BaseDomain,
+				cfg,
 				nil,
 			)
 			if err != nil {
@@ -175,7 +179,7 @@ var setPolicy = &cobra.Command{
 			defer cancel()
 			defer conn.Close()
 
-			if _, err := client.SetPolicy(ctx, request); err != nil {
+			if _, err := client.SetPolicy(ctx, request); err != nil { //nolint:noinlineerr
 				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
 			}
 		}

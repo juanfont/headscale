@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/netip"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -22,12 +21,12 @@ import (
 func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
-	listNodesCmd.Flags().BoolP("tags", "t", false, "Show tags")
 
 	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
 	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
 	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	listNodesNamespaceFlag.Hidden = true
+
 	nodeCmd.AddCommand(listNodesCmd)
 
 	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
@@ -44,42 +43,51 @@ func init() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
+
 	err = registerNodeCmd.MarkFlagRequired("key")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(registerNodeCmd)
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
+
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(expireNodeCmd)
 
 	renameNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
 	err = renameNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(renameNodeCmd)
 
 	deleteNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
+
 	err = deleteNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+
 	nodeCmd.AddCommand(deleteNodeCmd)
 
 	tagCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	tagCmd.MarkFlagRequired("identifier")
+	_ = tagCmd.MarkFlagRequired("identifier")
 	tagCmd.Flags().StringSliceP("tags", "t", []string{}, "List of tags to add to the node")
 	nodeCmd.AddCommand(tagCmd)
 
 	approveRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
-	approveRoutesCmd.MarkFlagRequired("identifier")
+	_ = approveRoutesCmd.MarkFlagRequired("identifier")
 	approveRoutesCmd.Flags().StringSliceP("routes", "r", []string{}, `List of routes that will be approved (comma-separated, e.g. "10.0.0.0/8,192.168.0.0/24" or empty string to remove all approved routes)`)
 	nodeCmd.AddCommand(approveRoutesCmd)
 
@@ -148,10 +156,6 @@ var listNodesCmd = &cobra.Command{
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
-		showTags, err := cmd.Flags().GetBool("tags")
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting tags flag: %s", err), output)
-		}
 
 		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
 		defer cancel()
@@ -174,7 +178,7 @@ var listNodesCmd = &cobra.Command{
 			SuccessOutput(response.GetNodes(), "", output)
 		}
 
-		tableData, err := nodesToPtables(user, showTags, response.GetNodes())
+		tableData, err := nodesToPtables(user, response.GetNodes())
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
 		}
@@ -239,10 +243,7 @@ var listNodeRoutesCmd = &cobra.Command{
 			return
 		}
 
-		tableData, err := nodeRoutesToPtables(nodes)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
-		}
+		tableData := nodeRoutesToPtables(nodes)
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
@@ -282,7 +283,8 @@ var expireNodeCmd = &cobra.Command{
 
 			return
 		}
-		expiryTime := time.Now()
+		now := time.Now()
+		expiryTime := now
 		if expiry != "" {
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
 			if err != nil {
@@ -317,7 +319,11 @@ var expireNodeCmd = &cobra.Command{
 			)
 		}
 
-		SuccessOutput(response.GetNode(), "Node expired", output)
+		if now.Equal(expiryTime) || now.After(expiryTime) {
+			SuccessOutput(response.GetNode(), "Node expired", output)
+		} else {
+			SuccessOutput(response.GetNode(), "Node expiration updated", output)
+		}
 	},
 }
 
@@ -482,7 +488,6 @@ be assigned to nodes.`,
 
 func nodesToPtables(
 	currentUser string,
-	showTags bool,
 	nodes []*v1.Node,
 ) (pterm.TableData, error) {
 	tableHeader := []string{
@@ -492,19 +497,13 @@ func nodesToPtables(
 		"MachineKey",
 		"NodeKey",
 		"User",
+		"Tags",
 		"IP addresses",
 		"Ephemeral",
 		"Last seen",
 		"Expiration",
 		"Connected",
 		"Expired",
-	}
-	if showTags {
-		tableHeader = append(tableHeader, []string{
-			"ForcedTags",
-			"InvalidTags",
-			"ValidTags",
-		}...)
 	}
 	tableData := pterm.TableData{tableHeader}
 
@@ -514,15 +513,21 @@ func nodesToPtables(
 			ephemeral = true
 		}
 
-		var lastSeen time.Time
-		var lastSeenTime string
+		var (
+			lastSeen     time.Time
+			lastSeenTime string
+		)
+
 		if node.GetLastSeen() != nil {
 			lastSeen = node.GetLastSeen().AsTime()
 			lastSeenTime = lastSeen.Format("2006-01-02 15:04:05")
 		}
 
-		var expiry time.Time
-		var expiryTime string
+		var (
+			expiry     time.Time
+			expiryTime string
+		)
+
 		if node.GetExpiry() != nil {
 			expiry = node.GetExpiry().AsTime()
 			expiryTime = expiry.Format("2006-01-02 15:04:05")
@@ -531,6 +536,7 @@ func nodesToPtables(
 		}
 
 		var machineKey key.MachinePublic
+
 		err := machineKey.UnmarshalText(
 			[]byte(node.GetMachineKey()),
 		)
@@ -539,6 +545,7 @@ func nodesToPtables(
 		}
 
 		var nodeKey key.NodePublic
+
 		err = nodeKey.UnmarshalText(
 			[]byte(node.GetNodeKey()),
 		)
@@ -560,28 +567,17 @@ func nodesToPtables(
 			expired = pterm.LightRed("yes")
 		}
 
-		var forcedTags string
-		for _, tag := range node.GetForcedTags() {
-			forcedTags += "\n" + tag
+		// TODO(kradalby): as part of CLI rework, we should add the posibility to show "unusable" tags as mentioned in
+		// https://github.com/juanfont/headscale/issues/2981
+		var tagsBuilder strings.Builder
+
+		for _, tag := range node.GetTags() {
+			tagsBuilder.WriteString("\n" + tag)
 		}
 
-		forcedTags = strings.TrimLeft(forcedTags, "\n")
-		var invalidTags string
-		for _, tag := range node.GetInvalidTags() {
-			if !slices.Contains(node.GetForcedTags(), tag) {
-				invalidTags += "\n" + pterm.LightRed(tag)
-			}
-		}
+		tags := tagsBuilder.String()
 
-		invalidTags = strings.TrimLeft(invalidTags, "\n")
-		var validTags string
-		for _, tag := range node.GetValidTags() {
-			if !slices.Contains(node.GetForcedTags(), tag) {
-				validTags += "\n" + pterm.LightGreen(tag)
-			}
-		}
-
-		validTags = strings.TrimLeft(validTags, "\n")
+		tags = strings.TrimLeft(tags, "\n")
 
 		var user string
 		if currentUser == "" || (currentUser == node.GetUser().GetName()) {
@@ -591,8 +587,11 @@ func nodesToPtables(
 			user = pterm.LightYellow(node.GetUser().GetName())
 		}
 
-		var IPV4Address string
-		var IPV6Address string
+		var (
+			IPV4Address string
+			IPV6Address string
+		)
+
 		for _, addr := range node.GetIpAddresses() {
 			if netip.MustParseAddr(addr).Is4() {
 				IPV4Address = addr
@@ -608,15 +607,13 @@ func nodesToPtables(
 			machineKey.ShortString(),
 			nodeKey.ShortString(),
 			user,
+			tags,
 			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,
 			expiryTime,
 			online,
 			expired,
-		}
-		if showTags {
-			nodeData = append(nodeData, []string{forcedTags, invalidTags, validTags}...)
 		}
 		tableData = append(
 			tableData,
@@ -629,7 +626,7 @@ func nodesToPtables(
 
 func nodeRoutesToPtables(
 	nodes []*v1.Node,
-) (pterm.TableData, error) {
+) pterm.TableData {
 	tableHeader := []string{
 		"ID",
 		"Hostname",
@@ -653,7 +650,7 @@ func nodeRoutesToPtables(
 		)
 	}
 
-	return tableData, nil
+	return tableData
 }
 
 var tagCmd = &cobra.Command{

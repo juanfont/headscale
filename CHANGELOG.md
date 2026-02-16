@@ -1,6 +1,36 @@
 # CHANGELOG
 
-## 0.28.0 (202x-xx-xx)
+## 0.29.0 (202x-xx-xx)
+
+**Minimum supported Tailscale client version: v1.76.0**
+
+### Tailscale ACL compatibility improvements
+
+Extensive test cases were systematically generated using Tailscale clients and the official SaaS
+to understand how the packet filter should be generated. We discovered a few differences, but
+overall our implementation was very close.
+[#3036](https://github.com/juanfont/headscale/pull/3036)
+
+### BREAKING
+
+- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
+  - Policies relying on wildcard to match non-Tailscale IPs will need to use explicit CIDR ranges instead
+  - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
+- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
+- **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
+  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
+
+### Changes
+
+- **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
+
+## 0.28.0 (2026-02-04)
 
 **Minimum supported Tailscale client version: v1.74.0**
 
@@ -12,7 +42,11 @@ tags rather than users, making them suitable for servers and infrastructure. App
 ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
 
 User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
-and applied at registration time. Tags can be managed via the CLI or API after registration.
+and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
+by re-authenticating with `tailscale up --advertise-tags= --force-reauth`.
+
+A one-time migration will validate and migrate any `RequestTags` (stored in hostinfo) to the tags column. Tags are validated against
+your policy's `tagOwners` rules during migration. [#3011](https://github.com/juanfont/headscale/pull/3011)
 
 ### Smarter map updates
 
@@ -38,7 +72,34 @@ sequentially through each stable release, selecting the latest patch version ava
 
 ### BREAKING
 
-- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. Once a node is tagged, it cannot be converted back to a user-owned node. [#2885](https://github.com/juanfont/headscale/pull/2885)
+- **API**: The Node message in the gRPC/REST API has been simplified - the `ForcedTags`, `InvalidTags`, and `ValidTags` fields have been removed and replaced with a single `Tags` field that contains the node's applied tags [#2993](https://github.com/juanfont/headscale/pull/2993)
+  - API clients should use the `Tags` field instead of `ValidTags`
+  - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
+- **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations [#2992](https://github.com/juanfont/headscale/pull/2992)
+  - `headscale preauthkeys create` no longer requires `--user` flag (optional for tracking creation)
+  - `headscale preauthkeys list` lists all keys (no longer filtered by user)
+  - `headscale preauthkeys expire --id <ID>` replaces `--user <USER> <KEY>`
+  - `headscale preauthkeys delete --id <ID>` replaces `--user <USER> <KEY>`
+
+  **Before:**
+
+  ```bash
+  headscale preauthkeys create --user 1 --reusable --tags tag:server
+  headscale preauthkeys list --user 1
+  headscale preauthkeys expire --user 1 <KEY>
+  headscale preauthkeys delete --user 1 <KEY>
+  ```
+
+  **After:**
+
+  ```bash
+  headscale preauthkeys create --reusable --tags tag:server
+  headscale preauthkeys list
+  headscale preauthkeys expire --id 123
+  headscale preauthkeys delete --id 123
+  ```
+
+- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. [#2885](https://github.com/juanfont/headscale/pull/2885)
 - **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
   - `--advertise-tags` is processed during registration, not on every policy evaluation
   - PreAuthKey tagged devices ignore `--advertise-tags` from clients
@@ -51,15 +112,69 @@ sequentially through each stable release, selecting the latest patch version ava
 - Remove ability to move nodes between users [#2922](https://github.com/juanfont/headscale/pull/2922)
   - The `headscale nodes move` CLI command has been removed
   - The `MoveNode` API endpoint has been removed
-  - Nodes are permanently associated with their user at registration time
+  - Nodes are permanently associated with their user or tag at registration time
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC in conjunction with `oidc.allowed_domains` or
+    `oidc.allowed_users`. Previous versions allowed to authenticate with an unverified email but did not store the email
+    address in the user profile. This is now rejected during authentication with an `unverified email` error.
+  - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
+    profile regardless of its verification state.
+- **SSH Policy**: Wildcard (`*`) is no longer supported as an SSH destination [#3009](https://github.com/juanfont/headscale/issues/3009)
+  - Use `autogroup:member` for user-owned devices
+  - Use `autogroup:tagged` for tagged devices
+  - Use specific tags (e.g., `tag:server`) for targeted access
+
+  **Before:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["*"], "users": ["root"] }
+  ```
+
+  **After:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["autogroup:member", "autogroup:tagged"], "users": ["root"] }
+  ```
+
+- **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
+
+  Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+  1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
+  2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
+
+  **Invalid policies now rejected at load time:**
+
+  ```json
+  // INVALID: tag source to user destination
+  {"src": ["tag:server"], "dst": ["alice@"], ...}
+
+  // INVALID: autogroup:tagged to autogroup:member
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:member"], ...}
+
+  // INVALID: group to specific user (use autogroup:self instead)
+  {"src": ["group:admins"], "dst": ["alice@"], ...}
+  ```
+
+  **Valid patterns:**
+
+  ```json
+  // Users/groups can SSH to their own devices via autogroup:self
+  {"src": ["group:admins"], "dst": ["autogroup:self"], ...}
+
+  // Users/groups can SSH to tagged devices
+  {"src": ["group:admins"], "dst": ["autogroup:tagged"], ...}
+
+  // Tagged devices can SSH to other tagged devices
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:tagged"], ...}
+
+  // Same user can SSH to their own devices
+  {"src": ["alice@"], "dst": ["alice@"], ...}
+  ```
 
 ### Changes
 
 - Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
   - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
-- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
-  - When `true` (default), only verified emails can authenticate via OIDC with `allowed_domains` or `allowed_users`
-  - When `false`, unverified emails are allowed for OIDC authentication
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
@@ -77,6 +192,7 @@ sequentially through each stable release, selecting the latest patch version ava
 - Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
 - Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
 - Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
+- Add `--id` flag to expire/delete commands as alternative to `--prefix` for API Keys [#3016](https://github.com/juanfont/headscale/pull/3016)
 
 ## 0.27.1 (2025-11-11)
 

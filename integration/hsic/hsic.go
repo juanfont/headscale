@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"cmp"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"log"
 	"maps"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -46,6 +48,7 @@ const (
 	tlsKeyPath                    = "/etc/headscale/tls.key"
 	headscaleDefaultPort          = 8080
 	IntegrationTestDockerFileName = "Dockerfile.integration"
+	defaultDirPerm                = 0o755
 )
 
 var (
@@ -74,6 +77,7 @@ type HeadscaleInContainer struct {
 	// optional config
 	port             int
 	extraPorts       []string
+	hostMetricsPort  string // Dynamically assigned host port for metrics/pprof access
 	caCerts          [][]byte
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
@@ -116,7 +120,7 @@ func WithTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
 		cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
 		if err != nil {
-			log.Fatalf("failed to create certificates for headscale test: %s", err)
+			log.Fatalf("creating certificates for headscale test: %s", err)
 		}
 
 		hsic.tlsCert = cert
@@ -197,7 +201,7 @@ func WithPostgres() Option {
 	}
 }
 
-// WithPolicy sets the policy mode for headscale.
+// WithPolicyMode sets the policy mode for headscale.
 func WithPolicyMode(mode types.PolicyMode) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.policyMode = mode
@@ -216,6 +220,8 @@ func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
 // and only use the embedded DERP server.
 // It requires WithTLS and WithHostnameAsServerURL to be
 // set.
+//
+//nolint:goconst // env var values like "true" and "headscale" are clearer inline
 func WithEmbeddedDERPServerOnly() Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["HEADSCALE_DERP_URLS"] = ""
@@ -238,7 +244,7 @@ func WithDERPConfig(derpMap tailcfg.DERPMap) Option {
 	return func(hsic *HeadscaleInContainer) {
 		contents, err := yaml.Marshal(derpMap)
 		if err != nil {
-			log.Fatalf("failed to marshal DERP map: %s", err)
+			log.Fatalf("marshalling DERP map: %s", err)
 
 			return
 		}
@@ -320,6 +326,8 @@ func (hsic *HeadscaleInContainer) buildEntrypoint() []string {
 }
 
 // New returns a new HeadscaleInContainer instance.
+//
+//nolint:gocyclo // complex container setup with many options
 func New(
 	pool *dockertest.Pool,
 	networks []*dockertest.Network,
@@ -330,7 +338,18 @@ func New(
 		return nil, err
 	}
 
-	hostname := "hs-" + hash
+	// Include run ID in hostname for easier identification of which test run owns this container
+	runID := dockertestutil.GetIntegrationRunID()
+
+	var hostname string
+
+	if runID != "" {
+		// Use last 6 chars of run ID (the random hash part) for brevity
+		runIDShort := runID[len(runID)-6:]
+		hostname = fmt.Sprintf("hs-%s-%s", runIDShort, hash)
+	} else {
+		hostname = "hs-" + hash
+	}
 
 	hsic := &HeadscaleInContainer{
 		hostname: hostname,
@@ -438,13 +457,13 @@ func New(
 		Env:        env,
 	}
 
-	// Bind metrics port to predictable host port
+	// Bind metrics port to dynamic host port (kernel assigns free port)
 	if runOptions.PortBindings == nil {
 		runOptions.PortBindings = map[docker.Port][]docker.PortBinding{}
 	}
 
 	runOptions.PortBindings["9090/tcp"] = []docker.PortBinding{
-		{HostPort: "49090"},
+		{HostPort: "0"}, // Let kernel assign a free port
 	}
 
 	if len(hsic.hostPortBindings) > 0 {
@@ -492,7 +511,7 @@ func New(
 			dockertestutil.DockerAllowNetworkAdministration,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("could not run pre-built headscale container %q: %w", prebuiltImage, err)
+			return nil, fmt.Errorf("running pre-built headscale container %q: %w", prebuiltImage, err)
 		}
 	} else if util.IsCI() {
 		return nil, errHeadscaleImageRequiredInCI
@@ -524,38 +543,44 @@ func New(
 
 			if buildErr != nil {
 				// The diagnostic build also failed - this is the real error
-				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
+				return nil, fmt.Errorf("starting headscale container: %w\n\nDocker build failed. Last %d lines of output:\n%s", err, maxLines, relevantOutput)
 			}
 
 			if buildOutput != "" {
 				// Build succeeded on retry but container creation still failed
-				return nil, fmt.Errorf("could not start headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
+				return nil, fmt.Errorf("starting headscale container: %w\n\nDocker build succeeded on retry, but container creation failed. Last %d lines of build output:\n%s", err, maxLines, relevantOutput)
 			}
 
 			// No output at all - diagnostic build command may have failed
-			return nil, fmt.Errorf("could not start headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
+			return nil, fmt.Errorf("starting headscale container: %w\n\nUnable to get diagnostic build output (command may have failed silently)", err)
 		}
 	}
+
 	log.Printf("Created %s container\n", hsic.hostname)
 
 	hsic.container = container
 
+	// Get the dynamically assigned host port for metrics/pprof
+	hsic.hostMetricsPort = container.GetHostPort("9090/tcp")
+
 	log.Printf(
-		"Ports for %s: metrics/pprof=49090\n",
+		"Headscale %s metrics available at http://localhost:%s/metrics (debug at http://localhost:%s/debug/)\n",
 		hsic.hostname,
+		hsic.hostMetricsPort,
+		hsic.hostMetricsPort,
 	)
 
 	// Write the CA certificates to the container
 	for i, cert := range hsic.caCerts {
 		err = hsic.WriteFile(fmt.Sprintf("%s/user-%d.crt", caCertRoot, i), cert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 	}
 
 	err = hsic.WriteFile("/etc/headscale/config.yaml", []byte(MinimumConfigYAML()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to write headscale config to container: %w", err)
+		return nil, fmt.Errorf("writing headscale config to container: %w", err)
 	}
 
 	if hsic.aclPolicy != nil {
@@ -568,18 +593,19 @@ func New(
 	if hsic.hasTLS() {
 		err = hsic.WriteFile(tlsCertPath, hsic.tlsCert)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS certificate to container: %w", err)
+			return nil, fmt.Errorf("writing TLS certificate to container: %w", err)
 		}
 
 		err = hsic.WriteFile(tlsKeyPath, hsic.tlsKey)
 		if err != nil {
-			return nil, fmt.Errorf("failed to write TLS key to container: %w", err)
+			return nil, fmt.Errorf("writing TLS key to container: %w", err)
 		}
 	}
 
 	for _, f := range hsic.filesInContainer {
-		if err := hsic.WriteFile(f.path, f.contents); err != nil {
-			return nil, fmt.Errorf("failed to write %q: %w", f.path, err)
+		err := hsic.WriteFile(f.path, f.contents)
+		if err != nil {
+			return nil, fmt.Errorf("writing %q: %w", f.path, err)
 		}
 	}
 
@@ -608,15 +634,15 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 	stdoutPath, stderrPath, err := t.SaveLog("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save log from control: %s",
-			fmt.Errorf("failed to save log from control: %w", err),
+			"saving log from control: %s",
+			fmt.Errorf("saving log from control: %w", err),
 		)
 	}
 
 	err = t.SaveMetrics(fmt.Sprintf("/tmp/control/%s_metrics.txt", t.hostname))
 	if err != nil {
 		log.Printf(
-			"Failed to metrics from control: %s",
+			"saving metrics from control: %s",
 			err,
 		)
 	}
@@ -627,24 +653,24 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 	err = t.SendInterrupt()
 	if err != nil {
 		log.Printf(
-			"Failed to send graceful interrupt to control: %s",
-			fmt.Errorf("failed to send graceful interrupt to control: %w", err),
+			"sending graceful interrupt to control: %s",
+			fmt.Errorf("sending graceful interrupt to control: %w", err),
 		)
 	}
 
 	err = t.SaveProfile("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save profile from control: %s",
-			fmt.Errorf("failed to save profile from control: %w", err),
+			"saving profile from control: %s",
+			fmt.Errorf("saving profile from control: %w", err),
 		)
 	}
 
 	err = t.SaveMapResponses("/tmp/control")
 	if err != nil {
 		log.Printf(
-			"Failed to save mapresponses from control: %s",
-			fmt.Errorf("failed to save mapresponses from control: %w", err),
+			"saving mapresponses from control: %s",
+			fmt.Errorf("saving mapresponses from control: %w", err),
 		)
 	}
 
@@ -653,15 +679,15 @@ func (t *HeadscaleInContainer) Shutdown() (string, string, error) {
 		err = t.SaveDatabase("/tmp/control")
 		if err != nil {
 			log.Printf(
-				"Failed to save database from control: %s",
-				fmt.Errorf("failed to save database from control: %w", err),
+				"saving database from control: %s",
+				fmt.Errorf("saving database from control: %w", err),
 			)
 		}
 	}
 
 	// Cleanup postgres container if enabled.
 	if t.postgres {
-		t.pool.Purge(t.pgContainer)
+		_ = t.pool.Purge(t.pgContainer)
 	}
 
 	return stdoutPath, stderrPath, t.pool.Purge(t.container)
@@ -680,16 +706,23 @@ func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
 }
 
 func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
-	resp, err := http.Get(fmt.Sprintf("http://%s:9090/metrics", t.hostname))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+net.JoinHostPort(t.hostname, "9090")+"/metrics", nil)
+	if err != nil {
+		return fmt.Errorf("creating metrics request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("getting metrics: %w", err)
 	}
 	defer resp.Body.Close()
+
 	out, err := os.Create(savePath)
 	if err != nil {
 		return fmt.Errorf("creating file for metrics: %w", err)
 	}
 	defer out.Close()
+
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
 		return fmt.Errorf("copy response to file: %w", err)
@@ -700,22 +733,23 @@ func (t *HeadscaleInContainer) SaveMetrics(savePath string) error {
 
 // extractTarToDirectory extracts a tar archive to a directory.
 func extractTarToDirectory(tarData []byte, targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
+	err := os.MkdirAll(targetDir, defaultDirPerm)
+	if err != nil {
+		return fmt.Errorf("creating directory %s: %w", targetDir, err)
 	}
-
-	tarReader := tar.NewReader(bytes.NewReader(tarData))
 
 	// Find the top-level directory to strip
 	var topLevelDir string
+
 	firstPass := tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := firstPass.Next()
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		if header.Typeflag == tar.TypeDir && topLevelDir == "" {
@@ -724,14 +758,15 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		}
 	}
 
-	tarReader = tar.NewReader(bytes.NewReader(tarData))
+	tarReader := tar.NewReader(bytes.NewReader(tarData))
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		// Clean the path to prevent directory traversal
@@ -758,30 +793,34 @@ func extractTarToDirectory(tarData []byte, targetDir string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directory
-			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			//nolint:gosec // G115: header.Mode is trusted from tar archive
+			err := os.MkdirAll(targetPath, os.FileMode(header.Mode))
+			if err != nil {
+				return fmt.Errorf("creating directory %s: %w", targetPath, err)
 			}
 		case tar.TypeReg:
 			// Ensure parent directories exist
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-				return fmt.Errorf("failed to create parent directories for %s: %w", targetPath, err)
+			err := os.MkdirAll(filepath.Dir(targetPath), defaultDirPerm)
+			if err != nil {
+				return fmt.Errorf("creating parent directories for %s: %w", targetPath, err)
 			}
 
 			// Create file
 			outFile, err := os.Create(targetPath)
 			if err != nil {
-				return fmt.Errorf("failed to create file %s: %w", targetPath, err)
+				return fmt.Errorf("creating file %s: %w", targetPath, err)
 			}
 
-			if _, err := io.Copy(outFile, tarReader); err != nil {
+			if _, err := io.Copy(outFile, tarReader); err != nil { //nolint:gosec,noinlineerr // trusted tar from test container
 				outFile.Close()
-				return fmt.Errorf("failed to copy file contents: %w", err)
+				return fmt.Errorf("copying file contents: %w", err)
 			}
+
 			outFile.Close()
 
 			// Set file permissions
-			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to set file permissions: %w", err)
+			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil { //nolint:gosec,noinlineerr // safe mode from tar header
+				return fmt.Errorf("setting file permissions: %w", err)
 			}
 		}
 	}
@@ -827,25 +866,27 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 	// Check if the database file exists and has a schema
 	dbPath := "/tmp/integration_test_db.sqlite3"
+
 	fileInfo, err := t.Execute([]string{"ls", "-la", dbPath})
 	if err != nil {
 		return fmt.Errorf("database file does not exist at %s: %w", dbPath, err)
 	}
+
 	log.Printf("Database file info: %s", fileInfo)
 
 	// Check if the database has any tables (schema)
 	schemaCheck, err := t.Execute([]string{"sqlite3", dbPath, ".schema"})
 	if err != nil {
-		return fmt.Errorf("failed to check database schema (sqlite3 command failed): %w", err)
+		return fmt.Errorf("checking database schema (sqlite3 command failed): %w", err)
 	}
 
 	if strings.TrimSpace(schemaCheck) == "" {
-		return errors.New("database file exists but has no schema (empty database)")
+		return errors.New("database file exists but has no schema (empty database)") //nolint:err113
 	}
 
 	tarFile, err := t.FetchPath("/tmp/integration_test_db.sqlite3")
 	if err != nil {
-		return fmt.Errorf("failed to fetch database file: %w", err)
+		return fmt.Errorf("fetching database file: %w", err)
 	}
 
 	// For database, extract the first regular file (should be the SQLite file)
@@ -855,8 +896,9 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
-			return fmt.Errorf("failed to read tar header: %w", err)
+			return fmt.Errorf("reading tar header: %w", err)
 		}
 
 		log.Printf(
@@ -869,15 +911,17 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		// Extract the first regular file we find
 		if header.Typeflag == tar.TypeReg {
 			dbPath := path.Join(savePath, t.hostname+".db")
+
 			outFile, err := os.Create(dbPath)
 			if err != nil {
-				return fmt.Errorf("failed to create database file: %w", err)
+				return fmt.Errorf("creating database file: %w", err)
 			}
 
-			written, err := io.Copy(outFile, tarReader)
+			written, err := io.Copy(outFile, tarReader) //nolint:gosec // trusted tar from test container
 			outFile.Close()
+
 			if err != nil {
-				return fmt.Errorf("failed to copy database file: %w", err)
+				return fmt.Errorf("copying database file: %w", err)
 			}
 
 			log.Printf(
@@ -889,7 +933,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 
 			// Check if we actually wrote something
 			if written == 0 {
-				return fmt.Errorf(
+				return fmt.Errorf( //nolint:err113
 					"database file is empty (size: %d, header size: %d)",
 					written,
 					header.Size,
@@ -900,7 +944,7 @@ func (t *HeadscaleInContainer) SaveDatabase(savePath string) error {
 		}
 	}
 
-	return errors.New("no regular file found in database tar archive")
+	return errors.New("no regular file found in database tar archive") //nolint:err113
 }
 
 // Execute runs a command inside the Headscale container and returns the
@@ -930,6 +974,13 @@ func (t *HeadscaleInContainer) Execute(
 // GetPort returns the docker container port as a string.
 func (t *HeadscaleInContainer) GetPort() string {
 	return strconv.Itoa(t.port)
+}
+
+// GetHostMetricsPort returns the dynamically assigned host port for metrics/pprof access.
+// This port can be used by operators to access metrics at http://localhost:{port}/metrics
+// and debug endpoints at http://localhost:{port}/debug/ while tests are running.
+func (t *HeadscaleInContainer) GetHostMetricsPort() string {
+	return t.hostMetricsPort
 }
 
 // GetHealthEndpoint returns a health endpoint for the HeadscaleInContainer
@@ -1035,12 +1086,78 @@ func (t *HeadscaleInContainer) CreateUser(
 	}
 
 	var u v1.User
+
 	err = json.Unmarshal([]byte(result), &u)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user: %w", err)
+		return nil, fmt.Errorf("unmarshalling user: %w", err)
 	}
 
 	return &u, nil
+}
+
+// AuthKeyOptions defines options for creating an auth key.
+type AuthKeyOptions struct {
+	// User is the user ID that owns the auth key. If nil and Tags are specified,
+	// the auth key is owned by the tags only (tags-as-identity model).
+	User *uint64
+	// Reusable indicates if the key can be used multiple times
+	Reusable bool
+	// Ephemeral indicates if nodes registered with this key should be ephemeral
+	Ephemeral bool
+	// Tags are the tags to assign to the auth key
+	Tags []string
+}
+
+// CreateAuthKeyWithOptions creates a new "authorisation key" with the specified options.
+// This supports both user-owned and tags-only auth keys.
+func (t *HeadscaleInContainer) CreateAuthKeyWithOptions(opts AuthKeyOptions) (*v1.PreAuthKey, error) {
+	command := []string{
+		"headscale",
+	}
+
+	// Only add --user flag if User is specified
+	if opts.User != nil {
+		command = append(command, "--user", strconv.FormatUint(*opts.User, 10))
+	}
+
+	command = append(command,
+		"preauthkeys",
+		"create",
+		"--expiration",
+		"24h",
+		"--output",
+		"json",
+	)
+
+	if opts.Reusable {
+		command = append(command, "--reusable")
+	}
+
+	if opts.Ephemeral {
+		command = append(command, "--ephemeral")
+	}
+
+	if len(opts.Tags) > 0 {
+		command = append(command, "--tags", strings.Join(opts.Tags, ","))
+	}
+
+	result, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("executing create auth key command: %w", err)
+	}
+
+	var preAuthKey v1.PreAuthKey
+
+	err = json.Unmarshal([]byte(result), &preAuthKey)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshalling auth key: %w", err)
+	}
+
+	return &preAuthKey, nil
 }
 
 // CreateAuthKey creates a new "authorisation key" for a User that can be used
@@ -1050,42 +1167,11 @@ func (t *HeadscaleInContainer) CreateAuthKey(
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
-	command := []string{
-		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
-		"preauthkeys",
-		"create",
-		"--expiration",
-		"24h",
-		"--output",
-		"json",
-	}
-
-	if reusable {
-		command = append(command, "--reusable")
-	}
-
-	if ephemeral {
-		command = append(command, "--ephemeral")
-	}
-
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute create auth key command: %w", err)
-	}
-
-	var preAuthKey v1.PreAuthKey
-	err = json.Unmarshal([]byte(result), &preAuthKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
-	}
-
-	return &preAuthKey, nil
+	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
+		User:      &user,
+		Reusable:  reusable,
+		Ephemeral: ephemeral,
+	})
 }
 
 // CreateAuthKeyWithTags creates a new "authorisation key" for a User with the specified tags.
@@ -1096,61 +1182,24 @@ func (t *HeadscaleInContainer) CreateAuthKeyWithTags(
 	ephemeral bool,
 	tags []string,
 ) (*v1.PreAuthKey, error) {
-	command := []string{
-		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
-		"preauthkeys",
-		"create",
-		"--expiration",
-		"24h",
-		"--output",
-		"json",
-	}
-
-	if reusable {
-		command = append(command, "--reusable")
-	}
-
-	if ephemeral {
-		command = append(command, "--ephemeral")
-	}
-
-	if len(tags) > 0 {
-		command = append(command, "--tags", strings.Join(tags, ","))
-	}
-
-	result, _, err := dockertestutil.ExecuteCommand(
-		t.container,
-		command,
-		[]string{},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute create auth key with tags command: %w", err)
-	}
-
-	var preAuthKey v1.PreAuthKey
-
-	err = json.Unmarshal([]byte(result), &preAuthKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal auth key: %w", err)
-	}
-
-	return &preAuthKey, nil
+	return t.CreateAuthKeyWithOptions(AuthKeyOptions{
+		User:      &user,
+		Reusable:  reusable,
+		Ephemeral: ephemeral,
+		Tags:      tags,
+	})
 }
 
-// DeleteAuthKey deletes an "authorisation key" for a User.
+// DeleteAuthKey deletes an "authorisation key" by ID.
 func (t *HeadscaleInContainer) DeleteAuthKey(
-	user uint64,
-	key string,
+	id uint64,
 ) error {
 	command := []string{
 		"headscale",
-		"--user",
-		strconv.FormatUint(user, 10),
 		"preauthkeys",
 		"delete",
-		key,
+		"--id",
+		strconv.FormatUint(id, 10),
 		"--output",
 		"json",
 	}
@@ -1161,7 +1210,7 @@ func (t *HeadscaleInContainer) DeleteAuthKey(
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute delete auth key command: %w", err)
+		return fmt.Errorf("executing delete auth key command: %w", err)
 	}
 
 	return nil
@@ -1174,6 +1223,7 @@ func (t *HeadscaleInContainer) ListNodes(
 	users ...string,
 ) ([]*v1.Node, error) {
 	var ret []*v1.Node
+
 	execUnmarshal := func(command []string) error {
 		result, _, err := dockertestutil.ExecuteCommand(
 			t.container,
@@ -1181,13 +1231,14 @@ func (t *HeadscaleInContainer) ListNodes(
 			[]string{},
 		)
 		if err != nil {
-			return fmt.Errorf("failed to execute list node command: %w", err)
+			return fmt.Errorf("executing list node command: %w", err)
 		}
 
 		var nodes []*v1.Node
+
 		err = json.Unmarshal([]byte(result), &nodes)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshal nodes: %w", err)
+			return fmt.Errorf("unmarshalling nodes: %w", err)
 		}
 
 		ret = append(ret, nodes...)
@@ -1224,7 +1275,7 @@ func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 		"nodes",
 		"delete",
 		"--identifier",
-		fmt.Sprintf("%d", nodeID),
+		strconv.FormatUint(nodeID, 10),
 		"--output",
 		"json",
 		"--force",
@@ -1236,7 +1287,7 @@ func (t *HeadscaleInContainer) DeleteNode(nodeID uint64) error {
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute delete node command: %w", err)
+		return fmt.Errorf("executing delete node command: %w", err)
 	}
 
 	return nil
@@ -1284,13 +1335,14 @@ func (t *HeadscaleInContainer) ListUsers() ([]*v1.User, error) {
 		[]string{},
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute list node command: %w", err)
+		return nil, fmt.Errorf("executing list node command: %w", err)
 	}
 
 	var users []*v1.User
+
 	err = json.Unmarshal([]byte(result), &users)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal nodes: %w", err)
+		return nil, fmt.Errorf("unmarshalling nodes: %w", err)
 	}
 
 	return users, nil
@@ -1310,6 +1362,31 @@ func (t *HeadscaleInContainer) MapUsers() (map[string]*v1.User, error) {
 	}
 
 	return userMap, nil
+}
+
+// DeleteUser deletes a user from the Headscale instance.
+func (t *HeadscaleInContainer) DeleteUser(userID uint64) error {
+	command := []string{
+		"headscale",
+		"users",
+		"delete",
+		"--identifier",
+		strconv.FormatUint(userID, 10),
+		"--force",
+		"--output",
+		"json",
+	}
+
+	_, _, err := dockertestutil.ExecuteCommand(
+		t.container,
+		command,
+		[]string{},
+	)
+	if err != nil {
+		return fmt.Errorf("executing delete user command: %w", err)
+	}
+
+	return nil
 }
 
 func (h *HeadscaleInContainer) SetPolicy(pol *policyv2.Policy) error {
@@ -1356,7 +1433,7 @@ func (h *HeadscaleInContainer) reloadDatabasePolicy() error {
 func (h *HeadscaleInContainer) writePolicy(pol *policyv2.Policy) error {
 	pBytes, err := json.Marshal(pol)
 	if err != nil {
-		return fmt.Errorf("marshalling pol: %w", err)
+		return fmt.Errorf("marshalling policy: %w", err)
 	}
 
 	err = h.WriteFile(aclPolicyPath, pBytes)
@@ -1393,6 +1470,7 @@ func (h *HeadscaleInContainer) PID() (int, error) {
 		if pidInt == 1 {
 			continue
 		}
+
 		pids = append(pids, pidInt)
 	}
 
@@ -1440,7 +1518,7 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to execute approve routes command (node %d, routes %v): %w",
+			"executing approve routes command (node %d, routes %v): %w",
 			id,
 			routes,
 			err,
@@ -1448,9 +1526,10 @@ func (t *HeadscaleInContainer) ApproveRoutes(id uint64, routes []netip.Prefix) (
 	}
 
 	var node *v1.Node
+
 	err = json.Unmarshal([]byte(result), &node)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal node response: %q, error: %w", result, err)
+		return nil, fmt.Errorf("unmarshalling node response: %q, error: %w", result, err)
 	}
 
 	return node, nil
@@ -1480,7 +1559,7 @@ func (t *HeadscaleInContainer) SetNodeTags(nodeID uint64, tags []string) error {
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to execute set tags command (node %d, tags %v): %w", nodeID, tags, err)
+		return fmt.Errorf("executing set tags command (node %d, tags %v): %w", nodeID, tags, err)
 	}
 
 	return nil
@@ -1523,7 +1602,7 @@ func (t *HeadscaleInContainer) GetAllMapReponses() (map[types.NodeID][]tailcfg.M
 	}
 
 	var res map[types.NodeID][]tailcfg.MapResponse
-	if err := json.Unmarshal([]byte(result), &res); err != nil {
+	if err := json.Unmarshal([]byte(result), &res); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
 
@@ -1543,7 +1622,7 @@ func (t *HeadscaleInContainer) PrimaryRoutes() (*routes.DebugRoutes, error) {
 	}
 
 	var debugRoutes routes.DebugRoutes
-	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil {
+	if err := json.Unmarshal([]byte(result), &debugRoutes); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding routes response: %w", err)
 	}
 
@@ -1563,7 +1642,7 @@ func (t *HeadscaleInContainer) DebugBatcher() (*hscontrol.DebugBatcherInfo, erro
 	}
 
 	var debugInfo hscontrol.DebugBatcherInfo
-	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil {
+	if err := json.Unmarshal([]byte(result), &debugInfo); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding batcher debug response: %w", err)
 	}
 
@@ -1583,7 +1662,7 @@ func (t *HeadscaleInContainer) DebugNodeStore() (map[types.NodeID]types.Node, er
 	}
 
 	var nodeStore map[types.NodeID]types.Node
-	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil {
+	if err := json.Unmarshal([]byte(result), &nodeStore); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding nodestore debug response: %w", err)
 	}
 
@@ -1603,7 +1682,7 @@ func (t *HeadscaleInContainer) DebugFilter() ([]tailcfg.FilterRule, error) {
 	}
 
 	var filterRules []tailcfg.FilterRule
-	if err := json.Unmarshal([]byte(result), &filterRules); err != nil {
+	if err := json.Unmarshal([]byte(result), &filterRules); err != nil { //nolint:noinlineerr
 		return nil, fmt.Errorf("decoding filter response: %w", err)
 	}
 

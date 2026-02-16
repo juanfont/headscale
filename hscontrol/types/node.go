@@ -13,6 +13,8 @@ import (
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"go4.org/netipx"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -23,8 +25,8 @@ import (
 )
 
 var (
-	ErrNodeAddressesInvalid = errors.New("failed to parse node addresses")
-	ErrHostnameTooLong      = errors.New("hostname too long, cannot except 255 ASCII chars")
+	ErrNodeAddressesInvalid = errors.New("parsing node addresses")
+	ErrHostnameTooLong      = errors.New("hostname too long, cannot accept more than 255 ASCII chars")
 	ErrNodeHasNoGivenName   = errors.New("node has no given name")
 	ErrNodeUserHasNoName    = errors.New("node user has no name")
 	ErrCannotRemoveAllTags  = errors.New("cannot remove all tags from node")
@@ -51,7 +53,7 @@ func (id NodeID) StableID() tailcfg.StableNodeID {
 }
 
 func (id NodeID) NodeID() tailcfg.NodeID {
-	return tailcfg.NodeID(id)
+	return tailcfg.NodeID(id) //nolint:gosec // NodeID is bounded
 }
 
 func (id NodeID) Uint64() uint64 {
@@ -160,11 +162,12 @@ func (node *Node) GivenNameHasBeenChanged() bool {
 	// Strip invalid DNS characters for givenName comparison
 	normalised := strings.ToLower(node.Hostname)
 	normalised = invalidDNSRegex.ReplaceAllString(normalised, "")
+
 	return node.GivenName == normalised
 }
 
 // IsExpired returns whether the node registration has expired.
-func (node Node) IsExpired() bool {
+func (node *Node) IsExpired() bool {
 	// If Expiry is not set, the client has not indicated that
 	// it wants an expiry time, it is therefore considered
 	// to mean "not expired"
@@ -243,8 +246,14 @@ func (node *Node) RequestTags() []string {
 }
 
 func (node *Node) Prefixes() []netip.Prefix {
-	var addrs []netip.Prefix
-	for _, nodeAddress := range node.IPs() {
+	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
+
+	addrs := make([]netip.Prefix, 0, len(ips))
+
+	for _, nodeAddress := range ips {
 		ip := netip.PrefixFrom(nodeAddress, nodeAddress.BitLen())
 		addrs = append(addrs, ip)
 	}
@@ -272,9 +281,14 @@ func (node *Node) IsExitNode() bool {
 }
 
 func (node *Node) IPsAsString() []string {
-	var ret []string
+	ips := node.IPs()
+	if len(ips) == 0 {
+		return nil
+	}
 
-	for _, ip := range node.IPs() {
+	ret := make([]string, 0, len(ips))
+
+	for _, ip := range ips {
 		ret = append(ret, ip.String())
 	}
 
@@ -377,7 +391,7 @@ func (node *Node) Proto() *v1.Node {
 		Name:        node.Hostname,
 		GivenName:   node.GivenName,
 		User:        nil, // Will be set below based on node type
-		ForcedTags:  node.Tags,
+		Tags:        node.Tags,
 		Online:      node.IsOnline != nil && *node.IsOnline,
 
 		// Only ApprovedRoutes and AvailableRoutes is set here. SubnetRoutes has
@@ -415,7 +429,7 @@ func (node *Node) Proto() *v1.Node {
 
 func (node *Node) GetFQDN(baseDomain string) (string, error) {
 	if node.GivenName == "" {
-		return "", fmt.Errorf("failed to create valid FQDN: %w", ErrNodeHasNoGivenName)
+		return "", fmt.Errorf("creating valid FQDN: %w", ErrNodeHasNoGivenName)
 	}
 
 	hostname := node.GivenName
@@ -430,7 +444,7 @@ func (node *Node) GetFQDN(baseDomain string) (string, error) {
 
 	if len(hostname) > MaxHostnameLength {
 		return "", fmt.Errorf(
-			"failed to create valid FQDN (%s): %w",
+			"creating valid FQDN (%s): %w",
 			hostname,
 			ErrHostnameTooLong,
 		)
@@ -478,13 +492,43 @@ func (node *Node) IsSubnetRouter() bool {
 	return len(node.SubnetRoutes()) > 0
 }
 
-// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes
+// AllApprovedRoutes returns the combination of SubnetRoutes and ExitRoutes.
 func (node *Node) AllApprovedRoutes() []netip.Prefix {
 	return append(node.SubnetRoutes(), node.ExitRoutes()...)
 }
 
 func (node *Node) String() string {
 	return node.Hostname
+}
+
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for safe logging.
+// This method is used with zerolog's EmbedObject() for flat field embedding
+// or Object() for nested logging when multiple nodes are logged.
+func (node *Node) MarshalZerologObject(e *zerolog.Event) {
+	if node == nil {
+		return
+	}
+
+	e.Uint64(zf.NodeID, node.ID.Uint64())
+	e.Str(zf.NodeName, node.Hostname)
+	e.Str(zf.MachineKey, node.MachineKey.ShortString())
+	e.Str(zf.NodeKey, node.NodeKey.ShortString())
+	e.Bool(zf.NodeIsTagged, node.IsTagged())
+	e.Bool(zf.NodeExpired, node.IsExpired())
+
+	if node.IsOnline != nil {
+		e.Bool(zf.NodeOnline, *node.IsOnline)
+	}
+
+	if len(node.Tags) > 0 {
+		e.Strs(zf.NodeTags, node.Tags)
+	}
+
+	if node.User != nil {
+		e.Str(zf.UserName, node.User.Username())
+	} else if node.UserID != nil {
+		e.Uint(zf.UserID, *node.UserID)
+	}
 }
 
 // PeerChangeFromMapRequest takes a MapRequest and compares it to the node
@@ -495,7 +539,7 @@ func (node *Node) String() string {
 // - logTracePeerChange in poll.go.
 func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerChange {
 	ret := tailcfg.PeerChange{
-		NodeID: tailcfg.NodeID(node.ID),
+		NodeID: tailcfg.NodeID(node.ID), //nolint:gosec // NodeID is bounded
 	}
 
 	if node.NodeKey.String() != req.NodeKey.String() {
@@ -521,11 +565,9 @@ func (node *Node) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.PeerC
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		} else if node.Hostinfo.NetInfo == nil {
 			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-		} else {
+		} else if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
 			// If there is a PreferredDERP check if it has changed.
-			if node.Hostinfo.NetInfo.PreferredDERP != req.Hostinfo.NetInfo.PreferredDERP {
-				ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
-			}
+			ret.DERPRegion = req.Hostinfo.NetInfo.PreferredDERP
 		}
 	}
 
@@ -586,13 +628,16 @@ func (node *Node) ApplyHostnameFromHostInfo(hostInfo *tailcfg.Hostinfo) {
 	}
 
 	newHostname := strings.ToLower(hostInfo.Hostname)
-	if err := util.ValidateHostname(newHostname); err != nil {
+
+	err := util.ValidateHostname(newHostname)
+	if err != nil {
 		log.Warn().
 			Str("node.id", node.ID.String()).
 			Str("current_hostname", node.Hostname).
 			Str("rejected_hostname", hostInfo.Hostname).
 			Err(err).
 			Msg("Rejecting invalid hostname update from hostinfo")
+
 		return
 	}
 
@@ -684,6 +729,7 @@ func (nodes Nodes) IDMap() map[NodeID]*Node {
 func (nodes Nodes) DebugString() string {
 	var sb strings.Builder
 	sb.WriteString("Nodes:\n")
+
 	for _, node := range nodes {
 		sb.WriteString(node.DebugString())
 		sb.WriteString("\n")
@@ -692,7 +738,7 @@ func (nodes Nodes) DebugString() string {
 	return sb.String()
 }
 
-func (node Node) DebugString() string {
+func (node *Node) DebugString() string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%s(%s):\n", node.Hostname, node.ID)
 
@@ -719,7 +765,23 @@ func (node Node) DebugString() string {
 	return sb.String()
 }
 
-func (nv NodeView) UserView() UserView {
+// MarshalZerologObject implements zerolog.LogObjectMarshaler for NodeView.
+// This delegates to the underlying Node's implementation.
+func (nv NodeView) MarshalZerologObject(e *zerolog.Event) {
+	if !nv.Valid() {
+		return
+	}
+
+	nv.ж.MarshalZerologObject(e)
+}
+
+// Owner returns the owner for display purposes.
+// For tagged nodes, returns TaggedDevices. For user-owned nodes, returns the user.
+func (nv NodeView) Owner() UserView {
+	if nv.IsTagged() {
+		return TaggedDevices.View()
+	}
+
 	return nv.User()
 }
 
@@ -849,7 +911,7 @@ func (nv NodeView) PeerChangeFromMapRequest(req tailcfg.MapRequest) tailcfg.Peer
 // GetFQDN returns the fully qualified domain name for the node.
 func (nv NodeView) GetFQDN(baseDomain string) (string, error) {
 	if !nv.Valid() {
-		return "", errors.New("failed to create valid FQDN: node view is invalid")
+		return "", fmt.Errorf("creating valid FQDN: %w", ErrInvalidNodeView)
 	}
 
 	return nv.ж.GetFQDN(baseDomain)
@@ -1042,7 +1104,7 @@ func (nv NodeView) TailNode(
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
 	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
-	tsaddr.SortPrefixes(allowedIPs)
+	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},

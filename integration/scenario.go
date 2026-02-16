@@ -96,7 +96,7 @@ type User struct {
 type Scenario struct {
 	// TODO(kradalby): support multiple headcales for later, currently only
 	// use one.
-	controlServers *xsync.MapOf[string, ControlServer]
+	controlServers *xsync.Map[string, ControlServer]
 	derpServers    []*dsic.DERPServerInContainer
 
 	users map[string]*User
@@ -163,14 +163,14 @@ func (s *Scenario) prefixedNetworkName(name string) string {
 func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	pool, err := dockertest.NewPool("")
 	if err != nil {
-		return nil, fmt.Errorf("could not connect to docker: %w", err)
+		return nil, fmt.Errorf("connecting to docker: %w", err)
 	}
 
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime
 	// dont clean up nicely after ourselves.
-	dockertestutil.CleanUnreferencedNetworks(pool)
-	dockertestutil.CleanImagesInCI(pool)
+	_ = dockertestutil.CleanUnreferencedNetworks(pool)
+	_ = dockertestutil.CleanImagesInCI(pool)
 
 	if spec.MaxWait == 0 {
 		pool.MaxWait = dockertestMaxWait()
@@ -180,7 +180,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 	testHashPrefix := "hs-" + util.MustGenerateRandomStringDNSSafe(scenarioHashLength)
 	s := &Scenario{
-		controlServers: xsync.NewMapOf[string, ControlServer](),
+		controlServers: xsync.NewMap[string, ControlServer](),
 		users:          make(map[string]*User),
 
 		pool: pool,
@@ -191,9 +191,11 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	}
 
 	var userToNetwork map[string]*dockertest.Network
+
 	if spec.Networks != nil || len(spec.Networks) != 0 {
 		for name, users := range s.spec.Networks {
 			networkName := testHashPrefix + "-" + name
+
 			network, err := s.AddNetwork(networkName)
 			if err != nil {
 				return nil, err
@@ -201,8 +203,9 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 
 			for _, user := range users {
 				if n2, ok := userToNetwork[user]; ok {
-					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name)
+					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name) //nolint:err113
 				}
+
 				mak.Set(&userToNetwork, user, network)
 			}
 		}
@@ -219,6 +222,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			mak.Set(&s.extraServices, s.prefixedNetworkName(network), append(s.extraServices[s.prefixedNetworkName(network)], svc))
 		}
 	}
@@ -230,6 +234,7 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 		if spec.OIDCAccessTTL != 0 {
 			ttl = spec.OIDCAccessTTL
 		}
+
 		err = s.runMockOIDC(ttl, spec.OIDCUsers)
 		if err != nil {
 			return nil, err
@@ -242,16 +247,21 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
 	network, err := dockertestutil.GetFirstOrCreateNetwork(s.pool, name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create or get network: %w", err)
+		return nil, fmt.Errorf("creating or getting network: %w", err)
 	}
 
 	// We run the test suite in a docker container that calls a couple of endpoints for
 	// readiness checks, this ensures that we can run the tests with individual networks
-	// and have the client reach the different containers
-	// TODO(kradalby): Can the test-suite be renamed so we can have multiple?
-	err = dockertestutil.AddContainerToNetwork(s.pool, network, "headscale-test-suite")
+	// and have the client reach the different containers.
+	// The container name includes the run ID to support multiple concurrent test runs.
+	testSuiteName := "headscale-test-suite"
+	if runID := dockertestutil.GetIntegrationRunID(); runID != "" {
+		testSuiteName = "headscale-test-suite-" + runID
+	}
+
+	err = dockertestutil.AddContainerToNetwork(s.pool, network, testSuiteName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to add test suite container to network: %w", err)
+		return nil, fmt.Errorf("adding test suite container to network: %w", err)
 	}
 
 	mak.Set(&s.networks, name, network)
@@ -263,13 +273,14 @@ func (s *Scenario) Networks() []*dockertest.Network {
 	if len(s.networks) == 0 {
 		panic("Scenario.Networks called with empty network list")
 	}
+
 	return xmaps.Values(s.networks)
 }
 
 func (s *Scenario) Network(name string) (*dockertest.Network, error) {
 	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	return net, nil
@@ -278,11 +289,11 @@ func (s *Scenario) Network(name string) (*dockertest.Network, error) {
 func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 	net, ok := s.networks[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	if len(net.Network.IPAM.Config) == 0 {
-		return nil, fmt.Errorf("no IPAM config found in network: %s", name)
+		return nil, fmt.Errorf("no IPAM config found in network: %s", name) //nolint:err113
 	}
 
 	pref, err := netip.ParsePrefix(net.Network.IPAM.Config[0].Subnet)
@@ -296,22 +307,24 @@ func (s *Scenario) SubnetOfNetwork(name string) (*netip.Prefix, error) {
 func (s *Scenario) Services(name string) ([]*dockertest.Resource, error) {
 	res, ok := s.extraServices[s.prefixedNetworkName(name)]
 	if !ok {
-		return nil, fmt.Errorf("no network named: %s", name)
+		return nil, fmt.Errorf("no network named: %s", name) //nolint:err113
 	}
 
 	return res, nil
 }
 
 func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
-	defer dockertestutil.CleanUnreferencedNetworks(s.pool)
-	defer dockertestutil.CleanImagesInCI(s.pool)
+	t.Helper()
+
+	defer func() { _ = dockertestutil.CleanUnreferencedNetworks(s.pool) }()
+	defer func() { _ = dockertestutil.CleanImagesInCI(s.pool) }()
 
 	s.controlServers.Range(func(_ string, control ControlServer) bool {
 		stdoutPath, stderrPath, err := control.Shutdown()
 		if err != nil {
 			log.Printf(
-				"Failed to shut down control: %s",
-				fmt.Errorf("failed to tear down control: %w", err),
+				"shutting down control: %s",
+				fmt.Errorf("tearing down control: %w", err),
 			)
 		}
 
@@ -329,12 +342,14 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 	})
 
 	s.mu.Lock()
+
 	for userName, user := range s.users {
 		for _, client := range user.Clients {
 			log.Printf("removing client %s in user %s", client.Hostname(), userName)
+
 			stdoutPath, stderrPath, err := client.Shutdown()
 			if err != nil {
-				log.Printf("failed to tear down client: %s", err)
+				log.Printf("tearing down client: %s", err)
 			}
 
 			if t != nil {
@@ -348,12 +363,13 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 			}
 		}
 	}
+
 	s.mu.Unlock()
 
 	for _, derp := range s.derpServers {
 		err := derp.Shutdown()
 		if err != nil {
-			log.Printf("failed to tear down derp server: %s", err)
+			log.Printf("tearing down derp server: %s", err)
 		}
 	}
 
@@ -361,21 +377,24 @@ func (s *Scenario) ShutdownAssertNoPanics(t *testing.T) {
 		for _, svc := range svcs {
 			err := svc.Close()
 			if err != nil {
-				log.Printf("failed to tear down service %q: %s", svc.Container.Name, err)
+				log.Printf("tearing down service %q: %s", svc.Container.Name, err)
 			}
 		}
 	}
 
 	if s.mockOIDC.r != nil {
 		s.mockOIDC.r.Close()
-		if err := s.mockOIDC.r.Close(); err != nil {
-			log.Printf("failed to tear down oidc server: %s", err)
+
+		err := s.mockOIDC.r.Close()
+		if err != nil {
+			log.Printf("tearing down oidc server: %s", err)
 		}
 	}
 
 	for _, network := range s.networks {
-		if err := network.Close(); err != nil {
-			log.Printf("failed to tear down network: %s", err)
+		err := network.Close()
+		if err != nil {
+			log.Printf("tearing down network: %s", err)
 		}
 	}
 }
@@ -390,7 +409,7 @@ func (s *Scenario) Shutdown() {
 
 // Users returns the name of all users associated with the Scenario.
 func (s *Scenario) Users() []string {
-	users := make([]string, 0)
+	users := make([]string, 0, len(s.users))
 	for user := range s.users {
 		users = append(users, user)
 	}
@@ -419,12 +438,12 @@ func (s *Scenario) Headscale(opts ...hsic.Option) (ControlServer, error) {
 
 	headscale, err := hsic.New(s.pool, s.Networks(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create headscale container: %w", err)
+		return nil, fmt.Errorf("creating headscale container: %w", err)
 	}
 
 	err = headscale.WaitForRunning()
 	if err != nil {
-		return nil, fmt.Errorf("failed reach headscale container: %w", err)
+		return nil, fmt.Errorf("reaching headscale container: %w", err)
 	}
 
 	s.controlServers.Store("headscale", headscale)
@@ -461,16 +480,32 @@ func (s *Scenario) CreatePreAuthKey(
 	reusable bool,
 	ephemeral bool,
 ) (*v1.PreAuthKey, error) {
-	if headscale, err := s.Headscale(); err == nil {
+	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		key, err := headscale.CreateAuthKey(user, reusable, ephemeral)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, fmt.Errorf("creating user: %w", err)
 		}
 
 		return key, nil
 	}
 
-	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
+	return nil, fmt.Errorf("creating user: %w", errNoHeadscaleAvailable)
+}
+
+// CreatePreAuthKeyWithOptions creates a "pre authorised key" with the specified options
+// to be created in the Headscale instance on behalf of the Scenario.
+func (s *Scenario) CreatePreAuthKeyWithOptions(opts hsic.AuthKeyOptions) (*v1.PreAuthKey, error) {
+	headscale, err := s.Headscale()
+	if err != nil {
+		return nil, fmt.Errorf("creating preauth key with options: %w", errNoHeadscaleAvailable)
+	}
+
+	key, err := headscale.CreateAuthKeyWithOptions(opts)
+	if err != nil {
+		return nil, fmt.Errorf("creating preauth key with options: %w", err)
+	}
+
+	return key, nil
 }
 
 // CreatePreAuthKeyWithTags creates a "pre authorised key" with the specified tags
@@ -483,12 +518,12 @@ func (s *Scenario) CreatePreAuthKeyWithTags(
 ) (*v1.PreAuthKey, error) {
 	headscale, err := s.Headscale()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create preauth key with tags: %w", errNoHeadscaleAvailable)
+		return nil, fmt.Errorf("creating preauth key with tags: %w", errNoHeadscaleAvailable)
 	}
 
 	key, err := headscale.CreateAuthKeyWithTags(user, reusable, ephemeral, tags)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create preauth key with tags: %w", err)
+		return nil, fmt.Errorf("creating preauth key with tags: %w", err)
 	}
 
 	return key, nil
@@ -497,10 +532,10 @@ func (s *Scenario) CreatePreAuthKeyWithTags(
 // CreateUser creates a User to be created in the
 // Headscale instance on behalf of the Scenario.
 func (s *Scenario) CreateUser(user string) (*v1.User, error) {
-	if headscale, err := s.Headscale(); err == nil {
+	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		u, err := headscale.CreateUser(user)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
+			return nil, fmt.Errorf("creating user: %w", err)
 		}
 
 		s.mu.Lock()
@@ -512,7 +547,7 @@ func (s *Scenario) CreateUser(user string) (*v1.User, error) {
 		return u, nil
 	}
 
-	return nil, fmt.Errorf("failed to create user: %w", errNoHeadscaleAvailable)
+	return nil, fmt.Errorf("creating user: %w", errNoHeadscaleAvailable)
 }
 
 /// Client related stuff
@@ -523,7 +558,7 @@ func (s *Scenario) CreateTailscaleNode(
 ) (TailscaleClient, error) {
 	headscale, err := s.Headscale()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tailscale node (version: %s): %w", version, err)
+		return nil, fmt.Errorf("creating tailscale node (version: %s): %w", version, err)
 	}
 
 	cert := headscale.GetCert()
@@ -531,6 +566,7 @@ func (s *Scenario) CreateTailscaleNode(
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	opts = append(opts,
 		tsic.WithCACert(cert),
 		tsic.WithHeadscaleName(hostname),
@@ -543,7 +579,7 @@ func (s *Scenario) CreateTailscaleNode(
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to create tailscale node: %w",
+			"creating tailscale node: %w",
 			err,
 		)
 	}
@@ -551,7 +587,7 @@ func (s *Scenario) CreateTailscaleNode(
 	err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 	if err != nil {
 		return nil, fmt.Errorf(
-			"failed to wait for tailscaled (%s) to need login: %w",
+			"waiting for tailscaled (%s) to need login: %w",
 			tsClient.Hostname(),
 			err,
 		)
@@ -570,6 +606,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 ) error {
 	if user, ok := s.users[userStr]; ok {
 		var versions []string
+
 		for i := range count {
 			version := requestedVersion
 			if requestedVersion == "all" {
@@ -579,11 +616,12 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					version = MustTestVersions[i%len(MustTestVersions)]
 				}
 			}
+
 			versions = append(versions, version)
 
 			headscale, err := s.Headscale()
 			if err != nil {
-				return fmt.Errorf("failed to create tailscale node (version: %s): %w", version, err)
+				return fmt.Errorf("creating tailscale node (version: %s): %w", version, err)
 			}
 
 			cert := headscale.GetCert()
@@ -602,6 +640,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 			extraHosts := []string{hostname + ":" + headscaleIP}
 
 			s.mu.Lock()
+
 			opts = append(opts,
 				tsic.WithCACert(cert),
 				tsic.WithHeadscaleName(hostname),
@@ -618,9 +657,10 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 					opts...,
 				)
 				s.mu.Unlock()
+
 				if err != nil {
 					return fmt.Errorf(
-						"failed to create tailscale node: %w",
+						"creating tailscale node: %w",
 						err,
 					)
 				}
@@ -628,20 +668,24 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 				err = tsClient.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 				if err != nil {
 					return fmt.Errorf(
-						"failed to wait for tailscaled (%s) to need login: %w",
+						"waiting for tailscaled (%s) to need login: %w",
 						tsClient.Hostname(),
 						err,
 					)
 				}
 
 				s.mu.Lock()
+
 				user.Clients[tsClient.Hostname()] = tsClient
+
 				s.mu.Unlock()
 
 				return nil
 			})
 		}
-		if err := user.createWaitGroup.Wait(); err != nil {
+
+		err := user.createWaitGroup.Wait()
+		if err != nil {
 			return err
 		}
 
@@ -650,7 +694,7 @@ func (s *Scenario) CreateTailscaleNodesInUser(
 		return nil
 	}
 
-	return fmt.Errorf("failed to add tailscale node: %w", errNoUserAvailable)
+	return fmt.Errorf("adding tailscale node: %w", errNoUserAvailable)
 }
 
 // RunTailscaleUp will log in all of the TailscaleClients associated with a
@@ -661,26 +705,28 @@ func (s *Scenario) RunTailscaleUp(
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
 			c := client
+
 			user.joinWaitGroup.Go(func() error {
 				return c.Login(loginServer, authKey)
 			})
 		}
 
-		if err := user.joinWaitGroup.Wait(); err != nil {
+		err := user.joinWaitGroup.Wait()
+		if err != nil {
 			return err
 		}
 
 		for _, client := range user.Clients {
 			err := client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			if err != nil {
-				return fmt.Errorf("%s failed to up tailscale node: %w", client.Hostname(), err)
+				return fmt.Errorf("%s bringing up tailscale node: %w", client.Hostname(), err)
 			}
 		}
 
 		return nil
 	}
 
-	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
+	return fmt.Errorf("bringing up tailscale node: %w", errNoUserAvailable)
 }
 
 // CountTailscale returns the total number of TailscaleClients in a Scenario.
@@ -728,11 +774,14 @@ func (s *Scenario) WaitForTailscaleSyncPerUser(timeout, retryInterval time.Durat
 		for _, client := range user.Clients {
 			c := client
 			expectedCount := expectedPeers
+
 			user.syncWaitGroup.Go(func() error {
 				return c.WaitForPeers(expectedCount, timeout, retryInterval)
 			})
 		}
-		if err := user.syncWaitGroup.Wait(); err != nil {
+
+		err := user.syncWaitGroup.Wait()
+		if err != nil {
 			allErrors = append(allErrors, err)
 		}
 	}
@@ -752,11 +801,14 @@ func (s *Scenario) WaitForTailscaleSyncWithPeerCount(peerCount int, timeout, ret
 	for _, user := range s.users {
 		for _, client := range user.Clients {
 			c := client
+
 			user.syncWaitGroup.Go(func() error {
 				return c.WaitForPeers(peerCount, timeout, retryInterval)
 			})
 		}
-		if err := user.syncWaitGroup.Wait(); err != nil {
+
+		err := user.syncWaitGroup.Wait()
+		if err != nil {
 			allErrors = append(allErrors, err)
 		}
 	}
@@ -850,6 +902,7 @@ func (s *Scenario) createHeadscaleEnvWithTags(
 			} else {
 				key, err = s.CreatePreAuthKey(u.GetId(), true, false)
 			}
+
 			if err != nil {
 				return err
 			}
@@ -866,13 +919,15 @@ func (s *Scenario) createHeadscaleEnvWithTags(
 
 func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 	log.Printf("running tailscale up for user %s", userStr)
+
 	if user, ok := s.users[userStr]; ok {
 		for _, client := range user.Clients {
 			tsc := client
+
 			user.joinWaitGroup.Go(func() error {
 				loginURL, err := tsc.LoginWithURL(loginServer)
 				if err != nil {
-					log.Printf("%s failed to run tailscale up: %s", tsc.Hostname(), err)
+					log.Printf("%s running tailscale up: %s", tsc.Hostname(), err)
 				}
 
 				body, err := doLoginURL(tsc.Hostname(), loginURL)
@@ -883,7 +938,7 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 				// If the URL is not a OIDC URL, then we need to
 				// run the register command to fully log in the client.
 				if !strings.Contains(loginURL.String(), "/oidc/") {
-					s.runHeadscaleRegister(userStr, body)
+					_ = s.runHeadscaleRegister(userStr, body)
 				}
 
 				return nil
@@ -892,7 +947,8 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 			log.Printf("client %s is ready", client.Hostname())
 		}
 
-		if err := user.joinWaitGroup.Wait(); err != nil {
+		err := user.joinWaitGroup.Wait()
+		if err != nil {
 			return err
 		}
 
@@ -910,7 +966,7 @@ func (s *Scenario) RunTailscaleUpWithURL(userStr, loginServer string) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to up tailscale node: %w", errNoUserAvailable)
+	return fmt.Errorf("bringing up tailscale node: %w", errNoUserAvailable)
 }
 
 type debugJar struct {
@@ -924,6 +980,7 @@ func newDebugJar() (*debugJar, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &debugJar{
 		inner: jar,
 		store: make(map[string]map[string]map[string]*http.Cookie),
@@ -940,20 +997,25 @@ func (j *debugJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
 		if c == nil || c.Name == "" {
 			continue
 		}
+
 		domain := c.Domain
 		if domain == "" {
 			domain = u.Hostname()
 		}
+
 		path := c.Path
 		if path == "" {
 			path = "/"
 		}
+
 		if _, ok := j.store[domain]; !ok {
 			j.store[domain] = make(map[string]map[string]*http.Cookie)
 		}
+
 		if _, ok := j.store[domain][path]; !ok {
 			j.store[domain][path] = make(map[string]*http.Cookie)
 		}
+
 		j.store[domain][path][c.Name] = copyCookie(c)
 	}
 }
@@ -968,8 +1030,10 @@ func (j *debugJar) Dump(w io.Writer) {
 
 	for domain, paths := range j.store {
 		fmt.Fprintf(w, "Domain: %s\n", domain)
+
 		for path, byName := range paths {
 			fmt.Fprintf(w, "  Path: %s\n", path)
+
 			for _, c := range byName {
 				fmt.Fprintf(
 					w, "    %s=%s; Expires=%v; Secure=%v; HttpOnly=%v; SameSite=%v\n",
@@ -992,7 +1056,7 @@ func newLoginHTTPClient(hostname string) (*http.Client, error) {
 
 	jar, err := newDebugJar()
 	if err != nil {
-		return nil, fmt.Errorf("%s failed to create cookiejar: %w", hostname, err)
+		return nil, fmt.Errorf("%s creating cookiejar: %w", hostname, err)
 	}
 
 	hc.Jar = jar
@@ -1025,18 +1089,20 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 	error,
 ) {
 	if hc == nil {
-		return "", nil, fmt.Errorf("%s http client is nil", hostname)
+		return "", nil, fmt.Errorf("%s http client is nil", hostname) //nolint:err113
 	}
 
 	if loginURL == nil {
-		return "", nil, fmt.Errorf("%s login url is nil", hostname)
+		return "", nil, fmt.Errorf("%s login url is nil", hostname) //nolint:err113
 	}
 
 	log.Printf("%s logging in with url: %s", hostname, loginURL.String())
+
 	ctx := context.Background()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, loginURL.String(), nil)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s failed to create http request: %w", hostname, err)
+		return "", nil, fmt.Errorf("%s creating http request: %w", hostname, err)
 	}
 
 	originalRedirect := hc.CheckRedirect
@@ -1045,40 +1111,42 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 			return http.ErrUseLastResponse
 		}
 	}
+
 	defer func() {
 		hc.CheckRedirect = originalRedirect
 	}()
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s failed to send http request: %w", hostname, err)
+		return "", nil, fmt.Errorf("%s sending http request: %w", hostname, err)
 	}
 	defer resp.Body.Close()
 
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("%s failed to read response body: %w", hostname, err)
+		return "", nil, fmt.Errorf("%s reading response body: %w", hostname, err)
 	}
+
 	body := string(bodyBytes)
 
 	var redirectURL *url.URL
 	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode < http.StatusBadRequest {
 		redirectURL, err = resp.Location()
 		if err != nil {
-			return body, nil, fmt.Errorf("%s failed to resolve redirect location: %w", hostname, err)
+			return body, nil, fmt.Errorf("%s resolving redirect location: %w", hostname, err)
 		}
 	}
 
 	if followRedirects && resp.StatusCode != http.StatusOK {
 		log.Printf("body: %s", body)
 
-		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		log.Printf("body: %s", body)
 
-		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode)
+		return body, redirectURL, fmt.Errorf("%s unexpected status code %d", hostname, resp.StatusCode) //nolint:err113
 	}
 
 	if hc.Jar != nil {
@@ -1092,11 +1160,11 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 	return body, redirectURL, nil
 }
 
-var errParseAuthPage = errors.New("failed to parse auth page")
+var errParseAuthPage = errors.New("parsing auth page")
 
 func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	// see api.go HTML template
-	codeSep := strings.Split(string(body), "</code>")
+	codeSep := strings.Split(body, "</code>")
 	if len(codeSep) != 2 {
 		return errParseAuthPage
 	}
@@ -1105,16 +1173,17 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 	if len(keySep) != 2 {
 		return errParseAuthPage
 	}
+
 	key := keySep[1]
 	key = strings.SplitN(key, " ", 2)[0]
 	log.Printf("registering node %s", key)
 
-	if headscale, err := s.Headscale(); err == nil {
+	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		_, err = headscale.Execute(
 			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
 		)
 		if err != nil {
-			log.Printf("failed to register node: %s", err)
+			log.Printf("registering node: %s", err)
 
 			return err
 		}
@@ -1122,7 +1191,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return nil
 	}
 
-	return fmt.Errorf("failed to find headscale: %w", errNoHeadscaleAvailable)
+	return fmt.Errorf("finding headscale: %w", errNoHeadscaleAvailable)
 }
 
 type LoggingRoundTripper struct {
@@ -1133,6 +1202,7 @@ func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 	noTls := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // nolint
 	}
+
 	resp, err := noTls.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -1152,24 +1222,27 @@ func (t LoggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error
 // in a Scenario.
 func (s *Scenario) GetIPs(user string) ([]netip.Addr, error) {
 	var ips []netip.Addr
+
 	if ns, ok := s.users[user]; ok {
 		for _, client := range ns.Clients {
 			clientIps, err := client.IPs()
 			if err != nil {
-				return ips, fmt.Errorf("failed to get ips: %w", err)
+				return ips, fmt.Errorf("getting IPs: %w", err)
 			}
+
 			ips = append(ips, clientIps...)
 		}
 
 		return ips, nil
 	}
 
-	return ips, fmt.Errorf("failed to get ips: %w", errNoUserAvailable)
+	return ips, fmt.Errorf("getting IPs: %w", errNoUserAvailable)
 }
 
 // GetClients returns all TailscaleClients associated with a User in a Scenario.
 func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 	var clients []TailscaleClient
+
 	if ns, ok := s.users[user]; ok {
 		for _, client := range ns.Clients {
 			clients = append(clients, client)
@@ -1178,7 +1251,7 @@ func (s *Scenario) GetClients(user string) ([]TailscaleClient, error) {
 		return clients, nil
 	}
 
-	return clients, fmt.Errorf("failed to get clients: %w", errNoUserAvailable)
+	return clients, fmt.Errorf("getting clients: %w", errNoUserAvailable)
 }
 
 // ListTailscaleClients returns a list of TailscaleClients given the Users
@@ -1269,11 +1342,14 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 	for _, user := range s.users {
 		for _, client := range user.Clients {
 			c := client
+
 			user.syncWaitGroup.Go(func() error {
 				return c.WaitForNeedsLogin(integrationutil.PeerSyncTimeout())
 			})
 		}
-		if err := user.syncWaitGroup.Wait(); err != nil {
+
+		err := user.syncWaitGroup.Wait()
+		if err != nil {
 			return err
 		}
 	}
@@ -1285,12 +1361,12 @@ func (s *Scenario) WaitForTailscaleLogout() error {
 func (s *Scenario) CreateDERPServer(version string, opts ...dsic.Option) (*dsic.DERPServerInContainer, error) {
 	derp, err := dsic.New(s.pool, version, s.Networks(), opts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create DERP server: %w", err)
+		return nil, fmt.Errorf("creating DERP server: %w", err)
 	}
 
 	err = derp.WaitForRunning()
 	if err != nil {
-		return nil, fmt.Errorf("failed to reach DERP server: %w", err)
+		return nil, fmt.Errorf("reaching DERP server: %w", err)
 	}
 
 	s.derpServers = append(s.derpServers, derp)
@@ -1338,8 +1414,9 @@ var errStatusCodeNotOK = errors.New("status code not OK")
 func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUser) error {
 	port, err := dockertestutil.RandomFreeHostPort()
 	if err != nil {
-		log.Fatalf("could not find an open port: %s", err)
+		log.Fatalf("finding open port: %s", err)
 	}
+
 	portNotation := fmt.Sprintf("%d/tcp", port)
 
 	hash, _ := util.GenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
@@ -1384,7 +1461,7 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	// Add integration test labels if running under hi tool
 	dockertestutil.DockerAddIntegrationLabels(mockOidcOptions, "oidc")
 
-	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions(
+	if pmockoidc, err := s.pool.BuildAndRunWithBuildOptions( //nolint:noinlineerr
 		headscaleBuildOptions,
 		mockOidcOptions,
 		dockertestutil.DockerRestartPolicy); err == nil {
@@ -1400,9 +1477,10 @@ func (s *Scenario) runMockOIDC(accessTTL time.Duration, users []mockoidc.MockUse
 	ipAddr := s.mockOIDC.r.GetIPInNetwork(network)
 
 	log.Println("Waiting for headscale mock oidc to be ready for tests")
+
 	hostEndpoint := net.JoinHostPort(ipAddr, strconv.Itoa(port))
 
-	if err := s.pool.Retry(func() error {
+	if err := s.pool.Retry(func() error { //nolint:noinlineerr
 		oidcConfigURL := fmt.Sprintf("http://%s/oidc/.well-known/openid-configuration", hostEndpoint)
 		httpClient := &http.Client{}
 		ctx := context.Background()
@@ -1444,17 +1522,16 @@ type extraServiceFunc func(*Scenario, string) (*dockertest.Resource, error)
 func Webservice(s *Scenario, networkName string) (*dockertest.Resource, error) {
 	// port, err := dockertestutil.RandomFreeHostPort()
 	// if err != nil {
-	// 	log.Fatalf("could not find an open port: %s", err)
+	// 	log.Fatalf("finding open port: %s", err)
 	// }
 	// portNotation := fmt.Sprintf("%d/tcp", port)
-
 	hash := util.MustGenerateRandomStringDNSSafe(hsicOIDCMockHashLength)
 
 	hostname := "hs-webservice-" + hash
 
 	network, ok := s.networks[s.prefixedNetworkName(networkName)]
 	if !ok {
-		return nil, fmt.Errorf("network does not exist: %s", networkName)
+		return nil, fmt.Errorf("network does not exist: %s", networkName) //nolint:err113
 	}
 
 	webOpts := &dockertest.RunOptions{

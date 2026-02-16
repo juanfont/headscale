@@ -3,9 +3,12 @@ package integration
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,10 +26,7 @@ import (
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/exp/maps"
-	"golang.org/x/exp/slices"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const (
@@ -46,9 +46,16 @@ const (
 	// TimestampFormatRunID is used for generating unique run identifiers
 	// Format: "20060102-150405" provides compact date-time for file/directory names.
 	TimestampFormatRunID = "20060102-150405"
+
+	// stateOnline is the string representation for online state in logs.
+	stateOnline = "online"
+	// stateOffline is the string representation for offline state in logs.
+	stateOffline = "offline"
 )
 
-// NodeSystemStatus represents the status of a node across different systems
+var errNoNewClientFound = errors.New("no new client found")
+
+// NodeSystemStatus represents the status of a node across different systems.
 type NodeSystemStatus struct {
 	Batcher          bool
 	BatcherConnCount int
@@ -105,7 +112,7 @@ func requireNoErrLogout(t *testing.T, err error) {
 	require.NoError(t, err, "failed to log out tailscale nodes")
 }
 
-// collectExpectedNodeIDs extracts node IDs from a list of TailscaleClients for validation purposes
+// collectExpectedNodeIDs extracts node IDs from a list of TailscaleClients for validation purposes.
 func collectExpectedNodeIDs(t *testing.T, clients []TailscaleClient) []types.NodeID {
 	t.Helper()
 
@@ -114,8 +121,10 @@ func collectExpectedNodeIDs(t *testing.T, clients []TailscaleClient) []types.Nod
 		status := client.MustStatus()
 		nodeID, err := strconv.ParseUint(string(status.Self.ID), 10, 64)
 		require.NoError(t, err)
+
 		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 	}
+
 	return expectedNodes
 }
 
@@ -149,15 +158,17 @@ func validateReloginComplete(t *testing.T, headscale ControlServer, expectedNode
 }
 
 // requireAllClientsOnline validates that all nodes are online/offline across all headscale systems
-// requireAllClientsOnline verifies all expected nodes are in the specified online state across all systems
+// requireAllClientsOnline verifies all expected nodes are in the specified online state across all systems.
 func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, expectedOnline bool, message string, timeout time.Duration) {
 	t.Helper()
 
 	startTime := time.Now()
-	stateStr := "offline"
+
+	stateStr := stateOffline
 	if expectedOnline {
-		stateStr = "online"
+		stateStr = stateOnline
 	}
+
 	t.Logf("requireAllSystemsOnline: Starting %s validation for %d nodes at %s - %s", stateStr, len(expectedNodes), startTime.Format(TimestampFormat), message)
 
 	if expectedOnline {
@@ -165,22 +176,26 @@ func requireAllClientsOnline(t *testing.T, headscale ControlServer, expectedNode
 		requireAllClientsOnlineWithSingleTimeout(t, headscale, expectedNodes, expectedOnline, message, timeout)
 	} else {
 		// For offline validation, use staged approach with component-specific timeouts
-		requireAllClientsOfflineStaged(t, headscale, expectedNodes, message, timeout)
+		requireAllClientsOfflineStaged(t, headscale, expectedNodes)
 	}
 
 	endTime := time.Now()
 	t.Logf("requireAllSystemsOnline: Completed %s validation for %d nodes at %s - Duration: %s - %s", stateStr, len(expectedNodes), endTime.Format(TimestampFormat), endTime.Sub(startTime), message)
 }
 
-// requireAllClientsOnlineWithSingleTimeout is the original validation logic for online state
+// requireAllClientsOnlineWithSingleTimeout is the original validation logic for online state.
+//
+//nolint:gocyclo // complex validation with multiple node states
 func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, expectedOnline bool, message string, timeout time.Duration) {
 	t.Helper()
 
 	var prevReport string
+
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		// Get batcher state
 		debugInfo, err := headscale.DebugBatcher()
 		assert.NoError(c, err, "Failed to get batcher debug info")
+
 		if err != nil {
 			return
 		}
@@ -188,6 +203,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 		// Get map responses
 		mapResponses, err := headscale.GetAllMapReponses()
 		assert.NoError(c, err, "Failed to get map responses")
+
 		if err != nil {
 			return
 		}
@@ -195,6 +211,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 		// Get nodestore state
 		nodeStore, err := headscale.DebugNodeStore()
 		assert.NoError(c, err, "Failed to get nodestore debug info")
+
 		if err != nil {
 			return
 		}
@@ -265,6 +282,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 					if id == nodeID {
 						continue // Skip self-references
 					}
+
 					expectedPeerMaps++
 
 					if online, exists := peerMap[nodeID]; exists && online {
@@ -279,6 +297,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 				}
 			}
 		}
+
 		assert.Lenf(c, onlineFromMaps, expectedCount, "MapResponses missing nodes in status check")
 
 		// Update status with map response data
@@ -302,10 +321,12 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 		// Verify all systems show nodes in expected state and report failures
 		allMatch := true
+
 		var failureReport strings.Builder
 
-		ids := types.NodeIDs(maps.Keys(nodeStatus))
+		ids := types.NodeIDs(slices.AppendSeq(make([]types.NodeID, 0, len(nodeStatus)), maps.Keys(nodeStatus)))
 		slices.Sort(ids)
+
 		for _, nodeID := range ids {
 			status := nodeStatus[nodeID]
 			systemsMatch := (status.Batcher == expectedOnline) &&
@@ -314,10 +335,12 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 
 			if !systemsMatch {
 				allMatch = false
-				stateStr := "offline"
+
+				stateStr := stateOffline
 				if expectedOnline {
-					stateStr = "online"
+					stateStr = stateOnline
 				}
+
 				failureReport.WriteString(fmt.Sprintf("node:%d is not fully %s (timestamp: %s):\n", nodeID, stateStr, time.Now().Format(TimestampFormat)))
 				failureReport.WriteString(fmt.Sprintf("  - batcher: %t (expected: %t)\n", status.Batcher, expectedOnline))
 				failureReport.WriteString(fmt.Sprintf("    - conn count: %d\n", status.BatcherConnCount))
@@ -332,6 +355,7 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 				t.Logf("Previous report:\n%s", prevReport)
 				t.Logf("Current report:\n%s", failureReport.String())
 				t.Logf("Report diff:\n%s", diff)
+
 				prevReport = failureReport.String()
 			}
 
@@ -341,16 +365,17 @@ func requireAllClientsOnlineWithSingleTimeout(t *testing.T, headscale ControlSer
 			assert.Fail(c, failureReport.String())
 		}
 
-		stateStr := "offline"
+		stateStr := stateOffline
 		if expectedOnline {
-			stateStr = "online"
+			stateStr = stateOnline
 		}
-		assert.True(c, allMatch, fmt.Sprintf("Not all %d nodes are %s across all systems (batcher, mapresponses, nodestore)", len(expectedNodes), stateStr))
+
+		assert.True(c, allMatch, "Not all %d nodes are %s across all systems (batcher, mapresponses, nodestore)", len(expectedNodes), stateStr)
 	}, timeout, 2*time.Second, message)
 }
 
-// requireAllClientsOfflineStaged validates offline state with staged timeouts for different components
-func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, totalTimeout time.Duration) {
+// requireAllClientsOfflineStaged validates offline state with staged timeouts for different components.
+func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
 	// Stage 1: Verify batcher disconnection (should be immediate)
@@ -358,18 +383,22 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		debugInfo, err := headscale.DebugBatcher()
 		assert.NoError(c, err, "Failed to get batcher debug info")
+
 		if err != nil {
 			return
 		}
 
 		allBatcherOffline := true
+
 		for _, nodeID := range expectedNodes {
 			nodeIDStr := fmt.Sprintf("%d", nodeID)
 			if nodeInfo, exists := debugInfo.ConnectedNodes[nodeIDStr]; exists && nodeInfo.Connected {
 				allBatcherOffline = false
+
 				assert.False(c, nodeInfo.Connected, "Node %d should not be connected in batcher", nodeID)
 			}
 		}
+
 		assert.True(c, allBatcherOffline, "All nodes should be disconnected from batcher")
 	}, 15*time.Second, 1*time.Second, "batcher disconnection validation")
 
@@ -378,20 +407,24 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodeStore, err := headscale.DebugNodeStore()
 		assert.NoError(c, err, "Failed to get nodestore debug info")
+
 		if err != nil {
 			return
 		}
 
 		allNodeStoreOffline := true
+
 		for _, nodeID := range expectedNodes {
 			if node, exists := nodeStore[nodeID]; exists {
 				isOnline := node.IsOnline != nil && *node.IsOnline
 				if isOnline {
 					allNodeStoreOffline = false
+
 					assert.False(c, isOnline, "Node %d should be offline in nodestore", nodeID)
 				}
 			}
 		}
+
 		assert.True(c, allNodeStoreOffline, "All nodes should be offline in nodestore")
 	}, 20*time.Second, 1*time.Second, "nodestore offline validation")
 
@@ -400,6 +433,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
 		mapResponses, err := headscale.GetAllMapReponses()
 		assert.NoError(c, err, "Failed to get map responses")
+
 		if err != nil {
 			return
 		}
@@ -412,7 +446,8 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 			for nodeID := range onlineMap {
 				if slices.Contains(expectedNodes, nodeID) {
 					allMapResponsesOffline = false
-					assert.False(c, true, "Node %d should not appear in map responses", nodeID)
+
+					assert.Fail(c, fmt.Sprintf("Node %d should not appear in map responses", nodeID))
 				}
 			}
 		} else {
@@ -422,13 +457,16 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 					if id == nodeID {
 						continue // Skip self-references
 					}
+
 					if online, exists := peerMap[nodeID]; exists && online {
 						allMapResponsesOffline = false
+
 						assert.False(c, online, "Node %d should not be visible in node %d's map response", nodeID, id)
 					}
 				}
 			}
 		}
+
 		assert.True(c, allMapResponsesOffline, "All nodes should be absent from peer map responses")
 	}, 60*time.Second, 2*time.Second, "map response propagation validation")
 
@@ -438,6 +476,8 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 // requireAllClientsNetInfoAndDERP validates that all nodes have NetInfo in the database
 // and a valid DERP server based on the NetInfo. This function follows the pattern of
 // requireAllClientsOnline by using hsic.DebugNodeStore to get the database state.
+//
+//nolint:unparam // timeout is configurable for flexibility even though callers currently use same value
 func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID, message string, timeout time.Duration) {
 	t.Helper()
 
@@ -448,6 +488,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 		// Get nodestore state
 		nodeStore, err := headscale.DebugNodeStore()
 		assert.NoError(c, err, "Failed to get nodestore debug info")
+
 		if err != nil {
 			return
 		}
@@ -462,12 +503,14 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 		for _, nodeID := range expectedNodes {
 			node, exists := nodeStore[nodeID]
 			assert.True(c, exists, "Node %d not found in nodestore during NetInfo validation", nodeID)
+
 			if !exists {
 				continue
 			}
 
 			// Validate that the node has Hostinfo
 			assert.NotNil(c, node.Hostinfo, "Node %d (%s) should have Hostinfo for NetInfo validation", nodeID, node.Hostname)
+
 			if node.Hostinfo == nil {
 				t.Logf("Node %d (%s) missing Hostinfo at %s", nodeID, node.Hostname, time.Now().Format(TimestampFormat))
 				continue
@@ -475,6 +518,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 
 			// Validate that the node has NetInfo
 			assert.NotNil(c, node.Hostinfo.NetInfo, "Node %d (%s) should have NetInfo in Hostinfo for DERP connectivity", nodeID, node.Hostname)
+
 			if node.Hostinfo.NetInfo == nil {
 				t.Logf("Node %d (%s) missing NetInfo at %s", nodeID, node.Hostname, time.Now().Format(TimestampFormat))
 				continue
@@ -482,7 +526,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 
 			// Validate that the node has a valid DERP server (PreferredDERP should be > 0)
 			preferredDERP := node.Hostinfo.NetInfo.PreferredDERP
-			assert.Greater(c, preferredDERP, 0, "Node %d (%s) should have a valid DERP server (PreferredDERP > 0) for relay connectivity, got %d", nodeID, node.Hostname, preferredDERP)
+			assert.Positive(c, preferredDERP, "Node %d (%s) should have a valid DERP server (PreferredDERP > 0) for relay connectivity, got %d", nodeID, node.Hostname, preferredDERP)
 
 			t.Logf("Node %d (%s) has valid NetInfo with DERP server %d at %s", nodeID, node.Hostname, preferredDERP, time.Now().Format(TimestampFormat))
 		}
@@ -496,6 +540,7 @@ func requireAllClientsNetInfoAndDERP(t *testing.T, headscale ControlServer, expe
 // assertLastSeenSet validates that a node has a non-nil LastSeen timestamp.
 // Critical for ensuring node activity tracking is functioning properly.
 func assertLastSeenSet(t *testing.T, node *v1.Node) {
+	t.Helper()
 	assert.NotNil(t, node)
 	assert.NotNil(t, node.GetLastSeen())
 }
@@ -514,7 +559,7 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 
 	for _, client := range clients {
 		status, err := client.Status()
-		assert.NoError(t, err, "failed to get status for client %s", client.Hostname())
+		assert.NoError(t, err, "failed to get status for client %s", client.Hostname()) //nolint:testifylint // assert.TestingT interface
 		assert.Equal(t, "NeedsLogin", status.BackendState,
 			"client %s should be logged out", client.Hostname())
 	}
@@ -523,8 +568,11 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 // pingAllHelper performs ping tests between all clients and addresses, returning success count.
 // This is used to validate network connectivity in integration tests.
 // Returns the total number of successful ping operations.
+//
+//nolint:unparam // opts is variadic for extensibility even though callers currently don't pass options
 func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
 	t.Helper()
+
 	success := 0
 
 	for _, client := range clients {
@@ -546,6 +594,7 @@ func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts
 // for validating NAT traversal and relay functionality. Returns success count.
 func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
 	t.Helper()
+
 	success := 0
 
 	for _, client := range clients {
@@ -596,6 +645,8 @@ func isSelfClient(client TailscaleClient, addr string) bool {
 // assertClientsState validates the status and netmap of a list of clients for general connectivity.
 // Runs parallel validation of status, netcheck, and netmap for all clients to ensure
 // they have proper network configuration for all-to-all connectivity tests.
+//
+//nolint:unused
 func assertClientsState(t *testing.T, clients []TailscaleClient) {
 	t.Helper()
 
@@ -603,9 +654,12 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 
 	for _, client := range clients {
 		wg.Add(1)
+
 		c := client // Avoid loop pointer
+
 		go func() {
 			defer wg.Done()
+
 			assertValidStatus(t, c)
 			assertValidNetcheck(t, c)
 			assertValidNetmap(t, c)
@@ -620,6 +674,8 @@ func assertClientsState(t *testing.T, clients []TailscaleClient) {
 // Checks self node and all peers for essential networking data including hostinfo, addresses,
 // endpoints, and DERP configuration. Skips validation for Tailscale versions below 1.56.
 // This test is not suitable for ACL/partial connection tests.
+//
+//nolint:unused
 func assertValidNetmap(t *testing.T, client TailscaleClient) {
 	t.Helper()
 
@@ -636,6 +692,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 		assert.NoError(c, err, "getting netmap for %q", client.Hostname())
 
 		assert.Truef(c, netmap.SelfNode.Hostinfo().Valid(), "%q does not have Hostinfo", client.Hostname())
+
 		if hi := netmap.SelfNode.Hostinfo(); hi.Valid() {
 			assert.LessOrEqual(c, 1, netmap.SelfNode.Hostinfo().Services().Len(), "%q does not have enough services, got: %v", client.Hostname(), netmap.SelfNode.Hostinfo().Services())
 		}
@@ -650,10 +707,11 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 		assert.Falsef(c, netmap.SelfNode.DiscoKey().IsZero(), "%q does not have a valid DiscoKey", client.Hostname())
 
 		for _, peer := range netmap.Peers {
-			assert.NotEqualf(c, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString())
+			assert.NotEqualf(c, "127.3.3.40:0", peer.LegacyDERPString(), "peer (%s) has no home DERP in %q's netmap, got: %s", peer.ComputedName(), client.Hostname(), peer.LegacyDERPString()) //nolint:staticcheck // SA1019: testing legacy field
 			assert.NotEqualf(c, 0, peer.HomeDERP(), "peer (%s) has no home DERP in %q's netmap, got: %d", peer.ComputedName(), client.Hostname(), peer.HomeDERP())
 
 			assert.Truef(c, peer.Hostinfo().Valid(), "peer (%s) of %q does not have Hostinfo", peer.ComputedName(), client.Hostname())
+
 			if hi := peer.Hostinfo(); hi.Valid() {
 				assert.LessOrEqualf(c, 3, peer.Hostinfo().Services().Len(), "peer (%s) of %q does not have enough services, got: %v", peer.ComputedName(), client.Hostname(), peer.Hostinfo().Services())
 
@@ -680,8 +738,11 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 // assertValidStatus validates that a client's status has all required fields for proper operation.
 // Checks self and peer status for essential data including hostinfo, tailscale IPs, endpoints,
 // and network map presence. This test is not suitable for ACL/partial connection tests.
+//
+//nolint:unused
 func assertValidStatus(t *testing.T, client TailscaleClient) {
 	t.Helper()
+
 	status, err := client.Status(true)
 	if err != nil {
 		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
@@ -737,8 +798,11 @@ func assertValidStatus(t *testing.T, client TailscaleClient) {
 // assertValidNetcheck validates that a client has a proper DERP relay configured.
 // Ensures the client has discovered and selected a DERP server for relay functionality,
 // which is essential for NAT traversal and connectivity in restricted networks.
+//
+//nolint:unused
 func assertValidNetcheck(t *testing.T, client TailscaleClient) {
 	t.Helper()
+
 	report, err := client.Netcheck()
 	if err != nil {
 		t.Fatalf("getting status for %q: %s", client.Hostname(), err)
@@ -764,7 +828,7 @@ func assertCommandOutputContains(t *testing.T, c TailscaleClient, command []stri
 		}
 
 		if !strings.Contains(stdout, contains) {
-			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout)
+			return struct{}{}, fmt.Errorf("executing command, expected string %q not found in %q", contains, stdout) //nolint:err113
 		}
 
 		return struct{}{}, nil
@@ -793,6 +857,7 @@ func didClientUseWebsocketForDERP(t *testing.T, client TailscaleClient) bool {
 	t.Helper()
 
 	buf := &bytes.Buffer{}
+
 	err := client.WriteLogs(buf, buf)
 	if err != nil {
 		t.Fatalf("failed to fetch client logs: %s: %s", client.Hostname(), err)
@@ -816,6 +881,7 @@ func countMatchingLines(in io.Reader, predicate func(string) bool) (int, error) 
 	scanner := bufio.NewScanner(in)
 	{
 		const logBufferInitialSize = 1024 << 10 // preallocate 1 MiB
+
 		buff := make([]byte, logBufferInitialSize)
 		scanner.Buffer(buff, len(buff))
 		scanner.Split(bufio.ScanLines)
@@ -839,32 +905,32 @@ func wildcard() policyv2.Alias {
 // usernamep returns a pointer to a Username as an Alias for policy v2 configurations.
 // Used in ACL rules to reference specific users in network access policies.
 func usernamep(name string) policyv2.Alias {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // hostp returns a pointer to a Host as an Alias for policy v2 configurations.
 // Used in ACL rules to reference specific hosts in network access policies.
 func hostp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Host(name))
+	return new(policyv2.Host(name))
 }
 
 // groupp returns a pointer to a Group as an Alias for policy v2 configurations.
 // Used in ACL rules to reference user groups in network access policies.
 func groupp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // tagp returns a pointer to a Tag as an Alias for policy v2 configurations.
 // Used in ACL rules to reference node tags in network access policies.
 func tagp(name string) policyv2.Alias {
-	return ptr.To(policyv2.Tag(name))
+	return new(policyv2.Tag(name))
 }
 
 // prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
 	prefix := netip.MustParsePrefix(cidr)
-	return ptr.To(policyv2.Prefix(prefix))
+	return new(policyv2.Prefix(prefix))
 }
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and port ranges.
@@ -880,31 +946,33 @@ func aliasWithPorts(alias policyv2.Alias, ports ...tailcfg.PortRange) policyv2.A
 // usernameOwner returns a Username as an Owner for use in TagOwners policies.
 // Specifies which users can assign and manage specific tags in ACL configurations.
 func usernameOwner(name string) policyv2.Owner {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // groupOwner returns a Group as an Owner for use in TagOwners policies.
 // Specifies which groups can assign and manage specific tags in ACL configurations.
+//
+//nolint:unused
 func groupOwner(name string) policyv2.Owner {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // usernameApprover returns a Username as an AutoApprover for subnet route policies.
 // Specifies which users can automatically approve subnet route advertisements.
 func usernameApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Username(name))
+	return new(policyv2.Username(name))
 }
 
 // groupApprover returns a Group as an AutoApprover for subnet route policies.
 // Specifies which groups can automatically approve subnet route advertisements.
 func groupApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Group(name))
+	return new(policyv2.Group(name))
 }
 
 // tagApprover returns a Tag as an AutoApprover for subnet route policies.
 // Specifies which tagged nodes can automatically approve subnet route advertisements.
 func tagApprover(name string) policyv2.AutoApprover {
-	return ptr.To(policyv2.Tag(name))
+	return new(policyv2.Tag(name))
 }
 
 // oidcMockUser creates a MockUser for OIDC authentication testing.
@@ -924,7 +992,7 @@ func oidcMockUser(username string, emailVerified bool) mockoidc.MockUser {
 func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 	users, err := headscale.ListUsers()
 	if err != nil {
-		return nil, fmt.Errorf("failed to list users: %w", err)
+		return nil, fmt.Errorf("listing users: %w", err)
 	}
 
 	for _, u := range users {
@@ -933,7 +1001,7 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("user %s not found", username)
+	return nil, fmt.Errorf("user %s not found", username) //nolint:err113
 }
 
 // FindNewClient finds a client that is in the new list but not in the original list.
@@ -942,17 +1010,20 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 func FindNewClient(original, updated []TailscaleClient) (TailscaleClient, error) {
 	for _, client := range updated {
 		isOriginal := false
+
 		for _, origClient := range original {
 			if client.Hostname() == origClient.Hostname() {
 				isOriginal = true
 				break
 			}
 		}
+
 		if !isOriginal {
 			return client, nil
 		}
 	}
-	return nil, fmt.Errorf("no new client found")
+
+	return nil, errNoNewClientFound
 }
 
 // AddAndLoginClient adds a new tailscale client to a user and logs it in.
@@ -960,7 +1031,7 @@ func FindNewClient(original, updated []TailscaleClient) (TailscaleClient, error)
 // 1. Creating a new node
 // 2. Finding the new node in the client list
 // 3. Getting the user to create a preauth key
-// 4. Logging in the new node
+// 4. Logging in the new node.
 func (s *Scenario) AddAndLoginClient(
 	t *testing.T,
 	username string,
@@ -973,13 +1044,13 @@ func (s *Scenario) AddAndLoginClient(
 	// Get the original client list
 	originalClients, err := s.ListTailscaleClients(username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list original clients: %w", err)
+		return nil, fmt.Errorf("listing original clients: %w", err)
 	}
 
 	// Create the new node
 	err = s.CreateTailscaleNodesInUser(username, version, 1, tsOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tailscale node: %w", err)
+		return nil, fmt.Errorf("creating tailscale node: %w", err)
 	}
 
 	// Wait for the new node to appear in the client list
@@ -988,16 +1059,16 @@ func (s *Scenario) AddAndLoginClient(
 	_, err = backoff.Retry(t.Context(), func() (struct{}, error) {
 		updatedClients, err := s.ListTailscaleClients(username)
 		if err != nil {
-			return struct{}{}, fmt.Errorf("failed to list updated clients: %w", err)
+			return struct{}{}, fmt.Errorf("listing updated clients: %w", err)
 		}
 
 		if len(updatedClients) != len(originalClients)+1 {
-			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients))
+			return struct{}{}, fmt.Errorf("expected %d clients, got %d", len(originalClients)+1, len(updatedClients)) //nolint:err113
 		}
 
 		newClient, err = FindNewClient(originalClients, updatedClients)
 		if err != nil {
-			return struct{}{}, fmt.Errorf("failed to find new client: %w", err)
+			return struct{}{}, fmt.Errorf("finding new client: %w", err)
 		}
 
 		return struct{}{}, nil
@@ -1009,18 +1080,18 @@ func (s *Scenario) AddAndLoginClient(
 	// Get the user and create preauth key
 	user, err := GetUserByName(headscale, username)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("getting user: %w", err)
 	}
 
 	authKey, err := s.CreatePreAuthKey(user.GetId(), true, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create preauth key: %w", err)
+		return nil, fmt.Errorf("creating preauth key: %w", err)
 	}
 
 	// Login the new client
 	err = newClient.Login(headscale.GetEndpoint(), authKey.GetKey())
 	if err != nil {
-		return nil, fmt.Errorf("failed to login new client: %w", err)
+		return nil, fmt.Errorf("logging in new client: %w", err)
 	}
 
 	return newClient, nil
@@ -1038,5 +1109,6 @@ func (s *Scenario) MustAddAndLoginClient(
 
 	client, err := s.AddAndLoginClient(t, username, version, headscale, tsOpts...)
 	require.NoError(t, err)
+
 	return client
 }

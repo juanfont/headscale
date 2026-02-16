@@ -11,7 +11,7 @@ repo_name: juanfont/headscale
 repo_url: https://github.com/juanfont/headscale
 
 # Copyright
-copyright: Copyright &copy; 2025 Headscale authors
+copyright: Copyright &copy; 2026 Headscale authors
 
 # Configuration
 theme:
@@ -111,7 +111,7 @@ extra:
     - icon: fontawesome/brands/discord
       link: https://discord.gg/c84AZQhmpx
   headscale:
-    version: 0.27.1
+    version: 0.28.0
 
 # Extensions
 markdown_extensions:
@@ -183,6 +183,7 @@ nav:
           - Windows: usage/connect/windows.md
   - Reference:
       - Configuration: ref/configuration.md
+      - Registration methods: ref/registration.md
       - OpenID Connect: ref/oidc.md
       - Routes: ref/routes.md
       - TLS: ref/tls.md
@@ -190,6 +191,7 @@ nav:
       - DNS: ref/dns.md
       - DERP: ref/derp.md
       - API: ref/api.md
+      - Tags: ref/tags.md
       - Debug: ref/debug.md
       - Integration:
           - Reverse proxy: ref/integration/reverse-proxy.md

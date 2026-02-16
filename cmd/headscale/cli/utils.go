@@ -11,6 +11,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -57,7 +58,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.CLI.Timeout)
 
 	grpcOptions := []grpc.DialOption{
-		grpc.WithBlock(),
+		grpc.WithBlock(), //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 	}
 
 	address := cfg.CLI.Address
@@ -81,6 +82,7 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 					Msgf("Unable to read/write to headscale socket, do you have the correct permissions?")
 			}
 		}
+
 		socket.Close()
 
 		grpcOptions = append(
@@ -92,8 +94,9 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set.")
+			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set")
 		}
+
 		grpcOptions = append(grpcOptions,
 			grpc.WithPerRPCCredentials(tokenAuth{
 				token: apiKey,
@@ -118,10 +121,11 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		}
 	}
 
-	log.Trace().Caller().Str("address", address).Msg("Connecting via gRPC")
-	conn, err := grpc.DialContext(ctx, address, grpcOptions...)
+	log.Trace().Caller().Str(zf.Address, address).Msg("connecting via gRPC")
+
+	conn, err := grpc.DialContext(ctx, address, grpcOptions...) //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 	if err != nil {
-		log.Fatal().Caller().Err(err).Msgf("Could not connect: %v", err)
+		log.Fatal().Caller().Err(err).Msgf("could not connect: %v", err)
 		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)
 	}
 
@@ -131,23 +135,26 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 }
 
 func output(result any, override string, outputFormat string) string {
-	var jsonBytes []byte
-	var err error
+	var (
+		jsonBytes []byte
+		err       error
+	)
+
 	switch outputFormat {
 	case "json":
 		jsonBytes, err = json.MarshalIndent(result, "", "\t")
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	case "json-line":
 		jsonBytes, err = json.Marshal(result)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	case "yaml":
 		jsonBytes, err = yaml.Marshal(result)
 		if err != nil {
-			log.Fatal().Err(err).Msg("failed to unmarshal output")
+			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
 	default:
 		// nolint

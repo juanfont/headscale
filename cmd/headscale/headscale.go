@@ -12,6 +12,7 @@ import (
 
 func main() {
 	var colors bool
+
 	switch l := termcolor.SupportLevel(os.Stderr); l {
 	case termcolor.Level16M:
 		colors = true

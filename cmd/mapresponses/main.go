@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -15,7 +16,10 @@ type MapConfig struct {
 	Directory string `flag:"directory,Directory to read map responses from"`
 }
 
-var mapConfig MapConfig
+var (
+	mapConfig            MapConfig
+	errDirectoryRequired = errors.New("directory is required")
+)
 
 func main() {
 	root := command.C{
@@ -40,7 +44,7 @@ func main() {
 // runIntegrationTest executes the integration test workflow.
 func runOnline(env *command.Env) error {
 	if mapConfig.Directory == "" {
-		return fmt.Errorf("directory is required")
+		return errDirectoryRequired
 	}
 
 	resps, err := mapper.ReadMapResponsesFromDirectory(mapConfig.Directory)
@@ -57,5 +61,6 @@ func runOnline(env *command.Env) error {
 
 	os.Stderr.Write(out)
 	os.Stderr.Write([]byte("\n"))
+
 	return nil
 }

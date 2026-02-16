@@ -43,26 +43,12 @@ repos:
         entry: prettier --write --list-different
         language: system
         exclude: ^docs/
-        types_or:
-          [
-            javascript,
-            jsx,
-            ts,
-            tsx,
-            yaml,
-            json,
-            toml,
-            html,
-            css,
-            scss,
-            sass,
-            markdown,
-          ]
+        types_or: [javascript, jsx, ts, tsx, yaml, json, toml, html, css, scss, sass, markdown]
 
       # golangci-lint for Go code quality
       - id: golangci-lint
         name: golangci-lint
-        entry: nix develop --command golangci-lint run --new-from-rev=HEAD~1 --timeout=5m --fix
+        entry: golangci-lint run --new-from-rev=HEAD~1 --timeout=5m --fix
         language: system
         types: [go]
         pass_filenames: false

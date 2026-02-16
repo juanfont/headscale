@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/types/ptr"
 )
 
 func TestCreatePreAuthKey(t *testing.T) {
@@ -24,7 +23,7 @@ func TestCreatePreAuthKey(t *testing.T) {
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
 
-				_, err := db.CreatePreAuthKey(ptr.To(types.UserID(12345)), true, false, nil, nil)
+				_, err := db.CreatePreAuthKey(new(types.UserID(12345)), true, false, nil, nil)
 				assert.Error(t, err)
 			},
 		},
@@ -41,21 +40,12 @@ func TestCreatePreAuthKey(t *testing.T) {
 				assert.NotEmpty(t, key.Key)
 
 				// List keys for the user
-				keys, err := db.ListPreAuthKeys(types.UserID(user.ID))
+				keys, err := db.ListPreAuthKeys()
 				require.NoError(t, err)
 				assert.Len(t, keys, 1)
 
 				// Verify User association is populated
 				assert.Equal(t, user.ID, keys[0].User.ID)
-			},
-		},
-		{
-			name: "error_list_invalid_user_id",
-			test: func(t *testing.T, db *HSDatabase) {
-				t.Helper()
-
-				_, err := db.ListPreAuthKeys(1000000)
-				assert.Error(t, err)
 			},
 		},
 	}
@@ -101,7 +91,7 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 				_, err = db.CreatePreAuthKey(user.TypedID(), false, false, nil, tagsWithDuplicate)
 				require.NoError(t, err)
 
-				listedPaks, err := db.ListPreAuthKeys(types.UserID(user.ID))
+				listedPaks, err := db.ListPreAuthKeys()
 				require.NoError(t, err)
 				require.Len(t, listedPaks, 1)
 
@@ -136,7 +126,7 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 		Hostname:       "testest",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(key.ID),
+		AuthKeyID:      new(key.ID),
 	}
 	db.DB.Save(&node)
 

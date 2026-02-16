@@ -111,6 +111,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		Filter: filter,
 		Policy: pm.pol,
 	})
+
 	filterChanged := filterHash != pm.filterHash
 	if filterChanged {
 		log.Debug().
@@ -120,7 +121,9 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 			Int("filter.rules.new", len(filter)).
 			Msg("Policy filter hash changed")
 	}
+
 	pm.filter = filter
+
 	pm.filterHash = filterHash
 	if filterChanged {
 		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
@@ -135,6 +138,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	tagOwnerMapHash := deephash.Hash(&tagMap)
+
 	tagOwnerChanged := tagOwnerMapHash != pm.tagOwnerMapHash
 	if tagOwnerChanged {
 		log.Debug().
@@ -144,6 +148,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 			Int("tagOwners.new", len(tagMap)).
 			Msg("Tag owner hash changed")
 	}
+
 	pm.tagOwnerMap = tagMap
 	pm.tagOwnerMapHash = tagOwnerMapHash
 
@@ -153,6 +158,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	}
 
 	autoApproveMapHash := deephash.Hash(&autoMap)
+
 	autoApproveChanged := autoApproveMapHash != pm.autoApproveMapHash
 	if autoApproveChanged {
 		log.Debug().
@@ -162,10 +168,12 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 			Int("autoApprovers.new", len(autoMap)).
 			Msg("Auto-approvers hash changed")
 	}
+
 	pm.autoApproveMap = autoMap
 	pm.autoApproveMapHash = autoApproveMapHash
 
 	exitSetHash := deephash.Hash(&exitSet)
+
 	exitSetChanged := exitSetHash != pm.exitSetHash
 	if exitSetChanged {
 		log.Debug().
@@ -173,6 +181,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 			Str("exitSet.hash.new", exitSetHash.String()[:8]).
 			Msg("Exit node set hash changed")
 	}
+
 	pm.exitSet = exitSet
 	pm.exitSetHash = exitSetHash
 
@@ -199,6 +208,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	if !needsUpdate {
 		log.Trace().
 			Msg("Policy evaluation detected no changes - all hashes match")
+
 		return false, nil
 	}
 
@@ -224,6 +234,7 @@ func (pm *PolicyManager) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, err
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}
+
 	pm.sshPolicyMap[node.ID()] = sshPol
 
 	return sshPol, nil
@@ -315,15 +326,23 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	nodeMatchers := make(map[types.NodeID][]matcher.Match, nodes.Len())
 	for _, node := range nodes.All() {
 		filter, err := pm.compileFilterRulesForNodeLocked(node)
-		if err != nil || len(filter) == 0 {
+		if err != nil {
 			continue
 		}
+		// Include all nodes in nodeMatchers, even those with empty filters.
+		// Empty filters result in empty matchers where CanAccess() returns false,
+		// but the node still needs to be in the map so hasFilterX is true.
+		// This ensures symmetric visibility works correctly: if node A can access
+		// node B, both should see each other regardless of B's filter rules.
 		nodeMatchers[node.ID()] = matcher.MatchesFromFilterRules(filter)
 	}
 
 	// Check each node pair for peer relationships.
 	// Start j at i+1 to avoid checking the same pair twice and creating duplicates.
-	// We check both directions (i->j and j->i) since ACLs can be asymmetric.
+	// We use symmetric visibility: if EITHER node can access the other, BOTH see
+	// each other. This matches the global filter path behavior and ensures that
+	// one-way access rules (e.g., admin -> tagged server) still allow both nodes
+	// to see each other as peers, which is required for network connectivity.
 	for i := range nodes.Len() {
 		nodeI := nodes.At(i)
 		matchersI, hasFilterI := nodeMatchers[nodeI.ID()]
@@ -332,13 +351,16 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			nodeJ := nodes.At(j)
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
 
-			// Check if nodeI can access nodeJ
-			if hasFilterI && nodeI.CanAccess(matchersI, nodeJ) {
-				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
-			}
+			// If either node can access the other, both should see each other as peers.
+			// This symmetric visibility is required for proper network operation:
+			// - Admin with *:* rule should see tagged servers (even if servers
+			//   can't access admin)
+			// - Servers should see admin so they can respond to admin's connections
+			canIAccessJ := hasFilterI && nodeI.CanAccess(matchersI, nodeJ)
+			canJAccessI := hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI)
 
-			// Check if nodeJ can access nodeI
-			if hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI) {
+			if canIAccessJ || canJAccessI {
+				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI)
 			}
 		}
@@ -392,6 +414,7 @@ func (pm *PolicyManager) filterForNodeLocked(node types.NodeView) ([]tailcfg.Fil
 		reducedFilter := policyutil.ReduceFilterRules(node, pm.filter)
 
 		pm.filterRulesMap[node.ID()] = reducedFilter
+
 		return reducedFilter, nil
 	}
 
@@ -436,7 +459,7 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 // This is different from FilterForNode which returns REDUCED rules for packet filtering.
 //
 // For global policies: returns the global matchers (same for all nodes)
-// For autogroup:self: returns node-specific matchers from unreduced compiled rules
+// For autogroup:self: returns node-specific matchers from unreduced compiled rules.
 func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, error) {
 	if pm == nil {
 		return nil, nil
@@ -468,6 +491,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
 	pm.users = users
 
 	// Clear SSH policy map when users change to force SSH policy recomputation
@@ -679,6 +703,7 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 		if pm.exitSet == nil {
 			return false
 		}
+
 		if slices.ContainsFunc(node.IPs(), pm.exitSet.Contains) {
 			return true
 		}
@@ -742,8 +767,10 @@ func (pm *PolicyManager) DebugString() string {
 	}
 
 	fmt.Fprintf(&sb, "AutoApprover (%d):\n", len(pm.autoApproveMap))
+
 	for prefix, approveAddrs := range pm.autoApproveMap {
 		fmt.Fprintf(&sb, "\t%s:\n", prefix)
+
 		for _, iprange := range approveAddrs.Ranges() {
 			fmt.Fprintf(&sb, "\t\t%s\n", iprange)
 		}
@@ -752,14 +779,17 @@ func (pm *PolicyManager) DebugString() string {
 	sb.WriteString("\n\n")
 
 	fmt.Fprintf(&sb, "TagOwner (%d):\n", len(pm.tagOwnerMap))
+
 	for prefix, tagOwners := range pm.tagOwnerMap {
 		fmt.Fprintf(&sb, "\t%s:\n", prefix)
+
 		for _, iprange := range tagOwners.Ranges() {
 			fmt.Fprintf(&sb, "\t\t%s\n", iprange)
 		}
 	}
 
 	sb.WriteString("\n\n")
+
 	if pm.filter != nil {
 		filter, err := json.MarshalIndent(pm.filter, "", "  ")
 		if err == nil {
@@ -772,6 +802,7 @@ func (pm *PolicyManager) DebugString() string {
 	sb.WriteString("\n\n")
 	sb.WriteString("Matchers:\n")
 	sb.WriteString("an internal structure used to filter nodes and routes\n")
+
 	for _, match := range pm.matchers {
 		sb.WriteString(match.DebugString())
 		sb.WriteString("\n")
@@ -779,6 +810,7 @@ func (pm *PolicyManager) DebugString() string {
 
 	sb.WriteString("\n\n")
 	sb.WriteString("Nodes:\n")
+
 	for _, node := range pm.nodes.All() {
 		sb.WriteString(node.String())
 		sb.WriteString("\n")
@@ -802,39 +834,61 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 		newNodeMap[node.ID()] = node
 	}
 
-	// Track which users are affected by changes
+	// Track which users are affected by changes.
+	// Tagged nodes don't participate in autogroup:self (identity is tag-based),
+	// so we skip them when collecting affected users, except when tag status changes
+	// (which affects the user's device set).
 	affectedUsers := make(map[uint]struct{})
 
-	// Check for removed nodes
+	// Check for removed nodes (only non-tagged nodes affect autogroup:self)
 	for nodeID, oldNode := range oldNodeMap {
 		if _, exists := newNodeMap[nodeID]; !exists {
-			affectedUsers[oldNode.User().ID()] = struct{}{}
+			if !oldNode.IsTagged() {
+				affectedUsers[oldNode.User().ID()] = struct{}{}
+			}
 		}
 	}
 
-	// Check for added nodes
+	// Check for added nodes (only non-tagged nodes affect autogroup:self)
 	for nodeID, newNode := range newNodeMap {
 		if _, exists := oldNodeMap[nodeID]; !exists {
-			affectedUsers[newNode.User().ID()] = struct{}{}
+			if !newNode.IsTagged() {
+				affectedUsers[newNode.User().ID()] = struct{}{}
+			}
 		}
 	}
 
 	// Check for modified nodes (user changes, tag changes, IP changes)
 	for nodeID, newNode := range newNodeMap {
 		if oldNode, exists := oldNodeMap[nodeID]; exists {
-			// Check if user changed
+			// Check if tag status changed — this affects the user's autogroup:self device set.
+			// Use the non-tagged version to get the user ID safely.
+			if oldNode.IsTagged() != newNode.IsTagged() {
+				if !oldNode.IsTagged() {
+					// Was untagged, now tagged: user lost a device
+					affectedUsers[oldNode.User().ID()] = struct{}{}
+				} else {
+					// Was tagged, now untagged: user gained a device
+					affectedUsers[newNode.User().ID()] = struct{}{}
+				}
+
+				continue
+			}
+
+			// Skip tagged nodes for remaining checks — they don't participate in autogroup:self
+			if newNode.IsTagged() {
+				continue
+			}
+
+			// Check if user changed (both versions are non-tagged here)
 			if oldNode.User().ID() != newNode.User().ID() {
 				affectedUsers[oldNode.User().ID()] = struct{}{}
 				affectedUsers[newNode.User().ID()] = struct{}{}
 			}
 
-			// Check if tag status changed
-			if oldNode.IsTagged() != newNode.IsTagged() {
-				affectedUsers[newNode.User().ID()] = struct{}{}
-			}
-
 			// Check if IPs changed (simple check - could be more sophisticated)
 			oldIPs := oldNode.IPs()
+
 			newIPs := newNode.IPs()
 			if len(oldIPs) != len(newIPs) {
 				affectedUsers[newNode.User().ID()] = struct{}{}
@@ -850,19 +904,28 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 		}
 	}
 
-	// Clear cache entries for affected users only
+	// Clear cache entries for affected users only.
 	// For autogroup:self, we need to clear all nodes belonging to affected users
-	// because autogroup:self rules depend on the entire user's device set
+	// because autogroup:self rules depend on the entire user's device set.
 	for nodeID := range pm.filterRulesMap {
 		// Find the user for this cached node
 		var nodeUserID uint
+
 		found := false
 
 		// Check in new nodes first
 		for _, node := range newNodes.All() {
 			if node.ID() == nodeID {
+				// Tagged nodes don't participate in autogroup:self,
+				// so their cache doesn't need user-based invalidation.
+				if node.IsTagged() {
+					found = true
+					break
+				}
+
 				nodeUserID = node.User().ID()
 				found = true
+
 				break
 			}
 		}
@@ -871,8 +934,14 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 		if !found {
 			for _, node := range oldNodes.All() {
 				if node.ID() == nodeID {
+					if node.IsTagged() {
+						found = true
+						break
+					}
+
 					nodeUserID = node.User().ID()
 					found = true
+
 					break
 				}
 			}

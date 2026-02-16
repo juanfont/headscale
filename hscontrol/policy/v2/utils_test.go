@@ -1,7 +1,6 @@
 package v2
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -24,9 +23,9 @@ func TestParseDestinationAndPort(t *testing.T) {
 		{"tag:api-server:443", "tag:api-server", "443", nil},
 		{"example-host-1:*", "example-host-1", "*", nil},
 		{"hostname:80-90", "hostname", "80-90", nil},
-		{"invalidinput", "", "", errors.New("input must contain a colon character separating destination and port")},
-		{":invalid", "", "", errors.New("input cannot start with a colon character")},
-		{"invalid:", "", "", errors.New("input cannot end with a colon character")},
+		{"invalidinput", "", "", ErrInputMissingColon},
+		{":invalid", "", "", ErrInputStartsWithColon},
+		{"invalid:", "", "", ErrInputEndsWithColon},
 	}
 
 	for _, testCase := range testCases {
@@ -58,9 +57,11 @@ func TestParsePort(t *testing.T) {
 		if err != nil && err.Error() != test.err {
 			t.Errorf("parsePort(%q) error = %v, expected error = %v", test.input, err, test.err)
 		}
+
 		if err == nil && test.err != "" {
 			t.Errorf("parsePort(%q) expected error = %v, got nil", test.input, test.err)
 		}
+
 		if result != test.expected {
 			t.Errorf("parsePort(%q) = %v, expected %v", test.input, result, test.expected)
 		}
@@ -92,9 +93,11 @@ func TestParsePortRange(t *testing.T) {
 		if err != nil && err.Error() != test.err {
 			t.Errorf("parsePortRange(%q) error = %v, expected error = %v", test.input, err, test.err)
 		}
+
 		if err == nil && test.err != "" {
 			t.Errorf("parsePortRange(%q) expected error = %v, got nil", test.input, test.err)
 		}
+
 		if diff := cmp.Diff(result, test.expected); diff != "" {
 			t.Errorf("parsePortRange(%q) mismatch (-want +got):\n%s", test.input, diff)
 		}

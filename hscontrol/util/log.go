@@ -87,5 +87,6 @@ func (l *DBLogWrapper) ParamsFilter(ctx context.Context, sql string, params ...a
 	if l.ParameterizedQueries {
 		return sql, nil
 	}
+
 	return sql, params
 }

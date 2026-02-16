@@ -18,6 +18,7 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	for _, rule := range rules {
 		// record if the rule is actually relevant for the given node.
 		var dests []tailcfg.NetPortRange
+
 	DEST_LOOP:
 		for _, dest := range rule.DstPorts {
 			expanded, err := util.ParseIPSet(dest.IP, nil)

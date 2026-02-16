@@ -19,10 +19,12 @@ func init() {
 	rootCmd.AddCommand(debugCmd)
 
 	createNodeCmd.Flags().StringP("name", "", "", "Name")
+
 	err := createNodeCmd.MarkFlagRequired("name")
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	createNodeCmd.Flags().StringP("user", "u", "", "User")
 
 	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
@@ -34,11 +36,14 @@ func init() {
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	createNodeCmd.Flags().StringP("key", "k", "", "Key")
+
 	err = createNodeCmd.MarkFlagRequired("key")
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
+
 	createNodeCmd.Flags().
 		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to advertise")
 

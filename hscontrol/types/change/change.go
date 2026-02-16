@@ -70,6 +70,18 @@ func (r Change) Merge(other Change) Change {
 	merged.PeersRemoved = uniqueNodeIDs(append(r.PeersRemoved, other.PeersRemoved...))
 	merged.PeerPatches = append(r.PeerPatches, other.PeerPatches...)
 
+	// Preserve OriginNode for self-update detection.
+	// If either change has OriginNode set, keep it so the mapper
+	// can detect self-updates and send the node its own changes.
+	if merged.OriginNode == 0 {
+		merged.OriginNode = other.OriginNode
+	}
+
+	// Preserve TargetNode for targeted responses.
+	if merged.TargetNode == 0 {
+		merged.TargetNode = other.TargetNode
+	}
+
 	if r.Reason != "" && other.Reason != "" && r.Reason != other.Reason {
 		merged.Reason = r.Reason + "; " + other.Reason
 	} else if other.Reason != "" {
@@ -321,7 +333,7 @@ func NodeOnline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(true),
+				Online: new(true),
 			},
 		},
 	}
@@ -334,7 +346,7 @@ func NodeOffline(nodeID types.NodeID) Change {
 		PeerPatches: []*tailcfg.PeerChange{
 			{
 				NodeID: nodeID.NodeID(),
-				Online: ptrTo(false),
+				Online: new(false),
 			},
 		},
 	}
@@ -355,7 +367,7 @@ func KeyExpiry(nodeID types.NodeID, expiry *time.Time) Change {
 
 // ptrTo returns a pointer to the given value.
 func ptrTo[T any](v T) *T {
-	return &v
+	return new(v)
 }
 
 // High-level change constructors

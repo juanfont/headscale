@@ -124,6 +124,13 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -566,15 +573,6 @@
             }
           }
         },
-        "parameters": [
-          {
-            "name": "user",
-            "in": "query",
-            "required": false,
-            "type": "string",
-            "format": "uint64"
-          }
-        ],
         "tags": [
           "HeadscaleService"
         ]
@@ -597,17 +595,11 @@
         },
         "parameters": [
           {
-            "name": "user",
+            "name": "id",
             "in": "query",
             "required": false,
             "type": "string",
             "format": "uint64"
-          },
-          {
-            "name": "key",
-            "in": "query",
-            "required": false,
-            "type": "string"
           }
         ],
         "tags": [
@@ -1027,6 +1019,10 @@
       "properties": {
         "prefix": {
           "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
@@ -1044,12 +1040,9 @@
     "v1ExpirePreAuthKeyRequest": {
       "type": "object",
       "properties": {
-        "user": {
+        "id": {
           "type": "string",
           "format": "uint64"
-        },
-        "key": {
-          "type": "string"
         }
       }
     },
@@ -1178,26 +1171,9 @@
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
         },
-        "forcedTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "invalidTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "validTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "givenName": {
-          "type": "string"
+          "type": "string",
+          "title": "Deprecated\nrepeated string forced_tags = 18;\nrepeated string invalid_tags = 19;\nrepeated string valid_tags = 20;"
         },
         "online": {
           "type": "boolean"
@@ -1215,6 +1191,12 @@
           }
         },
         "subnetRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
           "type": "array",
           "items": {
             "type": "string"
