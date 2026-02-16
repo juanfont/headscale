@@ -19,6 +19,10 @@ overall our implementation was very close.
   - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
 - **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
+- **Upgrade path**: Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
+  - Skipping minor versions (e.g. 0.27 → 0.29) is blocked; upgrade one minor version at a time
+  - Downgrading to a previous minor version is blocked
+  - Patch version changes within the same minor are always allowed
 - **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
   - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
