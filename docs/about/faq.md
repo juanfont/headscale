@@ -50,7 +50,7 @@ we have a "docker-issues" channel where you can ask for Docker-specific help to 
 ## What is the recommended update path? Can I skip multiple versions while updating?
 
 Please follow the steps outlined in the [upgrade guide](../setup/upgrade.md) to update your existing Headscale
-installation. Its best to update from one stable version to the next (e.g. 0.24.0 &rarr; 0.25.1 &rarr; 0.26.1) in case
+installation. Its best to update from one stable version to the next (e.g. 0.26.0 &rarr; 0.27.1 &rarr; 0.28.0) in case
 you are multiple releases behind. You should always pick the latest available patch release.
 
 Be sure to check the [changelog](https://github.com/juanfont/headscale/blob/main/CHANGELOG.md) for version specific
