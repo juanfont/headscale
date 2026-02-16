@@ -24,9 +24,12 @@ We are more than happy to exchange emails, or to have dedicated calls before a P
 
 ## When/Why is Feature X going to be implemented?
 
-We don't know. We might be working on it. If you're interested in contributing, please post a feature request about it.
+We use [GitHub Milestones to plan for upcoming Headscale releases](https://github.com/juanfont/headscale/milestones).
+Have a look at [our current plan](https://github.com/juanfont/headscale/milestones) to get an idea when a specific
+feature is about to be implemented. The release plan is subject to change at any time.
 
-Please be aware that there are a number of reasons why we might not accept specific contributions:
+If you're interested in contributing, please post a feature request about it. Please be aware that there are a number of
+reasons why we might not accept specific contributions:
 
 - It is not possible to implement the feature in a way that makes sense in a self-hosted environment.
 - Given that we are reverse-engineering Tailscale to satisfy our own curiosity, we might be interested in implementing the feature ourselves.
