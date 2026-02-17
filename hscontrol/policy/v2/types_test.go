@@ -1848,14 +1848,6 @@ func TestResolvePolicy(t *testing.T) {
 		"testuser2":  {Model: gorm.Model{ID: 6}, Name: "testuser2"},
 	}
 
-	// Extract users to variables so we can take their addresses
-	testuser := users["testuser"]
-	groupuser := users["groupuser"]
-	groupuser1 := users["groupuser1"]
-	groupuser2 := users["groupuser2"]
-	notme := users["notme"]
-	testuser2 := users["testuser2"]
-
 	tests := []struct {
 		name      string
 		nodes     types.Nodes
@@ -1885,27 +1877,27 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: new(notme),
+					User: new(users["notme"]),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Not matching forced tags
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:anything"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"alsotagged"},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.103"),
 				},
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.104"),
 				},
 			},
@@ -1917,27 +1909,27 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: new(notme),
+					User: new(users["notme"]),
 					IPv4: ap("100.100.101.4"),
 				},
 				// Not matching forced tags
 				{
-					User: new(groupuser),
+					User: new(users["groupuser"]),
 					Tags: []string{"tag:anything"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// not matching because it's tagged (tags copied from AuthKey)
 				{
-					User: new(groupuser),
+					User: new(users["groupuser"]),
 					Tags: []string{"tag:alsotagged"},
 					IPv4: ap("100.100.101.6"),
 				},
 				{
-					User: new(groupuser),
+					User: new(users["groupuser"]),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: new(groupuser),
+					User: new(users["groupuser"]),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -1955,7 +1947,7 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Not matching other user
 				{
-					User: new(notme),
+					User: new(users["notme"]),
 					IPv4: ap("100.100.101.9"),
 				},
 				// Not matching forced tags
@@ -2052,11 +2044,11 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: new(Group("group:testgroup")),
 			nodes: types.Nodes{
 				{
-					User: new(groupuser1),
+					User: new(users["groupuser1"]),
 					IPv4: ap("100.100.101.203"),
 				},
 				{
-					User: new(groupuser2),
+					User: new(users["groupuser2"]),
 					IPv4: ap("100.100.101.204"),
 				},
 			},
@@ -2077,7 +2069,7 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: new(Username("invaliduser@")),
 			nodes: types.Nodes{
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.103"),
 				},
 			},
@@ -2109,36 +2101,36 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be included - is a member)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with single tag (should be excluded - tagged nodes are not members)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// Node with multiple tags, all defined in policy (should be excluded)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test", "tag:other"},
 					IPv4: ap("100.100.101.3"),
 				},
 				// Node with tag not defined in policy (should be excluded - still tagged)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:undefined"},
 					IPv4: ap("100.100.101.4"),
 				},
 				// Node with mixed tags - some defined, some not (should be excluded)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test", "tag:undefined"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// Another untagged node from different user (should be included)
 				{
-					User: new(testuser2),
+					User: new(users["testuser2"]),
 					IPv4: ap("100.100.101.6"),
 				},
 			},
@@ -2159,41 +2151,41 @@ func TestResolvePolicy(t *testing.T) {
 			nodes: types.Nodes{
 				// Node with no tags (should be excluded - not tagged)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.1"),
 				},
 				// Node with single tag defined in policy (should be included)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.2"),
 				},
 				// Node with multiple tags, all defined in policy (should be included)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test", "tag:other"},
 					IPv4: ap("100.100.101.3"),
 				},
 				// Node with tag not defined in policy (should be included - still tagged)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:undefined"},
 					IPv4: ap("100.100.101.4"),
 				},
 				// Node with mixed tags - some defined, some not (should be included)
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test", "tag:undefined"},
 					IPv4: ap("100.100.101.5"),
 				},
 				// Another untagged node from different user (should be excluded)
 				{
-					User: new(testuser2),
+					User: new(users["testuser2"]),
 					IPv4: ap("100.100.101.6"),
 				},
 				// Tagged node from different user (should be included)
 				{
-					User: new(testuser2),
+					User: new(users["testuser2"]),
 					Tags: []string{"tag:server"},
 					IPv4: ap("100.100.101.7"),
 				},
@@ -2216,20 +2208,20 @@ func TestResolvePolicy(t *testing.T) {
 			toResolve: new(AutoGroupSelf),
 			nodes: types.Nodes{
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					IPv4: ap("100.100.101.1"),
 				},
 				{
-					User: new(testuser2),
+					User: new(users["testuser2"]),
 					IPv4: ap("100.100.101.2"),
 				},
 				{
-					User: new(testuser),
+					User: new(users["testuser"]),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.3"),
 				},
 				{
-					User: new(testuser2),
+					User: new(users["testuser2"]),
 					Tags: []string{"tag:test"},
 					IPv4: ap("100.100.101.4"),
 				},
