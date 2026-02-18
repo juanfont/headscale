@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -694,6 +695,82 @@ func sshCheckPolicy() *policyv2.Policy {
 	}
 }
 
+// sshCheckPolicyWithPeriod returns a policy with SSH "check" mode and a
+// specified checkPeriod for session duration.
+func sshCheckPolicyWithPeriod(period time.Duration) *policyv2.Policy {
+	return &policyv2.Policy{
+		Groups: policyv2.Groups{
+			policyv2.Group("group:integration-test"): []policyv2.Username{
+				policyv2.Username("user1@"),
+			},
+		},
+		ACLs: []policyv2.ACL{
+			{
+				Action:   "accept",
+				Protocol: "tcp",
+				Sources:  []policyv2.Alias{wildcard()},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+				},
+			},
+		},
+		SSHs: []policyv2.SSH{
+			{
+				Action:  "check",
+				Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
+				Destinations: policyv2.SSHDstAliases{
+					new(policyv2.AutoGroupMember),
+					new(policyv2.AutoGroupTagged),
+				},
+				Users:       []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+				CheckPeriod: model.Duration(period),
+			},
+		},
+	}
+}
+
+// findNewSSHCheckAuthID polls headscale logs for an SSH check auth-id
+// that differs from excludeID. Used to verify re-authentication after
+// session expiry.
+func findNewSSHCheckAuthID(
+	t *testing.T,
+	headscale ControlServer,
+	excludeID string,
+) string {
+	t.Helper()
+
+	var authID string
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, stderr, err := headscale.ReadLog()
+		assert.NoError(c, err)
+
+		for line := range strings.SplitSeq(stderr, "\n") {
+			if !strings.Contains(line, "SSH action follow-up") {
+				continue
+			}
+
+			if idx := strings.Index(line, "auth_id="); idx != -1 {
+				start := idx + len("auth_id=")
+
+				end := strings.IndexByte(line[start:], ' ')
+				if end == -1 {
+					end = len(line[start:])
+				}
+
+				id := line[start : start+end]
+				if id != excludeID {
+					authID = id
+				}
+			}
+		}
+
+		assert.NotEmpty(c, authID, "new auth-id not found in headscale logs")
+	}, 10*time.Second, 500*time.Millisecond, "waiting for new SSH check auth-id")
+
+	return authID
+}
+
 func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	IntegrationSkip(t)
 
@@ -877,6 +954,187 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 			}
 
 			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+}
+
+// TestSSHCheckModeUnapprovedTimeout verifies that SSH in check mode is rejected
+// when nobody approves the auth request and the registration cache entry expires.
+func TestSSHCheckModeUnapprovedTimeout(t *testing.T) {
+	IntegrationSkip(t)
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1", "user2"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoError(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{
+			tsic.WithSSH(),
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("openssh"),
+			tsic.WithExtraCommands("adduser ssh-it-user"),
+			tsic.WithDockerWorkdir("/"),
+		},
+		hsic.WithACLPolicy(sshCheckPolicy()),
+		hsic.WithTestName("sshchecktimeout"),
+		hsic.WithConfigEnv(map[string]string{
+			"HEADSCALE_TUNING_REGISTER_CACHE_EXPIRATION": "15s",
+			"HEADSCALE_TUNING_REGISTER_CACHE_CLEANUP":    "5s",
+		}),
+	)
+	require.NoError(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	requireNoErrListFQDN(t, err)
+
+	// user1 attempts SSH — enters check flow, but nobody approves
+	for _, client := range user1Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			sshResult := doSSHCheck(t, client, peer)
+
+			// Confirm the check flow was entered
+			_ = findSSHCheckAuthID(t, headscale)
+
+			// Do NOT approve — wait for cache expiry and SSH rejection
+			select {
+			case result := <-sshResult:
+				require.Error(t, result.err, "SSH should be rejected when unapproved")
+				assert.Empty(t, result.stdout, "no command output expected on rejection")
+			case <-time.After(60 * time.Second):
+				t.Fatal("SSH did not complete after cache expiry timeout")
+			}
+		}
+	}
+
+	// user2 still gets immediate Permission Denied
+	for _, client := range user2Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+}
+
+// TestSSHCheckModeCheckPeriodCLI verifies that after approval with a short
+// checkPeriod, the session expires and the next SSH connection requires
+// re-authentication via a new check flow.
+func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
+	IntegrationSkip(t)
+
+	// 1 minute is the documented minimum checkPeriod
+	scenario := sshScenario(t, sshCheckPolicyWithPeriod(time.Minute), 1)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	headscale, err := scenario.Headscale()
+	require.NoError(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	requireNoErrListFQDN(t, err)
+
+	// === Phase 1: First SSH check — approve, verify success ===
+	for _, client := range user1Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			sshResult := doSSHCheck(t, client, peer)
+			firstAuthID := findSSHCheckAuthID(t, headscale)
+
+			_, err := headscale.Execute(
+				[]string{
+					"headscale", "auth", "approve",
+					"--auth-id", firstAuthID,
+				},
+			)
+			require.NoError(t, err)
+
+			select {
+			case result := <-sshResult:
+				require.NoError(t, result.err, "first SSH should succeed after approval")
+				require.Contains(
+					t,
+					peer.ContainerID(),
+					strings.ReplaceAll(result.stdout, "\n", ""),
+				)
+			case <-time.After(30 * time.Second):
+				t.Fatal("first SSH did not complete after auth approval")
+			}
+
+			// === Phase 2: Wait for checkPeriod to expire ===
+			//nolint:forbidigo // Intentional sleep: waiting for the check period session
+			// to expire. This is a time-based expiry, not a pollable condition — the
+			// Tailscale client caches the approval for SessionDuration and only
+			// re-triggers the check flow after it elapses.
+			time.Sleep(70 * time.Second)
+
+			// === Phase 3: Second SSH — must re-authenticate ===
+			sshResult2 := doSSHCheck(t, client, peer)
+			secondAuthID := findNewSSHCheckAuthID(t, headscale, firstAuthID)
+
+			require.NotEqual(
+				t,
+				firstAuthID,
+				secondAuthID,
+				"second SSH should trigger a new auth flow after checkPeriod expiry",
+			)
+
+			_, err = headscale.Execute(
+				[]string{
+					"headscale", "auth", "approve",
+					"--auth-id", secondAuthID,
+				},
+			)
+			require.NoError(t, err)
+
+			select {
+			case result := <-sshResult2:
+				require.NoError(t, result.err, "second SSH should succeed after re-approval")
+				require.Contains(
+					t,
+					peer.ContainerID(),
+					strings.ReplaceAll(result.stdout, "\n", ""),
+				)
+			case <-time.After(30 * time.Second):
+				t.Fatal("second SSH did not complete after re-auth approval")
+			}
 		}
 	}
 }
