@@ -16,9 +16,6 @@ func init() {
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Launches the headscale server",
-	Args: func(cmd *cobra.Command, args []string) error {
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
