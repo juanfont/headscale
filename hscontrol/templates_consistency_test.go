@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/hscontrol/templates"
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -16,12 +15,30 @@ func TestTemplateHTMLConsistency(t *testing.T) {
 		html string
 	}{
 		{
-			name: "OIDC Callback",
-			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
+			name: "Auth Success",
+			html: templates.AuthSuccess(templates.AuthSuccessResult{
+				Title:   "Headscale - Node Registered",
+				Heading: "Node registered",
+				Verb:    "Registered",
+				User:    "test@example.com",
+				Message: "You can now close this window.",
+			}).Render(),
 		},
 		{
-			name: "Register Web",
-			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
+			name: "Auth Web Register",
+			html: templates.AuthWeb(
+				"Machine registration",
+				"Run the command below in the headscale server to add this machine to your network:",
+				"headscale auth register --auth-id test-key-123 --user USERNAME",
+			).Render(),
+		},
+		{
+			name: "Auth Web Approve",
+			html: templates.AuthWeb(
+				"Authentication check",
+				"Run the command below in the headscale server to approve this authentication request:",
+				"headscale auth approve --auth-id test-key-123",
+			).Render(),
 		},
 		{
 			name: "Windows Config",
@@ -72,12 +89,30 @@ func TestTemplateModernHTMLFeatures(t *testing.T) {
 		html string
 	}{
 		{
-			name: "OIDC Callback",
-			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
+			name: "Auth Success",
+			html: templates.AuthSuccess(templates.AuthSuccessResult{
+				Title:   "Headscale - Node Registered",
+				Heading: "Node registered",
+				Verb:    "Registered",
+				User:    "test@example.com",
+				Message: "You can now close this window.",
+			}).Render(),
 		},
 		{
-			name: "Register Web",
-			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
+			name: "Auth Web Register",
+			html: templates.AuthWeb(
+				"Machine registration",
+				"Run the command below in the headscale server to add this machine to your network:",
+				"headscale auth register --auth-id test-key-123 --user USERNAME",
+			).Render(),
+		},
+		{
+			name: "Auth Web Approve",
+			html: templates.AuthWeb(
+				"Authentication check",
+				"Run the command below in the headscale server to approve this authentication request:",
+				"headscale auth approve --auth-id test-key-123",
+			).Render(),
 		},
 		{
 			name: "Windows Config",
@@ -116,16 +151,35 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 		externalURLs []string // URLs that should have security attributes
 	}{
 		{
-			name: "OIDC Callback",
-			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
+			name: "Auth Success",
+			html: templates.AuthSuccess(templates.AuthSuccessResult{
+				Title:   "Headscale - Node Registered",
+				Heading: "Node registered",
+				Verb:    "Registered",
+				User:    "test@example.com",
+				Message: "You can now close this window.",
+			}).Render(),
 			externalURLs: []string{
 				"https://headscale.net/stable/",
 				"https://tailscale.com/kb/",
 			},
 		},
 		{
-			name:         "Register Web",
-			html:         templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
+			name: "Auth Web Register",
+			html: templates.AuthWeb(
+				"Machine registration",
+				"Run the command below in the headscale server to add this machine to your network:",
+				"headscale auth register --auth-id test-key-123 --user USERNAME",
+			).Render(),
+			externalURLs: []string{}, // No external links
+		},
+		{
+			name: "Auth Web Approve",
+			html: templates.AuthWeb(
+				"Authentication check",
+				"Run the command below in the headscale server to approve this authentication request:",
+				"headscale auth approve --auth-id test-key-123",
+			).Render(),
 			externalURLs: []string{}, // No external links
 		},
 		{
@@ -185,12 +239,30 @@ func TestTemplateAccessibilityAttributes(t *testing.T) {
 		html string
 	}{
 		{
-			name: "OIDC Callback",
-			html: templates.OIDCCallback("test@example.com", "Logged in").Render(),
+			name: "Auth Success",
+			html: templates.AuthSuccess(templates.AuthSuccessResult{
+				Title:   "Headscale - Node Registered",
+				Heading: "Node registered",
+				Verb:    "Registered",
+				User:    "test@example.com",
+				Message: "You can now close this window.",
+			}).Render(),
 		},
 		{
-			name: "Register Web",
-			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
+			name: "Auth Web Register",
+			html: templates.AuthWeb(
+				"Machine registration",
+				"Run the command below in the headscale server to add this machine to your network:",
+				"headscale auth register --auth-id test-key-123 --user USERNAME",
+			).Render(),
+		},
+		{
+			name: "Auth Web Approve",
+			html: templates.AuthWeb(
+				"Authentication check",
+				"Run the command below in the headscale server to approve this authentication request:",
+				"headscale auth approve --auth-id test-key-123",
+			).Render(),
 		},
 		{
 			name: "Windows Config",
