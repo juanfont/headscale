@@ -61,8 +61,6 @@ func init() {
 	mustMarkRequired(renameUserCmd, "new-name")
 }
 
-var errMissingParameter = errors.New("missing parameters")
-
 var userCmd = &cobra.Command{
 	Use:     "users",
 	Short:   "Manage the users of Headscale",
