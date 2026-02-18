@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
@@ -140,28 +139,21 @@ var destroyUserCmd = &cobra.Command{
 
 		user := users.GetUsers()[0]
 
-		confirm := false
-
-		force, _ := cmd.Flags().GetBool("force")
-		if !force {
-			confirm = util.YesNo(fmt.Sprintf(
-				"Do you want to remove the user %q (%d) and any associated preauthkeys?",
-				user.GetName(), user.GetId(),
-			))
+		if !confirmAction(cmd, fmt.Sprintf(
+			"Do you want to remove the user %q (%d) and any associated preauthkeys?",
+			user.GetName(), user.GetId(),
+		)) {
+			return printOutput(cmd, map[string]string{"Result": "User not destroyed"}, "User not destroyed")
 		}
 
-		if confirm || force {
-			request := &v1.DeleteUserRequest{Id: user.GetId()}
+		deleteRequest := &v1.DeleteUserRequest{Id: user.GetId()}
 
-			response, err := client.DeleteUser(ctx, request)
-			if err != nil {
-				return fmt.Errorf("destroying user: %w", err)
-			}
-
-			return printOutput(cmd, response, "User destroyed")
+		response, err := client.DeleteUser(ctx, deleteRequest)
+		if err != nil {
+			return fmt.Errorf("destroying user: %w", err)
 		}
 
-		return printOutput(cmd, map[string]string{"Result": "User not destroyed"}, "User not destroyed")
+		return printOutput(cmd, response, "User destroyed")
 	}),
 }
 

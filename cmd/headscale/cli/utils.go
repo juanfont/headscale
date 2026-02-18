@@ -221,6 +221,17 @@ func printOutput(cmd *cobra.Command, result any, override string) error {
 	return nil
 }
 
+// confirmAction returns true when the user confirms a prompt, or when
+// --force is set.  Callers decide what to do when it returns false.
+func confirmAction(cmd *cobra.Command, prompt string) bool {
+	force, _ := cmd.Flags().GetBool("force")
+	if force {
+		return true
+	}
+
+	return util.YesNo(prompt)
+}
+
 // printListOutput checks the --output flag: when a machine-readable format is
 // requested it serialises data as JSON/YAML; otherwise it calls renderTable
 // to produce the human-readable pterm table.

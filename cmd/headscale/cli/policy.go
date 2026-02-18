@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/views"
 )
@@ -49,87 +48,7 @@ var getPolicy = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var policyData string
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			confirm := false
-
-			force, _ := cmd.Flags().GetBool("force")
-			if !force {
-				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
-			}
-
-			if !confirm && !force {
-				return errAborted
-			}
-
-			cfg, err := types.LoadServerConfig()
-			if err != nil {
-				return fmt.Errorf("loading config: %w", err)
-			}
-
-			d, err := db.NewHeadscaleDatabase(cfg, nil)
-			if err != nil {
-				return fmt.Errorf("opening database: %w", err)
-			}
-
-			pol, err := d.GetPolicy()
-			if err != nil {
-				return fmt.Errorf("loading policy from database: %w", err)
-			}
-
-			policyData = pol.Data
-		} else {
-			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
-			if err != nil {
-				return fmt.Errorf("connecting to headscale: %w", err)
-			}
-			defer cancel()
-			defer conn.Close()
-
-			response, err := client.GetPolicy(ctx, &v1.GetPolicyRequest{})
-			if err != nil {
-				return fmt.Errorf("loading ACL policy: %w", err)
-			}
-
-			policyData = response.GetPolicy()
-		}
-
-		// This does not pass output format as we don't support yaml, json or
-		// json-line output for this command. It is HuJSON already.
-		fmt.Println(policyData)
-
-		return nil
-	},
-}
-
-var setPolicy = &cobra.Command{
-	Use:   "set",
-	Short: "Updates the ACL Policy",
-	Long: `
-	Updates the existing ACL Policy with the provided policy. The policy must be a valid HuJSON object.
-	This command only works when the acl.policy_mode is set to "db", and the policy will be stored in the database.`,
-	Aliases: []string{"put", "update"},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		policyPath, _ := cmd.Flags().GetString("file")
-
-		f, err := os.Open(policyPath)
-		if err != nil {
-			return fmt.Errorf("opening policy file: %w", err)
-		}
-		defer f.Close()
-
-		policyBytes, err := io.ReadAll(f)
-		if err != nil {
-			return fmt.Errorf("reading policy file: %w", err)
-		}
-
-		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			confirm := false
-
-			force, _ := cmd.Flags().GetBool("force")
-			if !force {
-				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
-			}
-
-			if !confirm && !force {
+			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
 				return errAborted
 			}
 
