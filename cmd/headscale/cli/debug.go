@@ -37,7 +37,7 @@ var createNodeCmd = &cobra.Command{
 		name, _ := cmd.Flags().GetString("name")
 		registrationID, _ := cmd.Flags().GetString("key")
 
-		_, err := types.RegistrationIDFromString(registrationID)
+		_, err := types.AuthIDFromString(registrationID)
 		if err != nil {
 			return fmt.Errorf("parsing machine key: %w", err)
 		}

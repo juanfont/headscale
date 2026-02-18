@@ -63,8 +63,9 @@ var nodeCmd = &cobra.Command{
 }
 
 var registerNodeCmd = &cobra.Command{
-	Use:   "register",
-	Short: "Registers a node to your network",
+	Use:        "register",
+	Short:      "Registers a node to your network",
+	Deprecated: "use 'headscale auth register --auth-id <id> --user <user>' instead",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 		registrationID, _ := cmd.Flags().GetString("key")
