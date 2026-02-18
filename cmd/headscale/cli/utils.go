@@ -209,67 +209,6 @@ func printOutput(cmd *cobra.Command, result any, override string) error {
 	return nil
 }
 
-// output formats result into the requested format. It calls log.Fatal on
-// marshal failure.
-//
-// Deprecated: use formatOutput instead.
-func output(result any, override string, outputFormat string) string {
-	var (
-		jsonBytes []byte
-		err       error
-	)
-
-	switch outputFormat {
-	case outputFormatJSON:
-		jsonBytes, err = json.MarshalIndent(result, "", "\t")
-		if err != nil {
-			log.Fatal().Err(err).Msg("unmarshalling output")
-		}
-	case outputFormatJSONLine:
-		jsonBytes, err = json.Marshal(result)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unmarshalling output")
-		}
-	case outputFormatYAML:
-		jsonBytes, err = yaml.Marshal(result)
-		if err != nil {
-			log.Fatal().Err(err).Msg("unmarshalling output")
-		}
-	default:
-		// nolint
-		return override
-	}
-
-	return string(jsonBytes)
-}
-
-// SuccessOutput prints the result to stdout and exits with status code 0.
-//
-// Deprecated: use printOutput instead.
-func SuccessOutput(result any, override string, outputFormat string) {
-	fmt.Println(output(result, override, outputFormat))
-	os.Exit(0)
-}
-
-// ErrorOutput prints an error message to stderr and exits with status code 1.
-//
-// Deprecated: use fmt.Errorf and return the error instead.
-func ErrorOutput(errResult error, override string, outputFormat string) {
-	type errOutput struct {
-		Error string `json:"error"`
-	}
-
-	var errorMessage string
-	if errResult != nil {
-		errorMessage = errResult.Error()
-	} else {
-		errorMessage = override
-	}
-
-	fmt.Fprintf(os.Stderr, "%s\n", output(errOutput{errorMessage}, override, outputFormat))
-	os.Exit(1)
-}
-
 // printError writes err to stderr, formatting it as JSON/YAML when the
 // --output flag requests machine-readable output.  Used exclusively by
 // Execute() so that every error surfaces in the format the caller asked for.
