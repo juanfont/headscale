@@ -368,27 +368,26 @@ func nodesToPtables(
 			tagsBuilder.WriteString("\n" + tag)
 		}
 
-		tags := tagsBuilder.String()
+		tags := strings.TrimLeft(tagsBuilder.String(), "\n")
 
 		var user string
 		if node.GetUser() != nil {
 			user = node.GetUser().GetName()
 		}
 
-		var (
-			ipAddresses      string
-			ipAddressesSb485 strings.Builder
-		)
+		var ipBuilder strings.Builder
 		for _, addr := range node.GetIpAddresses() {
 			ip, err := netip.ParseAddr(addr)
 			if err == nil {
-				ipAddressesSb485.WriteString(ip.String() + "\n")
+				if ipBuilder.Len() > 0 {
+					ipBuilder.WriteString("\n")
+				}
+
+				ipBuilder.WriteString(ip.String())
 			}
 		}
 
-		ipAddresses += ipAddressesSb485.String()
-
-		ipAddresses = strings.TrimRight(ipAddresses, "\n")
+		ipAddresses := ipBuilder.String()
 
 		nodeData := []string{
 			strconv.FormatUint(node.GetId(), util.Base10),
@@ -462,11 +461,7 @@ var tagCmd = &cobra.Command{
 			return fmt.Errorf("setting tags: %w", err)
 		}
 
-		if resp != nil {
-			return printOutput(cmd, resp.GetNode(), "Node updated")
-		}
-
-		return nil
+		return printOutput(cmd, resp.GetNode(), "Node updated")
 	}),
 }
 
@@ -488,10 +483,6 @@ var approveRoutesCmd = &cobra.Command{
 			return fmt.Errorf("setting approved routes: %w", err)
 		}
 
-		if resp != nil {
-			return printOutput(cmd, resp.GetNode(), "Node updated")
-		}
-
-		return nil
+		return printOutput(cmd, resp.GetNode(), "Node updated")
 	}),
 }
