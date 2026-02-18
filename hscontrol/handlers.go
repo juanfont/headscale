@@ -282,7 +282,7 @@ func (a *AuthProviderWeb) AuthHandler(
 }
 
 func authIDFromRequest(req *http.Request) (types.AuthID, error) {
-	registrationId, err := urlParam[types.AuthID](req, "auth_id")
+	raw, err := urlParam[string](req, "auth_id")
 	if err != nil {
 		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}
@@ -290,7 +290,7 @@ func authIDFromRequest(req *http.Request) (types.AuthID, error) {
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	err = registrationId.Validate()
+	registrationId, err := types.AuthIDFromString(raw)
 	if err != nil {
 		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}
