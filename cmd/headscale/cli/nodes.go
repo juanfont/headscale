@@ -20,24 +20,12 @@ import (
 func init() {
 	rootCmd.AddCommand(nodeCmd)
 	listNodesCmd.Flags().StringP("user", "u", "", "Filter by user")
-
-	listNodesCmd.Flags().StringP("namespace", "n", "", "User")
-	listNodesNamespaceFlag := listNodesCmd.Flags().Lookup("namespace")
-	listNodesNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	listNodesNamespaceFlag.Hidden = true
-
 	nodeCmd.AddCommand(listNodesCmd)
 
 	listNodeRoutesCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	nodeCmd.AddCommand(listNodeRoutesCmd)
 
 	registerNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	registerNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	registerNodeNamespaceFlag := registerNodeCmd.Flags().Lookup("namespace")
-	registerNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	registerNodeNamespaceFlag.Hidden = true
-
 	registerNodeCmd.Flags().StringP("key", "k", "", "Key")
 	mustMarkRequired(registerNodeCmd, "user", "key")
 	nodeCmd.AddCommand(registerNodeCmd)
@@ -71,7 +59,7 @@ func init() {
 var nodeCmd = &cobra.Command{
 	Use:     "nodes",
 	Short:   "Manage the nodes of Headscale",
-	Aliases: []string{"node", "machine", "machines"},
+	Aliases: []string{"node"},
 }
 
 var registerNodeCmd = &cobra.Command{
