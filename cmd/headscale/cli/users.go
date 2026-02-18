@@ -65,7 +65,7 @@ var errMissingParameter = errors.New("missing parameters")
 var userCmd = &cobra.Command{
 	Use:     "users",
 	Short:   "Manage the users of Headscale",
-	Aliases: []string{"user", "namespace", "namespaces", "ns"},
+	Aliases: []string{"user"},
 }
 
 var createUserCmd = &cobra.Command{

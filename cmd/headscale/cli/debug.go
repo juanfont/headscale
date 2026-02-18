@@ -19,12 +19,6 @@ func init() {
 
 	createNodeCmd.Flags().StringP("name", "", "", "Name")
 	createNodeCmd.Flags().StringP("user", "u", "", "User")
-
-	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
-	createNodeNamespaceFlag := createNodeCmd.Flags().Lookup("namespace")
-	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
-	createNodeNamespaceFlag.Hidden = true
-
 	createNodeCmd.Flags().StringP("key", "k", "", "Key")
 	mustMarkRequired(createNodeCmd, "name", "user", "key")
 
