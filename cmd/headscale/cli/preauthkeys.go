@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -46,12 +47,8 @@ var listPreAuthKeys = &cobra.Command{
 	Use:     "list",
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", "show"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
@@ -116,14 +113,14 @@ var listPreAuthKeys = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", "new"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		user, _ := cmd.Flags().GetUint64("user")
@@ -153,10 +150,6 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
 			ErrorOutput(
@@ -167,14 +160,14 @@ var createPreAuthKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetPreAuthKey(), response.GetPreAuthKey().GetKey(), output)
-	},
+	}),
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		id, _ := cmd.Flags().GetUint64("id")
 
@@ -187,10 +180,6 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 			return
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
 			Id: id,
@@ -206,14 +195,14 @@ var expirePreAuthKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response, "Key expired", output)
-	},
+	}),
 }
 
 var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a preauthkey",
 	Aliases: []string{"del", "rm", "d"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 		id, _ := cmd.Flags().GetUint64("id")
 
@@ -226,10 +215,6 @@ var deletePreAuthKeyCmd = &cobra.Command{
 
 			return
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.DeletePreAuthKeyRequest{
 			Id: id,
@@ -245,5 +230,5 @@ var deletePreAuthKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response, "Key deleted", output)
-	},
+	}),
 }

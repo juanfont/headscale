@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
@@ -46,12 +47,8 @@ var listAPIKeys = &cobra.Command{
 	Use:     "list",
 	Short:   "List the Api keys for headscale",
 	Aliases: []string{"ls", "show"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ListApiKeysRequest{}
 
@@ -95,7 +92,7 @@ var listAPIKeys = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var createAPIKeyCmd = &cobra.Command{
@@ -106,7 +103,7 @@ Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", "new"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		request := &v1.CreateApiKeyRequest{}
@@ -126,10 +123,6 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 
 		request.Expiration = timestamppb.New(expiration)
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		response, err := client.CreateApiKey(ctx, request)
 		if err != nil {
 			ErrorOutput(
@@ -140,14 +133,14 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 		}
 
 		SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
-	},
+	}),
 }
 
 var expireAPIKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire an ApiKey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		id, _ := cmd.Flags().GetUint64("id")
@@ -167,10 +160,6 @@ var expireAPIKeyCmd = &cobra.Command{
 				output,
 			)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ExpireApiKeyRequest{}
 		if id != 0 {
@@ -189,14 +178,14 @@ var expireAPIKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response, "Key expired", output)
-	},
+	}),
 }
 
 var deleteAPIKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete an ApiKey",
 	Aliases: []string{"remove", "del"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		id, _ := cmd.Flags().GetUint64("id")
@@ -217,10 +206,6 @@ var deleteAPIKeyCmd = &cobra.Command{
 			)
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		request := &v1.DeleteApiKeyRequest{}
 		if id != 0 {
 			request.Id = id
@@ -238,5 +223,5 @@ var deleteAPIKeyCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response, "Key deleted", output)
-	},
+	}),
 }
