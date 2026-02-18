@@ -7,17 +7,20 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
+	"github.com/prometheus/common/model"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"gopkg.in/yaml.v3"
 )
 
@@ -219,6 +222,19 @@ func printOutput(cmd *cobra.Command, result any, override string) error {
 	fmt.Println(out)
 
 	return nil
+}
+
+// expirationFromFlag parses the --expiration flag as a Prometheus-style
+// duration (e.g. "90d", "1h") and returns an absolute timestamp.
+func expirationFromFlag(cmd *cobra.Command) (*timestamppb.Timestamp, error) {
+	durationStr, _ := cmd.Flags().GetString("expiration")
+
+	duration, err := model.ParseDuration(durationStr)
+	if err != nil {
+		return nil, fmt.Errorf("parsing duration: %w", err)
+	}
+
+	return timestamppb.New(time.Now().UTC().Add(time.Duration(duration))), nil
 }
 
 // confirmAction returns true when the user confirms a prompt, or when
