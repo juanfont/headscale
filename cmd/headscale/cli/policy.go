@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/views"
 )
@@ -29,22 +28,12 @@ func init() {
 	policyCmd.AddCommand(getPolicy)
 
 	setPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-
-	err := setPolicy.MarkFlagRequired("file")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
+	mustMarkRequired(setPolicy, "file")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-
-	err = checkPolicy.MarkFlagRequired("file")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
+	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
 

@@ -6,7 +6,6 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -19,12 +18,6 @@ func init() {
 	rootCmd.AddCommand(debugCmd)
 
 	createNodeCmd.Flags().StringP("name", "", "", "Name")
-
-	err := createNodeCmd.MarkFlagRequired("name")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
 	createNodeCmd.Flags().StringP("user", "u", "", "User")
 
 	createNodeCmd.Flags().StringP("namespace", "n", "", "User")
@@ -32,17 +25,8 @@ func init() {
 	createNodeNamespaceFlag.Deprecated = deprecateNamespaceMessage
 	createNodeNamespaceFlag.Hidden = true
 
-	err = createNodeCmd.MarkFlagRequired("user")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
 	createNodeCmd.Flags().StringP("key", "k", "", "Key")
-
-	err = createNodeCmd.MarkFlagRequired("key")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
+	mustMarkRequired(createNodeCmd, "name", "user", "key")
 
 	createNodeCmd.Flags().
 		StringSliceP("route", "r", []string{}, "List (or repeated flags) of routes to advertise")
