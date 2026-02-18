@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -59,17 +60,13 @@ var debugCmd = &cobra.Command{
 var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `nodes register <>` command",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
@@ -124,5 +121,5 @@ var createNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetNode(), "Node created", output)
-	},
+	}),
 }

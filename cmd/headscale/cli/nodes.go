@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/netip"
@@ -103,17 +104,13 @@ var nodeCmd = &cobra.Command{
 var registerNodeCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Registers a node to your network",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
@@ -144,24 +141,20 @@ var registerNodeCmd = &cobra.Command{
 		SuccessOutput(
 			response.GetNode(),
 			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()), output)
-	},
+	}),
 }
 
 var listNodesCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List nodes",
 	Aliases: []string{"ls", "show"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ListNodesRequest{
 			User: user,
@@ -193,14 +186,14 @@ var listNodesCmd = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var listNodeRoutesCmd = &cobra.Command{
 	Use:     "list-routes",
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -211,10 +204,6 @@ var listNodeRoutesCmd = &cobra.Command{
 				output,
 			)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ListNodesRequest{}
 
@@ -256,7 +245,7 @@ var listNodeRoutesCmd = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var expireNodeCmd = &cobra.Command{
@@ -264,7 +253,7 @@ var expireNodeCmd = &cobra.Command{
 	Short:   "Expire (log out) a node in your network",
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout", "exp", "e"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -303,10 +292,6 @@ var expireNodeCmd = &cobra.Command{
 			}
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		request := &v1.ExpireNodeRequest{
 			NodeId: identifier,
 			Expiry: timestamppb.New(expiryTime),
@@ -329,13 +314,13 @@ var expireNodeCmd = &cobra.Command{
 		} else {
 			SuccessOutput(response.GetNode(), "Node expiration updated", output)
 		}
-	},
+	}),
 }
 
 var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
 	Short: "Renames a node in your network",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -346,10 +331,6 @@ var renameNodeCmd = &cobra.Command{
 				output,
 			)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		newName := ""
 		if len(args) > 0 {
@@ -374,14 +355,14 @@ var renameNodeCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetNode(), "Node renamed", output)
-	},
+	}),
 }
 
 var deleteNodeCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a node",
 	Aliases: []string{"del"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -392,10 +373,6 @@ var deleteNodeCmd = &cobra.Command{
 				output,
 			)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		getRequest := &v1.GetNodeRequest{
 			NodeId: identifier,
@@ -448,7 +425,7 @@ var deleteNodeCmd = &cobra.Command{
 		} else {
 			SuccessOutput(map[string]string{"Result": "Node not deleted"}, "Node not deleted", output)
 		}
-	},
+	}),
 }
 
 var backfillNodeIPsCmd = &cobra.Command{
@@ -666,12 +643,8 @@ var tagCmd = &cobra.Command{
 	Use:     "tag",
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		// retrieve flags from CLI
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -714,18 +687,14 @@ var tagCmd = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		// retrieve flags from CLI
 		identifier, err := cmd.Flags().GetUint64("identifier")
@@ -768,5 +737,5 @@ var approveRoutesCmd = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -80,14 +81,10 @@ var createUserCmd = &cobra.Command{
 
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		userName := args[0]
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		log.Trace().Interface(zf.Client, client).Msg("obtained gRPC client")
 
@@ -128,14 +125,14 @@ var createUserCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetUser(), "User created", output)
-	},
+	}),
 }
 
 var destroyUserCmd = &cobra.Command{
 	Use:     "destroy --identifier ID or --name NAME",
 	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
 
 		id, username := usernameAndIDFromFlag(cmd)
@@ -143,10 +140,6 @@ var destroyUserCmd = &cobra.Command{
 			Name: username,
 			Id:   id,
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		users, err := client.ListUsers(ctx, request)
 		if err != nil {
@@ -194,19 +187,15 @@ var destroyUserCmd = &cobra.Command{
 		} else {
 			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
 		}
-	},
+	}),
 }
 
 var listUsersCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ListUsersRequest{}
 
@@ -259,19 +248,15 @@ var listUsersCmd = &cobra.Command{
 				output,
 			)
 		}
-	},
+	}),
 }
 
 var renameUserCmd = &cobra.Command{
 	Use:     "rename",
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
-	Run: func(cmd *cobra.Command, args []string) {
+	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		id, username := usernameAndIDFromFlag(cmd)
 		listReq := &v1.ListUsersRequest{
@@ -314,5 +299,5 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		SuccessOutput(response.GetUser(), "User renamed", output)
-	},
+	}),
 }

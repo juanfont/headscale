@@ -13,6 +13,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
@@ -39,6 +40,21 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	}
 
 	return app, nil
+}
+
+// grpcRun wraps a cobra RunFunc, injecting a ready gRPC client and context.
+// Connection lifecycle is managed by the wrapper — callers never see
+// the underlying conn or cancel func.
+func grpcRun(
+	fn func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string),
+) func(*cobra.Command, []string) {
+	return func(cmd *cobra.Command, args []string) {
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		fn(ctx, client, cmd, args)
+	}
 }
 
 func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
