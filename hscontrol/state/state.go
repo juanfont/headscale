@@ -64,6 +64,9 @@ var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 // ErrNodeNameNotUnique is returned when a node name is not unique.
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
 
+// ErrRegistrationExpired is returned when a registration has expired.
+var ErrRegistrationExpired = errors.New("registration expired")
+
 // State manages Headscale's core state, coordinating between database, policy management,
 // IP allocation, and DERP routing. All methods are thread-safe.
 type State struct {
@@ -110,7 +113,7 @@ func NewState(cfg *types.Config) (*State, error) {
 
 	authCache.OnEvicted(
 		func(id types.AuthID, rn types.AuthRequest) {
-			rn.FinishRegistration(types.NodeView{})
+			rn.FinishAuth(types.AuthVerdict{Err: ErrRegistrationExpired})
 		},
 	)
 
@@ -1625,7 +1628,7 @@ func (s *State) HandleNodeFromAuthPath(
 	}
 
 	// Signal to waiting clients
-	regEntry.FinishRegistration(finalNode)
+	regEntry.FinishAuth(types.AuthVerdict{Node: finalNode})
 
 	// Delete from registration cache
 	s.authCache.Delete(authID)

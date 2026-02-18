@@ -692,7 +692,7 @@ func TestAuthenticationFlows(t *testing.T) {
 					user := app.state.CreateUserForTest("followup-user")
 
 					node := app.state.CreateNodeForTest(user, "followup-success-node")
-					nodeToRegister.FinishRegistration(node.View())
+					nodeToRegister.FinishAuth(types.AuthVerdict{Node: node.View()})
 				}()
 
 				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil
@@ -1348,7 +1348,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Simulate registration that returns empty NodeView (cache expired during auth)
 				go func() {
-					nodeToRegister.FinishRegistration(types.NodeView{}) // Empty view indicates cache expiry
+					nodeToRegister.FinishAuth(types.AuthVerdict{Node: types.NodeView{}}) // Empty view indicates cache expiry
 				}()
 
 				return fmt.Sprintf("http://localhost:8080/register/%s", regID), nil

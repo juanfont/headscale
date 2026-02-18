@@ -272,13 +272,15 @@ func (h *Headscale) waitForFollowup(
 		select {
 		case <-ctx.Done():
 			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
-		case node := <-reg.WaitForRegistration():
-			if !node.Valid() {
-				// registration is expired in the cache, instruct the client to try a new registration
-				return h.reqToNewRegisterResponse(req, machineKey)
-			}
+		case verdict := <-reg.WaitForAuth():
+			if verdict.Accept() {
+				if !verdict.Node.Valid() {
+					// registration is expired in the cache, instruct the client to try a new registration
+					return h.reqToNewRegisterResponse(req, machineKey)
+				}
 
-			return nodeToRegisterResponse(node), nil
+				return nodeToRegisterResponse(verdict.Node), nil
+			}
 		}
 	}
 

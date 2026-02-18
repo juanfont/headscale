@@ -210,14 +210,14 @@ func (r AuthID) Validate() error {
 // The closed field is used to ensure that the Finished channel is only closed once, and that no more nodes are sent through it after it has been closed.
 type AuthRequest struct {
 	node     *Node
-	finished chan NodeView
+	finished chan AuthVerdict
 	closed   *atomic.Bool
 }
 
 func NewRegisterAuthRequest(node Node) AuthRequest {
 	return AuthRequest{
 		node:     &node,
-		finished: make(chan NodeView),
+		finished: make(chan AuthVerdict),
 		closed:   &atomic.Bool{},
 	}
 }
@@ -233,35 +233,37 @@ func (rn *AuthRequest) Node() NodeView {
 	return rn.node.View()
 }
 
-func (rn *AuthRequest) FinishAuth() {
-	rn.FinishRegistration(NodeView{})
-}
-
-func (rn *AuthRequest) FinishRegistration(node NodeView) {
+func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
 	if rn.closed.Swap(true) {
 		return
 	}
 
-	if node.Valid() {
-		select {
-		case rn.finished <- node:
-		default:
-		}
+	select {
+	case rn.finished <- verdict:
+	default:
 	}
 
 	close(rn.finished)
 }
 
-// WaitForRegistration waits for the authentication process to finish
-// and returns the authenticated node.
-// Can _only_ be used in the registration path.
-func (rn *AuthRequest) WaitForRegistration() <-chan NodeView {
+func (rn *AuthRequest) WaitForAuth() <-chan AuthVerdict {
 	return rn.finished
 }
 
-// WaitForAuth waits until a authentication request has been finished.
-func (rn *AuthRequest) WaitForAuth() {
-	<-rn.WaitForRegistration()
+type AuthVerdict struct {
+	// Err is the error that occurred during the authentication process, if any.
+	// If Err is nil, the authentication process has succeeded.
+	// If Err is not nil, the authentication process has failed and the node should not be authenticated.
+	Err error
+
+	// Node is the node that has been authenticated.
+	// Node is only valid if the auth request was a registration request
+	// and the authentication process has succeeded.
+	Node NodeView
+}
+
+func (v AuthVerdict) Accept() bool {
+	return v.Err == nil
 }
 
 // DefaultBatcherWorkers returns the default number of batcher workers.
