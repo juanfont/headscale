@@ -32,6 +32,18 @@ const (
 
 var errAPIKeyNotSet = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
 
+// mustMarkRequired marks the named flags as required on cmd, panicking
+// if any name does not match a registered flag.  This is only called
+// from init() where a failure indicates a programming error.
+func mustMarkRequired(cmd *cobra.Command, names ...string) {
+	for _, n := range names {
+		err := cmd.MarkFlagRequired(n)
+		if err != nil {
+			panic(fmt.Sprintf("marking flag %q required on %q: %v", n, cmd.Name(), err))
+		}
+	}
+}
+
 func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	cfg, err := types.LoadServerConfig()
 	if err != nil {
