@@ -47,22 +47,18 @@ var listAPIKeys = &cobra.Command{
 	Use:     "list",
 	Short:   "List the Api keys for headscale",
 	Aliases: []string{"ls", "show"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		format, _ := cmd.Flags().GetString("output")
 
 		request := &v1.ListApiKeysRequest{}
 
 		response, err := client.ListApiKeys(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting the list of keys: %s", err),
-				output,
-			)
+			return fmt.Errorf("listing api keys: %w", err)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetApiKeys(), "", output)
+		if format != "" {
+			return printOutput(cmd, response.GetApiKeys(), "")
 		}
 
 		tableData := pterm.TableData{
@@ -86,12 +82,10 @@ var listAPIKeys = &cobra.Command{
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return fmt.Errorf("rendering table: %w", err)
 		}
+
+		return nil
 	}),
 }
 
@@ -103,20 +97,14 @@ Creates a new Api key, the Api key is only visible on creation
 and cannot be retrieved again.
 If you loose a key, create a new one and revoke (expire) the old one.`,
 	Aliases: []string{"c", "new"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		request := &v1.CreateApiKeyRequest{}
 
 		durationStr, _ := cmd.Flags().GetString("expiration")
 
 		duration, err := model.ParseDuration(durationStr)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Could not parse duration: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("parsing duration: %w", err)
 		}
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
@@ -125,14 +113,10 @@ If you loose a key, create a new one and revoke (expire) the old one.`,
 
 		response, err := client.CreateApiKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot create Api Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("creating api key: %w", err)
 		}
 
-		SuccessOutput(response.GetApiKey(), response.GetApiKey(), output)
+		return printOutput(cmd, response.GetApiKey(), response.GetApiKey())
 	}),
 }
 
@@ -140,25 +124,15 @@ var expireAPIKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire an ApiKey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 		prefix, _ := cmd.Flags().GetString("prefix")
 
 		switch {
 		case id == 0 && prefix == "":
-			ErrorOutput(
-				errMissingParameter,
-				"Either --id or --prefix must be provided",
-				output,
-			)
+			return fmt.Errorf("either --id or --prefix must be provided: %w", errMissingParameter)
 		case id != 0 && prefix != "":
-			ErrorOutput(
-				errMissingParameter,
-				"Only one of --id or --prefix can be provided",
-				output,
-			)
+			return fmt.Errorf("only one of --id or --prefix can be provided: %w", errMissingParameter)
 		}
 
 		request := &v1.ExpireApiKeyRequest{}
@@ -170,14 +144,10 @@ var expireAPIKeyCmd = &cobra.Command{
 
 		response, err := client.ExpireApiKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot expire Api Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("expiring api key: %w", err)
 		}
 
-		SuccessOutput(response, "Key expired", output)
+		return printOutput(cmd, response, "Key expired")
 	}),
 }
 
@@ -185,25 +155,15 @@ var deleteAPIKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete an ApiKey",
 	Aliases: []string{"remove", "del"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 		prefix, _ := cmd.Flags().GetString("prefix")
 
 		switch {
 		case id == 0 && prefix == "":
-			ErrorOutput(
-				errMissingParameter,
-				"Either --id or --prefix must be provided",
-				output,
-			)
+			return fmt.Errorf("either --id or --prefix must be provided: %w", errMissingParameter)
 		case id != 0 && prefix != "":
-			ErrorOutput(
-				errMissingParameter,
-				"Only one of --id or --prefix can be provided",
-				output,
-			)
+			return fmt.Errorf("only one of --id or --prefix can be provided: %w", errMissingParameter)
 		}
 
 		request := &v1.DeleteApiKeyRequest{}
@@ -215,13 +175,9 @@ var deleteAPIKeyCmd = &cobra.Command{
 
 		response, err := client.DeleteApiKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot delete Api Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("deleting api key: %w", err)
 		}
 
-		SuccessOutput(response, "Key deleted", output)
+		return printOutput(cmd, response, "Key deleted")
 	}),
 }

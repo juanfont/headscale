@@ -104,21 +104,15 @@ var nodeCmd = &cobra.Command{
 var registerNodeCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Registers a node to your network",
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+			return fmt.Errorf("getting user flag: %w", err)
 		}
 
 		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting node key from flag: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting key flag: %w", err)
 		}
 
 		request := &v1.RegisterNodeRequest{
@@ -128,19 +122,13 @@ var registerNodeCmd = &cobra.Command{
 
 		response, err := client.RegisterNode(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf(
-					"Cannot register node: %s\n",
-					status.Convert(err).Message(),
-				),
-				output,
-			)
+			return fmt.Errorf("registering node: %w", err)
 		}
 
-		SuccessOutput(
+		return printOutput(
+			cmd,
 			response.GetNode(),
-			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()), output)
+			fmt.Sprintf("Node %s registered", response.GetNode().GetGivenName()))
 	}),
 }
 
@@ -148,12 +136,11 @@ var listNodesCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List nodes",
 	Aliases: []string{"ls", "show"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		format, _ := cmd.Flags().GetString("output")
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+			return fmt.Errorf("getting user flag: %w", err)
 		}
 
 		request := &v1.ListNodesRequest{
@@ -162,30 +149,24 @@ var listNodesCmd = &cobra.Command{
 
 		response, err := client.ListNodes(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot get nodes: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("listing nodes: %w", err)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetNodes(), "", output)
+		if format != "" {
+			return printOutput(cmd, response.GetNodes(), "")
 		}
 
 		tableData, err := nodesToPtables(user, response.GetNodes())
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error converting to table: %s", err), output)
+			return fmt.Errorf("converting to table: %w", err)
 		}
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return fmt.Errorf("rendering table: %w", err)
 		}
+
+		return nil
 	}),
 }
 
@@ -193,27 +174,18 @@ var listNodeRoutesCmd = &cobra.Command{
 	Use:     "list-routes",
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		format, _ := cmd.Flags().GetString("output")
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		request := &v1.ListNodesRequest{}
 
 		response, err := client.ListNodes(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot get nodes: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("listing nodes: %w", err)
 		}
 
 		nodes := response.GetNodes()
@@ -221,6 +193,7 @@ var listNodeRoutesCmd = &cobra.Command{
 			for _, node := range response.GetNodes() {
 				if node.GetId() == identifier {
 					nodes = []*v1.Node{node}
+
 					break
 				}
 			}
@@ -230,21 +203,18 @@ var listNodeRoutesCmd = &cobra.Command{
 			return (n.GetSubnetRoutes() != nil && len(n.GetSubnetRoutes()) > 0) || (n.GetApprovedRoutes() != nil && len(n.GetApprovedRoutes()) > 0) || (n.GetAvailableRoutes() != nil && len(n.GetAvailableRoutes()) > 0)
 		})
 
-		if output != "" {
-			SuccessOutput(nodes, "", output)
-			return
+		if format != "" {
+			return printOutput(cmd, nodes, "")
 		}
 
 		tableData := nodeRoutesToPtables(nodes)
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return fmt.Errorf("rendering table: %w", err)
 		}
+
+		return nil
 	}),
 }
 
@@ -253,27 +223,15 @@ var expireNodeCmd = &cobra.Command{
 	Short:   "Expire (log out) a node in your network",
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout", "exp", "e"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		expiry, err := cmd.Flags().GetString("expiry")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting expiry to string: %s", err),
-				output,
-			)
-
-			return
+			return fmt.Errorf("getting expiry flag: %w", err)
 		}
 
 		now := time.Now()
@@ -282,13 +240,7 @@ var expireNodeCmd = &cobra.Command{
 		if expiry != "" {
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
 			if err != nil {
-				ErrorOutput(
-					err,
-					fmt.Sprintf("Error converting expiry to string: %s", err),
-					output,
-				)
-
-				return
+				return fmt.Errorf("parsing expiry time: %w", err)
 			}
 		}
 
@@ -299,37 +251,24 @@ var expireNodeCmd = &cobra.Command{
 
 		response, err := client.ExpireNode(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf(
-					"Cannot expire node: %s\n",
-					status.Convert(err).Message(),
-				),
-				output,
-			)
+			return fmt.Errorf("expiring node: %w", err)
 		}
 
 		if now.Equal(expiryTime) || now.After(expiryTime) {
-			SuccessOutput(response.GetNode(), "Node expired", output)
-		} else {
-			SuccessOutput(response.GetNode(), "Node expiration updated", output)
+			return printOutput(cmd, response.GetNode(), "Node expired")
 		}
+
+		return printOutput(cmd, response.GetNode(), "Node expiration updated")
 	}),
 }
 
 var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
 	Short: "Renames a node in your network",
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		newName := ""
@@ -344,17 +283,10 @@ var renameNodeCmd = &cobra.Command{
 
 		response, err := client.RenameNode(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf(
-					"Cannot rename node: %s\n",
-					status.Convert(err).Message(),
-				),
-				output,
-			)
+			return fmt.Errorf("renaming node: %w", err)
 		}
 
-		SuccessOutput(response.GetNode(), "Node renamed", output)
+		return printOutput(cmd, response.GetNode(), "Node renamed")
 	}),
 }
 
@@ -362,16 +294,10 @@ var deleteNodeCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a node",
 	Aliases: []string{"del"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		getRequest := &v1.GetNodeRequest{
@@ -380,11 +306,7 @@ var deleteNodeCmd = &cobra.Command{
 
 		getResponse, err := client.GetNode(ctx, getRequest)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Error getting node node: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("getting node: %w", err)
 		}
 
 		deleteRequest := &v1.DeleteNodeRequest{
@@ -403,28 +325,20 @@ var deleteNodeCmd = &cobra.Command{
 
 		if confirm || force {
 			response, err := client.DeleteNode(ctx, deleteRequest)
-			if output != "" {
-				SuccessOutput(response, "", output)
-
-				return
-			}
-
 			if err != nil {
-				ErrorOutput(
-					err,
-					"Error deleting node: "+status.Convert(err).Message(),
-					output,
-				)
+				return fmt.Errorf("deleting node: %w", err)
 			}
 
-			SuccessOutput(
+			_ = response // consumed for structured output if needed
+
+			return printOutput(
+				cmd,
 				map[string]string{"Result": "Node deleted"},
 				"Node deleted",
-				output,
 			)
-		} else {
-			SuccessOutput(map[string]string{"Result": "Node not deleted"}, "Node not deleted", output)
 		}
+
+		return printOutput(cmd, map[string]string{"Result": "Node not deleted"}, "Node not deleted")
 	}),
 }
 
@@ -454,7 +368,10 @@ be assigned to nodes.`,
 		}
 
 		if confirm || force {
-			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error connecting: %s", err), output)
+			}
 			defer cancel()
 			defer conn.Close()
 
@@ -547,14 +464,12 @@ func nodesToPtables(
 		}
 
 		var expired string
-		if expiry.IsZero() || expiry.After(time.Now()) {
-			expired = pterm.LightGreen("no")
-		} else {
+		if node.GetExpiry() != nil && node.GetExpiry().AsTime().Before(time.Now()) {
 			expired = pterm.LightRed("yes")
+		} else {
+			expired = pterm.LightGreen("no")
 		}
 
-		// TODO(kradalby): as part of CLI rework, we should add the posibility to show "unusable" tags as mentioned in
-		// https://github.com/juanfont/headscale/issues/2981
 		var tagsBuilder strings.Builder
 
 		for _, tag := range node.GetTags() {
@@ -563,28 +478,25 @@ func nodesToPtables(
 
 		tags := tagsBuilder.String()
 
-		tags = strings.TrimLeft(tags, "\n")
-
 		var user string
-		if currentUser == "" || (currentUser == node.GetUser().GetName()) {
-			user = pterm.LightMagenta(node.GetUser().GetName())
-		} else {
-			// Shared into this user
-			user = pterm.LightYellow(node.GetUser().GetName())
+		if node.GetUser() != nil {
+			user = node.GetUser().GetName()
 		}
 
 		var (
-			IPV4Address string
-			IPV6Address string
+			ipAddresses      string
+			ipAddressesSb485 strings.Builder
 		)
-
 		for _, addr := range node.GetIpAddresses() {
-			if netip.MustParseAddr(addr).Is4() {
-				IPV4Address = addr
-			} else {
-				IPV6Address = addr
+			ip, err := netip.ParseAddr(addr)
+			if err == nil {
+				ipAddressesSb485.WriteString(ip.String() + "\n")
 			}
 		}
+
+		ipAddresses += ipAddressesSb485.String()
+
+		ipAddresses = strings.TrimRight(ipAddresses, "\n")
 
 		nodeData := []string{
 			strconv.FormatUint(node.GetId(), util.Base10),
@@ -594,7 +506,7 @@ func nodesToPtables(
 			nodeKey.ShortString(),
 			user,
 			tags,
-			strings.Join([]string{IPV4Address, IPV6Address}, ", "),
+			ipAddresses,
 			strconv.FormatBool(ephemeral),
 			lastSeenTime,
 			expiryTime,
@@ -643,26 +555,16 @@ var tagCmd = &cobra.Command{
 	Use:     "tag",
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		// retrieve flags from CLI
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		tagsToSet, err := cmd.Flags().GetStringSlice("tags")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error retrieving list of tags to add to node, %v", err),
-				output,
-			)
+			return fmt.Errorf("getting tags flag: %w", err)
 		}
 
 		// Sending tags to node
@@ -673,46 +575,30 @@ var tagCmd = &cobra.Command{
 
 		resp, err := client.SetTags(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error while sending tags to headscale: %s", err),
-				output,
-			)
+			return fmt.Errorf("setting tags: %w", err)
 		}
 
 		if resp != nil {
-			SuccessOutput(
-				resp.GetNode(),
-				"Node updated",
-				output,
-			)
+			return printOutput(cmd, resp.GetNode(), "Node updated")
 		}
+
+		return nil
 	}),
 }
 
 var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		// retrieve flags from CLI
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error converting ID to integer: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("routes")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error retrieving list of routes to add to node, %v", err),
-				output,
-			)
+			return fmt.Errorf("getting routes flag: %w", err)
 		}
 
 		// Sending routes to node
@@ -723,19 +609,13 @@ var approveRoutesCmd = &cobra.Command{
 
 		resp, err := client.SetApprovedRoutes(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error while sending routes to headscale: %s", err),
-				output,
-			)
+			return fmt.Errorf("setting approved routes: %w", err)
 		}
 
 		if resp != nil {
-			SuccessOutput(
-				resp.GetNode(),
-				"Node updated",
-				output,
-			)
+			return printOutput(cmd, resp.GetNode(), "Node updated")
 		}
+
+		return nil
 	}),
 }

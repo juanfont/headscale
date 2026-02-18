@@ -47,22 +47,16 @@ var listPreAuthKeys = &cobra.Command{
 	Use:     "list",
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", "show"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		format, _ := cmd.Flags().GetString("output")
 
 		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting the list of keys: %s", err),
-				output,
-			)
-
-			return
+			return fmt.Errorf("listing preauthkeys: %w", err)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetPreAuthKeys(), "", output)
+		if format != "" {
+			return printOutput(cmd, response.GetPreAuthKeys(), "")
 		}
 
 		tableData := pterm.TableData{
@@ -107,12 +101,10 @@ var listPreAuthKeys = &cobra.Command{
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return fmt.Errorf("rendering table: %w", err)
 		}
+
+		return nil
 	}),
 }
 
@@ -120,9 +112,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", "new"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
@@ -139,11 +129,7 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		duration, err := model.ParseDuration(durationStr)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Could not parse duration: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("parsing duration: %w", err)
 		}
 
 		expiration := time.Now().UTC().Add(time.Duration(duration))
@@ -152,14 +138,10 @@ var createPreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("creating preauthkey: %w", err)
 		}
 
-		SuccessOutput(response.GetPreAuthKey(), response.GetPreAuthKey().GetKey(), output)
+		return printOutput(cmd, response.GetPreAuthKey(), response.GetPreAuthKey().GetKey())
 	}),
 }
 
@@ -167,18 +149,11 @@ var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 
 		if id == 0 {
-			ErrorOutput(
-				errMissingParameter,
-				"Error: missing --id parameter",
-				output,
-			)
-
-			return
+			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
 		}
 
 		request := &v1.ExpirePreAuthKeyRequest{
@@ -187,14 +162,10 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.ExpirePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("expiring preauthkey: %w", err)
 		}
 
-		SuccessOutput(response, "Key expired", output)
+		return printOutput(cmd, response, "Key expired")
 	}),
 }
 
@@ -202,18 +173,11 @@ var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a preauthkey",
 	Aliases: []string{"del", "rm", "d"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 
 		if id == 0 {
-			ErrorOutput(
-				errMissingParameter,
-				"Error: missing --id parameter",
-				output,
-			)
-
-			return
+			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
 		}
 
 		request := &v1.DeletePreAuthKeyRequest{
@@ -222,13 +186,9 @@ var deletePreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.DeletePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot delete Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("deleting preauthkey: %w", err)
 		}
 
-		SuccessOutput(response, "Key deleted", output)
+		return printOutput(cmd, response, "Key deleted")
 	}),
 }

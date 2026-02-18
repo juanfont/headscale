@@ -92,7 +92,10 @@ var getPolicy = &cobra.Command{
 
 			policy = pol.Data
 		} else {
-			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error connecting: %s", err), output)
+			}
 			defer cancel()
 			defer conn.Close()
 
@@ -179,7 +182,10 @@ var setPolicy = &cobra.Command{
 		} else {
 			request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+			if err != nil {
+				ErrorOutput(err, fmt.Sprintf("Error connecting: %s", err), output)
+			}
 			defer cancel()
 			defer conn.Close()
 

@@ -13,7 +13,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc/status"
 )
 
 // CLI user errors.
@@ -28,20 +27,21 @@ func usernameAndIDFlag(cmd *cobra.Command) {
 }
 
 // usernameAndIDFromFlag returns the username and ID from the flags of the command.
-// If both are empty, it will exit the program with an error.
-func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string) {
+func usernameAndIDFromFlag(cmd *cobra.Command) (uint64, string, error) {
 	username, _ := cmd.Flags().GetString("name")
 
 	identifier, _ := cmd.Flags().GetInt64("identifier")
 	if username == "" && identifier < 0 {
-		ErrorOutput(
-			errFlagRequired,
-			"Cannot rename user: "+status.Convert(errFlagRequired).Message(),
-			"",
-		)
+		return 0, "", errFlagRequired
 	}
 
-	return uint64(identifier), username
+	// Normalise unset/negative identifiers to 0 so the uint64
+	// conversion does not produce a bogus large value.
+	if identifier < 0 {
+		identifier = 0
+	}
+
+	return uint64(identifier), username, nil //nolint:gosec // identifier is clamped to >= 0 above
 }
 
 func init() {
@@ -81,9 +81,7 @@ var createUserCmd = &cobra.Command{
 
 		return nil
 	},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		userName := args[0]
 
 		log.Trace().Interface(zf.Client, client).Msg("obtained gRPC client")
@@ -100,14 +98,7 @@ var createUserCmd = &cobra.Command{
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
 			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
-				ErrorOutput(
-					err,
-					fmt.Sprintf(
-						"Invalid Picture URL: %s",
-						err,
-					),
-					output,
-				)
+				return fmt.Errorf("invalid picture URL: %w", err)
 			}
 
 			request.PictureUrl = pictureURL
@@ -117,14 +108,10 @@ var createUserCmd = &cobra.Command{
 
 		response, err := client.CreateUser(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot create user: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("creating user: %w", err)
 		}
 
-		SuccessOutput(response.GetUser(), "User created", output)
+		return printOutput(cmd, response.GetUser(), "User created")
 	}),
 }
 
@@ -132,10 +119,12 @@ var destroyUserCmd = &cobra.Command{
 	Use:     "destroy --identifier ID or --name NAME",
 	Short:   "Destroys a user",
 	Aliases: []string{"delete"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		id, username, err := usernameAndIDFromFlag(cmd)
+		if err != nil {
+			return err
+		}
 
-		id, username := usernameAndIDFromFlag(cmd)
 		request := &v1.ListUsersRequest{
 			Name: username,
 			Id:   id,
@@ -143,20 +132,11 @@ var destroyUserCmd = &cobra.Command{
 
 		users, err := client.ListUsers(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("listing users: %w", err)
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errMultipleUsersMatch
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return errMultipleUsersMatch
 		}
 
 		user := users.GetUsers()[0]
@@ -176,17 +156,13 @@ var destroyUserCmd = &cobra.Command{
 
 			response, err := client.DeleteUser(ctx, request)
 			if err != nil {
-				ErrorOutput(
-					err,
-					"Cannot destroy user: "+status.Convert(err).Message(),
-					output,
-				)
+				return fmt.Errorf("destroying user: %w", err)
 			}
 
-			SuccessOutput(response, "User destroyed", output)
-		} else {
-			SuccessOutput(map[string]string{"Result": "User not destroyed"}, "User not destroyed", output)
+			return printOutput(cmd, response, "User destroyed")
 		}
+
+		return printOutput(cmd, map[string]string{"Result": "User not destroyed"}, "User not destroyed")
 	}),
 }
 
@@ -194,8 +170,8 @@ var listUsersCmd = &cobra.Command{
 	Use:     "list",
 	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		format, _ := cmd.Flags().GetString("output")
 
 		request := &v1.ListUsersRequest{}
 
@@ -215,15 +191,11 @@ var listUsersCmd = &cobra.Command{
 
 		response, err := client.ListUsers(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot get users: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("listing users: %w", err)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetUsers(), "", output)
+		if format != "" {
+			return printOutput(cmd, response.GetUsers(), "")
 		}
 
 		tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
@@ -242,12 +214,10 @@ var listUsersCmd = &cobra.Command{
 
 		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
+			return fmt.Errorf("rendering table: %w", err)
 		}
+
+		return nil
 	}),
 }
 
@@ -255,10 +225,12 @@ var renameUserCmd = &cobra.Command{
 	Use:     "rename",
 	Short:   "Renames a user",
 	Aliases: []string{"mv"},
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		id, username, err := usernameAndIDFromFlag(cmd)
+		if err != nil {
+			return err
+		}
 
-		id, username := usernameAndIDFromFlag(cmd)
 		listReq := &v1.ListUsersRequest{
 			Name: username,
 			Id:   id,
@@ -266,20 +238,11 @@ var renameUserCmd = &cobra.Command{
 
 		users, err := client.ListUsers(ctx, listReq)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("listing users: %w", err)
 		}
 
 		if len(users.GetUsers()) != 1 {
-			err := errMultipleUsersMatch
-			ErrorOutput(
-				err,
-				"Error: "+status.Convert(err).Message(),
-				output,
-			)
+			return errMultipleUsersMatch
 		}
 
 		newName, _ := cmd.Flags().GetString("new-name")
@@ -291,13 +254,9 @@ var renameUserCmd = &cobra.Command{
 
 		response, err := client.RenameUser(ctx, renameReq)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot rename user: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("renaming user: %w", err)
 		}
 
-		SuccessOutput(response.GetUser(), "User renamed", output)
+		return printOutput(cmd, response.GetUser(), "User renamed")
 	}),
 }
