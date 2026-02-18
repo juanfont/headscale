@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/tailscale/squibble"
 )
@@ -20,7 +19,7 @@ var serveCmd = &cobra.Command{
 	Args: func(cmd *cobra.Command, args []string) error {
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		app, err := newHeadscaleServerWithConfig()
 		if err != nil {
 			if squibbleErr, ok := errors.AsType[squibble.ValidationError](err); ok {
@@ -28,12 +27,14 @@ var serveCmd = &cobra.Command{
 				fmt.Println(squibbleErr.Diff)
 			}
 
-			log.Fatal().Caller().Err(err).Msg("error initializing")
+			return fmt.Errorf("initializing: %w", err)
 		}
 
 		err = app.Serve()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatal().Caller().Err(err).Msg("headscale ran into an error and had to shut down")
+			return fmt.Errorf("headscale ran into an error and had to shut down: %w", err)
 		}
+
+		return nil
 	},
 }

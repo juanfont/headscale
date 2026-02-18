@@ -14,7 +14,6 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"tailscale.com/types/key"
 )
@@ -357,9 +356,7 @@ all nodes that are missing.
 If you remove IPv4 or IPv6 prefixes from the config,
 it can be run to remove the IPs that should no longer
 be assigned to nodes.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: func(cmd *cobra.Command, args []string) error {
 		confirm := false
 
 		force, _ := cmd.Flags().GetBool("force")
@@ -367,25 +364,23 @@ be assigned to nodes.`,
 			confirm = util.YesNo("Are you sure that you want to assign/remove IPs to/from nodes?")
 		}
 
-		if confirm || force {
-			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
-			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Error connecting: %s", err), output)
-			}
-			defer cancel()
-			defer conn.Close()
-
-			changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: confirm || force})
-			if err != nil {
-				ErrorOutput(
-					err,
-					"Error backfilling IPs: "+status.Convert(err).Message(),
-					output,
-				)
-			}
-
-			SuccessOutput(changes, "Node IPs backfilled successfully", output)
+		if !confirm && !force {
+			return nil
 		}
+
+		ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+		if err != nil {
+			return fmt.Errorf("connecting to headscale: %w", err)
+		}
+		defer cancel()
+		defer conn.Close()
+
+		changes, err := client.BackfillNodeIPs(ctx, &v1.BackfillNodeIPsRequest{Confirmed: true})
+		if err != nil {
+			return fmt.Errorf("backfilling IPs: %w", err)
+		}
+
+		return printOutput(cmd, changes, "Node IPs backfilled successfully")
 	},
 }
 
