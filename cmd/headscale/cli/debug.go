@@ -8,7 +8,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
-	"google.golang.org/grpc/status"
 )
 
 // Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
@@ -60,48 +59,30 @@ var debugCmd = &cobra.Command{
 var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `nodes register <>` command",
-	Run: grpcRun(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error getting user: %s", err), output)
+			return fmt.Errorf("getting user flag: %w", err)
 		}
 
 		name, err := cmd.Flags().GetString("name")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting node from flag: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting name flag: %w", err)
 		}
 
 		registrationID, err := cmd.Flags().GetString("key")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting key from flag: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting key flag: %w", err)
 		}
 
 		_, err = types.RegistrationIDFromString(registrationID)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to parse machine key from flag: %s", err),
-				output,
-			)
+			return fmt.Errorf("parsing machine key: %w", err)
 		}
 
 		routes, err := cmd.Flags().GetStringSlice("route")
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting routes from flag: %s", err),
-				output,
-			)
+			return fmt.Errorf("getting routes flag: %w", err)
 		}
 
 		request := &v1.DebugCreateNodeRequest{
@@ -113,13 +94,9 @@ var createNodeCmd = &cobra.Command{
 
 		response, err := client.DebugCreateNode(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				"Cannot create node: "+status.Convert(err).Message(),
-				output,
-			)
+			return fmt.Errorf("creating node: %w", err)
 		}
 
-		SuccessOutput(response.GetNode(), "Node created", output)
+		return printOutput(cmd, response.GetNode(), "Node created")
 	}),
 }

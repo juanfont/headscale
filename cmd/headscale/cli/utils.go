@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -23,7 +24,13 @@ import (
 const (
 	HeadscaleDateTimeFormat = "2006-01-02 15:04:05"
 	SocketWritePermissions  = 0o666
+
+	outputFormatJSON     = "json"
+	outputFormatJSONLine = "json-line"
+	outputFormatYAML     = "yaml"
 )
+
+var errAPIKeyNotSet = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
 
 func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	cfg, err := types.LoadServerConfig()
@@ -42,29 +49,28 @@ func newHeadscaleServerWithConfig() (*hscontrol.Headscale, error) {
 	return app, nil
 }
 
-// grpcRun wraps a cobra RunFunc, injecting a ready gRPC client and context.
-// Connection lifecycle is managed by the wrapper — callers never see
-// the underlying conn or cancel func.
-func grpcRun(
-	fn func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string),
-) func(*cobra.Command, []string) {
-	return func(cmd *cobra.Command, args []string) {
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+// grpcRunE wraps a cobra RunE func, injecting a ready gRPC client and
+// context. Connection lifecycle is managed by the wrapper — callers
+// never see the underlying conn or cancel func.
+func grpcRunE(
+	fn func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error,
+) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+		if err != nil {
+			return fmt.Errorf("connecting to headscale: %w", err)
+		}
 		defer cancel()
 		defer conn.Close()
 
-		fn(ctx, client, cmd, args)
+		return fn(ctx, client, cmd, args)
 	}
 }
 
-func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc) {
+func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *grpc.ClientConn, context.CancelFunc, error) {
 	cfg, err := types.LoadCLIConfig()
 	if err != nil {
-		log.Fatal().
-			Err(err).
-			Caller().
-			Msgf("Failed to load configuration")
-		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)
+		return nil, nil, nil, nil, fmt.Errorf("loading configuration: %w", err)
 	}
 
 	log.Debug().
@@ -88,18 +94,23 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		address = cfg.UnixSocket
 
 		// Try to give the user better feedback if we cannot write to the headscale
-		// socket.
-		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) // nolint
+		// socket.  Note: os.OpenFile on a Unix domain socket returns ENXIO on
+		// Linux which is expected — only permission errors are actionable here.
+		// The actual gRPC connection uses net.Dial which handles sockets properly.
+		socket, err := os.OpenFile(cfg.UnixSocket, os.O_WRONLY, SocketWritePermissions) //nolint
 		if err != nil {
 			if os.IsPermission(err) {
-				log.Fatal().
-					Err(err).
-					Str("socket", cfg.UnixSocket).
-					Msgf("Unable to read/write to headscale socket, do you have the correct permissions?")
-			}
-		}
+				cancel()
 
-		socket.Close()
+				return nil, nil, nil, nil, fmt.Errorf(
+					"unable to read/write to headscale socket %q, do you have the correct permissions? %w",
+					cfg.UnixSocket,
+					err,
+				)
+			}
+		} else {
+			socket.Close()
+		}
 
 		grpcOptions = append(
 			grpcOptions,
@@ -110,7 +121,9 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 		// If we are not connecting to a local server, require an API key for authentication
 		apiKey := cfg.CLI.APIKey
 		if apiKey == "" {
-			log.Fatal().Caller().Msgf("HEADSCALE_CLI_API_KEY environment variable needs to be set")
+			cancel()
+
+			return nil, nil, nil, nil, errAPIKeyNotSet
 		}
 
 		grpcOptions = append(grpcOptions,
@@ -141,15 +154,65 @@ func newHeadscaleCLIWithConfig() (context.Context, v1.HeadscaleServiceClient, *g
 
 	conn, err := grpc.DialContext(ctx, address, grpcOptions...) //nolint:staticcheck // SA1019: deprecated but supported in 1.x
 	if err != nil {
-		log.Fatal().Caller().Err(err).Msgf("could not connect: %v", err)
-		os.Exit(-1) // we get here if logging is suppressed (i.e., json output)
+		cancel()
+
+		return nil, nil, nil, nil, fmt.Errorf("connecting to %s: %w", address, err)
 	}
 
 	client := v1.NewHeadscaleServiceClient(conn)
 
-	return ctx, client, conn, cancel
+	return ctx, client, conn, cancel, nil
 }
 
+// formatOutput serialises result into the requested format. For the
+// default (empty) format the human-readable override string is returned.
+func formatOutput(result any, override string, outputFormat string) (string, error) {
+	switch outputFormat {
+	case outputFormatJSON:
+		b, err := json.MarshalIndent(result, "", "\t")
+		if err != nil {
+			return "", fmt.Errorf("marshalling JSON output: %w", err)
+		}
+
+		return string(b), nil
+	case outputFormatJSONLine:
+		b, err := json.Marshal(result)
+		if err != nil {
+			return "", fmt.Errorf("marshalling JSON-line output: %w", err)
+		}
+
+		return string(b), nil
+	case outputFormatYAML:
+		b, err := yaml.Marshal(result)
+		if err != nil {
+			return "", fmt.Errorf("marshalling YAML output: %w", err)
+		}
+
+		return string(b), nil
+	default:
+		return override, nil
+	}
+}
+
+// printOutput formats result and writes it to stdout. It reads the --output
+// flag from cmd to decide the serialisation format.
+func printOutput(cmd *cobra.Command, result any, override string) error {
+	format, _ := cmd.Flags().GetString("output")
+
+	out, err := formatOutput(result, override, format)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(out)
+
+	return nil
+}
+
+// output formats result into the requested format. It calls log.Fatal on
+// marshal failure.
+//
+// Deprecated: use formatOutput instead.
 func output(result any, override string, outputFormat string) string {
 	var (
 		jsonBytes []byte
@@ -157,17 +220,17 @@ func output(result any, override string, outputFormat string) string {
 	)
 
 	switch outputFormat {
-	case "json":
+	case outputFormatJSON:
 		jsonBytes, err = json.MarshalIndent(result, "", "\t")
 		if err != nil {
 			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
-	case "json-line":
+	case outputFormatJSONLine:
 		jsonBytes, err = json.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err).Msg("unmarshalling output")
 		}
-	case "yaml":
+	case outputFormatYAML:
 		jsonBytes, err = yaml.Marshal(result)
 		if err != nil {
 			log.Fatal().Err(err).Msg("unmarshalling output")
@@ -181,12 +244,16 @@ func output(result any, override string, outputFormat string) string {
 }
 
 // SuccessOutput prints the result to stdout and exits with status code 0.
+//
+// Deprecated: use printOutput instead.
 func SuccessOutput(result any, override string, outputFormat string) {
 	fmt.Println(output(result, override, outputFormat))
 	os.Exit(0)
 }
 
 // ErrorOutput prints an error message to stderr and exits with status code 1.
+//
+// Deprecated: use fmt.Errorf and return the error instead.
 func ErrorOutput(errResult error, override string, outputFormat string) {
 	type errOutput struct {
 		Error string `json:"error"`
@@ -216,11 +283,11 @@ func printError(err error, outputFormat string) {
 	var formatted []byte
 
 	switch outputFormat {
-	case "json":
+	case outputFormatJSON:
 		formatted, _ = json.MarshalIndent(e, "", "\t") //nolint:errchkjson // errOutput contains only a string field
-	case "json-line":
+	case outputFormatJSONLine:
 		formatted, _ = json.Marshal(e) //nolint:errchkjson // errOutput contains only a string field
-	case "yaml":
+	case outputFormatYAML:
 		formatted, _ = yaml.Marshal(e)
 	default:
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
@@ -233,7 +300,7 @@ func printError(err error, outputFormat string) {
 
 func HasMachineOutputFlag() bool {
 	for _, arg := range os.Args {
-		if arg == "json" || arg == "json-line" || arg == "yaml" {
+		if arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML {
 			return true
 		}
 	}
