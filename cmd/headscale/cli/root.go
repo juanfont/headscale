@@ -61,7 +61,7 @@ func initConfig() {
 		}
 	}
 
-	machineOutput := HasMachineOutputFlag()
+	machineOutput := hasMachineOutputFlag()
 
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.

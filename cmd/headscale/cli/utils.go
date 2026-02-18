@@ -295,7 +295,7 @@ func printError(err error, outputFormat string) {
 	fmt.Fprintf(os.Stderr, "%s\n", formatted)
 }
 
-func HasMachineOutputFlag() bool {
+func hasMachineOutputFlag() bool {
 	for _, arg := range os.Args {
 		if arg == outputFormatJSON || arg == outputFormatJSONLine || arg == outputFormatYAML {
 			return true
