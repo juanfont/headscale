@@ -18,11 +18,12 @@ var dumpConfigCmd = &cobra.Command{
 	Args: func(cmd *cobra.Command, args []string) error {
 		return nil
 	},
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		err := viper.WriteConfigAs("/etc/headscale/config.dump.yaml")
 		if err != nil {
-			//nolint
-			fmt.Println("Failed to dump config")
+			return fmt.Errorf("dumping config: %w", err)
 		}
+
+		return nil
 	},
 }

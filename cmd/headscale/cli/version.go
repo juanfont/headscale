@@ -14,11 +14,9 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version.",
 	Long:  "The version of headscale.",
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: func(cmd *cobra.Command, args []string) error {
 		info := types.GetVersionInfo()
 
-		SuccessOutput(info, info.String(), output)
+		return printOutput(cmd, info, info.String())
 	},
 }
