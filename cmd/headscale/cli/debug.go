@@ -38,30 +38,16 @@ var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
 	Short: "Create a node that can be registered with `nodes register <>` command",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			return fmt.Errorf("getting user flag: %w", err)
-		}
+		user, _ := cmd.Flags().GetString("user")
+		name, _ := cmd.Flags().GetString("name")
+		registrationID, _ := cmd.Flags().GetString("key")
 
-		name, err := cmd.Flags().GetString("name")
-		if err != nil {
-			return fmt.Errorf("getting name flag: %w", err)
-		}
-
-		registrationID, err := cmd.Flags().GetString("key")
-		if err != nil {
-			return fmt.Errorf("getting key flag: %w", err)
-		}
-
-		_, err = types.RegistrationIDFromString(registrationID)
+		_, err := types.RegistrationIDFromString(registrationID)
 		if err != nil {
 			return fmt.Errorf("parsing machine key: %w", err)
 		}
 
-		routes, err := cmd.Flags().GetStringSlice("route")
-		if err != nil {
-			return fmt.Errorf("getting routes flag: %w", err)
-		}
+		routes, _ := cmd.Flags().GetStringSlice("route")
 
 		request := &v1.DebugCreateNodeRequest{
 			Key:    registrationID,

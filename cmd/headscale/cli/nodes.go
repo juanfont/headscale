@@ -66,15 +66,8 @@ var registerNodeCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Registers a node to your network",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			return fmt.Errorf("getting user flag: %w", err)
-		}
-
-		registrationID, err := cmd.Flags().GetString("key")
-		if err != nil {
-			return fmt.Errorf("getting key flag: %w", err)
-		}
+		user, _ := cmd.Flags().GetString("user")
+		registrationID, _ := cmd.Flags().GetString("key")
 
 		request := &v1.RegisterNodeRequest{
 			Key:  registrationID,
@@ -98,10 +91,7 @@ var listNodesCmd = &cobra.Command{
 	Short:   "List nodes",
 	Aliases: []string{"ls", "show"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		user, err := cmd.Flags().GetString("user")
-		if err != nil {
-			return fmt.Errorf("getting user flag: %w", err)
-		}
+		user, _ := cmd.Flags().GetString("user")
 
 		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{User: user})
 		if err != nil {
@@ -124,10 +114,7 @@ var listNodeRoutesCmd = &cobra.Command{
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
 
 		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{})
 		if err != nil {
@@ -161,20 +148,14 @@ var expireNodeCmd = &cobra.Command{
 	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
 	Aliases: []string{"logout", "exp", "e"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
-
-		expiry, err := cmd.Flags().GetString("expiry")
-		if err != nil {
-			return fmt.Errorf("getting expiry flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
+		expiry, _ := cmd.Flags().GetString("expiry")
 
 		now := time.Now()
 
 		expiryTime := now
 		if expiry != "" {
+			var err error
 			expiryTime, err = time.Parse(time.RFC3339, expiry)
 			if err != nil {
 				return fmt.Errorf("parsing expiry time: %w", err)
@@ -203,10 +184,7 @@ var renameNodeCmd = &cobra.Command{
 	Use:   "rename NEW_NAME",
 	Short: "Renames a node in your network",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
 
 		newName := ""
 		if len(args) > 0 {
@@ -232,10 +210,7 @@ var deleteNodeCmd = &cobra.Command{
 	Short:   "Delete a node",
 	Aliases: []string{"del"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
 
 		getRequest := &v1.GetNodeRequest{
 			NodeId: identifier,
@@ -473,16 +448,8 @@ var tagCmd = &cobra.Command{
 	Short:   "Manage the tags of a node",
 	Aliases: []string{"tags", "t"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
-
-		tagsToSet, err := cmd.Flags().GetStringSlice("tags")
-		if err != nil {
-			return fmt.Errorf("getting tags flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
+		tagsToSet, _ := cmd.Flags().GetStringSlice("tags")
 
 		// Sending tags to node
 		request := &v1.SetTagsRequest{
@@ -507,16 +474,8 @@ var approveRoutesCmd = &cobra.Command{
 	Use:   "approve-routes",
 	Short: "Manage the approved routes of a node",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		// retrieve flags from CLI
-		identifier, err := cmd.Flags().GetUint64("identifier")
-		if err != nil {
-			return fmt.Errorf("getting identifier flag: %w", err)
-		}
-
-		routes, err := cmd.Flags().GetStringSlice("routes")
-		if err != nil {
-			return fmt.Errorf("getting routes flag: %w", err)
-		}
+		identifier, _ := cmd.Flags().GetUint64("identifier")
+		routes, _ := cmd.Flags().GetStringSlice("routes")
 
 		// Sending routes to node
 		request := &v1.SetApprovedRoutesRequest{
