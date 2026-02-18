@@ -48,63 +48,54 @@ var listPreAuthKeys = &cobra.Command{
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", "show"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		format, _ := cmd.Flags().GetString("output")
-
 		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
 			return fmt.Errorf("listing preauthkeys: %w", err)
 		}
 
-		if format != "" {
-			return printOutput(cmd, response.GetPreAuthKeys(), "")
-		}
-
-		tableData := pterm.TableData{
-			{
-				"ID",
-				"Key/Prefix",
-				"Reusable",
-				"Ephemeral",
-				"Used",
-				"Expiration",
-				"Created",
-				"Owner",
-			},
-		}
-
-		for _, key := range response.GetPreAuthKeys() {
-			expiration := "-"
-			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.GetExpiration().AsTime())
+		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
+			tableData := pterm.TableData{
+				{
+					"ID",
+					"Key/Prefix",
+					"Reusable",
+					"Ephemeral",
+					"Used",
+					"Expiration",
+					"Created",
+					"Owner",
+				},
 			}
 
-			var owner string
-			if len(key.GetAclTags()) > 0 {
-				owner = strings.Join(key.GetAclTags(), "\n")
-			} else if key.GetUser() != nil {
-				owner = key.GetUser().GetName()
-			} else {
-				owner = "-"
+			for _, key := range response.GetPreAuthKeys() {
+				expiration := "-"
+				if key.GetExpiration() != nil {
+					expiration = ColourTime(key.GetExpiration().AsTime())
+				}
+
+				var owner string
+				if len(key.GetAclTags()) > 0 {
+					owner = strings.Join(key.GetAclTags(), "\n")
+				} else if key.GetUser() != nil {
+					owner = key.GetUser().GetName()
+				} else {
+					owner = "-"
+				}
+
+				tableData = append(tableData, []string{
+					strconv.FormatUint(key.GetId(), 10),
+					key.GetKey(),
+					strconv.FormatBool(key.GetReusable()),
+					strconv.FormatBool(key.GetEphemeral()),
+					strconv.FormatBool(key.GetUsed()),
+					expiration,
+					key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					owner,
+				})
 			}
 
-			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), 10),
-				key.GetKey(),
-				strconv.FormatBool(key.GetReusable()),
-				strconv.FormatBool(key.GetEphemeral()),
-				strconv.FormatBool(key.GetUsed()),
-				expiration,
-				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				owner,
-			})
-		}
-
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			return fmt.Errorf("rendering table: %w", err)
-		}
-
-		return nil
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		})
 	}),
 }
 

@@ -209,6 +209,22 @@ func printOutput(cmd *cobra.Command, result any, override string) error {
 	return nil
 }
 
+// printListOutput checks the --output flag: when a machine-readable format is
+// requested it serialises data as JSON/YAML; otherwise it calls renderTable
+// to produce the human-readable pterm table.
+func printListOutput(
+	cmd *cobra.Command,
+	data any,
+	renderTable func() error,
+) error {
+	format, _ := cmd.Flags().GetString("output")
+	if format != "" {
+		return printOutput(cmd, data, "")
+	}
+
+	return renderTable()
+}
+
 // printError writes err to stderr, formatting it as JSON/YAML when the
 // --output flag requests machine-readable output.  Used exclusively by
 // Execute() so that every error surfaces in the format the caller asked for.
