@@ -33,7 +33,10 @@ const (
 	outputFormatYAML     = "yaml"
 )
 
-var errAPIKeyNotSet = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
+var (
+	errAPIKeyNotSet     = errors.New("HEADSCALE_CLI_API_KEY environment variable needs to be set")
+	errMissingParameter = errors.New("missing parameters")
+)
 
 // mustMarkRequired marks the named flags as required on cmd, panicking
 // if any name does not match a registered flag.  This is only called
