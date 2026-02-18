@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
@@ -80,13 +81,13 @@ var listPreAuthKeys = &cobra.Command{
 				}
 
 				tableData = append(tableData, []string{
-					strconv.FormatUint(key.GetId(), 10),
+					strconv.FormatUint(key.GetId(), util.Base10),
 					key.GetKey(),
 					strconv.FormatBool(key.GetReusable()),
 					strconv.FormatBool(key.GetEphemeral()),
 					strconv.FormatBool(key.GetUsed()),
 					expiration,
-					key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
 					owner,
 				})
 			}

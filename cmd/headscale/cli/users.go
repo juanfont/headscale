@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/pterm/pterm"
 	"github.com/rs/zerolog/log"
@@ -189,11 +190,11 @@ var listUsersCmd = &cobra.Command{
 				tableData = append(
 					tableData,
 					[]string{
-						strconv.FormatUint(user.GetId(), 10),
+						strconv.FormatUint(user.GetId(), util.Base10),
 						user.GetDisplayName(),
 						user.GetName(),
 						user.GetEmail(),
-						user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+						user.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
 					},
 				)
 			}
