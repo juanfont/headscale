@@ -136,36 +136,24 @@ var listNodesCmd = &cobra.Command{
 	Short:   "List nodes",
 	Aliases: []string{"ls", "show"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		format, _ := cmd.Flags().GetString("output")
 		user, err := cmd.Flags().GetString("user")
 		if err != nil {
 			return fmt.Errorf("getting user flag: %w", err)
 		}
 
-		request := &v1.ListNodesRequest{
-			User: user,
-		}
-
-		response, err := client.ListNodes(ctx, request)
+		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{User: user})
 		if err != nil {
 			return fmt.Errorf("listing nodes: %w", err)
 		}
 
-		if format != "" {
-			return printOutput(cmd, response.GetNodes(), "")
-		}
+		return printListOutput(cmd, response.GetNodes(), func() error {
+			tableData, err := nodesToPtables(user, response.GetNodes())
+			if err != nil {
+				return fmt.Errorf("converting to table: %w", err)
+			}
 
-		tableData, err := nodesToPtables(user, response.GetNodes())
-		if err != nil {
-			return fmt.Errorf("converting to table: %w", err)
-		}
-
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			return fmt.Errorf("rendering table: %w", err)
-		}
-
-		return nil
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		})
 	}),
 }
 
@@ -174,15 +162,12 @@ var listNodeRoutesCmd = &cobra.Command{
 	Short:   "List routes available on nodes",
 	Aliases: []string{"lsr", "routes"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		format, _ := cmd.Flags().GetString("output")
 		identifier, err := cmd.Flags().GetUint64("identifier")
 		if err != nil {
 			return fmt.Errorf("getting identifier flag: %w", err)
 		}
 
-		request := &v1.ListNodesRequest{}
-
-		response, err := client.ListNodes(ctx, request)
+		response, err := client.ListNodes(ctx, &v1.ListNodesRequest{})
 		if err != nil {
 			return fmt.Errorf("listing nodes: %w", err)
 		}
@@ -202,18 +187,9 @@ var listNodeRoutesCmd = &cobra.Command{
 			return (n.GetSubnetRoutes() != nil && len(n.GetSubnetRoutes()) > 0) || (n.GetApprovedRoutes() != nil && len(n.GetApprovedRoutes()) > 0) || (n.GetAvailableRoutes() != nil && len(n.GetAvailableRoutes()) > 0)
 		})
 
-		if format != "" {
-			return printOutput(cmd, nodes, "")
-		}
-
-		tableData := nodeRoutesToPtables(nodes)
-
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			return fmt.Errorf("rendering table: %w", err)
-		}
-
-		return nil
+		return printListOutput(cmd, nodes, func() error {
+			return pterm.DefaultTable.WithHasHeader().WithData(nodeRoutesToPtables(nodes)).Render()
+		})
 	}),
 }
 

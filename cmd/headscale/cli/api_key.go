@@ -48,44 +48,33 @@ var listAPIKeys = &cobra.Command{
 	Short:   "List the Api keys for headscale",
 	Aliases: []string{"ls", "show"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		format, _ := cmd.Flags().GetString("output")
-
-		request := &v1.ListApiKeysRequest{}
-
-		response, err := client.ListApiKeys(ctx, request)
+		response, err := client.ListApiKeys(ctx, &v1.ListApiKeysRequest{})
 		if err != nil {
 			return fmt.Errorf("listing api keys: %w", err)
 		}
 
-		if format != "" {
-			return printOutput(cmd, response.GetApiKeys(), "")
-		}
-
-		tableData := pterm.TableData{
-			{"ID", "Prefix", "Expiration", "Created"},
-		}
-
-		for _, key := range response.GetApiKeys() {
-			expiration := "-"
-
-			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.GetExpiration().AsTime())
+		return printListOutput(cmd, response.GetApiKeys(), func() error {
+			tableData := pterm.TableData{
+				{"ID", "Prefix", "Expiration", "Created"},
 			}
 
-			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), util.Base10),
-				key.GetPrefix(),
-				expiration,
-				key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
-			})
-		}
+			for _, key := range response.GetApiKeys() {
+				expiration := "-"
 
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			return fmt.Errorf("rendering table: %w", err)
-		}
+				if key.GetExpiration() != nil {
+					expiration = ColourTime(key.GetExpiration().AsTime())
+				}
 
-		return nil
+				tableData = append(tableData, []string{
+					strconv.FormatUint(key.GetId(), util.Base10),
+					key.GetPrefix(),
+					expiration,
+					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+				})
+			}
+
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		})
 	}),
 }
 

@@ -171,8 +171,6 @@ var listUsersCmd = &cobra.Command{
 	Short:   "List all the users",
 	Aliases: []string{"ls", "show"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
-		format, _ := cmd.Flags().GetString("output")
-
 		request := &v1.ListUsersRequest{}
 
 		id, _ := cmd.Flags().GetInt64("identifier")
@@ -194,30 +192,23 @@ var listUsersCmd = &cobra.Command{
 			return fmt.Errorf("listing users: %w", err)
 		}
 
-		if format != "" {
-			return printOutput(cmd, response.GetUsers(), "")
-		}
+		return printListOutput(cmd, response.GetUsers(), func() error {
+			tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
+			for _, user := range response.GetUsers() {
+				tableData = append(
+					tableData,
+					[]string{
+						strconv.FormatUint(user.GetId(), 10),
+						user.GetDisplayName(),
+						user.GetName(),
+						user.GetEmail(),
+						user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
+					},
+				)
+			}
 
-		tableData := pterm.TableData{{"ID", "Name", "Username", "Email", "Created"}}
-		for _, user := range response.GetUsers() {
-			tableData = append(
-				tableData,
-				[]string{
-					strconv.FormatUint(user.GetId(), 10),
-					user.GetDisplayName(),
-					user.GetName(),
-					user.GetEmail(),
-					user.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				},
-			)
-		}
-
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			return fmt.Errorf("rendering table: %w", err)
-		}
-
-		return nil
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		})
 	}),
 }
 
