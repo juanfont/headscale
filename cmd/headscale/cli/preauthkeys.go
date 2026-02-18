@@ -5,13 +5,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/prometheus/common/model"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -109,23 +106,18 @@ var createPreAuthKeyCmd = &cobra.Command{
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 
-		request := &v1.CreatePreAuthKeyRequest{
-			User:      user,
-			Reusable:  reusable,
-			Ephemeral: ephemeral,
-			AclTags:   tags,
-		}
-
-		durationStr, _ := cmd.Flags().GetString("expiration")
-
-		duration, err := model.ParseDuration(durationStr)
+		expiration, err := expirationFromFlag(cmd)
 		if err != nil {
-			return fmt.Errorf("parsing duration: %w", err)
+			return err
 		}
 
-		expiration := time.Now().UTC().Add(time.Duration(duration))
-
-		request.Expiration = timestamppb.New(expiration)
+		request := &v1.CreatePreAuthKeyRequest{
+			User:       user,
+			Reusable:   reusable,
+			Ephemeral:  ephemeral,
+			AclTags:    tags,
+			Expiration: expiration,
+		}
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
