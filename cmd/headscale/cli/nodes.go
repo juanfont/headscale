@@ -262,32 +262,23 @@ var deleteNodeCmd = &cobra.Command{
 			NodeId: identifier,
 		}
 
-		confirm := false
-
-		force, _ := cmd.Flags().GetBool("force")
-		if !force {
-			confirm = util.YesNo(fmt.Sprintf(
-				"Do you want to remove the node %s?",
-				getResponse.GetNode().GetName(),
-			))
+		if !confirmAction(cmd, fmt.Sprintf(
+			"Do you want to remove the node %s?",
+			getResponse.GetNode().GetName(),
+		)) {
+			return printOutput(cmd, map[string]string{"Result": "Node not deleted"}, "Node not deleted")
 		}
 
-		if confirm || force {
-			response, err := client.DeleteNode(ctx, deleteRequest)
-			if err != nil {
-				return fmt.Errorf("deleting node: %w", err)
-			}
-
-			_ = response // consumed for structured output if needed
-
-			return printOutput(
-				cmd,
-				map[string]string{"Result": "Node deleted"},
-				"Node deleted",
-			)
+		_, err = client.DeleteNode(ctx, deleteRequest)
+		if err != nil {
+			return fmt.Errorf("deleting node: %w", err)
 		}
 
-		return printOutput(cmd, map[string]string{"Result": "Node not deleted"}, "Node not deleted")
+		return printOutput(
+			cmd,
+			map[string]string{"Result": "Node deleted"},
+			"Node deleted",
+		)
 	}),
 }
 
@@ -307,14 +298,7 @@ If you remove IPv4 or IPv6 prefixes from the config,
 it can be run to remove the IPs that should no longer
 be assigned to nodes.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		confirm := false
-
-		force, _ := cmd.Flags().GetBool("force")
-		if !force {
-			confirm = util.YesNo("Are you sure that you want to assign/remove IPs to/from nodes?")
-		}
-
-		if !confirm && !force {
+		if !confirmAction(cmd, "Are you sure that you want to assign/remove IPs to/from nodes?") {
 			return nil
 		}
 
