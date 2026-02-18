@@ -55,6 +55,7 @@ func init() {
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
+	expireNodeCmd.Flags().BoolP("disable", "d", false, "Disable key expiry (node will never expire)")
 
 	err = expireNodeCmd.MarkFlagRequired("identifier")
 	if err != nil {
@@ -260,9 +261,11 @@ var listNodeRoutesCmd = &cobra.Command{
 }
 
 var expireNodeCmd = &cobra.Command{
-	Use:     "expire",
-	Short:   "Expire (log out) a node in your network",
-	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
+	Use:   "expire",
+	Short: "Expire (log out) a node in your network",
+	Long: `Expiring a node will keep the node in the database and force it to reauthenticate.
+
+Use --disable to disable key expiry (node will never expire).`,
 	Aliases: []string{"logout", "exp", "e"},
 	Run: func(cmd *cobra.Command, args []string) {
 		output, _ := cmd.Flags().GetString("output")
@@ -274,6 +277,49 @@ var expireNodeCmd = &cobra.Command{
 				fmt.Sprintf("Error converting ID to integer: %s", err),
 				output,
 			)
+
+			return
+		}
+
+		disableExpiry, err := cmd.Flags().GetBool("disable")
+		if err != nil {
+			ErrorOutput(
+				err,
+				fmt.Sprintf("Error getting disable flag: %s", err),
+				output,
+			)
+
+			return
+		}
+
+		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+		defer cancel()
+		defer conn.Close()
+
+		// Handle disable expiry - node will never expire.
+		if disableExpiry {
+			request := &v1.ExpireNodeRequest{
+				NodeId:        identifier,
+				DisableExpiry: true,
+			}
+
+			response, err := client.ExpireNode(ctx, request)
+			if err != nil {
+				ErrorOutput(
+					err,
+					fmt.Sprintf(
+						"Cannot disable node expiry: %s\n",
+						status.Convert(err).Message(),
+					),
+					output,
+				)
+
+				return
+			}
+
+			SuccessOutput(response.GetNode(), "Node expiry disabled", output)
+
+			return
 		}
 
 		expiry, err := cmd.Flags().GetString("expiry")
@@ -303,10 +349,6 @@ var expireNodeCmd = &cobra.Command{
 			}
 		}
 
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
 		request := &v1.ExpireNodeRequest{
 			NodeId: identifier,
 			Expiry: timestamppb.New(expiryTime),
@@ -322,6 +364,8 @@ var expireNodeCmd = &cobra.Command{
 				),
 				output,
 			)
+
+			return
 		}
 
 		if now.Equal(expiryTime) || now.After(expiryTime) {

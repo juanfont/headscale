@@ -638,22 +638,38 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.Change, error) {
+// If expiry is nil, the node's expiry is disabled (node will never expire).
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.NodeView, change.Change, error) {
 	// Update NodeStore before database to ensure consistency. The NodeStore update is
 	// blocking and will be the source of truth for the batcher. The database update must
 	// make the exact same change. If the database update fails, the NodeStore change will
 	// remain, but since we return an error, no change notification will be sent to the
 	// batcher, preventing inconsistent state propagation.
-	expiryPtr := expiry
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.Expiry = &expiryPtr
+		node.Expiry = expiry
 	})
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	return s.persistNodeToDB(n)
+	// Persist expiry change to database directly since persistNodeToDB omits expiry.
+	err := s.db.NodeSetExpiry(nodeID, expiry)
+	if err != nil {
+		return types.NodeView{}, change.Change{}, fmt.Errorf("setting node expiry in database: %w", err)
+	}
+
+	// Update policy manager and generate change notification.
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.Change{}, fmt.Errorf("updating policy manager after setting expiry: %w", err)
+	}
+
+	if c.IsEmpty() {
+		c = change.NodeAdded(n.ID())
+	}
+
+	return n, c, nil
 }
 
 // SetNodeTags assigns tags to a node, making it a "tagged node".
