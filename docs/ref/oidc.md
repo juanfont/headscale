@@ -289,6 +289,14 @@ Console.
 - Kanidm is fully supported by Headscale.
 - Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their full SPN, for
   example: `headscale_users@sso.example.com`.
+- Kanidm sends the full SPN (`alice@sso.example.com`) as `preferred_username` by default. Headscale stores this value as
+  username which might be confusing as the username and email fields now contain values that look like an email address.
+  [Kanidm can be configured to send the short username as `preferred_username` attribute
+  instead](https://kanidm.github.io/kanidm/stable/integrations/oauth2.html#short-names):
+  ```console
+  kanidm system oauth2 prefer-short-username <client name>
+  ```
+  Once configured, the short username in Headscale will be `alice` and can be referred to as `alice@` in the policy.
 
 ### Keycloak
 
