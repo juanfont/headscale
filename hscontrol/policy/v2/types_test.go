@@ -1766,6 +1766,192 @@ func TestUnmarshalPolicy(t *testing.T) {
 				},
 			},
 		},
+		// Issue #2754: IPv6 addresses with brackets in ACL destinations.
+		{
+			name: "2754-bracketed-ipv6-single-port",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[fd7a:115c:a1e0::87e1]:443"]
+	}]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							up("alice@"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: pp("fd7a:115c:a1e0::87e1/128"),
+								Ports: []tailcfg.PortRange{{First: 443, Last: 443}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "2754-bracketed-ipv6-multiple-ports",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[fd7a:115c:a1e0::87e1]:80,443"]
+	}]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							up("alice@"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: pp("fd7a:115c:a1e0::87e1/128"),
+								Ports: []tailcfg.PortRange{
+									{First: 80, Last: 80},
+									{First: 443, Last: 443},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "2754-bracketed-ipv6-wildcard-port",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[fd7a:115c:a1e0::87e1]:*"]
+	}]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							up("alice@"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: pp("fd7a:115c:a1e0::87e1/128"),
+								Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "2754-bracketed-ipv6-cidr-inside-rejected",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[fd7a:115c:a1e0::/48]:443"]
+	}]
+}
+`,
+			wantErr: "square brackets are only valid around IPv6 addresses",
+		},
+		{
+			name: "2754-bracketed-ipv6-port-range",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[::1]:80-443"]
+	}]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							up("alice@"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: pp("::1/128"),
+								Ports: []tailcfg.PortRange{{First: 80, Last: 443}},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "2754-bracketed-ipv6-cidr-outside-brackets",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[fd7a:115c:a1e0::2905]/128:80,443"]
+	}]
+}
+`,
+			want: &Policy{
+				ACLs: []ACL{
+					{
+						Action: "accept",
+						Sources: Aliases{
+							up("alice@"),
+						},
+						Destinations: []AliasWithPorts{
+							{
+								Alias: pp("fd7a:115c:a1e0::2905/128"),
+								Ports: []tailcfg.PortRange{
+									{First: 80, Last: 80},
+									{First: 443, Last: 443},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "2754-bracketed-ipv4-rejected",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[192.168.1.1]:80"]
+	}]
+}
+`,
+			wantErr: "square brackets are only valid around IPv6 addresses",
+		},
+		{
+			name: "2754-bracketed-hostname-rejected",
+			input: `
+{
+	"acls": [{
+		"action": "accept",
+		"src": ["alice@"],
+		"dst": ["[my-hostname]:80"]
+	}]
+}
+`,
+			wantErr: "square brackets are only valid around IPv6 addresses",
+		},
 	}
 
 	cmps := append(util.Comparers,
