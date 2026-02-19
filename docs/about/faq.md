@@ -163,6 +163,39 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
     minimal config to [control Headscale via remote CLI](../ref/api.md#grpc) is not sufficient. You may use `headscale
     -c /path/to/config.yaml` to specify the path to an alternative configuration file.
 
+## How can I migrate back to the recommended IP prefixes?
+
+Tailscale only supports the IP prefixes `100.64.0.0/10` and `fd7a:115c:a1e0::/48` or smaller subnets thereof. The
+following steps can be used to migrate from unsupported IP prefixes back to the supported and recommended ones.
+
+!!! warning "Backup and test in a demo environment required"
+
+    The commands below update the IP addresses of all nodes in your tailnet and this might have a severe impact in your
+    specific environment. At a minimum:
+
+    - [Create a backup of your database](../setup/upgrade.md#backup)
+    - Test the commands below in a representive demo environment. This allows to catch subsequent connectivity errors
+      early and see how the tailnet behaves in your specific environment.
+
+- Stop Headscale
+- Restore the default prefixes in the [configuration file](../ref/configuration.md):
+  ```yaml
+  prefixes:
+    v4: 100.64.0.0/10
+    v6: fd7a:115c:a1e0::/48
+  ```
+- Update the `nodes.ipv4` and `nodes.ipv6` columns in the database and assign each node a unique IPv4 and IPv6 address.
+  The following SQL statement assigns IP addresses based on the node ID:
+  ```sql
+  UPDATE nodes
+  SET ipv4=concat('100.64.', id/256, '.', id%256),
+      ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
+  ```
+- Update the [policy](../ref/acls.md) to reflect the IP address changes (if any)
+- Start Headscale
+
+Nodes should reconnect within a few seconds and pickup their newly assigned IP addresses.
+
 ## How can I avoid to send logs to Tailscale Inc?
 
 A Tailscale client [collects logs about its operation and connection attempts with other
