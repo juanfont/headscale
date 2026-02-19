@@ -17,3 +17,48 @@ message GetPolicyResponse {
   string policy = 1;
   google.protobuf.Timestamp updated_at = 2;
 }
+
+// ACL Testing messages
+
+message ACLTest {
+  // Source alias (user, group, tag, host, or IP) to test from.
+  string src = 1;
+  // Protocol to test (tcp, udp, icmp). Defaults to TCP/UDP if empty.
+  string proto = 2;
+  // Destinations (in "host:port" format) that should be allowed.
+  repeated string accept = 3;
+  // Destinations (in "host:port" format) that should be denied.
+  repeated string deny = 4;
+}
+
+message ACLTestResult {
+  // Source alias that was tested.
+  string src = 1;
+  // Whether the test passed (all assertions correct).
+  bool passed = 2;
+  // Errors encountered during test execution.
+  repeated string errors = 3;
+  // Destinations that were correctly allowed.
+  repeated string accept_ok = 4;
+  // Destinations that should have been allowed but were denied.
+  repeated string accept_fail = 5;
+  // Destinations that were correctly denied.
+  repeated string deny_ok = 6;
+  // Destinations that should have been denied but were allowed.
+  repeated string deny_fail = 7;
+}
+
+message TestACLRequest {
+  // Tests to run.
+  repeated ACLTest tests = 1;
+  // Optional: policy content to test against a proposed policy.
+  // If empty, tests run against the current active policy.
+  string policy = 2;
+}
+
+message TestACLResponse {
+  // Whether all tests passed.
+  bool all_passed = 1;
+  // Individual test results.
+  repeated ACLTestResult results = 2;
+}

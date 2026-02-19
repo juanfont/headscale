@@ -192,6 +192,10 @@ sequentially through each stable release, selecting the latest patch version ava
 - Log ACME/autocert errors for easier debugging [#2933](https://github.com/juanfont/headscale/pull/2933)
 - Improve CLI list output formatting [#2951](https://github.com/juanfont/headscale/pull/2951)
 - Use Debian 13 distroless base images for containers [#2944](https://github.com/juanfont/headscale/pull/2944)
+- Add ACL testing functionality via CLI, API, and embedded policy tests [#3005](https://github.com/juanfont/headscale/pull/3005)
+  - New `headscale policy test` command to verify ACL rules
+  - New `POST /api/v1/policy/test` endpoint for third-party UI integration
+  - Support for `tests` section in policy files with automatic validation on policy updates
 - Fix ACL policy not applied to new OIDC nodes until client restart [#2890](https://github.com/juanfont/headscale/pull/2890)
 - Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
 - Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)

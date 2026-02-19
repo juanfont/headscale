@@ -32,6 +32,12 @@ type PolicyManager interface {
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 
+	// RunTests runs multiple ACL tests and returns aggregated results.
+	RunTests(tests []policyv2.ACLTest) policyv2.ACLTestResults
+
+	// RunTest evaluates a single ACL test against the current policy.
+	RunTest(test policyv2.ACLTest) policyv2.ACLTestResult
+
 	Version() int
 	DebugString() string
 }
