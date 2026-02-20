@@ -587,7 +587,7 @@ func TestAuthenticationFlows(t *testing.T) {
 
 				// Expire the node
 				expiredTime := time.Now().Add(-1 * time.Hour)
-				_, _, err = app.state.SetNodeExpiry(node.ID(), expiredTime)
+				_, _, err = app.state.SetNodeExpiry(node.ID(), &expiredTime)
 
 				return "", err
 			},

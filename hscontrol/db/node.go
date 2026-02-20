@@ -315,16 +315,15 @@ func RenameNode(tx *gorm.DB,
 	return nil
 }
 
-func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry time.Time) error {
+func (hsdb *HSDatabase) NodeSetExpiry(nodeID types.NodeID, expiry *time.Time) error {
 	return hsdb.Write(func(tx *gorm.DB) error {
 		return NodeSetExpiry(tx, nodeID, expiry)
 	})
 }
 
-// NodeSetExpiry takes a Node struct and  a new expiry time.
-func NodeSetExpiry(tx *gorm.DB,
-	nodeID types.NodeID, expiry time.Time,
-) error {
+// NodeSetExpiry sets a new expiry time for a node.
+// If expiry is nil, the node's expiry is disabled (node will never expire).
+func NodeSetExpiry(tx *gorm.DB, nodeID types.NodeID, expiry *time.Time) error {
 	return tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("expiry", expiry).Error
 }
 
