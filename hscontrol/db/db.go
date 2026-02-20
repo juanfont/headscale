@@ -704,6 +704,29 @@ AND auth_key_id NOT IN (
 				},
 				Rollback: func(db *gorm.DB) error { return nil },
 			},
+			{
+				// Clear user_id on tagged nodes.
+				// Tagged nodes are owned by their tags, not a user.
+				// Previously user_id was kept as "created by" tracking,
+				// but this prevents deleting users whose nodes have been
+				// tagged, and the ON DELETE CASCADE FK would destroy the
+				// tagged nodes if the user were deleted.
+				// Fixes: https://github.com/juanfont/headscale/issues/3077
+				ID: "202602201200-clear-tagged-node-user-id",
+				Migrate: func(tx *gorm.DB) error {
+					err := tx.Exec(`
+UPDATE nodes
+SET user_id = NULL
+WHERE tags IS NOT NULL AND tags != '[]' AND tags != '';
+						`).Error
+					if err != nil {
+						return fmt.Errorf("clearing user_id on tagged nodes: %w", err)
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
 		},
 	)
 
