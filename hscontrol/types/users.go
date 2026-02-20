@@ -401,12 +401,22 @@ type OIDCUserInfo struct {
 
 // FromClaim overrides a User from OIDC claims.
 // All fields will be updated, except for the ID.
-func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool) {
-	err := util.ValidateUsername(claims.Username)
+// When useEmailAsUsername is true and the preferred_username claim is empty,
+// the email claim will be used as the username instead.
+func (u *User) FromClaim(claims *OIDCClaims, emailVerifiedRequired bool, useEmailAsUsername bool) {
+	username := claims.Username
+
+	// If preferred_username is not available and useEmailAsUsername is enabled,
+	// fall back to using the email claim as the username.
+	if username == "" && useEmailAsUsername {
+		username = claims.Email
+	}
+
+	err := util.ValidateUsername(username)
 	if err == nil {
-		u.Name = claims.Username
-	} else {
-		log.Debug().Caller().Err(err).Msgf("username %s is not valid", claims.Username)
+		u.Name = username
+	} else if username != "" {
+		log.Debug().Caller().Err(err).Msgf("username %s is not valid", username)
 	}
 
 	if claims.EmailVerified || !FlexibleBoolean(emailVerifiedRequired) {

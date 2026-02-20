@@ -142,6 +142,22 @@ oidc:
   email_verified_required: false
 ```
 
+### Use email as username
+
+Some identity providers (e.g. Google OAuth) do not send the `preferred_username` claim when the scope `profile` is
+requested. This causes the username in Headscale to be blank/not set. When `use_email_as_username` is enabled,
+Headscale will fall back to using the `email` claim as the username if `preferred_username` is not available.
+
+When `preferred_username` is present, it is always used regardless of this setting.
+
+```yaml hl_lines="5"
+oidc:
+  issuer: "https://sso.example.com"
+  client_id: "headscale"
+  client_secret: "generated-secret"
+  use_email_as_username: true
+```
+
 ### Customize node expiration
 
 The node expiration is the amount of time a node is authenticated with OpenID Connect until it expires and needs to
@@ -239,7 +255,7 @@ endpoint.
 | ------------------- | -------------------- | ------------------------------------------------------------------------------------------------- |
 | email address       | `email`              | Only verified emails are synchronized, unless `email_verified_required: false` is configured      |
 | display name        | `name`               | eg: `Sam Smith`                                                                                   |
-| username            | `preferred_username` | Depends on identity provider, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith`      |
+| username            | `preferred_username` | Depends on identity provider, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith`. Falls back to `email` if [use_email_as_username](#use-email-as-username) is enabled.      |
 | profile picture     | `picture`            | URL to a profile picture or avatar                                                                |
 | provider identifier | `iss`, `sub`         | A stable and unique identifier for a user, typically a combination of `iss` and `sub` OIDC claims |
 |                     | `groups`             | [Only used to filter for allowed groups](#authorize-users-with-filters)                           |
@@ -287,7 +303,7 @@ Authelia is fully supported by Headscale.
 !!! warning "No username due to missing preferred_username"
 
     Google OAuth does not send the `preferred_username` claim when the scope `profile` is requested. The username in
-    Headscale will be blank/not set.
+    Headscale will be blank/not set unless [`use_email_as_username`](#use-email-as-username) is enabled.
 
 In order to integrate Headscale with Google, you'll need to have a [Google Cloud
 Console](https://console.cloud.google.com) account.

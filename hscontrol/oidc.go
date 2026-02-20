@@ -540,7 +540,7 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 		user = &types.User{}
 	}
 
-	user.FromClaim(claims, a.cfg.EmailVerifiedRequired)
+	user.FromClaim(claims, a.cfg.EmailVerifiedRequired, a.cfg.UseEmailAsUsername)
 
 	if newUser {
 		user, c, err = a.h.state.CreateUser(*user)

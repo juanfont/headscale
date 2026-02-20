@@ -299,6 +299,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 		name                  string
 		jsonstr               string
 		emailVerifiedRequired bool
+		useEmailAsUsername    bool
 		want                  User
 	}{
 		{
@@ -479,6 +480,131 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 				ProfilePicURL: "https://cdn.casbin.org/img/casbin.svg",
 			},
 		},
+		{
+			// Test: email fallback disabled (default) - no preferred_username, no username set
+			name:                  "no-preferred-username-fallback-disabled",
+			emailVerifiedRequired: true,
+			useEmailAsUsername:    false,
+			jsonstr: `
+{
+  "sub": "google-user-123",
+  "iss": "https://accounts.google.com",
+  "email": "alice@gmail.com",
+  "email_verified": true,
+  "name": "Alice Smith",
+  "picture": "https://lh3.googleusercontent.com/photo.jpg"
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				DisplayName: "Alice Smith",
+				Email:       "alice@gmail.com",
+				ProviderIdentifier: sql.NullString{
+					String: "https://accounts.google.com/google-user-123",
+					Valid:  true,
+				},
+				ProfilePicURL: "https://lh3.googleusercontent.com/photo.jpg",
+			},
+		},
+		{
+			// Test: email fallback enabled - no preferred_username, email used as username
+			name:                  "no-preferred-username-fallback-enabled",
+			emailVerifiedRequired: true,
+			useEmailAsUsername:    true,
+			jsonstr: `
+{
+  "sub": "google-user-456",
+  "iss": "https://accounts.google.com",
+  "email": "bob@gmail.com",
+  "email_verified": true,
+  "name": "Bob Jones",
+  "picture": "https://lh3.googleusercontent.com/photo2.jpg"
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				Name:        "bob@gmail.com",
+				DisplayName: "Bob Jones",
+				Email:       "bob@gmail.com",
+				ProviderIdentifier: sql.NullString{
+					String: "https://accounts.google.com/google-user-456",
+					Valid:  true,
+				},
+				ProfilePicURL: "https://lh3.googleusercontent.com/photo2.jpg",
+			},
+		},
+		{
+			// Test: email fallback enabled but preferred_username is present - preferred_username takes priority
+			name:                  "preferred-username-present-fallback-enabled",
+			emailVerifiedRequired: true,
+			useEmailAsUsername:    true,
+			jsonstr: `
+{
+  "sub": "user-789",
+  "iss": "https://idp.example.com",
+  "preferred_username": "charlie",
+  "email": "charlie@example.com",
+  "email_verified": true,
+  "name": "Charlie Brown"
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				Name:        "charlie",
+				DisplayName: "Charlie Brown",
+				Email:       "charlie@example.com",
+				ProviderIdentifier: sql.NullString{
+					String: "https://idp.example.com/user-789",
+					Valid:  true,
+				},
+			},
+		},
+		{
+			// Test: email fallback enabled but email is also empty - no username set
+			name:                  "no-preferred-username-no-email-fallback-enabled",
+			emailVerifiedRequired: true,
+			useEmailAsUsername:    true,
+			jsonstr: `
+{
+  "sub": "user-000",
+  "iss": "https://idp.example.com",
+  "name": "No Email User"
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				DisplayName: "No Email User",
+				ProviderIdentifier: sql.NullString{
+					String: "https://idp.example.com/user-000",
+					Valid:  true,
+				},
+			},
+		},
+		{
+			// Test: email fallback enabled, email_verified not required, no preferred_username
+			name:                  "email-fallback-unverified-email",
+			emailVerifiedRequired: false,
+			useEmailAsUsername:    true,
+			jsonstr: `
+{
+  "sub": "user-unverified",
+  "iss": "https://idp.example.com",
+  "email": "unverified@example.com",
+  "email_verified": false,
+  "name": "Unverified User"
+}
+			`,
+			want: User{
+				Provider:    util.RegisterMethodOIDC,
+				Name:        "unverified@example.com",
+				DisplayName: "Unverified User",
+				Email:       "unverified@example.com",
+				ProviderIdentifier: sql.NullString{
+					String: "https://idp.example.com/user-unverified",
+					Valid:  true,
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -493,7 +619,7 @@ func TestOIDCClaimsJSONToUser(t *testing.T) {
 
 			var user User
 
-			user.FromClaim(&got, tt.emailVerifiedRequired)
+			user.FromClaim(&got, tt.emailVerifiedRequired, tt.useEmailAsUsername)
 
 			if diff := cmp.Diff(user, tt.want); diff != "" {
 				t.Errorf("TestOIDCClaimsJSONToUser() mismatch (-want +got):\n%s", diff)
