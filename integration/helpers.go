@@ -1004,6 +1004,18 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 	return nil, fmt.Errorf("user %s not found", username) //nolint:err113
 }
 
+// findNode returns the first node in nodes for which match returns true,
+// or nil if no node matches.
+func findNode(nodes []*v1.Node, match func(*v1.Node) bool) *v1.Node {
+	for _, n := range nodes {
+		if match(n) {
+			return n
+		}
+	}
+
+	return nil
+}
+
 // FindNewClient finds a client that is in the new list but not in the original list.
 // This is useful when dynamically adding nodes during tests and needing to identify
 // which client was just added.
