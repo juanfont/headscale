@@ -79,6 +79,8 @@ CREATE TABLE nodes(
   ipv6 text,
   hostname text,
   given_name varchar(63),
+  -- user_id is NULL for tagged nodes (owned by tags, not a user).
+  -- Only set for user-owned nodes (no tags).
   user_id integer,
   register_method text,
   tags text,
