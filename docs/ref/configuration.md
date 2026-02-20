@@ -17,8 +17,8 @@
 
     === "View on GitHub"
 
-        * Development version: <https://github.com/juanfont/headscale/blob/main/config-example.yaml>
-        * Version {{ headscale.version }}: <https://github.com/juanfont/headscale/blob/v{{ headscale.version }}/config-example.yaml>
+        - Development version: <https://github.com/juanfont/headscale/blob/main/config-example.yaml>
+        - Version {{ headscale.version }}: https://github.com/juanfont/headscale/blob/v{{ headscale.version }}/config-example.yaml
 
     === "Download with `wget`"
 

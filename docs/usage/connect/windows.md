@@ -54,6 +54,6 @@ This typically means that the registry keys above was not set appropriately.
 To reset and try again, it is important to do the following:
 
 1. Shut down the Tailscale service (or the client running in the tray)
-2. Delete Tailscale Application data folder, located at `C:\Users\<USERNAME>\AppData\Local\Tailscale` and try to connect again.
-3. Ensure the Windows node is deleted from headscale (to ensure fresh setup)
-4. Start Tailscale on the Windows machine and retry the login.
+1. Delete Tailscale Application data folder, located at `C:\Users\<USERNAME>\AppData\Local\Tailscale` and try to connect again.
+1. Ensure the Windows node is deleted from headscale (to ensure fresh setup)
+1. Start Tailscale on the Windows machine and retry the login.
