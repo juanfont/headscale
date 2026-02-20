@@ -48,7 +48,8 @@ func (hsdb *HSDatabase) DestroyUser(uid types.UserID) error {
 }
 
 // DestroyUser destroys a User. Returns error if the User does
-// not exist or if there are nodes associated with it.
+// not exist or if there are user-owned nodes associated with it.
+// Tagged nodes have user_id = NULL so they do not block deletion.
 func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	user, err := GetUserByID(tx, uid)
 	if err != nil {
