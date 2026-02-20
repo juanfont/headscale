@@ -21,7 +21,7 @@ endef
 # Source file collections using shell find for better performance
 GO_SOURCES := $(shell find . -name '*.go' -not -path './gen/*' -not -path './vendor/*')
 PROTO_SOURCES := $(shell find . -name '*.proto' -not -path './gen/*' -not -path './vendor/*')
-DOC_SOURCES := $(shell find . \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o -name '*.ts' -o -name '*.js' -o -name '*.html' -o -name '*.css' -o -name '*.scss' -o -name '*.sass' \) -not -path './gen/*' -not -path './vendor/*' -not -path './node_modules/*')
+PRETTIER_SOURCES := $(shell find . \( -name '*.md' -o -name '*.yaml' -o -name '*.yml' -o -name '*.ts' -o -name '*.js' -o -name '*.html' -o -name '*.css' -o -name '*.scss' -o -name '*.sass' \) -not -path './gen/*' -not -path './vendor/*' -not -path './node_modules/*')
 
 # Default target
 .PHONY: all
@@ -33,6 +33,7 @@ check-deps:
 	$(call check_tool,go)
 	$(call check_tool,golangci-lint)
 	$(call check_tool,gofumpt)
+	$(call check_tool,mdformat)
 	$(call check_tool,prettier)
 	$(call check_tool,clang-format)
 	$(call check_tool,buf)
@@ -52,7 +53,7 @@ test: check-deps $(GO_SOURCES) go.mod go.sum
 
 # Formatting targets
 .PHONY: fmt
-fmt: fmt-go fmt-prettier fmt-proto
+fmt: fmt-go fmt-mdformat fmt-prettier fmt-proto
 
 .PHONY: fmt-go
 fmt-go: check-deps $(GO_SOURCES)
@@ -60,9 +61,14 @@ fmt-go: check-deps $(GO_SOURCES)
 	gofumpt -l -w .
 	golangci-lint run --fix
 
+.PHONY: fmt-mdformat
+fmt-mdformat: check-deps
+	@echo "Formatting documentation..."
+	mdformat docs/
+
 .PHONY: fmt-prettier
-fmt-prettier: check-deps $(DOC_SOURCES)
-	@echo "Formatting documentation and config files..."
+fmt-prettier: check-deps $(PRETTIER_SOURCES)
+	@echo "Formatting markup and config files..."
 	prettier --write '**/*.{ts,js,md,yaml,yml,sass,css,scss,html}'
 
 .PHONY: fmt-proto
@@ -116,7 +122,8 @@ help:
 	@echo ""
 	@echo "Specific targets:"
 	@echo "  fmt-go       - Format Go code only"
-	@echo "  fmt-prettier - Format documentation only"
+	@echo "  fmt-mdformat - Format documentation only"
+	@echo "  fmt-prettier - Format markup and config files only"
 	@echo "  fmt-proto    - Format Protocol Buffer files only"
 	@echo "  lint-go      - Lint Go code only"
 	@echo "  lint-proto   - Lint Protocol Buffer files only"
