@@ -29,7 +29,7 @@ provides on overview of Headscale's feature and compatibility with the Tailscale
       routers](../ref/routes.md#automatically-approve-routes-of-a-subnet-router) and [exit
       nodes](../ref/routes.md#automatically-approve-an-exit-node-with-auto-approvers)
     - [x] [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
-* [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
+- [x] [Node registration using Single-Sign-On (OpenID Connect)](../ref/oidc.md) ([GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC))
     - [x] Basic registration
     - [x] Update user profile from identity provider
     - [ ] OIDC groups cannot be used in ACLs

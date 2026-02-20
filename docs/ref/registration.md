@@ -136,6 +136,6 @@ Its best suited for automation.
     tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
     ```
 
-    The registration of a tagged node is complete and it should be listed as "online" in the output of `headscale nodes
-    list`. The "User" column displays `tagged-devices` as the owner of the node. See the "Tags" column for the list of
+    The registration of a tagged node is complete and it should be listed as "online" in the output of
+    `headscale nodes list`. The "User" column displays `tagged-devices` as the owner of the node. See the "Tags" column for the list of
     assigned tags.

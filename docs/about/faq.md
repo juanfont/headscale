@@ -50,8 +50,8 @@ we have a "docker-issues" channel where you can ask for Docker-specific help to 
 ## What is the recommended update path? Can I skip multiple versions while updating?
 
 Please follow the steps outlined in the [upgrade guide](../setup/upgrade.md) to update your existing Headscale
-installation. Its required to update from one stable version to the next (e.g. 0.26.0 &rarr; 0.27.1 &rarr; 0.28.0)
-without skipping minor versions in between. You should always pick the latest available patch release.
+installation. Its required to update from one stable version to the next (e.g. 0.26.0 → 0.27.1 → 0.28.0) without
+skipping minor versions in between. You should always pick the latest available patch release.
 
 Be sure to check the [changelog](https://github.com/juanfont/headscale/blob/main/CHANGELOG.md) for version specific
 upgrade instructions and breaking changes.
@@ -73,12 +73,12 @@ of Headscale:
 
 1. An environment with 1000 servers
 
-     - they rarely "move" (change their endpoints)
-     - new nodes are added rarely
+    - they rarely "move" (change their endpoints)
+    - new nodes are added rarely
 
-2. An environment with 80 laptops/phones (end user devices)
+1. An environment with 80 laptops/phones (end user devices)
 
-     - nodes move often, e.g. switching from home to office
+    - nodes move often, e.g. switching from home to office
 
 Headscale calculates a map of all nodes that need to talk to each other,
 creating this "world map" requires a lot of CPU time. When an event that
@@ -142,8 +142,8 @@ connect back to the administrator's node. Why do all nodes see the administrator
 `tailscale status`?
 
 This is essentially how Tailscale works. If traffic is allowed to flow in one direction, then both nodes see each other
-in their output of `tailscale status`. Traffic is still filtered according to the ACL, with the exception of `tailscale
-ping` which is always allowed in either direction.
+in their output of `tailscale status`. Traffic is still filtered according to the ACL, with the exception of
+`tailscale ping` which is always allowed in either direction.
 
 See also <https://tailscale.com/kb/1087/device-visibility>.
 
@@ -160,8 +160,8 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
 !!! warning "Full server configuration required"
 
     The above commands to get/set the policy require a complete server configuration file including database settings. A
-    minimal config to [control Headscale via remote CLI](../ref/api.md#grpc) is not sufficient. You may use `headscale
-    -c /path/to/config.yaml` to specify the path to an alternative configuration file.
+    minimal config to [control Headscale via remote CLI](../ref/api.md#grpc) is not sufficient. You may use
+    `headscale -c /path/to/config.yaml` to specify the path to an alternative configuration file.
 
 ## How can I migrate back to the recommended IP prefixes?
 
@@ -179,18 +179,18 @@ following steps can be used to migrate from unsupported IP prefixes back to the 
 
 - Stop Headscale
 - Restore the default prefixes in the [configuration file](../ref/configuration.md):
-  ```yaml
-  prefixes:
-    v4: 100.64.0.0/10
-    v6: fd7a:115c:a1e0::/48
-  ```
+    ```yaml
+    prefixes:
+      v4: 100.64.0.0/10
+      v6: fd7a:115c:a1e0::/48
+    ```
 - Update the `nodes.ipv4` and `nodes.ipv6` columns in the database and assign each node a unique IPv4 and IPv6 address.
   The following SQL statement assigns IP addresses based on the node ID:
-  ```sql
-  UPDATE nodes
-  SET ipv4=concat('100.64.', id/256, '.', id%256),
-      ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
-  ```
+    ```sql
+    UPDATE nodes
+    SET ipv4=concat('100.64.', id/256, '.', id%256),
+        ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
+    ```
 - Update the [policy](../ref/acls.md) to reflect the IP address changes (if any)
 - Start Headscale
 

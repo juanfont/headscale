@@ -257,9 +257,11 @@ Includes devices where the same user is authenticated on both the source and des
   "dst": ["autogroup:self:*"]
 }
 ```
+
 *Using `autogroup:self` may cause performance degradation on the Headscale coordinator server in large deployments, as filter rules must be compiled per-node rather than globally and the current implementation is not very efficient.*
 
 If you experience performance issues, consider using more specific ACL rules or limiting the use of `autogroup:self`.
+
 ```json
 {
   // The following rules allow internal users to communicate with their
