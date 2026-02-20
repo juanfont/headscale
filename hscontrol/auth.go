@@ -313,6 +313,7 @@ func (h *Headscale) reqToNewRegisterResponse(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
+			Ephemeral:  req.Ephemeral,
 			LastSeen:   new(time.Now()),
 		},
 	)
@@ -440,6 +441,7 @@ func (h *Headscale) handleRegisterInteractive(
 			MachineKey: machineKey,
 			NodeKey:    req.NodeKey,
 			Hostinfo:   hostinfo,
+			Ephemeral:  req.Ephemeral,
 			LastSeen:   new(time.Now()),
 		},
 	)

@@ -96,6 +96,7 @@ var _NodeCloneNeedsRegeneration = Node(struct {
 	UserID         *uint
 	User           *User
 	RegisterMethod string
+	Ephemeral      bool
 	Tags           []string
 	AuthKeyID      *uint64
 	AuthKey        *PreAuthKey

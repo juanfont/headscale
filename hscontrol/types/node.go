@@ -113,6 +113,7 @@ type Node struct {
 	User   *User `gorm:"constraint:OnDelete:CASCADE;"`
 
 	RegisterMethod string
+	Ephemeral      bool `gorm:"default:false"`
 
 	// Tags is the definitive owner for tagged nodes.
 	// When non-empty, the node is "tagged" and tags define its identity.
@@ -181,7 +182,7 @@ func (node *Node) IsExpired() bool {
 // IsEphemeral returns if the node is registered as an Ephemeral node.
 // https://tailscale.com/kb/1111/ephemeral-nodes/
 func (node *Node) IsEphemeral() bool {
-	return node.AuthKey != nil && node.AuthKey.Ephemeral
+	return node.Ephemeral || (node.AuthKey != nil && node.AuthKey.Ephemeral)
 }
 
 func (node *Node) IPs() []netip.Addr {

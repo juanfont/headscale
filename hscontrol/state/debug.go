@@ -91,7 +91,7 @@ func (s *State) DebugOverview() string {
 				expiredCount++
 			}
 
-			if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+			if node.IsEphemeral() {
 				ephemeralCount++
 			}
 		}
@@ -302,7 +302,7 @@ func (s *State) DebugOverviewJSON() DebugOverviewInfo {
 				info.Nodes.Expired++
 			}
 
-			if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+			if node.IsEphemeral() {
 				info.Nodes.Ephemeral++
 			}
 		}

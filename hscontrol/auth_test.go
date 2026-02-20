@@ -342,6 +342,35 @@ func TestAuthenticationFlows(t *testing.T) {
 			validateCompleteResponse: true,
 			expectedAuthURLPattern:   "/register/",
 		},
+		{
+			name: "full_interactive_workflow_ephemeral_node",
+			setupFunc: func(t *testing.T, app *Headscale) (string, error) {
+				return "", nil
+			},
+			request: func(_ string) tailcfg.RegisterRequest {
+				return tailcfg.RegisterRequest{
+					NodeKey:   nodeKey1.Public(),
+					Ephemeral: true,
+					Hostinfo: &tailcfg.Hostinfo{
+						Hostname: "interactive-ephemeral-node",
+					},
+					Expiry: time.Now().Add(24 * time.Hour),
+				}
+			},
+			machineKey:              func() key.MachinePublic { return machineKey1.Public() },
+			requiresInteractiveFlow: true,
+			interactiveSteps: []interactiveStep{
+				{stepType: stepTypeInitialRequest, expectAuthURL: true, expectCacheEntry: true},
+				{stepType: stepTypeAuthCompletion, callAuthPath: true, expectCacheEntry: false},
+			},
+			validateCompleteResponse: true,
+			expectedAuthURLPattern:   "/register/",
+			validate: func(t *testing.T, _ *tailcfg.RegisterResponse, app *Headscale) {
+				node, found := app.state.GetNodeByNodeKey(nodeKey1.Public())
+				require.True(t, found)
+				assert.True(t, node.IsEphemeral(), "interactive node with state=mem should be marked ephemeral")
+			},
+		},
 		// TEST: Interactive workflow with no Auth struct in request
 		// WHAT: Tests interactive flow when request has no Auth field (nil)
 		// INPUT: Register request with Auth field set to nil

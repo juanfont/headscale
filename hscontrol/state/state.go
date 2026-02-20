@@ -628,8 +628,7 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 	var ephemeralNodes []types.NodeView
 
 	for _, node := range allNodes.All() {
-		// Check if node is ephemeral by checking its AuthKey
-		if node.AuthKey().Valid() && node.AuthKey().Ephemeral() {
+		if node.IsEphemeral() {
 			ephemeralNodes = append(ephemeralNodes, node)
 		}
 	}
@@ -1100,6 +1099,7 @@ type newNodeParams struct {
 	Endpoints      []netip.AddrPort
 	Expiry         *time.Time
 	RegisterMethod string
+	Ephemeral      bool
 
 	// Optional: Pre-auth key specific fields
 	PreAuthKey *types.PreAuthKey
@@ -1190,6 +1190,7 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		} else {
 			node.RegisterMethod = params.RegEntry.Node.RegisterMethod
 		}
+		node.Ephemeral = params.RegEntry.Node.Ephemeral
 
 		// Track tagged status BEFORE processing tags
 		wasTagged := node.IsTagged()
@@ -1285,6 +1286,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 		Endpoints:      params.Endpoints,
 		LastSeen:       new(time.Now()),
 		RegisterMethod: params.RegisterMethod,
+		Ephemeral:      params.Ephemeral,
 		Expiry:         params.Expiry,
 	}
 
@@ -1313,6 +1315,7 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 
 		nodeToRegister.AuthKey = params.PreAuthKey
 		nodeToRegister.AuthKeyID = &params.PreAuthKey.ID
+		nodeToRegister.Ephemeral = params.PreAuthKey.Ephemeral
 	} else {
 		// Non-PreAuthKey registration (OIDC, CLI) - always user-owned
 		nodeToRegister.UserID = &params.User.ID
@@ -1675,6 +1678,7 @@ func (s *State) createNewNodeFromAuth(
 		Endpoints:              regEntry.Node.Endpoints,
 		Expiry:                 cmp.Or(expiry, regEntry.Node.Expiry),
 		RegisterMethod:         registrationMethod,
+		Ephemeral:              regEntry.Node.Ephemeral,
 		ExistingNodeForNetinfo: existingNodeForNetinfo,
 	})
 }
@@ -1819,6 +1823,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			// Only update AuthKey reference
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
+			node.Ephemeral = pak.Ephemeral
 			node.IsOnline = new(false)
 			node.LastSeen = new(time.Now())
 
@@ -1909,6 +1914,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 			Endpoints:              nil, // Endpoints not available in RegisterRequest
 			Expiry:                 &regReq.Expiry,
 			RegisterMethod:         util.RegisterMethodAuthKey,
+			Ephemeral:              pak.Ephemeral,
 			PreAuthKey:             pak,
 			ExistingNodeForNetinfo: cmp.Or(existingNodeAnyUser, types.NodeView{}),
 		})

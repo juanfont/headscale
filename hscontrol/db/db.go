@@ -357,6 +357,7 @@ AND auth_key_id NOT IN (
   given_name varchar(63),
   user_id integer,
   register_method text,
+  ephemeral numeric DEFAULT false,
   forced_tags text,
   auth_key_id integer,
   last_seen datetime,
@@ -398,8 +399,8 @@ AND auth_key_id NOT IN (
              SELECT id, prefix, hash, expiration, last_seen, created_at
              FROM api_keys_old`,
 
-						`INSERT INTO nodes (id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at)
-             SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at
+						`INSERT INTO nodes (id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, ephemeral, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at)
+             SELECT id, machine_key, node_key, disco_key, endpoints, host_info, ipv4, ipv6, hostname, given_name, user_id, register_method, false, forced_tags, auth_key_id, last_seen, expiry, approved_routes, created_at, updated_at, deleted_at
              FROM nodes_old`,
 
 						`INSERT INTO policies (id, data, created_at, updated_at, deleted_at)
@@ -698,6 +699,32 @@ AND auth_key_id NOT IN (
 							Strs("existing_tags", existingTags).
 							Strs("merged_tags", mergedTags).
 							Msg("Migrated validated RequestTags from host_info to tags column")
+					}
+
+					return nil
+				},
+				Rollback: func(db *gorm.DB) error { return nil },
+			},
+			{
+				ID: "202602111000-node-ephemeral-column",
+				Migrate: func(tx *gorm.DB) error {
+					if !tx.Migrator().HasColumn(&types.Node{}, "ephemeral") {
+						err := tx.Migrator().AddColumn(&types.Node{}, "ephemeral")
+						if err != nil {
+							return fmt.Errorf("adding nodes.ephemeral column: %w", err)
+						}
+					}
+
+					// Backfill existing auth-key ephemeral nodes so historical data keeps behavior.
+					err := tx.Exec(`
+UPDATE nodes
+SET ephemeral = true
+WHERE auth_key_id IN (
+	SELECT id FROM pre_auth_keys WHERE ephemeral = true
+);
+						`).Error
+					if err != nil {
+						return fmt.Errorf("backfilling nodes.ephemeral from pre_auth_keys: %w", err)
 					}
 
 					return nil

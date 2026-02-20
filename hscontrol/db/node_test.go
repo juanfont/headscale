@@ -679,10 +679,23 @@ func TestListEphemeralNodes(t *testing.T) {
 		AuthKeyID:      &pakEphID,
 	}
 
+	nodeEphNoAuthKey := types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "ephemeral-oidc",
+		UserID:         &user.ID,
+		RegisterMethod: util.RegisterMethodOIDC,
+		Ephemeral:      true,
+	}
+
 	err = db.DB.Save(&node).Error
 	require.NoError(t, err)
 
 	err = db.DB.Save(&nodeEph).Error
+	require.NoError(t, err)
+
+	err = db.DB.Save(&nodeEphNoAuthKey).Error
 	require.NoError(t, err)
 
 	nodes, err := db.ListNodes()
@@ -691,13 +704,19 @@ func TestListEphemeralNodes(t *testing.T) {
 	ephemeralNodes, err := db.ListEphemeralNodes()
 	require.NoError(t, err)
 
-	assert.Len(t, nodes, 2)
-	assert.Len(t, ephemeralNodes, 1)
+	assert.Len(t, nodes, 3)
+	assert.Len(t, ephemeralNodes, 2)
 
-	assert.Equal(t, nodeEph.ID, ephemeralNodes[0].ID)
-	assert.Equal(t, nodeEph.AuthKeyID, ephemeralNodes[0].AuthKeyID)
-	assert.Equal(t, nodeEph.UserID, ephemeralNodes[0].UserID)
-	assert.Equal(t, nodeEph.Hostname, ephemeralNodes[0].Hostname)
+	ephemeralByHostname := map[string]types.Node{}
+	for _, ephemeralNode := range ephemeralNodes {
+		ephemeralByHostname[ephemeralNode.Hostname] = *ephemeralNode
+	}
+
+	require.Contains(t, ephemeralByHostname, nodeEph.Hostname)
+	require.Contains(t, ephemeralByHostname, nodeEphNoAuthKey.Hostname)
+
+	assert.Equal(t, nodeEph.AuthKeyID, ephemeralByHostname[nodeEph.Hostname].AuthKeyID)
+	assert.Equal(t, nodeEphNoAuthKey.AuthKeyID, ephemeralByHostname[nodeEphNoAuthKey.Hostname].AuthKeyID)
 }
 
 func TestNodeNaming(t *testing.T) {
