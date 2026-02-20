@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/metrics"
 	"github.com/juanfont/headscale/hscontrol/capver"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/rs/zerolog/log"
@@ -21,6 +24,12 @@ import (
 
 // ErrUnsupportedClientVersion is returned when a client connects with an unsupported protocol version.
 var ErrUnsupportedClientVersion = errors.New("unsupported client version")
+
+// ErrMissingURLParameter is returned when a required URL parameter is not provided.
+var ErrMissingURLParameter = errors.New("missing URL parameter")
+
+// ErrUnsupportedURLParameterType is returned when a URL parameter has an unsupported type.
+var ErrUnsupportedURLParameterType = errors.New("unsupported URL parameter type")
 
 const (
 	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade.
@@ -69,7 +78,7 @@ func (h *Headscale) NoiseUpgradeHandler(
 		return
 	}
 
-	noiseServer := noiseServer{
+	ns := noiseServer{
 		headscale: h,
 		challenge: key.NewChallenge(),
 	}
@@ -79,42 +88,89 @@ func (h *Headscale) NoiseUpgradeHandler(
 		writer,
 		req,
 		*h.noisePrivateKey,
-		noiseServer.earlyNoise,
+		ns.earlyNoise,
 	)
 	if err != nil {
 		httpError(writer, fmt.Errorf("upgrading noise connection: %w", err))
 		return
 	}
 
-	noiseServer.conn = noiseConn
-	noiseServer.machineKey = noiseServer.conn.Peer()
-	noiseServer.protocolVersion = noiseServer.conn.ProtocolVersion()
+	ns.conn = noiseConn
+	ns.machineKey = ns.conn.Peer()
+	ns.protocolVersion = ns.conn.ProtocolVersion()
 
 	// This router is served only over the Noise connection, and exposes only the new API.
 	//
 	// The HTTP2 server that exposes this router is created for
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
-	router := mux.NewRouter()
-	router.Use(prometheusMiddleware)
 
-	router.HandleFunc("/machine/register", noiseServer.NoiseRegistrationHandler).
-		Methods(http.MethodPost)
+	r := chi.NewRouter()
+	r.Use(metrics.Collector(metrics.CollectorOpts{
+		Host:  false,
+		Proto: true,
+		Skip: func(r *http.Request) bool {
+			return r.Method != http.MethodOptions
+		},
+	}))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
-	// Endpoints outside of the register endpoint must use getAndValidateNode to
-	// get the node to ensure that the MachineKey matches the Node setting up the
-	// connection.
-	router.HandleFunc("/machine/map", noiseServer.NoisePollNetMapHandler)
+	r.Handle("/metrics", metrics.Handler())
 
-	noiseServer.httpBaseConfig = &http.Server{
-		Handler:           router,
+	r.Route("/machine", func(r chi.Router) {
+		r.Post("/register", ns.RegistrationHandler)
+		r.Post("/map", ns.PollNetMapHandler)
+
+		// SSH Check mode endpoint, consulted to validate if a given SSH connection should be accepted or rejected.
+		r.Get("/ssh/action/from/{src_node_id}/to/{dst_node_id}", ns.SSHActionHandler)
+
+		// Not implemented yet
+		//
+		// /whoami is a debug endpoint to validate that the client can communicate over the connection,
+		// not clear if there is a specific response, it looks like it is just logged.
+		// https://github.com/tailscale/tailscale/blob/dfba01ca9bd8c4df02c3c32f400d9aeb897c5fc7/cmd/tailscale/cli/debug.go#L1138
+		r.Get("/whoami", ns.NotImplementedHandler)
+
+		// client sends a [tailcfg.SetDNSRequest] to this endpoints and expect
+		// the server to create or update this DNS record "somewhere".
+		// It is typically a TXT record for an ACME challenge.
+		r.Post("/set-dns", ns.NotImplementedHandler)
+
+		// A patch of [tailcfg.SetDeviceAttributesRequest] to update device attributes.
+		// We currently do not support device attributes.
+		r.Patch("/set-device-attr", ns.NotImplementedHandler)
+
+		// A [tailcfg.AuditLogRequest] to send audit log entries to the server.
+		// The server is expected to store them "somewhere".
+		// We currently do not support device attributes.
+		r.Post("/audit-log", ns.NotImplementedHandler)
+
+		// handles requests to get an OIDC ID token. Receives a [tailcfg.TokenRequest].
+		r.Post("/id-token", ns.NotImplementedHandler)
+
+		// Asks the server if a feature is available and receive information about how to enable it.
+		// Gets a [tailcfg.QueryFeatureRequest] and returns a [tailcfg.QueryFeatureResponse].
+		r.Post("/feature/query", ns.NotImplementedHandler)
+
+		r.Post("/update-health", ns.NotImplementedHandler)
+
+		r.Route("/webclient", func(r chi.Router) {})
+
+		r.Post("/c2n", ns.NotImplementedHandler)
+	})
+
+	ns.httpBaseConfig = &http.Server{
+		Handler:           r,
 		ReadHeaderTimeout: types.HTTPTimeout,
 	}
-	noiseServer.http2Server = &http2.Server{}
+	ns.http2Server = &http2.Server{}
 
-	noiseServer.http2Server.ServeConn(
+	ns.http2Server.ServeConn(
 		noiseConn,
 		&http2.ServeConnOpts{
-			BaseConfig: noiseServer.httpBaseConfig,
+			BaseConfig: ns.httpBaseConfig,
 		},
 	)
 }
@@ -189,7 +245,143 @@ func rejectUnsupported(
 	return false
 }
 
-// NoisePollNetMapHandler takes care of /machine/:id/map using the Noise protocol
+func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *http.Request) {
+	d, _ := io.ReadAll(req.Body)
+	log.Trace().Caller().Str("path", req.URL.String()).Bytes("body", d).Msgf("not implemented handler hit")
+	http.Error(writer, "Not implemented yet", http.StatusNotImplemented)
+}
+
+func urlParam[T any](req *http.Request, key string) (T, error) {
+	var zero T
+
+	param := chi.URLParam(req, key)
+	if param == "" {
+		return zero, fmt.Errorf("%w: %s", ErrMissingURLParameter, key)
+	}
+
+	var value T
+	switch any(value).(type) {
+	case string:
+		v, ok := any(param).(T)
+		if !ok {
+			return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
+		}
+
+		value = v
+	default:
+		return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
+	}
+
+	return value, nil
+}
+
+// SSHActionHandler handles the /ssh-action endpoint, it returns a [tailcfg.SSHActionHandler]
+// to the client with the verdict of an SSH access request.
+func (ns *noiseServer) SSHActionHandler(writer http.ResponseWriter, req *http.Request) {
+	srcNodeID, _ := urlParam[types.NodeID](req, "src_node_id")
+	dstNodeID, _ := urlParam[types.NodeID](req, "dst_node_id")
+
+	sshUser := req.URL.Query().Get("ssh_user")
+	localUser := req.URL.Query().Get("local_user")
+
+	// Set if this is a follow up request.
+	authIDStr := req.URL.Query().Get("auth_id")
+
+	log.Trace().Caller().
+		Str("path", req.URL.String()).
+		Uint64("src_node_id", srcNodeID.Uint64()).
+		Uint64("dst_node_id", dstNodeID.Uint64()).
+		Str("ssh_user", sshUser).
+		Str("local_user", localUser).
+		Str("auth_id", authIDStr).
+		Msg("got SSH action request")
+
+	var action tailcfg.SSHAction
+
+	action.AllowAgentForwarding = true
+	action.AllowLocalPortForwarding = true
+	action.AllowRemotePortForwarding = true
+
+	if authIDStr == "" {
+		holdURL, err := url.Parse(ns.headscale.cfg.ServerURL + "/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER")
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("failed to parse SSH action URL")
+			http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+			return
+		}
+
+		authID, err := types.NewAuthID()
+		if err != nil {
+			log.Error().Caller().Err(err).Msg("failed to generate auth ID for SSH action")
+			http.Error(writer, "Internal error", http.StatusInternalServerError)
+
+			return
+		}
+
+		ns.headscale.state.SetAuthCacheEntry(authID, types.NewAuthRequest())
+
+		authURL := ns.headscale.authProvider.AuthURL(authID)
+
+		q := holdURL.Query()
+		q.Set("auth_id", authID.String())
+		holdURL.RawQuery = q.Encode()
+
+		action.HoldAndDelegate = holdURL.String()
+		// TODO(kradalby): here we can also send a very tiny mapresponse
+		// "popping" the url and opening it for the user.
+		action.Message = fmt.Sprintf(`# Headscale SSH requires an additional check.
+# To authenticate, visit: %s
+# Authentication checked with Headscale SSH.
+`, authURL)
+	} else {
+		authID, err := types.AuthIDFromString(authIDStr)
+		if err != nil {
+			log.Error().Caller().Err(err).Str("auth_id", authIDStr).Msg("invalid auth_id in SSH action request")
+			http.Error(writer, "Invalid auth_id", http.StatusBadRequest)
+
+			return
+		}
+
+		log.Trace().Caller().Str("auth_id", authID.String()).Msg("SSH action follow-up request with auth_id")
+
+		auth, ok := ns.headscale.state.GetAuthCacheEntry(authID)
+		if !ok {
+			log.Error().Caller().Str("auth_id", authID.String()).Msg("no auth session found for auth_id in SSH action request")
+			http.Error(writer, "Invalid auth_id", http.StatusBadRequest)
+
+			return
+		}
+
+		verdict := <-auth.WaitForAuth()
+
+		if verdict.Accept() {
+			action.Reject = false
+			action.Accept = true
+		} else {
+			action.Reject = true
+			action.Accept = false
+
+			log.Trace().Caller().Str("auth_id", authID.String()).Err(verdict.Err).Msg("SSH action authentication rejected")
+		}
+	}
+
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	err := json.NewEncoder(writer).Encode(action)
+	if err != nil {
+		log.Error().Caller().Err(err).Msg("failed to encode SSH action response")
+		return
+	}
+
+	// Ensure response is flushed to client
+	if flusher, ok := writer.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+// PollNetMapHandler takes care of /machine/:id/map using the Noise protocol
 //
 // This is the busiest endpoint, as it keeps the HTTP long poll that updates
 // the clients when something in the network changes.
@@ -198,7 +390,7 @@ func rejectUnsupported(
 // only after their first request (marked with the ReadOnly field).
 //
 // At this moment the updates are sent in a quite horrendous way, but they kinda work.
-func (ns *noiseServer) NoisePollNetMapHandler(
+func (ns *noiseServer) PollNetMapHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
@@ -237,8 +429,8 @@ func regErr(err error) *tailcfg.RegisterResponse {
 	return &tailcfg.RegisterResponse{Error: err.Error()}
 }
 
-// NoiseRegistrationHandler handles the actual registration process of a node.
-func (ns *noiseServer) NoiseRegistrationHandler(
+// RegistrationHandler handles the actual registration process of a node.
+func (ns *noiseServer) RegistrationHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {

@@ -20,7 +20,9 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/gorilla/mux"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/metrics"
 	grpcRuntime "github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/juanfont/headscale"
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
@@ -457,50 +459,58 @@ func (h *Headscale) ensureUnixSocketIsAbsent() error {
 	return os.Remove(h.cfg.UnixSocket)
 }
 
-func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *mux.Router {
-	router := mux.NewRouter()
-	router.Use(prometheusMiddleware)
+func (h *Headscale) createRouter(grpcMux *grpcRuntime.ServeMux) *chi.Mux {
+	r := chi.NewRouter()
+	r.Use(metrics.Collector(metrics.CollectorOpts{
+		Host:  false,
+		Proto: true,
+		Skip: func(r *http.Request) bool {
+			return r.Method != http.MethodOptions
+		},
+	}))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
-	router.HandleFunc(ts2021UpgradePath, h.NoiseUpgradeHandler).
-		Methods(http.MethodPost, http.MethodGet)
+	r.Post(ts2021UpgradePath, h.NoiseUpgradeHandler)
 
-	router.HandleFunc("/robots.txt", h.RobotsHandler).Methods(http.MethodGet)
-	router.HandleFunc("/health", h.HealthHandler).Methods(http.MethodGet)
-	router.HandleFunc("/version", h.VersionHandler).Methods(http.MethodGet)
-	router.HandleFunc("/key", h.KeyHandler).Methods(http.MethodGet)
-	router.HandleFunc("/register/{registration_id}", h.authProvider.RegisterHandler).
-		Methods(http.MethodGet)
+	r.Get("/robots.txt", h.RobotsHandler)
+	r.Get("/health", h.HealthHandler)
+	r.Get("/version", h.VersionHandler)
+	r.Get("/key", h.KeyHandler)
+	r.Get("/register/{auth_id}", h.authProvider.RegisterHandler)
+	r.Get("/auth/{auth_id}", h.authProvider.AuthHandler)
 
 	if provider, ok := h.authProvider.(*AuthProviderOIDC); ok {
-		router.HandleFunc("/oidc/callback", provider.OIDCCallbackHandler).Methods(http.MethodGet)
+		r.Get("/oidc/callback", provider.OIDCCallbackHandler)
 	}
 
-	router.HandleFunc("/apple", h.AppleConfigMessage).Methods(http.MethodGet)
-	router.HandleFunc("/apple/{platform}", h.ApplePlatformConfig).
-		Methods(http.MethodGet)
-	router.HandleFunc("/windows", h.WindowsConfigMessage).Methods(http.MethodGet)
+	r.Get("/apple", h.AppleConfigMessage)
+	r.Get("/apple/{platform}", h.ApplePlatformConfig)
+	r.Get("/windows", h.WindowsConfigMessage)
 
 	// TODO(kristoffer): move swagger into a package
-	router.HandleFunc("/swagger", headscale.SwaggerUI).Methods(http.MethodGet)
-	router.HandleFunc("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1).
-		Methods(http.MethodGet)
+	r.Get("/swagger", headscale.SwaggerUI)
+	r.Get("/swagger/v1/openapiv2.json", headscale.SwaggerAPIv1)
 
-	router.HandleFunc("/verify", h.VerifyHandler).Methods(http.MethodPost)
+	r.Post("/verify", h.VerifyHandler)
 
 	if h.cfg.DERP.ServerEnabled {
-		router.HandleFunc("/derp", h.DERPServer.DERPHandler)
-		router.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
-		router.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
-		router.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
+		r.HandleFunc("/derp", h.DERPServer.DERPHandler)
+		r.HandleFunc("/derp/probe", derpServer.DERPProbeHandler)
+		r.HandleFunc("/derp/latency-check", derpServer.DERPProbeHandler)
+		r.HandleFunc("/bootstrap-dns", derpServer.DERPBootstrapDNSHandler(h.state.DERPMap()))
 	}
 
-	apiRouter := router.PathPrefix("/api").Subrouter()
-	apiRouter.Use(h.httpAuthenticationMiddleware)
-	apiRouter.PathPrefix("/v1/").HandlerFunc(grpcMux.ServeHTTP)
-	router.HandleFunc("/favicon.ico", FaviconHandler)
-	router.PathPrefix("/").HandlerFunc(BlankHandler)
+	r.Route("/api", func(r chi.Router) {
+		r.Use(h.httpAuthenticationMiddleware)
+		r.HandleFunc("/v1/*", grpcMux.ServeHTTP)
+	})
+	r.Get("/favicon.ico", FaviconHandler)
+	r.Get("/", BlankHandler)
 
-	return router
+	return r
 }
 
 // Serve launches the HTTP and gRPC server service Headscale and the API.

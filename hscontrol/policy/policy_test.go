@@ -1188,8 +1188,9 @@ func TestSSHPolicyRules(t *testing.T) {
 						"root": "",
 					},
 					Action: &tailcfg.SSHAction{
-						Accept:                    true,
+						Accept:                    false,
 						SessionDuration:           24 * time.Hour,
+						HoldAndDelegate:           "unused-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
 						AllowAgentForwarding:      true,
 						AllowLocalPortForwarding:  true,
 						AllowRemotePortForwarding: true,
@@ -1476,7 +1477,7 @@ func TestSSHPolicyRules(t *testing.T) {
 
 				require.NoError(t, err)
 
-				got, err := pm.SSHPolicy(tt.targetNode.View())
+				got, err := pm.SSHPolicy("unused-url", tt.targetNode.View())
 				require.NoError(t, err)
 
 				if diff := cmp.Diff(tt.wantSSH, got); diff != "" {

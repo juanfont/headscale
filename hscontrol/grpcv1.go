@@ -247,7 +247,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		Str(zf.RegistrationKey, registrationKey).
 		Msg("registering node")
 
-	registrationId, err := types.RegistrationIDFromString(request.GetKey())
+	registrationId, err := types.AuthIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
@@ -780,33 +780,32 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Hostname:    request.GetName(),
 	}
 
-	registrationId, err := types.RegistrationIDFromString(request.GetKey())
+	registrationId, err := types.AuthIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
 
-	newNode := types.NewRegisterNode(
-		types.Node{
-			NodeKey:    key.NewNode().Public(),
-			MachineKey: key.NewMachine().Public(),
-			Hostname:   request.GetName(),
-			User:       user,
+	newNode := types.Node{
+		NodeKey:    key.NewNode().Public(),
+		MachineKey: key.NewMachine().Public(),
+		Hostname:   request.GetName(),
+		User:       user,
 
-			Expiry:   &time.Time{},
-			LastSeen: &time.Time{},
+		Expiry:   &time.Time{},
+		LastSeen: &time.Time{},
 
-			Hostinfo: &hostinfo,
-		},
-	)
+		Hostinfo: &hostinfo,
+	}
 
 	log.Debug().
 		Caller().
 		Str("registration_id", registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 
-	api.h.state.SetRegistrationCacheEntry(registrationId, newNode)
+	authRegReq := types.NewRegisterAuthRequest(newNode)
+	api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
 
-	return &v1.DebugCreateNodeResponse{Node: newNode.Node.Proto()}, nil
+	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) Health(
@@ -827,6 +826,40 @@ func (api headscaleV1APIServer) Health(
 	}
 
 	return response, healthErr
+}
+
+func (api headscaleV1APIServer) AuthRegister(
+	ctx context.Context,
+	request *v1.AuthRegisterRequest,
+) (*v1.AuthRegisterResponse, error) {
+	resp, err := api.RegisterNode(ctx, &v1.RegisterNodeRequest{
+		Key:  request.GetAuthId(),
+		User: request.GetUser(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.AuthRegisterResponse{Node: resp.GetNode()}, nil
+}
+
+func (api headscaleV1APIServer) AuthApprove(
+	ctx context.Context,
+	request *v1.AuthApproveRequest,
+) (*v1.AuthApproveResponse, error) {
+	authID, err := types.AuthIDFromString(request.GetAuthId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid auth_id: %v", err)
+	}
+
+	authReq, ok := api.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "no pending auth session for auth_id %s", authID)
+	}
+
+	authReq.FinishAuth(types.AuthVerdict{})
+
+	return &v1.AuthApproveResponse{}, nil
 }
 
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}

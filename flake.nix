@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           buildGo = pkgs.buildGo126Module;
-          vendorHash = "sha256-9BvphYDAxzwooyVokI3l+q1wRuRsWn/qM+NpWUgqJH0=";
+          vendorHash = "sha256-oUN53ELb3+xn4yA7lEfXyT2c7NxbQC6RtbkGVq6+RLU=";
         in
         {
           headscale = buildGo {
@@ -135,11 +135,6 @@
             };
           };
 
-          # The package uses buildGo125Module, not the convention.
-          # goreleaser = prev.goreleaser.override {
-          #   buildGoModule = buildGo;
-          # };
-
           gotestsum = prev.gotestsum.override {
             buildGoModule = buildGo;
           };
@@ -152,9 +147,9 @@
             buildGoModule = buildGo;
           };
 
-          # gopls = prev.gopls.override {
-          #   buildGoModule = buildGo;
-          # };
+          gopls = prev.gopls.override {
+            buildGoLatestModule = buildGo;
+          };
         };
     }
     // flake-utils.lib.eachDefaultSystem

@@ -11,6 +11,19 @@ to understand how the packet filter should be generated. We discovered a few dif
 overall our implementation was very close.
 [#3036](https://github.com/juanfont/headscale/pull/3036)
 
+### SSH check action
+
+SSH rules with `"action": "check"` are now supported. When a client initiates an SSH connection to a node
+with a `check` action policy, the user is prompted to authenticate via OIDC or CLI approval before access
+is granted.
+
+A new `headscale auth` CLI command group supports the approval flow:
+
+- `headscale auth approve --auth-id <id>` approves a pending authentication request (SSH check or web auth)
+- `headscale auth register --auth-id <id> --user <user>` registers a node (replaces deprecated `headscale nodes register`)
+
+[#1850](https://github.com/juanfont/headscale/pull/1850)
+
 ### BREAKING
 
 - **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
@@ -26,6 +39,8 @@ overall our implementation was very close.
 - **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
   - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
   - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
+- **CLI**: `headscale nodes register` is deprecated in favour of `headscale auth register --auth-id <id> --user <user>` [#1850](https://github.com/juanfont/headscale/pull/1850)
+  - The old command continues to work but will be removed in a future release
 
 ### Changes
 
@@ -35,6 +50,11 @@ overall our implementation was very close.
 - **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
 - Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
 - Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
+- Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Add `headscale auth register` and `headscale auth approve` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
 
 ## 0.28.0 (2026-02-04)
 

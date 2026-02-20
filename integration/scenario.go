@@ -141,6 +141,12 @@ type ScenarioSpec struct {
 	// Versions is specific list of versions to use for the test.
 	Versions []string
 
+	// OIDCSkipUserCreation, if true, skips creating users via headscale CLI
+	// during environment setup. Useful for OIDC tests where the SSH policy
+	// references users by name, since OIDC login creates users automatically
+	// and pre-creating them via CLI causes duplicate user records.
+	OIDCSkipUserCreation bool
+
 	// OIDCUsers, if populated, will start a Mock OIDC server and populate
 	// the user login stack with the given users.
 	// If the NodesPerUser is set, it should align with this list to ensure
@@ -866,9 +872,18 @@ func (s *Scenario) createHeadscaleEnvWithTags(
 	}
 
 	for _, user := range s.spec.Users {
-		u, err := s.CreateUser(user)
-		if err != nil {
-			return err
+		var u *v1.User
+
+		if s.spec.OIDCSkipUserCreation {
+			// Only register locally — OIDC login will create the headscale user.
+			s.mu.Lock()
+			s.users[user] = &User{Clients: make(map[string]TailscaleClient)}
+			s.mu.Unlock()
+		} else {
+			u, err = s.CreateUser(user)
+			if err != nil {
+				return err
+			}
 		}
 
 		var userOpts []tsic.Option
@@ -1169,7 +1184,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return errParseAuthPage
 	}
 
-	keySep := strings.Split(codeSep[0], "key ")
+	keySep := strings.Split(codeSep[0], "--auth-id ")
 	if len(keySep) != 2 {
 		return errParseAuthPage
 	}
@@ -1180,7 +1195,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		_, err = headscale.Execute(
-			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
+			[]string{"headscale", "auth", "register", "--user", userStr, "--auth-id", key},
 		)
 		if err != nil {
 			log.Printf("registering node: %s", err)

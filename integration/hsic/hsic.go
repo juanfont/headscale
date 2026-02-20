@@ -699,6 +699,18 @@ func (t *HeadscaleInContainer) WriteLogs(stdout, stderr io.Writer) error {
 	return dockertestutil.WriteLog(t.pool, t.container, stdout, stderr)
 }
 
+// ReadLog returns the current stdout and stderr logs from the headscale container.
+func (t *HeadscaleInContainer) ReadLog() (string, string, error) {
+	var stdout, stderr bytes.Buffer
+
+	err := dockertestutil.WriteLog(t.pool, t.container, &stdout, &stderr)
+	if err != nil {
+		return "", "", fmt.Errorf("reading container logs: %w", err)
+	}
+
+	return stdout.String(), stderr.String(), nil
+}
+
 // SaveLog saves the current stdout log of the container to a path
 // on the host system.
 func (t *HeadscaleInContainer) SaveLog(path string) (string, string, error) {
