@@ -425,7 +425,12 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		nodeView := n.View()
 		userID := n.TypedUserID()
 
-		newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		// Tagged nodes are owned by their tags, not a user,
+		// so they are not indexed by user.
+		if !n.IsTagged() {
+			newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		}
+
 		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
 
 		// Build machine key index
@@ -531,23 +536,12 @@ func (s *NodeStore) DebugString() string {
 	for userID, nodes := range snapshot.nodesByUser {
 		if len(nodes) > 0 {
 			userName := "unknown"
-			taggedCount := 0
 
-			if len(nodes) > 0 && nodes[0].Valid() {
+			if nodes[0].Valid() && nodes[0].User().Valid() {
 				userName = nodes[0].User().Name()
-				// Count tagged nodes (which have UserID set but are owned by "tagged-devices")
-				for _, n := range nodes {
-					if n.IsTagged() {
-						taggedCount++
-					}
-				}
 			}
 
-			if taggedCount > 0 {
-				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes (%d tagged)\n", userID, userName, len(nodes), taggedCount))
-			} else {
-				sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
-			}
+			sb.WriteString(fmt.Sprintf("  - User %d (%s): %d nodes\n", userID, userName, len(nodes)))
 		}
 	}
 

@@ -105,10 +105,8 @@ type Node struct {
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
 
-	// UserID is set for ALL nodes (tagged and user-owned) to track "created by".
-	// For tagged nodes, this is informational only - the tag is the owner.
-	// For user-owned nodes, this identifies the owner.
-	// Only nil for orphaned nodes (should not happen in normal operation).
+	// UserID identifies the owning user for user-owned nodes.
+	// Nil for tagged nodes, which are owned by their tags.
 	UserID *uint
 	User   *User `gorm:"constraint:OnDelete:CASCADE;"`
 
