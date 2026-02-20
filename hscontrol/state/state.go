@@ -1680,6 +1680,30 @@ func (s *State) createNewNodeFromAuth(
 }
 
 // HandleNodeFromPreAuthKey handles node registration using a pre-authentication key.
+// findExistingNodeForPAK looks up an existing node by machine key,
+// matching the PAK's ownership. For user-owned keys it checks the
+// user's ID; for tagged keys it checks UserID(0) since tagged nodes
+// have no owning user.
+func (s *State) findExistingNodeForPAK(
+	machineKey key.MachinePublic,
+	pak *types.PreAuthKey,
+) (types.NodeView, bool) {
+	if pak.User != nil {
+		node, exists := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+		if exists {
+			return node, true
+		}
+	}
+
+	// Tagged nodes have nil UserID, so they are indexed under UserID(0)
+	// in nodesByMachineKey. Check there for tagged PAK re-registration.
+	if pak.IsTagged() {
+		return s.nodeStore.GetNodeByMachineKey(machineKey, 0)
+	}
+
+	return types.NodeView{}, false
+}
+
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -1698,26 +1722,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.TaggedDevices.Name
 	}
 
-	// Check if node exists with same machine key before validating the key.
-	// For #2830: container restarts send the same pre-auth key which may be used/expired.
-	// Skip validation for existing nodes re-registering with the same NodeKey, as the
-	// key was only needed for initial authentication. NodeKey rotation requires validation.
-	//
-	// For tags-only keys (pak.User == nil), we skip the user-based lookup since there's
-	// no user to match against. These keys create tagged nodes without user ownership.
-	var existingNodeSameUser types.NodeView
-
-	var existsSameUser bool
-
-	if pak.User != nil {
-		existingNodeSameUser, existsSameUser = s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
-	}
-
-	// Tagged nodes have nil UserID, so they are indexed under UserID(0)
-	// in nodesByMachineKey. Check there too for tagged PAK re-registration.
-	if !existsSameUser && pak.IsTagged() {
-		existingNodeSameUser, existsSameUser = s.nodeStore.GetNodeByMachineKey(machineKey, 0)
-	}
+	existingNodeSameUser, existsSameUser := s.findExistingNodeForPAK(machineKey, pak)
 
 	// For existing nodes, skip validation if:
 	// 1. MachineKey matches (cryptographic proof of machine identity)
