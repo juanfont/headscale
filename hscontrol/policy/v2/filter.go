@@ -3,6 +3,7 @@ package v2
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"net/netip"
 	"slices"
 	"strconv"
@@ -384,20 +385,39 @@ func (pol *Policy) compileSSHPolicy(
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
 		}
 
-		userMap := make(map[string]string, len(rule.Users))
+		// Build the "common" userMap for non-localpart entries (root, autogroup:nonroot, specific users).
+		const rootUser = "root"
+
+		commonUserMap := make(map[string]string, len(rule.Users))
 		if rule.Users.ContainsNonRoot() {
-			userMap["*"] = "="
+			commonUserMap["*"] = "="
 			// by default, we do not allow root unless explicitly stated
-			userMap["root"] = ""
+			commonUserMap[rootUser] = ""
 		}
 
 		if rule.Users.ContainsRoot() {
-			userMap["root"] = "root"
+			commonUserMap[rootUser] = rootUser
 		}
 
 		for _, u := range rule.Users.NormalUsers() {
-			userMap[u.String()] = u.String()
+			commonUserMap[u.String()] = u.String()
 		}
+
+		// Resolve localpart entries into per-user rules.
+		// Each localpart:*@<domain> entry maps users in that domain to their email local-part.
+		// Because SSHUsers is a static map per rule, we need a separate rule per user
+		// to constrain each user to only their own local-part.
+		localpartRules := resolveLocalpartRules(
+			rule.Users.LocalpartEntries(),
+			users,
+			nodes,
+			srcIPs,
+			commonUserMap,
+			&action,
+		)
+
+		// Determine whether the common userMap has any entries worth emitting.
+		hasCommonUsers := len(commonUserMap) > 0
 
 		// Handle autogroup:self destinations (if any)
 		// Note: Tagged nodes can't match autogroup:self, so skip this block for tagged nodes
@@ -443,19 +463,46 @@ func (pol *Policy) compileSSHPolicy(
 				}
 
 				if filteredSrcSet != nil && len(filteredSrcSet.Prefixes()) > 0 {
-					var principals []*tailcfg.SSHPrincipal
-					for addr := range util.IPSetAddrIter(filteredSrcSet) {
-						principals = append(principals, &tailcfg.SSHPrincipal{
-							NodeIP: addr.String(),
-						})
+					// Emit common rule if there are non-localpart users
+					if hasCommonUsers {
+						var principals []*tailcfg.SSHPrincipal
+						for addr := range util.IPSetAddrIter(filteredSrcSet) {
+							principals = append(principals, &tailcfg.SSHPrincipal{
+								NodeIP: addr.String(),
+							})
+						}
+
+						if len(principals) > 0 {
+							rules = append(rules, &tailcfg.SSHRule{
+								Principals: principals,
+								SSHUsers:   commonUserMap,
+								Action:     &action,
+							})
+						}
 					}
 
-					if len(principals) > 0 {
-						rules = append(rules, &tailcfg.SSHRule{
-							Principals: principals,
-							SSHUsers:   userMap,
-							Action:     &action,
-						})
+					// Emit per-user localpart rules, filtered to autogroup:self sources
+					for _, lpRule := range localpartRules {
+						var filteredPrincipals []*tailcfg.SSHPrincipal
+
+						for _, p := range lpRule.Principals {
+							addr, err := netip.ParseAddr(p.NodeIP)
+							if err != nil {
+								continue
+							}
+
+							if filteredSrcSet.Contains(addr) {
+								filteredPrincipals = append(filteredPrincipals, p)
+							}
+						}
+
+						if len(filteredPrincipals) > 0 {
+							rules = append(rules, &tailcfg.SSHRule{
+								Principals: filteredPrincipals,
+								SSHUsers:   lpRule.SSHUsers,
+								Action:     lpRule.Action,
+							})
+						}
 					}
 				}
 			}
@@ -484,21 +531,27 @@ func (pol *Policy) compileSSHPolicy(
 
 			// Only create rule if this node is in the destination set
 			if node.InIPSet(destSet) {
-				// For non-autogroup:self destinations, use all resolved sources (no filtering)
-				var principals []*tailcfg.SSHPrincipal
-				for addr := range util.IPSetAddrIter(srcIPs) {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						NodeIP: addr.String(),
-					})
+				// Emit common rule if there are non-localpart users
+				if hasCommonUsers {
+					// For non-autogroup:self destinations, use all resolved sources (no filtering)
+					var principals []*tailcfg.SSHPrincipal
+					for addr := range util.IPSetAddrIter(srcIPs) {
+						principals = append(principals, &tailcfg.SSHPrincipal{
+							NodeIP: addr.String(),
+						})
+					}
+
+					if len(principals) > 0 {
+						rules = append(rules, &tailcfg.SSHRule{
+							Principals: principals,
+							SSHUsers:   commonUserMap,
+							Action:     &action,
+						})
+					}
 				}
 
-				if len(principals) > 0 {
-					rules = append(rules, &tailcfg.SSHRule{
-						Principals: principals,
-						SSHUsers:   userMap,
-						Action:     &action,
-					})
-				}
+				// Emit per-user localpart rules
+				rules = append(rules, localpartRules...)
 			}
 		}
 	}
@@ -506,6 +559,103 @@ func (pol *Policy) compileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
+}
+
+// resolveLocalpartRules generates per-user SSH rules for localpart:*@<domain> entries.
+// For each localpart entry, it finds all users whose email is in the specified domain,
+// extracts their email local-part, and creates a tailcfg.SSHRule scoped to that user's
+// node IPs with an SSHUsers map that only allows their local-part.
+// The commonUserMap entries (root, autogroup:nonroot, specific users) are merged into
+// each per-user rule so that localpart rules compose with other user entries.
+func resolveLocalpartRules(
+	localpartEntries []SSHUser,
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	srcIPs *netipx.IPSet,
+	commonUserMap map[string]string,
+	action *tailcfg.SSHAction,
+) []*tailcfg.SSHRule {
+	if len(localpartEntries) == 0 {
+		return nil
+	}
+
+	var rules []*tailcfg.SSHRule
+
+	for _, entry := range localpartEntries {
+		domain, err := entry.ParseLocalpart()
+		if err != nil {
+			// Should not happen if validation passed, but skip gracefully.
+			log.Warn().Err(err).Msgf("skipping invalid localpart entry %q during SSH compilation", entry)
+
+			continue
+		}
+
+		// Find users whose email matches *@<domain> and build per-user rules.
+		for _, user := range users {
+			if user.Email == "" {
+				continue
+			}
+
+			atIdx := strings.LastIndex(user.Email, "@")
+			if atIdx < 0 {
+				continue
+			}
+
+			emailDomain := user.Email[atIdx+1:]
+			if !strings.EqualFold(emailDomain, domain) {
+				continue
+			}
+
+			localPart := user.Email[:atIdx]
+
+			// Find this user's non-tagged nodes that are in the source IP set.
+			var userSrcIPs netipx.IPSetBuilder
+
+			for _, n := range nodes.All() {
+				if n.IsTagged() {
+					continue
+				}
+
+				if !n.User().Valid() || n.User().ID() != user.ID {
+					continue
+				}
+
+				if slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
+					n.AppendToIPSet(&userSrcIPs)
+				}
+			}
+
+			userSrcSet, err := userSrcIPs.IPSet()
+			if err != nil || userSrcSet == nil || len(userSrcSet.Prefixes()) == 0 {
+				continue
+			}
+
+			var principals []*tailcfg.SSHPrincipal
+			for addr := range util.IPSetAddrIter(userSrcSet) {
+				principals = append(principals, &tailcfg.SSHPrincipal{
+					NodeIP: addr.String(),
+				})
+			}
+
+			if len(principals) == 0 {
+				continue
+			}
+
+			// Build per-user SSHUsers map: start with the common entries, then add the localpart.
+			userMap := make(map[string]string, len(commonUserMap)+1)
+			maps.Copy(userMap, commonUserMap)
+
+			userMap[localPart] = localPart
+
+			rules = append(rules, &tailcfg.SSHRule{
+				Principals: principals,
+				SSHUsers:   userMap,
+				Action:     action,
+			})
+		}
+	}
+
+	return rules
 }
 
 func ipSetToPrefixStringList(ips *netipx.IPSet) []string {

@@ -10,6 +10,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
+	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -20,7 +21,8 @@ func isSSHNoAccessStdError(stderr string) bool {
 		// Since https://github.com/tailscale/tailscale/pull/14853
 		strings.Contains(stderr, "failed to evaluate SSH policy") ||
 		// Since https://github.com/tailscale/tailscale/pull/16127
-		strings.Contains(stderr, "tailnet policy does not permit you to SSH to this node")
+		// Covers both "to this node" and "as user <name>" variants.
+		strings.Contains(stderr, "tailnet policy does not permit you to SSH")
 }
 
 func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Scenario {
@@ -420,15 +422,27 @@ func doSSHWithoutRetry(t *testing.T, client TailscaleClient, peer TailscaleClien
 func doSSHWithRetry(t *testing.T, client TailscaleClient, peer TailscaleClient, retry bool) (string, string, error) {
 	t.Helper()
 
+	return doSSHWithRetryAsUser(t, client, peer, "ssh-it-user", retry)
+}
+
+func doSSHWithRetryAsUser(
+	t *testing.T,
+	client TailscaleClient,
+	peer TailscaleClient,
+	sshUser string,
+	retry bool,
+) (string, string, error) {
+	t.Helper()
+
 	peerFQDN, _ := peer.FQDN()
 
 	command := []string{
 		"/usr/bin/ssh", "-o StrictHostKeyChecking=no", "-o ConnectTimeout=1",
-		fmt.Sprintf("%s@%s", "ssh-it-user", peerFQDN),
+		fmt.Sprintf("%s@%s", sshUser, peerFQDN),
 		"'hostname'",
 	}
 
-	log.Printf("Running from %s to %s", client.Hostname(), peer.Hostname())
+	log.Printf("Running from %s to %s as %s", client.Hostname(), peer.Hostname(), sshUser)
 	log.Printf("Command: %s", strings.Join(command, " "))
 
 	var (
@@ -497,6 +511,31 @@ func assertSSHNoAccessStdError(t *testing.T, err error, stderr string) {
 	if !isSSHNoAccessStdError(stderr) {
 		t.Errorf("expected stderr output suggesting access denied, got: %s", stderr)
 	}
+}
+
+func doSSHAsUser(t *testing.T, client TailscaleClient, peer TailscaleClient, sshUser string) (string, string, error) {
+	t.Helper()
+
+	return doSSHWithRetryAsUser(t, client, peer, sshUser, true)
+}
+
+func assertSSHHostnameAsUser(t *testing.T, client TailscaleClient, peer TailscaleClient, sshUser string) {
+	t.Helper()
+
+	result, _, err := doSSHAsUser(t, client, peer, sshUser)
+	require.NoError(t, err)
+
+	require.Contains(t, peer.ContainerID(), strings.ReplaceAll(result, "\n", ""))
+}
+
+func assertSSHPermissionDeniedAsUser(t *testing.T, client TailscaleClient, peer TailscaleClient, sshUser string) {
+	t.Helper()
+
+	result, stderr, err := doSSHWithRetryAsUser(t, client, peer, sshUser, false)
+
+	assert.Empty(t, result)
+
+	assertSSHNoAccessStdError(t, err, stderr)
 }
 
 // TestSSHAutogroupSelf tests that SSH with autogroup:self works correctly:
@@ -577,5 +616,236 @@ func TestSSHAutogroupSelf(t *testing.T) {
 		for _, peer := range user1Clients {
 			assertSSHPermissionDenied(t, client, peer)
 		}
+	}
+}
+
+// TestSSHLocalpart tests that SSH with localpart:*@<domain> works correctly.
+// localpart maps the local-part of each user's OIDC email to an OS user,
+// so user1@headscale.net can SSH as local user "user1".
+// This requires OIDC login so that users have real email addresses.
+func TestSSHLocalpart(t *testing.T) {
+	IntegrationSkip(t)
+
+	baseACLs := []policyv2.ACL{
+		{
+			Action:   "accept",
+			Protocol: "tcp",
+			Sources:  []policyv2.Alias{wildcard()},
+			Destinations: []policyv2.AliasWithPorts{
+				aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+			},
+		},
+	}
+
+	tests := []struct {
+		name   string
+		policy *policyv2.Policy
+		testFn func(t *testing.T, scenario *Scenario)
+	}{
+		{
+			name: "MemberAndTagged",
+			policy: &policyv2.Policy{
+				ACLs: baseACLs,
+				SSHs: []policyv2.SSH{
+					{
+						Action:  "accept",
+						Sources: policyv2.SSHSrcAliases{new(policyv2.AutoGroupMember)},
+						Destinations: policyv2.SSHDstAliases{
+							new(policyv2.AutoGroupMember),
+							new(policyv2.AutoGroupTagged),
+						},
+						Users: []policyv2.SSHUser{"localpart:*@headscale.net"},
+					},
+				},
+			},
+			testFn: func(t *testing.T, scenario *Scenario) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				requireNoErrListClients(t, err)
+
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				requireNoErrListClients(t, err)
+
+				// user1 can SSH to user2's nodes as "user1" (localpart of user1@headscale.net)
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHHostnameAsUser(t, client, peer, "user1")
+					}
+				}
+
+				// user2 can SSH to user1's nodes as "user2" (localpart of user2@headscale.net)
+				for _, client := range user2Clients {
+					for _, peer := range user1Clients {
+						assertSSHHostnameAsUser(t, client, peer, "user2")
+					}
+				}
+
+				// user1 CANNOT SSH as "user2" — no rule maps user1's IPs to user2
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHPermissionDeniedAsUser(t, client, peer, "user2")
+					}
+				}
+
+				// user2 CANNOT SSH as "user1" — no rule maps user2's IPs to user1
+				for _, client := range user2Clients {
+					for _, peer := range user1Clients {
+						assertSSHPermissionDeniedAsUser(t, client, peer, "user1")
+					}
+				}
+			},
+		},
+		{
+			name: "AutogroupSelf",
+			policy: &policyv2.Policy{
+				ACLs: baseACLs,
+				SSHs: []policyv2.SSH{
+					{
+						Action:       "accept",
+						Sources:      policyv2.SSHSrcAliases{new(policyv2.AutoGroupMember)},
+						Destinations: policyv2.SSHDstAliases{new(policyv2.AutoGroupSelf)},
+						Users:        []policyv2.SSHUser{"localpart:*@headscale.net"},
+					},
+				},
+			},
+			testFn: func(t *testing.T, scenario *Scenario) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				requireNoErrListClients(t, err)
+
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				requireNoErrListClients(t, err)
+
+				// With autogroup:self, cross-user SSH should be denied regardless of localpart.
+				// user1 cannot SSH to user2's nodes as "user1"
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHPermissionDeniedAsUser(t, client, peer, "user1")
+					}
+				}
+
+				// user2 cannot SSH to user1's nodes as "user2"
+				for _, client := range user2Clients {
+					for _, peer := range user1Clients {
+						assertSSHPermissionDeniedAsUser(t, client, peer, "user2")
+					}
+				}
+
+				// user1 also cannot SSH to user2's nodes as "user2"
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHPermissionDeniedAsUser(t, client, peer, "user2")
+					}
+				}
+			},
+		},
+		{
+			name: "LocalpartPlusRoot",
+			policy: &policyv2.Policy{
+				ACLs: baseACLs,
+				SSHs: []policyv2.SSH{
+					{
+						Action:  "accept",
+						Sources: policyv2.SSHSrcAliases{new(policyv2.AutoGroupMember)},
+						Destinations: policyv2.SSHDstAliases{
+							new(policyv2.AutoGroupMember),
+							new(policyv2.AutoGroupTagged),
+						},
+						Users: []policyv2.SSHUser{
+							"localpart:*@headscale.net",
+							"root",
+						},
+					},
+				},
+			},
+			testFn: func(t *testing.T, scenario *Scenario) {
+				t.Helper()
+
+				user1Clients, err := scenario.ListTailscaleClients("user1")
+				requireNoErrListClients(t, err)
+
+				user2Clients, err := scenario.ListTailscaleClients("user2")
+				requireNoErrListClients(t, err)
+
+				// localpart works: user1 can SSH to user2's nodes as "user1"
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHHostnameAsUser(t, client, peer, "user1")
+					}
+				}
+
+				// root also works: user1 can SSH to user2's nodes as "root"
+				for _, client := range user1Clients {
+					for _, peer := range user2Clients {
+						assertSSHHostnameAsUser(t, client, peer, "root")
+					}
+				}
+
+				// user2 can SSH as "user2" (localpart)
+				for _, client := range user2Clients {
+					for _, peer := range user1Clients {
+						assertSSHHostnameAsUser(t, client, peer, "user2")
+					}
+				}
+
+				// user2 can SSH as "root"
+				for _, client := range user2Clients {
+					for _, peer := range user1Clients {
+						assertSSHHostnameAsUser(t, client, peer, "root")
+					}
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec := ScenarioSpec{
+				NodesPerUser: 1,
+				Users:        []string{"user1", "user2"},
+				OIDCUsers: []mockoidc.MockUser{
+					oidcMockUser("user1", true),
+					oidcMockUser("user2", true),
+				},
+			}
+
+			scenario, err := NewScenario(spec)
+
+			require.NoError(t, err)
+			defer scenario.ShutdownAssertNoPanics(t)
+
+			oidcMap := map[string]string{
+				"HEADSCALE_OIDC_ISSUER":             scenario.mockOIDC.Issuer(),
+				"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
+				"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
+				"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
+			}
+
+			err = scenario.CreateHeadscaleEnvWithLoginURL(
+				[]tsic.Option{
+					tsic.WithSSH(),
+					tsic.WithNetfilter("off"),
+					tsic.WithPackages("openssh"),
+					tsic.WithExtraCommands("adduser user1", "adduser user2"),
+					tsic.WithDockerWorkdir("/"),
+				},
+				hsic.WithTestName("sshlocalpart"),
+				hsic.WithACLPolicy(tt.policy),
+				hsic.WithConfigEnv(oidcMap),
+				hsic.WithTLS(),
+				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
+			)
+			requireNoErrHeadscaleEnv(t, err)
+
+			err = scenario.WaitForTailscaleSync()
+			requireNoErrSync(t, err)
+
+			_, err = scenario.ListTailscaleClientsFQDNs()
+			requireNoErrListFQDN(t, err)
+
+			tt.testFn(t, scenario)
+		})
 	}
 }

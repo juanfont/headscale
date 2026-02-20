@@ -1766,6 +1766,105 @@ func TestUnmarshalPolicy(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "ssh-localpart-valid",
+			input: `
+{
+  "tagOwners": {"tag:prod": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["tag:prod"],
+    "users": ["localpart:*@example.com"]
+  }]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{up("admin@")},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:*@example.com")},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-localpart-with-other-users",
+			input: `
+{
+  "tagOwners": {"tag:prod": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["tag:prod"],
+    "users": ["localpart:*@example.com", "root", "autogroup:nonroot"]
+  }]
+}
+`,
+			want: &Policy{
+				TagOwners: TagOwners{
+					Tag("tag:prod"): Owners{up("admin@")},
+				},
+				SSHs: []SSH{
+					{
+						Action:       "accept",
+						Sources:      SSHSrcAliases{agp("autogroup:member")},
+						Destinations: SSHDstAliases{tp("tag:prod")},
+						Users:        []SSHUser{SSHUser("localpart:*@example.com"), "root", SSHUser(AutoGroupNonRoot)},
+					},
+				},
+			},
+		},
+		{
+			name: "ssh-localpart-invalid-no-at-sign",
+			input: `
+{
+  "tagOwners": {"tag:prod": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["tag:prod"],
+    "users": ["localpart:foo"]
+  }]
+}
+`,
+			wantErr: "invalid localpart format",
+		},
+		{
+			name: "ssh-localpart-invalid-non-wildcard",
+			input: `
+{
+  "tagOwners": {"tag:prod": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["tag:prod"],
+    "users": ["localpart:alice@example.com"]
+  }]
+}
+`,
+			wantErr: "invalid localpart format",
+		},
+		{
+			name: "ssh-localpart-invalid-empty-domain",
+			input: `
+{
+  "tagOwners": {"tag:prod": ["admin@"]},
+  "ssh": [{
+    "action": "accept",
+    "src": ["autogroup:member"],
+    "dst": ["tag:prod"],
+    "users": ["localpart:*@"]
+  }]
+}
+`,
+			wantErr: "invalid localpart format",
+		},
 	}
 
 	cmps := append(util.Comparers,
@@ -2450,56 +2549,63 @@ func TestResolveAutoApprovers(t *testing.T) {
 
 func TestSSHUsers_NormalUsers(t *testing.T) {
 	tests := []struct {
-		name     string
-		users    SSHUsers
-		expected []SSHUser
+		name  string
+		users SSHUsers
+		want  []SSHUser
 	}{
 		{
-			name:     "empty users",
-			users:    SSHUsers{},
-			expected: []SSHUser{},
+			name:  "empty users",
+			users: SSHUsers{},
+			want:  nil,
 		},
 		{
-			name:     "only root",
-			users:    SSHUsers{"root"},
-			expected: []SSHUser{},
+			name:  "only root",
+			users: SSHUsers{"root"},
+			want:  nil,
 		},
 		{
-			name:     "only autogroup:nonroot",
-			users:    SSHUsers{SSHUser(AutoGroupNonRoot)},
-			expected: []SSHUser{},
+			name:  "only autogroup:nonroot",
+			users: SSHUsers{SSHUser(AutoGroupNonRoot)},
+			want:  nil,
 		},
 		{
-			name:     "only normal user",
-			users:    SSHUsers{"ssh-it-user"},
-			expected: []SSHUser{"ssh-it-user"},
+			name:  "only normal user",
+			users: SSHUsers{"ssh-it-user"},
+			want:  []SSHUser{"ssh-it-user"},
 		},
 		{
-			name:     "multiple normal users",
-			users:    SSHUsers{"ubuntu", "admin", "user1"},
-			expected: []SSHUser{"ubuntu", "admin", "user1"},
+			name:  "multiple normal users",
+			users: SSHUsers{"ubuntu", "admin", "user1"},
+			want:  []SSHUser{"ubuntu", "admin", "user1"},
 		},
 		{
-			name:     "mixed users with root",
-			users:    SSHUsers{"ubuntu", "root", "admin"},
-			expected: []SSHUser{"ubuntu", "admin"},
+			name:  "mixed users with root",
+			users: SSHUsers{"ubuntu", "root", "admin"},
+			want:  []SSHUser{"ubuntu", "admin"},
 		},
 		{
-			name:     "mixed users with autogroup:nonroot",
-			users:    SSHUsers{"ubuntu", SSHUser(AutoGroupNonRoot), "admin"},
-			expected: []SSHUser{"ubuntu", "admin"},
+			name:  "mixed users with autogroup:nonroot",
+			users: SSHUsers{"ubuntu", SSHUser(AutoGroupNonRoot), "admin"},
+			want:  []SSHUser{"ubuntu", "admin"},
 		},
 		{
-			name:     "mixed users with both root and autogroup:nonroot",
-			users:    SSHUsers{"ubuntu", "root", SSHUser(AutoGroupNonRoot), "admin"},
-			expected: []SSHUser{"ubuntu", "admin"},
+			name:  "mixed users with both root and autogroup:nonroot",
+			users: SSHUsers{"ubuntu", "root", SSHUser(AutoGroupNonRoot), "admin"},
+			want:  []SSHUser{"ubuntu", "admin"},
+		},
+		{
+			name:  "excludes localpart entries",
+			users: SSHUsers{"ubuntu", "root", SSHUser(AutoGroupNonRoot), SSHUser("localpart:*@example.com"), "admin"},
+			want:  []SSHUser{"ubuntu", "admin"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.users.NormalUsers()
-			assert.ElementsMatch(t, tt.expected, result, "NormalUsers() should return expected normal users")
+			got := tt.users.NormalUsers()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("NormalUsers() unexpected result (-want +got):\n%s", diff)
+			}
 		})
 	}
 }
@@ -2572,6 +2678,142 @@ func TestSSHUsers_ContainsNonRoot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.users.ContainsNonRoot()
 			assert.Equal(t, tt.expected, result, "ContainsNonRoot() should return expected result")
+		})
+	}
+}
+
+func TestSSHUsers_ContainsLocalpart(t *testing.T) {
+	tests := []struct {
+		name     string
+		users    SSHUsers
+		expected bool
+	}{
+		{
+			name:     "empty users",
+			users:    SSHUsers{},
+			expected: false,
+		},
+		{
+			name:     "contains localpart",
+			users:    SSHUsers{SSHUser("localpart:*@example.com")},
+			expected: true,
+		},
+		{
+			name:     "does not contain localpart",
+			users:    SSHUsers{"ubuntu", "admin", "root"},
+			expected: false,
+		},
+		{
+			name:     "contains localpart among others",
+			users:    SSHUsers{"ubuntu", SSHUser("localpart:*@example.com"), "admin"},
+			expected: true,
+		},
+		{
+			name:     "multiple localpart entries",
+			users:    SSHUsers{SSHUser("localpart:*@a.com"), SSHUser("localpart:*@b.com")},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.users.ContainsLocalpart()
+			assert.Equal(t, tt.expected, result, "ContainsLocalpart() should return expected result")
+		})
+	}
+}
+
+func TestSSHUsers_LocalpartEntries(t *testing.T) {
+	tests := []struct {
+		name  string
+		users SSHUsers
+		want  []SSHUser
+	}{
+		{
+			name:  "empty users",
+			users: SSHUsers{},
+			want:  nil,
+		},
+		{
+			name:  "no localpart entries",
+			users: SSHUsers{"root", "ubuntu", SSHUser(AutoGroupNonRoot)},
+			want:  nil,
+		},
+		{
+			name:  "single localpart entry",
+			users: SSHUsers{"root", SSHUser("localpart:*@example.com"), "ubuntu"},
+			want:  []SSHUser{SSHUser("localpart:*@example.com")},
+		},
+		{
+			name:  "multiple localpart entries",
+			users: SSHUsers{SSHUser("localpart:*@a.com"), "root", SSHUser("localpart:*@b.com")},
+			want:  []SSHUser{SSHUser("localpart:*@a.com"), SSHUser("localpart:*@b.com")},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.users.LocalpartEntries()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("LocalpartEntries() unexpected result (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestSSHUser_ParseLocalpart(t *testing.T) {
+	tests := []struct {
+		name           string
+		user           SSHUser
+		expectedDomain string
+		expectErr      bool
+	}{
+		{
+			name:           "valid localpart",
+			user:           SSHUser("localpart:*@example.com"),
+			expectedDomain: "example.com",
+		},
+		{
+			name:           "valid localpart with subdomain",
+			user:           SSHUser("localpart:*@corp.example.com"),
+			expectedDomain: "corp.example.com",
+		},
+		{
+			name:      "missing prefix",
+			user:      SSHUser("ubuntu"),
+			expectErr: true,
+		},
+		{
+			name:      "missing @ sign",
+			user:      SSHUser("localpart:foo"),
+			expectErr: true,
+		},
+		{
+			name:      "non-wildcard local part",
+			user:      SSHUser("localpart:alice@example.com"),
+			expectErr: true,
+		},
+		{
+			name:      "empty domain",
+			user:      SSHUser("localpart:*@"),
+			expectErr: true,
+		},
+		{
+			name:      "just prefix",
+			user:      SSHUser("localpart:"),
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			domain, err := tt.user.ParseLocalpart()
+			if tt.expectErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expectedDomain, domain)
+			}
 		})
 	}
 }
