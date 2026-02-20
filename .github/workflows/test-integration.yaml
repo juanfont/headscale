@@ -229,6 +229,7 @@ jobs:
           - TestUpdateHostnameFromClient
           - TestExpireNode
           - TestSetNodeExpiryInFuture
+          - TestDisableNodeExpiry
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
           - Test2118DeletingOnlineNodePanics

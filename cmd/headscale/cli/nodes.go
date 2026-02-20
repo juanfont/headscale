@@ -32,6 +32,7 @@ func init() {
 
 	expireNodeCmd.Flags().Uint64P("identifier", "i", 0, "Node identifier (ID)")
 	expireNodeCmd.Flags().StringP("expiry", "e", "", "Set expire to (RFC3339 format, e.g. 2025-08-27T10:00:00Z), or leave empty to expire immediately.")
+	expireNodeCmd.Flags().BoolP("disable", "d", false, "Disable key expiry (node will never expire)")
 	mustMarkRequired(expireNodeCmd, "identifier")
 	nodeCmd.AddCommand(expireNodeCmd)
 
@@ -143,12 +144,31 @@ var listNodeRoutesCmd = &cobra.Command{
 }
 
 var expireNodeCmd = &cobra.Command{
-	Use:     "expire",
-	Short:   "Expire (log out) a node in your network",
-	Long:    "Expiring a node will keep the node in the database and force it to reauthenticate.",
+	Use:   "expire",
+	Short: "Expire (log out) a node in your network",
+	Long: `Expiring a node will keep the node in the database and force it to reauthenticate.
+
+Use --disable to disable key expiry (node will never expire).`,
 	Aliases: []string{"logout", "exp", "e"},
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		identifier, _ := cmd.Flags().GetUint64("identifier")
+		disableExpiry, _ := cmd.Flags().GetBool("disable")
+
+		// Handle disable expiry - node will never expire.
+		if disableExpiry {
+			request := &v1.ExpireNodeRequest{
+				NodeId:        identifier,
+				DisableExpiry: true,
+			}
+
+			response, err := client.ExpireNode(ctx, request)
+			if err != nil {
+				return fmt.Errorf("disabling node expiry: %w", err)
+			}
+
+			return printOutput(cmd, response.GetNode(), "Node expiry disabled")
+		}
+
 		expiry, _ := cmd.Flags().GetString("expiry")
 
 		now := time.Now()
