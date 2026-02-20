@@ -89,6 +89,77 @@ func TestDestroyUserErrors(t *testing.T) {
 				assert.ErrorIs(t, err, ErrUserStillHasNodes)
 			},
 		},
+		{
+			// https://github.com/juanfont/headscale/issues/3077
+			// Tagged nodes have user_id = NULL, so they do not block
+			// user deletion and are unaffected by ON DELETE CASCADE.
+			name: "success_user_only_has_tagged_nodes",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user, err := db.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
+
+				// Create a tagged node with no user_id (the invariant).
+				node := types.Node{
+					ID:             0,
+					Hostname:       "tagged-node",
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Tags:           []string{"tag:server"},
+				}
+				trx := db.DB.Save(&node)
+				require.NoError(t, trx.Error)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.NoError(t, err)
+
+				// User is gone.
+				_, err = db.GetUserByID(types.UserID(user.ID))
+				require.ErrorIs(t, err, ErrUserNotFound)
+
+				// Tagged node survives.
+				var survivingNode types.Node
+
+				result := db.DB.First(&survivingNode, "id = ?", node.ID)
+				require.NoError(t, result.Error)
+				assert.Nil(t, survivingNode.UserID)
+				assert.Equal(t, []string{"tag:server"}, survivingNode.Tags)
+			},
+		},
+		{
+			// A user who has both tagged and user-owned nodes cannot
+			// be deleted; the user-owned nodes still block deletion.
+			name: "error_user_has_tagged_and_owned_nodes",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				user, err := db.CreateUser(types.User{Name: "test"})
+				require.NoError(t, err)
+
+				// Tagged node: no user_id.
+				taggedNode := types.Node{
+					ID:             0,
+					Hostname:       "tagged-node",
+					RegisterMethod: util.RegisterMethodAuthKey,
+					Tags:           []string{"tag:server"},
+				}
+				trx := db.DB.Save(&taggedNode)
+				require.NoError(t, trx.Error)
+
+				// User-owned node: has user_id.
+				ownedNode := types.Node{
+					ID:             0,
+					Hostname:       "owned-node",
+					UserID:         &user.ID,
+					RegisterMethod: util.RegisterMethodAuthKey,
+				}
+				trx = db.DB.Save(&ownedNode)
+				require.NoError(t, trx.Error)
+
+				err = db.DestroyUser(types.UserID(user.ID))
+				require.ErrorIs(t, err, ErrUserStillHasNodes)
+			},
+		},
 	}
 
 	for _, tt := range tests {
