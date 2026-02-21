@@ -158,13 +158,59 @@ func (s *Scenario) prefixedNetworkName(name string) string {
 	return s.testHashPrefix + "-" + name
 }
 
+// createDockerClient creates a Docker client with automatic API version negotiation.
+// This queries the Docker daemon to determine the supported API version range and selects
+// an appropriate version, ensuring compatibility across different Docker installations.
+func createDockerClient() (*docker.Client, error) {
+	// Determine the Docker endpoint (socket path)
+	endpoint := "unix:///var/run/docker.sock"
+	if dockerHost := os.Getenv("DOCKER_HOST"); dockerHost != "" {
+		endpoint = dockerHost
+	}
+
+	// First, create a temporary client to query the server's API version.
+	// We use an empty version string which allows us to call the /version endpoint.
+	tmpClient, err := docker.NewVersionedClient(endpoint, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temporary Docker client: %w", err)
+	}
+	tmpClient.SkipServerVersionCheck = true // Allow querying any server
+
+	// Query the server's API version information
+	env, err := tmpClient.Version()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query Docker server version: %w", err)
+	}
+
+	// Get the server's minimum supported API version
+	// This is the safe version to use that the server will accept
+	serverMinVersion := env.Get("MinAPIVersion")
+	if serverMinVersion == "" {
+		// Fallback to a reasonable default if MinAPIVersion not available
+		serverMinVersion = "1.41"
+	}
+
+	// Now create the actual client with the negotiated version
+	client, err := docker.NewVersionedClient(endpoint, serverMinVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Docker client with version %s: %w", serverMinVersion, err)
+	}
+	client.SkipServerVersionCheck = false
+
+	return client, nil
+}
+
 // NewScenario creates a test Scenario which can be used to bootstraps a ControlServer with
 // a set of Users and TailscaleClients.
 func NewScenario(spec ScenarioSpec) (*Scenario, error) {
-	pool, err := dockertest.NewPool("")
+	// Create a Docker client with automatic API version negotiation.
+	// This ensures compatibility across different Docker installations by automatically
+	// selecting the highest mutually supported API version between client and server.
+	client, err := createDockerClient()
 	if err != nil {
 		return nil, fmt.Errorf("connecting to docker: %w", err)
 	}
+	pool := &dockertest.Pool{Client: client}
 
 	// Opportunity to clean up unreferenced networks.
 	// This might be a no op, but it is worth a try as we sometime
