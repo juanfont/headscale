@@ -72,7 +72,10 @@ func (h *Headscale) handleRegister(
 			// When tailscaled restarts, it sends RegisterRequest with Auth=nil and Expiry=zero.
 			// Return the current node state without modification.
 			// See: https://github.com/juanfont/headscale/issues/2862
-			if req.Expiry.IsZero() && node.Expiry().Valid() && !node.IsExpired() {
+			// Note: node.Expiry().Valid() was too strict — tagged nodes have nil expiry,                                                          
+            // which caused zero-time requests to fall through to handleLogout and                                                          
+            // incorrectly set their expiry to 0001-01-01 (Go zero time).                                                                   
+            if req.Expiry.IsZero() && !node.IsExpired() {
 				return nodeToRegisterResponse(node), nil
 			}
 
