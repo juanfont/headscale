@@ -45,6 +45,14 @@ repos:
         exclude: ^docs/
         types_or: [javascript, jsx, ts, tsx, yaml, json, toml, html, css, scss, sass, markdown]
 
+      # mdformat for docs
+      - id: mdformat
+        name: mdformat
+        entry: mdformat
+        language: system
+        types_or: [markdown]
+        files: ^docs/
+
       # golangci-lint for Go code quality
       - id: golangci-lint
         name: golangci-lint

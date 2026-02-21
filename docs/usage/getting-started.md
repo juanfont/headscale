@@ -5,13 +5,13 @@ This page helps you get started with headscale and provides a few usage examples
 
 !!! note "Prerequisites"
 
-    * Headscale is installed and running as system service. Read the [setup section](../setup/requirements.md) for
+    - Headscale is installed and running as system service. Read the [setup section](../setup/requirements.md) for
       installation instructions.
-    * The configuration file exists and is adjusted to suit your environment, see
+    - The configuration file exists and is adjusted to suit your environment, see
       [Configuration](../ref/configuration.md) for details.
-    * Headscale is reachable from the Internet. Verify this by visiting the health endpoint:
+    - Headscale is reachable from the Internet. Verify this by visiting the health endpoint:
       https://headscale.example.com/health
-    * The Tailscale client is installed, see [Client and operating system support](../about/clients.md) for more
+    - The Tailscale client is installed, see [Client and operating system support](../about/clients.md) for more
       information.
 
 ## Getting help
@@ -48,9 +48,9 @@ options, run:
     communicate with the headscale service you have to make sure the unix socket is accessible by the user that runs
     the commands. In general you can achieve this by any of the following methods:
 
-      * using `sudo`
-      * run the commands as user `headscale`
-      * add your user to the `headscale` group
+    - using `sudo`
+    - run the commands as user `headscale`
+    - add your user to the `headscale` group
 
     To verify you can run the following command using your preferred method:
 
@@ -128,8 +128,7 @@ your headscale server and it also prints the registration key required to approv
 ### [Pre authenticated key](../ref/registration.md#pre-authenticated-key)
 
 It is also possible to generate a preauthkey and register a node non-interactively. First, generate a preauthkey on the
-headscale instance. By default, the key is valid for one hour and can only be used once (see `headscale preauthkeys
---help` for other options):
+headscale instance. By default, the key is valid for one hour and can only be used once (see `headscale preauthkeys --help` for other options):
 
 === "Native"
 

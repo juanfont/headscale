@@ -2,8 +2,8 @@
 
 !!! tip "Required update path"
 
-    Its required to update from one stable version to the next (e.g. 0.26.0 &rarr; 0.27.1 &rarr; 0.28.0) without
-    skipping minor versions in between. You should always pick the latest available patch release.
+    Its required to update from one stable version to the next (e.g. 0.26.0 → 0.27.1 → 0.28.0) without skipping minor
+    versions in between. You should always pick the latest available patch release.
 
 Update an existing Headscale installation to a new version:
 
