@@ -472,10 +472,9 @@ func (s *State) DeleteNode(node types.NodeView) (change.Change, error) {
 
 // Connect marks a node as connected and updates its primary routes in the state.
 func (s *State) Connect(id types.NodeID) []change.Change {
-	// CRITICAL FIX: Update the online status in NodeStore BEFORE creating change notification
-	// This ensures that when the NodeCameOnline change is distributed and processed by other nodes,
-	// the NodeStore already reflects the correct online status for full map generation.
-	// now := time.Now()
+	// Update online status in NodeStore before creating change notification
+	// so the NodeStore already reflects the correct state when other nodes
+	// process the NodeCameOnline change for full map generation.
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
 		n.IsOnline = new(true)
 		// n.LastSeen = ptr.To(now)
@@ -488,9 +487,8 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 	log.Info().EmbedObject(node).Msg("node connected")
 
-	// Use the node's current routes for primary route update
-	// AllApprovedRoutes() returns only the intersection of announced AND approved routes
-	// We MUST use AllApprovedRoutes() to maintain the security model
+	// Use the node's current routes for primary route update.
+	// AllApprovedRoutes() returns only the intersection of announced and approved routes.
 	routeChange := s.primaryRoutes.SetRoutes(id, node.AllApprovedRoutes()...)
 
 	if routeChange {
@@ -502,10 +500,9 @@ func (s *State) Connect(id types.NodeID) []change.Change {
 
 // Disconnect marks a node as disconnected and updates its primary routes in the state.
 func (s *State) Disconnect(id types.NodeID) ([]change.Change, error) {
-	now := time.Now()
-
 	node, ok := s.nodeStore.UpdateNode(id, func(n *types.Node) {
-		n.LastSeen = new(now)
+		now := time.Now()
+		n.LastSeen = &now
 		// NodeStore is the source of truth for all node state including online status.
 		n.IsOnline = new(false)
 	})
@@ -639,29 +636,44 @@ func (s *State) ListEphemeralNodes() views.Slice[types.NodeView] {
 }
 
 // SetNodeExpiry updates the expiration time for a node.
-func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry time.Time) (types.NodeView, change.Change, error) {
+// If expiry is nil, the node's expiry is disabled (node will never expire).
+func (s *State) SetNodeExpiry(nodeID types.NodeID, expiry *time.Time) (types.NodeView, change.Change, error) {
 	// Update NodeStore before database to ensure consistency. The NodeStore update is
 	// blocking and will be the source of truth for the batcher. The database update must
 	// make the exact same change. If the database update fails, the NodeStore change will
 	// remain, but since we return an error, no change notification will be sent to the
 	// batcher, preventing inconsistent state propagation.
-	expiryPtr := expiry
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
-		node.Expiry = &expiryPtr
+		node.Expiry = expiry
 	})
 
 	if !ok {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, nodeID)
 	}
 
-	return s.persistNodeToDB(n)
+	// Persist expiry change to database directly since persistNodeToDB omits expiry.
+	err := s.db.NodeSetExpiry(nodeID, expiry)
+	if err != nil {
+		return types.NodeView{}, change.Change{}, fmt.Errorf("setting node expiry in database: %w", err)
+	}
+
+	// Update policy manager and generate change notification.
+	c, err := s.updatePolicyManagerNodes()
+	if err != nil {
+		return n, change.Change{}, fmt.Errorf("updating policy manager after setting expiry: %w", err)
+	}
+
+	if c.IsEmpty() {
+		c = change.NodeAdded(n.ID())
+	}
+
+	return n, c, nil
 }
 
 // SetNodeTags assigns tags to a node, making it a "tagged node".
 // Once a node is tagged, it cannot be un-tagged (only tags can be changed).
-// The UserID is preserved as "created by" information.
+// Setting tags clears UserID since tagged nodes are owned by their tags.
 func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView, change.Change, error) {
-	// CANNOT REMOVE ALL TAGS
 	if len(tags) == 0 {
 		return types.NodeView{}, change.Change{}, types.ErrCannotRemoveAllTags
 	}
@@ -701,7 +713,9 @@ func (s *State) SetNodeTags(nodeID types.NodeID, tags []string) (types.NodeView,
 	// make the exact same change.
 	n, ok := s.nodeStore.UpdateNode(nodeID, func(node *types.Node) {
 		node.Tags = validatedTags
-		// UserID is preserved as "created by" - do NOT set to nil
+		// Tagged nodes are owned by their tags, not a user.
+		node.UserID = nil
+		node.User = nil
 	})
 
 	if !ok {
@@ -1297,16 +1311,9 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 	// Assign ownership based on PreAuthKey
 	if params.PreAuthKey != nil {
 		if params.PreAuthKey.IsTagged() {
-			// TAGGED NODE
-			// Tags from PreAuthKey are assigned ONLY during initial authentication
+			// Tagged nodes are owned by their tags, not a user.
+			// UserID is intentionally left nil.
 			nodeToRegister.Tags = params.PreAuthKey.Proto().GetAclTags()
-
-			// Set UserID to track "created by" (who created the PreAuthKey)
-			if params.PreAuthKey.UserID != nil {
-				nodeToRegister.UserID = params.PreAuthKey.UserID
-				nodeToRegister.User = params.PreAuthKey.User
-			}
-			// If PreAuthKey.UserID is nil, the node is "orphaned" (system-created)
 
 			// Tagged nodes have key expiry disabled.
 			nodeToRegister.Expiry = nil
@@ -1347,6 +1354,11 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 			nodeToRegister.Tags = approvedTags
 			slices.Sort(nodeToRegister.Tags)
 			nodeToRegister.Tags = slices.Compact(nodeToRegister.Tags)
+
+			// Node is now tagged, so clear user ownership.
+			// Tagged nodes are owned by their tags, not a user.
+			nodeToRegister.UserID = nil
+			nodeToRegister.User = nil
 
 			// Tagged nodes have key expiry disabled.
 			nodeToRegister.Expiry = nil
@@ -1494,7 +1506,10 @@ func (s *State) processReauthTags(
 		wasTagged := node.IsTagged()
 		node.Tags = approvedTags
 
-		// Note: UserID is preserved as "created by" tracking, consistent with SetNodeTags
+		// Tagged nodes are owned by their tags, not a user.
+		node.UserID = nil
+		node.User = nil
+
 		if !wasTagged {
 			log.Info().
 				Uint64(zf.NodeID, uint64(node.ID)).
@@ -1686,6 +1701,30 @@ func (s *State) createNewNodeFromAuth(
 }
 
 // HandleNodeFromPreAuthKey handles node registration using a pre-authentication key.
+// findExistingNodeForPAK looks up an existing node by machine key,
+// matching the PAK's ownership. For user-owned keys it checks the
+// user's ID; for tagged keys it checks UserID(0) since tagged nodes
+// have no owning user.
+func (s *State) findExistingNodeForPAK(
+	machineKey key.MachinePublic,
+	pak *types.PreAuthKey,
+) (types.NodeView, bool) {
+	if pak.User != nil {
+		node, exists := s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
+		if exists {
+			return node, true
+		}
+	}
+
+	// Tagged nodes have nil UserID, so they are indexed under UserID(0)
+	// in nodesByMachineKey. Check there for tagged PAK re-registration.
+	if pak.IsTagged() {
+		return s.nodeStore.GetNodeByMachineKey(machineKey, 0)
+	}
+
+	return types.NodeView{}, false
+}
+
 func (s *State) HandleNodeFromPreAuthKey(
 	regReq tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
@@ -1704,24 +1743,11 @@ func (s *State) HandleNodeFromPreAuthKey(
 		return types.TaggedDevices.Name
 	}
 
-	// Check if node exists with same machine key before validating the key.
-	// For #2830: container restarts send the same pre-auth key which may be used/expired.
-	// Skip validation for existing nodes re-registering with the same NodeKey, as the
-	// key was only needed for initial authentication. NodeKey rotation requires validation.
-	//
-	// For tags-only keys (pak.User == nil), we skip the user-based lookup since there's
-	// no user to match against. These keys create tagged nodes without user ownership.
-	var existingNodeSameUser types.NodeView
-
-	var existsSameUser bool
-
-	if pak.User != nil {
-		existingNodeSameUser, existsSameUser = s.nodeStore.GetNodeByMachineKey(machineKey, types.UserID(pak.User.ID))
-	}
+	existingNodeSameUser, existsSameUser := s.findExistingNodeForPAK(machineKey, pak)
 
 	// For existing nodes, skip validation if:
 	// 1. MachineKey matches (cryptographic proof of machine identity)
-	// 2. User matches (from the PAK being used)
+	// 2. User/tag ownership matches (from the PAK being used)
 	// 3. Not a NodeKey rotation (rotation requires fresh validation)
 	//
 	// Security: MachineKey is the cryptographic identity. If someone has the MachineKey,
@@ -1729,9 +1755,7 @@ func (s *State) HandleNodeFromPreAuthKey(
 	// We don't check which specific PAK was used originally because:
 	// - Container restarts may use different PAKs (e.g., env var changed)
 	// - Original PAK may be deleted
-	// - MachineKey + User is sufficient to prove this is the same node
-	//
-	// Note: For tags-only keys, existsSameUser is always false, so we always validate.
+	// - MachineKey + ownership is sufficient to prove this is the same node
 	isExistingNodeReregistering := existsSameUser && existingNodeSameUser.Valid()
 
 	// Check if this is a NodeKey rotation (different NodeKey)
@@ -1818,11 +1842,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 
 			node.RegisterMethod = util.RegisterMethodAuthKey
 
-			// CRITICAL: Tags from PreAuthKey are ONLY applied during initial authentication
-			// On re-registration, we MUST NOT change tags or node ownership
-			// The node keeps whatever tags/user ownership it already has
-			//
-			// Only update AuthKey reference
+			// Tags from PreAuthKey are only applied during initial registration.
+			// On re-registration the node keeps its existing tags and ownership.
+			// Only update AuthKey reference.
 			node.AuthKey = pak
 			node.AuthKeyID = &pak.ID
 			node.IsOnline = new(false)
@@ -1875,19 +1897,27 @@ func (s *State) HandleNodeFromPreAuthKey(
 		// Check if node exists with this machine key for a different user
 		existingNodeAnyUser, existsAnyUser := s.nodeStore.GetNodeByMachineKeyAnyUser(machineKey)
 
-		// For user-owned keys, check if node exists for a different user
-		// For tags-only keys (pak.User == nil), this check is skipped
-		if pak.User != nil && existsAnyUser && existingNodeAnyUser.Valid() && existingNodeAnyUser.UserID().Get() != pak.User.ID {
-			// Node exists but belongs to a different user
-			// Create a NEW node for the new user (do not transfer)
-			// This allows the same machine to have separate node identities per user
-			oldUser := existingNodeAnyUser.User()
+		// For user-owned keys, check if node exists for a different user.
+		// Tags-only keys (pak.User == nil) skip this check.
+		// Tagged nodes are also skipped since they have no owning user.
+		existingIsUserOwned := existsAnyUser &&
+			existingNodeAnyUser.Valid() &&
+			!existingNodeAnyUser.IsTagged()
+		belongsToDifferentUser := pak.User != nil &&
+			existingIsUserOwned &&
+			existingNodeAnyUser.UserID().Get() != pak.User.ID
+
+		if belongsToDifferentUser {
+			// Node exists but belongs to a different user.
+			// Create a new node for the new user (do not transfer).
+			oldUserName := existingNodeAnyUser.User().Name()
+
 			log.Info().
 				Caller().
 				Str(zf.ExistingNodeName, existingNodeAnyUser.Hostname()).
 				Uint64(zf.ExistingNodeID, existingNodeAnyUser.ID().Uint64()).
 				Str(zf.MachineKey, machineKey.ShortString()).
-				Str(zf.OldUser, oldUser.Name()).
+				Str(zf.OldUser, oldUserName).
 				Str(zf.NewUser, pakUsername()).
 				Msg("Creating new node for different user (same machine key exists for another user)")
 		}

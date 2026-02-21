@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -13,10 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
-)
-
-const (
-	deprecateNamespaceMessage = "use --user"
 )
 
 var cfgFile string = ""
@@ -39,6 +34,14 @@ func init() {
 		StringP("output", "o", "", "Output format. Empty for human-readable, 'json', 'json-line' or 'yaml'")
 	rootCmd.PersistentFlags().
 		Bool("force", false, "Disable prompts and forces the execution")
+
+	// Re-enable usage output only for flag-parsing errors; runtime errors
+	// from RunE should never dump usage text.
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		cmd.SilenceUsage = false
+
+		return err
+	})
 }
 
 func initConfig() {
@@ -58,7 +61,7 @@ func initConfig() {
 		}
 	}
 
-	machineOutput := HasMachineOutputFlag()
+	machineOutput := hasMachineOutputFlag()
 
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.
@@ -140,12 +143,15 @@ var rootCmd = &cobra.Command{
 headscale is an open source implementation of the Tailscale control server
 
 https://github.com/juanfont/headscale`,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func Execute() {
-	err := rootCmd.Execute()
+	cmd, err := rootCmd.ExecuteC()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		outputFormat, _ := cmd.Flags().GetString("output")
+		printError(err, outputFormat)
 		os.Exit(1)
 	}
 }

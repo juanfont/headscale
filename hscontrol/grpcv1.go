@@ -451,12 +451,40 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
 ) (*v1.ExpireNodeResponse, error) {
+	if request.GetDisableExpiry() && request.GetExpiry() != nil {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"cannot set both disable_expiry and expiry",
+		)
+	}
+
+	// Handle disable expiry request - node will never expire.
+	if request.GetDisableExpiry() {
+		node, nodeChange, err := api.h.state.SetNodeExpiry(
+			types.NodeID(request.GetNodeId()), nil,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		api.h.Change(nodeChange)
+
+		log.Trace().
+			Caller().
+			EmbedObject(node).
+			Msg("node expiry disabled")
+
+		return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
+	}
+
 	expiry := time.Now()
 	if request.GetExpiry() != nil {
 		expiry = request.GetExpiry().AsTime()
 	}
 
-	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), expiry)
+	node, nodeChange, err := api.h.state.SetNodeExpiry(
+		types.NodeID(request.GetNodeId()), &expiry,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +495,7 @@ func (api headscaleV1APIServer) ExpireNode(
 	log.Trace().
 		Caller().
 		EmbedObject(node).
-		Time(zf.ExpiresAt, *node.AsStruct().Expiry).
+		Time(zf.ExpiresAt, expiry).
 		Msg("node expired")
 
 	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil

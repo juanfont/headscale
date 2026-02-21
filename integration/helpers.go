@@ -929,8 +929,8 @@ func tagp(name string) policyv2.Alias {
 // prefixp returns a pointer to a Prefix from a CIDR string for policy v2 configurations.
 // Converts CIDR notation to policy prefix format for network range specifications.
 func prefixp(cidr string) policyv2.Alias {
-	prefix := netip.MustParsePrefix(cidr)
-	return new(policyv2.Prefix(prefix))
+	p := policyv2.Prefix(netip.MustParsePrefix(cidr))
+	return &p
 }
 
 // aliasWithPorts creates an AliasWithPorts structure from an alias and port ranges.
@@ -1002,6 +1002,18 @@ func GetUserByName(headscale ControlServer, username string) (*v1.User, error) {
 	}
 
 	return nil, fmt.Errorf("user %s not found", username) //nolint:err113
+}
+
+// findNode returns the first node in nodes for which match returns true,
+// or nil if no node matches.
+func findNode(nodes []*v1.Node, match func(*v1.Node) bool) *v1.Node {
+	for _, n := range nodes {
+		if match(n) {
+			return n
+		}
+	}
+
+	return nil
 }
 
 // FindNewClient finds a client that is in the new list but not in the original list.

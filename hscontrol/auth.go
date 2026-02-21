@@ -212,7 +212,9 @@ func (h *Headscale) handleLogout(
 
 	// Update the internal state with the nodes new expiry, meaning it is
 	// logged out.
-	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), req.Expiry)
+	expiry := req.Expiry
+
+	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), &expiry)
 	if err != nil {
 		return nil, fmt.Errorf("setting node expiry: %w", err)
 	}

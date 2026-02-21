@@ -14,7 +14,7 @@ import (
 // TestTaggedPreAuthKeyCreatesTaggedNode tests that a PreAuthKey with tags creates
 // a tagged node with:
 // - Tags from the PreAuthKey
-// - UserID tracking who created the key (informational "created by")
+// - Nil UserID (tagged nodes are owned by tags, not a user)
 // - IsTagged() returns true.
 func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 	app := createTestApp(t)
@@ -51,11 +51,10 @@ func TestTaggedPreAuthKeyCreatesTaggedNode(t *testing.T) {
 	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, found)
 
-	// Critical assertions for tags-as-identity model
+	// Tagged nodes are owned by their tags, not a user.
 	assert.True(t, node.IsTagged(), "Node should be tagged")
 	assert.ElementsMatch(t, tags, node.Tags().AsSlice(), "Node should have tags from PreAuthKey")
-	assert.True(t, node.UserID().Valid(), "Node should have UserID tracking creator")
-	assert.Equal(t, user.ID, node.UserID().Get(), "UserID should track PreAuthKey creator")
+	assert.False(t, node.UserID().Valid(), "Tagged node should not have UserID")
 
 	// Verify node is identified correctly
 	assert.True(t, node.IsTagged(), "Tagged node is not user-owned")
@@ -129,9 +128,10 @@ func TestReAuthDoesNotReapplyTags(t *testing.T) {
 	assert.True(t, nodeAfterReauth.IsTagged(), "Node should still be tagged")
 	assert.ElementsMatch(t, initialTags, nodeAfterReauth.Tags().AsSlice(), "Tags should remain unchanged on re-auth")
 
-	// Verify only one node was created (no duplicates)
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 1, nodes.Len(), "Should have exactly one node")
+	// Verify only one node was created (no duplicates).
+	// Tagged nodes are not indexed by user, so check the global list.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 1, allNodes.Len(), "Should have exactly one node")
 }
 
 // NOTE: TestSetTagsOnUserOwnedNode functionality is covered by gRPC tests in grpcv1_test.go
@@ -294,13 +294,13 @@ func TestMultipleNodesWithSameReusableTaggedPreAuthKey(t *testing.T) {
 	assert.ElementsMatch(t, tags, node1.Tags().AsSlice(), "First node should have PreAuthKey tags")
 	assert.ElementsMatch(t, tags, node2.Tags().AsSlice(), "Second node should have PreAuthKey tags")
 
-	// Both nodes should track the same creator
-	assert.Equal(t, user.ID, node1.UserID().Get(), "First node should track creator")
-	assert.Equal(t, user.ID, node2.UserID().Get(), "Second node should track creator")
+	// Tagged nodes should not have UserID set.
+	assert.False(t, node1.UserID().Valid(), "First node should not have UserID")
+	assert.False(t, node2.UserID().Valid(), "Second node should not have UserID")
 
-	// Verify we have exactly 2 nodes
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 2, nodes.Len(), "Should have exactly two nodes")
+	// Verify we have exactly 2 nodes.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 2, allNodes.Len(), "Should have exactly two nodes")
 }
 
 // TestNonReusableTaggedPreAuthKey tests that a non-reusable PreAuthKey with tags
@@ -359,9 +359,9 @@ func TestNonReusableTaggedPreAuthKey(t *testing.T) {
 	_, err = app.handleRegisterWithAuthKey(regReq2, machineKey2.Public())
 	require.Error(t, err, "Should not be able to reuse non-reusable PreAuthKey")
 
-	// Verify only one node was created
-	nodes := app.state.ListNodesByUser(types.UserID(user.ID))
-	assert.Equal(t, 1, nodes.Len(), "Should have exactly one node")
+	// Verify only one node was created.
+	allNodes := app.state.ListNodes()
+	assert.Equal(t, 1, allNodes.Len(), "Should have exactly one node")
 }
 
 // TestExpiredTaggedPreAuthKey tests that an expired PreAuthKey with tags

@@ -101,6 +101,8 @@ func TestExpireNode(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -114,7 +116,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -126,13 +128,55 @@ func TestExpireNode(t *testing.T) {
 	assert.False(t, nodeFromDB.IsExpired())
 
 	now := time.Now()
-	err = db.NodeSetExpiry(nodeFromDB.ID, now)
+	err = db.NodeSetExpiry(nodeFromDB.ID, &now)
 	require.NoError(t, err)
 
 	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.NoError(t, err)
 
 	assert.True(t, nodeFromDB.IsExpired())
+}
+
+func TestDisableNodeExpiry(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	pakID := pak.ID
+	node := &types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "testnode",
+		UserID:         &user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      &pakID,
+		Expiry:         &time.Time{},
+	}
+	db.DB.Save(node)
+
+	// Set an expiry first.
+	past := time.Now().Add(-time.Hour)
+	err = db.NodeSetExpiry(node.ID, &past)
+	require.NoError(t, err)
+
+	nodeFromDB, err := db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.True(t, nodeFromDB.IsExpired(), "node should be expired")
+
+	// Disable expiry by setting nil.
+	err = db.NodeSetExpiry(node.ID, nil)
+	require.NoError(t, err)
+
+	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.False(t, nodeFromDB.IsExpired(), "node should not be expired after disabling expiry")
+	assert.Nil(t, nodeFromDB.Expiry, "expiry should be nil after disabling")
 }
 
 func TestSetTags(t *testing.T) {
@@ -145,6 +189,8 @@ func TestSetTags(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -158,7 +204,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	trx := db.DB.Save(node)
@@ -652,6 +698,9 @@ func TestListEphemeralNodes(t *testing.T) {
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+	pakEphID := pakEph.ID
+
 	node := types.Node{
 		ID:             0,
 		MachineKey:     key.NewMachine().Public(),
@@ -659,7 +708,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	nodeEph := types.Node{
@@ -669,7 +718,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      new(pakEph.ID),
+		AuthKeyID:      &pakEphID,
 	}
 
 	err = db.DB.Save(&node).Error

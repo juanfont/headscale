@@ -185,7 +185,8 @@ You may refer to users in the Headscale policy via:
 
 - Email address
 - Username
-- Provider identifier (only available in the database or from your identity provider)
+- Provider identifier (this value is currently only available from the [API](api.md), database or directly from your
+  identity provider)
 
 !!! note "A user identifier in the policy must contain a single `@`"
 
@@ -199,6 +200,34 @@ You may refer to users in the Headscale policy via:
     configuration, the values for username or email address might change over time. This might have unexpected
     consequences for Headscale where a policy might no longer work or a user might obtain more access by hijacking an
     existing username or email address.
+
+!!! tip "Howto use the provider identifier in the policy"
+
+    The provider identifier uniquely identifies an OIDC user and a well-behaving identity provider guarantees that this
+    value never changes for a particular user. It is usually an opaque and long string and its value is currently only
+    available from the [API](api.md), database or directly from your identity provider).
+
+    Use the [API](api.md) with the `/api/v1/user` endpoint to fetch the provider identifier (`providerId`). The value
+    (be sure to append an `@` in case the provider identifier doesn't already contain an `@` somewhere) can be used
+    directly to reference a user in the policy. To improve readability of the policy, one may use the `groups` section
+    as an alias:
+
+    ```json
+    {
+      "groups": {
+        "group:alice": [
+          "https://soo.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
+        ]
+      },
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["group:alice"],
+          "dst": ["*:*"]
+        }
+      ]
+    }
+    ```
 
 ## Supported OIDC claims
 
@@ -289,6 +318,14 @@ Console.
 - Kanidm is fully supported by Headscale.
 - Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their full SPN, for
   example: `headscale_users@sso.example.com`.
+- Kanidm sends the full SPN (`alice@sso.example.com`) as `preferred_username` by default. Headscale stores this value as
+  username which might be confusing as the username and email fields now contain values that look like an email address.
+  [Kanidm can be configured to send the short username as `preferred_username` attribute
+  instead](https://kanidm.github.io/kanidm/stable/integrations/oauth2.html#short-names):
+  ```console
+  kanidm system oauth2 prefer-short-username <client name>
+  ```
+  Once configured, the short username in Headscale will be `alice` and can be referred to as `alice@` in the policy.
 
 ### Keycloak
 

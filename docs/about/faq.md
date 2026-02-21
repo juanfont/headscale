@@ -24,9 +24,12 @@ We are more than happy to exchange emails, or to have dedicated calls before a P
 
 ## When/Why is Feature X going to be implemented?
 
-We don't know. We might be working on it. If you're interested in contributing, please post a feature request about it.
+We use [GitHub Milestones to plan for upcoming Headscale releases](https://github.com/juanfont/headscale/milestones).
+Have a look at [our current plan](https://github.com/juanfont/headscale/milestones) to get an idea when a specific
+feature is about to be implemented. The release plan is subject to change at any time.
 
-Please be aware that there are a number of reasons why we might not accept specific contributions:
+If you're interested in contributing, please post a feature request about it. Please be aware that there are a number of
+reasons why we might not accept specific contributions:
 
 - It is not possible to implement the feature in a way that makes sense in a self-hosted environment.
 - Given that we are reverse-engineering Tailscale to satisfy our own curiosity, we might be interested in implementing the feature ourselves.
@@ -47,8 +50,8 @@ we have a "docker-issues" channel where you can ask for Docker-specific help to 
 ## What is the recommended update path? Can I skip multiple versions while updating?
 
 Please follow the steps outlined in the [upgrade guide](../setup/upgrade.md) to update your existing Headscale
-installation. Its best to update from one stable version to the next (e.g. 0.24.0 &rarr; 0.25.1 &rarr; 0.26.1) in case
-you are multiple releases behind. You should always pick the latest available patch release.
+installation. Its required to update from one stable version to the next (e.g. 0.26.0 &rarr; 0.27.1 &rarr; 0.28.0)
+without skipping minor versions in between. You should always pick the latest available patch release.
 
 Be sure to check the [changelog](https://github.com/juanfont/headscale/blob/main/CHANGELOG.md) for version specific
 upgrade instructions and breaking changes.
@@ -70,12 +73,12 @@ of Headscale:
 
 1. An environment with 1000 servers
 
-   - they rarely "move" (change their endpoints)
-   - new nodes are added rarely
+     - they rarely "move" (change their endpoints)
+     - new nodes are added rarely
 
 2. An environment with 80 laptops/phones (end user devices)
 
-   - nodes move often, e.g. switching from home to office
+     - nodes move often, e.g. switching from home to office
 
 Headscale calculates a map of all nodes that need to talk to each other,
 creating this "world map" requires a lot of CPU time. When an event that
@@ -159,6 +162,39 @@ indicates which part of the policy is invalid. Follow these steps to fix your po
     The above commands to get/set the policy require a complete server configuration file including database settings. A
     minimal config to [control Headscale via remote CLI](../ref/api.md#grpc) is not sufficient. You may use `headscale
     -c /path/to/config.yaml` to specify the path to an alternative configuration file.
+
+## How can I migrate back to the recommended IP prefixes?
+
+Tailscale only supports the IP prefixes `100.64.0.0/10` and `fd7a:115c:a1e0::/48` or smaller subnets thereof. The
+following steps can be used to migrate from unsupported IP prefixes back to the supported and recommended ones.
+
+!!! warning "Backup and test in a demo environment required"
+
+    The commands below update the IP addresses of all nodes in your tailnet and this might have a severe impact in your
+    specific environment. At a minimum:
+
+    - [Create a backup of your database](../setup/upgrade.md#backup)
+    - Test the commands below in a representive demo environment. This allows to catch subsequent connectivity errors
+      early and see how the tailnet behaves in your specific environment.
+
+- Stop Headscale
+- Restore the default prefixes in the [configuration file](../ref/configuration.md):
+  ```yaml
+  prefixes:
+    v4: 100.64.0.0/10
+    v6: fd7a:115c:a1e0::/48
+  ```
+- Update the `nodes.ipv4` and `nodes.ipv6` columns in the database and assign each node a unique IPv4 and IPv6 address.
+  The following SQL statement assigns IP addresses based on the node ID:
+  ```sql
+  UPDATE nodes
+  SET ipv4=concat('100.64.', id/256, '.', id%256),
+      ipv6=concat('fd7a:115c:a1e0::', format('%x', id));
+  ```
+- Update the [policy](../ref/acls.md) to reflect the IP address changes (if any)
+- Start Headscale
+
+Nodes should reconnect within a few seconds and pickup their newly assigned IP addresses.
 
 ## How can I avoid to send logs to Tailscale Inc?
 

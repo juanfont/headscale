@@ -245,7 +245,6 @@ Includes all devices that [have at least one tag](registration.md/#identity-mode
 ```
 
 ### `autogroup:self`
-**(EXPERIMENTAL)**
 
 !!! warning "The current implementation of `autogroup:self` is inefficient"
 

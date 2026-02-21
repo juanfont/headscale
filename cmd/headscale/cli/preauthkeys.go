@@ -1,16 +1,15 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
-	"github.com/prometheus/common/model"
+	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -46,150 +45,100 @@ var listPreAuthKeys = &cobra.Command{
 	Use:     "list",
 	Short:   "List all preauthkeys",
 	Aliases: []string{"ls", "show"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		response, err := client.ListPreAuthKeys(ctx, &v1.ListPreAuthKeysRequest{})
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Error getting the list of keys: %s", err),
-				output,
-			)
-
-			return
+			return fmt.Errorf("listing preauthkeys: %w", err)
 		}
 
-		if output != "" {
-			SuccessOutput(response.GetPreAuthKeys(), "", output)
-		}
-
-		tableData := pterm.TableData{
-			{
-				"ID",
-				"Key/Prefix",
-				"Reusable",
-				"Ephemeral",
-				"Used",
-				"Expiration",
-				"Created",
-				"Owner",
-			},
-		}
-		for _, key := range response.GetPreAuthKeys() {
-			expiration := "-"
-			if key.GetExpiration() != nil {
-				expiration = ColourTime(key.GetExpiration().AsTime())
+		return printListOutput(cmd, response.GetPreAuthKeys(), func() error {
+			tableData := pterm.TableData{
+				{
+					"ID",
+					"Key/Prefix",
+					"Reusable",
+					"Ephemeral",
+					"Used",
+					"Expiration",
+					"Created",
+					"Owner",
+				},
 			}
 
-			var owner string
-			if len(key.GetAclTags()) > 0 {
-				owner = strings.Join(key.GetAclTags(), "\n")
-			} else if key.GetUser() != nil {
-				owner = key.GetUser().GetName()
-			} else {
-				owner = "-"
+			for _, key := range response.GetPreAuthKeys() {
+				expiration := "-"
+				if key.GetExpiration() != nil {
+					expiration = ColourTime(key.GetExpiration().AsTime())
+				}
+
+				var owner string
+				if len(key.GetAclTags()) > 0 {
+					owner = strings.Join(key.GetAclTags(), "\n")
+				} else if key.GetUser() != nil {
+					owner = key.GetUser().GetName()
+				} else {
+					owner = "-"
+				}
+
+				tableData = append(tableData, []string{
+					strconv.FormatUint(key.GetId(), util.Base10),
+					key.GetKey(),
+					strconv.FormatBool(key.GetReusable()),
+					strconv.FormatBool(key.GetEphemeral()),
+					strconv.FormatBool(key.GetUsed()),
+					expiration,
+					key.GetCreatedAt().AsTime().Format(HeadscaleDateTimeFormat),
+					owner,
+				})
 			}
 
-			tableData = append(tableData, []string{
-				strconv.FormatUint(key.GetId(), 10),
-				key.GetKey(),
-				strconv.FormatBool(key.GetReusable()),
-				strconv.FormatBool(key.GetEphemeral()),
-				strconv.FormatBool(key.GetUsed()),
-				expiration,
-				key.GetCreatedAt().AsTime().Format("2006-01-02 15:04:05"),
-				owner,
-			})
-
-		}
-		err = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Failed to render pterm table: %s", err),
-				output,
-			)
-		}
-	},
+			return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		})
+	}),
 }
 
 var createPreAuthKeyCmd = &cobra.Command{
 	Use:     "create",
 	Short:   "Creates a new preauthkey",
 	Aliases: []string{"c", "new"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetUint64("user")
 		reusable, _ := cmd.Flags().GetBool("reusable")
 		ephemeral, _ := cmd.Flags().GetBool("ephemeral")
 		tags, _ := cmd.Flags().GetStringSlice("tags")
 
-		request := &v1.CreatePreAuthKeyRequest{
-			User:      user,
-			Reusable:  reusable,
-			Ephemeral: ephemeral,
-			AclTags:   tags,
-		}
-
-		durationStr, _ := cmd.Flags().GetString("expiration")
-
-		duration, err := model.ParseDuration(durationStr)
+		expiration, err := expirationFromFlag(cmd)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Could not parse duration: %s\n", err),
-				output,
-			)
+			return err
 		}
 
-		expiration := time.Now().UTC().Add(time.Duration(duration))
-
-		request.Expiration = timestamppb.New(expiration)
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
+		request := &v1.CreatePreAuthKeyRequest{
+			User:       user,
+			Reusable:   reusable,
+			Ephemeral:  ephemeral,
+			AclTags:    tags,
+			Expiration: expiration,
+		}
 
 		response, err := client.CreatePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot create Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("creating preauthkey: %w", err)
 		}
 
-		SuccessOutput(response.GetPreAuthKey(), response.GetPreAuthKey().GetKey(), output)
-	},
+		return printOutput(cmd, response.GetPreAuthKey(), response.GetPreAuthKey().GetKey())
+	}),
 }
 
 var expirePreAuthKeyCmd = &cobra.Command{
 	Use:     "expire",
 	Short:   "Expire a preauthkey",
 	Aliases: []string{"revoke", "exp", "e"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 
 		if id == 0 {
-			ErrorOutput(
-				errMissingParameter,
-				"Error: missing --id parameter",
-				output,
-			)
-
-			return
+			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.ExpirePreAuthKeyRequest{
 			Id: id,
@@ -197,38 +146,23 @@ var expirePreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.ExpirePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot expire Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("expiring preauthkey: %w", err)
 		}
 
-		SuccessOutput(response, "Key expired", output)
-	},
+		return printOutput(cmd, response, "Key expired")
+	}),
 }
 
 var deletePreAuthKeyCmd = &cobra.Command{
 	Use:     "delete",
 	Short:   "Delete a preauthkey",
 	Aliases: []string{"del", "rm", "d"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		id, _ := cmd.Flags().GetUint64("id")
 
 		if id == 0 {
-			ErrorOutput(
-				errMissingParameter,
-				"Error: missing --id parameter",
-				output,
-			)
-
-			return
+			return fmt.Errorf("missing --id parameter: %w", errMissingParameter)
 		}
-
-		ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
-		defer cancel()
-		defer conn.Close()
 
 		request := &v1.DeletePreAuthKeyRequest{
 			Id: id,
@@ -236,13 +170,9 @@ var deletePreAuthKeyCmd = &cobra.Command{
 
 		response, err := client.DeletePreAuthKey(ctx, request)
 		if err != nil {
-			ErrorOutput(
-				err,
-				fmt.Sprintf("Cannot delete Pre Auth Key: %s\n", err),
-				output,
-			)
+			return fmt.Errorf("deleting preauthkey: %w", err)
 		}
 
-		SuccessOutput(response, "Key deleted", output)
-	},
+		return printOutput(cmd, response, "Key deleted")
+	}),
 }

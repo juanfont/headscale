@@ -420,6 +420,13 @@
             "required": false,
             "type": "string",
             "format": "date-time"
+          },
+          {
+            "name": "disableExpiry",
+            "description": "When true, sets expiry to null (node will never expire).",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
           }
         ],
         "tags": [

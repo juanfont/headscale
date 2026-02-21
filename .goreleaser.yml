@@ -13,29 +13,6 @@ release:
 
     Please follow the steps outlined in the [upgrade guide](https://headscale.net/stable/setup/upgrade/) to update your existing Headscale installation.
 
-    **It's best to update from one stable version to the next** (e.g., 0.24.0 → 0.25.1 → 0.26.1) in case you are multiple releases behind. You should always pick the latest available patch release.
-
-    Be sure to check the changelog above for version-specific upgrade instructions and breaking changes.
-
-    ### Backup Your Database
-
-    **Always backup your database before upgrading.** Here's how to backup a SQLite database:
-
-    ```bash
-    # Stop headscale
-    systemctl stop headscale
-
-    # Backup sqlite database
-    cp /var/lib/headscale/db.sqlite /var/lib/headscale/db.sqlite.backup
-
-    # Backup sqlite WAL/SHM files (if they exist)
-    cp /var/lib/headscale/db.sqlite-wal /var/lib/headscale/db.sqlite-wal.backup
-    cp /var/lib/headscale/db.sqlite-shm /var/lib/headscale/db.sqlite-shm.backup
-
-    # Start headscale (migration will run automatically)
-    systemctl start headscale
-    ```
-
 builds:
   - id: headscale
     main: ./cmd/headscale
