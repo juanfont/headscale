@@ -106,6 +106,7 @@ func TestAppConnectorBasic(t *testing.T) {
 
 	// Advertise as an app connector using tailscale set --advertise-connector
 	t.Log("Advertising node as app connector")
+
 	_, _, err = connectorNode.Execute([]string{
 		"tailscale", "set", "--advertise-connector",
 	})
@@ -144,6 +145,7 @@ func TestAppConnectorBasic(t *testing.T) {
 
 				err := json.Unmarshal([]byte(attrs.At(i)), &cfg)
 				assert.NoError(c, err)
+
 				allDomains = append(allDomains, cfg.Domains...)
 			}
 
@@ -320,6 +322,7 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 
 	// Advertise as an app connector - with wildcard, any node should work
 	t.Log("Advertising regular node as app connector with wildcard policy")
+
 	_, _, err = regularNode.Execute([]string{
 		"tailscale", "set", "--advertise-connector",
 	})
