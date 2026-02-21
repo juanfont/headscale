@@ -37,6 +37,17 @@ check-deps:
 	$(call check_tool,clang-format)
 	$(call check_tool,buf)
 
+
+# Development environment bootstrap
+.PHONY: build-deps
+build-deps:
+	@command -v nix >/dev/null 2>&1 || { \
+		echo "Error: nix not found. Install Nix to use build-deps."; \
+		exit 1; \
+	}
+	@echo "Bootstrapping development dependencies via Nix..."
+	nix develop --extra-experimental-features nix-command --extra-experimental-features flakes --command true
+
 # Build targets
 .PHONY: build
 build: check-deps $(GO_SOURCES) go.mod go.sum
@@ -107,6 +118,7 @@ help:
 	@echo "Main targets:"
 	@echo "  all          - Run lint, test, and build (default)"
 	@echo "  build        - Build headscale binary"
+	@echo "  build-deps   - Bootstrap development dependencies via Nix"
 	@echo "  test         - Run Go tests"
 	@echo "  fmt          - Format all code (Go, docs, proto)"
 	@echo "  lint         - Lint all code (Go, proto)"
@@ -123,6 +135,7 @@ help:
 	@echo ""
 	@echo "Dependencies:"
 	@echo "  check-deps   - Verify required tools are available"
+	@echo "  build-deps   - Prepare development dependencies (Nix)"
 	@echo ""
 	@echo "Note: If not running in a nix shell, ensure dependencies are available:"
 	@echo "  nix develop"
