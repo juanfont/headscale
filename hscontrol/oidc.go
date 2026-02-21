@@ -270,7 +270,19 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		util.LogErr(err, "could not get userinfo; only using claims from id token")
 	}
 
-	// The user claims are now updated from the userinfo endpoint so we can verify the user
+	// The user claims are now updated from the userinfo endpoint so we can derive username
+	// and verify the user against authorization constraints.
+
+	// Derive username according to configured claim order (with sensible defaults)
+	order := a.cfg.UsernameClaimOrder
+	if len(order) == 0 {
+		order = []string{"preferred_username", "email_localpart", "email", "name", "sub"}
+	}
+	if uname := types.DeriveUsername(&claims, order); uname != "" {
+		claims.Username = uname
+	}
+
+	// Now we can verify the user
 	// against allowed emails, email domains, and groups.
 	err = doOIDCAuthorization(a.cfg, &claims)
 	if err != nil {

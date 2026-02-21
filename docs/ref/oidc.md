@@ -179,6 +179,26 @@ Access Token.
     headscale node expire -i <NODE_ID>
     ```
 
+### Customize username mapping
+
+Some identity providers (notably Google OAuth) do not include the `preferred_username` claim. You can configure how
+Headscale derives the username (login name) by specifying a priority order of OIDC claims. The first non-empty, valid
+value is used.
+
+Supported values: `preferred_username`, `email_localpart`, `email`, `name`, `sub`.
+
+If not set, Headscale uses the default order: `preferred_username`, `email_localpart`, `email`, `name`, `sub`.
+
+Example that prefers the email local-part when `preferred_username` is missing:
+
+```yaml
+oidc:
+  username_claim_order:
+    - preferred_username
+    - email_localpart
+    - email
+```
+
 ### Reference a user in the policy
 
 You may refer to users in the Headscale policy via:
@@ -284,10 +304,15 @@ Authelia is fully supported by Headscale.
 
 ### Google OAuth
 
-!!! warning "No username due to missing preferred_username"
+!!! tip "Derive username with email local-part"
 
-    Google OAuth does not send the `preferred_username` claim when the scope `profile` is requested. The username in
-    Headscale will be blank/not set.
+    Google OAuth does not include the `preferred_username` claim. Configure `oidc.username_claim_order` so Headscale
+    derives a username from the email local-part:
+
+    ```yaml
+    oidc:
+      username_claim_order: [preferred_username, email_localpart, email]
+    ```
 
 In order to integrate Headscale with Google, you'll need to have a [Google Cloud
 Console](https://console.cloud.google.com) account.
