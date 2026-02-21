@@ -56,6 +56,7 @@ func TestAppConnectorBasic(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
+
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
@@ -97,6 +98,7 @@ func TestAppConnectorBasic(t *testing.T) {
 		status, err := connectorNode.Status()
 		assert.NoError(c, err)
 		assert.NotNil(c, status.Self.Tags, "Node should have tags")
+
 		if status.Self.Tags != nil {
 			assert.Contains(c, status.Self.Tags.AsSlice(), "tag:connector", "Node should have tag:connector")
 		}
@@ -136,8 +138,10 @@ func TestAppConnectorBasic(t *testing.T) {
 
 			// Verify the content of the configs
 			var allDomains []string
+
 			for i := range attrs.Len() {
 				var cfg policyv2.AppConnectorAttr
+
 				err := json.Unmarshal([]byte(attrs.At(i)), &cfg)
 				assert.NoError(c, err)
 				allDomains = append(allDomains, cfg.Domains...)
@@ -186,6 +190,7 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
+
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(
@@ -227,6 +232,7 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 		status, err := otherNode.Status()
 		assert.NoError(c, err)
 		assert.NotNil(c, status.Self.Tags, "Node should have tags")
+
 		if status.Self.Tags != nil {
 			assert.Contains(c, status.Self.Tags.AsSlice(), "tag:other", "Node should have tag:other")
 		}
@@ -234,23 +240,30 @@ func TestAppConnectorNonMatchingTag(t *testing.T) {
 
 	// Advertise as an app connector
 	t.Log("Advertising node as app connector (should NOT receive config)")
+
 	_, _, err = otherNode.Execute([]string{
 		"tailscale", "set", "--advertise-connector",
 	})
 	require.NoError(t, err)
 
-	// Wait a bit and verify the node does NOT have app connector capability
-	// Use a shorter timeout since we're checking for absence
-	time.Sleep(5 * time.Second)
+	// Verify the node does NOT have app connector capability
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nm, err := otherNode.Netmap()
+		assert.NoError(c, err)
 
-	nm, err := otherNode.Netmap()
-	require.NoError(t, err)
+		if nm == nil || !nm.SelfNode.Valid() {
+			return
+		}
 
-	if nm != nil && nm.SelfNode.Valid() && !nm.SelfNode.CapMap().IsNil() {
+		capMap := nm.SelfNode.CapMap()
+		if capMap.IsNil() {
+			return
+		}
+
 		appConnectorCap := tailcfg.NodeCapability("tailscale.com/app-connectors")
-		_, hasCapability := nm.SelfNode.CapMap().GetOk(appConnectorCap)
-		assert.False(t, hasCapability, "Node with non-matching tag should NOT have app-connectors capability")
-	}
+		_, hasCapability := capMap.GetOk(appConnectorCap)
+		assert.False(c, hasCapability, "Node with non-matching tag should NOT have app-connectors capability")
+	}, 10*time.Second, 1*time.Second, "Verifying node does not receive app connector capability")
 }
 
 // TestAppConnectorWildcardConnector tests that a wildcard (*) connector
@@ -285,6 +298,7 @@ func TestAppConnectorWildcardConnector(t *testing.T) {
 
 	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
+
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv(

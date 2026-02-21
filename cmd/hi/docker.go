@@ -266,6 +266,7 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	} else {
 		env = append(env, "DOCKER_API_VERSION="+os.Getenv("DOCKER_API_VERSION"))
 	}
+
 	env = append(env, "DOCKER_MACHINE_NAME=integration")
 
 	containerConfig := &container.Config{
