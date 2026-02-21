@@ -102,6 +102,11 @@ type Headscale struct {
 	mapBatcher     mapper.Batcher
 
 	clientStreamsOpen sync.WaitGroup
+
+	// TLS certificate for manual TLS configuration (non-ACME).
+	// Protected by tlsCertMu for concurrent access during SIGHUP reload.
+	tlsCertMu sync.RWMutex
+	tlsCert   *tls.Certificate
 }
 
 var (
@@ -823,19 +828,28 @@ func (h *Headscale) Serve() error {
 			case syscall.SIGHUP:
 				log.Info().
 					Str("signal", sig.String()).
+					Msg("Received SIGHUP, reloading TLS certificate")
+
+				// Reload TLS certificate if using manual TLS (not ACME/Let's Encrypt)
+				if h.cfg.TLS.CertPath != "" && h.cfg.TLS.LetsEncrypt.Hostname == "" {
+					if err := h.reloadTLSCertificate(); err != nil {
+						log.Error().Err(err).Msg("reloading TLS certificate")
+					}
+				}
+
+				log.Info().
+					Str("signal", sig.String()).
 					Msg("Received SIGHUP, reloading ACL policy")
 
-				if h.cfg.Policy.IsEmpty() {
-					continue
+				// Reload ACL policy
+				if !h.cfg.Policy.IsEmpty() {
+					changes, err := h.state.ReloadPolicy()
+					if err != nil {
+						log.Error().Err(err).Msg("reloading ACL policy")
+					} else {
+						h.Change(changes...)
+					}
 				}
-
-				changes, err := h.state.ReloadPolicy()
-				if err != nil {
-					log.Error().Err(err).Msgf("reloading policy")
-					continue
-				}
-
-				h.Change(changes...)
 
 			default:
 				info := func(msg string) { log.Info().Msg(msg) }
@@ -995,15 +1009,47 @@ func (h *Headscale) getTLSSettings() (*tls.Config, error) {
 		}
 
 		tlsConfig := &tls.Config{
-			NextProtos:   []string{"http/1.1"},
-			Certificates: make([]tls.Certificate, 1),
-			MinVersion:   tls.VersionTLS12,
+			NextProtos: []string{"http/1.1"},
+			MinVersion: tls.VersionTLS12,
 		}
 
-		tlsConfig.Certificates[0], err = tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+		if err := h.reloadTLSCertificate(); err != nil {
+			return nil, err
+		}
 
-		return tlsConfig, err
+		tlsConfig.GetCertificate = h.getTLSCertificate
+
+		return tlsConfig, nil
 	}
+}
+
+// reloadTLSCertificate loads or reloads the TLS certificate from disk.
+// This is called on startup and on SIGHUP for certificate rotation.
+func (h *Headscale) reloadTLSCertificate() error {
+	cert, err := tls.LoadX509KeyPair(h.cfg.TLS.CertPath, h.cfg.TLS.KeyPath)
+	if err != nil {
+		return fmt.Errorf("loading TLS certificate: %w", err)
+	}
+
+	h.tlsCertMu.Lock()
+	h.tlsCert = &cert
+	h.tlsCertMu.Unlock()
+
+	log.Info().
+		Str("cert_path", h.cfg.TLS.CertPath).
+		Str("key_path", h.cfg.TLS.KeyPath).
+		Msg("TLS certificate loaded")
+
+	return nil
+}
+
+// getTLSCertificate returns the current TLS certificate.
+// It implements the tls.Config.GetCertificate callback signature.
+func (h *Headscale) getTLSCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	h.tlsCertMu.RLock()
+	defer h.tlsCertMu.RUnlock()
+
+	return h.tlsCert, nil
 }
 
 func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
