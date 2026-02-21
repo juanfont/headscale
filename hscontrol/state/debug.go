@@ -211,12 +211,24 @@ func (s *State) DebugSSHPolicies() map[string]*tailcfg.SSHPolicy {
 
 // DebugRegistrationCache returns debug information about the registration cache.
 func (s *State) DebugRegistrationCache() map[string]any {
-	// The cache doesn't expose internal statistics, so we provide basic info
 	result := map[string]any{
 		"type":       "zcache",
 		"expiration": registerCacheExpiration.String(),
 		"cleanup":    registerCacheCleanup.String(),
 		"status":     "active",
+	}
+
+	// Safely get cache statistics without exposing problematic channels
+	if s.registrationCache != nil {
+		result["item_count"] = s.registrationCache.ItemCount()
+
+		// Get registration IDs without exposing the full RegisterNode structs
+		keys := s.registrationCache.Keys()
+		registrationIDs := make([]string, 0, len(keys))
+		for _, key := range keys {
+			registrationIDs = append(registrationIDs, string(key))
+		}
+		result["registration_ids"] = registrationIDs
 	}
 
 	return result
