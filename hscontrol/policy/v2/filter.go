@@ -34,12 +34,13 @@ func (pol *Policy) compileFilterRules(
 
 	var rules []tailcfg.FilterRule
 
+	grants := pol.Grants
 	for _, acl := range pol.ACLs {
-		if acl.Action != ActionAccept {
-			return nil, ErrInvalidAction
-		}
+		grants = append(grants, aclToGrants(acl)...)
+	}
 
-		srcIPs, err := acl.Sources.Resolve(pol, users, nodes)
+	for _, grant := range grants {
+		srcIPs, err := grant.Sources.Resolve(pol, users, nodes)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("resolving source ips")
 		}
@@ -48,64 +49,94 @@ func (pol *Policy) compileFilterRules(
 			continue
 		}
 
-		protocols := acl.Protocol.parseProtocol()
+		for _, ipp := range grant.InternetProtocols {
+			destPorts := pol.destinationsToNetPortRange(users, nodes, grant.Destinations, ipp.Ports)
 
-		var destPorts []tailcfg.NetPortRange
-
-		for _, dest := range acl.Destinations {
-			// Check if destination is a wildcard - use "*" directly instead of expanding
-			if _, isWildcard := dest.Alias.(Asterix); isWildcard {
-				for _, port := range dest.Ports {
-					destPorts = append(destPorts, tailcfg.NetPortRange{
-						IP:    "*",
-						Ports: port,
-					})
-				}
-
-				continue
-			}
-
-			// autogroup:internet does not generate packet filters - it's handled
-			// by exit node routing via AllowedIPs, not by packet filtering.
-			if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
-				continue
-			}
-
-			ips, err := dest.Resolve(pol, users, nodes)
-			if err != nil {
-				log.Trace().Caller().Err(err).Msgf("resolving destination ips")
-			}
-
-			if ips == nil {
-				log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
-				continue
-			}
-
-			prefixes := ips.Prefixes()
-
-			for _, pref := range prefixes {
-				for _, port := range dest.Ports {
-					pr := tailcfg.NetPortRange{
-						IP:    pref.String(),
-						Ports: port,
-					}
-					destPorts = append(destPorts, pr)
-				}
+			if len(destPorts) > 0 {
+				rules = append(rules, tailcfg.FilterRule{
+					SrcIPs:   ipSetToPrefixStringList(srcIPs),
+					DstPorts: destPorts,
+					IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
+				})
 			}
 		}
 
-		if len(destPorts) == 0 {
-			continue
-		}
+		if grant.App != nil {
+			var capGrants []tailcfg.CapGrant
 
-		rules = append(rules, tailcfg.FilterRule{
-			SrcIPs:   ipSetToPrefixStringList(srcIPs),
-			DstPorts: destPorts,
-			IPProto:  protocols,
-		})
+			for _, dst := range grant.Destinations {
+				ips, err := dst.Resolve(pol, users, nodes)
+				if err != nil {
+					continue
+				}
+
+				capGrants = append(capGrants, tailcfg.CapGrant{
+					Dsts:   ips.Prefixes(),
+					CapMap: grant.App,
+				})
+			}
+
+			rules = append(rules, tailcfg.FilterRule{
+				SrcIPs:   ipSetToPrefixStringList(srcIPs),
+				CapGrant: capGrants,
+			})
+		}
 	}
 
 	return mergeFilterRules(rules), nil
+}
+
+func (pol *Policy) destinationsToNetPortRange(
+	users types.Users,
+	nodes views.Slice[types.NodeView],
+	dests Aliases,
+	ports []tailcfg.PortRange,
+) []tailcfg.NetPortRange {
+	var ret []tailcfg.NetPortRange
+
+	for _, dest := range dests {
+		// Check if destination is a wildcard - use "*" directly instead of expanding
+		if _, isWildcard := dest.(Asterix); isWildcard {
+			for _, port := range ports {
+				ret = append(ret, tailcfg.NetPortRange{
+					IP:    "*",
+					Ports: port,
+				})
+			}
+
+			continue
+		}
+
+		// autogroup:internet does not generate packet filters - it's handled
+		// by exit node routing via AllowedIPs, not by packet filtering.
+		if ag, isAutoGroup := dest.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
+			continue
+		}
+
+		ips, err := dest.Resolve(pol, users, nodes)
+		if err != nil {
+			log.Trace().Caller().Err(err).Msgf("resolving destination ips")
+		}
+
+		if ips == nil {
+			log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
+			continue
+		}
+
+		prefixes := ips.Prefixes()
+
+		for _, pref := range prefixes {
+			for _, port := range ports {
+				pr := tailcfg.NetPortRange{
+					IP:    pref.String(),
+					Ports: port,
+				}
+				ret = append(ret, pr)
+			}
+		}
+	}
+
+	return ret
 }
 
 // compileFilterRulesForNode compiles filter rules for a specific node.
@@ -120,60 +151,55 @@ func (pol *Policy) compileFilterRulesForNode(
 
 	var rules []tailcfg.FilterRule
 
+	grants := pol.Grants
 	for _, acl := range pol.ACLs {
-		if acl.Action != ActionAccept {
-			return nil, ErrInvalidAction
-		}
+		grants = append(grants, aclToGrants(acl)...)
+	}
 
-		aclRules, err := pol.compileACLWithAutogroupSelf(acl, users, node, nodes)
+	for _, grant := range grants {
+		res, err := pol.compileGrantWithAutogroupSelf(grant, users, node, nodes)
 		if err != nil {
 			log.Trace().Err(err).Msgf("compiling ACL")
 			continue
 		}
 
-		for _, rule := range aclRules {
-			if rule != nil {
-				rules = append(rules, *rule)
-			}
-		}
+		rules = append(rules, res...)
 	}
 
 	return mergeFilterRules(rules), nil
 }
 
-// compileACLWithAutogroupSelf compiles a single ACL rule, handling
+// compileGrantWithAutogroupSelf compiles a single Grant rule, handling
 // autogroup:self per-node while supporting all other alias types normally.
-// It returns a slice of filter rules because when an ACL has both autogroup:self
+// It returns a slice of filter rules because when an Grant has both autogroup:self
 // and other destinations, they need to be split into separate rules with different
 // source filtering logic.
 //
 //nolint:gocyclo // complex ACL compilation logic
-func (pol *Policy) compileACLWithAutogroupSelf(
-	acl ACL,
+func (pol *Policy) compileGrantWithAutogroupSelf(
+	grant Grant,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
-) ([]*tailcfg.FilterRule, error) {
+) ([]tailcfg.FilterRule, error) {
 	var (
-		autogroupSelfDests []AliasWithPorts
-		otherDests         []AliasWithPorts
+		autogroupSelfDests []Alias
+		otherDests         []Alias
 	)
 
-	for _, dest := range acl.Destinations {
-		if ag, ok := dest.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+	for _, dest := range grant.Destinations {
+		if ag, ok := dest.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
 			autogroupSelfDests = append(autogroupSelfDests, dest)
 		} else {
 			otherDests = append(otherDests, dest)
 		}
 	}
 
-	protocols := acl.Protocol.parseProtocol()
-
-	var rules []*tailcfg.FilterRule
+	var rules []tailcfg.FilterRule
 
 	var resolvedSrcIPs []*netipx.IPSet
 
-	for _, src := range acl.Sources {
+	for _, src := range grant.Sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
 			return nil, errSelfInSources
 		}
@@ -192,42 +218,42 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 		return rules, nil
 	}
 
-	// Handle autogroup:self destinations (if any)
-	// Tagged nodes don't participate in autogroup:self (identity is tag-based, not user-based)
-	if len(autogroupSelfDests) > 0 && !node.IsTagged() {
-		// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
-		sameUserNodes := make([]types.NodeView, 0)
+	for _, ipp := range grant.InternetProtocols {
+		// Handle autogroup:self destinations (if any)
+		// Tagged nodes don't participate in autogroup:self (identity is tag-based, not user-based)
+		if len(autogroupSelfDests) > 0 && !node.IsTagged() {
+			// Pre-filter to same-user untagged devices once - reuse for both sources and destinations
+			sameUserNodes := make([]types.NodeView, 0)
 
-		for _, n := range nodes.All() {
-			if !n.IsTagged() && n.User().ID() == node.User().ID() {
-				sameUserNodes = append(sameUserNodes, n)
-			}
-		}
-
-		if len(sameUserNodes) > 0 {
-			// Filter sources to only same-user untagged devices
-			var srcIPs netipx.IPSetBuilder
-
-			for _, ips := range resolvedSrcIPs {
-				for _, n := range sameUserNodes {
-					// Check if any of this node's IPs are in the source set
-					if slices.ContainsFunc(n.IPs(), ips.Contains) {
-						n.AppendToIPSet(&srcIPs)
-					}
+			for _, n := range nodes.All() {
+				if !n.IsTagged() && n.User().ID() == node.User().ID() {
+					sameUserNodes = append(sameUserNodes, n)
 				}
 			}
 
-			srcSet, err := srcIPs.IPSet()
-			if err != nil {
-				return nil, err
-			}
+			if len(sameUserNodes) > 0 {
+				// Filter sources to only same-user untagged devices
+				var srcIPs netipx.IPSetBuilder
 
-			if srcSet != nil && len(srcSet.Prefixes()) > 0 {
-				var destPorts []tailcfg.NetPortRange
-
-				for _, dest := range autogroupSelfDests {
+				for _, ips := range resolvedSrcIPs {
 					for _, n := range sameUserNodes {
-						for _, port := range dest.Ports {
+						// Check if any of this node's IPs are in the source set
+						if slices.ContainsFunc(n.IPs(), ips.Contains) {
+							n.AppendToIPSet(&srcIPs)
+						}
+					}
+				}
+
+				srcSet, err := srcIPs.IPSet()
+				if err != nil {
+					return nil, err
+				}
+
+				if srcSet != nil && len(srcSet.Prefixes()) > 0 {
+					var destPorts []tailcfg.NetPortRange
+
+					for _, n := range sameUserNodes {
+						for _, port := range ipp.Ports {
 							for _, ip := range n.IPs() {
 								destPorts = append(destPorts, tailcfg.NetPortRange{
 									IP:    netip.PrefixFrom(ip, ip.BitLen()).String(),
@@ -236,82 +262,40 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 							}
 						}
 					}
-				}
 
-				if len(destPorts) > 0 {
-					rules = append(rules, &tailcfg.FilterRule{
-						SrcIPs:   ipSetToPrefixStringList(srcSet),
-						DstPorts: destPorts,
-						IPProto:  protocols,
-					})
-				}
-			}
-		}
-	}
-
-	if len(otherDests) > 0 {
-		var srcIPs netipx.IPSetBuilder
-
-		for _, ips := range resolvedSrcIPs {
-			srcIPs.AddSet(ips)
-		}
-
-		srcSet, err := srcIPs.IPSet()
-		if err != nil {
-			return nil, err
-		}
-
-		if srcSet != nil && len(srcSet.Prefixes()) > 0 {
-			var destPorts []tailcfg.NetPortRange
-
-			for _, dest := range otherDests {
-				// Check if destination is a wildcard - use "*" directly instead of expanding
-				if _, isWildcard := dest.Alias.(Asterix); isWildcard {
-					for _, port := range dest.Ports {
-						destPorts = append(destPorts, tailcfg.NetPortRange{
-							IP:    "*",
-							Ports: port,
+					if len(destPorts) > 0 {
+						rules = append(rules, tailcfg.FilterRule{
+							SrcIPs:   ipSetToPrefixStringList(srcSet),
+							DstPorts: destPorts,
+							IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 						})
 					}
-
-					continue
-				}
-
-				// autogroup:internet does not generate packet filters - it's handled
-				// by exit node routing via AllowedIPs, not by packet filtering.
-				if ag, isAutoGroup := dest.Alias.(*AutoGroup); isAutoGroup && ag.Is(AutoGroupInternet) {
-					continue
-				}
-
-				ips, err := dest.Resolve(pol, users, nodes)
-				if err != nil {
-					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
-				}
-
-				if ips == nil {
-					log.Debug().Caller().Msgf("destination resolved to nil ips: %v", dest)
-					continue
-				}
-
-				prefixes := ips.Prefixes()
-
-				for _, pref := range prefixes {
-					for _, port := range dest.Ports {
-						pr := tailcfg.NetPortRange{
-							IP:    pref.String(),
-							Ports: port,
-						}
-						destPorts = append(destPorts, pr)
-					}
 				}
 			}
+		}
 
-			if len(destPorts) > 0 {
-				rules = append(rules, &tailcfg.FilterRule{
-					SrcIPs:   ipSetToPrefixStringList(srcSet),
-					DstPorts: destPorts,
-					IPProto:  protocols,
-				})
+		if len(otherDests) > 0 {
+			var srcIPs netipx.IPSetBuilder
+
+			for _, ips := range resolvedSrcIPs {
+				srcIPs.AddSet(ips)
+			}
+
+			srcSet, err := srcIPs.IPSet()
+			if err != nil {
+				return nil, err
+			}
+
+			if srcSet != nil && len(srcSet.Prefixes()) > 0 {
+				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
+
+				if len(destPorts) > 0 {
+					rules = append(rules, tailcfg.FilterRule{
+						SrcIPs:   ipSetToPrefixStringList(srcSet),
+						DstPorts: destPorts,
+						IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
+					})
+				}
 			}
 		}
 	}
