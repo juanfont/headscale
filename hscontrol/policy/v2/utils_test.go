@@ -9,7 +9,7 @@ import (
 )
 
 // TestParseDestinationAndPort tests the splitDestinationAndPort function using table-driven tests.
-func TestParseDestinationAndPort(t *testing.T) {
+func TestSplitDestinationAndPort(t *testing.T) {
 	testCases := []struct {
 		input       string
 		wantDst     string

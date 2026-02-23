@@ -63,6 +63,18 @@ var (
 	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self destination requires sources to be users, groups, or autogroup:member only")
 )
 
+// Grant validation errors.
+var (
+	ErrGrantIPAndAppMutuallyExclusive = errors.New("grants cannot specify both 'ip' and 'app' fields")
+	ErrGrantMissingIPOrApp            = errors.New("grants must specify either 'ip' or 'app' field")
+	ErrGrantInvalidViaTag             = errors.New("grant 'via' tag is not defined in policy")
+	ErrGrantViaNotSupported           = errors.New("grant 'via' routing is not yet supported in headscale")
+	ErrGrantAppProtocolConflict       = errors.New("grants with 'app' cannot specify 'ip' protocols")
+	ErrGrantEmptySources              = errors.New("grant sources cannot be empty")
+	ErrGrantEmptyDestinations         = errors.New("grant destinations cannot be empty")
+	ErrProtocolPortInvalidFormat      = errors.New("expected only one colon in Internet protocol and port type")
+)
+
 // Policy validation errors.
 var (
 	ErrUnknownAliasType            = errors.New("unknown alias type")
@@ -736,6 +748,98 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 	}
 
 	return nil
+}
+
+// ProtocolPort is a representation of the "network layer capabilities"
+// of a Grant.
+type ProtocolPort struct {
+	Ports    []tailcfg.PortRange
+	Protocol Protocol
+}
+
+func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
+	var v any
+
+	err := json.Unmarshal(b, &v)
+	if err != nil {
+		return err
+	}
+
+	switch vs := v.(type) {
+	case string:
+		if vs == "*" {
+			ve.Protocol = ProtocolNameWildcard
+			ve.Ports = []tailcfg.PortRange{tailcfg.PortRangeAny}
+
+			return nil
+		}
+
+		// Only contains a port, no protocol
+		if !strings.Contains(vs, ":") {
+			ports, err := parsePortRange(vs)
+			if err != nil {
+				return err
+			}
+
+			ve.Protocol = ProtocolNameWildcard
+			ve.Ports = ports
+
+			return nil
+		}
+
+		parts := strings.Split(vs, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("%w, got: %v(%d)", ErrProtocolPortInvalidFormat, parts, len(parts))
+		}
+
+		protocol := Protocol(parts[0])
+
+		err := protocol.validate()
+		if err != nil {
+			return err
+		}
+
+		portsPart := parts[1]
+
+		ports, err := parsePortRange(portsPart)
+		if err != nil {
+			return err
+		}
+
+		ve.Protocol = protocol
+		ve.Ports = ports
+
+	default:
+		return fmt.Errorf("%w: %T", ErrTypeNotSupported, vs)
+	}
+
+	return nil
+}
+
+func (ve ProtocolPort) MarshalJSON() ([]byte, error) {
+	// Handle wildcard protocol with all ports
+	if ve.Protocol == ProtocolNameWildcard && len(ve.Ports) == 1 &&
+		ve.Ports[0].First == 0 && ve.Ports[0].Last == 65535 {
+		return json.Marshal("*")
+	}
+
+	// Build port string
+	var portParts []string
+
+	for _, portRange := range ve.Ports {
+		if portRange.First == portRange.Last {
+			portParts = append(portParts, strconv.FormatUint(uint64(portRange.First), 10))
+		} else {
+			portParts = append(portParts, fmt.Sprintf("%d-%d", portRange.First, portRange.Last))
+		}
+	}
+
+	portStr := strings.Join(portParts, ",")
+
+	// Combine protocol and ports
+	result := fmt.Sprintf("%s:%s", ve.Protocol, portStr)
+
+	return json.Marshal(result)
 }
 
 func isWildcard(str string) bool {
@@ -1467,9 +1571,9 @@ func (p *Protocol) Description() string {
 	}
 }
 
-// parseProtocol converts a Protocol to its IANA protocol numbers.
+// toIANAProtocolNumbers converts a Protocol to its IANA protocol numbers.
 // Since validation happens during UnmarshalJSON, this method should not fail for valid Protocol values.
-func (p *Protocol) parseProtocol() []int {
+func (p *Protocol) toIANAProtocolNumbers() []int {
 	switch *p {
 	case "":
 		// Empty protocol applies to TCP, UDP, ICMP, and ICMPv6 traffic
@@ -1583,6 +1687,23 @@ const (
 	ProtocolFC       = 133 // Fibre Channel
 )
 
+// ProtocolNumberToName maps IANA protocol numbers to their protocol name strings.
+var ProtocolNumberToName = map[int]Protocol{
+	ProtocolICMP:     ProtocolNameICMP,
+	ProtocolIGMP:     ProtocolNameIGMP,
+	ProtocolIPv4:     ProtocolNameIPv4,
+	ProtocolTCP:      ProtocolNameTCP,
+	ProtocolEGP:      ProtocolNameEGP,
+	ProtocolIGP:      ProtocolNameIGP,
+	ProtocolUDP:      ProtocolNameUDP,
+	ProtocolGRE:      ProtocolNameGRE,
+	ProtocolESP:      ProtocolNameESP,
+	ProtocolAH:       ProtocolNameAH,
+	ProtocolIPv6ICMP: ProtocolNameIPv6ICMP,
+	ProtocolSCTP:     ProtocolNameSCTP,
+	ProtocolFC:       ProtocolNameFC,
+}
+
 type ACL struct {
 	Action       Action           `json:"action"`
 	Protocol     Protocol         `json:"proto"`
@@ -1632,6 +1753,39 @@ func (a *ACL) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+type Grant struct {
+	// TODO(kradalby): Validate grant src/dst according to ts docs
+	Sources      Aliases `json:"src"`
+	Destinations Aliases `json:"dst"`
+
+	// TODO(kradalby): validate that either of these fields are included
+	InternetProtocols []ProtocolPort     `json:"ip,omitempty"`
+	App               tailcfg.PeerCapMap `json:"app,omitzero"`
+
+	// TODO(kradalby): implement via
+	Via []Tag `json:"via,omitzero"`
+}
+
+// aclToGrants converts an ACL rule to one or more equivalent Grant rules.
+func aclToGrants(acl ACL) []Grant {
+	ret := make([]Grant, 0, len(acl.Destinations))
+
+	for _, dst := range acl.Destinations {
+		g := Grant{
+			Sources:      acl.Sources,
+			Destinations: Aliases{dst.Alias},
+			InternetProtocols: []ProtocolPort{{
+				Protocol: acl.Protocol,
+				Ports:    dst.Ports,
+			}},
+		}
+
+		ret = append(ret, g)
+	}
+
+	return ret
+}
+
 // Policy represents a Tailscale Network Policy.
 // TODO(kradalby):
 // Add validation method checking:
@@ -1649,6 +1803,7 @@ type Policy struct {
 	Hosts         Hosts              `json:"hosts,omitempty"`
 	TagOwners     TagOwners          `json:"tagOwners,omitempty"`
 	ACLs          []ACL              `json:"acls,omitempty"`
+	Grants        []Grant            `json:"grants,omitempty"`
 	AutoApprovers AutoApproverPolicy `json:"autoApprovers"`
 	SSHs          []SSH              `json:"ssh,omitempty"`
 }
@@ -2052,6 +2207,124 @@ func (p *Policy) validate() error {
 					errs = append(errs, err)
 				}
 			}
+		}
+	}
+
+	for _, grant := range p.Grants {
+		// Validate ip/app mutual exclusivity
+		hasIP := len(grant.InternetProtocols) > 0
+		hasApp := len(grant.App) > 0
+
+		if hasIP && hasApp {
+			errs = append(errs, ErrGrantIPAndAppMutuallyExclusive)
+		}
+
+		if !hasIP && !hasApp {
+			errs = append(errs, ErrGrantMissingIPOrApp)
+		}
+
+		// Validate sources
+		if len(grant.Sources) == 0 {
+			errs = append(errs, ErrGrantEmptySources)
+		}
+
+		for _, src := range grant.Sources {
+			switch src := src.(type) {
+			case *Host:
+				h := src
+				if !p.Hosts.exist(*h) {
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
+				}
+			case *AutoGroup:
+				ag := src
+
+				err := validateAutogroupSupported(ag)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				err = validateAutogroupForSrc(ag)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			case *Group:
+				g := src
+
+				err := p.Groups.Contains(g)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				tagOwner := src
+
+				err := p.TagOwners.Contains(tagOwner)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+
+		// Validate destinations
+		if len(grant.Destinations) == 0 {
+			errs = append(errs, ErrGrantEmptyDestinations)
+		}
+
+		for _, dst := range grant.Destinations {
+			switch h := dst.(type) {
+			case *Host:
+				if !p.Hosts.exist(*h) {
+					errs = append(errs, fmt.Errorf("%w: %q", ErrHostNotDefined, *h))
+				}
+			case *AutoGroup:
+				err := validateAutogroupSupported(h)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+
+				err = validateAutogroupForDst(h)
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			case *Group:
+				err := p.Groups.Contains(h)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			case *Tag:
+				err := p.TagOwners.Contains(h)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+
+		// Validate via tags
+		for _, viaTag := range grant.Via {
+			err := p.TagOwners.Contains(&viaTag)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("%w in grant via: %q", ErrGrantInvalidViaTag, viaTag))
+			}
+		}
+
+		// Validate ACL source/destination combinations follow Tailscale's security model
+		// (Grants use same rules as ACLs for autogroup:self and other constraints)
+		// Convert grant destinations to AliasWithPorts format for validation
+		var dstWithPorts []AliasWithPorts
+		for _, dst := range grant.Destinations {
+			// For grants, we don't have per-destination ports, so use wildcard
+			dstWithPorts = append(dstWithPorts, AliasWithPorts{
+				Alias: dst,
+				Ports: []tailcfg.PortRange{tailcfg.PortRangeAny},
+			})
+		}
+
+		err := validateACLSrcDstCombination(grant.Sources, dstWithPorts)
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 
