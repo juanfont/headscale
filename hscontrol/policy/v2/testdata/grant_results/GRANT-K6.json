@@ -1,0 +1,999 @@
+{
+  "test_id": "GRANT-K6",
+  "timestamp": "2026-02-23T02:55:13Z",
+  "propagation_wait_seconds": 15,
+  "input": {
+    "policy_file": "grant_policies/grant_k6.json",
+    "full_policy": {
+      "groups": {
+        "group:admins": ["kratail2tid@passkey"],
+        "group:developers": ["kristoffer@dalby.cc", "kratail2tid@passkey"],
+        "group:monitors": ["monitorpasskeykradalby@passkey"],
+        "group:empty": []
+      },
+      "tagOwners": {
+        "tag:server": ["kratail2tid@passkey"],
+        "tag:prod": ["kratail2tid@passkey"],
+        "tag:client": ["kratail2tid@passkey"],
+        "tag:router": ["kratail2tid@passkey"],
+        "tag:exit": ["kratail2tid@passkey"]
+      },
+      "hosts": {
+        "webserver": "100.108.74.26",
+        "prodbox": "100.103.8.15",
+        "internal": "10.0.0.0/8"
+      },
+      "autoApprovers": {
+        "routes": {
+          "10.33.0.0/16": ["tag:router"],
+          "0.0.0.0/0": ["tag:exit"],
+          "::/0": ["tag:exit"]
+        }
+      },
+      "grants": [
+        {
+          "src": ["autogroup:danger-all"],
+          "dst": ["tag:server"],
+          "ip": ["tcp:22"]
+        }
+      ]
+    },
+    "grants_section": [{ "src": ["autogroup:danger-all"], "dst": ["tag:server"], "ip": ["tcp:22"] }],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
+    "api_response_code": 200
+  },
+  "topology": {
+    "nodes": {
+      "exit-node": {
+        "mts_name": "exit-node",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock",
+        "hostname": "exit-node",
+        "user_id": 4041918547170221,
+        "tags": ["tag:exit"],
+        "ipv4": "100.85.66.106",
+        "ipv6": "fd7a:115c:a1e0::7c37:426a"
+      },
+      "subnet-router": {
+        "mts_name": "subnet-router",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock",
+        "hostname": "subnet-router",
+        "user_id": 7489538288452506,
+        "tags": ["tag:router"],
+        "ipv4": "100.92.142.61",
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+      },
+      "tagged-client": {
+        "mts_name": "tagged-client",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock",
+        "hostname": "tagged-client",
+        "user_id": 4031348162889210,
+        "tags": ["tag:client"],
+        "ipv4": "100.83.200.69",
+        "ipv6": "fd7a:115c:a1e0::c537:c845"
+      },
+      "tagged-prod": {
+        "mts_name": "tagged-prod",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock",
+        "hostname": "tagged-prod",
+        "user_id": 301794218943819,
+        "tags": ["tag:prod"],
+        "ipv4": "100.103.8.15",
+        "ipv6": "fd7a:115c:a1e0::5b37:80f"
+      },
+      "tagged-server": {
+        "mts_name": "tagged-server",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock",
+        "hostname": "tagged-server",
+        "user_id": 1440249486084758,
+        "tags": ["tag:server"],
+        "ipv4": "100.108.74.26",
+        "ipv6": "fd7a:115c:a1e0::b901:4a87"
+      },
+      "user-kris": {
+        "mts_name": "user-kris",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock",
+        "hostname": "user-kris",
+        "user_id": 4538565228176803,
+        "tags": [],
+        "ipv4": "100.110.121.96",
+        "ipv6": "fd7a:115c:a1e0::1737:7960"
+      },
+      "user-mon": {
+        "mts_name": "user-mon",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock",
+        "hostname": "user-mon",
+        "user_id": 3982058329734709,
+        "tags": [],
+        "ipv4": "100.103.90.82",
+        "ipv6": "fd7a:115c:a1e0::9e37:5a52"
+      },
+      "user1": {
+        "mts_name": "user1",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock",
+        "hostname": "user1",
+        "user_id": 4156223528223174,
+        "tags": [],
+        "ipv4": "100.90.199.68",
+        "ipv6": "fd7a:115c:a1e0::2d01:c747"
+      }
+    }
+  },
+  "captures": {
+    "exit-node": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "subnet-router": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "tagged-client": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "tagged-prod": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "tagged-server": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": [
+        {
+          "SrcIPs": ["*"],
+          "DstPorts": [
+            { "IP": "100.108.74.26", "Ports": { "First": 22, "Last": 22 } },
+            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 22, "Last": 22 } }
+          ],
+          "IPProto": [6]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [6],
+          "Srcs": ["0.0.0.0/0", "::/0"],
+          "SrcCaps": null,
+          "Dsts": [
+            { "Net": "100.108.74.26/32", "Ports": { "First": 22, "Last": 22 } },
+            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 22, "Last": 22 } }
+          ],
+          "Caps": []
+        }
+      ],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.85.66.106",
+          "response": {
+            "Node": {
+              "ID": 4041918547170221,
+              "StableID": "ngCb76MbZY11CNTRL",
+              "Name": "exit-node.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:90f4a7b9dc024f1ddec414a49de2aa7611a2dd86efc9d7bae30862ad7c954269",
+              "DiscoKey": "discokey:e067b4e63320882c9a744baff8b1d9de50fad897586d9ac2033723343a66e946",
+              "Addresses": ["100.85.66.106/32", "fd7a:115c:a1e0::7c37:426a/128"],
+              "AllowedIPs": ["100.85.66.106/32", "fd7a:115c:a1e0::7c37:426a/128"],
+              "Endpoints": [
+                "77.164.248.136:38956",
+                "10.65.0.27:38956",
+                "172.17.0.1:38956",
+                "172.18.0.1:38956",
+                "172.19.0.1:38956"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-node",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 37000 },
+                  { "Proto": "peerapi6", "Port": 37000 }
+                ]
+              },
+              "Created": "2026-02-23T00:13:20.566112173Z",
+              "Cap": 131,
+              "Tags": ["tag:exit"],
+              "Online": true,
+              "ComputedName": "exit-node",
+              "ComputedNameWithHost": "exit-node"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.92.142.61",
+          "response": {
+            "Node": {
+              "ID": 7489538288452506,
+              "StableID": "nTPEqJU2V121CNTRL",
+              "Name": "subnet-router.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:887ae2351c09c3b952f1f42bdac4095ec396ebf15824a746e4193c003e9c8e3c",
+              "DiscoKey": "discokey:861e592754ea9209e6ab02a511369b304e9094c6d636c270d746d9ddb954534d",
+              "Addresses": ["100.92.142.61/32", "fd7a:115c:a1e0::3e37:8e3d/128"],
+              "AllowedIPs": ["100.92.142.61/32", "fd7a:115c:a1e0::3e37:8e3d/128", "10.33.0.0/16"],
+              "Endpoints": [
+                "77.164.248.136:45900",
+                "10.65.0.27:45900",
+                "172.17.0.1:45900",
+                "172.18.0.1:45900",
+                "172.19.0.1:45900"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "subnet-router",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 63250 },
+                  { "Proto": "peerapi6", "Port": 63250 }
+                ]
+              },
+              "Created": "2026-02-23T00:13:15.731478784Z",
+              "Cap": 131,
+              "Tags": ["tag:router"],
+              "PrimaryRoutes": ["10.33.0.0/16"],
+              "Online": true,
+              "ComputedName": "subnet-router",
+              "ComputedNameWithHost": "subnet-router"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.83.200.69",
+          "response": {
+            "Node": {
+              "ID": 4031348162889210,
+              "StableID": "nf7BTTgoUY11CNTRL",
+              "Name": "tagged-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:3011e53353e49142ea56ae11f81e0dceae0d667093d04ee086dcb1e9c5d3c844",
+              "DiscoKey": "discokey:f3f4cc194a00c26e6bd6ca6947a86ba8609fc759c469922205f1db9a5ab78c46",
+              "Addresses": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
+              "AllowedIPs": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
+              "Endpoints": [
+                "77.164.248.136:58209",
+                "10.65.0.27:58209",
+                "172.17.0.1:58209",
+                "172.18.0.1:58209",
+                "172.19.0.1:58209"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 41378 },
+                  { "Proto": "peerapi6", "Port": 41378 }
+                ]
+              },
+              "Created": "2026-02-23T00:13:11.017324028Z",
+              "Cap": 131,
+              "Tags": ["tag:client"],
+              "Online": true,
+              "ComputedName": "tagged-client",
+              "ComputedNameWithHost": "tagged-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.103.8.15",
+          "response": {
+            "Node": {
+              "ID": 301794218943819,
+              "StableID": "neJag6dgM311CNTRL",
+              "Name": "tagged-prod.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:54c79503322a5d0a9701ce19d11963cfff9c05667ac06ef976af86275ba7080e",
+              "DiscoKey": "discokey:196d9d1d9f0e2d5c5da0dc70164b6752bf8ad896991b7038b2272cb0bf8bf630",
+              "Addresses": ["100.103.8.15/32", "fd7a:115c:a1e0::5b37:80f/128"],
+              "AllowedIPs": ["100.103.8.15/32", "fd7a:115c:a1e0::5b37:80f/128"],
+              "Endpoints": [
+                "77.164.248.136:46099",
+                "10.65.0.27:46099",
+                "172.17.0.1:46099",
+                "172.18.0.1:46099",
+                "172.19.0.1:46099"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-prod",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 37678 },
+                  { "Proto": "peerapi6", "Port": 37678 }
+                ]
+              },
+              "Created": "2026-02-20T14:03:12.89283153Z",
+              "Cap": 131,
+              "Tags": ["tag:prod"],
+              "Online": true,
+              "ComputedName": "tagged-prod",
+              "ComputedNameWithHost": "tagged-prod"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.110.121.96",
+          "response": {
+            "Node": {
+              "ID": 7728836216590060,
+              "StableID": "nf4dJTRQM321CNTRL",
+              "Name": "user-kris.tail78f774.ts.net.",
+              "User": 4538565228176803,
+              "Key": "nodekey:40d0f8f49fd519e4a4a2b7d278dcc8863254d4fb8b0219f1d1304cdd172e795f",
+              "KeyExpiry": "2026-08-19T14:09:34Z",
+              "DiscoKey": "discokey:ee276d29d944b727d1749cd3938f210d3c30f1e2d2644fed60632fc0a3c95066",
+              "Addresses": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
+              "AllowedIPs": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
+              "Endpoints": [
+                "77.164.248.136:36065",
+                "10.65.0.27:36065",
+                "172.17.0.1:36065",
+                "172.18.0.1:36065",
+                "172.19.0.1:36065"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "user-kris",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 40159 },
+                  { "Proto": "peerapi6", "Port": 40159 }
+                ]
+              },
+              "Created": "2026-02-20T14:09:34.803901523Z",
+              "Cap": 131,
+              "Online": true,
+              "ComputedName": "user-kris",
+              "ComputedNameWithHost": "user-kris"
+            },
+            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "CapMap": null
+          }
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.103.90.82",
+          "response": {
+            "Node": {
+              "ID": 1840115676059256,
+              "StableID": "nFzZ7giPNF11CNTRL",
+              "Name": "user-mon.tail78f774.ts.net.",
+              "User": 3982058329734709,
+              "Key": "nodekey:1ca6cca66d2b3811ec290c2f7ac30125c3568e19e303a8e30f6b165c9ee75a51",
+              "KeyExpiry": "2026-08-19T14:09:00Z",
+              "DiscoKey": "discokey:0fe29575d3fe2b01154e0d8f5b8fa1d2500a55fd2aa79a416f014f4c1e217e7b",
+              "Addresses": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
+              "AllowedIPs": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
+              "Endpoints": [
+                "77.164.248.136:49306",
+                "10.65.0.27:49306",
+                "172.17.0.1:49306",
+                "172.18.0.1:49306",
+                "172.19.0.1:49306"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "user-mon",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 33201 },
+                  { "Proto": "peerapi6", "Port": 33201 }
+                ]
+              },
+              "Created": "2026-02-20T14:09:00.203639664Z",
+              "Cap": 131,
+              "Online": true,
+              "ComputedName": "user-mon",
+              "ComputedNameWithHost": "user-mon"
+            },
+            "UserProfile": {
+              "ID": 3982058329734709,
+              "LoginName": "monitorpasskeykradalby@passkey",
+              "DisplayName": "monitorpasskeykradalby"
+            },
+            "CapMap": null
+          }
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.90.199.68",
+          "response": {
+            "Node": {
+              "ID": 539541576444929,
+              "StableID": "nSq9YrqMD511CNTRL",
+              "Name": "user1.tail78f774.ts.net.",
+              "User": 4156223528223174,
+              "Key": "nodekey:96338a2cd2ea803c915ed8fdf882d66ca0c6a59d0fcf0bc4b3f928d22d1ac743",
+              "KeyExpiry": "2026-07-22T10:04:13Z",
+              "DiscoKey": "discokey:e9a76408333d29ad7c495ff79483f15d0bae079bfebc20cffa35af12fe848518",
+              "Addresses": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
+              "AllowedIPs": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
+              "Endpoints": [
+                "77.164.248.136:59336",
+                "10.65.0.27:59336",
+                "172.17.0.1:59336",
+                "172.18.0.1:59336",
+                "172.19.0.1:59336"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "user1",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46708 },
+                  { "Proto": "peerapi6", "Port": 46708 }
+                ]
+              },
+              "Created": "2026-01-23T10:04:13.531671894Z",
+              "Cap": 131,
+              "Online": true,
+              "ComputedName": "user1",
+              "ComputedNameWithHost": "user1"
+            },
+            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "CapMap": null
+          }
+        }
+      }
+    },
+    "user-kris": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "user-mon": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      }
+    },
+    "user1": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.108.74.26",
+          "response": {
+            "Node": {
+              "ID": 1440249486084758,
+              "StableID": "nXRbBtuHFC11CNTRL",
+              "Name": "tagged-server.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
+              "DiscoKey": "discokey:372ff501f45d63e009ed97902f8b3acf6addd79e9c6ca7343d41c7adc4eb3e38",
+              "Addresses": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "AllowedIPs": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
+              "Endpoints": [
+                "77.164.248.136:58686",
+                "10.65.0.27:58686",
+                "172.17.0.1:58686",
+                "172.18.0.1:58686",
+                "172.19.0.1:58686"
+              ],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "tagged-server",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 46499 },
+                  { "Proto": "peerapi6", "Port": 46499 }
+                ]
+              },
+              "Created": "2026-01-23T10:10:26.365653609Z",
+              "Cap": 131,
+              "Tags": ["tag:server"],
+              "Online": true,
+              "ComputedName": "tagged-server",
+              "ComputedNameWithHost": "tagged-server"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "test_id": "GRANT-V15",
+  "description": "",
+  "timestamp": "2026-02-23T15:41:14Z",
+  "error": true,
+  "input": {
+    "policy_file": "grant_policies_v2/grant_v15.json",
+    "full_policy": {
+      "groups": {
+        "group:admins": ["kratail2tid@passkey"],
+        "group:developers": ["kristoffer@dalby.cc", "kratail2tid@passkey"],
+        "group:monitors": ["monitorpasskeykradalby@passkey"],
+        "group:empty": []
+      },
+      "tagOwners": {
+        "tag:server": ["kratail2tid@passkey"],
+        "tag:prod": ["kratail2tid@passkey"],
+        "tag:client": ["kratail2tid@passkey"],
+        "tag:router": ["kratail2tid@passkey"],
+        "tag:exit": ["kratail2tid@passkey"]
+      },
+      "hosts": {
+        "webserver": "100.108.74.26",
+        "prodbox": "100.103.8.15",
+        "internal": "10.0.0.0/8"
+      },
+      "autoApprovers": {
+        "routes": {
+          "10.33.0.0/16": ["tag:router"],
+          "0.0.0.0/0": ["tag:exit"],
+          "::/0": ["tag:exit"]
+        }
+      },
+      "grants": [
+        {
+          "src": ["*"],
+          "dst": ["::/0"],
+          "via": ["tag:exit"],
+          "ip": ["*"]
+        }
+      ]
+    },
+    "grants_section": [{ "src": ["*"], "dst": ["::/0"], "via": ["tag:exit"], "ip": ["*"] }],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
+    "api_response_code": 400,
+    "api_response_body": { "message": "dst \"::/0\": to allow all IP addresses, use \"*\" or \"autogroup:internet\"" }
+  }
+}
