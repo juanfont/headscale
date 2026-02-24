@@ -333,8 +333,6 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 
 	// If this is a registration flow, then we need to register the node.
 	if authInfo.Registration {
-		verb := "Reauthenticated"
-
 		newNode, err := a.handleRegistration(user, authInfo.AuthID, nodeExpiry)
 		if err != nil {
 			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
@@ -349,12 +347,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 			return
 		}
 
-		if newNode {
-			verb = "Authenticated"
-		}
-
-		// TODO(kradalby): replace with go-elem
-		content := renderOIDCCallbackTemplate(user, verb)
+		content := renderRegistrationSuccessTemplate(user, newNode)
 
 		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 		writer.WriteHeader(http.StatusOK)
@@ -366,8 +359,28 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// TODO(kradalby): handle login flow (without registration) if needed.
-	// We need to send an update here to whatever might be waiting for this auth flow.
+	// If this is not a registration callback, then its a regular authentication callback
+	// and we need to send a response and confirm that the access was allowed.
+
+	authReq, ok := a.h.state.GetAuthCacheEntry(authInfo.AuthID)
+	if !ok {
+		log.Debug().Caller().Str("auth_id", authInfo.AuthID.String()).Msg("auth session expired before authorization completed")
+		httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", nil))
+
+		return
+	}
+
+	// Send a finish auth verdict with no errors to let the CLI know that the authentication was successful.
+	authReq.FinishAuth(types.AuthVerdict{})
+
+	content := renderAuthSuccessTemplate(user)
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	if _, err := writer.Write(content.Bytes()); err != nil { //nolint:noinlineerr
+		util.LogErr(err, "Failed to write HTTP response")
+	}
 }
 
 func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time.Time {
@@ -623,12 +636,38 @@ func (a *AuthProviderOIDC) handleRegistration(
 	return !nodeChange.IsEmpty(), nil
 }
 
-func renderOIDCCallbackTemplate(
+func renderRegistrationSuccessTemplate(
 	user *types.User,
-	verb string,
+	newNode bool,
 ) *bytes.Buffer {
-	html := templates.OIDCCallback(user.Display(), verb).Render()
-	return bytes.NewBufferString(html)
+	result := templates.AuthSuccessResult{
+		Title:   "Headscale - Node Reauthenticated",
+		Heading: "Node reauthenticated",
+		Verb:    "Reauthenticated",
+		User:    user.Display(),
+		Message: "You can now close this window.",
+	}
+	if newNode {
+		result.Title = "Headscale - Node Registered"
+		result.Heading = "Node registered"
+		result.Verb = "Registered"
+	}
+
+	return bytes.NewBufferString(templates.AuthSuccess(result).Render())
+}
+
+func renderAuthSuccessTemplate(
+	user *types.User,
+) *bytes.Buffer {
+	result := templates.AuthSuccessResult{
+		Title:   "Headscale - SSH Session Authorized",
+		Heading: "SSH session authorized",
+		Verb:    "Authorized",
+		User:    user.Display(),
+		Message: "You may return to your terminal.",
+	}
+
+	return bytes.NewBufferString(templates.AuthSuccess(result).Render())
 }
 
 // getCookieName generates a unique cookie name based on a cookie value.

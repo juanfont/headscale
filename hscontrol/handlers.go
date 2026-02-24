@@ -262,6 +262,23 @@ func (a *AuthProviderWeb) AuthHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
+	authID, err := authIDFromRequest(req)
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	_, err = writer.Write([]byte(templates.AuthWeb(
+		"Authentication check",
+		"Run the command below in the headscale server to approve this authentication request:",
+		"headscale auth approve --auth-id "+authID.String(),
+	).Render()))
+	if err != nil {
+		log.Error().Err(err).Msg("failed to write auth response")
+	}
 }
 
 func authIDFromRequest(req *http.Request) (types.AuthID, error) {
@@ -299,7 +316,11 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	_, err = writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+	_, err = writer.Write([]byte(templates.AuthWeb(
+		"Node registration",
+		"Run the command below in the headscale server to add this node to your network:",
+		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", registrationId.String()),
+	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write register response")
 	}
