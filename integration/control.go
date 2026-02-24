@@ -16,6 +16,7 @@ import (
 type ControlServer interface {
 	Shutdown() (string, string, error)
 	SaveLog(path string) (string, string, error)
+	ReadLog() (string, string, error)
 	SaveProfile(path string) error
 	Execute(command []string) (string, error)
 	WriteFile(path string, content []byte) error

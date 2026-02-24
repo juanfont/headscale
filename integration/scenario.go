@@ -1184,7 +1184,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 		return errParseAuthPage
 	}
 
-	keySep := strings.Split(codeSep[0], "key ")
+	keySep := strings.Split(codeSep[0], "--auth-id ")
 	if len(keySep) != 2 {
 		return errParseAuthPage
 	}
@@ -1195,7 +1195,7 @@ func (s *Scenario) runHeadscaleRegister(userStr string, body string) error {
 
 	if headscale, err := s.Headscale(); err == nil { //nolint:noinlineerr
 		_, err = headscale.Execute(
-			[]string{"headscale", "nodes", "register", "--user", userStr, "--key", key},
+			[]string{"headscale", "auth", "register", "--user", userStr, "--auth-id", key},
 		)
 		if err != nil {
 			log.Printf("registering node: %s", err)

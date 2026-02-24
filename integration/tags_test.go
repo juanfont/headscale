@@ -3122,7 +3122,7 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 
 // TestTagsAuthKeyConvertToUserViaCLIRegister reproduces the panic from
 // issue #3038: register a node with a tags-only preauthkey (no user), then
-// convert it to a user-owned node via "headscale nodes register --user <user> --key ...".
+// convert it to a user-owned node via "headscale auth register --auth-id <id> --user <user>".
 // The crash happens in the mapper's generateUserProfiles when node.User is nil
 // after the tag→user conversion in processReauthTags.
 //
