@@ -11,7 +11,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go4.org/netipx"
@@ -711,7 +710,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
   "ssh": [
     {
-      "action": "accept",
+      "action": "check",
       "src": [
         "group:admins"
       ],
@@ -730,7 +729,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 				},
 				SSHs: []SSH{
 					{
-						Action: "accept",
+						Action: "check",
 						Sources: SSHSrcAliases{
 							gp("group:admins"),
 						},
@@ -740,7 +739,7 @@ func TestUnmarshalPolicy(t *testing.T) {
 						Users: []SSHUser{
 							SSHUser("root"),
 						},
-						CheckPeriod: model.Duration(24 * time.Hour),
+						CheckPeriod: &SSHCheckPeriod{Duration: 24 * time.Hour},
 					},
 				},
 			},
@@ -3638,6 +3637,221 @@ func TestFlattenTagOwners(t *testing.T) {
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("flattenTagOwners() mismatch (-want +got):\n%s", diff)
 			}
+		})
+	}
+}
+
+func TestSSHCheckPeriodUnmarshal(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		want    *SSHCheckPeriod
+		wantErr bool
+	}{
+		{
+			name:  "always",
+			input: `"always"`,
+			want:  &SSHCheckPeriod{Always: true},
+		},
+		{
+			name:  "1h",
+			input: `"1h"`,
+			want:  &SSHCheckPeriod{Duration: time.Hour},
+		},
+		{
+			name:  "30m",
+			input: `"30m"`,
+			want:  &SSHCheckPeriod{Duration: 30 * time.Minute},
+		},
+		{
+			name:  "168h",
+			input: `"168h"`,
+			want:  &SSHCheckPeriod{Duration: 168 * time.Hour},
+		},
+		{
+			name:    "invalid",
+			input:   `"notaduration"`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got SSHCheckPeriod
+
+			err := json.Unmarshal([]byte(tt.input), &got)
+			if tt.wantErr {
+				require.Error(t, err)
+
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, *tt.want, got)
+		})
+	}
+}
+
+func TestSSHCheckPeriodRoundTrip(t *testing.T) {
+	tests := []struct {
+		name  string
+		input SSHCheckPeriod
+	}{
+		{
+			name:  "always",
+			input: SSHCheckPeriod{Always: true},
+		},
+		{
+			name:  "2h",
+			input: SSHCheckPeriod{Duration: 2 * time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := json.Marshal(tt.input)
+			require.NoError(t, err)
+
+			var got SSHCheckPeriod
+
+			err = json.Unmarshal(data, &got)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.input, got)
+		})
+	}
+}
+
+func TestSSHCheckPeriodNilInSSH(t *testing.T) {
+	input := `{
+		"action": "check",
+		"src": ["user@"],
+		"dst": ["autogroup:member"],
+		"users": ["root"]
+	}`
+
+	var ssh SSH
+
+	err := json.Unmarshal([]byte(input), &ssh)
+	require.NoError(t, err)
+	assert.Nil(t, ssh.CheckPeriod)
+}
+
+func TestSSHCheckPeriodValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		period  SSHCheckPeriod
+		wantErr error
+	}{
+		{
+			name:   "always is valid",
+			period: SSHCheckPeriod{Always: true},
+		},
+		{
+			name:   "1m minimum valid",
+			period: SSHCheckPeriod{Duration: time.Minute},
+		},
+		{
+			name:   "168h maximum valid",
+			period: SSHCheckPeriod{Duration: 168 * time.Hour},
+		},
+		{
+			name:    "30s below minimum",
+			period:  SSHCheckPeriod{Duration: 30 * time.Second},
+			wantErr: ErrSSHCheckPeriodBelowMin,
+		},
+		{
+			name:    "169h above maximum",
+			period:  SSHCheckPeriod{Duration: 169 * time.Hour},
+			wantErr: ErrSSHCheckPeriodAboveMax,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.period.Validate()
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestSSHCheckPeriodPolicyValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		ssh     SSH
+		wantErr error
+	}{
+		{
+			name: "check with nil period is valid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+			},
+		},
+		{
+			name: "check with always is valid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Always: true},
+			},
+		},
+		{
+			name: "check with 1h is valid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: time.Hour},
+			},
+		},
+		{
+			name: "accept with checkPeriod is invalid",
+			ssh: SSH{
+				Action:       SSHActionAccept,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: time.Hour},
+			},
+			wantErr: ErrSSHCheckPeriodOnNonCheck,
+		},
+		{
+			name: "check with 30s is invalid",
+			ssh: SSH{
+				Action:       SSHActionCheck,
+				Sources:      SSHSrcAliases{up("user@")},
+				Destinations: SSHDstAliases{agp("autogroup:member")},
+				Users:        SSHUsers{"root"},
+				CheckPeriod:  &SSHCheckPeriod{Duration: 30 * time.Second},
+			},
+			wantErr: ErrSSHCheckPeriodBelowMin,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pol := &Policy{SSHs: []SSH{tt.ssh}}
+			err := pol.validate()
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
 		})
 	}
 }

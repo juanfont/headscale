@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/policy/matcher"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
@@ -238,6 +239,84 @@ func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcf
 	pm.sshPolicyMap[node.ID()] = sshPol
 
 	return sshPol, nil
+}
+
+// SSHCheckParams resolves the SSH check period for a source-destination
+// node pair by looking up the current policy. This avoids trusting URL
+// parameters that a client could tamper with.
+// It returns the check period duration and whether a matching check
+// rule was found.
+func (pm *PolicyManager) SSHCheckParams(
+	srcNodeID, dstNodeID types.NodeID,
+) (time.Duration, bool) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if pm.pol == nil || len(pm.pol.SSHs) == 0 {
+		return 0, false
+	}
+
+	// Find the source and destination node views.
+	var srcNode, dstNode types.NodeView
+
+	for _, n := range pm.nodes.All() {
+		nid := n.ID()
+		if nid == srcNodeID {
+			srcNode = n
+		}
+
+		if nid == dstNodeID {
+			dstNode = n
+		}
+
+		if srcNode.Valid() && dstNode.Valid() {
+			break
+		}
+	}
+
+	if !srcNode.Valid() || !dstNode.Valid() {
+		return 0, false
+	}
+
+	// Iterate SSH rules to find the first matching check rule.
+	for _, rule := range pm.pol.SSHs {
+		if rule.Action != SSHActionCheck {
+			continue
+		}
+
+		// Resolve sources and check if src node matches.
+		srcIPs, err := rule.Sources.Resolve(pm.pol, pm.users, pm.nodes)
+		if err != nil || srcIPs == nil {
+			continue
+		}
+
+		if !slices.ContainsFunc(srcNode.IPs(), srcIPs.Contains) {
+			continue
+		}
+
+		// Check if dst node matches any destination.
+		for _, dst := range rule.Destinations {
+			if ag, isAG := dst.(*AutoGroup); isAG && ag.Is(AutoGroupSelf) {
+				if !srcNode.IsTagged() && !dstNode.IsTagged() &&
+					srcNode.User().ID() == dstNode.User().ID() {
+					return checkPeriodFromRule(rule), true
+				}
+
+				continue
+			}
+
+			dstIPs, err := dst.Resolve(pm.pol, pm.users, pm.nodes)
+			if err != nil || dstIPs == nil {
+				continue
+			}
+
+			if slices.ContainsFunc(dstNode.IPs(), dstIPs.Contains) {
+				return checkPeriodFromRule(rule), true
+			}
+		}
+	}
+
+	return 0, false
 }
 
 func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {

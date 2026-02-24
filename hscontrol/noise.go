@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -331,6 +332,7 @@ func (ns *noiseServer) SSHActionHandler(
 
 	action, err := ns.sshAction(
 		reqLog,
+		srcNodeID, dstNodeID,
 		req.URL.Query().Get("auth_id"),
 	)
 	if err != nil {
@@ -356,16 +358,18 @@ func (ns *noiseServer) SSHActionHandler(
 }
 
 // sshAction resolves the SSH action for the given request parameters.
-// It returns the action to send to the client, or an HTTPError on
-// failure.
+// It returns the action to send to the client, or an HTTPError on failure.
 //
-// Two cases:
-//  1. Initial request — build a HoldAndDelegate URL and wait for the
-//     user to authenticate.
-//  2. Follow-up request — an auth_id is present, wait for the auth
+// Three cases:
+//  1. Initial request, auto-approved — source recently authenticated
+//     within the check period, accept immediately.
+//  2. Initial request, needs auth — build a HoldAndDelegate URL and
+//     wait for the user to authenticate.
+//  3. Follow-up request — an auth_id is present, wait for the auth
 //     verdict and accept or reject.
 func (ns *noiseServer) sshAction(
 	reqLog zerolog.Logger,
+	srcNodeID, dstNodeID types.NodeID,
 	authIDStr string,
 ) (*tailcfg.SSHAction, error) {
 	action := tailcfg.SSHAction{
@@ -374,14 +378,38 @@ func (ns *noiseServer) sshAction(
 		AllowRemotePortForwarding: true,
 	}
 
+	// Look up check params from the server's own policy rather than
+	// trusting URL parameters, which the client could tamper with.
+	checkPeriod, checkFound := ns.headscale.state.SSHCheckParams(
+		srcNodeID, dstNodeID,
+	)
+
 	// Follow-up request with auth_id — wait for the auth verdict.
 	if authIDStr != "" {
 		return ns.sshActionFollowUp(
 			reqLog, &action, authIDStr,
+			srcNodeID, dstNodeID,
+			checkFound,
 		)
 	}
 
-	// Initial request — create an auth session and hold.
+	// Initial request — check if auto-approval applies.
+	if checkFound && checkPeriod > 0 {
+		if lastAuth, ok := ns.headscale.state.GetLastSSHAuth(
+			srcNodeID, dstNodeID,
+		); ok && time.Since(lastAuth) < checkPeriod {
+			reqLog.Trace().Caller().
+				Dur("check_period", checkPeriod).
+				Time("last_auth", lastAuth).
+				Msg("auto-approved within check period")
+
+			action.Accept = true
+
+			return &action, nil
+		}
+	}
+
+	// No auto-approval — create an auth session and hold.
 	return ns.sshActionHoldAndDelegate(reqLog, &action)
 }
 
@@ -445,6 +473,8 @@ func (ns *noiseServer) sshActionFollowUp(
 	reqLog zerolog.Logger,
 	action *tailcfg.SSHAction,
 	authIDStr string,
+	srcNodeID, dstNodeID types.NodeID,
+	checkFound bool,
 ) (*tailcfg.SSHAction, error) {
 	authID, err := types.AuthIDFromString(authIDStr)
 	if err != nil {
@@ -480,6 +510,14 @@ func (ns *noiseServer) sshActionFollowUp(
 	}
 
 	action.Accept = true
+
+	// Record the successful auth for future auto-approval.
+	if checkFound {
+		ns.headscale.state.SetLastSSHAuth(srcNodeID, dstNodeID)
+
+		reqLog.Trace().Caller().
+			Msg("auth recorded for auto-approval")
+	}
 
 	return action, nil
 }

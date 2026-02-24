@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -43,6 +44,17 @@ var (
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
+	ErrSSHCheckPeriodBelowMin             = errors.New("checkPeriod below minimum of 1 minute")
+	ErrSSHCheckPeriodAboveMax             = errors.New("checkPeriod above maximum of 168 hours (1 week)")
+	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
+)
+
+// SSH check period constants per Tailscale docs:
+// https://tailscale.com/kb/1193/tailscale-ssh
+const (
+	SSHCheckPeriodDefault = 12 * time.Hour
+	SSHCheckPeriodMin     = time.Minute
+	SSHCheckPeriodMax     = 168 * time.Hour
 )
 
 // ACL validation errors.
@@ -2019,6 +2031,19 @@ func (p *Policy) validate() error {
 		if err != nil {
 			errs = append(errs, err)
 		}
+
+		// Validate checkPeriod
+		if ssh.CheckPeriod != nil {
+			switch {
+			case ssh.Action != SSHActionCheck:
+				errs = append(errs, ErrSSHCheckPeriodOnNonCheck)
+			default:
+				err := ssh.CheckPeriod.Validate()
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
 	}
 
 	for _, tagOwners := range p.TagOwners {
@@ -2097,13 +2122,75 @@ func (p *Policy) validate() error {
 	return nil
 }
 
+// SSHCheckPeriod represents the check period for SSH "check" mode rules.
+// nil means not specified (runtime default of 12h applies).
+// Always=true means "always" (check on every request).
+// Duration is an explicit period (min 1m, max 168h).
+type SSHCheckPeriod struct {
+	Always   bool
+	Duration time.Duration
+}
+
+// UnmarshalJSON implements JSON unmarshaling for SSHCheckPeriod.
+func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	if str == "always" {
+		p.Always = true
+
+		return nil
+	}
+
+	d, err := model.ParseDuration(str)
+	if err != nil {
+		return fmt.Errorf("parsing checkPeriod %q: %w", str, err)
+	}
+
+	p.Duration = time.Duration(d)
+
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for SSHCheckPeriod.
+func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
+	if p.Always {
+		return []byte(`"always"`), nil
+	}
+
+	return fmt.Appendf(nil, "%q", p.Duration.String()), nil
+}
+
+// Validate checks that the SSHCheckPeriod is within allowed bounds.
+func (p *SSHCheckPeriod) Validate() error {
+	if p.Always {
+		return nil
+	}
+
+	if p.Duration < SSHCheckPeriodMin {
+		return fmt.Errorf(
+			"%w: got %s",
+			ErrSSHCheckPeriodBelowMin,
+			p.Duration,
+		)
+	}
+
+	if p.Duration > SSHCheckPeriodMax {
+		return fmt.Errorf(
+			"%w: got %s",
+			ErrSSHCheckPeriodAboveMax,
+			p.Duration,
+		)
+	}
+
+	return nil
+}
+
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       SSHAction      `json:"action"`
-	Sources      SSHSrcAliases  `json:"src"`
-	Destinations SSHDstAliases  `json:"dst"`
-	Users        SSHUsers       `json:"users"`
-	CheckPeriod  model.Duration `json:"checkPeriod,omitempty"`
+	Action       SSHAction       `json:"action"`
+	Sources      SSHSrcAliases   `json:"src"`
+	Destinations SSHDstAliases   `json:"dst"`
+	Users        SSHUsers        `json:"users"`
+	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
