@@ -828,4 +828,59 @@ func (api headscaleV1APIServer) Health(
 	return response, healthErr
 }
 
+func (api headscaleV1APIServer) AuthRegister(
+	ctx context.Context,
+	request *v1.AuthRegisterRequest,
+) (*v1.AuthRegisterResponse, error) {
+	resp, err := api.RegisterNode(ctx, &v1.RegisterNodeRequest{
+		Key:  request.GetAuthId(),
+		User: request.GetUser(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &v1.AuthRegisterResponse{Node: resp.GetNode()}, nil
+}
+
+func (api headscaleV1APIServer) AuthApprove(
+	ctx context.Context,
+	request *v1.AuthApproveRequest,
+) (*v1.AuthApproveResponse, error) {
+	authID, err := types.AuthIDFromString(request.GetAuthId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid auth_id: %v", err)
+	}
+
+	authReq, ok := api.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "no pending auth session for auth_id %s", authID)
+	}
+
+	authReq.FinishAuth(types.AuthVerdict{})
+
+	return &v1.AuthApproveResponse{}, nil
+}
+
+func (api headscaleV1APIServer) AuthReject(
+	ctx context.Context,
+	request *v1.AuthRejectRequest,
+) (*v1.AuthRejectResponse, error) {
+	authID, err := types.AuthIDFromString(request.GetAuthId())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid auth_id: %v", err)
+	}
+
+	authReq, ok := api.h.state.GetAuthCacheEntry(authID)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "no pending auth session for auth_id %s", authID)
+	}
+
+	authReq.FinishAuth(types.AuthVerdict{
+		Err: fmt.Errorf("auth request rejected"),
+	})
+
+	return &v1.AuthRejectResponse{}, nil
+}
+
 func (api headscaleV1APIServer) mustEmbedUnimplementedHeadscaleServiceServer() {}
