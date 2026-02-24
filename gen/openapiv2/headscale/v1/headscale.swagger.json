@@ -138,6 +138,103 @@
         ]
       }
     },
+    "/api/v1/auth/approve": {
+      "post": {
+        "operationId": "HeadscaleService_AuthApprove",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AuthApproveResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1AuthApproveRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "--- Auth start ---",
+        "operationId": "HeadscaleService_AuthRegister",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AuthRegisterResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1AuthRegisterRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
+    "/api/v1/auth/reject": {
+      "post": {
+        "operationId": "HeadscaleService_AuthReject",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AuthRejectResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1AuthRejectRequest"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/debug/node": {
       "post": {
         "summary": "--- Node start ---",
@@ -887,6 +984,47 @@
           "format": "date-time"
         }
       }
+    },
+    "v1AuthApproveRequest": {
+      "type": "object",
+      "properties": {
+        "authId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1AuthApproveResponse": {
+      "type": "object"
+    },
+    "v1AuthRegisterRequest": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "type": "string"
+        },
+        "authId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1AuthRegisterResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1AuthRejectRequest": {
+      "type": "object",
+      "properties": {
+        "authId": {
+          "type": "string"
+        }
+      }
+    },
+    "v1AuthRejectResponse": {
+      "type": "object"
     },
     "v1BackfillNodeIPsResponse": {
       "type": "object",
