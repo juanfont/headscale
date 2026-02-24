@@ -135,11 +135,6 @@
             };
           };
 
-          # The package uses buildGo125Module, not the convention.
-          # goreleaser = prev.goreleaser.override {
-          #   buildGoModule = buildGo;
-          # };
-
           gotestsum = prev.gotestsum.override {
             buildGoModule = buildGo;
           };
@@ -152,9 +147,9 @@
             buildGoModule = buildGo;
           };
 
-          # gopls = prev.gopls.override {
-          #   buildGoModule = buildGo;
-          # };
+          gopls = prev.gopls.override {
+            buildGoLatestModule = buildGo;
+          };
         };
     }
     // flake-utils.lib.eachDefaultSystem
