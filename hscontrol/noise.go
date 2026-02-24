@@ -24,6 +24,12 @@ import (
 // ErrUnsupportedClientVersion is returned when a client connects with an unsupported protocol version.
 var ErrUnsupportedClientVersion = errors.New("unsupported client version")
 
+// ErrMissingURLParameter is returned when a required URL parameter is not provided.
+var ErrMissingURLParameter = errors.New("missing URL parameter")
+
+// ErrUnsupportedURLParameterType is returned when a URL parameter has an unsupported type.
+var ErrUnsupportedURLParameterType = errors.New("unsupported URL parameter type")
+
 const (
 	// ts2021UpgradePath is the path that the server listens on for the WebSockets upgrade.
 	ts2021UpgradePath = "/ts2021"
@@ -373,4 +379,29 @@ func (ns *noiseServer) getAndValidateNode(mapRequest tailcfg.MapRequest) (types.
 	}
 
 	return nv, nil
+}
+
+// urlParam extracts a typed URL parameter from a chi router request.
+func urlParam[T any](req *http.Request, key string) (T, error) {
+	var zero T
+
+	param := chi.URLParam(req, key)
+	if param == "" {
+		return zero, fmt.Errorf("%w: %s", ErrMissingURLParameter, key)
+	}
+
+	var value T
+	switch any(value).(type) {
+	case string:
+		v, ok := any(param).(T)
+		if !ok {
+			return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
+		}
+
+		value = v
+	default:
+		return zero, fmt.Errorf("%w: %T", ErrUnsupportedURLParameterType, value)
+	}
+
+	return value, nil
 }

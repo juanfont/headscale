@@ -47,7 +47,7 @@ const (
 type HSDatabase struct {
 	DB       *gorm.DB
 	cfg      *types.Config
-	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode]
+	regCache *zcache.Cache[types.AuthID, types.AuthRequest]
 }
 
 // NewHeadscaleDatabase creates a new database connection and runs migrations.
@@ -56,7 +56,7 @@ type HSDatabase struct {
 //nolint:gocyclo // complex database initialization with many migrations
 func NewHeadscaleDatabase(
 	cfg *types.Config,
-	regCache *zcache.Cache[types.RegistrationID, types.RegisterNode],
+	regCache *zcache.Cache[types.AuthID, types.AuthRequest],
 ) (*HSDatabase, error) {
 	dbConn, err := openDB(cfg.Database)
 	if err != nil {

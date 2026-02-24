@@ -1065,11 +1065,11 @@ func TestNodeCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 
@@ -1153,8 +1153,8 @@ func TestNodeCommand(t *testing.T) {
 	assert.Equal(t, "node-5", listAll[4].GetName())
 
 	otherUserRegIDs := []string{
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
 	}
 	otherUserMachines := make([]*v1.Node, len(otherUserRegIDs))
 
@@ -1326,11 +1326,11 @@ func TestNodeExpireCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 
@@ -1461,11 +1461,11 @@ func TestNodeRenameCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	regIDs := []string{
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
-		types.MustRegistrationID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
+		types.MustAuthID().String(),
 	}
 	nodes := make([]*v1.Node, len(regIDs))
 

@@ -247,7 +247,7 @@ func (api headscaleV1APIServer) RegisterNode(
 		Str(zf.RegistrationKey, registrationKey).
 		Msg("registering node")
 
-	registrationId, err := types.RegistrationIDFromString(request.GetKey())
+	registrationId, err := types.AuthIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
@@ -780,33 +780,32 @@ func (api headscaleV1APIServer) DebugCreateNode(
 		Hostname:    request.GetName(),
 	}
 
-	registrationId, err := types.RegistrationIDFromString(request.GetKey())
+	registrationId, err := types.AuthIDFromString(request.GetKey())
 	if err != nil {
 		return nil, err
 	}
 
-	newNode := types.NewRegisterNode(
-		types.Node{
-			NodeKey:    key.NewNode().Public(),
-			MachineKey: key.NewMachine().Public(),
-			Hostname:   request.GetName(),
-			User:       user,
+	newNode := types.Node{
+		NodeKey:    key.NewNode().Public(),
+		MachineKey: key.NewMachine().Public(),
+		Hostname:   request.GetName(),
+		User:       user,
 
-			Expiry:   &time.Time{},
-			LastSeen: &time.Time{},
+		Expiry:   &time.Time{},
+		LastSeen: &time.Time{},
 
-			Hostinfo: &hostinfo,
-		},
-	)
+		Hostinfo: &hostinfo,
+	}
 
 	log.Debug().
 		Caller().
 		Str("registration_id", registrationId.String()).
 		Msg("adding debug machine via CLI, appending to registration cache")
 
-	api.h.state.SetRegistrationCacheEntry(registrationId, newNode)
+	authRegReq := types.NewRegisterAuthRequest(newNode)
+	api.h.state.SetAuthCacheEntry(registrationId, authRegReq)
 
-	return &v1.DebugCreateNodeResponse{Node: newNode.Node.Proto()}, nil
+	return &v1.DebugCreateNodeResponse{Node: newNode.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) Health(

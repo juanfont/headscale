@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -245,11 +244,41 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 	}
 }
 
-func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
+func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
 	return fmt.Sprintf(
 		"%s/register/%s",
 		strings.TrimSuffix(a.serverURL, "/"),
-		registrationId.String())
+		authID.String())
+}
+
+func (a *AuthProviderWeb) AuthURL(authID types.AuthID) string {
+	return fmt.Sprintf(
+		"%s/auth/%s",
+		strings.TrimSuffix(a.serverURL, "/"),
+		authID.String())
+}
+
+func (a *AuthProviderWeb) AuthHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+}
+
+func authIDFromRequest(req *http.Request) (types.AuthID, error) {
+	registrationId, err := urlParam[types.AuthID](req, "auth_id")
+	if err != nil {
+		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
+	}
+
+	// We need to make sure we dont open for XSS style injections, if the parameter that
+	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
+	// the template and log an error.
+	err = registrationId.Validate()
+	if err != nil {
+		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
+	}
+
+	return registrationId, nil
 }
 
 // RegisterHandler shows a simple message in the browser to point to the CLI
@@ -261,15 +290,9 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	vars := mux.Vars(req)
-	registrationIdStr := vars["registration_id"]
-
-	// We need to make sure we dont open for XSS style injections, if the parameter that
-	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
-	// the template and log an error.
-	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
+	registrationId, err := authIDFromRequest(req)
 	if err != nil {
-		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid registration id", err))
+		httpError(writer, err)
 		return
 	}
 

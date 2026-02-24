@@ -21,7 +21,7 @@ func TestTemplateHTMLConsistency(t *testing.T) {
 		},
 		{
 			name: "Register Web",
-			html: templates.RegisterWeb(types.RegistrationID("test-key-123")).Render(),
+			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
 		},
 		{
 			name: "Windows Config",
@@ -77,7 +77,7 @@ func TestTemplateModernHTMLFeatures(t *testing.T) {
 		},
 		{
 			name: "Register Web",
-			html: templates.RegisterWeb(types.RegistrationID("test-key-123")).Render(),
+			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
 		},
 		{
 			name: "Windows Config",
@@ -125,7 +125,7 @@ func TestTemplateExternalLinkSecurity(t *testing.T) {
 		},
 		{
 			name:         "Register Web",
-			html:         templates.RegisterWeb(types.RegistrationID("test-key-123")).Render(),
+			html:         templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
 			externalURLs: []string{}, // No external links
 		},
 		{
@@ -190,7 +190,7 @@ func TestTemplateAccessibilityAttributes(t *testing.T) {
 		},
 		{
 			name: "Register Web",
-			html: templates.RegisterWeb(types.RegistrationID("test-key-123")).Render(),
+			html: templates.RegisterWeb(types.AuthID("test-key-123")).Render(),
 		},
 		{
 			name: "Windows Config",
