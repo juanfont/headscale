@@ -222,7 +222,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	return true, nil
 }
 
-func (pm *PolicyManager) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, error) {
+func (pm *PolicyManager) SSHPolicy(baseURL string, node types.NodeView) (*tailcfg.SSHPolicy, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
@@ -230,7 +230,7 @@ func (pm *PolicyManager) SSHPolicy(node types.NodeView) (*tailcfg.SSHPolicy, err
 		return sshPol, nil
 	}
 
-	sshPol, err := pm.pol.compileSSHPolicy(pm.users, node, pm.nodes)
+	sshPol, err := pm.pol.compileSSHPolicy(baseURL, pm.users, node, pm.nodes)
 	if err != nil {
 		return nil, fmt.Errorf("compiling SSH policy: %w", err)
 	}

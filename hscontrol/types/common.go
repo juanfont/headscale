@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -23,7 +24,8 @@ const (
 // Common errors.
 var (
 	ErrCannotParsePrefix   = errors.New("cannot parse prefix")
-	ErrInvalidAuthIDLength = errors.New("registration ID has invalid length")
+	ErrInvalidAuthIDLength = errors.New("auth ID has invalid length")
+	ErrInvalidAuthIDPrefix = errors.New("auth ID has invalid prefix")
 )
 
 type StateUpdateType int
@@ -159,17 +161,22 @@ func UpdateExpire(nodeID NodeID, expiry time.Time) StateUpdate {
 	}
 }
 
-const AuthIDLength = 24
+const (
+	authIDPrefix       = "hskey-authreq-"
+	authIDRandomLength = 24
+	// AuthIDLength is the total length of an AuthID: 14 (prefix) + 24 (random).
+	AuthIDLength = 38
+)
 
 type AuthID string
 
 func NewAuthID() (AuthID, error) {
-	rid, err := util.GenerateRandomStringURLSafe(AuthIDLength)
+	rid, err := util.GenerateRandomStringURLSafe(authIDRandomLength)
 	if err != nil {
 		return "", err
 	}
 
-	return AuthID(rid), nil
+	return AuthID(authIDPrefix + rid), nil
 }
 
 func MustAuthID() AuthID {
@@ -197,8 +204,18 @@ func (r AuthID) String() string {
 }
 
 func (r AuthID) Validate() error {
+	if !strings.HasPrefix(string(r), authIDPrefix) {
+		return fmt.Errorf(
+			"%w: expected prefix %q",
+			ErrInvalidAuthIDPrefix, authIDPrefix,
+		)
+	}
+
 	if len(r) != AuthIDLength {
-		return fmt.Errorf("%w: expected %d, got %d", ErrInvalidAuthIDLength, AuthIDLength, len(r))
+		return fmt.Errorf(
+			"%w: expected %d, got %d",
+			ErrInvalidAuthIDLength, AuthIDLength, len(r),
+		)
 	}
 
 	return nil
@@ -212,6 +229,13 @@ type AuthRequest struct {
 	node     *Node
 	finished chan AuthVerdict
 	closed   *atomic.Bool
+}
+
+func NewAuthRequest() AuthRequest {
+	return AuthRequest{
+		finished: make(chan AuthVerdict),
+		closed:   &atomic.Bool{},
+	}
 }
 
 func NewRegisterAuthRequest(node Node) AuthRequest {

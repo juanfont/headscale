@@ -319,11 +319,27 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	return rules, nil
 }
 
-func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
+var sshAccept = tailcfg.SSHAction{
+	Reject:                    false,
+	Accept:                    true,
+	AllowAgentForwarding:      true,
+	AllowLocalPortForwarding:  true,
+	AllowRemotePortForwarding: true,
+}
+
+func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
 	return tailcfg.SSHAction{
-		Reject:                    !accept,
-		Accept:                    accept,
-		SessionDuration:           duration,
+		Reject:          false,
+		Accept:          false,
+		SessionDuration: duration,
+		// Replaced in the client:
+		//   * $SRC_NODE_IP (URL escaped)
+		//   * $SRC_NODE_ID (Node.ID as int64 string)
+		//   * $DST_NODE_IP (URL escaped)
+		//   * $DST_NODE_ID (Node.ID as int64 string)
+		//   * $SSH_USER (URL escaped, ssh user requested)
+		//   * $LOCAL_USER (URL escaped, local user mapped)
+		HoldAndDelegate:           baseURL + "/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
 		AllowAgentForwarding:      true,
 		AllowLocalPortForwarding:  true,
 		AllowRemotePortForwarding: true,
@@ -332,6 +348,7 @@ func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
 
 //nolint:gocyclo // complex SSH policy compilation logic
 func (pol *Policy) compileSSHPolicy(
+	baseURL string,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
@@ -377,9 +394,9 @@ func (pol *Policy) compileSSHPolicy(
 
 		switch rule.Action {
 		case SSHActionAccept:
-			action = sshAction(true, 0)
+			action = sshAccept
 		case SSHActionCheck:
-			action = sshAction(true, time.Duration(rule.CheckPeriod))
+			action = sshCheck(baseURL, time.Duration(rule.CheckPeriod))
 		default:
 			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
 		}
@@ -502,6 +519,23 @@ func (pol *Policy) compileSSHPolicy(
 			}
 		}
 	}
+
+	// Sort rules: check (HoldAndDelegate) before accept, per Tailscale
+	// evaluation order (most-restrictive first).
+	slices.SortStableFunc(rules, func(a, b *tailcfg.SSHRule) int {
+		aIsCheck := a.Action != nil && a.Action.HoldAndDelegate != ""
+
+		bIsCheck := b.Action != nil && b.Action.HoldAndDelegate != ""
+		if aIsCheck == bIsCheck {
+			return 0
+		}
+
+		if aIsCheck {
+			return -1
+		}
+
+		return 1
+	})
 
 	return &tailcfg.SSHPolicy{
 		Rules: rules,

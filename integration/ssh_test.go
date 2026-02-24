@@ -579,3 +579,75 @@ func TestSSHAutogroupSelf(t *testing.T) {
 		}
 	}
 }
+
+func TestSSHOneUserToOneCheckMode(t *testing.T) {
+	IntegrationSkip(t)
+
+	scenario := sshScenario(t,
+		&policyv2.Policy{
+			Groups: policyv2.Groups{
+				policyv2.Group("group:integration-test"): []policyv2.Username{policyv2.Username("user1@")},
+			},
+			ACLs: []policyv2.ACL{
+				{
+					Action:   "accept",
+					Protocol: "tcp",
+					Sources:  []policyv2.Alias{wildcard()},
+					Destinations: []policyv2.AliasWithPorts{
+						aliasWithPorts(wildcard(), tailcfg.PortRangeAny),
+					},
+				},
+			},
+			SSHs: []policyv2.SSH{
+				{
+					Action:  "check",
+					Sources: policyv2.SSHSrcAliases{groupp("group:integration-test")},
+					// Use autogroup:member and autogroup:tagged instead of wildcard
+					// since wildcard (*) is no longer supported for SSH destinations
+					Destinations: policyv2.SSHDstAliases{
+						new(policyv2.AutoGroupMember),
+						new(policyv2.AutoGroupTagged),
+					},
+					Users: []policyv2.SSHUser{policyv2.SSHUser("ssh-it-user")},
+				},
+			},
+		},
+		1,
+	)
+	// defer scenario.ShutdownAssertNoPanics(t)
+
+	allClients, err := scenario.ListTailscaleClients()
+	requireNoErrListClients(t, err)
+
+	user1Clients, err := scenario.ListTailscaleClients("user1")
+	requireNoErrListClients(t, err)
+
+	user2Clients, err := scenario.ListTailscaleClients("user2")
+	requireNoErrListClients(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	_, err = scenario.ListTailscaleClientsFQDNs()
+	requireNoErrListFQDN(t, err)
+
+	for _, client := range user1Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHHostname(t, client, peer)
+		}
+	}
+
+	for _, client := range user2Clients {
+		for _, peer := range allClients {
+			if client.Hostname() == peer.Hostname() {
+				continue
+			}
+
+			assertSSHPermissionDenied(t, client, peer)
+		}
+	}
+}
