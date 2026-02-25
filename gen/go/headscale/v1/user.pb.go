@@ -410,6 +410,122 @@ func (*DeleteUserResponse) Descriptor() ([]byte, []int) {
 	return file_headscale_v1_user_proto_rawDescGZIP(), []int{6}
 }
 
+// SetUserRequest updates profile fields for an existing user.
+// Only fields that are explicitly set are applied; omitted fields leave the
+// current value unchanged.
+// picture_url follows the same naming convention as CreateUserRequest.
+type SetUserRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	DisplayName   *string                `protobuf:"bytes,2,opt,name=display_name,json=displayName,proto3,oneof" json:"display_name,omitempty"`
+	Email         *string                `protobuf:"bytes,3,opt,name=email,proto3,oneof" json:"email,omitempty"`
+	PictureUrl    *string                `protobuf:"bytes,4,opt,name=picture_url,json=pictureUrl,proto3,oneof" json:"picture_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserRequest) Reset() {
+	*x = SetUserRequest{}
+	mi := &file_headscale_v1_user_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserRequest) ProtoMessage() {}
+
+func (x *SetUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_user_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserRequest.ProtoReflect.Descriptor instead.
+func (*SetUserRequest) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_user_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *SetUserRequest) GetId() uint64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *SetUserRequest) GetDisplayName() string {
+	if x != nil && x.DisplayName != nil {
+		return *x.DisplayName
+	}
+	return ""
+}
+
+func (x *SetUserRequest) GetEmail() string {
+	if x != nil && x.Email != nil {
+		return *x.Email
+	}
+	return ""
+}
+
+func (x *SetUserRequest) GetPictureUrl() string {
+	if x != nil && x.PictureUrl != nil {
+		return *x.PictureUrl
+	}
+	return ""
+}
+
+type SetUserResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	User          *User                  `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetUserResponse) Reset() {
+	*x = SetUserResponse{}
+	mi := &file_headscale_v1_user_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetUserResponse) ProtoMessage() {}
+
+func (x *SetUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_headscale_v1_user_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetUserResponse.ProtoReflect.Descriptor instead.
+func (*SetUserResponse) Descriptor() ([]byte, []int) {
+	return file_headscale_v1_user_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *SetUserResponse) GetUser() *User {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
 type ListUsersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -421,7 +537,7 @@ type ListUsersRequest struct {
 
 func (x *ListUsersRequest) Reset() {
 	*x = ListUsersRequest{}
-	mi := &file_headscale_v1_user_proto_msgTypes[7]
+	mi := &file_headscale_v1_user_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -433,7 +549,7 @@ func (x *ListUsersRequest) String() string {
 func (*ListUsersRequest) ProtoMessage() {}
 
 func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_user_proto_msgTypes[7]
+	mi := &file_headscale_v1_user_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -446,7 +562,7 @@ func (x *ListUsersRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersRequest.ProtoReflect.Descriptor instead.
 func (*ListUsersRequest) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_user_proto_rawDescGZIP(), []int{7}
+	return file_headscale_v1_user_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListUsersRequest) GetId() uint64 {
@@ -479,7 +595,7 @@ type ListUsersResponse struct {
 
 func (x *ListUsersResponse) Reset() {
 	*x = ListUsersResponse{}
-	mi := &file_headscale_v1_user_proto_msgTypes[8]
+	mi := &file_headscale_v1_user_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -491,7 +607,7 @@ func (x *ListUsersResponse) String() string {
 func (*ListUsersResponse) ProtoMessage() {}
 
 func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_headscale_v1_user_proto_msgTypes[8]
+	mi := &file_headscale_v1_user_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -504,7 +620,7 @@ func (x *ListUsersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUsersResponse.ProtoReflect.Descriptor instead.
 func (*ListUsersResponse) Descriptor() ([]byte, []int) {
-	return file_headscale_v1_user_proto_rawDescGZIP(), []int{8}
+	return file_headscale_v1_user_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListUsersResponse) GetUsers() []*User {
@@ -545,7 +661,18 @@ const file_headscale_v1_user_proto_rawDesc = "" +
 	"\x04user\x18\x01 \x01(\v2\x12.headscale.v1.UserR\x04user\"#\n" +
 	"\x11DeleteUserRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\"\x14\n" +
-	"\x12DeleteUserResponse\"L\n" +
+	"\x12DeleteUserResponse\"\xb4\x01\n" +
+	"\x0eSetUserRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x04R\x02id\x12&\n" +
+	"\fdisplay_name\x18\x02 \x01(\tH\x00R\vdisplayName\x88\x01\x01\x12\x19\n" +
+	"\x05email\x18\x03 \x01(\tH\x01R\x05email\x88\x01\x01\x12$\n" +
+	"\vpicture_url\x18\x04 \x01(\tH\x02R\n" +
+	"pictureUrl\x88\x01\x01B\x0f\n" +
+	"\r_display_nameB\b\n" +
+	"\x06_emailB\x0e\n" +
+	"\f_picture_url\"9\n" +
+	"\x0fSetUserResponse\x12&\n" +
+	"\x04user\x18\x01 \x01(\v2\x12.headscale.v1.UserR\x04user\"L\n" +
 	"\x10ListUsersRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -565,7 +692,7 @@ func file_headscale_v1_user_proto_rawDescGZIP() []byte {
 	return file_headscale_v1_user_proto_rawDescData
 }
 
-var file_headscale_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_headscale_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_headscale_v1_user_proto_goTypes = []any{
 	(*User)(nil),                  // 0: headscale.v1.User
 	(*CreateUserRequest)(nil),     // 1: headscale.v1.CreateUserRequest
@@ -574,20 +701,23 @@ var file_headscale_v1_user_proto_goTypes = []any{
 	(*RenameUserResponse)(nil),    // 4: headscale.v1.RenameUserResponse
 	(*DeleteUserRequest)(nil),     // 5: headscale.v1.DeleteUserRequest
 	(*DeleteUserResponse)(nil),    // 6: headscale.v1.DeleteUserResponse
-	(*ListUsersRequest)(nil),      // 7: headscale.v1.ListUsersRequest
-	(*ListUsersResponse)(nil),     // 8: headscale.v1.ListUsersResponse
-	(*timestamppb.Timestamp)(nil), // 9: google.protobuf.Timestamp
+	(*SetUserRequest)(nil),        // 7: headscale.v1.SetUserRequest
+	(*SetUserResponse)(nil),       // 8: headscale.v1.SetUserResponse
+	(*ListUsersRequest)(nil),      // 9: headscale.v1.ListUsersRequest
+	(*ListUsersResponse)(nil),     // 10: headscale.v1.ListUsersResponse
+	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
 }
 var file_headscale_v1_user_proto_depIdxs = []int32{
-	9, // 0: headscale.v1.User.created_at:type_name -> google.protobuf.Timestamp
-	0, // 1: headscale.v1.CreateUserResponse.user:type_name -> headscale.v1.User
-	0, // 2: headscale.v1.RenameUserResponse.user:type_name -> headscale.v1.User
-	0, // 3: headscale.v1.ListUsersResponse.users:type_name -> headscale.v1.User
-	4, // [4:4] is the sub-list for method output_type
-	4, // [4:4] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	11, // 0: headscale.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	0,  // 1: headscale.v1.CreateUserResponse.user:type_name -> headscale.v1.User
+	0,  // 2: headscale.v1.RenameUserResponse.user:type_name -> headscale.v1.User
+	0,  // 3: headscale.v1.SetUserResponse.user:type_name -> headscale.v1.User
+	0,  // 4: headscale.v1.ListUsersResponse.users:type_name -> headscale.v1.User
+	5,  // [5:5] is the sub-list for method output_type
+	5,  // [5:5] is the sub-list for method input_type
+	5,  // [5:5] is the sub-list for extension type_name
+	5,  // [5:5] is the sub-list for extension extendee
+	0,  // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_headscale_v1_user_proto_init() }
@@ -595,13 +725,14 @@ func file_headscale_v1_user_proto_init() {
 	if File_headscale_v1_user_proto != nil {
 		return
 	}
+	file_headscale_v1_user_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_headscale_v1_user_proto_rawDesc), len(file_headscale_v1_user_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

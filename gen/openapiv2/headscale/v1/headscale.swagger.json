@@ -780,6 +780,43 @@
         "tags": [
           "HeadscaleService"
         ]
+      },
+      "put": {
+        "operationId": "HeadscaleService_SetUser",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1SetUserResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/HeadscaleServiceSetUserBody"
+            }
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
       }
     },
     "/api/v1/user/{oldId}/rename/{newName}": {
@@ -842,6 +879,21 @@
           }
         }
       }
+    },
+    "HeadscaleServiceSetUserBody": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "pictureUrl": {
+          "type": "string"
+        }
+      },
+      "description": "SetUserRequest updates profile fields for an existing user.\nOnly fields that are explicitly set are applied; omitted fields leave the\ncurrent value unchanged.\npicture_url follows the same naming convention as CreateUserRequest."
     },
     "protobufAny": {
       "type": "object",
@@ -1316,6 +1368,14 @@
       "properties": {
         "node": {
           "$ref": "#/definitions/v1Node"
+        }
+      }
+    },
+    "v1SetUserResponse": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/definitions/v1User"
         }
       }
     },

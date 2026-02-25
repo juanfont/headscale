@@ -36,6 +36,13 @@ service HeadscaleService {
       get : "/api/v1/user"
     };
   }
+
+  rpc SetUser(SetUserRequest) returns (SetUserResponse) {
+    option (google.api.http) = {
+      put : "/api/v1/user/{id}"
+      body : "*"
+    };
+  }
   // --- User end ---
 
   // --- PreAuthKeys start ---

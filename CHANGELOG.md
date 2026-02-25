@@ -29,6 +29,7 @@ overall our implementation was very close.
 
 ### Changes
 
+- **Users**: Add `headscale users set` CLI command and `SetUser` gRPC/REST API (`PUT /api/v1/user/{id}`) to update a user's `display_name`, `email`, and `profile_pic_url` on existing users [#2166](https://github.com/juanfont/headscale/issues/2166)
 - **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
 - **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
 - **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)

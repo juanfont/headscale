@@ -19,6 +19,7 @@ import (
 var (
 	errFlagRequired       = errors.New("--name or --identifier flag is required")
 	errMultipleUsersMatch = errors.New("multiple users match query, specify an ID")
+	errNoFieldsProvided   = errors.New("at least one of --display-name, --email, or --picture-url must be provided")
 )
 
 func usernameAndIDFlag(cmd *cobra.Command) {
@@ -59,6 +60,11 @@ func init() {
 	usernameAndIDFlag(renameUserCmd)
 	renameUserCmd.Flags().StringP("new-name", "r", "", "New username")
 	mustMarkRequired(renameUserCmd, "new-name")
+	userCmd.AddCommand(setUserCmd)
+	usernameAndIDFlag(setUserCmd)
+	setUserCmd.Flags().StringP("display-name", "d", "", "Display name")
+	setUserCmd.Flags().StringP("email", "e", "", "Email")
+	setUserCmd.Flags().StringP("picture-url", "p", "", "Profile picture URL")
 }
 
 var userCmd = &cobra.Command{
@@ -94,7 +100,7 @@ var createUserCmd = &cobra.Command{
 		}
 
 		if pictureURL, _ := cmd.Flags().GetString("picture-url"); pictureURL != "" {
-			if _, err := url.Parse(pictureURL); err != nil { //nolint:noinlineerr
+			if _, err := url.ParseRequestURI(pictureURL); err != nil { //nolint:noinlineerr
 				return fmt.Errorf("invalid picture URL: %w", err)
 			}
 
@@ -239,5 +245,61 @@ var renameUserCmd = &cobra.Command{
 		}
 
 		return printOutput(cmd, response.GetUser(), "User renamed")
+	}),
+}
+
+var setUserCmd = &cobra.Command{
+	Use:     "set --identifier ID or --name NAME",
+	Short:   "Update a user's display name, email, or profile picture URL",
+	Aliases: []string{"update"},
+	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
+		id, username, err := usernameAndIDFromFlag(cmd)
+		if err != nil {
+			return err
+		}
+
+		listReq := &v1.ListUsersRequest{
+			Name: username,
+			Id:   id,
+		}
+
+		users, err := client.ListUsers(ctx, listReq)
+		if err != nil {
+			return fmt.Errorf("listing users: %w", err)
+		}
+
+		if len(users.GetUsers()) != 1 {
+			return errMultipleUsersMatch
+		}
+
+		user := users.GetUsers()[0]
+
+		setReq := &v1.SetUserRequest{Id: user.GetId()}
+
+		if cmd.Flags().Changed("display-name") {
+			displayName, _ := cmd.Flags().GetString("display-name")
+			setReq.DisplayName = &displayName
+		}
+
+		if cmd.Flags().Changed("email") {
+			email, _ := cmd.Flags().GetString("email")
+			setReq.Email = &email
+		}
+
+		if cmd.Flags().Changed("picture-url") {
+			pictureURL, _ := cmd.Flags().GetString("picture-url")
+			setReq.PictureUrl = &pictureURL
+		}
+
+		if setReq.DisplayName == nil && setReq.Email == nil && setReq.PictureUrl == nil {
+			return errNoFieldsProvided
+		}
+
+		response, err := client.SetUser(ctx, setReq)
+		if err != nil {
+			return fmt.Errorf("setting user: %w", err)
+		}
+
+		return printOutput(cmd, response.GetUser(), "User updated")
 	}),
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"net/url"
 	"os"
 	"slices"
 	"sort"
@@ -108,6 +109,39 @@ func (api headscaleV1APIServer) DeleteUser(
 	api.h.Change(policyChanged)
 
 	return &v1.DeleteUserResponse{}, nil
+}
+
+func (api headscaleV1APIServer) SetUser(
+	ctx context.Context,
+	request *v1.SetUserRequest,
+) (*v1.SetUserResponse, error) {
+	if request.PictureUrl != nil {
+		if pic := request.GetPictureUrl(); pic != "" {
+			if _, err := url.ParseRequestURI(pic); err != nil {
+				return nil, status.Errorf(codes.InvalidArgument, "invalid picture URL: %s", err)
+			}
+		}
+	}
+
+	updated, c, err := api.h.state.UpdateUser(types.UserID(request.GetId()), func(u *types.User) error {
+		if request.DisplayName != nil {
+			u.DisplayName = request.GetDisplayName()
+		}
+		if request.Email != nil {
+			u.Email = request.GetEmail()
+		}
+		if request.PictureUrl != nil {
+			u.ProfilePicURL = request.GetPictureUrl()
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "updating user: %s", err)
+	}
+
+	api.h.Change(c)
+
+	return &v1.SetUserResponse{User: updated.Proto()}, nil
 }
 
 func (api headscaleV1APIServer) ListUsers(
