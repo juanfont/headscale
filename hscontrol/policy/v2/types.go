@@ -233,11 +233,11 @@ func (u *Username) CanBeAutoApprover() bool {
 func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	var potentialUsers types.Users
 
-	// At parsetime, we require all usernames to contain an "@" character, if the
-	// username token does not naturally do so (like email), the user have to
-	// add it to the end of the username. We strip it here as we do not expect the
-	// usernames to be stored with the "@".
-	uTrimmed := strings.TrimSuffix(u.String(), "@")
+	// At parsetime, we require all usernames to contain an "@" character.
+	// The policy format uses a leading "@" (e.g., "@username"), while email-style
+	// identifiers have it naturally. Strip both leading and trailing "@" since
+	// usernames are stored without the "@" prefix.
+	uTrimmed := strings.TrimPrefix(strings.TrimSuffix(u.String(), "@"), "@")
 
 	for _, user := range users {
 		if user.ProviderIdentifier.Valid && user.ProviderIdentifier.String == uTrimmed {
