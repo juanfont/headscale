@@ -543,3 +543,92 @@ func TestDeleteApiKey_BothIdentifiers(t *testing.T) {
 	assert.Equal(t, codes.InvalidArgument, st.Code())
 	assert.Contains(t, st.Message(), "provide either id or prefix, not both")
 }
+
+func TestSetUser_UpdatesFields(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	user := app.state.CreateUserForTest("test-user")
+	require.NotNil(t, user)
+
+	displayName, email, pictureUrl := "Display Name", "user@example.com", "https://example.com/pic.png"
+	resp, err := apiServer.SetUser(context.Background(), &v1.SetUserRequest{
+		Id:          uint64(user.ID),
+		DisplayName: &displayName,
+		Email:       &email,
+		PictureUrl:  &pictureUrl,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Display Name", resp.GetUser().GetDisplayName())
+	assert.Equal(t, "user@example.com", resp.GetUser().GetEmail())
+	assert.Equal(t, "https://example.com/pic.png", resp.GetUser().GetProfilePicUrl())
+}
+
+func TestSetUser_PartialUpdate(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	user := app.state.CreateUserForTest("test-user")
+	require.NotNil(t, user)
+
+	// Set all fields first
+	initialName, initialEmail := "Initial Name", "initial@example.com"
+	_, err := apiServer.SetUser(context.Background(), &v1.SetUserRequest{
+		Id:          uint64(user.ID),
+		DisplayName: &initialName,
+		Email:       &initialEmail,
+	})
+	require.NoError(t, err)
+
+	// Update only display name; email should be preserved
+	updatedName := "Updated Name"
+	resp, err := apiServer.SetUser(context.Background(), &v1.SetUserRequest{
+		Id:          uint64(user.ID),
+		DisplayName: &updatedName,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Name", resp.GetUser().GetDisplayName())
+	assert.Equal(t, "initial@example.com", resp.GetUser().GetEmail(), "email should be preserved on partial update")
+}
+
+func TestSetUser_InvalidPictureURL(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	user := app.state.CreateUserForTest("test-user")
+	require.NotNil(t, user)
+
+	badURL := "not-a-valid-url"
+	_, err := apiServer.SetUser(context.Background(), &v1.SetUserRequest{
+		Id:         uint64(user.ID),
+		PictureUrl: &badURL,
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.InvalidArgument, st.Code())
+	assert.Contains(t, st.Message(), "invalid picture URL")
+}
+
+func TestSetUser_NotFound(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+	apiServer := newHeadscaleV1APIServer(app)
+
+	displayName := "Ghost"
+	_, err := apiServer.SetUser(context.Background(), &v1.SetUserRequest{
+		Id:          99999,
+		DisplayName: &displayName,
+	})
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.NotFound, st.Code())
+}

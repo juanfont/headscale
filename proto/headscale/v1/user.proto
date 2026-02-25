@@ -35,6 +35,19 @@ message DeleteUserRequest { uint64 id = 1; }
 
 message DeleteUserResponse {}
 
+// SetUserRequest updates profile fields for an existing user.
+// Only fields that are explicitly set are applied; omitted fields leave the
+// current value unchanged.
+// picture_url follows the same naming convention as CreateUserRequest.
+message SetUserRequest {
+  uint64 id = 1;
+  optional string display_name = 2;
+  optional string email = 3;
+  optional string picture_url = 4;
+}
+
+message SetUserResponse { User user = 1; }
+
 message ListUsersRequest {
   uint64 id = 1;
   string name = 2;

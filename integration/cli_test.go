@@ -131,6 +131,41 @@ func TestUserCommand(t *testing.T) {
 		)
 	}, 20*time.Second, 1*time.Second)
 
+	_, err = headscale.Execute(
+		[]string{
+			"headscale",
+			"users",
+			"set",
+			"--output=json",
+			"--identifier=1",
+			"--display-name=User One",
+			"--email=userone@example.com",
+			"--picture-url=https://example.com/avatar.png",
+		},
+	)
+	require.NoError(t, err)
+
+	var listAfterSetUsers []*v1.User
+
+	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+		err := executeAndUnmarshal(headscale,
+			[]string{
+				"headscale",
+				"users",
+				"list",
+				"--output",
+				"json",
+				"--identifier=1",
+			},
+			&listAfterSetUsers,
+		)
+		assert.NoError(ct, err)
+		assert.Len(ct, listAfterSetUsers, 1)
+		assert.Equal(ct, "User One", listAfterSetUsers[0].GetDisplayName(), "display name should be updated")
+		assert.Equal(ct, "userone@example.com", listAfterSetUsers[0].GetEmail(), "email should be updated")
+		assert.Equal(ct, "https://example.com/avatar.png", listAfterSetUsers[0].GetProfilePicUrl(), "picture url should be updated")
+	}, 20*time.Second, 1*time.Second)
+
 	var listByUsername []*v1.User
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -152,9 +187,11 @@ func TestUserCommand(t *testing.T) {
 
 	want := []*v1.User{
 		{
-			Id:    1,
-			Name:  "user1",
-			Email: "user1@test.no",
+			Id:            1,
+			Name:          "user1",
+			DisplayName:   "User One",
+			Email:         "userone@example.com",
+			ProfilePicUrl: "https://example.com/avatar.png",
 		},
 	}
 
@@ -183,9 +220,11 @@ func TestUserCommand(t *testing.T) {
 
 	want = []*v1.User{
 		{
-			Id:    1,
-			Name:  "user1",
-			Email: "user1@test.no",
+			Id:            1,
+			Name:          "user1",
+			DisplayName:   "User One",
+			Email:         "userone@example.com",
+			ProfilePicUrl: "https://example.com/avatar.png",
 		},
 	}
 

@@ -23,6 +23,7 @@ const (
 	HeadscaleService_RenameUser_FullMethodName        = "/headscale.v1.HeadscaleService/RenameUser"
 	HeadscaleService_DeleteUser_FullMethodName        = "/headscale.v1.HeadscaleService/DeleteUser"
 	HeadscaleService_ListUsers_FullMethodName         = "/headscale.v1.HeadscaleService/ListUsers"
+	HeadscaleService_SetUser_FullMethodName           = "/headscale.v1.HeadscaleService/SetUser"
 	HeadscaleService_CreatePreAuthKey_FullMethodName  = "/headscale.v1.HeadscaleService/CreatePreAuthKey"
 	HeadscaleService_ExpirePreAuthKey_FullMethodName  = "/headscale.v1.HeadscaleService/ExpirePreAuthKey"
 	HeadscaleService_DeletePreAuthKey_FullMethodName  = "/headscale.v1.HeadscaleService/DeletePreAuthKey"
@@ -55,6 +56,7 @@ type HeadscaleServiceClient interface {
 	RenameUser(ctx context.Context, in *RenameUserRequest, opts ...grpc.CallOption) (*RenameUserResponse, error)
 	DeleteUser(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*DeleteUserResponse, error)
 	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
+	SetUser(ctx context.Context, in *SetUserRequest, opts ...grpc.CallOption) (*SetUserResponse, error)
 	// --- PreAuthKeys start ---
 	CreatePreAuthKey(ctx context.Context, in *CreatePreAuthKeyRequest, opts ...grpc.CallOption) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(ctx context.Context, in *ExpirePreAuthKeyRequest, opts ...grpc.CallOption) (*ExpirePreAuthKeyResponse, error)
@@ -125,6 +127,16 @@ func (c *headscaleServiceClient) ListUsers(ctx context.Context, in *ListUsersReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListUsersResponse)
 	err := c.cc.Invoke(ctx, HeadscaleService_ListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *headscaleServiceClient) SetUser(ctx context.Context, in *SetUserRequest, opts ...grpc.CallOption) (*SetUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetUserResponse)
+	err := c.cc.Invoke(ctx, HeadscaleService_SetUser_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -350,6 +362,7 @@ type HeadscaleServiceServer interface {
 	RenameUser(context.Context, *RenameUserRequest) (*RenameUserResponse, error)
 	DeleteUser(context.Context, *DeleteUserRequest) (*DeleteUserResponse, error)
 	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
+	SetUser(context.Context, *SetUserRequest) (*SetUserResponse, error)
 	// --- PreAuthKeys start ---
 	CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error)
 	ExpirePreAuthKey(context.Context, *ExpirePreAuthKeyRequest) (*ExpirePreAuthKeyResponse, error)
@@ -397,6 +410,9 @@ func (UnimplementedHeadscaleServiceServer) DeleteUser(context.Context, *DeleteUs
 }
 func (UnimplementedHeadscaleServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListUsers not implemented")
+}
+func (UnimplementedHeadscaleServiceServer) SetUser(context.Context, *SetUserRequest) (*SetUserResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetUser not implemented")
 }
 func (UnimplementedHeadscaleServiceServer) CreatePreAuthKey(context.Context, *CreatePreAuthKeyRequest) (*CreatePreAuthKeyResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreatePreAuthKey not implemented")
@@ -550,6 +566,24 @@ func _HeadscaleService_ListUsers_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HeadscaleServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HeadscaleService_SetUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HeadscaleServiceServer).SetUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HeadscaleService_SetUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HeadscaleServiceServer).SetUser(ctx, req.(*SetUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -954,6 +988,10 @@ var HeadscaleService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUsers",
 			Handler:    _HeadscaleService_ListUsers_Handler,
+		},
+		{
+			MethodName: "SetUser",
+			Handler:    _HeadscaleService_SetUser_Handler,
 		},
 		{
 			MethodName: "CreatePreAuthKey",
