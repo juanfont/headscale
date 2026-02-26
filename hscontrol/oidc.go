@@ -388,6 +388,12 @@ func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time
 		return idTokenExpiration
 	}
 
+	if a.cfg.Expiry == types.MaxDuration {
+		// expiry: 0 means no expiry; return zero time so the node
+		// gets a nil expiry in the database.
+		return time.Time{}
+	}
+
 	return time.Now().Add(a.cfg.Expiry)
 }
 
@@ -604,10 +610,14 @@ func (a *AuthProviderOIDC) handleRegistration(
 	registrationID types.AuthID,
 	expiry time.Time,
 ) (bool, error) {
+	var expiryPtr *time.Time
+	if !expiry.IsZero() {
+		expiryPtr = &expiry
+	}
 	node, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
-		&expiry,
+		expiryPtr,
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
