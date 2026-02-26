@@ -800,11 +800,11 @@ func (nv NodeView) InIPSet(set *netipx.IPSet) bool {
 }
 
 func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
-	if !nv.Valid() {
+	if !nv.Valid() || !node2.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccess(matchers, node2.AsStruct())
+	return nv.ж.CanAccess(matchers, node2.ж)
 }
 
 func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
