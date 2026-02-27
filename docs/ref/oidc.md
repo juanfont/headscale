@@ -281,6 +281,7 @@ Authelia is fully supported by Headscale.
 - Authentik is fully supported by Headscale.
 - [Headscale does not support JSON Web Encryption](https://github.com/juanfont/headscale/issues/2446). Leave the field
   `Encryption Key` in the providers section unset.
+- See Authentik's [Integrate with Headscale](https://integrations.goauthentik.io/networking/headscale/)
 
 ### Google OAuth
 
