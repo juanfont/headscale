@@ -369,3 +369,9 @@ oidc:
 
 Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their group ID(UUID) instead
 of the group name.
+
+## Switching OIDC providers
+
+Headscale only supports a single OIDC provider in its configuration, but it does store the provider identifier of each user. When switching providers, this might lead to issues with existing users: all user details (name, email, groups) might be identical with the new provider, but the identifier will differ. Headscale will be unable to create a new user as the name and email will already be in use for the existing users.
+
+At this time, you will need to manually update the `provider_identifier` column in the `users` table for each user with the appropriate value for the new provider. The identifier is built from the `iss` and `sub` claims of the OIDC ID token, for example `https://id.example.com/12340987`.
