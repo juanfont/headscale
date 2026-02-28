@@ -110,19 +110,19 @@ tailscale up --login-server <YOUR_HEADSCALE_URL>
 ```
 
 Usually, a browser window with further instructions is opened. This page explains how to complete the registration on
-your headscale server and it also prints the registration key required to approve the node:
+your headscale server and it also prints the Auth ID required to approve the node:
 
 === "Native"
 
     ```shell
-    headscale nodes register --user <USER> --key <REGISTRATION_KEY>
+    headscale auth register --user <USER> --auth-id <AUTH_ID>
     ```
 
 === "Container"
 
     ```shell
     docker exec -it headscale \
-      headscale nodes register --user <USER> --key <REGISTRATION_KEY>
+      headscale auth register --user <USER> --auth-id <AUTH_ID>
     ```
 
 ### [Pre authenticated key](../ref/registration.md#pre-authenticated-key)

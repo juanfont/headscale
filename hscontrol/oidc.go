@@ -336,7 +336,7 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		newNode, err := a.handleRegistration(user, authInfo.AuthID, nodeExpiry)
 		if err != nil {
 			if errors.Is(err, db.ErrNodeNotFoundRegistrationCache) {
-				log.Debug().Caller().Str("registration_id", authInfo.AuthID.String()).Msg("registration session expired before authorization completed")
+				log.Debug().Caller().Str("auth_id", authInfo.AuthID.String()).Msg("registration session expired before authorization completed")
 				httpError(writer, NewHTTPError(http.StatusGone, "login session expired, try again", err))
 
 				return

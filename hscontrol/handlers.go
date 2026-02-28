@@ -284,18 +284,18 @@ func (a *AuthProviderWeb) AuthHandler(
 func authIDFromRequest(req *http.Request) (types.AuthID, error) {
 	raw, err := urlParam[string](req, "auth_id")
 	if err != nil {
-		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
+		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}
 
 	// We need to make sure we dont open for XSS style injections, if the parameter that
 	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
 	// the template and log an error.
-	registrationId, err := types.AuthIDFromString(raw)
+	authId, err := types.AuthIDFromString(raw)
 	if err != nil {
-		return "", NewHTTPError(http.StatusBadRequest, "invalid registration id", fmt.Errorf("parsing auth_id from URL: %w", err))
+		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
 	}
 
-	return registrationId, nil
+	return authId, nil
 }
 
 // RegisterHandler shows a simple message in the browser to point to the CLI
@@ -307,7 +307,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	registrationId, err := authIDFromRequest(req)
+	authId, err := authIDFromRequest(req)
 	if err != nil {
 		httpError(writer, err)
 		return
@@ -319,7 +319,7 @@ func (a *AuthProviderWeb) RegisterHandler(
 	_, err = writer.Write([]byte(templates.AuthWeb(
 		"Node registration",
 		"Run the command below in the headscale server to add this node to your network:",
-		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", registrationId.String()),
+		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", authId.String()),
 	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write register response")

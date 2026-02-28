@@ -48,10 +48,10 @@ headscale users create <USER>
     ```
 
     Usually, a browser window with further instructions is opened. This page explains how to complete the registration
-    on your Headscale server and it also prints the registration key required to approve the node:
+    on your Headscale server and it also prints the Auth ID required to approve the node:
 
     ```console
-    headscale nodes register --user <USER> --key <REGISTRATION_KEY>
+    headscale auth register --user <USER> --auth-id <AUTH_ID>
     ```
 
     Congrations, the registration of your personal node is complete and it should be listed as "online" in the output of
@@ -79,10 +79,10 @@ headscale users create <USER>
     ```
 
     Usually, a browser window with further instructions is opened. This page explains how to complete the registration
-    on your Headscale server and it also prints the registration key required to approve the node:
+    on your Headscale server and it also prints the Auth ID required to approve the node:
 
     ```console
-    headscale nodes register --user <USER> --key <REGISTRATION_KEY>
+    headscale auth register --user <USER> --auth-id <AUTH_ID>
     ```
 
     Headscale checks that `<USER>` is allowed to register a node with the specified tag(s) and then transfers ownership

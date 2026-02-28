@@ -54,8 +54,8 @@ Headscale server at `/swagger` for details.
 
     ```console
     curl -H "Authorization: Bearer <API_KEY>" \
-        -d user=<USER> -d key=<REGISTRATION_KEY> \
-        https://headscale.example.com/api/v1/node/register
+        --json '{"user": "<USER>", "authId": "AUTH_ID>"}' \
+        https://headscale.example.com/api/v1/auth/register
     ```
 
 ## gRPC

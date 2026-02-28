@@ -54,6 +54,7 @@ A new `headscale auth` CLI command group supports the approval flow:
 - Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
 - Add SSH `check` action support with OIDC and CLI-based approval flows [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Add `headscale auth register`, `headscale auth approve`, and `headscale auth reject` CLI commands [#1850](https://github.com/juanfont/headscale/pull/1850)
+- Add `auth` related routes to the API. The `auth/register` endpoint now expects data as JSON [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Deprecate `headscale nodes register --key` in favour of `headscale auth register --auth-id` [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)

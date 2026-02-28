@@ -31,7 +31,7 @@ var debugCmd = &cobra.Command{
 
 var createNodeCmd = &cobra.Command{
 	Use:   "create-node",
-	Short: "Create a node that can be registered with `nodes register <>` command",
+	Short: "Create a node that can be registered with `auth register <>` command",
 	RunE: grpcRunE(func(ctx context.Context, client v1.HeadscaleServiceClient, cmd *cobra.Command, args []string) error {
 		user, _ := cmd.Flags().GetString("user")
 		name, _ := cmd.Flags().GetString("name")
