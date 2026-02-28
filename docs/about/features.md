@@ -5,15 +5,16 @@ to provide self-hosters and hobbyists with an open-source server they can use fo
 provides on overview of Headscale's feature and compatibility with the Tailscale control server:
 
 - [x] Full "base" support of Tailscale's features
-- [x] Node registration
-    - [x] Interactive
-    - [x] Pre authenticated key
+- [x] [Node registration](../ref/registration.md)
+    - [x] [Web authentication](../ref/registration.md#web-authentication)
+    - [x] [Pre authenticated key](../ref/registration.md#pre-authenticated-key)
 - [x] [DNS](../ref/dns.md)
     - [x] [MagicDNS](https://tailscale.com/kb/1081/magicdns)
     - [x] [Global and restricted nameservers (split DNS)](https://tailscale.com/kb/1054/dns#nameservers)
     - [x] [search domains](https://tailscale.com/kb/1054/dns#search-domains)
     - [x] [Extra DNS records (Headscale only)](../ref/dns.md#setting-extra-dns-records)
 - [x] [Taildrop (File Sharing)](https://tailscale.com/kb/1106/taildrop)
+- [x] [Tags](../ref/tags.md)
 - [x] [Routes](../ref/routes.md)
     - [x] [Subnet routers](../ref/routes.md#subnet-router)
     - [x] [Exit nodes](../ref/routes.md#exit-node)

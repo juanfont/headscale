@@ -22,17 +22,22 @@ import (
 	"github.com/juanfont/headscale/integration/dockertestutil"
 )
 
+const defaultDirPerm = 0o755
+
 var (
 	ErrTestFailed              = errors.New("test failed")
 	ErrUnexpectedContainerWait = errors.New("unexpected end of container wait")
 	ErrNoDockerContext         = errors.New("no docker context found")
+	ErrMemoryLimitViolations   = errors.New("container(s) exceeded memory limits")
 )
 
 // runTestContainer executes integration tests in a Docker container.
+//
+//nolint:gocyclo // complex test orchestration function
 func runTestContainer(ctx context.Context, config *RunConfig) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
@@ -48,19 +53,21 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 	absLogsDir, err := filepath.Abs(logsDir)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path for logs directory: %w", err)
+		return fmt.Errorf("getting absolute path for logs directory: %w", err)
 	}
 
 	const dirPerm = 0o755
-	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+	if err := os.MkdirAll(absLogsDir, dirPerm); err != nil { //nolint:noinlineerr
+		return fmt.Errorf("creating logs directory: %w", err)
 	}
 
 	if config.CleanBefore {
 		if config.Verbose {
 			log.Printf("Running pre-test cleanup...")
 		}
-		if err := cleanupBeforeTest(ctx); err != nil && config.Verbose {
+
+		err := cleanupBeforeTest(ctx)
+		if err != nil && config.Verbose {
 			log.Printf("Warning: pre-test cleanup failed: %v", err)
 		}
 	}
@@ -71,34 +78,40 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	}
 
 	imageName := "golang:" + config.GoVersion
-	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil {
-		return fmt.Errorf("failed to ensure image availability: %w", err)
+	if err := ensureImageAvailable(ctx, cli, imageName, config.Verbose); err != nil { //nolint:noinlineerr
+		return fmt.Errorf("ensuring image availability: %w", err)
 	}
 
 	resp, err := createGoTestContainer(ctx, cli, config, containerName, absLogsDir, goTestCmd)
 	if err != nil {
-		return fmt.Errorf("failed to create container: %w", err)
+		return fmt.Errorf("creating container: %w", err)
 	}
 
 	if config.Verbose {
 		log.Printf("Created container: %s", resp.ID)
 	}
 
-	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
-		return fmt.Errorf("failed to start container: %w", err)
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil { //nolint:noinlineerr
+		return fmt.Errorf("starting container: %w", err)
 	}
 
 	log.Printf("Starting test: %s", config.TestPattern)
+	log.Printf("Run ID: %s", runID)
+	log.Printf("Monitor with: docker logs -f %s", containerName)
+	log.Printf("Logs directory: %s", logsDir)
 
 	// Start stats collection for container resource monitoring (if enabled)
 	var statsCollector *StatsCollector
+
 	if config.Stats {
 		var err error
-		statsCollector, err = NewStatsCollector()
+
+		statsCollector, err = NewStatsCollector(ctx)
 		if err != nil {
 			if config.Verbose {
 				log.Printf("Warning: failed to create stats collector: %v", err)
 			}
+
 			statsCollector = nil
 		}
 
@@ -107,7 +120,8 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 
 			// Start stats collection immediately - no need for complex retry logic
 			// The new implementation monitors Docker events and will catch containers as they start
-			if err := statsCollector.StartCollection(ctx, runID, config.Verbose); err != nil {
+			err := statsCollector.StartCollection(ctx, runID, config.Verbose)
+			if err != nil {
 				if config.Verbose {
 					log.Printf("Warning: failed to start stats collection: %v", err)
 				}
@@ -119,12 +133,13 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 	exitCode, err := streamAndWait(ctx, cli, resp.ID)
 
 	// Ensure all containers have finished and logs are flushed before extracting artifacts
-	if waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose); waitErr != nil && config.Verbose {
+	waitErr := waitForContainerFinalization(ctx, cli, resp.ID, config.Verbose)
+	if waitErr != nil && config.Verbose {
 		log.Printf("Warning: failed to wait for container finalization: %v", waitErr)
 	}
 
 	// Extract artifacts from test containers before cleanup
-	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose {
+	if err := extractArtifactsFromContainers(ctx, resp.ID, logsDir, config.Verbose); err != nil && config.Verbose { //nolint:noinlineerr
 		log.Printf("Warning: failed to extract artifacts from containers: %v", err)
 	}
 
@@ -137,27 +152,44 @@ func runTestContainer(ctx context.Context, config *RunConfig) error {
 		if len(violations) > 0 {
 			log.Printf("MEMORY LIMIT VIOLATIONS DETECTED:")
 			log.Printf("=================================")
+
 			for _, violation := range violations {
 				log.Printf("Container %s exceeded memory limit: %.1f MB > %.1f MB",
 					violation.ContainerName, violation.MaxMemoryMB, violation.LimitMB)
 			}
 
-			return fmt.Errorf("test failed: %d container(s) exceeded memory limits", len(violations))
+			return fmt.Errorf("test failed: %d %w", len(violations), ErrMemoryLimitViolations)
 		}
 	}
 
 	shouldCleanup := config.CleanAfter && (!config.KeepOnFailure || exitCode == 0)
 	if shouldCleanup {
 		if config.Verbose {
-			log.Printf("Running post-test cleanup...")
+			log.Printf("Running post-test cleanup for run %s...", runID)
 		}
-		if cleanErr := cleanupAfterTest(ctx, cli, resp.ID); cleanErr != nil && config.Verbose {
+
+		cleanErr := cleanupAfterTest(ctx, cli, resp.ID, runID)
+
+		if cleanErr != nil && config.Verbose {
 			log.Printf("Warning: post-test cleanup failed: %v", cleanErr)
+		}
+
+		// Clean up artifacts from successful tests to save disk space in CI
+		if exitCode == 0 {
+			if config.Verbose {
+				log.Printf("Test succeeded, cleaning up artifacts to save disk space...")
+			}
+
+			cleanErr := cleanupSuccessfulTestArtifacts(logsDir, config.Verbose)
+
+			if cleanErr != nil && config.Verbose {
+				log.Printf("Warning: artifact cleanup failed: %v", cleanErr)
+			}
 		}
 	}
 
 	if err != nil {
-		return fmt.Errorf("test execution failed: %w", err)
+		return fmt.Errorf("executing test: %w", err)
 	}
 
 	if exitCode != 0 {
@@ -191,7 +223,7 @@ func buildGoTestCommand(config *RunConfig) []string {
 func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunConfig, containerName, logsDir string, goTestCmd []string) (container.CreateResponse, error) {
 	pwd, err := os.Getwd()
 	if err != nil {
-		return container.CreateResponse{}, fmt.Errorf("failed to get working directory: %w", err)
+		return container.CreateResponse{}, fmt.Errorf("getting working directory: %w", err)
 	}
 
 	projectRoot := findProjectRoot(pwd)
@@ -202,6 +234,28 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		fmt.Sprintf("HEADSCALE_INTEGRATION_POSTGRES=%d", boolToInt(config.UsePostgres)),
 		"HEADSCALE_INTEGRATION_RUN_ID=" + runID,
 	}
+
+	// Pass through CI environment variable for CI detection
+	if ci := os.Getenv("CI"); ci != "" {
+		env = append(env, "CI="+ci)
+	}
+
+	// Pass through all HEADSCALE_INTEGRATION_* environment variables
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_") {
+			// Skip the ones we already set explicitly
+			if strings.HasPrefix(e, "HEADSCALE_INTEGRATION_POSTGRES=") ||
+				strings.HasPrefix(e, "HEADSCALE_INTEGRATION_RUN_ID=") {
+				continue
+			}
+
+			env = append(env, e)
+		}
+	}
+
+	// Set GOCACHE to a known location (used by both bind mount and volume cases)
+	env = append(env, "GOCACHE=/cache/go-build")
+
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
@@ -221,20 +275,43 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 		log.Printf("Using Docker socket: %s", dockerSocketPath)
 	}
 
+	binds := []string{
+		fmt.Sprintf("%s:%s", projectRoot, projectRoot),
+		dockerSocketPath + ":/var/run/docker.sock",
+		logsDir + ":/tmp/control",
+	}
+
+	// Use bind mounts for Go cache if provided via environment variables,
+	// otherwise fall back to Docker volumes for local development
+	var mounts []mount.Mount
+
+	goCache := os.Getenv("HEADSCALE_INTEGRATION_GO_CACHE")
+	goBuildCache := os.Getenv("HEADSCALE_INTEGRATION_GO_BUILD_CACHE")
+
+	if goCache != "" {
+		binds = append(binds, goCache+":/go")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-cache",
+			Target: "/go",
+		})
+	}
+
+	if goBuildCache != "" {
+		binds = append(binds, goBuildCache+":/cache/go-build")
+	} else {
+		mounts = append(mounts, mount.Mount{
+			Type:   mount.TypeVolume,
+			Source: "hs-integration-go-build-cache",
+			Target: "/cache/go-build",
+		})
+	}
+
 	hostConfig := &container.HostConfig{
 		AutoRemove: false, // We'll remove manually for better control
-		Binds: []string{
-			fmt.Sprintf("%s:%s", projectRoot, projectRoot),
-			dockerSocketPath + ":/var/run/docker.sock",
-			logsDir + ":/tmp/control",
-		},
-		Mounts: []mount.Mount{
-			{
-				Type:   mount.TypeVolume,
-				Source: "hs-integration-go-cache",
-				Target: "/go",
-			},
-		},
+		Binds:      binds,
+		Mounts:     mounts,
 	}
 
 	return cli.ContainerCreate(ctx, containerConfig, hostConfig, nil, nil, containerName)
@@ -248,7 +325,7 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 		Follow:     true,
 	})
 	if err != nil {
-		return -1, fmt.Errorf("failed to get container logs: %w", err)
+		return -1, fmt.Errorf("getting container logs: %w", err)
 	}
 	defer out.Close()
 
@@ -260,7 +337,7 @@ func streamAndWait(ctx context.Context, cli *client.Client, containerID string) 
 	select {
 	case err := <-errCh:
 		if err != nil {
-			return -1, fmt.Errorf("error waiting for container: %w", err)
+			return -1, fmt.Errorf("waiting for container: %w", err)
 		}
 	case status := <-statusCh:
 		return int(status.StatusCode), nil
@@ -274,7 +351,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	// First, get all related test containers
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
 	}
 
 	testContainers := getCurrentTestContainers(containers, testContainerID, verbose)
@@ -283,6 +360,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 	maxWaitTime := 10 * time.Second
 	checkInterval := 500 * time.Millisecond
 	timeout := time.After(maxWaitTime)
+
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
 
@@ -292,6 +370,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 			if verbose {
 				log.Printf("Timeout waiting for container finalization, proceeding with artifact extraction")
 			}
+
 			return nil
 		case <-ticker.C:
 			allFinalized := true
@@ -302,12 +381,14 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 					if verbose {
 						log.Printf("Warning: failed to inspect container %s: %v", testCont.name, err)
 					}
+
 					continue
 				}
 
 				// Check if container is in a final state
 				if !isContainerFinalized(inspect.State) {
 					allFinalized = false
+
 					if verbose {
 						log.Printf("Container %s still finalizing (state: %s)", testCont.name, inspect.State.Status)
 					}
@@ -320,6 +401,7 @@ func waitForContainerFinalization(ctx context.Context, cli *client.Client, testC
 				if verbose {
 					log.Printf("All test containers finalized, ready for artifact extraction")
 				}
+
 				return nil
 			}
 		}
@@ -336,13 +418,15 @@ func isContainerFinalized(state *container.State) bool {
 func findProjectRoot(startPath string) string {
 	current := startPath
 	for {
-		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
+		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil { //nolint:noinlineerr
 			return current
 		}
+
 		parent := filepath.Dir(current)
 		if parent == current {
 			return startPath
 		}
+
 		current = parent
 	}
 }
@@ -352,34 +436,37 @@ func boolToInt(b bool) int {
 	if b {
 		return 1
 	}
+
 	return 0
 }
 
 // DockerContext represents Docker context information.
 type DockerContext struct {
-	Name      string                 `json:"Name"`
-	Metadata  map[string]interface{} `json:"Metadata"`
-	Endpoints map[string]interface{} `json:"Endpoints"`
-	Current   bool                   `json:"Current"`
+	Name      string         `json:"Name"`
+	Metadata  map[string]any `json:"Metadata"`
+	Endpoints map[string]any `json:"Endpoints"`
+	Current   bool           `json:"Current"`
 }
 
 // createDockerClient creates a Docker client with context detection.
-func createDockerClient() (*client.Client, error) {
-	contextInfo, err := getCurrentDockerContext()
+func createDockerClient(ctx context.Context) (*client.Client, error) {
+	contextInfo, err := getCurrentDockerContext(ctx)
 	if err != nil {
 		return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	}
 
 	var clientOpts []client.Opt
+
 	clientOpts = append(clientOpts, client.WithAPIVersionNegotiation())
 
 	if contextInfo != nil {
 		if endpoints, ok := contextInfo.Endpoints["docker"]; ok {
-			if endpointMap, ok := endpoints.(map[string]interface{}); ok {
+			if endpointMap, ok := endpoints.(map[string]any); ok {
 				if host, ok := endpointMap["Host"].(string); ok {
 					if runConfig.Verbose {
 						log.Printf("Using Docker host from context '%s': %s", contextInfo.Name, host)
 					}
+
 					clientOpts = append(clientOpts, client.WithHost(host))
 				}
 			}
@@ -394,16 +481,17 @@ func createDockerClient() (*client.Client, error) {
 }
 
 // getCurrentDockerContext retrieves the current Docker context information.
-func getCurrentDockerContext() (*DockerContext, error) {
-	cmd := exec.Command("docker", "context", "inspect")
+func getCurrentDockerContext(ctx context.Context) (*DockerContext, error) {
+	cmd := exec.CommandContext(ctx, "docker", "context", "inspect")
+
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get docker context: %w", err)
+		return nil, fmt.Errorf("getting docker context: %w", err)
 	}
 
 	var contexts []DockerContext
-	if err := json.Unmarshal(output, &contexts); err != nil {
-		return nil, fmt.Errorf("failed to parse docker context: %w", err)
+	if err := json.Unmarshal(output, &contexts); err != nil { //nolint:noinlineerr
+		return nil, fmt.Errorf("parsing docker context: %w", err)
 	}
 
 	if len(contexts) > 0 {
@@ -422,12 +510,13 @@ func getDockerSocketPath() string {
 
 // checkImageAvailableLocally checks if the specified Docker image is available locally.
 func checkImageAvailableLocally(ctx context.Context, cli *client.Client, imageName string) (bool, error) {
-	_, _, err := cli.ImageInspectWithRaw(ctx, imageName)
+	_, _, err := cli.ImageInspectWithRaw(ctx, imageName) //nolint:staticcheck // SA1019: deprecated but functional
 	if err != nil {
-		if client.IsErrNotFound(err) {
+		if client.IsErrNotFound(err) { //nolint:staticcheck // SA1019: deprecated but functional
 			return false, nil
 		}
-		return false, fmt.Errorf("failed to inspect image %s: %w", imageName, err)
+
+		return false, fmt.Errorf("inspecting image %s: %w", imageName, err)
 	}
 
 	return true, nil
@@ -438,13 +527,14 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 	// First check if image is available locally
 	available, err := checkImageAvailableLocally(ctx, cli, imageName)
 	if err != nil {
-		return fmt.Errorf("failed to check local image availability: %w", err)
+		return fmt.Errorf("checking local image availability: %w", err)
 	}
 
 	if available {
 		if verbose {
 			log.Printf("Image %s is available locally", imageName)
 		}
+
 		return nil
 	}
 
@@ -455,20 +545,21 @@ func ensureImageAvailable(ctx context.Context, cli *client.Client, imageName str
 
 	reader, err := cli.ImagePull(ctx, imageName, image.PullOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to pull image %s: %w", imageName, err)
+		return fmt.Errorf("pulling image %s: %w", imageName, err)
 	}
 	defer reader.Close()
 
 	if verbose {
 		_, err = io.Copy(os.Stdout, reader)
 		if err != nil {
-			return fmt.Errorf("failed to read pull output: %w", err)
+			return fmt.Errorf("reading pull output: %w", err)
 		}
 	} else {
 		_, err = io.Copy(io.Discard, reader)
 		if err != nil {
-			return fmt.Errorf("failed to read pull output: %w", err)
+			return fmt.Errorf("reading pull output: %w", err)
 		}
+
 		log.Printf("Image %s pulled successfully", imageName)
 	}
 
@@ -483,9 +574,11 @@ func listControlFiles(logsDir string) {
 		return
 	}
 
-	var logFiles []string
-	var dataFiles []string
-	var dataDirs []string
+	var (
+		logFiles  []string
+		dataFiles []string
+		dataDirs  []string
+	)
 
 	for _, entry := range entries {
 		name := entry.Name()
@@ -514,6 +607,7 @@ func listControlFiles(logsDir string) {
 
 	if len(logFiles) > 0 {
 		log.Printf("Headscale logs:")
+
 		for _, file := range logFiles {
 			log.Printf("  %s", file)
 		}
@@ -521,9 +615,11 @@ func listControlFiles(logsDir string) {
 
 	if len(dataFiles) > 0 || len(dataDirs) > 0 {
 		log.Printf("Headscale data:")
+
 		for _, file := range dataFiles {
 			log.Printf("  %s", file)
 		}
+
 		for _, dir := range dataDirs {
 			log.Printf("  %s/", dir)
 		}
@@ -532,25 +628,27 @@ func listControlFiles(logsDir string) {
 
 // extractArtifactsFromContainers collects container logs and files from the specific test run.
 func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDir string, verbose bool) error {
-	cli, err := createDockerClient()
+	cli, err := createDockerClient(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("creating Docker client: %w", err)
 	}
 	defer cli.Close()
 
 	// List all containers
 	containers, err := cli.ContainerList(ctx, container.ListOptions{All: true})
 	if err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
+		return fmt.Errorf("listing containers: %w", err)
 	}
 
 	// Get containers from the specific test run
 	currentTestContainers := getCurrentTestContainers(containers, testContainerID, verbose)
 
 	extractedCount := 0
+
 	for _, cont := range currentTestContainers {
 		// Extract container logs and tar files
-		if err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose); err != nil {
+		err := extractContainerArtifacts(ctx, cli, cont.ID, cont.name, logsDir, verbose)
+		if err != nil {
 			if verbose {
 				log.Printf("Warning: failed to extract artifacts from container %s (%s): %v", cont.name, cont.ID[:12], err)
 			}
@@ -558,6 +656,7 @@ func extractArtifactsFromContainers(ctx context.Context, testContainerID, logsDi
 			if verbose {
 				log.Printf("Extracted artifacts from container %s (%s)", cont.name, cont.ID[:12])
 			}
+
 			extractedCount++
 		}
 	}
@@ -581,11 +680,13 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 
 	// Find the test container to get its run ID label
 	var runID string
+
 	for _, cont := range containers {
 		if cont.ID == testContainerID {
 			if cont.Labels != nil {
 				runID = cont.Labels["hi.run-id"]
 			}
+
 			break
 		}
 	}
@@ -626,18 +727,21 @@ func getCurrentTestContainers(containers []container.Summary, testContainerID st
 // extractContainerArtifacts saves logs and tar files from a container.
 func extractContainerArtifacts(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Ensure the logs directory exists
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+	err := os.MkdirAll(logsDir, defaultDirPerm)
+	if err != nil {
+		return fmt.Errorf("creating logs directory: %w", err)
 	}
 
 	// Extract container logs
-	if err := extractContainerLogs(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
-		return fmt.Errorf("failed to extract logs: %w", err)
+	err = extractContainerLogs(ctx, cli, containerID, containerName, logsDir, verbose)
+	if err != nil {
+		return fmt.Errorf("extracting logs: %w", err)
 	}
 
 	// Extract tar files for headscale containers only
 	if strings.HasPrefix(containerName, "hs-") {
-		if err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose); err != nil {
+		err := extractContainerFiles(ctx, cli, containerID, containerName, logsDir, verbose)
+		if err != nil {
 			if verbose {
 				log.Printf("Warning: failed to extract files from %s: %v", containerName, err)
 			}
@@ -659,7 +763,7 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 		Tail:       "all",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to get container logs: %w", err)
+		return fmt.Errorf("getting container logs: %w", err)
 	}
 	defer logReader.Close()
 
@@ -673,17 +777,17 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 	// Demultiplex the Docker logs stream to separate stdout and stderr
 	_, err = stdcopy.StdCopy(&stdoutBuf, &stderrBuf, logReader)
 	if err != nil {
-		return fmt.Errorf("failed to demultiplex container logs: %w", err)
+		return fmt.Errorf("demultiplexing container logs: %w", err)
 	}
 
 	// Write stdout logs
-	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("failed to write stdout log: %w", err)
+	if err := os.WriteFile(stdoutPath, stdoutBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
+		return fmt.Errorf("writing stdout log: %w", err)
 	}
 
 	// Write stderr logs
-	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil {
-		return fmt.Errorf("failed to write stderr log: %w", err)
+	if err := os.WriteFile(stderrPath, stderrBuf.Bytes(), 0o644); err != nil { //nolint:gosec,noinlineerr // log files should be readable
+		return fmt.Errorf("writing stderr log: %w", err)
 	}
 
 	if verbose {
@@ -699,65 +803,5 @@ func extractContainerLogs(ctx context.Context, cli *client.Client, containerID, 
 func extractContainerFiles(ctx context.Context, cli *client.Client, containerID, containerName, logsDir string, verbose bool) error {
 	// Files are now extracted directly by the integration tests
 	// This function is kept for potential future use or other file types
-	return nil
-}
-
-// logExtractionError logs extraction errors with appropriate level based on error type.
-func logExtractionError(artifactType, containerName string, err error, verbose bool) {
-	if errors.Is(err, ErrFileNotFoundInTar) {
-		// File not found is expected and only logged in verbose mode
-		if verbose {
-			log.Printf("No %s found in container %s", artifactType, containerName)
-		}
-	} else {
-		// Other errors are actual failures and should be logged as warnings
-		log.Printf("Warning: failed to extract %s from %s: %v", artifactType, containerName, err)
-	}
-}
-
-// extractSingleFile copies a single file from a container.
-func extractSingleFile(ctx context.Context, cli *client.Client, containerID, sourcePath, fileName, logsDir string, verbose bool) error {
-	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
-	}
-	defer tarReader.Close()
-
-	// Extract the single file from the tar
-	filePath := filepath.Join(logsDir, fileName)
-	if err := extractFileFromTar(tarReader, filepath.Base(sourcePath), filePath); err != nil {
-		return fmt.Errorf("failed to extract file from tar: %w", err)
-	}
-
-	if verbose {
-		log.Printf("Extracted %s from %s", fileName, containerID[:12])
-	}
-
-	return nil
-}
-
-// extractDirectory copies a directory from a container and extracts its contents.
-func extractDirectory(ctx context.Context, cli *client.Client, containerID, sourcePath, dirName, logsDir string, verbose bool) error {
-	tarReader, _, err := cli.CopyFromContainer(ctx, containerID, sourcePath)
-	if err != nil {
-		return fmt.Errorf("failed to copy %s from container: %w", sourcePath, err)
-	}
-	defer tarReader.Close()
-
-	// Create target directory
-	targetDir := filepath.Join(logsDir, dirName)
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return fmt.Errorf("failed to create directory %s: %w", targetDir, err)
-	}
-
-	// Extract the directory from the tar
-	if err := extractDirectoryFromTar(tarReader, targetDir); err != nil {
-		return fmt.Errorf("failed to extract directory from tar: %w", err)
-	}
-
-	if verbose {
-		log.Printf("Extracted %s/ from %s", dirName, containerID[:12])
-	}
-
 	return nil
 }

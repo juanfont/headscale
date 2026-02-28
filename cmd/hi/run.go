@@ -19,7 +19,7 @@ type RunConfig struct {
 	FailFast      bool          `flag:"failfast,default=true,Stop on first test failure"`
 	UsePostgres   bool          `flag:"postgres,default=false,Use PostgreSQL instead of SQLite"`
 	GoVersion     string        `flag:"go-version,Go version to use (auto-detected from go.mod)"`
-	CleanBefore   bool          `flag:"clean-before,default=true,Clean resources before test"`
+	CleanBefore   bool          `flag:"clean-before,default=true,Clean stale resources before test"`
 	CleanAfter    bool          `flag:"clean-after,default=true,Clean resources after test"`
 	KeepOnFailure bool          `flag:"keep-on-failure,default=false,Keep containers on test failure"`
 	LogsDir       string        `flag:"logs-dir,default=control_logs,Control logs directory"`
@@ -48,7 +48,9 @@ func runIntegrationTest(env *command.Env) error {
 	if runConfig.Verbose {
 		log.Printf("Running pre-flight system checks...")
 	}
-	if err := runDoctorCheck(env.Context()); err != nil {
+
+	err := runDoctorCheck(env.Context())
+	if err != nil {
 		return fmt.Errorf("pre-flight checks failed: %w", err)
 	}
 
@@ -66,15 +68,15 @@ func runIntegrationTest(env *command.Env) error {
 func detectGoVersion() string {
 	goModPath := filepath.Join("..", "..", "go.mod")
 
-	if _, err := os.Stat("go.mod"); err == nil {
+	if _, err := os.Stat("go.mod"); err == nil { //nolint:noinlineerr
 		goModPath = "go.mod"
-	} else if _, err := os.Stat("../../go.mod"); err == nil {
+	} else if _, err := os.Stat("../../go.mod"); err == nil { //nolint:noinlineerr
 		goModPath = "../../go.mod"
 	}
 
 	content, err := os.ReadFile(goModPath)
 	if err != nil {
-		return "1.25"
+		return "1.26.0"
 	}
 
 	lines := splitLines(string(content))
@@ -89,13 +91,15 @@ func detectGoVersion() string {
 		}
 	}
 
-	return "1.25"
+	return "1.26.0"
 }
 
 // splitLines splits a string into lines without using strings.Split.
 func splitLines(s string) []string {
-	var lines []string
-	var current string
+	var (
+		lines   []string
+		current string
+	)
 
 	for _, char := range s {
 		if char == '\n' {

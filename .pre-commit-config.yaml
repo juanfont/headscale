@@ -2,15 +2,15 @@
 # See: https://prek.j178.dev/quickstart/
 # See: https://prek.j178.dev/builtin/
 
-# Global exclusions - ignore docs and generated code
-exclude: ^(docs/|gen/)
+# Global exclusions - ignore generated code
+exclude: ^gen/
 
 repos:
   # Built-in hooks from pre-commit/pre-commit-hooks
   # prek will use fast-path optimized versions automatically
   # See: https://prek.j178.dev/builtin/
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-case-conflict
@@ -42,26 +42,13 @@ repos:
         name: prettier
         entry: prettier --write --list-different
         language: system
-        types_or:
-          [
-            javascript,
-            jsx,
-            ts,
-            tsx,
-            yaml,
-            json,
-            toml,
-            html,
-            css,
-            scss,
-            sass,
-            markdown,
-          ]
+        exclude: ^docs/
+        types_or: [javascript, jsx, ts, tsx, yaml, json, toml, html, css, scss, sass, markdown]
 
       # golangci-lint for Go code quality
       - id: golangci-lint
         name: golangci-lint
-        entry: .golangci-lint-hook.sh
+        entry: golangci-lint run --new-from-rev=HEAD~1 --timeout=5m --fix
         language: system
         types: [go]
         pass_filenames: false

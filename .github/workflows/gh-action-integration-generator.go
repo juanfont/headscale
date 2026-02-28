@@ -10,6 +10,55 @@ import (
 	"strings"
 )
 
+// testsToSplit defines tests that should be split into multiple CI jobs.
+// Key is the test function name, value is a list of subtest prefixes.
+// Each prefix becomes a separate CI job as "TestName/prefix".
+//
+// Example: TestAutoApproveMultiNetwork has subtests like:
+//   - TestAutoApproveMultiNetwork/authkey-tag-advertiseduringup-false-pol-database
+//   - TestAutoApproveMultiNetwork/webauth-user-advertiseduringup-true-pol-file
+//
+// Splitting by approver type (tag, user, group) creates 6 CI jobs with 4 tests each:
+//   - TestAutoApproveMultiNetwork/authkey-tag.* (4 tests)
+//   - TestAutoApproveMultiNetwork/authkey-user.* (4 tests)
+//   - TestAutoApproveMultiNetwork/authkey-group.* (4 tests)
+//   - TestAutoApproveMultiNetwork/webauth-tag.* (4 tests)
+//   - TestAutoApproveMultiNetwork/webauth-user.* (4 tests)
+//   - TestAutoApproveMultiNetwork/webauth-group.* (4 tests)
+//
+// This reduces load per CI job (4 tests instead of 12) to avoid infrastructure
+// flakiness when running many sequential Docker-based integration tests.
+var testsToSplit = map[string][]string{
+	"TestAutoApproveMultiNetwork": {
+		"authkey-tag",
+		"authkey-user",
+		"authkey-group",
+		"webauth-tag",
+		"webauth-user",
+		"webauth-group",
+	},
+}
+
+// expandTests takes a list of test names and expands any that need splitting
+// into multiple subtest patterns.
+func expandTests(tests []string) []string {
+	var expanded []string
+	for _, test := range tests {
+		if prefixes, ok := testsToSplit[test]; ok {
+			// This test should be split into multiple jobs.
+			// We append ".*" to each prefix because the CI runner wraps patterns
+			// with ^...$ anchors. Without ".*", a pattern like "authkey$" wouldn't
+			// match "authkey-tag-advertiseduringup-false-pol-database".
+			for _, prefix := range prefixes {
+				expanded = append(expanded, fmt.Sprintf("%s/%s.*", test, prefix))
+			}
+		} else {
+			expanded = append(expanded, test)
+		}
+	}
+	return expanded
+}
+
 func findTests() []string {
 	rgBin, err := exec.LookPath("rg")
 	if err != nil {
@@ -66,8 +115,11 @@ func updateYAML(tests []string, jobName string, testPath string) {
 func main() {
 	tests := findTests()
 
-	quotedTests := make([]string, len(tests))
-	for i, test := range tests {
+	// Expand tests that should be split into multiple jobs
+	expandedTests := expandTests(tests)
+
+	quotedTests := make([]string, len(expandedTests))
+	for i, test := range expandedTests {
 		quotedTests[i] = fmt.Sprintf("\"%s\"", test)
 	}
 

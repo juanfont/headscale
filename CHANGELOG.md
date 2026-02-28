@@ -1,34 +1,204 @@
 # CHANGELOG
 
-## Next
+## 0.29.0 (202x-xx-xx)
 
-**Minimum supported Tailscale client version: v1.74.0**
+**Minimum supported Tailscale client version: v1.76.0**
 
-### Web registration templates redesign
+### Tailscale ACL compatibility improvements
 
-The OIDC callback and device registration web pages have been updated to use the
-Material for MkDocs design system from the official documentation. The templates
-now use consistent typography, spacing, and colours across all registration
-flows. External links are properly secured with noreferrer/noopener attributes.
-### Pre-authentication key security improvements
+Extensive test cases were systematically generated using Tailscale clients and the official SaaS
+to understand how the packet filter should be generated. We discovered a few differences, but
+overall our implementation was very close.
+[#3036](https://github.com/juanfont/headscale/pull/3036)
 
-Pre-authentication keys now use bcrypt hashing for improved security
-[#2853](https://github.com/juanfont/headscale/pull/2853). Keys are stored as a
-prefix and bcrypt hash instead of plaintext. The full key is only displayed once
-at creation time. When listing keys, only the prefix is shown (e.g.,
-`hskey-auth-{prefix}-***`). All new keys use the format
-`hskey-auth-{prefix}-{secret}`. Legacy plaintext keys continue to work for
-backwards compatibility.
+### BREAKING
+
+- **ACL Policy**: Wildcard (`*`) in ACL sources and destinations now resolves to Tailscale's CGNAT range (`100.64.0.0/10`) and ULA range (`fd7a:115c:a1e0::/48`) instead of all IPs (`0.0.0.0/0` and `::/0`) [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - This better matches Tailscale's security model where `*` means "any node in the tailnet" rather than "any IP address"
+  - Policies relying on wildcard to match non-Tailscale IPs will need to use explicit CIDR ranges instead
+  - **Note**: Users with non-standard IP ranges configured in `prefixes.ipv4` or `prefixes.ipv6` (which is unsupported and produces a warning) will need to explicitly specify their CIDR ranges in ACL rules instead of using `*`
+- **ACL Policy**: Validate autogroup:self source restrictions matching Tailscale behavior - tags, hosts, and IPs are rejected as sources for autogroup:self destinations [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Policies using tags, hosts, or IP addresses as sources for autogroup:self destinations will now fail validation
+- **Upgrade path**: Headscale now enforces a strict version upgrade path [#3083](https://github.com/juanfont/headscale/pull/3083)
+  - Skipping minor versions (e.g. 0.27 → 0.29) is blocked; upgrade one minor version at a time
+  - Downgrading to a previous minor version is blocked
+  - Patch version changes within the same minor are always allowed
+- **ACL Policy**: The `proto:icmp` protocol name now only includes ICMPv4 (protocol 1), matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+  - Previously, `proto:icmp` included both ICMPv4 and ICMPv6
+  - Use `proto:ipv6-icmp` or protocol number `58` explicitly for ICMPv6
 
 ### Changes
 
+- **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Use CIDR format for autogroup:self destination IPs matching Tailscale behavior [#3036](https://github.com/juanfont/headscale/pull/3036)
+- **ACL Policy**: Merge filter rules with identical SrcIPs and IPProto matching Tailscale behavior - multiple ACL rules with the same source now produce a single FilterRule with combined DstPorts [#3036](https://github.com/juanfont/headscale/pull/3036)
+- Remove deprecated `--namespace` flag from `nodes list`, `nodes register`, and `debug create-node` commands (use `--user` instead) [#3093](https://github.com/juanfont/headscale/pull/3093)
+- Remove deprecated `namespace`/`ns` command aliases for `users` and `machine`/`machines` aliases for `nodes` [#3093](https://github.com/juanfont/headscale/pull/3093)
+
+## 0.28.0 (2026-02-04)
+
+**Minimum supported Tailscale client version: v1.74.0**
+
+### Tags as identity
+
+Tags are now implemented following the Tailscale model where tags and user ownership are mutually exclusive. Devices can be either
+user-owned (authenticated via web/OIDC) or tagged (authenticated via tagged PreAuthKeys). Tagged devices receive their identity from
+tags rather than users, making them suitable for servers and infrastructure. Applying a tag to a device removes user-based
+ownership. See the [Tailscale tags documentation](https://tailscale.com/kb/1068/tags) for details on how tags work.
+
+User-owned nodes can now request tags during registration using `--advertise-tags`. Tags are validated against the `tagOwners` policy
+and applied at registration time. Tags can be managed via the CLI or API after registration. Tagged nodes can return to user-owned
+by re-authenticating with `tailscale up --advertise-tags= --force-reauth`.
+
+A one-time migration will validate and migrate any `RequestTags` (stored in hostinfo) to the tags column. Tags are validated against
+your policy's `tagOwners` rules during migration. [#3011](https://github.com/juanfont/headscale/pull/3011)
+
+### Smarter map updates
+
+The map update system has been rewritten to send smaller, partial updates instead of full network maps whenever possible. This reduces bandwidth usage and improves performance, especially for large networks. The system now properly tracks peer
+changes and can send removal notifications when nodes are removed due to policy changes.
+[#2856](https://github.com/juanfont/headscale/pull/2856) [#2961](https://github.com/juanfont/headscale/pull/2961)
+
+### Pre-authentication key security improvements
+
+Pre-authentication keys now use bcrypt hashing for improved security [#2853](https://github.com/juanfont/headscale/pull/2853). Keys
+are stored as a prefix and bcrypt hash instead of plaintext. The full key is only displayed once at creation time. When listing keys,
+only the prefix is shown (e.g., `hskey-auth-{prefix}-***`). All new keys use the format `hskey-auth-{prefix}-{secret}`. Legacy plaintext keys in the format `{secret}` will continue to work for backwards compatibility.
+
+### Web registration templates redesign
+
+The OIDC callback and device registration web pages have been updated to use the Material for MkDocs design system from the official
+documentation. The templates now use consistent typography, spacing, and colours across all registration flows.
+
+### Database migration support removed for pre-0.25.0 databases
+
+Headscale no longer supports direct upgrades from databases created before version 0.25.0. Users on older versions must upgrade
+sequentially through each stable release, selecting the latest patch version available for each minor release.
+
+### BREAKING
+
+- **API**: The Node message in the gRPC/REST API has been simplified - the `ForcedTags`, `InvalidTags`, and `ValidTags` fields have been removed and replaced with a single `Tags` field that contains the node's applied tags [#2993](https://github.com/juanfont/headscale/pull/2993)
+  - API clients should use the `Tags` field instead of `ValidTags`
+  - The `headscale nodes list` CLI command now always shows a Tags column and the `--tags` flag has been removed
+- **PreAuthKey CLI**: Commands now use ID-based operations instead of user+key combinations [#2992](https://github.com/juanfont/headscale/pull/2992)
+  - `headscale preauthkeys create` no longer requires `--user` flag (optional for tracking creation)
+  - `headscale preauthkeys list` lists all keys (no longer filtered by user)
+  - `headscale preauthkeys expire --id <ID>` replaces `--user <USER> <KEY>`
+  - `headscale preauthkeys delete --id <ID>` replaces `--user <USER> <KEY>`
+
+  **Before:**
+
+  ```bash
+  headscale preauthkeys create --user 1 --reusable --tags tag:server
+  headscale preauthkeys list --user 1
+  headscale preauthkeys expire --user 1 <KEY>
+  headscale preauthkeys delete --user 1 <KEY>
+  ```
+
+  **After:**
+
+  ```bash
+  headscale preauthkeys create --reusable --tags tag:server
+  headscale preauthkeys list
+  headscale preauthkeys expire --id 123
+  headscale preauthkeys delete --id 123
+  ```
+
+- **Tags**: The gRPC `SetTags` endpoint now allows converting user-owned nodes to tagged nodes by setting tags. [#2885](https://github.com/juanfont/headscale/pull/2885)
+- **Tags**: Tags are now resolved from the node's stored Tags field only [#2931](https://github.com/juanfont/headscale/pull/2931)
+  - `--advertise-tags` is processed during registration, not on every policy evaluation
+  - PreAuthKey tagged devices ignore `--advertise-tags` from clients
+  - User-owned nodes can use `--advertise-tags` if authorized by `tagOwners` policy
+  - Tags can be managed via CLI (`headscale nodes tag`) or the SetTags API after registration
+- Database migration support removed for pre-0.25.0 databases [#2883](https://github.com/juanfont/headscale/pull/2883)
+  - If you are running a version older than 0.25.0, you must upgrade to 0.25.1 first, then upgrade to this release
+  - See the [upgrade path documentation](https://headscale.net/stable/about/faq/#what-is-the-recommended-update-path-can-i-skip-multiple-versions-while-updating) for detailed guidance
+  - In version 0.29, all migrations before 0.28.0 will also be removed
+- Remove ability to move nodes between users [#2922](https://github.com/juanfont/headscale/pull/2922)
+  - The `headscale nodes move` CLI command has been removed
+  - The `MoveNode` API endpoint has been removed
+  - Nodes are permanently associated with their user or tag at registration time
+- Add `oidc.email_verified_required` config option to control email verification requirement [#2860](https://github.com/juanfont/headscale/pull/2860)
+  - When `true` (default), only verified emails can authenticate via OIDC in conjunction with `oidc.allowed_domains` or
+    `oidc.allowed_users`. Previous versions allowed to authenticate with an unverified email but did not store the email
+    address in the user profile. This is now rejected during authentication with an `unverified email` error.
+  - When `false`, unverified emails are allowed for OIDC authentication and the email address is stored in the user
+    profile regardless of its verification state.
+- **SSH Policy**: Wildcard (`*`) is no longer supported as an SSH destination [#3009](https://github.com/juanfont/headscale/issues/3009)
+  - Use `autogroup:member` for user-owned devices
+  - Use `autogroup:tagged` for tagged devices
+  - Use specific tags (e.g., `tag:server`) for targeted access
+
+  **Before:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["*"], "users": ["root"] }
+  ```
+
+  **After:**
+
+  ```json
+  { "action": "accept", "src": ["group:admins"], "dst": ["autogroup:member", "autogroup:tagged"], "users": ["root"] }
+  ```
+
+- **SSH Policy**: SSH source/destination validation now enforces Tailscale's security model [#3010](https://github.com/juanfont/headscale/issues/3010)
+
+  Per [Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh), the following rules are now enforced:
+  1. **Tags cannot SSH to user-owned devices**: SSH rules with `tag:*` or `autogroup:tagged` as source cannot have username destinations (e.g., `alice@`) or `autogroup:member`/`autogroup:self` as destination
+  2. **Username destinations require same-user source**: If destination is a specific username (e.g., `alice@`), the source must be that exact same user only. Use `autogroup:self` for same-user SSH access instead
+
+  **Invalid policies now rejected at load time:**
+
+  ```json
+  // INVALID: tag source to user destination
+  {"src": ["tag:server"], "dst": ["alice@"], ...}
+
+  // INVALID: autogroup:tagged to autogroup:member
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:member"], ...}
+
+  // INVALID: group to specific user (use autogroup:self instead)
+  {"src": ["group:admins"], "dst": ["alice@"], ...}
+  ```
+
+  **Valid patterns:**
+
+  ```json
+  // Users/groups can SSH to their own devices via autogroup:self
+  {"src": ["group:admins"], "dst": ["autogroup:self"], ...}
+
+  // Users/groups can SSH to tagged devices
+  {"src": ["group:admins"], "dst": ["autogroup:tagged"], ...}
+
+  // Tagged devices can SSH to other tagged devices
+  {"src": ["autogroup:tagged"], "dst": ["autogroup:tagged"], ...}
+
+  // Same user can SSH to their own devices
+  {"src": ["alice@"], "dst": ["alice@"], ...}
+  ```
+
+### Changes
+
+- Smarter change notifications send partial map updates and node removals instead of full maps [#2961](https://github.com/juanfont/headscale/pull/2961)
+  - Send lightweight endpoint and DERP region updates instead of full maps [#2856](https://github.com/juanfont/headscale/pull/2856)
 - Add NixOS module in repository for faster iteration [#2857](https://github.com/juanfont/headscale/pull/2857)
 - Add favicon to webpages [#2858](https://github.com/juanfont/headscale/pull/2858)
 - Redesign OIDC callback and registration web templates [#2832](https://github.com/juanfont/headscale/pull/2832)
 - Reclaim IPs from the IP allocator when nodes are deleted [#2831](https://github.com/juanfont/headscale/pull/2831)
 - Add bcrypt hashing for pre-authentication keys [#2853](https://github.com/juanfont/headscale/pull/2853)
-- Add structured prefix format for API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
-- Add registration keys for web authentication tracking (`hskey-reg-{random}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Add prefix to API keys (`hskey-api-{prefix}-{secret}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Add prefix to registration keys for web authentication tracking (`hskey-reg-{random}`) [#2853](https://github.com/juanfont/headscale/pull/2853)
+- Tags can now be tagOwner of other tags [#2930](https://github.com/juanfont/headscale/pull/2930)
+- Add `taildrop.enabled` configuration option to enable/disable Taildrop file sharing [#2955](https://github.com/juanfont/headscale/pull/2955)
+- Allow disabling the metrics server by setting empty `metrics_listen_addr` [#2914](https://github.com/juanfont/headscale/pull/2914)
+- Log ACME/autocert errors for easier debugging [#2933](https://github.com/juanfont/headscale/pull/2933)
+- Improve CLI list output formatting [#2951](https://github.com/juanfont/headscale/pull/2951)
+- Use Debian 13 distroless base images for containers [#2944](https://github.com/juanfont/headscale/pull/2944)
+- Fix ACL policy not applied to new OIDC nodes until client restart [#2890](https://github.com/juanfont/headscale/pull/2890)
+- Fix autogroup:self preventing visibility of nodes matched by other ACL rules [#2882](https://github.com/juanfont/headscale/pull/2882)
+- Fix nodes being rejected after pre-authentication key expiration [#2917](https://github.com/juanfont/headscale/pull/2917)
+- Fix list-routes command respecting identifier filter with JSON output [#2927](https://github.com/juanfont/headscale/pull/2927)
+- Add `--id` flag to expire/delete commands as alternative to `--prefix` for API Keys [#3016](https://github.com/juanfont/headscale/pull/3016)
 
 ## 0.27.1 (2025-11-11)
 
@@ -980,7 +1150,7 @@ behaviour.
 - Add IPv6 support to the prefix assigned to namespaces
 - Add API Key support
   - Enable remote control of `headscale` via CLI
-    [docs](./docs/ref/remote-cli.md)
+    [docs](./docs/ref/api.md#grpc)
   - Enable HTTP API (beta, subject to change)
 - OpenID Connect users will be mapped per namespaces
   - Each user will get its own namespace, created if it does not exist

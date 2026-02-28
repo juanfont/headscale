@@ -1,4 +1,4 @@
-![headscale logo](./docs/logo/headscale3_header_stacked_left.png)
+![headscale logo](./docs/assets/logo/headscale3_header_stacked_left.png)
 
 ![ci](https://github.com/juanfont/headscale/actions/workflows/test.yml/badge.svg)
 
@@ -67,6 +67,8 @@ For NixOS users, a module is available in [`nix/`](./nix/).
 
 ## Talks
 
+- Fosdem 2026 (video): [Headscale & Tailscale: The complementary open source clone](https://fosdem.org/2026/schedule/event/KYQ3LL-headscale-the-complementary-open-source-clone/)
+  - presented by Kristoffer Dalby
 - Fosdem 2023 (video): [Headscale: How we are using integration testing to reimplement Tailscale](https://fosdem.org/2023/schedule/event/goheadscale/)
   - presented by Juan Font Alonso and Kristoffer Dalby
 

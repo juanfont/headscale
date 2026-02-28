@@ -124,6 +124,13 @@
             "in": "path",
             "required": true,
             "type": "string"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
           }
         ],
         "tags": [
@@ -413,6 +420,13 @@
             "required": false,
             "type": "string",
             "format": "date-time"
+          },
+          {
+            "name": "disableExpiry",
+            "description": "When true, sets expiry to null (node will never expire).",
+            "in": "query",
+            "required": false,
+            "type": "boolean"
           }
         ],
         "tags": [
@@ -496,45 +510,6 @@
         ]
       }
     },
-    "/api/v1/node/{nodeId}/user": {
-      "post": {
-        "operationId": "HeadscaleService_MoveNode",
-        "responses": {
-          "200": {
-            "description": "A successful response.",
-            "schema": {
-              "$ref": "#/definitions/v1MoveNodeResponse"
-            }
-          },
-          "default": {
-            "description": "An unexpected error response.",
-            "schema": {
-              "$ref": "#/definitions/rpcStatus"
-            }
-          }
-        },
-        "parameters": [
-          {
-            "name": "nodeId",
-            "in": "path",
-            "required": true,
-            "type": "string",
-            "format": "uint64"
-          },
-          {
-            "name": "body",
-            "in": "body",
-            "required": true,
-            "schema": {
-              "$ref": "#/definitions/HeadscaleServiceMoveNodeBody"
-            }
-          }
-        ],
-        "tags": [
-          "HeadscaleService"
-        ]
-      }
-    },
     "/api/v1/policy": {
       "get": {
         "summary": "--- Policy start ---",
@@ -605,9 +580,29 @@
             }
           }
         },
+        "tags": [
+          "HeadscaleService"
+        ]
+      },
+      "delete": {
+        "operationId": "HeadscaleService_DeletePreAuthKey",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1DeletePreAuthKeyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
         "parameters": [
           {
-            "name": "user",
+            "name": "id",
             "in": "query",
             "required": false,
             "type": "string",
@@ -960,15 +955,6 @@
     }
   },
   "definitions": {
-    "HeadscaleServiceMoveNodeBody": {
-      "type": "object",
-      "properties": {
-        "user": {
-          "type": "string",
-          "format": "uint64"
-        }
-      }
-    },
     "HeadscaleServiceSetApprovedRoutesBody": {
       "type": "object",
       "properties": {
@@ -1191,6 +1177,9 @@
     "v1DeleteNodeResponse": {
       "type": "object"
     },
+    "v1DeletePreAuthKeyResponse": {
+      "type": "object"
+    },
     "v1DeleteUserResponse": {
       "type": "object"
     },
@@ -1202,6 +1191,10 @@
       "properties": {
         "prefix": {
           "type": "string"
+        },
+        "id": {
+          "type": "string",
+          "format": "uint64"
         }
       }
     },
@@ -1219,12 +1212,9 @@
     "v1ExpirePreAuthKeyRequest": {
       "type": "object",
       "properties": {
-        "user": {
+        "id": {
           "type": "string",
           "format": "uint64"
-        },
-        "key": {
-          "type": "string"
         }
       }
     },
@@ -1329,14 +1319,6 @@
         }
       }
     },
-    "v1MoveNodeResponse": {
-      "type": "object",
-      "properties": {
-        "node": {
-          "$ref": "#/definitions/v1Node"
-        }
-      }
-    },
     "v1Node": {
       "type": "object",
       "properties": {
@@ -1383,26 +1365,9 @@
         "registerMethod": {
           "$ref": "#/definitions/v1RegisterMethod"
         },
-        "forcedTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "invalidTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "validTags": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
         "givenName": {
-          "type": "string"
+          "type": "string",
+          "title": "Deprecated\nrepeated string forced_tags = 18;\nrepeated string invalid_tags = 19;\nrepeated string valid_tags = 20;"
         },
         "online": {
           "type": "boolean"
@@ -1420,6 +1385,12 @@
           }
         },
         "subnetRoutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tags": {
           "type": "array",
           "items": {
             "type": "string"

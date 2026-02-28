@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	"github.com/samber/lo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -32,6 +31,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 )
 
 type headscaleV1APIServer struct { // v1.HeadscaleServiceServer
@@ -57,17 +57,12 @@ func (api headscaleV1APIServer) CreateUser(
 	}
 	user, policyChanged, err := api.h.state.CreateUser(newUser)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to create user: %s", err)
+		return nil, status.Errorf(codes.Internal, "creating user: %s", err)
 	}
 
-	c := change.UserAdded(types.UserID(user.ID))
-
-	// TODO(kradalby): Both of these might be policy changes, find a better way to merge.
-	if !policyChanged.Empty() {
-		c.Change = change.Policy
-	}
-
-	api.h.Change(c)
+	// CreateUser returns a policy change response if the user creation affected policy.
+	// This triggers a full policy re-evaluation for all connected nodes.
+	api.h.Change(policyChanged)
 
 	return &v1.CreateUserResponse{User: user.Proto()}, nil
 }
@@ -106,12 +101,13 @@ func (api headscaleV1APIServer) DeleteUser(
 		return nil, err
 	}
 
-	err = api.h.state.DeleteUser(types.UserID(user.ID))
+	policyChanged, err := api.h.state.DeleteUser(types.UserID(user.ID))
 	if err != nil {
 		return nil, err
 	}
 
-	api.h.Change(change.UserRemoved(types.UserID(user.ID)))
+	// Use the change returned from DeleteUser which includes proper policy updates
+	api.h.Change(policyChanged)
 
 	return &v1.DeleteUserResponse{}, nil
 }
@@ -167,13 +163,17 @@ func (api headscaleV1APIServer) CreatePreAuthKey(
 		}
 	}
 
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
+	var userID *types.UserID
+	if request.GetUser() != 0 {
+		user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
+		if err != nil {
+			return nil, err
+		}
+		userID = user.TypedID()
 	}
 
 	preAuthKey, err := api.h.state.CreatePreAuthKey(
-		types.UserID(user.ID),
+		userID,
 		request.GetReusable(),
 		request.GetEphemeral(),
 		&expiration,
@@ -190,16 +190,7 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	ctx context.Context,
 	request *v1.ExpirePreAuthKeyRequest,
 ) (*v1.ExpirePreAuthKeyResponse, error) {
-	preAuthKey, err := api.h.state.GetPreAuthKey(request.Key)
-	if err != nil {
-		return nil, err
-	}
-
-	if uint64(preAuthKey.User.ID) != request.GetUser() {
-		return nil, fmt.Errorf("preauth key does not belong to user")
-	}
-
-	err = api.h.state.ExpirePreAuthKey(preAuthKey)
+	err := api.h.state.ExpirePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
@@ -207,16 +198,23 @@ func (api headscaleV1APIServer) ExpirePreAuthKey(
 	return &v1.ExpirePreAuthKeyResponse{}, nil
 }
 
-func (api headscaleV1APIServer) ListPreAuthKeys(
+func (api headscaleV1APIServer) DeletePreAuthKey(
 	ctx context.Context,
-	request *v1.ListPreAuthKeysRequest,
-) (*v1.ListPreAuthKeysResponse, error) {
-	user, err := api.h.state.GetUserByID(types.UserID(request.GetUser()))
+	request *v1.DeletePreAuthKeyRequest,
+) (*v1.DeletePreAuthKeyResponse, error) {
+	err := api.h.state.DeletePreAuthKey(request.GetId())
 	if err != nil {
 		return nil, err
 	}
 
-	preAuthKeys, err := api.h.state.ListPreAuthKeys(types.UserID(user.ID))
+	return &v1.DeletePreAuthKeyResponse{}, nil
+}
+
+func (api headscaleV1APIServer) ListPreAuthKeys(
+	ctx context.Context,
+	request *v1.ListPreAuthKeysRequest,
+) (*v1.ListPreAuthKeysResponse, error) {
+	preAuthKeys, err := api.h.state.ListPreAuthKeys()
 	if err != nil {
 		return nil, err
 	}
@@ -240,16 +238,16 @@ func (api headscaleV1APIServer) RegisterNode(
 	// Generate ephemeral registration key for tracking this registration flow in logs
 	registrationKey, err := util.GenerateRegistrationKey()
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to generate registration key")
+		log.Warn().Err(err).Msg("failed to generate registration key")
 		registrationKey = "" // Continue without key if generation fails
 	}
 
 	log.Trace().
 		Caller().
-		Str("user", request.GetUser()).
-		Str("registration_id", request.GetKey()).
-		Str("registration_key", registrationKey).
-		Msg("Registering node")
+		Str(zf.UserName, request.GetUser()).
+		Str(zf.RegistrationID, request.GetKey()).
+		Str(zf.RegistrationKey, registrationKey).
+		Msg("registering node")
 
 	registrationId, err := types.RegistrationIDFromString(request.GetKey())
 	if err != nil {
@@ -269,17 +267,16 @@ func (api headscaleV1APIServer) RegisterNode(
 	)
 	if err != nil {
 		log.Error().
-			Str("registration_key", registrationKey).
+			Str(zf.RegistrationKey, registrationKey).
 			Err(err).
-			Msg("Failed to register node")
+			Msg("failed to register node")
 		return nil, err
 	}
 
 	log.Info().
-		Str("registration_key", registrationKey).
-		Str("node_id", fmt.Sprintf("%d", node.ID())).
-		Str("hostname", node.Hostname()).
-		Msg("Node registered successfully")
+		Str(zf.RegistrationKey, registrationKey).
+		EmbedObject(node).
+		Msg("node registered successfully")
 
 	// This is a bit of a back and forth, but we have a bit of a chicken and egg
 	// dependency here.
@@ -292,13 +289,13 @@ func (api headscaleV1APIServer) RegisterNode(
 	// ensure we send an update.
 	// This works, but might be another good candidate for doing some sort of
 	// eventbus.
-	_ = api.h.state.AutoApproveRoutes(node)
-	_, _, err = api.h.state.SaveNode(node)
+	routeChange, err := api.h.state.AutoApproveRoutes(node)
 	if err != nil {
-		return nil, fmt.Errorf("saving auto approved routes to node: %w", err)
+		return nil, fmt.Errorf("auto approving routes: %w", err)
 	}
 
-	api.h.Change(nodeChange)
+	// Send both changes. Empty changes are ignored by Change().
+	api.h.Change(nodeChange, routeChange)
 
 	return &v1.RegisterNodeResponse{Node: node.Proto()}, nil
 }
@@ -321,11 +318,32 @@ func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
 ) (*v1.SetTagsResponse, error) {
+	// Validate tags not empty - tagged nodes must have at least one tag
+	if len(request.GetTags()) == 0 {
+		return &v1.SetTagsResponse{
+				Node: nil,
+			}, status.Error(
+				codes.InvalidArgument,
+				"cannot remove all tags from a node - tagged nodes must have at least one tag",
+			)
+	}
+
+	// Validate tag format
 	for _, tag := range request.GetTags() {
 		err := validateTag(tag)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	// User XOR Tags: nodes are either tagged or user-owned, never both.
+	// Setting tags on a user-owned node converts it to a tagged node.
+	// Once tagged, a node cannot be converted back to user-owned.
+	_, found := api.h.state.GetNodeByID(types.NodeID(request.GetNodeId()))
+	if !found {
+		return &v1.SetTagsResponse{
+			Node: nil,
+		}, status.Error(codes.NotFound, "node not found")
 	}
 
 	node, nodeChange, err := api.h.state.SetNodeTags(types.NodeID(request.GetNodeId()), request.GetTags())
@@ -339,9 +357,9 @@ func (api headscaleV1APIServer) SetTags(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
+		EmbedObject(node).
 		Strs("tags", request.GetTags()).
-		Msg("Changing tags of node")
+		Msg("changing tags of node")
 
 	return &v1.SetTagsResponse{Node: node.Proto()}, nil
 }
@@ -352,7 +370,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 ) (*v1.SetApprovedRoutesResponse, error) {
 	log.Debug().
 		Caller().
-		Uint64("node.id", request.GetNodeId()).
+		Uint64(zf.NodeID, request.GetNodeId()).
 		Strs("requestedRoutes", request.GetRoutes()).
 		Msg("gRPC SetApprovedRoutes called")
 
@@ -371,7 +389,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 			newApproved = append(newApproved, prefix)
 		}
 	}
-	tsaddr.SortPrefixes(newApproved)
+	slices.SortFunc(newApproved, netip.Prefix.Compare)
 	newApproved = slices.Compact(newApproved)
 
 	node, nodeChange, err := api.h.state.SetApprovedRoutes(types.NodeID(request.GetNodeId()), newApproved)
@@ -390,7 +408,7 @@ func (api headscaleV1APIServer) SetApprovedRoutes(
 
 	log.Debug().
 		Caller().
-		Uint64("node.id", node.ID().Uint64()).
+		EmbedObject(node).
 		Strs("approvedRoutes", util.PrefixesToString(node.ApprovedRoutes().AsSlice())).
 		Strs("primaryRoutes", util.PrefixesToString(primaryRoutes)).
 		Strs("finalSubnetRoutes", proto.SubnetRoutes).
@@ -407,7 +425,7 @@ func validateTag(tag string) error {
 		return errors.New("tag should be lowercase")
 	}
 	if len(strings.Fields(tag)) > 1 {
-		return errors.New("tag should not contains space")
+		return errors.New("tags must not contain spaces")
 	}
 	return nil
 }
@@ -448,12 +466,40 @@ func (api headscaleV1APIServer) ExpireNode(
 	ctx context.Context,
 	request *v1.ExpireNodeRequest,
 ) (*v1.ExpireNodeResponse, error) {
+	if request.GetDisableExpiry() && request.GetExpiry() != nil {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"cannot set both disable_expiry and expiry",
+		)
+	}
+
+	// Handle disable expiry request - node will never expire.
+	if request.GetDisableExpiry() {
+		node, nodeChange, err := api.h.state.SetNodeExpiry(
+			types.NodeID(request.GetNodeId()), nil,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		api.h.Change(nodeChange)
+
+		log.Trace().
+			Caller().
+			EmbedObject(node).
+			Msg("node expiry disabled")
+
+		return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
+	}
+
 	expiry := time.Now()
 	if request.GetExpiry() != nil {
 		expiry = request.GetExpiry().AsTime()
 	}
 
-	node, nodeChange, err := api.h.state.SetNodeExpiry(types.NodeID(request.GetNodeId()), expiry)
+	node, nodeChange, err := api.h.state.SetNodeExpiry(
+		types.NodeID(request.GetNodeId()), &expiry,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -463,8 +509,8 @@ func (api headscaleV1APIServer) ExpireNode(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
-		Time("expiry", *node.AsStruct().Expiry).
+		EmbedObject(node).
+		Time(zf.ExpiresAt, expiry).
 		Msg("node expired")
 
 	return &v1.ExpireNodeResponse{Node: node.Proto()}, nil
@@ -484,8 +530,8 @@ func (api headscaleV1APIServer) RenameNode(
 
 	log.Trace().
 		Caller().
-		Str("node", node.Hostname()).
-		Str("new_name", request.GetNewName()).
+		EmbedObject(node).
+		Str(zf.NewName, request.GetNewName()).
 		Msg("node renamed")
 
 	return &v1.RenameNodeResponse{Node: node.Proto()}, nil
@@ -546,13 +592,11 @@ func nodesToProto(state *state.State, nodes views.Slice[types.NodeView]) []*v1.N
 	for index, node := range nodes.All() {
 		resp := node.Proto()
 
-		var tags []string
-		for _, tag := range node.RequestTags() {
-			if state.NodeCanHaveTag(node, tag) {
-				tags = append(tags, tag)
-			}
+		// Tags-as-identity: tagged nodes show as TaggedDevices user in API responses
+		// (UserID may be set internally for "created by" tracking)
+		if node.IsTagged() {
+			resp.User = types.TaggedDevices.Proto()
 		}
-		resp.ValidTags = lo.Uniq(append(tags, node.ForcedTags().AsSlice()...))
 
 		resp.SubnetRoutes = util.PrefixesToString(append(state.GetNodePrimaryRoutes(node.ID()), node.ExitRoutes()...))
 		response[index] = resp
@@ -573,27 +617,11 @@ func wgPeersToProto(peers types.WireGuardOnlyPeers) []*v1.WireGuardOnlyPeer {
 	return response
 }
 
-func (api headscaleV1APIServer) MoveNode(
-	ctx context.Context,
-	request *v1.MoveNodeRequest,
-) (*v1.MoveNodeResponse, error) {
-	node, nodeChange, err := api.h.state.AssignNodeToUser(types.NodeID(request.GetNodeId()), types.UserID(request.GetUser()))
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(kradalby): Ensure the policy is also sent
-	// TODO(kradalby): ensure that both the selfupdate and peer updates are sent
-	api.h.Change(nodeChange)
-
-	return &v1.MoveNodeResponse{Node: node.Proto()}, nil
-}
-
 func (api headscaleV1APIServer) BackfillNodeIPs(
 	ctx context.Context,
 	request *v1.BackfillNodeIPsRequest,
 ) (*v1.BackfillNodeIPsResponse, error) {
-	log.Trace().Caller().Msg("Backfill called")
+	log.Trace().Caller().Msg("backfill called")
 
 	if !request.Confirmed {
 		return nil, errors.New("not confirmed, aborting")
@@ -624,14 +652,35 @@ func (api headscaleV1APIServer) CreateApiKey(
 	return &v1.CreateApiKeyResponse{ApiKey: apiKey}, nil
 }
 
+// apiKeyIdentifier is implemented by requests that identify an API key.
+type apiKeyIdentifier interface {
+	GetId() uint64
+	GetPrefix() string
+}
+
+// getAPIKey retrieves an API key by ID or prefix from the request.
+// Returns InvalidArgument if neither or both are provided.
+func (api headscaleV1APIServer) getAPIKey(req apiKeyIdentifier) (*types.APIKey, error) {
+	hasID := req.GetId() != 0
+	hasPrefix := req.GetPrefix() != ""
+
+	switch {
+	case hasID && hasPrefix:
+		return nil, status.Error(codes.InvalidArgument, "provide either id or prefix, not both")
+	case hasID:
+		return api.h.state.GetAPIKeyByID(req.GetId())
+	case hasPrefix:
+		return api.h.state.GetAPIKey(req.GetPrefix())
+	default:
+		return nil, status.Error(codes.InvalidArgument, "must provide id or prefix")
+	}
+}
+
 func (api headscaleV1APIServer) ExpireApiKey(
 	ctx context.Context,
 	request *v1.ExpireApiKeyRequest,
 ) (*v1.ExpireApiKeyResponse, error) {
-	var apiKey *types.APIKey
-	var err error
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
@@ -669,12 +718,7 @@ func (api headscaleV1APIServer) DeleteApiKey(
 	ctx context.Context,
 	request *v1.DeleteApiKeyRequest,
 ) (*v1.DeleteApiKeyResponse, error) {
-	var (
-		apiKey *types.APIKey
-		err    error
-	)
-
-	apiKey, err = api.h.state.GetAPIKey(request.Prefix)
+	apiKey, err := api.getAPIKey(request)
 	if err != nil {
 		return nil, err
 	}
@@ -821,7 +865,7 @@ func (api headscaleV1APIServer) DebugCreateNode(
 			NodeKey:    key.NewNode().Public(),
 			MachineKey: key.NewMachine().Public(),
 			Hostname:   request.GetName(),
-			User:       *user,
+			User:       user,
 
 			Expiry:   &time.Time{},
 			LastSeen: &time.Time{},
@@ -1059,13 +1103,13 @@ func (api headscaleV1APIServer) Health(
 	response := &v1.HealthResponse{}
 
 	if err := api.h.state.PingDB(ctx); err != nil {
-		healthErr = fmt.Errorf("database ping failed: %w", err)
+		healthErr = fmt.Errorf("pinging database: %w", err)
 	} else {
 		response.DatabaseConnectivity = true
 	}
 
 	if healthErr != nil {
-		log.Error().Err(healthErr).Msg("Health check failed")
+		log.Error().Err(healthErr).Msg("health check failed")
 	}
 
 	return response, healthErr

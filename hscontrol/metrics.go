@@ -32,31 +32,16 @@ var (
 		Name:      "mapresponse_sent_total",
 		Help:      "total count of mapresponses sent to clients",
 	}, []string{"status", "type"})
-	mapResponseUpdateReceived = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_updates_received_total",
-		Help:      "total count of mapresponse updates received on update channel",
-	}, []string{"type"})
 	mapResponseEndpointUpdates = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_endpoint_updates_total",
 		Help:      "total count of endpoint updates received",
-	}, []string{"status"})
-	mapResponseReadOnly = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_readonly_requests_total",
-		Help:      "total count of readonly requests received",
 	}, []string{"status"})
 	mapResponseEnded = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: prometheusNamespace,
 		Name:      "mapresponse_ended_total",
 		Help:      "total count of new mapsessions ended",
 	}, []string{"reason"})
-	mapResponseClosed = promauto.NewCounterVec(prometheus.CounterOpts{
-		Namespace: prometheusNamespace,
-		Name:      "mapresponse_closed_total",
-		Help:      "total count of calls to mapresponse close",
-	}, []string{"return"})
 	httpDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: prometheusNamespace,
 		Name:      "http_duration_seconds",
@@ -86,6 +71,7 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 		rw := &respWriterProm{ResponseWriter: w}
 
 		timer := prometheus.NewTimer(httpDuration.WithLabelValues(path))
+
 		next.ServeHTTP(rw, r)
 		timer.ObserveDuration()
 		httpCounter.WithLabelValues(strconv.Itoa(rw.status), r.Method, path).Inc()
@@ -94,6 +80,7 @@ func prometheusMiddleware(next http.Handler) http.Handler {
 
 type respWriterProm struct {
 	http.ResponseWriter
+
 	status      int
 	written     int64
 	wroteHeader bool
@@ -109,6 +96,7 @@ func (r *respWriterProm) Write(b []byte) (int, error) {
 	if !r.wroteHeader {
 		r.WriteHeader(http.StatusOK)
 	}
+
 	n, err := r.ResponseWriter.Write(b)
 	r.written += int64(n)
 

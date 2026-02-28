@@ -77,6 +77,7 @@ are configured, a user needs to pass all of them.
 
     * Check the email domain of each authenticating user against the list of allowed domains and only authorize users
       whose email domain matches `example.com`.
+    * A verified email address is required [unless email verification is disabled](#control-email-verification).
     * Access allowed: `alice@example.com`
     * Access denied: `bob@example.net`
 
@@ -93,6 +94,7 @@ are configured, a user needs to pass all of them.
 
     * Check the email address of each authenticating user against the list of allowed email addresses and only authorize
       users whose email is part of the `allowed_users` list.
+    * A verified email address is required [unless email verification is disabled](#control-email-verification).
     * Access allowed: `alice@example.com`, `bob@example.net`
     * Access denied: `mallory@example.net`
 
@@ -122,6 +124,23 @@ are configured, a user needs to pass all of them.
       allowed_groups:
         - "headscale_users"
     ```
+
+### Control email verification
+
+Headscale uses the `email` claim from the identity provider to synchronize the email address to its user profile. By
+default, a user's email address is only synchronized when the identity provider reports the email address as verified
+via the `email_verified: true` claim.
+
+Unverified emails may be allowed in case an identity provider does not send the `email_verified` claim or email
+verification is not required. In that case, a user's email address is always synchronized to the user profile.
+
+```yaml hl_lines="5"
+oidc:
+  issuer: "https://sso.example.com"
+  client_id: "headscale"
+  client_secret: "generated-secret"
+  email_verified_required: false
+```
 
 ### Customize node expiration
 
@@ -166,7 +185,8 @@ You may refer to users in the Headscale policy via:
 
 - Email address
 - Username
-- Provider identifier (only available in the database or from your identity provider)
+- Provider identifier (this value is currently only available from the [API](api.md), database or directly from your
+  identity provider)
 
 !!! note "A user identifier in the policy must contain a single `@`"
 
@@ -181,6 +201,34 @@ You may refer to users in the Headscale policy via:
     consequences for Headscale where a policy might no longer work or a user might obtain more access by hijacking an
     existing username or email address.
 
+!!! tip "Howto use the provider identifier in the policy"
+
+    The provider identifier uniquely identifies an OIDC user and a well-behaving identity provider guarantees that this
+    value never changes for a particular user. It is usually an opaque and long string and its value is currently only
+    available from the [API](api.md), database or directly from your identity provider).
+
+    Use the [API](api.md) with the `/api/v1/user` endpoint to fetch the provider identifier (`providerId`). The value
+    (be sure to append an `@` in case the provider identifier doesn't already contain an `@` somewhere) can be used
+    directly to reference a user in the policy. To improve readability of the policy, one may use the `groups` section
+    as an alias:
+
+    ```json
+    {
+      "groups": {
+        "group:alice": [
+          "https://soo.example.com/oauth2/openid/59ac9125-c31b-46c5-814e-06242908cf57@"
+        ]
+      },
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["group:alice"],
+          "dst": ["*:*"]
+        }
+      ]
+    }
+    ```
+
 ## Supported OIDC claims
 
 Headscale uses [the standard OIDC claims](https://openid.net/specs/openid-connect-core-1_0.html#StandardClaims) to
@@ -189,7 +237,7 @@ endpoint.
 
 | Headscale profile   | OIDC claim           | Notes / examples                                                                                  |
 | ------------------- | -------------------- | ------------------------------------------------------------------------------------------------- |
-| email address       | `email`              | Only used when `email_verified: true`                                                             |
+| email address       | `email`              | Only verified emails are synchronized, unless `email_verified_required: false` is configured      |
 | display name        | `name`               | eg: `Sam Smith`                                                                                   |
 | username            | `preferred_username` | Depends on identity provider, eg: `ssmith`, `ssmith@idp.example.com`, `\\example.com\ssmith`      |
 | profile picture     | `picture`            | URL to a profile picture or avatar                                                                |
@@ -205,8 +253,6 @@ endpoint.
     - The username must be at least two characters long.
     - It must only contain letters, digits, hyphens, dots, underscores, and up to a single `@`.
     - The username must start with a letter.
-- A user's email address is only synchronized to the local user profile when the identity provider marks the email
-  address as verified (`email_verified: true`).
 
 Please see the [GitHub label "OIDC"](https://github.com/juanfont/headscale/labels/OIDC) for OIDC related issues.
 
@@ -233,7 +279,7 @@ Authelia is fully supported by Headscale.
 ### Authentik
 
 - Authentik is fully supported by Headscale.
-- [Headscale does not JSON Web Encryption](https://github.com/juanfont/headscale/issues/2446). Leave the field
+- [Headscale does not support JSON Web Encryption](https://github.com/juanfont/headscale/issues/2446). Leave the field
   `Encryption Key` in the providers section unset.
 
 ### Google OAuth
@@ -272,6 +318,14 @@ Console.
 - Kanidm is fully supported by Headscale.
 - Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their full SPN, for
   example: `headscale_users@sso.example.com`.
+- Kanidm sends the full SPN (`alice@sso.example.com`) as `preferred_username` by default. Headscale stores this value as
+  username which might be confusing as the username and email fields now contain values that look like an email address.
+  [Kanidm can be configured to send the short username as `preferred_username` attribute
+  instead](https://kanidm.github.io/kanidm/stable/integrations/oauth2.html#short-names):
+  ```console
+  kanidm system oauth2 prefer-short-username <client name>
+  ```
+  Once configured, the short username in Headscale will be `alice` and can be referred to as `alice@` in the policy.
 
 ### Keycloak
 
@@ -305,5 +359,13 @@ Entra ID is: `https://login.microsoftonline.com/<tenant-UUID>/v2.0`. The followi
 - `domain_hint: example.com` to use your own domain
 - `prompt: select_account` to force an account picker during login
 
-Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their group ID instead
+When using Microsoft Entra ID together with the [allowed groups filter](#authorize-users-with-filters), configure the
+Headscale OIDC scope without the `groups` claim, for example:
+
+```yaml
+oidc:
+  scope: ["openid", "profile", "email"]
+```
+
+Groups for the [allowed groups filter](#authorize-users-with-filters) need to be specified with their group ID(UUID) instead
 of the group name.

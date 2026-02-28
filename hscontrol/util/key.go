@@ -5,6 +5,6 @@ import (
 )
 
 var (
-	ErrCannotDecryptResponse = errors.New("cannot decrypt response")
+	ErrCannotDecryptResponse = errors.New("decrypting response")
 	ZstdCompression          = "zstd"
 )

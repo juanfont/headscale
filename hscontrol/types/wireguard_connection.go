@@ -14,10 +14,10 @@ import (
 // the same WireGuard peer.
 type WireGuardConnection struct {
 	// NodeID is the ID of the regular Tailscale node
-	NodeID NodeID `gorm:"primaryKey;column:node_id"`
+	NodeID NodeID `gorm:"primaryKey;not null;column:node_id"`
 
 	// WGPeerID is the ID of the WireGuard-only peer that the ndoe above can access
-	WGPeerID NodeID `gorm:"primaryKey;column:wg_peer_id"`
+	WGPeerID NodeID `gorm:"primaryKey;not null;column:wg_peer_id"`
 
 	// IPv4MasqAddr is the masquerade address that our node will use when communicating with this peer
 	// This is the source IP the WireGuard peer expects to see

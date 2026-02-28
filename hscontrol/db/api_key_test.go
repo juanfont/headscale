@@ -9,89 +9,103 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/check.v1"
 )
 
-func (*Suite) TestCreateAPIKey(c *check.C) {
+func TestCreateAPIKey(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	apiKeyStr, apiKey, err := db.CreateAPIKey(nil)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
 
 	// Did we get a valid key?
-	c.Assert(apiKey.Prefix, check.NotNil)
-	c.Assert(apiKey.Hash, check.NotNil)
-	c.Assert(apiKeyStr, check.Not(check.Equals), "")
+	assert.NotNil(t, apiKey.Prefix)
+	assert.NotNil(t, apiKey.Hash)
+	assert.NotEmpty(t, apiKeyStr)
 
 	_, err = db.ListAPIKeys()
-	c.Assert(err, check.IsNil)
+	require.NoError(t, err)
 
 	keys, err := db.ListAPIKeys()
-	c.Assert(err, check.IsNil)
-	c.Assert(len(keys), check.Equals, 1)
+	require.NoError(t, err)
+	assert.Len(t, keys, 1)
 }
 
-func (*Suite) TestAPIKeyDoesNotExist(c *check.C) {
+func TestAPIKeyDoesNotExist(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	key, err := db.GetAPIKey("does-not-exist")
-	c.Assert(err, check.NotNil)
-	c.Assert(key, check.IsNil)
+	require.Error(t, err)
+	assert.Nil(t, key)
 }
 
-func (*Suite) TestValidateAPIKeyOk(c *check.C) {
+func TestValidateAPIKeyOk(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	nowPlus2 := time.Now().Add(2 * time.Hour)
 	apiKeyStr, apiKey, err := db.CreateAPIKey(&nowPlus2)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
 
 	valid, err := db.ValidateAPIKey(apiKeyStr)
-	c.Assert(err, check.IsNil)
-	c.Assert(valid, check.Equals, true)
+	require.NoError(t, err)
+	assert.True(t, valid)
 }
 
-func (*Suite) TestValidateAPIKeyNotOk(c *check.C) {
+func TestValidateAPIKeyNotOk(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	nowMinus2 := time.Now().Add(time.Duration(-2) * time.Hour)
 	apiKeyStr, apiKey, err := db.CreateAPIKey(&nowMinus2)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
 
 	valid, err := db.ValidateAPIKey(apiKeyStr)
-	c.Assert(err, check.IsNil)
-	c.Assert(valid, check.Equals, false)
+	require.NoError(t, err)
+	assert.False(t, valid)
 
 	now := time.Now()
 	apiKeyStrNow, apiKey, err := db.CreateAPIKey(&now)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
 
 	validNow, err := db.ValidateAPIKey(apiKeyStrNow)
-	c.Assert(err, check.IsNil)
-	c.Assert(validNow, check.Equals, false)
+	require.NoError(t, err)
+	assert.False(t, validNow)
 
 	validSilly, err := db.ValidateAPIKey("nota.validkey")
-	c.Assert(err, check.NotNil)
-	c.Assert(validSilly, check.Equals, false)
+	require.Error(t, err)
+	assert.False(t, validSilly)
 
 	validWithErr, err := db.ValidateAPIKey("produceerrorkey")
-	c.Assert(err, check.NotNil)
-	c.Assert(validWithErr, check.Equals, false)
+	require.Error(t, err)
+	assert.False(t, validWithErr)
 }
 
-func (*Suite) TestExpireAPIKey(c *check.C) {
+func TestExpireAPIKey(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
 	nowPlus2 := time.Now().Add(2 * time.Hour)
 	apiKeyStr, apiKey, err := db.CreateAPIKey(&nowPlus2)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey, check.NotNil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
 
 	valid, err := db.ValidateAPIKey(apiKeyStr)
-	c.Assert(err, check.IsNil)
-	c.Assert(valid, check.Equals, true)
+	require.NoError(t, err)
+	assert.True(t, valid)
 
 	err = db.ExpireAPIKey(apiKey)
-	c.Assert(err, check.IsNil)
-	c.Assert(apiKey.Expiration, check.NotNil)
+	require.NoError(t, err)
+	assert.NotNil(t, apiKey.Expiration)
 
 	notValid, err := db.ValidateAPIKey(apiKeyStr)
-	c.Assert(err, check.IsNil)
-	c.Assert(notValid, check.Equals, false)
+	require.NoError(t, err)
+	assert.False(t, notValid)
 }
 
 func TestAPIKeyWithPrefix(t *testing.T) {
@@ -231,4 +245,31 @@ func TestAPIKeyWithPrefix(t *testing.T) {
 			tt.test(t, db)
 		})
 	}
+}
+
+func TestGetAPIKeyByID(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	// Create an API key
+	_, apiKey, err := db.CreateAPIKey(nil)
+	require.NoError(t, err)
+	require.NotNil(t, apiKey)
+
+	// Retrieve by ID
+	retrievedKey, err := db.GetAPIKeyByID(apiKey.ID)
+	require.NoError(t, err)
+	require.NotNil(t, retrievedKey)
+	assert.Equal(t, apiKey.ID, retrievedKey.ID)
+	assert.Equal(t, apiKey.Prefix, retrievedKey.Prefix)
+}
+
+func TestGetAPIKeyByIDNotFound(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	// Try to get a non-existent key by ID
+	key, err := db.GetAPIKeyByID(99999)
+	require.Error(t, err)
+	assert.Nil(t, key)
 }

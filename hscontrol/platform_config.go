@@ -19,7 +19,7 @@ func (h *Headscale) WindowsConfigMessage(
 ) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.Windows(h.cfg.ServerURL).Render()))
+	_, _ = writer.Write([]byte(templates.Windows(h.cfg.ServerURL).Render()))
 }
 
 // AppleConfigMessage shows a simple message in the browser to point the user to the iOS/MacOS profile and instructions for how to install it.
@@ -29,7 +29,7 @@ func (h *Headscale) AppleConfigMessage(
 ) {
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write([]byte(templates.Apple(h.cfg.ServerURL).Render()))
+	_, _ = writer.Write([]byte(templates.Apple(h.cfg.ServerURL).Render()))
 }
 
 func (h *Headscale) ApplePlatformConfig(
@@ -37,6 +37,7 @@ func (h *Headscale) ApplePlatformConfig(
 	req *http.Request,
 ) {
 	vars := mux.Vars(req)
+
 	platform, ok := vars["platform"]
 	if !ok {
 		httpError(writer, NewHTTPError(http.StatusBadRequest, "no platform specified", nil))
@@ -64,17 +65,20 @@ func (h *Headscale) ApplePlatformConfig(
 
 	switch platform {
 	case "macos-standalone":
-		if err := macosStandaloneTemplate.Execute(&payload, platformConfig); err != nil {
+		err := macosStandaloneTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "macos-app-store":
-		if err := macosAppStoreTemplate.Execute(&payload, platformConfig); err != nil {
+		err := macosAppStoreTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}
 	case "ios":
-		if err := iosTemplate.Execute(&payload, platformConfig); err != nil {
+		err := iosTemplate.Execute(&payload, platformConfig)
+		if err != nil {
 			httpError(writer, err)
 			return
 		}
@@ -90,7 +94,7 @@ func (h *Headscale) ApplePlatformConfig(
 	}
 
 	var content bytes.Buffer
-	if err := commonTemplate.Execute(&content, config); err != nil {
+	if err := commonTemplate.Execute(&content, config); err != nil { //nolint:noinlineerr
 		httpError(writer, err)
 		return
 	}
@@ -98,7 +102,7 @@ func (h *Headscale) ApplePlatformConfig(
 	writer.Header().
 		Set("Content-Type", "application/x-apple-aspen-config; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
-	writer.Write(content.Bytes())
+	_, _ = writer.Write(content.Bytes())
 }
 
 type AppleMobileConfig struct {

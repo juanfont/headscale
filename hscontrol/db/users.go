@@ -12,9 +12,11 @@ import (
 )
 
 var (
-	ErrUserExists        = errors.New("user already exists")
-	ErrUserNotFound      = errors.New("user not found")
-	ErrUserStillHasNodes = errors.New("user not empty: node(s) found")
+	ErrUserExists            = errors.New("user already exists")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrUserStillHasNodes     = errors.New("user not empty: node(s) found")
+	ErrUserWhereInvalidCount = errors.New("expect 0 or 1 where User structs")
+	ErrUserNotUnique         = errors.New("expected exactly one user")
 )
 
 func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
@@ -26,10 +28,13 @@ func (hsdb *HSDatabase) CreateUser(user types.User) (*types.User, error) {
 // CreateUser creates a new User. Returns error if could not be created
 // or another user already exists.
 func CreateUser(tx *gorm.DB, user types.User) (*types.User, error) {
-	if err := util.ValidateHostname(user.Name); err != nil {
+	err := util.ValidateHostname(user.Name)
+	if err != nil {
 		return nil, err
 	}
-	if err := tx.Create(&user).Error; err != nil {
+
+	err = tx.Create(&user).Error
+	if err != nil {
 		return nil, fmt.Errorf("creating user: %w", err)
 	}
 
@@ -43,7 +48,8 @@ func (hsdb *HSDatabase) DestroyUser(uid types.UserID) error {
 }
 
 // DestroyUser destroys a User. Returns error if the User does
-// not exist or if there are nodes associated with it.
+// not exist or if there are user-owned nodes associated with it.
+// Tagged nodes have user_id = NULL so they do not block deletion.
 func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	user, err := GetUserByID(tx, uid)
 	if err != nil {
@@ -54,16 +60,18 @@ func DestroyUser(tx *gorm.DB, uid types.UserID) error {
 	if err != nil {
 		return err
 	}
+
 	if len(nodes) > 0 {
 		return ErrUserStillHasNodes
 	}
 
-	keys, err := ListPreAuthKeysByUser(tx, uid)
+	keys, err := ListPreAuthKeys(tx)
 	if err != nil {
 		return err
 	}
+
 	for _, key := range keys {
-		err = DestroyPreAuthKey(tx, key)
+		err = DestroyPreAuthKey(tx, key.ID)
 		if err != nil {
 			return err
 		}
@@ -88,11 +96,13 @@ var ErrCannotChangeOIDCUser = errors.New("cannot edit OIDC user")
 // not exist or if another User exists with the new name.
 func RenameUser(tx *gorm.DB, uid types.UserID, newName string) error {
 	var err error
+
 	oldUser, err := GetUserByID(tx, uid)
 	if err != nil {
 		return err
 	}
-	if err = util.ValidateHostname(newName); err != nil {
+
+	if err = util.ValidateHostname(newName); err != nil { //nolint:noinlineerr
 		return err
 	}
 
@@ -151,7 +161,7 @@ func (hsdb *HSDatabase) ListUsers(where ...*types.User) ([]types.User, error) {
 // ListUsers gets all the existing users.
 func ListUsers(tx *gorm.DB, where ...*types.User) ([]types.User, error) {
 	if len(where) > 1 {
-		return nil, fmt.Errorf("expect 0 or 1 where User structs, got %d", len(where))
+		return nil, fmt.Errorf("%w, got %d", ErrUserWhereInvalidCount, len(where))
 	}
 
 	var user *types.User
@@ -160,7 +170,9 @@ func ListUsers(tx *gorm.DB, where ...*types.User) ([]types.User, error) {
 	}
 
 	users := []types.User{}
-	if err := tx.Where(user).Find(&users).Error; err != nil {
+
+	err := tx.Where(user).Find(&users).Error
+	if err != nil {
 		return nil, err
 	}
 
@@ -180,7 +192,7 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 	}
 
 	if len(users) != 1 {
-		return nil, fmt.Errorf("expected exactly one user, found %d", len(users))
+		return nil, fmt.Errorf("%w, found %d", ErrUserNotUnique, len(users))
 	}
 
 	return &users[0], nil
@@ -189,31 +201,15 @@ func (hsdb *HSDatabase) GetUserByName(name string) (*types.User, error) {
 // ListNodesByUser gets all the nodes in a given user.
 func ListNodesByUser(tx *gorm.DB, uid types.UserID) (types.Nodes, error) {
 	nodes := types.Nodes{}
-	if err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: uint(uid)}).Find(&nodes).Error; err != nil {
+
+	uidPtr := uint(uid)
+
+	err := tx.Preload("AuthKey").Preload("AuthKey.User").Preload("User").Where(&types.Node{UserID: &uidPtr}).Find(&nodes).Error
+	if err != nil {
 		return nil, err
 	}
 
 	return nodes, nil
-}
-
-// AssignNodeToUser assigns a Node to a user.
-// Note: Validation should be done in the state layer before calling this function.
-func AssignNodeToUser(tx *gorm.DB, nodeID types.NodeID, uid types.UserID) error {
-	// Check if the user exists
-	var userExists bool
-	if err := tx.Model(&types.User{}).Select("count(*) > 0").Where("id = ?", uid).Find(&userExists).Error; err != nil {
-		return fmt.Errorf("failed to check if user exists: %w", err)
-	}
-
-	if !userExists {
-		return ErrUserNotFound
-	}
-
-	if err := tx.Model(&types.Node{}).Where("id = ?", nodeID).Update("user_id", uid).Error; err != nil {
-		return fmt.Errorf("failed to assign node to user: %w", err)
-	}
-
-	return nil
 }
 
 func (hsdb *HSDatabase) CreateUserForTest(name ...string) *types.User {

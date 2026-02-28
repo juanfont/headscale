@@ -1,6 +1,7 @@
 package sqliteconfig
 
 import (
+	"context"
 	"database/sql"
 	"path/filepath"
 	"strings"
@@ -101,7 +102,10 @@ func TestSQLiteDriverPragmaIntegration(t *testing.T) {
 			defer db.Close()
 
 			// Test connection
-			if err := db.Ping(); err != nil {
+			ctx := context.Background()
+
+			err = db.PingContext(ctx)
+			if err != nil {
 				t.Fatalf("Failed to ping database: %v", err)
 			}
 
@@ -109,8 +113,10 @@ func TestSQLiteDriverPragmaIntegration(t *testing.T) {
 			for pragma, expectedValue := range tt.expected {
 				t.Run("pragma_"+pragma, func(t *testing.T) {
 					var actualValue any
+
 					query := "PRAGMA " + pragma
-					err := db.QueryRow(query).Scan(&actualValue)
+
+					err := db.QueryRowContext(ctx, query).Scan(&actualValue)
 					if err != nil {
 						t.Fatalf("Failed to query %s: %v", query, err)
 					}
@@ -163,6 +169,8 @@ func TestForeignKeyConstraintEnforcement(t *testing.T) {
 	}
 	defer db.Close()
 
+	ctx := context.Background()
+
 	// Create test tables with foreign key relationship
 	schema := `
 		CREATE TABLE parent (
@@ -178,23 +186,25 @@ func TestForeignKeyConstraintEnforcement(t *testing.T) {
 		);
 	`
 
-	if _, err := db.Exec(schema); err != nil {
+	_, err = db.ExecContext(ctx, schema)
+	if err != nil {
 		t.Fatalf("Failed to create schema: %v", err)
 	}
 
 	// Insert parent record
-	if _, err := db.Exec("INSERT INTO parent (id, name) VALUES (1, 'Parent 1')"); err != nil {
+	_, err = db.ExecContext(ctx, "INSERT INTO parent (id, name) VALUES (1, 'Parent 1')")
+	if err != nil {
 		t.Fatalf("Failed to insert parent: %v", err)
 	}
 
 	// Test 1: Valid foreign key should work
-	_, err = db.Exec("INSERT INTO child (id, parent_id, name) VALUES (1, 1, 'Child 1')")
+	_, err = db.ExecContext(ctx, "INSERT INTO child (id, parent_id, name) VALUES (1, 1, 'Child 1')")
 	if err != nil {
 		t.Fatalf("Valid foreign key insert failed: %v", err)
 	}
 
 	// Test 2: Invalid foreign key should fail
-	_, err = db.Exec("INSERT INTO child (id, parent_id, name) VALUES (2, 999, 'Child 2')")
+	_, err = db.ExecContext(ctx, "INSERT INTO child (id, parent_id, name) VALUES (2, 999, 'Child 2')")
 	if err == nil {
 		t.Error("Expected foreign key constraint violation, but insert succeeded")
 	} else if !contains(err.Error(), "FOREIGN KEY constraint failed") {
@@ -204,7 +214,7 @@ func TestForeignKeyConstraintEnforcement(t *testing.T) {
 	}
 
 	// Test 3: Deleting referenced parent should fail
-	_, err = db.Exec("DELETE FROM parent WHERE id = 1")
+	_, err = db.ExecContext(ctx, "DELETE FROM parent WHERE id = 1")
 	if err == nil {
 		t.Error("Expected foreign key constraint violation when deleting referenced parent")
 	} else if !contains(err.Error(), "FOREIGN KEY constraint failed") {
@@ -249,7 +259,8 @@ func TestJournalModeValidation(t *testing.T) {
 			defer db.Close()
 
 			var actualMode string
-			err = db.QueryRow("PRAGMA journal_mode").Scan(&actualMode)
+
+			err = db.QueryRowContext(context.Background(), "PRAGMA journal_mode").Scan(&actualMode)
 			if err != nil {
 				t.Fatalf("Failed to query journal_mode: %v", err)
 			}

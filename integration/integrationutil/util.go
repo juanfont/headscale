@@ -28,6 +28,7 @@ func PeerSyncTimeout() time.Duration {
 	if util.IsCI() {
 		return 120 * time.Second
 	}
+
 	return 60 * time.Second
 }
 
@@ -59,17 +60,17 @@ func WriteFileToContainer(
 
 	err := tarWriter.WriteHeader(header)
 	if err != nil {
-		return fmt.Errorf("failed write file header to tar: %w", err)
+		return fmt.Errorf("writing file header to tar: %w", err)
 	}
 
 	_, err = io.Copy(tarWriter, file)
 	if err != nil {
-		return fmt.Errorf("failed to copy file to tar: %w", err)
+		return fmt.Errorf("copying file to tar: %w", err)
 	}
 
 	err = tarWriter.Close()
 	if err != nil {
-		return fmt.Errorf("failed to close tar: %w", err)
+		return fmt.Errorf("closing tar: %w", err)
 	}
 
 	// Ensure the directory is present inside the container
@@ -79,7 +80,7 @@ func WriteFileToContainer(
 		[]string{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to ensure directory: %w", err)
+		return fmt.Errorf("ensuring directory: %w", err)
 	}
 
 	err = pool.Client.UploadToContainer(
@@ -205,25 +206,27 @@ func BuildExpectedOnlineMap(all map[types.NodeID][]tailcfg.MapResponse) map[type
 	res := make(map[types.NodeID]map[types.NodeID]bool)
 	for nid, mrs := range all {
 		res[nid] = make(map[types.NodeID]bool)
+
 		for _, mr := range mrs {
 			for _, peer := range mr.Peers {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChanged {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.ID)] = *peer.Online
+					res[nid][types.NodeID(peer.ID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 
 			for _, peer := range mr.PeersChangedPatch {
 				if peer.Online != nil {
-					res[nid][types.NodeID(peer.NodeID)] = *peer.Online
+					res[nid][types.NodeID(peer.NodeID)] = *peer.Online //nolint:gosec // safe conversion for peer ID
 				}
 			}
 		}
 	}
+
 	return res
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
-	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/state"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
@@ -24,7 +24,6 @@ import (
 
 const (
 	nextDNSDoHPrefix     = "https://dns.nextdns.io"
-	mapperIDLength       = 8
 	debugMapResponsePerm = 0o755
 )
 
@@ -50,6 +49,7 @@ type mapper struct {
 	created time.Time
 }
 
+//nolint:unused
 type patch struct {
 	timestamp time.Time
 	change    *tailcfg.PeerChange
@@ -60,7 +60,6 @@ func newMapper(
 	state *state.State,
 ) *mapper {
 	// uid, _ := util.GenerateRandomStringDNSSafe(mapperIDLength)
-
 	return &mapper{
 		state: state,
 		cfg:   cfg,
@@ -69,24 +68,43 @@ func newMapper(
 	}
 }
 
+// generateUserProfiles creates user profiles for MapResponse.
 func generateUserProfiles(
 	node types.NodeView,
 	peers views.Slice[types.NodeView],
 ) []tailcfg.UserProfile {
-	userMap := make(map[uint]*types.User)
+	userMap := make(map[uint]*types.UserView)
 	ids := make([]uint, 0, len(userMap))
-	user := node.User()
-	userMap[user.ID] = &user
-	ids = append(ids, user.ID)
+
+	user := node.Owner()
+	if !user.Valid() {
+		log.Error().
+			EmbedObject(node).
+			Msg("node has no valid owner, skipping user profile generation")
+
+		return nil
+	}
+
+	userID := user.Model().ID
+	userMap[userID] = &user
+	ids = append(ids, userID)
+
 	for _, peer := range peers.All() {
-		peerUser := peer.User()
-		userMap[peerUser.ID] = &peerUser
-		ids = append(ids, peerUser.ID)
+		peerUser := peer.Owner()
+		if !peerUser.Valid() {
+			continue
+		}
+
+		peerUserID := peerUser.Model().ID
+		userMap[peerUserID] = &peerUser
+		ids = append(ids, peerUserID)
 	}
 
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
+
 	var profiles []tailcfg.UserProfile
+
 	for _, id := range ids {
 		if userMap[id] != nil {
 			profiles = append(profiles, userMap[id].TailscaleUserProfile())
@@ -136,6 +154,8 @@ func addNextDNSMetadata(resolvers []*dnstype.Resolver, node types.NodeView) {
 }
 
 // fullMapResponse returns a MapResponse for the given node.
+//
+//nolint:unused
 func (m *mapper) fullMapResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
@@ -178,41 +198,52 @@ func (m *mapper) selfMapResponse(
 	return ma, err
 }
 
-func (m *mapper) derpMapResponse(
-	nodeID types.NodeID,
-) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(derpResponseDebug).
-		WithDERPMap().
-		Build()
-}
-
-// PeerChangedPatchResponse creates a patch MapResponse with
-// incoming update from a state change.
-func (m *mapper) peerChangedPatchResponse(
-	nodeID types.NodeID,
-	changed []*tailcfg.PeerChange,
-) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(patchResponseDebug).
-		WithPeerChangedPatch(changed).
-		Build()
-}
-
-// peerChangeResponse returns a MapResponse with changed or added nodes.
-func (m *mapper) peerChangeResponse(
+// policyChangeResponse creates a MapResponse for policy changes.
+// It sends:
+// - PeersRemoved for peers that are no longer visible after the policy change
+// - PeersChanged for remaining peers (their AllowedIPs may have changed due to policy)
+// - Updated PacketFilters
+// - Updated SSHPolicy (SSH rules may reference users/groups that changed)
+// - Optionally, the node's own self info (when includeSelf is true)
+// This avoids the issue where an empty Peers slice is interpreted by Tailscale
+// clients as "no change" rather than "no peers".
+// When includeSelf is true, the node's self info is included so that a node
+// whose own attributes changed (e.g., tags via admin API) sees its updated
+// self info along with the new packet filters.
+func (m *mapper) policyChangeResponse(
 	nodeID types.NodeID,
 	capVer tailcfg.CapabilityVersion,
-	changedNodeID types.NodeID,
+	removedPeers []tailcfg.NodeID,
+	currentPeers views.Slice[types.NodeView],
+	includeSelf bool,
 ) (*tailcfg.MapResponse, error) {
-	peers := m.state.ListPeers(nodeID, changedNodeID)
-
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(changeResponseDebug).
+	builder := m.NewMapResponseBuilder(nodeID).
+		WithDebugType(policyResponseDebug).
 		WithCapabilityVersion(capVer).
-		WithUserProfiles(peers).
-		WithPeerChanges(peers).
-		Build()
+		WithPacketFilters().
+		WithSSHPolicy()
+
+	if includeSelf {
+		builder = builder.WithSelfNode()
+	}
+
+	if len(removedPeers) > 0 {
+		// Convert tailcfg.NodeID to types.NodeID for WithPeersRemoved
+		removedIDs := make([]types.NodeID, len(removedPeers))
+		for i, id := range removedPeers {
+			removedIDs[i] = types.NodeID(id) //nolint:gosec // NodeID types are equivalent
+		}
+
+		builder.WithPeersRemoved(removedIDs...)
+	}
+
+	// Send remaining peers in PeersChanged - their AllowedIPs may have
+	// changed due to the policy update (e.g., different routes allowed).
+	if currentPeers.Len() > 0 {
+		builder.WithPeerChanges(currentPeers)
+	}
+
+	return builder.Build()
 }
 
 // wireGuardPeerChangeResponse handles changes to WireGuard-only peers.
@@ -249,15 +280,89 @@ func (m *mapper) wireGuardPeerRemovedResponse(
 		Build()
 }
 
-// peerRemovedResponse creates a MapResponse indicating that a peer has been removed.
-func (m *mapper) peerRemovedResponse(
+// buildFromChange builds a MapResponse from a change.Change specification.
+// This provides fine-grained control over what gets included in the response.
+func (m *mapper) buildFromChange(
 	nodeID types.NodeID,
-	removedNodeID types.NodeID,
+	capVer tailcfg.CapabilityVersion,
+	resp *change.Change,
 ) (*tailcfg.MapResponse, error) {
-	return m.NewMapResponseBuilder(nodeID).
-		WithDebugType(removeResponseDebug).
-		WithPeersRemoved(removedNodeID).
-		Build()
+	if resp.IsEmpty() {
+		return nil, nil //nolint:nilnil // Empty response means nothing to send, not an error
+	}
+
+	// If this is a self-update (the changed node is the receiving node),
+	// send a self-update response to ensure the node sees its own changes.
+	if resp.OriginNode != 0 && resp.OriginNode == nodeID {
+		return m.selfMapResponse(nodeID, capVer)
+	}
+
+	// WireGuard-only peer changes are handled separately from regular peer changes.
+	if resp.WireGuardPeerChanged {
+		return m.wireGuardPeerChangeResponse(nodeID, capVer, resp.WireGuardPeerID)
+	}
+	if resp.WireGuardPeerRemoved {
+		return m.wireGuardPeerRemovedResponse(nodeID, resp.WireGuardPeerID)
+	}
+	if resp.WireGuardConnChanged {
+		if resp.TargetNode != nodeID {
+			return nil, nil //nolint:nilnil // Only the targeted node receives connection updates
+		}
+		return m.wireGuardPeerChangeResponse(nodeID, capVer, resp.WireGuardPeerID)
+	}
+	if resp.WireGuardConnRemoved {
+		if resp.TargetNode != nodeID {
+			return nil, nil //nolint:nilnil // Only the targeted node receives connection removal updates
+		}
+		return m.wireGuardPeerRemovedResponse(nodeID, resp.WireGuardPeerID)
+	}
+
+	builder := m.NewMapResponseBuilder(nodeID).
+		WithCapabilityVersion(capVer).
+		WithDebugType(changeResponseDebug)
+
+	if resp.IncludeSelf {
+		builder.WithSelfNode()
+	}
+
+	if resp.IncludeDERPMap {
+		builder.WithDERPMap()
+	}
+
+	if resp.IncludeDNS {
+		builder.WithDNSConfig()
+	}
+
+	if resp.IncludeDomain {
+		builder.WithDomain()
+	}
+
+	if resp.IncludePolicy {
+		builder.WithPacketFilters()
+		builder.WithSSHPolicy()
+	}
+
+	if resp.SendAllPeers {
+		peers := m.state.ListPeers(nodeID)
+		builder.WithUserProfiles(peers)
+		builder.WithPeers(peers)
+	} else {
+		if len(resp.PeersChanged) > 0 {
+			peers := m.state.ListPeers(nodeID, resp.PeersChanged...)
+			builder.WithUserProfiles(peers)
+			builder.WithPeerChanges(peers)
+		}
+
+		if len(resp.PeersRemoved) > 0 {
+			builder.WithPeersRemoved(resp.PeersRemoved...)
+		}
+	}
+
+	if len(resp.PeerPatches) > 0 {
+		builder.WithPeerChangedPatch(resp.PeerPatches)
+	}
+
+	return builder.Build()
 }
 
 func writeDebugMapResponse(
@@ -272,6 +377,7 @@ func writeDebugMapResponse(
 
 	perms := fs.FileMode(debugMapResponsePerm)
 	mPath := path.Join(debugDumpMapResponsePath, fmt.Sprintf("%d", nodeID))
+
 	err = os.MkdirAll(mPath, perms)
 	if err != nil {
 		panic(err)
@@ -284,21 +390,17 @@ func writeDebugMapResponse(
 		fmt.Sprintf("%s-%s.json", now, t),
 	)
 
-	log.Trace().Msgf("Writing MapResponse to %s", mapResponsePath)
+	log.Trace().Msgf("writing MapResponse to %s", mapResponsePath)
+
 	err = os.WriteFile(mapResponsePath, body, perms)
 	if err != nil {
 		panic(err)
 	}
 }
 
-// routeFilterFunc is a function that takes a node ID and returns a list of
-// netip.Prefixes that are allowed for that node. It is used to filter routes
-// from the primary route manager to the node.
-type routeFilterFunc func(id types.NodeID) []netip.Prefix
-
 func (m *mapper) debugMapResponses() (map[types.NodeID][]tailcfg.MapResponse, error) {
 	if debugDumpMapResponsePath == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // intentional: no data when debug path not set
 	}
 
 	return ReadMapResponsesFromDirectory(debugDumpMapResponsePath)
@@ -311,6 +413,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 	}
 
 	result := make(map[types.NodeID][]tailcfg.MapResponse)
+
 	for _, node := range nodes {
 		if !node.IsDir() {
 			continue
@@ -318,7 +421,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		nodeIDu, err := strconv.ParseUint(node.Name(), 10, 64)
 		if err != nil {
-			log.Error().Err(err).Msgf("Parsing node ID from dir %s", node.Name())
+			log.Error().Err(err).Msgf("parsing node ID from dir %s", node.Name())
 			continue
 		}
 
@@ -326,7 +429,7 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 		files, err := os.ReadDir(path.Join(dir, node.Name()))
 		if err != nil {
-			log.Error().Err(err).Msgf("Reading dir %s", node.Name())
+			log.Error().Err(err).Msgf("reading dir %s", node.Name())
 			continue
 		}
 
@@ -341,14 +444,15 @@ func ReadMapResponsesFromDirectory(dir string) (map[types.NodeID][]tailcfg.MapRe
 
 			body, err := os.ReadFile(path.Join(dir, node.Name(), file.Name()))
 			if err != nil {
-				log.Error().Err(err).Msgf("Reading file %s", file.Name())
+				log.Error().Err(err).Msgf("reading file %s", file.Name())
 				continue
 			}
 
 			var resp tailcfg.MapResponse
+
 			err = json.Unmarshal(body, &resp)
 			if err != nil {
-				log.Error().Err(err).Msgf("Unmarshalling file %s", file.Name())
+				log.Error().Err(err).Msgf("unmarshalling file %s", file.Name())
 				continue
 			}
 

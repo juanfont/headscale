@@ -28,7 +28,7 @@ The ports in use vary with the intended scenario and enabled features. Some of t
     - STUN, required if the [embedded DERP server](../ref/derp.md) is enabled
 - tcp/50443
     - Expose publicly: yes
-    - Only required if the gRPC interface is used to [remote-control Headscale](../ref/remote-cli.md).
+    - Only required if the gRPC interface is used to [remote-control Headscale](../ref/api.md#grpc).
 - tcp/9090
     - Expose publicly: no
     - [Metrics and debug endpoint](../ref/debug.md#metrics-and-debug-endpoint)

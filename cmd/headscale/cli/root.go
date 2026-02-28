@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"os"
 	"runtime"
 	"slices"
@@ -13,10 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/tcnksm/go-latest"
-)
-
-const (
-	deprecateNamespaceMessage = "use --user"
 )
 
 var cfgFile string = ""
@@ -39,25 +34,34 @@ func init() {
 		StringP("output", "o", "", "Output format. Empty for human-readable, 'json', 'json-line' or 'yaml'")
 	rootCmd.PersistentFlags().
 		Bool("force", false, "Disable prompts and forces the execution")
+
+	// Re-enable usage output only for flag-parsing errors; runtime errors
+	// from RunE should never dump usage text.
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		cmd.SilenceUsage = false
+
+		return err
+	})
 }
 
 func initConfig() {
 	if cfgFile == "" {
 		cfgFile = os.Getenv("HEADSCALE_CONFIG")
 	}
+
 	if cfgFile != "" {
 		err := types.LoadConfig(cfgFile, true)
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("Error loading config file %s", cfgFile)
+			log.Fatal().Caller().Err(err).Msgf("error loading config file %s", cfgFile)
 		}
 	} else {
 		err := types.LoadConfig("", false)
 		if err != nil {
-			log.Fatal().Caller().Err(err).Msgf("Error loading config")
+			log.Fatal().Caller().Err(err).Msgf("error loading config")
 		}
 	}
 
-	machineOutput := HasMachineOutputFlag()
+	machineOutput := hasMachineOutputFlag()
 
 	// If the user has requested a "node" readable format,
 	// then disable login so the output remains valid.
@@ -80,6 +84,7 @@ func initConfig() {
 				Repository:    "headscale",
 				TagFilterFunc: filterPreReleasesIfStable(func() string { return versionInfo.Version }),
 			}
+
 			res, err := latest.Check(githubTag, versionInfo.Version)
 			if err == nil && res.Outdated {
 				//nolint
@@ -101,6 +106,7 @@ func isPreReleaseVersion(version string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -137,11 +143,15 @@ var rootCmd = &cobra.Command{
 headscale is an open source implementation of the Tailscale control server
 
 https://github.com/juanfont/headscale`,
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	cmd, err := rootCmd.ExecuteC()
+	if err != nil {
+		outputFormat, _ := cmd.Flags().GetString("output")
+		printError(err, outputFormat)
 		os.Exit(1)
 	}
 }

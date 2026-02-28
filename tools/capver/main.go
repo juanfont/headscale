@@ -3,7 +3,9 @@ package main
 //go:generate go run main.go
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/format"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,64 +23,211 @@ import (
 )
 
 const (
-	releasesURL     = "https://api.github.com/repos/tailscale/tailscale/releases"
-	rawFileURL      = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
-	outputFile      = "../../hscontrol/capver/capver_generated.go"
-	testFile        = "../../hscontrol/capver/capver_test_data.go"
-	minVersionParts = 2
-	fallbackCapVer  = 90
-	maxTestCases    = 4
-	// TODO(https://github.com/tailscale/tailscale/issues/12849): Restore to 10 when v1.92 is released.
-	supportedMajorMinorVersions = 9
+	ghcrTokenURL                = "https://ghcr.io/token?service=ghcr.io&scope=repository:tailscale/tailscale:pull" //nolint:gosec
+	ghcrTagsURL                 = "https://ghcr.io/v2/tailscale/tailscale/tags/list?n=10000"
+	rawFileURL                  = "https://github.com/tailscale/tailscale/raw/refs/tags/%s/tailcfg/tailcfg.go"
+	outputFile                  = "../../hscontrol/capver/capver_generated.go"
+	testFile                    = "../../hscontrol/capver/capver_test_data.go"
+	fallbackCapVer              = 90
+	maxTestCases                = 4
+	supportedMajorMinorVersions = 10
 	filePermissions             = 0o600
+	semverMatchGroups           = 4
+	latest3Count                = 3
+	latest2Count                = 2
 )
 
-type Release struct {
-	Name string `json:"name"`
+var errUnexpectedStatusCode = errors.New("unexpected status code")
+
+// GHCRTokenResponse represents the response from GHCR token endpoint.
+type GHCRTokenResponse struct {
+	Token string `json:"token"`
 }
 
-func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
-	// Fetch the releases
-	resp, err := http.Get(releasesURL)
+// GHCRTagsResponse represents the response from GHCR tags list endpoint.
+type GHCRTagsResponse struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}
+
+// getGHCRToken fetches an anonymous token from GHCR for accessing public container images.
+func getGHCRToken(ctx context.Context) (string, error) {
+	client := &http.Client{}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTokenURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching releases: %w", err)
+		return "", fmt.Errorf("error creating token request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("error fetching GHCR token: %w", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("%w: %d", errUnexpectedStatusCode, resp.StatusCode)
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %w", err)
+		return "", fmt.Errorf("error reading token response: %w", err)
 	}
 
-	var releases []Release
+	var tokenResp GHCRTokenResponse
 
-	err = json.Unmarshal(body, &releases)
+	err = json.Unmarshal(body, &tokenResp)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling JSON: %w", err)
+		return "", fmt.Errorf("error parsing token response: %w", err)
 	}
+
+	return tokenResp.Token, nil
+}
+
+// getGHCRTags fetches all available tags from GHCR for tailscale/tailscale.
+func getGHCRTags(ctx context.Context) ([]string, error) {
+	token, err := getGHCRToken(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GHCR token: %w", err)
+	}
+
+	client := &http.Client{}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ghcrTagsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating tags request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching tags: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %d", errUnexpectedStatusCode, resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("error reading tags response: %w", err)
+	}
+
+	var tagsResp GHCRTagsResponse
+
+	err = json.Unmarshal(body, &tagsResp)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing tags response: %w", err)
+	}
+
+	return tagsResp.Tags, nil
+}
+
+// semverRegex matches semantic version tags like v1.90.0 or v1.90.1.
+var semverRegex = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+
+// parseSemver extracts major, minor, patch from a semver tag.
+// Returns -1 for all values if not a valid semver.
+func parseSemver(tag string) (int, int, int) {
+	matches := semverRegex.FindStringSubmatch(tag)
+	if len(matches) != semverMatchGroups {
+		return -1, -1, -1
+	}
+
+	major, _ := strconv.Atoi(matches[1])
+	minor, _ := strconv.Atoi(matches[2])
+	patch, _ := strconv.Atoi(matches[3])
+
+	return major, minor, patch
+}
+
+// getMinorVersionsFromTags processes container tags and returns a map of minor versions
+// to the first available patch version for each minor.
+// For example: {"v1.90": "v1.90.0", "v1.92": "v1.92.0"}.
+func getMinorVersionsFromTags(tags []string) map[string]string {
+	// Map minor version (e.g., "v1.90") to lowest patch version available
+	minorToLowestPatch := make(map[string]struct {
+		patch   int
+		fullVer string
+	})
+
+	for _, tag := range tags {
+		major, minor, patch := parseSemver(tag)
+		if major < 0 {
+			continue // Not a semver tag
+		}
+
+		minorKey := fmt.Sprintf("v%d.%d", major, minor)
+
+		existing, exists := minorToLowestPatch[minorKey]
+		if !exists || patch < existing.patch {
+			minorToLowestPatch[minorKey] = struct {
+				patch   int
+				fullVer string
+			}{
+				patch:   patch,
+				fullVer: tag,
+			}
+		}
+	}
+
+	// Convert to simple map
+	result := make(map[string]string)
+	for minorVer, info := range minorToLowestPatch {
+		result[minorVer] = info.fullVer
+	}
+
+	return result
+}
+
+// getCapabilityVersions fetches container tags from GHCR, identifies minor versions,
+// and fetches the capability version for each from the Tailscale source.
+func getCapabilityVersions(ctx context.Context) (map[string]tailcfg.CapabilityVersion, error) {
+	// Fetch container tags from GHCR
+	tags, err := getGHCRTags(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get container tags: %w", err)
+	}
+
+	log.Printf("Found %d container tags", len(tags))
+
+	// Get minor versions with their representative patch versions
+	minorVersions := getMinorVersionsFromTags(tags)
+	log.Printf("Found %d minor versions", len(minorVersions))
 
 	// Regular expression to find the CurrentCapabilityVersion line
 	re := regexp.MustCompile(`const CurrentCapabilityVersion CapabilityVersion = (\d+)`)
 
 	versions := make(map[string]tailcfg.CapabilityVersion)
+	client := &http.Client{}
 
-	for _, release := range releases {
-		version := strings.TrimSpace(release.Name)
-		if !strings.HasPrefix(version, "v") {
-			version = "v" + version
+	for minorVer, patchVer := range minorVersions {
+		// Fetch the raw Go file for the patch version
+		rawURL := fmt.Sprintf(rawFileURL, patchVer)
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil) //nolint:gosec
+		if err != nil {
+			log.Printf("Warning: failed to create request for %s: %v", patchVer, err)
+			continue
 		}
 
-		// Fetch the raw Go file
-		rawURL := fmt.Sprintf(rawFileURL, version)
-
-		resp, err := http.Get(rawURL)
+		resp, err := client.Do(req)
 		if err != nil {
+			log.Printf("Warning: failed to fetch %s: %v", patchVer, err)
 			continue
 		}
 		defer resp.Body.Close()
 
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Warning: got status %d for %s", resp.StatusCode, patchVer)
+			continue
+		}
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
+			log.Printf("Warning: failed to read response for %s: %v", patchVer, err)
 			continue
 		}
 
@@ -86,7 +236,8 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 		if len(matches) > 1 {
 			capabilityVersionStr := matches[1]
 			capabilityVersion, _ := strconv.Atoi(capabilityVersionStr)
-			versions[version] = tailcfg.CapabilityVersion(capabilityVersion)
+			versions[minorVer] = tailcfg.CapabilityVersion(capabilityVersion)
+			log.Printf("  %s (from %s): capVer %d", minorVer, patchVer, capabilityVersion)
 		}
 	}
 
@@ -94,41 +245,20 @@ func getCapabilityVersions() (map[string]tailcfg.CapabilityVersion, error) {
 }
 
 func calculateMinSupportedCapabilityVersion(versions map[string]tailcfg.CapabilityVersion) tailcfg.CapabilityVersion {
-	// Get unique major.minor versions
-	majorMinorToCapVer := make(map[string]tailcfg.CapabilityVersion)
+	// Since we now store minor versions directly, just sort and take the oldest of the latest N
+	minorVersions := xmaps.Keys(versions)
+	sort.Strings(minorVersions)
 
-	for version, capVer := range versions {
-		// Remove 'v' prefix and split by '.'
-		cleanVersion := strings.TrimPrefix(version, "v")
-
-		parts := strings.Split(cleanVersion, ".")
-		if len(parts) >= minVersionParts {
-			majorMinor := parts[0] + "." + parts[1]
-			// Keep the earliest (lowest) capver for each major.minor
-			if existing, exists := majorMinorToCapVer[majorMinor]; !exists || capVer < existing {
-				majorMinorToCapVer[majorMinor] = capVer
-			}
-		}
-	}
-
-	// Sort major.minor versions
-	majorMinors := xmaps.Keys(majorMinorToCapVer)
-	sort.Strings(majorMinors)
-
-	// Take the latest 10 versions
-	supportedCount := supportedMajorMinorVersions
-	if len(majorMinors) < supportedCount {
-		supportedCount = len(majorMinors)
-	}
+	supportedCount := min(len(minorVersions), supportedMajorMinorVersions)
 
 	if supportedCount == 0 {
 		return fallbackCapVer
 	}
 
 	// The minimum supported version is the oldest of the latest 10
-	oldestSupportedMajorMinor := majorMinors[len(majorMinors)-supportedCount]
+	oldestSupportedMinor := minorVersions[len(minorVersions)-supportedCount]
 
-	return majorMinorToCapVer[oldestSupportedMajorMinor]
+	return versions[oldestSupportedMinor]
 }
 
 func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion, minSupportedCapVer tailcfg.CapabilityVersion) error {
@@ -158,8 +288,8 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 		capabilityVersion := versions[v]
 
 		// If it is already set, skip and continue,
-		// we only want the first tailscale vsion per
-		// capability vsion.
+		// we only want the first tailscale version per
+		// capability version.
 		if _, ok := capVarToTailscaleVer[capabilityVersion]; ok {
 			continue
 		}
@@ -168,9 +298,7 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 	}
 
 	capsSorted := xmaps.Keys(capVarToTailscaleVer)
-	sort.Slice(capsSorted, func(i, j int) bool {
-		return capsSorted[i] < capsSorted[j]
-	})
+	slices.Sort(capsSorted)
 
 	for _, capVer := range capsSorted {
 		fmt.Fprintf(&content, "\t%d:\t\t\"%s\",\n", capVer, capVarToTailscaleVer[capVer])
@@ -203,34 +331,16 @@ func writeCapabilityVersionsToFile(versions map[string]tailcfg.CapabilityVersion
 }
 
 func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupportedCapVer tailcfg.CapabilityVersion) error {
-	// Get unique major.minor versions for test generation
-	majorMinorToCapVer := make(map[string]tailcfg.CapabilityVersion)
+	// Sort minor versions
+	minorVersions := xmaps.Keys(versions)
+	sort.Strings(minorVersions)
 
-	for version, capVer := range versions {
-		cleanVersion := strings.TrimPrefix(version, "v")
+	// Take latest N
+	supportedCount := min(len(minorVersions), supportedMajorMinorVersions)
 
-		parts := strings.Split(cleanVersion, ".")
-		if len(parts) >= minVersionParts {
-			majorMinor := parts[0] + "." + parts[1]
-			if existing, exists := majorMinorToCapVer[majorMinor]; !exists || capVer < existing {
-				majorMinorToCapVer[majorMinor] = capVer
-			}
-		}
-	}
-
-	// Sort major.minor versions
-	majorMinors := xmaps.Keys(majorMinorToCapVer)
-	sort.Strings(majorMinors)
-
-	// Take latest 10
-	supportedCount := supportedMajorMinorVersions
-	if len(majorMinors) < supportedCount {
-		supportedCount = len(majorMinors)
-	}
-
-	latest10 := majorMinors[len(majorMinors)-supportedCount:]
-	latest3 := majorMinors[len(majorMinors)-3:]
-	latest2 := majorMinors[len(majorMinors)-2:]
+	latest10 := minorVersions[len(minorVersions)-supportedCount:]
+	latest3 := minorVersions[len(minorVersions)-min(latest3Count, len(minorVersions)):]
+	latest2 := minorVersions[len(minorVersions)-min(latest2Count, len(minorVersions)):]
 
 	// Generate test data file content
 	var content strings.Builder
@@ -249,7 +359,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString("\t{3, false, []string{")
 
 	for i, version := range latest3 {
-		content.WriteString(fmt.Sprintf("\"v%s\"", version))
+		content.WriteString(fmt.Sprintf("\"%s\"", version))
 
 		if i < len(latest3)-1 {
 			content.WriteString(", ")
@@ -262,7 +372,9 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString("\t{2, true, []string{")
 
 	for i, version := range latest2 {
-		content.WriteString(fmt.Sprintf("\"%s\"", version))
+		// Strip v prefix for this test case
+		verNoV := strings.TrimPrefix(version, "v")
+		content.WriteString(fmt.Sprintf("\"%s\"", verNoV))
 
 		if i < len(latest2)-1 {
 			content.WriteString(", ")
@@ -275,7 +387,8 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 	content.WriteString(fmt.Sprintf("\t{%d, true, []string{\n", supportedMajorMinorVersions))
 
 	for _, version := range latest10 {
-		content.WriteString(fmt.Sprintf("\t\t\"%s\",\n", version))
+		verNoV := strings.TrimPrefix(version, "v")
+		content.WriteString(fmt.Sprintf("\t\t\"%s\",\n", verNoV))
 	}
 
 	content.WriteString("\t}},\n")
@@ -308,9 +421,7 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 
 	// Add a few more test cases
 	capsSorted := xmaps.Keys(capVerToTailscaleVer)
-	sort.Slice(capsSorted, func(i, j int) bool {
-		return capsSorted[i] < capsSorted[j]
-	})
+	slices.Sort(capsSorted)
 
 	testCount := 0
 	for _, capVer := range capsSorted {
@@ -347,7 +458,9 @@ func writeTestDataFile(versions map[string]tailcfg.CapabilityVersion, minSupport
 }
 
 func main() {
-	versions, err := getCapabilityVersions()
+	ctx := context.Background()
+
+	versions, err := getCapabilityVersions(ctx)
 	if err != nil {
 		log.Println("Error:", err)
 		return

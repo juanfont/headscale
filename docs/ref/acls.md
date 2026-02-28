@@ -65,7 +65,7 @@ servers.
 - billing.internal
 - router.internal
 
-![ACL implementation example](../images/headscale-acl-network.png)
+![ACL implementation example](../assets/images/headscale-acl-network.png)
 
 When [registering the servers](../usage/getting-started.md#register-a-node) we
 will need to add the flag `--advertise-tags=tag:<tag1>,tag:<tag2>`, and the user
@@ -222,7 +222,7 @@ Allows access to the internet through [exit nodes](routes.md#exit-node). Can onl
 
 ### `autogroup:member`
 
-Includes all users who are direct members of the tailnet. Does not include users from shared devices.
+Includes all [personal (untagged) devices](registration.md/#identity-model).
 
 ```json
 {
@@ -234,7 +234,7 @@ Includes all users who are direct members of the tailnet. Does not include users
 
 ### `autogroup:tagged`
 
-Includes all devices that have at least one tag.
+Includes all devices that [have at least one tag](registration.md/#identity-model).
 
 ```json
 {
@@ -245,7 +245,6 @@ Includes all devices that have at least one tag.
 ```
 
 ### `autogroup:self`
-**(EXPERIMENTAL)**
 
 !!! warning "The current implementation of `autogroup:self` is inefficient"
 

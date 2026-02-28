@@ -139,7 +139,7 @@ func TestNodeFQDN(t *testing.T) {
 			name: "no-dnsconfig-with-username",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -150,7 +150,7 @@ func TestNodeFQDN(t *testing.T) {
 			name: "all-set",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -160,12 +160,12 @@ func TestNodeFQDN(t *testing.T) {
 		{
 			name: "no-given-name",
 			node: Node{
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
 			domain:  "example.com",
-			wantErr: "failed to create valid FQDN: node has no given name",
+			wantErr: "creating valid FQDN: node has no given name",
 		},
 		{
 			name: "too-long-username",
@@ -173,13 +173,13 @@ func TestNodeFQDN(t *testing.T) {
 				GivenName: strings.Repeat("a", 256),
 			},
 			domain:  "example.com",
-			wantErr: fmt.Sprintf("failed to create valid FQDN (%s.example.com.): hostname too long, cannot except 255 ASCII chars", strings.Repeat("a", 256)),
+			wantErr: fmt.Sprintf("creating valid FQDN (%s.example.com.): hostname too long, cannot accept more than 255 ASCII chars", strings.Repeat("a", 256)),
 		},
 		{
 			name: "no-dnsconfig",
 			node: Node{
 				GivenName: "test",
-				User: User{
+				User: &User{
 					Name: "user",
 				},
 			},
@@ -407,7 +407,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",
@@ -491,7 +491,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "server-北京-01",
+				Hostname: "server-北京-01", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",
@@ -505,7 +505,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "我的电脑",
+				Hostname: "我的电脑", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",
@@ -533,7 +533,7 @@ func TestApplyHostnameFromHostInfo(t *testing.T) {
 				Hostname:  "valid-hostname",
 			},
 			change: &tailcfg.Hostinfo{
-				Hostname: "测试💻机器",
+				Hostname: "测试💻机器", //nolint:gosmopolitan // intentional i18n test data
 			},
 			want: Node{
 				GivenName: "valid-hostname",

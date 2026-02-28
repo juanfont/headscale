@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"fmt"
 	"net/netip"
 	"slices"
 	"testing"
@@ -67,6 +66,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -106,22 +106,27 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	validateInitialConnection(t, headscale, expectedNodes)
 
 	var listNodes []*v1.Node
+
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after web authentication")
 		assert.Len(ct, listNodes, len(allClients), "Expected %d nodes after web auth, got %d", len(allClients), len(listNodes))
 	}, 30*time.Second, 2*time.Second, "validating node count matches client count after web authentication")
+
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
 	clientIPs := make(map[TailscaleClient][]netip.Addr)
+
 	for _, client := range allClients {
 		ips, err := client.IPs()
 		if err != nil {
 			t.Fatalf("failed to get IPs for client %s: %s", client.Hostname(), err)
 		}
+
 		clientIPs[client] = ips
 	}
 
@@ -152,6 +157,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	t.Logf("Validating node persistence after logout at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after web flow logout")
 		assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after logout - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
@@ -226,6 +232,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	scenario, err := NewScenario(spec)
+
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
@@ -240,8 +247,12 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
 
-	allIps, err := scenario.ListTailscaleClientsIPs()
+	var allIps []netip.Addr
+
+	allIps, err = scenario.ListTailscaleClientsIPs()
 	requireNoErrListClientIPs(t, err)
+
+	_ = allIps // used below after user switch
 
 	err = scenario.WaitForTailscaleSync()
 	requireNoErrSync(t, err)
@@ -256,13 +267,16 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	validateInitialConnection(t, headscale, expectedNodes)
 
 	var listNodes []*v1.Node
+
 	t.Logf("Validating initial node count after web auth at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes after initial web authentication")
 		assert.Len(ct, listNodes, len(allClients), "Expected %d nodes after web auth, got %d", len(allClients), len(listNodes))
 	}, 30*time.Second, 2*time.Second, "validating node count matches client count after initial web authentication")
+
 	nodeCountBeforeLogout := len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
 
@@ -299,7 +313,7 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 
 		// Register all clients as user1 (this is where cross-user registration happens)
 		// This simulates: headscale nodes register --user user1 --key <key>
-		scenario.runHeadscaleRegister("user1", body)
+		_ = scenario.runHeadscaleRegister("user1", body)
 	}
 
 	// Wait for all clients to reach running state
@@ -313,9 +327,11 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	t.Logf("all clients logged back in as user1")
 
 	var user1Nodes []*v1.Node
+
 	t.Logf("Validating user1 node count after relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(ct, err, "Failed to list nodes for user1 after web flow relogin")
 		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all %d clients after web flow relogin, got %d nodes", len(allClients), len(user1Nodes))
@@ -333,21 +349,24 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	// Validate that user2's old nodes still exist in database (but are expired/offline)
 	// When CLI registration creates new nodes for user1, user2's old nodes remain
 	var user2Nodes []*v1.Node
+
 	t.Logf("Validating user2 old nodes remain in database after CLI registration to user1 at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
+
 		user2Nodes, err = headscale.ListNodes("user2")
 		assert.NoError(ct, err, "Failed to list nodes for user2 after CLI registration to user1")
 		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d old nodes (likely expired) after CLI registration to user1, got %d nodes", len(allClients)/2, len(user2Nodes))
 	}, 30*time.Second, 2*time.Second, "validating user2 old nodes remain in database after CLI registration to user1")
 
 	t.Logf("Validating client login states after web flow user switch at %s", time.Now().Format(TimestampFormat))
+
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after web flow user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, fmt.Sprintf("validating %s is logged in as user1 after web flow user switch", client.Hostname()))
+		}, 30*time.Second, 2*time.Second, "validating %s is logged in as user1 after web flow user switch", client.Hostname())
 	}
 
 	// Test connectivity after user switch

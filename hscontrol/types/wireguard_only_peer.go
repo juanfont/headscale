@@ -38,8 +38,8 @@ type WireGuardOnlyPeer struct {
 	// Human-readable name for the peer (must be unique)
 	Name string `gorm:"unique;not null"`
 
-	UserID UserID
-	User   User `gorm:"constraint:OnDelete:CASCADE;"`
+	UserID UserID `gorm:"not null"`
+	User   User   `gorm:"constraint:OnDelete:CASCADE;"`
 
 	// WireGuard public key of the external peer
 	PublicKey key.NodePublic `gorm:"serializer:text;not null"`

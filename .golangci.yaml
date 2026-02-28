@@ -7,6 +7,7 @@ linters:
     - depguard
     - dupl
     - exhaustruct
+    - funcorder
     - funlen
     - gochecknoglobals
     - gochecknoinits
@@ -17,6 +18,7 @@ linters:
     - lll
     - maintidx
     - makezero
+    - mnd
     - musttag
     - nestif
     - nolintlint
@@ -28,6 +30,32 @@ linters:
     - wrapcheck
     - wsl
   settings:
+    forbidigo:
+      forbid:
+        # Forbid time.Sleep everywhere with context-appropriate alternatives
+        - pattern: 'time\.Sleep'
+          msg: >-
+            time.Sleep is forbidden.
+            In tests: use assert.EventuallyWithT for polling/waiting patterns.
+            In production code: use a backoff strategy (e.g., cenkalti/backoff) or proper synchronization primitives.
+        # Forbid inline string literals in zerolog field methods - use zf.* constants
+        - pattern: '\.(Str|Int|Int8|Int16|Int32|Int64|Uint|Uint8|Uint16|Uint32|Uint64|Float32|Float64|Bool|Dur|Time|TimeDiff|Strs|Ints|Uints|Floats|Bools|Any|Interface)\("[^"]+"'
+          msg: >-
+            Use zf.* constants for zerolog field names instead of string literals.
+            Import "github.com/juanfont/headscale/hscontrol/util/zlog/zf" and use
+            constants like zf.NodeID, zf.UserName, etc. Add new constants to
+            hscontrol/util/zlog/zf/fields.go if needed.
+        # Forbid ptr.To - use Go 1.26 new(expr) instead
+        - pattern: 'ptr\.To\('
+          msg: >-
+            ptr.To is forbidden. Use Go 1.26's new(expr) syntax instead.
+            Example: ptr.To(value) → new(value)
+        # Forbid tsaddr.SortPrefixes - use slices.SortFunc with netip.Prefix.Compare
+        - pattern: 'tsaddr\.SortPrefixes'
+          msg: >-
+            tsaddr.SortPrefixes is forbidden. Use Go 1.26's netip.Prefix.Compare instead.
+            Example: slices.SortFunc(prefixes, netip.Prefix.Compare)
+      analyze-types: true
     gocritic:
       disabled-checks:
         - appendAssign

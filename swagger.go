@@ -49,7 +49,7 @@ func SwaggerUI(
 </html>`))
 
 	var payload bytes.Buffer
-	if err := swaggerTemplate.Execute(&payload, struct{}{}); err != nil {
+	if err := swaggerTemplate.Execute(&payload, struct{}{}); err != nil { //nolint:noinlineerr
 		log.Error().
 			Caller().
 			Err(err).
@@ -88,7 +88,7 @@ func SwaggerAPIv1(
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	if _, err := writer.Write(apiV1JSON); err != nil {
+	if _, err := writer.Write(apiV1JSON); err != nil { //nolint:noinlineerr
 		log.Error().
 			Caller().
 			Err(err).

@@ -57,7 +57,7 @@ func OIDCCallback(user, verb string) *elem.Element {
 			P(elem.Text("Check out the documentation to learn more about headscale and Tailscale:")),
 			Ul(
 				elem.Li(nil,
-					externalLink("https://github.com/juanfont/headscale/tree/main/docs", "Headscale documentation"),
+					externalLink("https://headscale.net/stable/", "Headscale documentation"),
 				),
 				elem.Li(nil,
 					externalLink("https://tailscale.com/kb/", "Tailscale knowledge base"),

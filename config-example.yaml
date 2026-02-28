@@ -20,6 +20,7 @@ listen_addr: 127.0.0.1:8080
 
 # Address to listen to /metrics and /debug, you may want
 # to keep this endpoint private to your internal network
+# Use an emty value to disable the metrics listener.
 metrics_listen_addr: 127.0.0.1:9090
 
 # Address to listen for gRPC.
@@ -361,6 +362,12 @@ unix_socket_permission: "0770"
 #   # required "openid" scope.
 #   scope: ["openid", "profile", "email"]
 #
+#   # Only verified email addresses are synchronized to the user profile by
+#   # default. Unverified emails may be allowed in case an identity provider
+#   # does not send the "email_verified: true" claim or email verification is
+#   # not required.
+#   email_verified_required: true
+#
 #   # Provide custom key/value pairs which get sent to the identity provider's
 #   # authorization endpoint.
 #   extra_params:
@@ -407,3 +414,23 @@ logtail:
 # default static port 41641. This option is intended as a workaround for some buggy
 # firewall devices. See https://tailscale.com/kb/1181/firewalls/ for more information.
 randomize_client_port: false
+
+# Taildrop configuration
+# Taildrop is the file sharing feature of Tailscale, allowing nodes to send files to each other.
+# https://tailscale.com/kb/1106/taildrop/
+taildrop:
+  # Enable or disable Taildrop for all nodes.
+  # When enabled, nodes can send files to other nodes owned by the same user.
+  # Tagged devices and cross-user transfers are not permitted by Tailscale clients.
+  enabled: true
+# Advanced performance tuning parameters.
+# The defaults are carefully chosen and should rarely need adjustment.
+# Only modify these if you have identified a specific performance issue.
+#
+# tuning:
+#   # NodeStore write batching configuration.
+#   # The NodeStore batches write operations before rebuilding peer relationships,
+#   # which is computationally expensive. Batching reduces rebuild frequency.
+#   #
+#   # node_store_batch_size: 100
+#   # node_store_batch_timeout: 500ms

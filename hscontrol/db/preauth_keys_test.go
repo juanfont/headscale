@@ -11,7 +11,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"tailscale.com/types/ptr"
 )
 
 func TestCreatePreAuthKey(t *testing.T) {
@@ -24,7 +23,7 @@ func TestCreatePreAuthKey(t *testing.T) {
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()
 
-				_, err := db.CreatePreAuthKey(12345, true, false, nil, nil)
+				_, err := db.CreatePreAuthKey(new(types.UserID(12345)), true, false, nil, nil)
 				assert.Error(t, err)
 			},
 		},
@@ -36,26 +35,17 @@ func TestCreatePreAuthKey(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test"})
 				require.NoError(t, err)
 
-				key, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+				key, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 				require.NoError(t, err)
 				assert.NotEmpty(t, key.Key)
 
 				// List keys for the user
-				keys, err := db.ListPreAuthKeys(types.UserID(user.ID))
+				keys, err := db.ListPreAuthKeys()
 				require.NoError(t, err)
 				assert.Len(t, keys, 1)
 
 				// Verify User association is populated
 				assert.Equal(t, user.ID, keys[0].User.ID)
-			},
-		},
-		{
-			name: "error_list_invalid_user_id",
-			test: func(t *testing.T, db *HSDatabase) {
-				t.Helper()
-
-				_, err := db.ListPreAuthKeys(1000000)
-				assert.Error(t, err)
 			},
 		},
 	}
@@ -83,7 +73,7 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 				user, err := db.CreateUser(types.User{Name: "test-tags-1"})
 				require.NoError(t, err)
 
-				_, err = db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, []string{"badtag"})
+				_, err = db.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"badtag"})
 				assert.Error(t, err)
 			},
 		},
@@ -98,10 +88,10 @@ func TestPreAuthKeyACLTags(t *testing.T) {
 				expectedTags := []string{"tag:test1", "tag:test2"}
 				tagsWithDuplicate := []string{"tag:test1", "tag:test2", "tag:test2"}
 
-				_, err = db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, tagsWithDuplicate)
+				_, err = db.CreatePreAuthKey(user.TypedID(), false, false, nil, tagsWithDuplicate)
 				require.NoError(t, err)
 
-				listedPaks, err := db.ListPreAuthKeys(types.UserID(user.ID))
+				listedPaks, err := db.ListPreAuthKeys()
 				require.NoError(t, err)
 				require.Len(t, listedPaks, 1)
 
@@ -128,15 +118,15 @@ func TestCannotDeleteAssignedPreAuthKey(t *testing.T) {
 	user, err := db.CreateUser(types.User{Name: "test8"})
 	require.NoError(t, err)
 
-	key, err := db.CreatePreAuthKey(types.UserID(user.ID), false, false, nil, []string{"tag:good"})
+	key, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, []string{"tag:good"})
 	require.NoError(t, err)
 
 	node := types.Node{
 		ID:             0,
 		Hostname:       "testest",
-		UserID:         user.ID,
+		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(key.ID),
+		AuthKeyID:      new(key.ID),
 	}
 	db.DB.Save(&node)
 
@@ -180,7 +170,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			validateResult: func(t *testing.T, pak *types.PreAuthKey) {
 				t.Helper()
 
-				assert.Equal(t, user.ID, pak.UserID)
+				assert.Equal(t, user.ID, *pak.UserID)
 				assert.NotEmpty(t, pak.Key) // Legacy keys have Key populated
 				assert.Empty(t, pak.Prefix) // Legacy keys have empty Prefix
 				assert.Nil(t, pak.Hash)     // Legacy keys have nil Hash
@@ -191,7 +181,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			setupKey: func() string {
 				// Create new key via API
 				keyStr, err := db.CreatePreAuthKey(
-					types.UserID(user.ID),
+					user.TypedID(),
 					true, false, nil, []string{"tag:test"},
 				)
 				require.NoError(t, err)
@@ -203,7 +193,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			validateResult: func(t *testing.T, pak *types.PreAuthKey) {
 				t.Helper()
 
-				assert.Equal(t, user.ID, pak.UserID)
+				assert.Equal(t, user.ID, *pak.UserID)
 				assert.Empty(t, pak.Key)       // New keys have empty Key
 				assert.NotEmpty(t, pak.Prefix) // New keys have Prefix
 				assert.NotNil(t, pak.Hash)     // New keys have Hash
@@ -214,7 +204,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			name: "new_key_format_validation",
 			setupKey: func() string {
 				keyStr, err := db.CreatePreAuthKey(
-					types.UserID(user.ID),
+					user.TypedID(),
 					true, false, nil, nil,
 				)
 				require.NoError(t, err)
@@ -244,7 +234,7 @@ func TestPreAuthKeyAuthentication(t *testing.T) {
 			setupKey: func() string {
 				// Create valid key
 				key, err := db.CreatePreAuthKey(
-					types.UserID(user.ID),
+					user.TypedID(),
 					true, false, nil, nil,
 				)
 				require.NoError(t, err)
@@ -415,11 +405,11 @@ func TestMultipleLegacyKeysAllowed(t *testing.T) {
 	assert.Len(t, legacyKeys, 5, "should have created 5 legacy keys")
 
 	// Now create new bcrypt-based keys - these should have unique prefixes
-	key1, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+	key1, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, key1.Key)
 
-	key2, err := db.CreatePreAuthKey(types.UserID(user.ID), true, false, nil, nil)
+	key2, err := db.CreatePreAuthKey(user.TypedID(), true, false, nil, nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, key2.Key)
 

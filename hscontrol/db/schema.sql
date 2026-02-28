@@ -34,16 +34,9 @@ CREATE INDEX idx_users_deleted_at ON users(deleted_at);
 -- - Cannot create another local user "alice" (blocked by idx_name_no_provider_identifier)
 -- - Cannot create another user with provider_identifier="alice_github" (blocked by idx_provider_identifier)
 -- - Cannot create user "bob" with provider_identifier="alice_github" (blocked by idx_name_provider_identifier)
-CREATE UNIQUE INDEX idx_provider_identifier ON users(
-  provider_identifier
-) WHERE provider_identifier IS NOT NULL;
-CREATE UNIQUE INDEX idx_name_provider_identifier ON users(
-  name,
-  provider_identifier
-);
-CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(
-  name
-) WHERE provider_identifier IS NULL;
+CREATE UNIQUE INDEX idx_provider_identifier ON users(provider_identifier) WHERE provider_identifier IS NOT NULL;
+CREATE UNIQUE INDEX idx_name_provider_identifier ON users(name, provider_identifier);
+CREATE UNIQUE INDEX idx_name_no_provider_identifier ON users(name) WHERE provider_identifier IS NULL;
 
 CREATE TABLE pre_auth_keys(
   id integer PRIMARY KEY AUTOINCREMENT,
@@ -86,9 +79,11 @@ CREATE TABLE nodes(
   ipv6 text,
   hostname text,
   given_name varchar(63),
+  -- user_id is NULL for tagged nodes (owned by tags, not a user).
+  -- Only set for user-owned nodes (no tags).
   user_id integer,
   register_method text,
-  forced_tags text,
+  tags text,
   auth_key_id integer,
   last_seen datetime,
   expiry datetime,
@@ -142,3 +137,9 @@ CREATE TABLE policies(
   deleted_at datetime
 );
 CREATE INDEX idx_policies_deleted_at ON policies(deleted_at);
+
+CREATE TABLE database_versions(
+  id integer PRIMARY KEY,
+  version text NOT NULL,
+  updated_at datetime
+);
