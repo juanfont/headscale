@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
+	defaultNodeExpiryTime               = 180 * 24 * time.Hour // 180 Days
 	maxDuration           time.Duration = 1<<63 - 1
 	PKCEMethodPlain       string        = "plain"
 	PKCEMethodS256        string        = "S256"
@@ -55,21 +55,41 @@ const (
 	PolicyModeFile = "file"
 )
 
+// EphemeralConfig contains configuration for ephemeral node lifecycle.
+type EphemeralConfig struct {
+	// InactivityTimeout is how long an ephemeral node can be offline
+	// before it is automatically deleted.
+	InactivityTimeout time.Duration
+}
+
+// NodeConfig contains configuration for node lifecycle and expiry.
+type NodeConfig struct {
+	// Expiry is the default key expiry duration for non-tagged nodes.
+	// Applies to all registration methods (auth key, CLI, web) unless
+	// a method-specific override is configured (e.g., oidc.expiry).
+	// Tagged nodes are exempt and never expire.
+	// A zero/negative duration means no default expiry (nodes never expire).
+	Expiry time.Duration
+
+	// Ephemeral contains configuration for ephemeral node lifecycle.
+	Ephemeral EphemeralConfig
+}
+
 // Config contains the initial Headscale configuration.
 type Config struct {
-	ServerURL                      string
-	Addr                           string
-	MetricsAddr                    string
-	GRPCAddr                       string
-	GRPCAllowInsecure              bool
-	EphemeralNodeInactivityTimeout time.Duration
-	PrefixV4                       *netip.Prefix
-	PrefixV6                       *netip.Prefix
-	IPAllocation                   IPAllocationStrategy
-	NoisePrivateKeyPath            string
-	BaseDomain                     string
-	Log                            LogConfig
-	DisableUpdateCheck             bool
+	ServerURL           string
+	Addr                string
+	MetricsAddr         string
+	GRPCAddr            string
+	GRPCAllowInsecure   bool
+	Node                NodeConfig
+	PrefixV4            *netip.Prefix
+	PrefixV6            *netip.Prefix
+	IPAllocation        IPAllocationStrategy
+	NoisePrivateKeyPath string
+	BaseDomain          string
+	Log                 LogConfig
+	DisableUpdateCheck  bool
 
 	Database DatabaseConfig
 
@@ -385,7 +405,8 @@ func LoadConfig(path string, isFile bool) error {
 
 	viper.SetDefault("oidc.scope", []string{oidc.ScopeOpenID, "profile", "email"})
 	viper.SetDefault("oidc.only_start_if_oidc_is_available", true)
-	viper.SetDefault("oidc.expiry", "180d")
+	// Note: oidc.expiry has NO viper default. If not explicitly set in config,
+	// it falls back to node.expiry via resolveOIDCExpiry().
 	viper.SetDefault("oidc.use_expiry_from_token", false)
 	viper.SetDefault("oidc.pkce.enabled", false)
 	viper.SetDefault("oidc.pkce.method", "S256")
@@ -395,6 +416,12 @@ func LoadConfig(path string, isFile bool) error {
 	viper.SetDefault("randomize_client_port", false)
 	viper.SetDefault("taildrop.enabled", true)
 
+	viper.SetDefault("node.expiry", "180d")
+	viper.SetDefault("node.ephemeral.inactivity_timeout", "120s")
+
+	// Backwards compatibility: old top-level key still works.
+	// If the old key is explicitly set and the new key is not,
+	// the old value takes precedence.
 	viper.SetDefault("ephemeral_node_inactivity_timeout", "120s")
 
 	viper.SetDefault("tuning.notifier_send_timeout", "800ms")
@@ -416,6 +443,78 @@ func LoadConfig(path string, isFile bool) error {
 	}
 
 	return nil
+}
+
+// resolveEphemeralInactivityTimeout resolves the ephemeral inactivity timeout
+// from config, supporting both the new key (node.ephemeral.inactivity_timeout)
+// and the old key (ephemeral_node_inactivity_timeout) for backwards compatibility.
+func resolveEphemeralInactivityTimeout() time.Duration {
+	// New key takes precedence if explicitly set in config.
+	if viper.IsSet("node.ephemeral.inactivity_timeout") &&
+		viper.GetString("node.ephemeral.inactivity_timeout") != "" {
+		return viper.GetDuration("node.ephemeral.inactivity_timeout")
+	}
+
+	// Fall back to old key for backwards compatibility.
+	if viper.IsSet("ephemeral_node_inactivity_timeout") {
+		return viper.GetDuration("ephemeral_node_inactivity_timeout")
+	}
+
+	// Default
+	return viper.GetDuration("node.ephemeral.inactivity_timeout")
+}
+
+// resolveNodeExpiry parses the node.expiry config value.
+// Returns 0 if set to "0" (no default expiry) or on parse failure.
+func resolveNodeExpiry() time.Duration {
+	value := viper.GetString("node.expiry")
+	if value == "" || value == "0" {
+		return 0
+	}
+
+	expiry, err := model.ParseDuration(value)
+	if err != nil {
+		log.Warn().
+			Str("value", value).
+			Msg("failed to parse node.expiry, defaulting to 180 days")
+
+		return defaultNodeExpiryTime
+	}
+
+	return time.Duration(expiry)
+}
+
+// resolveOIDCExpiry resolves the OIDC expiry, falling back to node.expiry
+// when oidc.expiry is not explicitly configured.
+func resolveOIDCExpiry(nodeExpiry time.Duration) time.Duration {
+	oidcExpiryStr := viper.GetString("oidc.expiry")
+
+	// If oidc.expiry is not explicitly set, fall back to node.expiry.
+	if oidcExpiryStr == "" {
+		if nodeExpiry > 0 {
+			return nodeExpiry
+		}
+
+		return maxDuration
+	}
+
+	// "0" means no expiry for OIDC nodes.
+	if oidcExpiryStr == "0" {
+		return maxDuration
+	}
+
+	expiry, err := model.ParseDuration(oidcExpiryStr)
+	if err != nil {
+		log.Warn().Msg("failed to parse oidc.expiry, falling back to node.expiry")
+
+		if nodeExpiry > 0 {
+			return nodeExpiry
+		}
+
+		return defaultNodeExpiryTime
+	}
+
+	return time.Duration(expiry)
 }
 
 func validateServerConfig() error {
@@ -491,10 +590,12 @@ func validateServerConfig() error {
 	// Minimum inactivity time out is keepalive timeout (60s) plus a few seconds
 	// to avoid races
 	minInactivityTimeout, _ := time.ParseDuration("65s")
-	if viper.GetDuration("ephemeral_node_inactivity_timeout") <= minInactivityTimeout {
+
+	ephemeralTimeout := resolveEphemeralInactivityTimeout()
+	if ephemeralTimeout <= minInactivityTimeout {
 		errorText += fmt.Sprintf(
-			"Fatal config error: ephemeral_node_inactivity_timeout (%s) is set too low, must be more than %s",
-			viper.GetString("ephemeral_node_inactivity_timeout"),
+			"Fatal config error: node.ephemeral.inactivity_timeout (%s) is set too low, must be more than %s",
+			ephemeralTimeout,
 			minInactivityTimeout,
 		)
 	}
@@ -1014,9 +1115,12 @@ func LoadServerConfig() (*Config, error) {
 
 		DERP: derpConfig,
 
-		EphemeralNodeInactivityTimeout: viper.GetDuration(
-			"ephemeral_node_inactivity_timeout",
-		),
+		Node: NodeConfig{
+			Expiry: resolveNodeExpiry(),
+			Ephemeral: EphemeralConfig{
+				InactivityTimeout: resolveEphemeralInactivityTimeout(),
+			},
+		},
 
 		Database: databaseConfig(),
 
@@ -1044,22 +1148,8 @@ func LoadServerConfig() (*Config, error) {
 			AllowedUsers:          viper.GetStringSlice("oidc.allowed_users"),
 			AllowedGroups:         viper.GetStringSlice("oidc.allowed_groups"),
 			EmailVerifiedRequired: viper.GetBool("oidc.email_verified_required"),
-			Expiry: func() time.Duration {
-				// if set to 0, we assume no expiry
-				if value := viper.GetString("oidc.expiry"); value == "0" {
-					return maxDuration
-				} else {
-					expiry, err := model.ParseDuration(value)
-					if err != nil {
-						log.Warn().Msg("failed to parse oidc.expiry, defaulting back to 180 days")
-
-						return defaultOIDCExpiryTime
-					}
-
-					return time.Duration(expiry)
-				}
-			}(),
-			UseExpiryFromToken: viper.GetBool("oidc.use_expiry_from_token"),
+			Expiry:                resolveOIDCExpiry(resolveNodeExpiry()),
+			UseExpiryFromToken:    viper.GetBool("oidc.use_expiry_from_token"),
 			PKCE: PKCEConfig{
 				Enabled: viper.GetBool("oidc.pkce.enabled"),
 				Method:  viper.GetString("oidc.pkce.method"),
