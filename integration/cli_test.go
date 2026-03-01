@@ -1394,11 +1394,12 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.True(t, listAll[0].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[1].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[2].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[3].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[4].GetExpiry().AsTime().IsZero())
+	// With node.expiry defaulting to 0, non-tagged nodes have zero expiry
+	// (never expire unless explicitly expired).
+	for i := range 5 {
+		assert.True(t, listAll[i].GetExpiry().AsTime().IsZero(),
+			"node %d should have zero expiry (no default node.expiry)", i)
+	}
 
 	for idx := range 3 {
 		_, err := headscale.Execute(
