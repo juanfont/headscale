@@ -1354,7 +1354,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_ID":          scenario.mockOIDC.ClientID(),
 		"CREDENTIALS_DIRECTORY_TEST":        "/tmp",
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
-		"HEADSCALE_OIDC_EXPIRY":             "72h",
+		"HEADSCALE_NODE_EXPIRY":             "72h",
 	}
 
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
