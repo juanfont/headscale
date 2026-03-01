@@ -383,12 +383,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 	}
 }
 
-func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) time.Time {
+func (a *AuthProviderOIDC) determineNodeExpiry(idTokenExpiration time.Time) *time.Time {
 	if a.cfg.UseExpiryFromToken {
-		return idTokenExpiration
+		return &idTokenExpiration
 	}
 
-	return time.Now().Add(a.cfg.Expiry)
+	return nil
 }
 
 func extractCodeAndStateParamFromRequest(
@@ -602,12 +602,12 @@ func (a *AuthProviderOIDC) createOrUpdateUserFromClaim(
 func (a *AuthProviderOIDC) handleRegistration(
 	user *types.User,
 	registrationID types.AuthID,
-	expiry time.Time,
+	expiry *time.Time,
 ) (bool, error) {
 	node, nodeChange, err := a.h.state.HandleNodeFromAuthPath(
 		registrationID,
 		types.UserID(user.ID),
-		&expiry,
+		expiry,
 		util.RegisterMethodOIDC,
 	)
 	if err != nil {
