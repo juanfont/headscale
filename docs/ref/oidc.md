@@ -145,16 +145,12 @@ oidc:
 ### Customize node expiration
 
 The node expiration is the amount of time a node is authenticated with OpenID Connect until it expires and needs to
-reauthenticate. The default node expiration is 180 days. This can either be customized or set to the expiration from the
-Access Token.
+reauthenticate. The default node expiration can be configured via the top-level `node.expiry` setting.
 
 === "Customize node expiration"
 
-    ```yaml hl_lines="5"
-    oidc:
-      issuer: "https://sso.example.com"
-      client_id: "headscale"
-      client_secret: "generated-secret"
+    ```yaml hl_lines="2"
+    node:
       expiry: 30d   # Use 0 to disable node expiration
     ```
 

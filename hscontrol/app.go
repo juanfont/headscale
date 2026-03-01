@@ -583,7 +583,7 @@ func (h *Headscale) Serve() error {
 
 	ephmNodes := h.state.ListEphemeralNodes()
 	for _, node := range ephmNodes.All() {
-		h.ephemeralGC.Schedule(node.ID(), h.cfg.EphemeralNodeInactivityTimeout)
+		h.ephemeralGC.Schedule(node.ID(), h.cfg.Node.Ephemeral.InactivityTimeout)
 	}
 
 	if h.cfg.DNSConfig.ExtraRecordsPath != "" {
