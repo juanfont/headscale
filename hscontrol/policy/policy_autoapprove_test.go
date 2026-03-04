@@ -19,11 +19,11 @@ import (
 func TestApproveRoutesWithPolicy_NeverRemovesApprovedRoutes(t *testing.T) {
 	user1 := types.User{
 		Model: gorm.Model{ID: 1},
-		Name:  "testuser@",
+		Name:  "testuser",
 	}
 	user2 := types.User{
 		Model: gorm.Model{ID: 2},
-		Name:  "otheruser@",
+		Name:  "otheruser",
 	}
 	users := []types.User{user1, user2}
 
