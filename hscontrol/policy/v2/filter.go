@@ -45,7 +45,7 @@ func (pol *Policy) compileFilterRules(
 			log.Trace().Caller().Err(err).Msgf("resolving source ips")
 		}
 
-		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
+		if srcIPs.Empty() {
 			continue
 		}
 
@@ -54,7 +54,7 @@ func (pol *Policy) compileFilterRules(
 
 			if len(destPorts) > 0 {
 				rules = append(rules, tailcfg.FilterRule{
-					SrcIPs:   ipSetToPrefixStringList(srcIPs),
+					SrcIPs:   srcIPs.Strings(),
 					DstPorts: destPorts,
 					IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 				})
@@ -77,7 +77,7 @@ func (pol *Policy) compileFilterRules(
 			}
 
 			rules = append(rules, tailcfg.FilterRule{
-				SrcIPs:   ipSetToPrefixStringList(srcIPs),
+				SrcIPs:   srcIPs.Strings(),
 				CapGrant: capGrants,
 			})
 		}
@@ -130,6 +130,10 @@ func (pol *Policy) destinationsToNetPortRange(
 				pr := tailcfg.NetPortRange{
 					IP:    pref.String(),
 					Ports: port,
+				}
+				// Drop the prefix bits if its a single IP.
+				if pref.IsSingleIP() {
+					pr.IP = pref.Addr().String()
 				}
 				ret = append(ret, pr)
 			}
@@ -197,7 +201,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 
 	var rules []tailcfg.FilterRule
 
-	var resolvedSrcIPs []*netipx.IPSet
+	var resolvedSrcs []ResolvedAddresses
 
 	for _, src := range grant.Sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -210,11 +214,11 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 		}
 
 		if ips != nil {
-			resolvedSrcIPs = append(resolvedSrcIPs, ips)
+			resolvedSrcs = append(resolvedSrcs, ips)
 		}
 	}
 
-	if len(resolvedSrcIPs) == 0 {
+	if len(resolvedSrcs) == 0 {
 		return rules, nil
 	}
 
@@ -235,7 +239,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 				// Filter sources to only same-user untagged devices
 				var srcIPs netipx.IPSetBuilder
 
-				for _, ips := range resolvedSrcIPs {
+				for _, ips := range resolvedSrcs {
 					for _, n := range sameUserNodes {
 						// Check if any of this node's IPs are in the source set
 						if slices.ContainsFunc(n.IPs(), ips.Contains) {
@@ -244,12 +248,12 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 					}
 				}
 
-				srcSet, err := srcIPs.IPSet()
+				srcResolved, err := newResolved(&srcIPs)
 				if err != nil {
 					return nil, err
 				}
 
-				if srcSet != nil && len(srcSet.Prefixes()) > 0 {
+				if !srcResolved.Empty() {
 					var destPorts []tailcfg.NetPortRange
 
 					for _, n := range sameUserNodes {
@@ -265,7 +269,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 
 					if len(destPorts) > 0 {
 						rules = append(rules, tailcfg.FilterRule{
-							SrcIPs:   ipSetToPrefixStringList(srcSet),
+							SrcIPs:   srcResolved.Strings(),
 							DstPorts: destPorts,
 							IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 						})
@@ -277,21 +281,23 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 		if len(otherDests) > 0 {
 			var srcIPs netipx.IPSetBuilder
 
-			for _, ips := range resolvedSrcIPs {
-				srcIPs.AddSet(ips)
+			for _, ips := range resolvedSrcs {
+				for _, pref := range ips.Prefixes() {
+					srcIPs.AddPrefix(pref)
+				}
 			}
 
-			srcSet, err := srcIPs.IPSet()
+			srcResolved, err := newResolved(&srcIPs)
 			if err != nil {
 				return nil, err
 			}
 
-			if srcSet != nil && len(srcSet.Prefixes()) > 0 {
+			if !srcResolved.Empty() {
 				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
 
 				if len(destPorts) > 0 {
 					rules = append(rules, tailcfg.FilterRule{
-						SrcIPs:   ipSetToPrefixStringList(srcSet),
+						SrcIPs:   srcResolved.Strings(),
 						DstPorts: destPorts,
 						IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 					})
@@ -490,7 +496,9 @@ func (pol *Policy) compileSSHPolicy(
 				}
 
 				if ips != nil {
-					dest.AddSet(ips)
+					for _, pref := range ips.Prefixes() {
+						dest.AddPrefix(pref)
+					}
 				}
 			}
 
@@ -503,7 +511,7 @@ func (pol *Policy) compileSSHPolicy(
 			if node.InIPSet(destSet) {
 				// For non-autogroup:self destinations, use all resolved sources (no filtering)
 				var principals []*tailcfg.SSHPrincipal
-				for addr := range util.IPSetAddrIter(srcIPs) {
+				for addr := range srcIPs.Iter() {
 					principals = append(principals, &tailcfg.SSHPrincipal{
 						NodeIP: addr.String(),
 					})
@@ -540,20 +548,6 @@ func (pol *Policy) compileSSHPolicy(
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
-}
-
-func ipSetToPrefixStringList(ips *netipx.IPSet) []string {
-	var out []string
-
-	if ips == nil {
-		return out
-	}
-
-	for _, pref := range ips.Prefixes() {
-		out = append(out, pref.String())
-	}
-
-	return out
 }
 
 // filterRuleKey generates a unique key for merging based on SrcIPs and IPProto.

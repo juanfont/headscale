@@ -238,14 +238,6 @@ var grantSkipReasons = map[string]string{
 	// tests in this category.
 	// ========================================================================
 
-	// J-series: Protocol-specific IP grants
-	"GRANT-J1": "SRCIPS_FORMAT",
-	"GRANT-J2": "SRCIPS_FORMAT",
-	"GRANT-J3": "SRCIPS_FORMAT",
-	"GRANT-J4": "SRCIPS_FORMAT",
-	"GRANT-J5": "SRCIPS_FORMAT",
-	"GRANT-J6": "SRCIPS_FORMAT",
-
 	// K-series: Various IP grant patterns
 	"GRANT-K1":  "SRCIPS_FORMAT",
 	"GRANT-K2":  "SRCIPS_FORMAT",
@@ -265,122 +257,45 @@ var grantSkipReasons = map[string]string{
 	"GRANT-P01_3": "SRCIPS_FORMAT",
 	"GRANT-P01_4": "SRCIPS_FORMAT",
 
-	// P02-series: Source targeting (user, group, tag)
-	"GRANT-P02_1":         "SRCIPS_FORMAT",
-	"GRANT-P02_2":         "SRCIPS_FORMAT",
-	"GRANT-P02_3":         "SRCIPS_FORMAT",
-	"GRANT-P02_4":         "SRCIPS_FORMAT",
-	"GRANT-P02_5_CORRECT": "SRCIPS_FORMAT",
-	"GRANT-P02_5_NAIVE":   "SRCIPS_FORMAT",
-
-	// P03-series: Destination targeting
-	"GRANT-P03_1": "SRCIPS_FORMAT",
-	"GRANT-P03_2": "SRCIPS_FORMAT",
-	"GRANT-P03_3": "SRCIPS_FORMAT",
-	"GRANT-P03_4": "SRCIPS_FORMAT",
-
-	// P04-series: autogroup:member grants
-	"GRANT-P04_1": "SRCIPS_FORMAT",
-	"GRANT-P04_2": "SRCIPS_FORMAT",
-
 	// P05-series: Tag-to-tag grants
 	"GRANT-P05_1": "SRCIPS_FORMAT",
 	"GRANT-P05_2": "SRCIPS_FORMAT",
 	"GRANT-P05_3": "SRCIPS_FORMAT",
 
-	// P06-series: IP protocol grants
-	"GRANT-P06_1": "SRCIPS_FORMAT",
-	"GRANT-P06_2": "SRCIPS_FORMAT",
-	"GRANT-P06_3": "SRCIPS_FORMAT",
-	"GRANT-P06_4": "SRCIPS_FORMAT",
-	"GRANT-P06_5": "SRCIPS_FORMAT",
-	"GRANT-P06_6": "SRCIPS_FORMAT",
-	"GRANT-P06_7": "SRCIPS_FORMAT",
-
 	// P08-series: Multiple grants / rule merging
-	"GRANT-P08_1": "SRCIPS_FORMAT",
-	"GRANT-P08_2": "SRCIPS_FORMAT",
-	"GRANT-P08_4": "SRCIPS_FORMAT",
-	"GRANT-P08_5": "SRCIPS_FORMAT",
-	"GRANT-P08_6": "SRCIPS_FORMAT",
-	"GRANT-P08_7": "SRCIPS_FORMAT",
 	"GRANT-P08_8": "SRCIPS_FORMAT",
 
 	// P09-series: ACL-to-grant conversion equivalence tests
-	"GRANT-P09_1A":         "SRCIPS_FORMAT",
-	"GRANT-P09_1B":         "SRCIPS_FORMAT",
-	"GRANT-P09_1C":         "SRCIPS_FORMAT",
-	"GRANT-P09_1D":         "SRCIPS_FORMAT",
 	"GRANT-P09_1E":         "SRCIPS_FORMAT",
-	"GRANT-P09_2A_CORRECT": "SRCIPS_FORMAT",
-	"GRANT-P09_2A_NAIVE":   "SRCIPS_FORMAT",
 	"GRANT-P09_2B_CORRECT": "SRCIPS_FORMAT",
 	"GRANT-P09_2B_NAIVE":   "SRCIPS_FORMAT",
 	"GRANT-P09_2C":         "SRCIPS_FORMAT",
-	"GRANT-P09_3A":         "SRCIPS_FORMAT",
-	"GRANT-P09_3B":         "SRCIPS_FORMAT",
 	"GRANT-P09_3C":         "SRCIPS_FORMAT",
-	"GRANT-P09_4A":         "SRCIPS_FORMAT",
-	"GRANT-P09_4B":         "SRCIPS_FORMAT",
 	"GRANT-P09_4C":         "SRCIPS_FORMAT",
 	"GRANT-P09_4D":         "SRCIPS_FORMAT",
 	"GRANT-P09_4E":         "SRCIPS_FORMAT",
 	"GRANT-P09_4F":         "SRCIPS_FORMAT",
 	"GRANT-P09_4G":         "SRCIPS_FORMAT",
-	"GRANT-P09_5A":         "SRCIPS_FORMAT",
-	"GRANT-P09_5B":         "SRCIPS_FORMAT",
-	"GRANT-P09_5C_NAIVE":   "SRCIPS_FORMAT",
 	"GRANT-P09_6A":         "SRCIPS_FORMAT",
-	"GRANT-P09_6C":         "SRCIPS_FORMAT",
 	"GRANT-P09_6D":         "SRCIPS_FORMAT",
 	"GRANT-P09_7A":         "SRCIPS_FORMAT",
 	"GRANT-P09_7B_NAIVE":   "SRCIPS_FORMAT",
-	"GRANT-P09_7C":         "SRCIPS_FORMAT",
 	"GRANT-P09_7D_NAIVE":   "SRCIPS_FORMAT",
-	"GRANT-P09_8A":         "SRCIPS_FORMAT",
-	"GRANT-P09_8B":         "SRCIPS_FORMAT",
 	"GRANT-P09_8C":         "SRCIPS_FORMAT",
-	"GRANT-P09_9A":         "SRCIPS_FORMAT",
-	"GRANT-P09_9B":         "SRCIPS_FORMAT",
-	"GRANT-P09_9C":         "SRCIPS_FORMAT",
-	"GRANT-P09_10A":        "SRCIPS_FORMAT",
-	"GRANT-P09_10B":        "SRCIPS_FORMAT",
-	"GRANT-P09_10C":        "SRCIPS_FORMAT",
-	"GRANT-P09_10D":        "SRCIPS_FORMAT",
-	"GRANT-P09_11A":        "SRCIPS_FORMAT",
 	"GRANT-P09_11B":        "SRCIPS_FORMAT",
-	"GRANT-P09_11C_NAIVE":  "SRCIPS_FORMAT",
-	"GRANT-P09_11D":        "SRCIPS_FORMAT",
-	"GRANT-P09_12A":        "SRCIPS_FORMAT",
 	"GRANT-P09_12B":        "SRCIPS_FORMAT",
 	"GRANT-P09_13E":        "SRCIPS_FORMAT",
 	"GRANT-P09_13F":        "SRCIPS_FORMAT",
 	"GRANT-P09_13G":        "SRCIPS_FORMAT",
-	"GRANT-P09_14A":        "SRCIPS_FORMAT",
-	"GRANT-P09_14B":        "SRCIPS_FORMAT",
-	"GRANT-P09_14C":        "SRCIPS_FORMAT",
-	"GRANT-P09_14D":        "SRCIPS_FORMAT",
-	"GRANT-P09_14E":        "SRCIPS_FORMAT",
-	"GRANT-P09_14F":        "SRCIPS_FORMAT",
-	"GRANT-P09_14G":        "SRCIPS_FORMAT",
-	"GRANT-P09_14H":        "SRCIPS_FORMAT",
-	"GRANT-P09_14I":        "SRCIPS_FORMAT",
 
 	// P10-series: Host alias grants
-	"GRANT-P10_1": "SRCIPS_FORMAT",
-	"GRANT-P10_2": "SRCIPS_FORMAT",
 	"GRANT-P10_3": "SRCIPS_FORMAT",
 	"GRANT-P10_4": "SRCIPS_FORMAT",
-
-	// P11-series: autogroup:tagged grants
-	"GRANT-P11_1": "SRCIPS_FORMAT",
-	"GRANT-P11_2": "SRCIPS_FORMAT",
 
 	// P13-series: CIDR destination grants
 	"GRANT-P13_1": "SRCIPS_FORMAT",
 	"GRANT-P13_2": "SRCIPS_FORMAT",
 	"GRANT-P13_3": "SRCIPS_FORMAT",
-	"GRANT-P13_4": "SRCIPS_FORMAT",
 
 	// P15-series: Empty/no-match grants
 	"GRANT-P15_1": "SRCIPS_FORMAT",
