@@ -239,23 +239,16 @@ var grantSkipReasons = map[string]string{
 	// ========================================================================
 
 	// K-series: Various IP grant patterns
-	"GRANT-K1":  "SRCIPS_FORMAT",
-	"GRANT-K2":  "SRCIPS_FORMAT",
-	"GRANT-K4":  "SRCIPS_FORMAT",
 	"GRANT-K14": "SRCIPS_FORMAT",
 	"GRANT-K15": "SRCIPS_FORMAT",
-	"GRANT-K16": "SRCIPS_FORMAT",
-	"GRANT-K17": "SRCIPS_FORMAT",
 	"GRANT-K20": "SRCIPS_FORMAT",
 	"GRANT-K21": "SRCIPS_FORMAT",
-	"GRANT-K22": "SRCIPS_FORMAT",
-	"GRANT-K26": "SRCIPS_FORMAT",
 
 	// P01-series: Wildcard and basic IP grants
-	"GRANT-P01_1": "SRCIPS_FORMAT",
-	"GRANT-P01_2": "SRCIPS_FORMAT",
-	"GRANT-P01_3": "SRCIPS_FORMAT",
-	"GRANT-P01_4": "SRCIPS_FORMAT",
+	// "GRANT-P01_1": "SRCIPS_FORMAT",
+	// "GRANT-P01_2": "SRCIPS_FORMAT",
+	// "GRANT-P01_3": "SRCIPS_FORMAT",
+	// "GRANT-P01_4": "SRCIPS_FORMAT",
 
 	// P05-series: Tag-to-tag grants
 	"GRANT-P05_1": "SRCIPS_FORMAT",
