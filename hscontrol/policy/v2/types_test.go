@@ -2378,7 +2378,22 @@ func TestResolvePolicy(t *testing.T) {
 		{
 			name:      "wildcard-alias",
 			toResolve: Wildcard,
-			want:      []netip.Prefix{tsaddr.CGNATRange(), tsaddr.TailscaleULARange()},
+			want: []netip.Prefix{
+				mp("100.64.0.0/11"),
+				mp("100.96.0.0/12"),
+				mp("100.112.0.0/15"),
+				mp("100.114.0.0/16"),
+				mp("100.115.0.0/18"),
+				mp("100.115.64.0/20"),
+				mp("100.115.80.0/21"),
+				mp("100.115.88.0/22"),
+				mp("100.115.94.0/23"),
+				mp("100.115.96.0/19"),
+				mp("100.115.128.0/17"),
+				mp("100.116.0.0/14"),
+				mp("100.120.0.0/13"),
+				tsaddr.TailscaleULARange(),
+			},
 		},
 		{
 			name:      "autogroup-member-comprehensive",
