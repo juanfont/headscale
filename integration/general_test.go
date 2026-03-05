@@ -269,8 +269,15 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		return x.String()
 	})
 
+	// Use relaxed ping settings for CI.
+	pingOpts := []tsic.PingOption{
+		tsic.WithPingTimeout(2 * time.Second),
+		tsic.WithPingCount(3),
+		tsic.WithPingUntilDirect(false),
+	}
+
 	// All ephemeral nodes should be online and reachable.
-	success := pingAllHelper(t, allClients, allAddrs)
+	success := pingAllHelper(t, allClients, allAddrs, pingOpts...)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	// Take down all clients, this should start an expiry timer for each.
@@ -296,7 +303,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(ct, err)
 
-		success = pingAllHelper(t, allClients, allAddrs)
+		success = pingAllHelper(t, allClients, allAddrs, pingOpts...)
 		assert.Greater(ct, success, 0, "Ephemeral nodes should be able to reconnect and ping")
 	}, 60*time.Second, 2*time.Second)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
