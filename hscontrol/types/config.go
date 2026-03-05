@@ -113,6 +113,12 @@ type DNSConfig struct {
 	SearchDomains    []string            `mapstructure:"search_domains"`
 	ExtraRecords     []tailcfg.DNSRecord `mapstructure:"extra_records"`
 	ExtraRecordsPath string              `mapstructure:"extra_records_path"`
+	Profiles         []DNSProfile        `mapstructure:"profiles"`
+}
+
+type DNSProfile struct {
+	IPs         []string `mapstructure:"ips"`
+	Nameservers []string `mapstructure:"nameservers"`
 }
 
 type Nameservers struct {
@@ -742,6 +748,17 @@ func dns() (DNSConfig, error) {
 		}
 
 		dns.ExtraRecords = extraRecords
+	}
+
+	if viper.IsSet("dns.profiles") {
+		var profiles []DNSProfile
+
+		err := viper.UnmarshalKey("dns.profiles", &profiles)
+		if err != nil {
+			return DNSConfig{}, fmt.Errorf("unmarshalling dns profiles: %w", err)
+		}
+
+		dns.Profiles = profiles
 	}
 
 	return dns, nil
