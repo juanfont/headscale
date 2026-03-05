@@ -86,7 +86,6 @@ func TestPingAllByIP(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs,
 		tsic.WithPingTimeout(2*time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
@@ -273,7 +272,6 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	pingOpts := []tsic.PingOption{
 		tsic.WithPingTimeout(2 * time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	}
 
 	// All ephemeral nodes should be online and reachable.
@@ -1450,13 +1448,11 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	}
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 30*time.Second)
 
-	// Use relaxed ping settings for CI: longer timeout per attempt,
-	// and accept DERP relay connections (not just direct) since we
-	// only need to verify connectivity, not connection type.
+	// Use relaxed ping settings for CI: longer timeout per attempt
+	// gives more time for direct connection establishment.
 	pingOpts := []tsic.PingOption{
 		tsic.WithPingTimeout(2 * time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	}
 
 	success := pingAllHelper(t, allClients, allAddrs, pingOpts...)

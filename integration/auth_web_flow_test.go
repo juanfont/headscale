@@ -57,7 +57,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs,
 		tsic.WithPingTimeout(2*time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
@@ -101,7 +100,6 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	pingOpts := []tsic.PingOption{
 		tsic.WithPingTimeout(2 * time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	}
 
 	success := pingAllHelper(t, allClients, allAddrs, pingOpts...)
@@ -391,7 +389,6 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	success := pingAllHelper(t, allClients, allAddrs,
 		tsic.WithPingTimeout(2*time.Second),
 		tsic.WithPingCount(3),
-		tsic.WithPingUntilDirect(false),
 	)
 	t.Logf("%d successful pings out of %d after web flow user switch", success, len(allClients)*len(allIps))
 }
