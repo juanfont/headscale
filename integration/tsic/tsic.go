@@ -1240,6 +1240,8 @@ func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Du
 // - All peers are Online
 // - All peers have a hostname
 // - All peers have a DERP relay assigned
+// - All peers are in the network map (InNetworkMap)
+// - All peers are tracked by magicsock (InMagicSock)
 //
 // Uses multierr to collect all validation errors.
 func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval time.Duration) error {
@@ -1295,6 +1297,14 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 
 				if peer.Relay == "" {
 					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)) //nolint:err113
+				}
+
+				if !peer.InNetworkMap {
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not InNetworkMap", t.hostname, peer.HostName)) //nolint:err113
+				}
+
+				if !peer.InMagicSock {
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not InMagicSock", t.hostname, peer.HostName)) //nolint:err113
 				}
 			}
 
