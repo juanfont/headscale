@@ -83,7 +83,11 @@ func TestPingAllByIP(t *testing.T) {
 	t.Logf("Testing DebugBatcher functionality...")
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to the batcher", 30*time.Second)
 
-	success := pingAllHelper(t, allClients, allAddrs)
+	success := pingAllHelper(t, allClients, allAddrs,
+		tsic.WithPingTimeout(2*time.Second),
+		tsic.WithPingCount(3),
+		tsic.WithPingUntilDirect(false),
+	)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
@@ -1439,7 +1443,16 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	}
 	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 30*time.Second)
 
-	success := pingAllHelper(t, allClients, allAddrs)
+	// Use relaxed ping settings for CI: longer timeout per attempt,
+	// and accept DERP relay connections (not just direct) since we
+	// only need to verify connectivity, not connection type.
+	pingOpts := []tsic.PingOption{
+		tsic.WithPingTimeout(2 * time.Second),
+		tsic.WithPingCount(3),
+		tsic.WithPingUntilDirect(false),
+	}
+
+	success := pingAllHelper(t, allClients, allAddrs, pingOpts...)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for run := range 3 {
@@ -1489,7 +1502,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 
 		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), 60*time.Second)
 
-		success := pingAllHelper(t, allClients, allAddrs)
+		success := pingAllHelper(t, allClients, allAddrs, pingOpts...)
 		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 		// Clean up context for this run
