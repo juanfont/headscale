@@ -1325,6 +1325,16 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 			}
 		}
 		// Tagged → Tagged: keep existing expiry (nil) - no action needed
+
+		// Apply default node expiry for non-tagged nodes when the
+		// resolved expiry is still nil or zero (e.g., CLI registration
+		// where the client did not request a specific expiry).
+		if !node.IsTagged() &&
+			(node.Expiry == nil || node.Expiry.IsZero()) &&
+			s.cfg.Node.Expiry > 0 {
+			exp := time.Now().Add(s.cfg.Node.Expiry)
+			node.Expiry = &exp
+		}
 	})
 
 	if !ok {
@@ -1444,6 +1454,17 @@ func (s *State) createAndSaveNewNode(params newNodeParams) (types.NodeView, erro
 				Strs(zf.NodeTags, nodeToRegister.Tags).
 				Msg("approved advertise-tags during registration")
 		}
+	}
+
+	// Apply default node expiry for non-tagged nodes when the client
+	// did not request a specific expiry. This aligns auth key and CLI
+	// registrations with OIDC behaviour (180 day default).
+	// Tagged nodes are exempt — they never expire.
+	if !nodeToRegister.IsTagged() &&
+		(nodeToRegister.Expiry == nil || nodeToRegister.Expiry.IsZero()) &&
+		s.cfg.Node.Expiry > 0 {
+		exp := time.Now().Add(s.cfg.Node.Expiry)
+		nodeToRegister.Expiry = &exp
 	}
 
 	// Validate before saving
@@ -1921,9 +1942,18 @@ func (s *State) HandleNodeFromPreAuthKey(
 			node.LastSeen = new(time.Now())
 
 			// Tagged nodes keep their existing expiry (disabled).
-			// User-owned nodes update expiry from the client request.
+			// User-owned nodes update expiry from the client request,
+			// falling back to the configured default if the client
+			// did not request a specific expiry.
 			if !node.IsTagged() {
-				node.Expiry = &regReq.Expiry
+				if !regReq.Expiry.IsZero() {
+					node.Expiry = &regReq.Expiry
+				} else if s.cfg.Node.Expiry > 0 {
+					exp := time.Now().Add(s.cfg.Node.Expiry)
+					node.Expiry = &exp
+				} else {
+					node.Expiry = &regReq.Expiry
+				}
 			}
 		})
 
