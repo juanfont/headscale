@@ -18,7 +18,6 @@ let
   };
 
   settingsFormat = pkgs.formats.yaml { };
-  configFile = settingsFormat.generate "headscale.yaml" cfg.settings;
   cliConfigFile = settingsFormat.generate "headscale.yaml" cliConfig;
 
   assertRemovedOption = option: message: {
@@ -36,6 +35,16 @@ in
       enable = lib.mkEnableOption "headscale, Open Source coordination server for Tailscale";
 
       package = lib.mkPackageOption pkgs "headscale" { };
+
+      configFile = lib.mkOption {
+        type = lib.types.path;
+        readOnly = true;
+        default = settingsFormat.generate "headscale.yaml" cfg.settings;
+        defaultText = lib.literalExpression ''(pkgs.formats.yaml { }).generate "headscale.yaml" config.services.headscale.settings'';
+        description = ''
+          Path to the configuration file of headscale.
+        '';
+      };
 
       user = lib.mkOption {
         default = "headscale";
@@ -325,9 +334,7 @@ in
                 type = lib.types.bool;
                 default = true;
                 description = ''
-                  Whether to use the local DNS settings of a node or override
-                  the local DNS settings and force the use of Headscale's DNS
-                  configuration.
+                  Whether to [override clients' DNS servers](https://tailscale.com/kb/1054/dns#override-dns-servers).
                 '';
                 example = false;
               };
@@ -338,9 +345,60 @@ in
                   default = [ ];
                   description = ''
                     List of nameservers to pass to Tailscale clients.
-                    Required when {option}`override_local_dns` is true.
                   '';
                 };
+              };
+
+              split = lib.mkOption {
+                type = lib.types.attrsOf (lib.types.listOf lib.types.str);
+                default = { };
+                description = ''
+                  Split DNS configuration (map of domains and which DNS server to use for each).
+                  See <https://tailscale.com/kb/1054/dns/>.
+                '';
+                example = {
+                  "foo.bar.com" = [ "1.1.1.1" ];
+                };
+              };
+
+              extra_records = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.listOf (
+                    lib.types.submodule {
+                      options = {
+                        name = lib.mkOption {
+                          type = lib.types.str;
+                          description = "DNS record name.";
+                          example = "grafana.tailnet.example.com";
+                        };
+                        type = lib.mkOption {
+                          type = lib.types.enum [
+                            "A"
+                            "AAAA"
+                          ];
+                          description = "DNS record type.";
+                          example = "A";
+                        };
+                        value = lib.mkOption {
+                          type = lib.types.str;
+                          description = "DNS record value (IP address).";
+                          example = "100.64.0.3";
+                        };
+                      };
+                    }
+                  )
+                );
+                default = null;
+                description = ''
+                  Extra DNS records to expose to clients.
+                '';
+                example = ''
+                  [ {
+                    name = "grafana.tailnet.example.com";
+                    type = "A";
+                    value = "100.64.0.3";
+                  } ]
+                '';
               };
 
               search_domains = lib.mkOption {
@@ -599,8 +657,8 @@ in
         message = "dns.base_domain must be set when using MagicDNS";
       }
       {
-        assertion = with cfg.settings; dns.override_local_dns -> (dns.nameservers.global != [ ]);
-        message = "dns.nameservers.global must be set when dns.override_local_dns is true";
+        assertion = with cfg.settings; dns.override_local_dns -> dns.nameservers.global != [ ];
+        message = "dns.nameservers.global must be set when overriding local DNS";
       }
       (assertRemovedOption [ "settings" "acl_policy_path" ] "Use `policy.path` instead.")
       (assertRemovedOption [ "settings" "db_host" ] "Use `database.postgres.host` instead.")
@@ -664,7 +722,7 @@ in
           export HEADSCALE_DATABASE_POSTGRES_PASS="$(head -n1 ${lib.escapeShellArg cfg.settings.database.postgres.password_file})"
         ''}
 
-        exec ${lib.getExe cfg.package} serve --config ${configFile}
+        exec ${lib.getExe cfg.package} serve --config ${cfg.configFile}
       '';
 
       serviceConfig =
