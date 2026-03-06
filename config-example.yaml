@@ -282,6 +282,22 @@ dns:
   # settings (default) and force the use of Headscale's DNS configuration.
   override_local_dns: true
 
+  # DNS profiles allow specifying different nameservers for different clients
+  # based on their IP address.
+  # profiles: []
+  #   # Example: Client with IP 100.64.0.2 uses Cloudflare DNS
+  #   - ips:
+  #       - 100.64.0.2
+  #     nameservers:
+  #       - 1.1.1.1
+  #       - 1.0.0.1
+  #   # Example: Client with IP 100.64.0.3 uses Google DNS
+  #   - ips:
+  #       - 100.64.0.3
+  #     nameservers:
+  #       - 8.8.8.8
+  #       - 8.8.4.4
+
   # List of DNS servers to expose to clients.
   nameservers:
     global:

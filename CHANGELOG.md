@@ -11,6 +11,28 @@ to understand how the packet filter should be generated. We discovered a few dif
 overall our implementation was very close.
 [#3036](https://github.com/juanfont/headscale/pull/3036)
 
+### DNS profiles
+
+DNS profiles allow specifying different nameservers for different clients based on their IP address.
+When a node's IP matches a profile, that profile's nameservers override the global nameservers for that node.
+
+Configure via `dns.profiles` in your configuration:
+
+```yaml
+dns:
+  profiles:
+    - ips:
+        - 100.64.0.2
+      nameservers:
+        - 1.1.1.1
+        - 1.0.0.1
+    - ips:
+        - 100.64.0.3
+      nameservers:
+        - 8.8.8.8
+        - 8.8.4.4
+```
+
 ### SSH check action
 
 SSH rules with `"action": "check"` are now supported. When a client initiates a SSH connection to a node

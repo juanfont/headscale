@@ -124,6 +124,23 @@ func generateDNSConfig(
 
 	dnsConfig := cfg.TailcfgDNSConfig.Clone()
 
+	ipNameservers := make(map[string][]string)
+	for _, profile := range cfg.DNSConfig.Profiles {
+		for _, ip := range profile.IPs {
+			ipNameservers[ip] = profile.Nameservers
+		}
+	}
+
+	for _, ip := range node.IPs() {
+		if nameservers, ok := ipNameservers[ip.String()]; ok {
+			resolvers := make([]*dnstype.Resolver, len(nameservers))
+			for i, ns := range nameservers {
+				resolvers[i] = &dnstype.Resolver{Addr: ns}
+			}
+			dnsConfig.Resolvers = resolvers
+		}
+	}
+
 	addNextDNSMetadata(dnsConfig.Resolvers, node)
 
 	return dnsConfig
