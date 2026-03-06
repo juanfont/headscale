@@ -2559,7 +2559,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							routerIPv4.String(),
 							tsic.WithPingUntilDirect(false), // DERP relay is fine
 							tsic.WithPingCount(1),
-							tsic.WithPingTimeout(5*time.Second),
 						)
 						assert.NoError(c, err, "ping to router should succeed")
 					}, assertTimeout, 200*time.Millisecond, "Verifying WireGuard tunnel to router is established")

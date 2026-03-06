@@ -10,7 +10,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
-	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -54,10 +53,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs,
-		tsic.WithPingTimeout(5*time.Second),
-		tsic.WithPingCount(10),
-	)
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 }
 
@@ -97,12 +93,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	pingOpts := []tsic.PingOption{
-		tsic.WithPingTimeout(5 * time.Second),
-		tsic.WithPingCount(10),
-	}
-
-	success := pingAllHelper(t, allClients, allAddrs, pingOpts...)
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	headscale, err := scenario.Headscale()
@@ -183,7 +174,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	success = pingAllHelper(t, allClients, allAddrs, pingOpts...)
+	success = pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	for _, client := range allClients {
@@ -386,9 +377,6 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs,
-		tsic.WithPingTimeout(5*time.Second),
-		tsic.WithPingCount(10),
-	)
+	success := pingAllHelper(t, allClients, allAddrs)
 	t.Logf("%d successful pings out of %d after web flow user switch", success, len(allClients)*len(allIps))
 }
