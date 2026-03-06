@@ -1095,9 +1095,14 @@ func (nv NodeView) TailNode(
 		derp = nv.Hostinfo().NetInfo().PreferredDERP()
 	}
 
-	var keyExpiry time.Time
-	if nv.Expiry().Valid() {
-		keyExpiry = nv.Expiry().Get()
+	// Default to far-future expiry for nodes without an explicit expiry
+	// (e.g. tagged nodes). A zero time.Time{} causes Tailscale clients to
+	// spin-loop on the netmap expiry timer (interpreted as math.MinInt64).
+	// Max safe time for int64 nanoseconds: 2262-04-11T23:47:16.854775807Z.
+	// We use 2262-01-01 (~4 month buffer). Year 9999 overflows.
+	keyExpiry := time.Date(2262, 1, 1, 0, 0, 0, 0, time.UTC)  
+	if nv.Expiry().Valid() && !nv.Expiry().Get().IsZero() {
+			keyExpiry = nv.Expiry().Get()
 	}
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
