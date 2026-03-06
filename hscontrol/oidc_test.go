@@ -2,6 +2,7 @@ package hscontrol
 
 import (
 	"testing"
+	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 )
@@ -167,6 +168,52 @@ func TestDoOIDCAuthorization(t *testing.T) {
 			err := doOIDCAuthorization(tC.cfg, tC.claims)
 			if ((err != nil) && !tC.wantErr) || ((err == nil) && tC.wantErr) {
 				t.Errorf("bad authorization: %s > want=%v | got=%v", tC.name, tC.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestDetermineNodeExpiry(t *testing.T) {
+	tests := []struct {
+		name       string
+		expiry     time.Duration
+		useToken   bool
+		tokenExp   time.Time
+		wantZero   bool
+	}{
+		{
+			name:     "zero expiry means no expiry",
+			expiry:   types.MaxDuration,
+			wantZero: true,
+		},
+		{
+			name:     "normal expiry returns future time",
+			expiry:   180 * 24 * time.Hour,
+			wantZero: false,
+		},
+		{
+			name:     "use token expiry",
+			expiry:   180 * 24 * time.Hour,
+			useToken: true,
+			tokenExp: time.Now().Add(24 * time.Hour),
+			wantZero: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &AuthProviderOIDC{
+				cfg: &types.OIDCConfig{
+					Expiry:             tt.expiry,
+					UseExpiryFromToken: tt.useToken,
+				},
+			}
+			got := a.determineNodeExpiry(tt.tokenExp)
+			if tt.wantZero && !got.IsZero() {
+				t.Errorf("expected zero time (no expiry), got %v", got)
+			}
+			if !tt.wantZero && got.IsZero() {
+				t.Errorf("expected non-zero time, got zero")
 			}
 		})
 	}
