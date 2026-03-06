@@ -8,7 +8,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   # build: Builds binaries and Docker images once, uploads as artifacts for reuse.
-  # build-postgres: Pulls postgres image separately to avoid Docker Hub rate limits.
+  # build-images: Pulls all Docker Hub images (golang, postgres, tailscale versions)
+  #   with retry/backoff to avoid rate limits. Images are distributed as artifacts
+  #   so individual test jobs never pull from Docker Hub directly.
   # sqlite: Runs all integration tests with SQLite backend.
   # postgres: Runs a subset of tests with PostgreSQL to verify database compatibility.
   build:
@@ -118,7 +120,7 @@ jobs:
           name: tailscale-head-image
           path: tailscale-head-image.tar.gz
           retention-days: 10
-  build-postgres:
+  build-images:
     runs-on: ubuntu-latest
     needs: build
     if: needs.build.outputs.files-changed == 'true'
@@ -141,19 +143,62 @@ jobs:
             "docker-ce=${VERSION}" "docker-ce-cli=${VERSION}"
           sudo systemctl restart docker
           docker version
-      - name: Pull and save postgres image
+      - name: Download hi binary
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: hi-binary
+          path: /tmp/artifacts
+      - name: Pull all Docker Hub images with retry
         run: |
-          docker pull postgres:latest
+          chmod +x /tmp/artifacts/hi
+          pull_with_retry() {
+            local image="$1"
+            local max_attempts=5
+            local attempt=1
+            local delay=10
+            while [ $attempt -le $max_attempts ]; do
+              echo "Pulling $image (attempt $attempt/$max_attempts)..."
+              if docker pull "$image"; then
+                echo "Successfully pulled $image"
+                return 0
+              fi
+              echo "Failed to pull $image, retrying in ${delay}s..."
+              sleep $delay
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+            echo "ERROR: Failed to pull $image after $max_attempts attempts"
+            return 1
+          }
+
+          for image in $(/tmp/artifacts/hi images); do
+            pull_with_retry "$image"
+          done
+          docker images
+      - name: Save and upload images
+        run: |
+          # Tag all images with SHA for reproducibility and save.
+          # postgres gets a SHA-tagged copy for the integration test env var.
           docker tag postgres:latest postgres:${{ github.sha }}
           docker save postgres:${{ github.sha }} | gzip > postgres-image.tar.gz
+
+          # Save all other images (golang + tailscale versions) in one tarball.
+          images=$(/tmp/artifacts/hi images | grep -v postgres)
+          docker save $images | gzip > integration-images.tar.gz
       - name: Upload postgres image
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: postgres-image
           path: postgres-image.tar.gz
           retention-days: 10
+      - name: Upload integration images
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: integration-images
+          path: integration-images.tar.gz
+          retention-days: 10
   sqlite:
-    needs: build
+    needs: [build, build-images]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
@@ -300,7 +345,7 @@ jobs:
       postgres_flag: "--postgres=0"
       database_name: "sqlite"
   postgres:
-    needs: [build, build-postgres]
+    needs: [build, build-images]
     if: needs.build.outputs.files-changed == 'true'
     strategy:
       fail-fast: false
