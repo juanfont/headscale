@@ -3040,6 +3040,34 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
 	}, assertTimeout, 1*time.Second, "peer visibility after tag change")
 
+	// Step 3b: Wait for the packet filter to reflect the tag change.
+	// After changing from tag:webserver to tag:sshonly, the packet filter
+	// on user2Node must no longer allow port 80 to user1Node's IPs.
+	// Without this check, Step 4's curl may hit a stale filter that still
+	// permits port 80 traffic, causing an intermittent false-pass.
+	t.Log("Step 3b: Waiting for packet filter to drop port 80 access")
+
+	user1IPs, err := user1Node.IPs()
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nm, err := user2Node.Netmap()
+		assert.NoError(c, err)
+
+		for _, m := range nm.PacketFilter {
+			for _, dst := range m.Dsts {
+				if !dst.Ports.Contains(80) {
+					continue
+				}
+
+				for _, ip := range user1IPs {
+					assert.False(c, dst.Net.Contains(ip),
+						"packet filter still allows port 80 to %s via %s", ip, dst.Net)
+				}
+			}
+		}
+	}, assertTimeout, 1*time.Second, "packet filter should no longer allow port 80")
+
 	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
