@@ -934,6 +934,11 @@ func (s *State) NodeCanHaveTag(node types.NodeView, tag string) bool {
 	return s.polMan.NodeCanHaveTag(node, tag)
 }
 
+// AppConnectorConfigForNode returns the app connector configuration for a node.
+func (s *State) AppConnectorConfigForNode(node types.NodeView) []policy.AppConnectorAttr {
+	return s.polMan.AppConnectorConfigForNode(node)
+}
+
 // SetPolicy updates the policy configuration.
 func (s *State) SetPolicy(pol []byte) (bool, error) {
 	changed, err := s.polMan.SetPolicy(pol)
