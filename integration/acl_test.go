@@ -1981,6 +1981,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		},
 	}
 
+	// Timeout for EventuallyWithT assertions.
+	// Uses PeerSyncTimeout which scales with the environment:
+	// 60s locally, 120s on CI to account for resource-constrained runners.
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	// Run through the policy cycle 5 times
 	for i := range 5 {
 		iteration := i + 1 // range 5 gives 0-4, we want 1-5 for logging
@@ -2018,7 +2023,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
 
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
@@ -2102,7 +2107,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user2->user1 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
 
 		// Phase 2b: Add a new node to user1 and validate policy propagation
 		t.Logf("Iteration %d: Phase 2b - Adding new node to user1 during autogroup:self policy", iteration)
@@ -2168,7 +2173,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user1->user2 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
 
 		// Delete the newly added node before Phase 3
 		t.Logf("Iteration %d: Phase 2b - Deleting the newly added node from user1", iteration)
@@ -2287,7 +2292,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user2->user1 from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
 
 		t.Logf("=== Iteration %d/5 completed successfully - All 3 phases passed ===", iteration)
 	}
@@ -2817,21 +2822,11 @@ func TestACLTagPropagation(t *testing.T) {
 				}
 			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
 
-			// Step 3: Verify final access state (this is the key test for #2389)
-			t.Logf("Step 3: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				if tt.finalAccess {
-					result, err := sourceClient.Curl(targetURL)
-					assert.NoError(c, err, "Final access should succeed after tag change")
-					assert.NotEmpty(c, result, "Final access should return content")
-				} else {
-					_, err := sourceClient.Curl(targetURL)
-					assert.Error(c, err, "Final access should fail after tag change")
-				}
-			}, assertTimeout, 1*time.Second, "verifying access propagated after tag change")
-
-			// Step 3b: Verify final NetMap visibility
-			t.Logf("Step 3b: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
+			// Step 3: Wait for NetMap to reflect the tag change.
+			// NetMap checks are sub-second per retry (vs ~4s for curl), so
+			// running this first uses the time budget more efficiently and
+			// confirms the MapResponse has propagated before testing connectivity.
+			t.Logf("Step 3: Verifying NetMap visibility after tag change (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
 				assert.NoError(c, err)
@@ -2852,6 +2847,19 @@ func TestACLTagPropagation(t *testing.T) {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
 			}, assertTimeout, 1*time.Second, "verifying NetMap visibility propagated after tag change")
+
+			// Step 3b: Verify final access state (this is the key test for #2389)
+			t.Logf("Step 3b: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				if tt.finalAccess {
+					result, err := sourceClient.Curl(targetURL)
+					assert.NoError(c, err, "Final access should succeed after tag change")
+					assert.NotEmpty(c, result, "Final access should return content")
+				} else {
+					_, err := sourceClient.Curl(targetURL)
+					assert.Error(c, err, "Final access should fail after tag change")
+				}
+			}, assertTimeout, 1*time.Second, "verifying access propagated after tag change")
 		})
 	}
 }
