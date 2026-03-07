@@ -556,11 +556,30 @@ func (mc *multiChannelNodeConn) close() {
 	defer mc.mutex.Unlock()
 
 	for _, conn := range mc.connections {
-		// Mark as closed before closing the channel to prevent
-		// send on closed channel panics from concurrent workers
-		conn.closed.Store(true)
+		mc.closeConnection(conn)
+	}
+}
+
+// closeConnection closes connection channel at most once, even if multiple cleanup
+// paths race to tear the same session down.
+func (mc *multiChannelNodeConn) closeConnection(conn *connectionEntry) {
+	if conn.closed.CompareAndSwap(false, true) {
 		close(conn.c)
 	}
+}
+
+// removeConnectionAtIndexLocked removes the active connection at index.
+// If closeChannel is true, it also closes that session's map-response channel.
+// Caller must hold mc.mutex.
+func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, closeChannel bool) *connectionEntry {
+	conn := mc.connections[i]
+	mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
+
+	if closeChannel {
+		mc.closeConnection(conn)
+	}
+
+	return conn
 }
 
 // addConnection adds a new connection.
@@ -590,8 +609,7 @@ func (mc *multiChannelNodeConn) removeConnectionByChannel(c chan<- *tailcfg.MapR
 
 	for i, entry := range mc.connections {
 		if entry.c == c {
-			// Remove this connection
-			mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
+			mc.removeConnectionAtIndexLocked(i, false)
 			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", c)).
 				Int("remaining_connections", len(mc.connections)).
 				Msg("successfully removed connection")
@@ -673,10 +691,10 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	// Remove failed connections (in reverse order to maintain indices)
 	for i := len(failedConnections) - 1; i >= 0; i-- {
 		idx := failedConnections[i]
+		entry := mc.removeConnectionAtIndexLocked(idx, true)
 		mc.log.Debug().Caller().
-			Str(zf.ConnID, mc.connections[idx].id).
-			Msg("send: removing failed connection")
-		mc.connections = append(mc.connections[:idx], mc.connections[idx+1:]...)
+			Str(zf.ConnID, entry.id).
+			Msg("send: removed failed connection")
 	}
 
 	mc.updateCount.Add(1)
