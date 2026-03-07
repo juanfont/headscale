@@ -2038,8 +2038,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 	IntegrationSkip(t)
 
 	// Timeout for EventuallyWithT assertions.
-	// Set generously to account for CI infrastructure variability.
-	assertTimeout := 60 * time.Second
+	// Uses PeerSyncTimeout which scales with the environment:
+	// 60s locally, 120s on CI to account for resource-constrained runners.
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	bigRoute := netip.MustParsePrefix("10.42.0.0/16")
 	subRoute := netip.MustParsePrefix("10.42.7.0/24")
@@ -2558,7 +2559,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 							routerIPv4.String(),
 							tsic.WithPingUntilDirect(false), // DERP relay is fine
 							tsic.WithPingCount(1),
-							tsic.WithPingTimeout(5*time.Second),
 						)
 						assert.NoError(c, err, "ping to router should succeed")
 					}, assertTimeout, 200*time.Millisecond, "Verifying WireGuard tunnel to router is established")
@@ -2567,10 +2567,13 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
+						result, err := client.Curl(url,
+							tsic.WithCurlConnectionTimeout(3*time.Second),
+							tsic.WithCurlMaxTime(5*time.Second),
+						)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice through auto-approved route")
+					}, assertTimeout, 1*time.Second, "Verifying client can reach webservice through auto-approved route")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2582,7 +2585,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute goes through auto-approved router")
+					}, assertTimeout, 1*time.Second, "Verifying traceroute goes through auto-approved router")
 
 					// Remove the auto approval from the policy, any routes already enabled should be allowed.
 					prefix = *route
@@ -2633,10 +2636,13 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
+						result, err := client.Curl(url,
+							tsic.WithCurlConnectionTimeout(3*time.Second),
+							tsic.WithCurlMaxTime(5*time.Second),
+						)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, assertTimeout, 200*time.Millisecond, "Verifying client can still reach webservice after policy change")
+					}, assertTimeout, 1*time.Second, "Verifying client can still reach webservice after policy change")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2648,7 +2654,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute still goes through router after policy change")
+					}, assertTimeout, 1*time.Second, "Verifying traceroute still goes through router after policy change")
 
 					// Disable the route, making it unavailable since it is no longer auto-approved
 					_, err = headscale.ApproveRoutes(
@@ -2730,10 +2736,13 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					t.Logf("url from %s to %s", client.Hostname(), url)
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
-						result, err := client.Curl(url)
+						result, err := client.Curl(url,
+							tsic.WithCurlConnectionTimeout(3*time.Second),
+							tsic.WithCurlMaxTime(5*time.Second),
+						)
 						assert.NoError(c, err)
 						assert.Len(c, result, 13)
-					}, assertTimeout, 200*time.Millisecond, "Verifying client can reach webservice after route re-approval")
+					}, assertTimeout, 1*time.Second, "Verifying client can reach webservice after route re-approval")
 
 					assert.EventuallyWithT(t, func(c *assert.CollectT) {
 						tr, err := client.Traceroute(webip)
@@ -2745,7 +2754,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 						}
 
 						assertTracerouteViaIPWithCollect(c, tr, ip)
-					}, assertTimeout, 200*time.Millisecond, "Verifying traceroute goes through router after re-approval")
+					}, assertTimeout, 1*time.Second, "Verifying traceroute goes through router after re-approval")
 
 					// Advertise and validate a subnet of an auto approved route, /24 inside the
 					// auto approved /16.

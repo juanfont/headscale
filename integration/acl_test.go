@@ -865,7 +865,9 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 				)
 			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via FQDN")
 
-			// test3 cannot query test1
+			// Negative: test3 has no ACL access to test1 or test2.
+			// Not wrapped in EventuallyWithT because packet filters are
+			// already applied and rejection is immediate.
 			result, err := test3.Curl(test1ip4URL)
 			assert.Empty(t, result)
 			require.Error(t, err)
@@ -878,7 +880,6 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			assert.Empty(t, result)
 			require.Error(t, err)
 
-			// test3 cannot query test2
 			result, err = test3.Curl(test2ip4URL)
 			assert.Empty(t, result)
 			require.Error(t, err)
@@ -931,7 +932,9 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 				)
 			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via FQDN")
 
-			// test2 cannot query test1
+			// Negative: test2 has no ACL access to test1.
+			// Not wrapped in EventuallyWithT because packet filters are
+			// already applied and rejection is immediate.
 			result, err = test2.Curl(test1ip4URL)
 			assert.Empty(t, result)
 			require.Error(t, err)
@@ -1583,7 +1586,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			t.Logf("Testing connection from untagged node %s to tagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-				result, err := client.CurlFailFast(url)
+				result, err := client.Curl(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
 			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach tagged nodes")
@@ -1603,7 +1606,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			t.Logf("Testing connection from untagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-				result, err := client.CurlFailFast(url)
+				result, err := client.Curl(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
 			}, 5*time.Second, 200*time.Millisecond, "untagged nodes should not be able to reach other untagged nodes")
@@ -1621,7 +1624,7 @@ func TestACLAutogroupTagged(t *testing.T) {
 			t.Logf("Testing connection from tagged node %s to untagged node %s (should fail)", client.Hostname(), peer.Hostname())
 
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-				result, err := client.CurlFailFast(url)
+				result, err := client.Curl(url)
 				assert.Empty(ct, result)
 				assert.Error(ct, err)
 			}, 5*time.Second, 200*time.Millisecond, "tagged nodes should not be able to reach untagged nodes")
@@ -1865,7 +1868,9 @@ func TestACLAutogroupSelf(t *testing.T) {
 		}, 10*time.Second, 200*time.Millisecond, "user2 device should reach router-node (proves autogroup:self doesn't interfere)")
 	}
 
-	// Test that devices from different users cannot access each other's regular devices
+	// Negative: cross-user access is blocked by autogroup:self policy.
+	// Not wrapped in EventuallyWithT because packet filters are
+	// already applied and rejection is immediate.
 	for _, client := range user1Regular {
 		for _, peer := range user2Regular {
 			fqdn, err := peer.FQDN()
@@ -1976,6 +1981,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		},
 	}
 
+	// Timeout for EventuallyWithT assertions.
+	// Uses PeerSyncTimeout which scales with the environment:
+	// 60s locally, 120s on CI to account for resource-constrained runners.
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	// Run through the policy cycle 5 times
 	for i := range 5 {
 		iteration := i + 1 // range 5 gives 0-4, we want 1-5 for logging
@@ -2013,7 +2023,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
 
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
@@ -2097,7 +2107,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user2->user1 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
 
 		// Phase 2b: Add a new node to user1 and validate policy propagation
 		t.Logf("Iteration %d: Phase 2b - Adding new node to user1 during autogroup:self policy", iteration)
@@ -2163,7 +2173,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user1->user2 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
 
 		// Delete the newly added node before Phase 3
 		t.Logf("Iteration %d: Phase 2b - Deleting the newly added node from user1", iteration)
@@ -2282,7 +2292,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Empty(ct, result, "iteration %d: user2->user1 from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
 			}
-		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
+		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
 
 		t.Logf("=== Iteration %d/5 completed successfully - All 3 phases passed ===", iteration)
 	}
@@ -2753,17 +2763,23 @@ func TestACLTagPropagation(t *testing.T) {
 
 			targetURL := fmt.Sprintf("http://%s/etc/hostname", targetFQDN)
 
+			// Timeout for EventuallyWithT assertions.
+			// Uses PeerSyncTimeout which scales with the environment:
+			// 60s locally, 120s on CI to account for resource-constrained runners.
+			assertTimeout := integrationutil.PeerSyncTimeout()
+
 			// Step 1: Verify initial access state
 			t.Logf("Step 1: Verifying initial access (expect success=%v)", tt.initialAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
 				if tt.initialAccess {
+					result, err := sourceClient.Curl(targetURL)
 					assert.NoError(c, err, "Initial access should succeed")
 					assert.NotEmpty(c, result, "Initial access should return content")
 				} else {
+					_, err := sourceClient.Curl(targetURL)
 					assert.Error(c, err, "Initial access should fail")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial access state")
+			}, assertTimeout, 1*time.Second, "verifying initial access state")
 
 			// Step 1b: Verify initial NetMap visibility
 			t.Logf("Step 1b: Verifying initial NetMap visibility (expect visible=%v)", tt.initialAccess)
@@ -2786,7 +2802,7 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap initially")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial NetMap visibility")
+			}, assertTimeout, 1*time.Second, "verifying initial NetMap visibility")
 
 			// Step 2: Apply tag change
 			t.Logf("Step 2: Setting tags on node %d to %v", targetNodeID, tt.tagChange)
@@ -2806,20 +2822,11 @@ func TestACLTagPropagation(t *testing.T) {
 				}
 			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
 
-			// Step 3: Verify final access state (this is the key test for #2389)
-			t.Logf("Step 3: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
-				if tt.finalAccess {
-					assert.NoError(c, err, "Final access should succeed after tag change")
-					assert.NotEmpty(c, result, "Final access should return content")
-				} else {
-					assert.Error(c, err, "Final access should fail after tag change")
-				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying access propagated after tag change")
-
-			// Step 3b: Verify final NetMap visibility
-			t.Logf("Step 3b: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
+			// Step 3: Wait for NetMap to reflect the tag change.
+			// NetMap checks are sub-second per retry (vs ~4s for curl), so
+			// running this first uses the time budget more efficiently and
+			// confirms the MapResponse has propagated before testing connectivity.
+			t.Logf("Step 3: Verifying NetMap visibility after tag change (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
 				assert.NoError(c, err)
@@ -2839,9 +2846,20 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
-			}, 60*time.Second, 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+			}, assertTimeout, 1*time.Second, "verifying NetMap visibility propagated after tag change")
 
-			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
+			// Step 3b: Verify final access state (this is the key test for #2389)
+			t.Logf("Step 3b: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				if tt.finalAccess {
+					result, err := sourceClient.Curl(targetURL)
+					assert.NoError(c, err, "Final access should succeed after tag change")
+					assert.NotEmpty(c, result, "Final access should return content")
+				} else {
+					_, err := sourceClient.Curl(targetURL)
+					assert.Error(c, err, "Final access should fail after tag change")
+				}
+			}, assertTimeout, 1*time.Second, "verifying access propagated after tag change")
 		})
 	}
 }
@@ -2993,13 +3011,18 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 
 	targetURL := fmt.Sprintf("http://%s/etc/hostname", targetFQDN)
 
+	// Timeout for EventuallyWithT assertions.
+	// Uses PeerSyncTimeout which scales with the environment:
+	// 60s locally, 120s on CI to account for resource-constrained runners.
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	// Step 1: Verify initial state - HTTP on port 80 should work with tag:webserver
 	t.Log("Step 1: Verifying HTTP access with tag:webserver (should succeed)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		result, err := user2Node.Curl(targetURL)
 		assert.NoError(c, err, "HTTP should work with tag:webserver")
 		assert.NotEmpty(c, result)
-	}, 30*time.Second, 500*time.Millisecond, "initial HTTP access with tag:webserver")
+	}, assertTimeout, 1*time.Second, "initial HTTP access with tag:webserver")
 
 	// Step 2: Change tag from webserver to sshonly
 	t.Logf("Step 2: Changing tag from webserver to sshonly on node %d", targetNodeID)
@@ -3023,16 +3046,42 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		}
 
 		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
-	}, 60*time.Second, 500*time.Millisecond, "peer visibility after tag change")
+	}, assertTimeout, 1*time.Second, "peer visibility after tag change")
+
+	// Step 3b: Wait for the packet filter to reflect the tag change.
+	// After changing from tag:webserver to tag:sshonly, the packet filter
+	// on user2Node must no longer allow port 80 to user1Node's IPs.
+	// Without this check, Step 4's curl may hit a stale filter that still
+	// permits port 80 traffic, causing an intermittent false-pass.
+	t.Log("Step 3b: Waiting for packet filter to drop port 80 access")
+
+	user1IPs, err := user1Node.IPs()
+	require.NoError(t, err)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nm, err := user2Node.Netmap()
+		assert.NoError(c, err)
+
+		for _, m := range nm.PacketFilter {
+			for _, dst := range m.Dsts {
+				if !dst.Ports.Contains(80) {
+					continue
+				}
+
+				for _, ip := range user1IPs {
+					assert.False(c, dst.Net.Contains(ip),
+						"packet filter still allows port 80 to %s via %s", ip, dst.Net)
+				}
+			}
+		}
+	}, assertTimeout, 1*time.Second, "packet filter should no longer allow port 80")
 
 	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		_, err := user2Node.Curl(targetURL)
 		assert.Error(c, err, "HTTP should fail with tag:sshonly (only port 22 allowed)")
-	}, 60*time.Second, 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
-
-	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
+	}, assertTimeout, 1*time.Second, "HTTP blocked after tag change to sshonly")
 }
 
 // TestACLGroupWithUnknownUser tests issue #2967 where a group containing

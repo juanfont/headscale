@@ -30,6 +30,11 @@ func main() {
 				},
 			},
 			{
+				Name: "images",
+				Help: "List Docker Hub images required by integration tests",
+				Run:  listImages,
+			},
+			{
 				Name: "clean",
 				Help: "Clean Docker resources",
 				Commands: []*command.C{
