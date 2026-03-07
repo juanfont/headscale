@@ -135,7 +135,6 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	removed := nodeConn.removeConnectionByChannel(c)
 	if !removed {
 		nlog.Debug().Caller().Msg("removeNode: channel not found, connection already removed or invalid")
-		return false
 	}
 
 	// Check if node has any remaining active connections
