@@ -36,7 +36,7 @@ type batcherFunc func(cfg *types.Config, state *state.State) Batcher
 type Batcher interface {
 	Start()
 	Close()
-	AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error
+	AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion, stop func()) error
 	RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) bool
 	IsConnected(id types.NodeID) bool
 	ConnectedMap() *xsync.Map[types.NodeID, bool]

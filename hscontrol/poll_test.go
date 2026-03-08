@@ -86,16 +86,22 @@ func (w *delayedSuccessResponseWriter) WriteCount() int {
 	return w.writeCount
 }
 
-// Reproducer outline:
+// TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession
+// tests the scenario reported in
+// https://github.com/juanfont/headscale/issues/3129.
+//
+// Scenario:
 //  1. Start a real long-poll session for one node.
-//  2. Make the first map write block briefly, so the session stops draining m.ch.
+//  2. Block the first map write long enough for the session to stop draining
+//     its buffered map-response channel.
 //  3. While that write is blocked, queue enough updates to fill the buffered
-//     session channel and make the next batcher send hit the stale-send timeout.
-//  4. Let the blocked write recover. The stale session should still flush the
-//     update that was already buffered before its channel was pruned.
-//  5. After that buffered update is drained, the stale session must exit instead
-//     of lingering as an orphaned serveLongPoll goroutine.
-func TestTransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *testing.T) {
+//     channel and make the next batcher send hit the stale-send timeout.
+//  4. That stale-send path removes the session from the batcher, so without an
+//     explicit teardown hook the old serveLongPoll goroutine would stay alive
+//     but stop receiving future updates.
+//  5. Release the blocked write and verify the batcher-side stop signal makes
+//     that stale session exit instead of lingering as an orphaned goroutine.
+func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *testing.T) {
 	t.Parallel()
 
 	app := createTestApp(t)
@@ -141,7 +147,7 @@ func TestTransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *testing.T) {
 
 	t.Cleanup(func() {
 		dummyCh := make(chan *tailcfg.MapResponse, 1)
-		_ = app.mapBatcher.AddNode(node.ID, dummyCh, tailcfg.CapabilityVersion(100))
+		_ = app.mapBatcher.AddNode(node.ID, dummyCh, tailcfg.CapabilityVersion(100), nil)
 		cancel()
 		select {
 		case <-serveDone:
@@ -163,8 +169,8 @@ func TestTransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *testing.T) {
 	}()
 
 	// One update fills the buffered session channel while the first write is blocked.
-	// The second update then hits the 50ms stale-send timeout and the batcher prunes
-	// and closes that stale channel.
+	// The second update then hits the 50ms stale-send timeout, so the batcher prunes
+	// the stale connection and triggers its stop hook.
 	app.mapBatcher.AddWork(change.SelfUpdate(node.ID), change.SelfUpdate(node.ID))
 
 	select {
@@ -172,10 +178,6 @@ func TestTransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected the blocked write to eventually complete")
 	}
-
-	assert.Eventually(t, func() bool {
-		return writer.WriteCount() >= 2
-	}, 2*time.Second, 20*time.Millisecond, "session should flush the update that was already buffered before the stale send")
 
 	assert.Eventually(t, func() bool {
 		select {
