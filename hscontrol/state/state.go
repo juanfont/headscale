@@ -455,6 +455,21 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
 
+	// GORM's Updates(struct) skips zero-value fields, which means empty slices
+	// (like ApprovedRoutes set to [] when rejecting all routes) are silently
+	// dropped. Explicitly persist empty slices to ensure they reach the database.
+	// See: https://github.com/juanfont/headscale/issues/3110
+	if len(nodePtr.ApprovedRoutes) == 0 {
+		if err := s.db.DB.Model(&types.Node{}).Where("id = ?", nodePtr.ID).Update("approved_routes", "[]").Error; err != nil {
+			return types.NodeView{}, change.Change{}, fmt.Errorf("persisting empty approved_routes: %w", err)
+		}
+	}
+	if len(nodePtr.Endpoints) == 0 {
+		if err := s.db.DB.Model(&types.Node{}).Where("id = ?", nodePtr.ID).Update("endpoints", "[]").Error; err != nil {
+			return types.NodeView{}, change.Change{}, fmt.Errorf("persisting empty endpoints: %w", err)
+		}
+	}
+
 	// Check if policy manager needs updating
 	c, err := s.updatePolicyManagerNodes()
 	if err != nil {
