@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -14,7 +15,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/sasha-s/go-deadlock"
 	"tailscale.com/tailcfg"
 	"tailscale.com/util/zstdframe"
 )
@@ -33,11 +33,9 @@ type mapSession struct {
 	ctx    context.Context //nolint:containedctx
 	capVer tailcfg.CapabilityVersion
 
-	cancelChMu deadlock.Mutex
-
-	ch           chan *tailcfg.MapResponse
-	cancelCh     chan struct{}
-	cancelChOpen bool
+	ch             chan *tailcfg.MapResponse
+	cancelCh       chan struct{}
+	cancelChClosed atomic.Bool
 
 	keepAlive       time.Duration
 	keepAliveTicker *time.Ticker
@@ -64,9 +62,8 @@ func (h *Headscale) newMapSession(
 		node:   node,
 		capVer: req.Version,
 
-		ch:           make(chan *tailcfg.MapResponse, h.cfg.Tuning.NodeMapSessionBufferedChanSize),
-		cancelCh:     make(chan struct{}),
-		cancelChOpen: true,
+		ch:       make(chan *tailcfg.MapResponse, h.cfg.Tuning.NodeMapSessionBufferedChanSize),
+		cancelCh: make(chan struct{}),
 
 		keepAlive:       ka,
 		keepAliveTicker: nil,
@@ -90,6 +87,12 @@ func (m *mapSession) isEndpointUpdate() bool {
 
 func (m *mapSession) resetKeepAlive() {
 	m.keepAliveTicker.Reset(m.keepAlive)
+}
+
+func (m *mapSession) stopFromBatcher() {
+	if m.cancelChClosed.CompareAndSwap(false, true) {
+		close(m.cancelCh)
+	}
 }
 
 func (m *mapSession) beforeServeLongPoll() {
@@ -146,10 +149,7 @@ func (m *mapSession) serveLongPoll() {
 
 	// Clean up the session when the client disconnects
 	defer func() {
-		m.cancelChMu.Lock()
-		m.cancelChOpen = false
-		close(m.cancelCh)
-		m.cancelChMu.Unlock()
+		m.stopFromBatcher()
 
 		_ = m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
 
@@ -224,7 +224,7 @@ func (m *mapSession) serveLongPoll() {
 	// adding this before connecting it to the state ensure that
 	// it does not miss any updates that might be sent in the split
 	// time between the node connecting and the batcher being ready.
-	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer); err != nil { //nolint:noinlineerr
+	if err := m.h.mapBatcher.AddNode(m.node.ID, m.ch, m.capVer, m.stopFromBatcher); err != nil { //nolint:noinlineerr
 		m.log.Error().Caller().Err(err).Msg("failed to add node to batcher")
 		return
 	}

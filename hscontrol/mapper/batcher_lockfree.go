@@ -54,7 +54,13 @@ type LockFreeBatcher struct {
 // AddNode registers a new node connection with the batcher and sends an initial map response.
 // It creates or updates the node's connection data, validates the initial map generation,
 // and notifies other nodes that this node has come online.
-func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error {
+// The stop function tears down the owning session if this connection is later declared stale.
+func (b *LockFreeBatcher) AddNode(
+	id types.NodeID,
+	c chan<- *tailcfg.MapResponse,
+	version tailcfg.CapabilityVersion,
+	stop func(),
+) error {
 	addNodeStart := time.Now()
 	nlog := log.With().Uint64(zf.NodeID, id.Uint64()).Logger()
 
@@ -68,6 +74,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		c:       c,
 		version: version,
 		created: now,
+		stop:    stop,
 	}
 	// Initialize last used timestamp
 	newEntry.lastUsed.Store(now.Unix())
@@ -511,6 +518,7 @@ type connectionEntry struct {
 	c        chan<- *tailcfg.MapResponse
 	version  tailcfg.CapabilityVersion
 	created  time.Time
+	stop     func()
 	lastUsed atomic.Int64 // Unix timestamp of last successful send
 	closed   atomic.Bool  // Indicates if this connection has been closed
 }
@@ -556,27 +564,29 @@ func (mc *multiChannelNodeConn) close() {
 	defer mc.mutex.Unlock()
 
 	for _, conn := range mc.connections {
-		mc.closeConnection(conn)
+		mc.stopConnection(conn)
 	}
 }
 
-// closeConnection closes connection channel at most once, even if multiple cleanup
-// paths race to tear the same session down.
-func (mc *multiChannelNodeConn) closeConnection(conn *connectionEntry) {
+// stopConnection marks a connection as closed and tears down the owning session
+// at most once, even if multiple cleanup paths race to remove it.
+func (mc *multiChannelNodeConn) stopConnection(conn *connectionEntry) {
 	if conn.closed.CompareAndSwap(false, true) {
-		close(conn.c)
+		if conn.stop != nil {
+			conn.stop()
+		}
 	}
 }
 
 // removeConnectionAtIndexLocked removes the active connection at index.
-// If closeChannel is true, it also closes that session's map-response channel.
+// If stopConnection is true, it also stops that session.
 // Caller must hold mc.mutex.
-func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, closeChannel bool) *connectionEntry {
+func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, stopConnection bool) *connectionEntry {
 	conn := mc.connections[i]
 	mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
 
-	if closeChannel {
-		mc.closeConnection(conn)
+	if stopConnection {
+		mc.stopConnection(conn)
 	}
 
 	return conn
