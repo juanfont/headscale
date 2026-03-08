@@ -39,7 +39,7 @@ type testBatcherWrapper struct {
 	state *state.State
 }
 
-func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error {
+func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion, stop func()) error {
 	// Mark node as online in state before AddNode to match production behavior
 	// This ensures the NodeStore has correct online status for change processing
 	if t.state != nil {
@@ -48,7 +48,7 @@ func (t *testBatcherWrapper) AddNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	}
 
 	// First add the node to the real batcher
-	err := t.Batcher.AddNode(id, c, version)
+	err := t.Batcher.AddNode(id, c, version, stop)
 	if err != nil {
 		return err
 	}
@@ -543,7 +543,7 @@ func TestEnhancedTrackingWithBatcher(t *testing.T) {
 			testNode.start()
 
 			// Connect the node to the batcher
-			_ = batcher.AddNode(testNode.n.ID, testNode.ch, tailcfg.CapabilityVersion(100))
+			_ = batcher.AddNode(testNode.n.ID, testNode.ch, tailcfg.CapabilityVersion(100), nil)
 
 			// Wait for connection to be established
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -652,7 +652,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 
 					for i := range allNodes {
 						node := &allNodes[i]
-						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 
 						// Issue full update after each join to ensure connectivity
 						batcher.AddWork(change.FullUpdate())
@@ -821,7 +821,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			tn2 := &testData.Nodes[1]
 
 			// Test AddNode with real node ID
-			_ = batcher.AddNode(tn.n.ID, tn.ch, 100)
+			_ = batcher.AddNode(tn.n.ID, tn.ch, 100, nil)
 
 			if !batcher.IsConnected(tn.n.ID) {
 				t.Error("Node should be connected after AddNode")
@@ -842,7 +842,7 @@ func TestBatcherBasicOperations(t *testing.T) {
 			drainChannelTimeout(tn.ch, 100*time.Millisecond)
 
 			// Add the second node and verify update message
-			_ = batcher.AddNode(tn2.n.ID, tn2.ch, 100)
+			_ = batcher.AddNode(tn2.n.ID, tn2.ch, 100, nil)
 			assert.True(t, batcher.IsConnected(tn2.n.ID))
 
 			// First node should get an update that second node has connected.
@@ -1043,7 +1043,7 @@ func TestBatcherWorkQueueBatching(t *testing.T) {
 			testNodes := testData.Nodes
 
 			ch := make(chan *tailcfg.MapResponse, 10)
-			_ = batcher.AddNode(testNodes[0].n.ID, ch, tailcfg.CapabilityVersion(100))
+			_ = batcher.AddNode(testNodes[0].n.ID, ch, tailcfg.CapabilityVersion(100), nil)
 
 			// Track update content for validation
 			var receivedUpdates []*tailcfg.MapResponse
@@ -1149,7 +1149,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				ch1 := make(chan *tailcfg.MapResponse, 1)
 
 				wg.Go(func() {
-					_ = batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch1, tailcfg.CapabilityVersion(100), nil)
 				})
 
 				// Add real work during connection chaos
@@ -1163,7 +1163,7 @@ func XTestBatcherChannelClosingRace(t *testing.T) {
 				wg.Go(func() {
 					runtime.Gosched() // Yield to introduce timing variability
 
-					_ = batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch2, tailcfg.CapabilityVersion(100), nil)
 				})
 
 				// Remove second connection
@@ -1254,7 +1254,7 @@ func TestBatcherWorkerChannelSafety(t *testing.T) {
 					ch := make(chan *tailcfg.MapResponse, 5)
 
 					// Add node and immediately queue real work
-					_ = batcher.AddNode(testNode.n.ID, ch, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(testNode.n.ID, ch, tailcfg.CapabilityVersion(100), nil)
 					batcher.AddWork(change.DERPMap())
 
 					// Consumer goroutine to validate data and detect channel issues
@@ -1380,7 +1380,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 				node := &stableNodes[i]
 				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
 				stableChannels[node.n.ID] = ch
-				_ = batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100))
+				_ = batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100), nil)
 
 				// Monitor updates for each stable client
 				go func(nodeID types.NodeID, channel chan *tailcfg.MapResponse) {
@@ -1456,7 +1456,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 							churningChannelsMutex.Unlock()
 
-							_ = batcher.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100))
+							_ = batcher.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100), nil)
 
 							// Consume updates to prevent blocking
 							go func() {
@@ -1774,7 +1774,7 @@ func XTestBatcherScalability(t *testing.T) {
 
 					for i := range testNodes {
 						node := &testNodes[i]
-						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+						_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 
 						connectedNodesMutex.Lock()
 
@@ -1891,6 +1891,7 @@ func XTestBatcherScalability(t *testing.T) {
 											nodeID,
 											channel,
 											tailcfg.CapabilityVersion(100),
+											nil,
 										)
 
 										connectedNodesMutex.Lock()
@@ -2155,7 +2156,7 @@ func TestBatcherFullPeerUpdates(t *testing.T) {
 			// Connect nodes one at a time and wait for each to be connected
 			for i := range allNodes {
 				node := &allNodes[i]
-				_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+				_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 				t.Logf("Connected node %d (ID: %d)", i, node.n.ID)
 
 				// Wait for node to be connected
@@ -2307,7 +2308,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			for i := range allNodes {
 				node := &allNodes[i]
 
-				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 				if err != nil {
 					t.Fatalf("Failed to add node %d: %v", i, err)
 				}
@@ -2337,7 +2338,7 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				node := &allNodes[i]
 				newChannels[i] = make(chan *tailcfg.MapResponse, 10)
 
-				err := batcher.AddNode(node.n.ID, newChannels[i], tailcfg.CapabilityVersion(100))
+				err := batcher.AddNode(node.n.ID, newChannels[i], tailcfg.CapabilityVersion(100), nil)
 				if err != nil {
 					t.Errorf("Failed to reconnect node %d: %v", i, err)
 				}
@@ -2444,13 +2445,13 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Phase 1: Connect first node with initial connection
 			t.Logf("Phase 1: Connecting node 1 with first connection...")
 
-			err := batcher.AddNode(node1.n.ID, node1.ch, tailcfg.CapabilityVersion(100))
+			err := batcher.AddNode(node1.n.ID, node1.ch, tailcfg.CapabilityVersion(100), nil)
 			if err != nil {
 				t.Fatalf("Failed to add node1: %v", err)
 			}
 
 			// Connect second node for comparison
-			err = batcher.AddNode(node2.n.ID, node2.ch, tailcfg.CapabilityVersion(100))
+			err = batcher.AddNode(node2.n.ID, node2.ch, tailcfg.CapabilityVersion(100), nil)
 			if err != nil {
 				t.Fatalf("Failed to add node2: %v", err)
 			}
@@ -2466,7 +2467,7 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			secondChannel := make(chan *tailcfg.MapResponse, 10)
 
-			err = batcher.AddNode(node1.n.ID, secondChannel, tailcfg.CapabilityVersion(100))
+			err = batcher.AddNode(node1.n.ID, secondChannel, tailcfg.CapabilityVersion(100), nil)
 			if err != nil {
 				t.Fatalf("Failed to add second connection for node1: %v", err)
 			}
@@ -2479,7 +2480,7 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			thirdChannel := make(chan *tailcfg.MapResponse, 10)
 
-			err = batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100))
+			err = batcher.AddNode(node1.n.ID, thirdChannel, tailcfg.CapabilityVersion(100), nil)
 			if err != nil {
 				t.Fatalf("Failed to add third connection for node1: %v", err)
 			}
@@ -2718,9 +2719,9 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 			defer node3.cleanup()
 
 			// Connect all nodes to the batcher
-			require.NoError(t, batcher.AddNode(node1.n.ID, node1.ch, tailcfg.CapabilityVersion(100)))
-			require.NoError(t, batcher.AddNode(node2.n.ID, node2.ch, tailcfg.CapabilityVersion(100)))
-			require.NoError(t, batcher.AddNode(node3.n.ID, node3.ch, tailcfg.CapabilityVersion(100)))
+			require.NoError(t, batcher.AddNode(node1.n.ID, node1.ch, tailcfg.CapabilityVersion(100), nil))
+			require.NoError(t, batcher.AddNode(node2.n.ID, node2.ch, tailcfg.CapabilityVersion(100), nil))
+			require.NoError(t, batcher.AddNode(node3.n.ID, node3.ch, tailcfg.CapabilityVersion(100), nil))
 
 			// Wait for all nodes to be connected
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2797,6 +2798,71 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 				assert.Positive(c, stats1.TotalUpdates, "node1 should have received updates")
 				assert.Positive(c, stats2.TotalUpdates, "node2 should have received updates")
 			}, 5*time.Second, 100*time.Millisecond, "waiting for remaining nodes to receive updates")
+		})
+	}
+}
+
+func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
+	for _, batcherFunc := range allBatcherFunctions {
+		t.Run(batcherFunc.name, func(t *testing.T) {
+			t.Run("marks disconnected when removed channel was last active connection", func(t *testing.T) {
+				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
+				defer cleanup()
+
+				lfb, ok := unwrapBatcher(testData.Batcher).(*LockFreeBatcher)
+				require.True(t, ok, "expected LockFreeBatcher")
+
+				nodeID := testData.Nodes[0].n.ID
+				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+				require.NoError(t, lfb.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100), nil))
+
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, lfb.IsConnected(nodeID), "node should be connected after AddNode")
+				}, 5*time.Second, 50*time.Millisecond, "waiting for node to be connected")
+
+				nodeConn, exists := lfb.nodes.Load(nodeID)
+				require.True(t, exists, "node connection should exist")
+				require.True(t, nodeConn.removeConnectionByChannel(ch), "manual channel removal should succeed")
+
+				removed := lfb.RemoveNode(nodeID, ch)
+				assert.False(t, removed, "RemoveNode should report no remaining active connections")
+
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.False(c, lfb.IsConnected(nodeID), "node should be disconnected after last connection is gone")
+				}, 5*time.Second, 50*time.Millisecond, "waiting for node to be disconnected")
+
+				close(ch)
+			})
+
+			t.Run("keeps connected when another connection is still active", func(t *testing.T) {
+				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
+				defer cleanup()
+
+				lfb, ok := unwrapBatcher(testData.Batcher).(*LockFreeBatcher)
+				require.True(t, ok, "expected LockFreeBatcher")
+
+				nodeID := testData.Nodes[0].n.ID
+				ch1 := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+				ch2 := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+
+				require.NoError(t, lfb.AddNode(nodeID, ch1, tailcfg.CapabilityVersion(100), nil))
+				require.NoError(t, lfb.AddNode(nodeID, ch2, tailcfg.CapabilityVersion(100), nil))
+
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					assert.True(c, lfb.IsConnected(nodeID), "node should be connected after AddNode")
+				}, 5*time.Second, 50*time.Millisecond, "waiting for node to be connected")
+
+				nodeConn, exists := lfb.nodes.Load(nodeID)
+				require.True(t, exists, "node connection should exist")
+				require.True(t, nodeConn.removeConnectionByChannel(ch1), "manual channel removal should succeed")
+
+				removed := lfb.RemoveNode(nodeID, ch1)
+				assert.True(t, removed, "RemoveNode should report node still has active connections")
+				assert.True(t, lfb.IsConnected(nodeID), "node should still be connected while another connection exists")
+				assert.Equal(t, 1, nodeConn.getActiveConnectionCount(), "exactly one active connection should remain")
+
+				close(ch1)
+			})
 		})
 	}
 }

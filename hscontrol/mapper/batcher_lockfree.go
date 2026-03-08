@@ -54,7 +54,13 @@ type LockFreeBatcher struct {
 // AddNode registers a new node connection with the batcher and sends an initial map response.
 // It creates or updates the node's connection data, validates the initial map generation,
 // and notifies other nodes that this node has come online.
-func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse, version tailcfg.CapabilityVersion) error {
+// The stop function tears down the owning session if this connection is later declared stale.
+func (b *LockFreeBatcher) AddNode(
+	id types.NodeID,
+	c chan<- *tailcfg.MapResponse,
+	version tailcfg.CapabilityVersion,
+	stop func(),
+) error {
 	addNodeStart := time.Now()
 	nlog := log.With().Uint64(zf.NodeID, id.Uint64()).Logger()
 
@@ -68,6 +74,7 @@ func (b *LockFreeBatcher) AddNode(id types.NodeID, c chan<- *tailcfg.MapResponse
 		c:       c,
 		version: version,
 		created: now,
+		stop:    stop,
 	}
 	// Initialize last used timestamp
 	newEntry.lastUsed.Store(now.Unix())
@@ -135,7 +142,6 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	removed := nodeConn.removeConnectionByChannel(c)
 	if !removed {
 		nlog.Debug().Caller().Msg("removeNode: channel not found, connection already removed or invalid")
-		return false
 	}
 
 	// Check if node has any remaining active connections
@@ -512,6 +518,7 @@ type connectionEntry struct {
 	c        chan<- *tailcfg.MapResponse
 	version  tailcfg.CapabilityVersion
 	created  time.Time
+	stop     func()
 	lastUsed atomic.Int64 // Unix timestamp of last successful send
 	closed   atomic.Bool  // Indicates if this connection has been closed
 }
@@ -557,11 +564,32 @@ func (mc *multiChannelNodeConn) close() {
 	defer mc.mutex.Unlock()
 
 	for _, conn := range mc.connections {
-		// Mark as closed before closing the channel to prevent
-		// send on closed channel panics from concurrent workers
-		conn.closed.Store(true)
-		close(conn.c)
+		mc.stopConnection(conn)
 	}
+}
+
+// stopConnection marks a connection as closed and tears down the owning session
+// at most once, even if multiple cleanup paths race to remove it.
+func (mc *multiChannelNodeConn) stopConnection(conn *connectionEntry) {
+	if conn.closed.CompareAndSwap(false, true) {
+		if conn.stop != nil {
+			conn.stop()
+		}
+	}
+}
+
+// removeConnectionAtIndexLocked removes the active connection at index.
+// If stopConnection is true, it also stops that session.
+// Caller must hold mc.mutex.
+func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, stopConnection bool) *connectionEntry {
+	conn := mc.connections[i]
+	mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
+
+	if stopConnection {
+		mc.stopConnection(conn)
+	}
+
+	return conn
 }
 
 // addConnection adds a new connection.
@@ -591,8 +619,7 @@ func (mc *multiChannelNodeConn) removeConnectionByChannel(c chan<- *tailcfg.MapR
 
 	for i, entry := range mc.connections {
 		if entry.c == c {
-			// Remove this connection
-			mc.connections = append(mc.connections[:i], mc.connections[i+1:]...)
+			mc.removeConnectionAtIndexLocked(i, false)
 			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", c)).
 				Int("remaining_connections", len(mc.connections)).
 				Msg("successfully removed connection")
@@ -674,10 +701,10 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	// Remove failed connections (in reverse order to maintain indices)
 	for i := len(failedConnections) - 1; i >= 0; i-- {
 		idx := failedConnections[i]
+		entry := mc.removeConnectionAtIndexLocked(idx, true)
 		mc.log.Debug().Caller().
-			Str(zf.ConnID, mc.connections[idx].id).
-			Msg("send: removing failed connection")
-		mc.connections = append(mc.connections[:idx], mc.connections[idx+1:]...)
+			Str(zf.ConnID, entry.id).
+			Msg("send: removed failed connection")
 	}
 
 	mc.updateCount.Add(1)
