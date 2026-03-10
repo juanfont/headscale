@@ -950,18 +950,19 @@ func TestBug7_CleanupOfflineNodes_PendingChangesCleanedStructurally(t *testing.T
 }
 
 // TestBug8_SerialTimeoutUnderWriteLock exercises Bug #8 (performance):
-// multiChannelNodeConn.send() holds the write lock for the ENTIRE duration
-// of sending to all connections. Each send has a 50ms timeout for stale
-// connections. With N stale connections, the write lock is held for N*50ms,
-// blocking all addConnection/removeConnection calls.
+// multiChannelNodeConn.send() originally held the write lock for the ENTIRE
+// duration of sending to all connections. Each send has a 50ms timeout for
+// stale connections. With N stale connections, the write lock was held for
+// N*50ms, blocking all addConnection/removeConnection calls.
 //
-// BUG: batcher_lockfree.go:629-697 - mutex.Lock() held during all conn.send()
+// BUG: mutex.Lock() held during all conn.send() calls, each with 50ms timeout.
 //
-//	calls, each with 50ms timeout. 5 stale connections = 250ms lock hold.
+//	5 stale connections = 250ms lock hold, blocking addConnection/removeConnection.
 //
-// FIX: Copy connections under read lock, send without lock, then take
+// FIX: Snapshot connections under read lock, release, send without any lock
 //
-//	write lock only for removing failed connections.
+//	(timeouts happen here), then write-lock only to remove failed connections.
+//	The lock is now held only for O(N) pointer copies, not for N*50ms I/O.
 func TestBug8_SerialTimeoutUnderWriteLock(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.Disabled)
 	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -975,27 +976,42 @@ func TestBug8_SerialTimeoutUnderWriteLock(t *testing.T) {
 		mc.addConnection(makeConnectionEntry(fmt.Sprintf("stale-%d", i), ch))
 	}
 
-	// Measure how long send() takes - it should timeout at ~50ms for ONE
-	// connection, but with serial timeouts it takes staleCount * 50ms.
-	start := time.Now()
+	// The key test: verify that the mutex is NOT held during the slow sends.
+	// We do this by trying to acquire the lock from another goroutine during
+	// the send. With the old code (lock held for 250ms), this would block.
+	// With the fix, the lock is free during sends.
+	lockAcquired := make(chan time.Duration, 1)
+
+	go func() {
+		// Give send() a moment to start (it will be in the unlocked send window)
+		time.Sleep(20 * time.Millisecond) //nolint:forbidigo // concurrency test coordination
+
+		// Try to acquire the write lock. It should succeed quickly because
+		// the lock is only held briefly for the snapshot and cleanup.
+		start := time.Now()
+
+		mc.mutex.Lock()
+		lockWait := time.Since(start)
+		mc.mutex.Unlock()
+
+		lockAcquired <- lockWait
+	}()
+
+	// Run send() with 5 stale connections. Total wall time will be ~250ms
+	// (5 * 50ms serial timeouts), but the lock should be free during sends.
 	_ = mc.send(testMapResponse())
-	elapsed := time.Since(start)
 
-	t.Logf("send() with %d stale connections took %v (expected ~50ms, got ~%dms)",
-		staleCount, elapsed, elapsed.Milliseconds())
+	lockWait := <-lockAcquired
+	t.Logf("lock acquisition during send() with %d stale connections waited %v",
+		staleCount, lockWait)
 
-	// The write lock is held for the entire duration. With 5 stale connections,
-	// each timing out at 50ms, that's ~250ms of write lock hold time.
-	// This blocks ALL other operations (addConnection, removeConnection, etc.)
-	//
-	// The fix should make send() complete in ~50ms regardless of stale count
-	// by releasing the lock before sending, or sending in parallel.
-	assert.Less(t, elapsed, 100*time.Millisecond,
-		"BUG #8: send() held write lock for %v with %d stale connections. "+
-			"Serial 50ms timeouts under write lock cause %d*50ms=%dms lock hold. "+
-			"Fix: copy connections under read lock, send without lock, then "+
-			"write-lock only for cleanup",
-		elapsed, staleCount, staleCount, staleCount*50)
+	// The lock wait should be very short (<50ms) since the lock is released
+	// before sending. With the old code it would be ~230ms (250ms - 20ms sleep).
+	assert.Less(t, lockWait, 50*time.Millisecond,
+		"mutex was held for %v during send() with %d stale connections; "+
+			"lock should be released before sending to allow "+
+			"concurrent addConnection/removeConnection calls",
+		lockWait, staleCount)
 }
 
 // TestBug1_BroadcastNoDataLoss verifies that concurrent broadcast addToBatch
