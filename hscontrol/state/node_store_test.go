@@ -1321,3 +1321,84 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 	assert.Equal(t, 1, peers1.Len(), "ListPeers for node1 should return 1")
 	assert.Equal(t, 1, peers2.Len(), "ListPeers for node2 should return 1")
 }
+
+// TestStateListPeersWithIDsEnforcesPeerVisibility verifies that State.ListPeers
+// filters requested peerIDs through the policy-aware peer map. This prevents
+// a race condition where a NodeAdded change could bypass peer visibility checks
+// after a tag change that should revoke access.
+func TestStateListPeersWithIDsEnforcesPeerVisibility(t *testing.T) {
+	allowPeers := true
+
+	dynamicPeersFunc := func(nodes []types.NodeView) map[types.NodeID][]types.NodeView {
+		ret := make(map[types.NodeID][]types.NodeView, len(nodes))
+		if allowPeers {
+			for _, node := range nodes {
+				var peers []types.NodeView
+
+				for _, n := range nodes {
+					if n.ID() != node.ID() {
+						peers = append(peers, n)
+					}
+				}
+
+				ret[node.ID()] = peers
+			}
+		} else {
+			for _, node := range nodes {
+				ret[node.ID()] = []types.NodeView{}
+			}
+		}
+
+		return ret
+	}
+
+	node1 := createTestNode(1, 1, "user1", "node1")
+	node2 := createTestNode(2, 2, "user2", "node2")
+	node3 := createTestNode(3, 3, "user3", "node3")
+	initialNodes := types.Nodes{&node1, &node2, &node3}
+
+	nodeStore := NewNodeStore(initialNodes, dynamicPeersFunc, TestBatchSize, TestBatchTimeout)
+
+	nodeStore.Start()
+	defer nodeStore.Stop()
+
+	state := &State{nodeStore: nodeStore}
+
+	// With peers allowed, ListPeers with specific IDs should return those peers.
+	peers := state.ListPeers(1, 2, 3)
+	assert.Equal(t, 2, peers.Len(), "node1 should see nodes 2 and 3 as peers")
+
+	// ListPeers without specific IDs should also return all peers.
+	allPeers := state.ListPeers(1)
+	assert.Equal(t, 2, allPeers.Len(), "node1 should have 2 peers total")
+
+	// Now revoke peer visibility (simulates a policy/tag change).
+	allowPeers = false
+
+	nodeStore.RebuildPeerMaps()
+
+	// ListPeers without IDs should return empty (peer map was rebuilt).
+	allPeers = state.ListPeers(1)
+	assert.Equal(t, 0, allPeers.Len(), "node1 should have no peers after policy change")
+
+	// KEY TEST: ListPeers with specific IDs should also return empty,
+	// because the peer map no longer includes those nodes.
+	// Before the fix, this would return the nodes regardless of visibility.
+	peers = state.ListPeers(1, 2, 3)
+	assert.Equal(t, 0, peers.Len(),
+		"ListPeers with specific IDs must enforce peer visibility: "+
+			"node1 should NOT see nodes 2 and 3 after policy revokes access")
+
+	// Re-enable peers and verify recovery.
+	allowPeers = true
+
+	nodeStore.RebuildPeerMaps()
+
+	peers = state.ListPeers(1, 2, 3)
+	assert.Equal(t, 2, peers.Len(), "node1 should see nodes 2 and 3 again after re-enabling peers")
+
+	// ListPeers with a subset of IDs should only return matching visible peers.
+	peers = state.ListPeers(1, 2)
+	assert.Equal(t, 1, peers.Len(), "node1 requesting only node2 should get 1 peer")
+	assert.Equal(t, types.NodeID(2), peers.At(0).ID(), "the returned peer should be node2")
+}
