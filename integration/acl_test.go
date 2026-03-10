@@ -2005,34 +2005,58 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		},
 	}
 
-	// Initial connectivity warm-up: verify all nodes can reach each other
-	// before starting the policy propagation cycle. On CI runners, data-plane
-	// connectivity can take significantly longer to establish than control-plane
-	// sync (WaitForTailscaleSync only checks network map, not data plane).
-	// Uses assert (not require) because external Tailscale client bugs (e.g.
-	// the unstable channel sometimes failing to configure MagicDNS) can cause
-	// individual clients to fail. With assert the test continues into policy
-	// phases where working clients are still fully validated, rather than
-	// aborting with zero useful signal.
-	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
+	// Non-asserting warm-up: give data-plane time to settle after
+	// control-plane sync. WaitForTailscaleSync ensures network map
+	// readiness, but data-plane connectivity (DNS + HTTP) may need
+	// additional time on resource-constrained CI runners. We poll
+	// without asserting because the policy phase assertions below
+	// will catch actual failures.
+	warmupDeadline := time.Now().Add(2 * assertTimeout)
+	warmupTicker := time.NewTicker(1 * time.Second)
+
+	for range warmupTicker.C {
+		if time.Now().After(warmupDeadline) {
+			t.Log("Warm-up: deadline reached, proceeding to policy phases")
+
+			break
+		}
+
+		allOK := true
+
 		for _, client := range allClients {
+			if !allOK {
+				break
+			}
+
 			for _, peer := range allClients {
 				if client.ContainerID() == peer.ContainerID() {
 					continue
 				}
 
 				fqdn, err := peer.FQDN()
-				if !assert.NoError(ct, err, "failed to get FQDN for %s", peer.Hostname()) {
-					continue
+				if err != nil {
+					allOK = false
+
+					break
 				}
 
-				url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-				result, err := client.Curl(url)
-				assert.NoError(ct, err, "%s should reach %s", client.Hostname(), fqdn)
-				assert.Len(ct, result, 13, "response from %s to %s should be valid", client.Hostname(), fqdn)
+				result, err := client.Curl(fmt.Sprintf("http://%s/etc/hostname", fqdn))
+				if err != nil || len(result) != 13 {
+					allOK = false
+
+					break
+				}
 			}
 		}
-	}, 2*assertTimeout, 1*time.Second, "initial connectivity warm-up: all clients should reach all peers")
+
+		if allOK {
+			t.Log("Warm-up: all clients can reach all peers")
+
+			break
+		}
+	}
+
+	warmupTicker.Stop()
 
 	// Run through the policy cycle 5 times
 	for i := range 5 {
@@ -2051,10 +2075,13 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		err = scenario.WaitForTailscaleSync()
 		require.NoError(t, err, "iteration %d: Phase 1 - failed to sync after allow-all policy", iteration)
 
-		// Test all-to-all connectivity after state is settled
+		// Test all-to-all connectivity after state is settled.
+		// Each client gets its own EventuallyWithT so one broken client
+		// does not consume retry budget for other clients.
 		t.Logf("Iteration %d: Phase 1 - Testing all-to-all connectivity", iteration)
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			for _, client := range allClients {
+
+		for _, client := range allClients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range allClients {
 					if client.ContainerID() == peer.ContainerID() {
 						continue
@@ -2070,8 +2097,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.NoError(ct, err, "iteration %d: %s should reach %s with allow-all policy", iteration, client.Hostname(), fqdn)
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
 				}
-			}
-		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 1 - all connectivity tests with allow-all policy", iteration)
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 1 - %s should reach all peers", iteration, client.Hostname())
+		}
 
 		// Phase 2: Autogroup:self policy (only same user can access)
 		t.Logf("Iteration %d: Phase 2 - Setting autogroup:self policy", iteration)
@@ -2085,11 +2112,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.PeerSyncTimeout(), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
 
-		// Test ALL connectivity (positive and negative) in one block after state is settled
+		// Test connectivity per-client after state is settled
 		t.Logf("Iteration %d: Phase 2 - Testing all connectivity with autogroup:self", iteration)
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			// Positive: user1 can access user1's nodes
-			for _, client := range user1Clients {
+
+		// Positive: each user1 client can access user1's nodes
+		for _, client := range user1Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1Clients {
 					if client.ContainerID() == peer.ContainerID() {
 						continue
@@ -2105,10 +2133,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - user1 %s should reach user1 peers", iteration, client.Hostname())
+		}
 
-			// Positive: user2 can access user2's nodes
-			for _, client := range user2Clients {
+		// Positive: each user2 client can access user2's nodes
+		for _, client := range user2Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
 					if client.ContainerID() == peer.ContainerID() {
 						continue
@@ -2124,10 +2154,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.NoError(ct, err, "iteration %d: user2 %s should reach user2's node %s", iteration, client.Hostname(), fqdn)
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
 				}
-			}
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - user2 %s should reach user2 peers", iteration, client.Hostname())
+		}
 
-			// Negative: user1 cannot access user2's nodes
-			for _, client := range user1Clients {
+		// Negative: each user1 client cannot access user2's nodes
+		for _, client := range user1Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
 					fqdn, err := peer.FQDN()
 					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user2 peer %s", iteration, peer.Hostname()) {
@@ -2139,10 +2171,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Error(ct, err, "iteration %d: user1 %s should NOT reach user2's node %s with autogroup:self", iteration, client.Hostname(), fqdn)
 					assert.Empty(ct, result, "iteration %d: user1 %s->user2 %s should fail", iteration, client.Hostname(), fqdn)
 				}
-			}
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - user1 %s should NOT reach user2", iteration, client.Hostname())
+		}
 
-			// Negative: user2 cannot access user1's nodes
-			for _, client := range user2Clients {
+		// Negative: each user2 client cannot access user1's nodes
+		for _, client := range user2Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1Clients {
 					fqdn, err := peer.FQDN()
 					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user1 peer %s", iteration, peer.Hostname()) {
@@ -2154,8 +2188,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Empty(ct, result, "iteration %d: user2->user1 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
-		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - user2 %s should NOT reach user1", iteration, client.Hostname())
+		}
 
 		// Phase 2b: Add a new node to user1 and validate policy propagation
 		t.Logf("Iteration %d: Phase 2b - Adding new node to user1 during autogroup:self policy", iteration)
@@ -2180,16 +2214,16 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.PeerSyncTimeout(), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2b - failed to sync after new node addition", iteration)
 
-		// Test ALL connectivity (positive and negative) in one block after state is settled
+		// Test connectivity per-client after new node addition
 		t.Logf("Iteration %d: Phase 2b - Testing all connectivity after new node addition", iteration)
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			// Re-fetch client list to ensure latest state
-			user1ClientsWithNew, err := scenario.ListTailscaleClients("user1")
-			assert.NoError(ct, err, "iteration %d: failed to list user1 clients", iteration)
-			assert.Len(ct, user1ClientsWithNew, 3, "iteration %d: user1 should have 3 nodes", iteration)
 
-			// Positive: all user1 nodes can access each other
-			for _, client := range user1ClientsWithNew {
+		user1ClientsWithNew, err := scenario.ListTailscaleClients("user1")
+		require.NoError(t, err, "iteration %d: failed to list user1 clients", iteration)
+		require.Len(t, user1ClientsWithNew, 3, "iteration %d: user1 should have 3 nodes", iteration)
+
+		// Positive: each user1 node can access other user1 nodes
+		for _, client := range user1ClientsWithNew {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1ClientsWithNew {
 					if client.ContainerID() == peer.ContainerID() {
 						continue
@@ -2205,10 +2239,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2b - user1 %s should reach user1 peers", iteration, client.Hostname())
+		}
 
-			// Negative: user1 nodes cannot access user2's nodes
-			for _, client := range user1ClientsWithNew {
+		// Negative: each user1 node cannot access user2's nodes
+		for _, client := range user1ClientsWithNew {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
 					fqdn, err := peer.FQDN()
 					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user2 peer %s", iteration, peer.Hostname()) {
@@ -2220,8 +2256,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Error(ct, err, "iteration %d: user1 node %s should NOT reach user2 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Empty(ct, result, "iteration %d: user1->user2 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
-		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2b - user1 %s should NOT reach user2", iteration, client.Hostname())
+		}
 
 		// Delete the newly added node before Phase 3
 		t.Logf("Iteration %d: Phase 2b - Deleting the newly added node from user1", iteration)
@@ -2308,11 +2344,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// user2 nodes don't see user1 nodes in their peer list (asymmetric visibility).
 		// The EventuallyWithT block below will handle waiting for policy propagation.
 
-		// Test ALL connectivity (positive and negative) in one block after policy settles
+		// Test connectivity per-client after directional policy settles
 		t.Logf("Iteration %d: Phase 3 - Testing all connectivity with directional policy", iteration)
-		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
-			// Positive: user1 can access user2's nodes
-			for _, client := range user1Clients {
+
+		// Positive: each user1 client can access user2's nodes
+		for _, client := range user1Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
 					fqdn, err := peer.FQDN()
 					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user2 peer %s", iteration, peer.Hostname()) {
@@ -2324,10 +2361,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user2 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 3 - user1 %s should reach user2", iteration, client.Hostname())
+		}
 
-			// Negative: user2 cannot access user1's nodes
-			for _, client := range user2Clients {
+		// Negative: each user2 client cannot access user1's nodes
+		for _, client := range user2Clients {
+			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1Clients {
 					fqdn, err := peer.FQDN()
 					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user1 peer %s", iteration, peer.Hostname()) {
@@ -2339,8 +2378,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Empty(ct, result, "iteration %d: user2->user1 from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
 				}
-			}
-		}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
+			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 3 - user2 %s should NOT reach user1", iteration, client.Hostname())
+		}
 
 		t.Logf("=== Iteration %d/5 completed successfully - All 3 phases passed ===", iteration)
 	}
@@ -2868,9 +2907,12 @@ func TestACLTagPropagation(t *testing.T) {
 			}, assertTimeout, 500*time.Millisecond, "verifying tag change applied")
 
 			// Step 3: Wait for NetMap to reflect the tag change.
-			// NetMap checks are sub-second per retry (vs ~4s for curl), so
-			// running this first uses the time budget more efficiently and
-			// confirms the MapResponse has propagated before testing connectivity.
+			// When granting access, verify full peer readiness (Online,
+			// InMagicSock, Relay, DNSName) on BOTH sides — the source
+			// must see the target AND the target must see the source.
+			// Without bidirectional readiness, curl will fail because
+			// the WireGuard tunnel requires both sides to have each
+			// other's keys.
 			t.Logf("Step 3: Verifying NetMap visibility after tag change (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
@@ -2882,6 +2924,15 @@ func TestACLTagPropagation(t *testing.T) {
 				for _, peer := range status.Peer {
 					if strings.Contains(peer.HostName, targetHostname) {
 						found = true
+
+						if tt.finalAccess {
+							assert.True(c, peer.Online, "Target peer should be online")
+							assert.NotEmpty(c, peer.Relay, "Target peer should have a relay")
+							assert.True(c, peer.InNetworkMap, "Target peer should be InNetworkMap")
+							assert.True(c, peer.InMagicSock, "Target peer should be InMagicSock")
+							assert.NotEmpty(c, peer.DNSName, "Target peer should have a DNSName")
+						}
+
 						break
 					}
 				}
@@ -2891,7 +2942,32 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
-			}, assertTimeout, 1*time.Second, "verifying NetMap visibility propagated after tag change")
+			}, assertTimeout, 1*time.Second, "verifying source NetMap visibility propagated after tag change")
+
+			// Also verify reverse direction: target sees source.
+			// TCP requires bidirectional WireGuard tunnels.
+			if tt.finalAccess {
+				assert.EventuallyWithT(t, func(c *assert.CollectT) {
+					status, err := targetClient.Status()
+					assert.NoError(c, err)
+
+					sourceHostname := sourceClient.Hostname()
+					found := false
+
+					for _, peer := range status.Peer {
+						if strings.Contains(peer.HostName, sourceHostname) {
+							found = true
+
+							assert.True(c, peer.Online, "Source peer should be online on target side")
+							assert.True(c, peer.InMagicSock, "Source peer should be InMagicSock on target side")
+
+							break
+						}
+					}
+
+					assert.True(c, found, "Source should be visible in target's NetMap after tag change")
+				}, assertTimeout, 1*time.Second, "verifying reverse NetMap visibility after tag change")
+			}
 
 			// Step 3b: Verify final access state (this is the key test for #2389)
 			// Use a longer timeout when granting access because:
