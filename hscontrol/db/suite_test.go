@@ -56,7 +56,7 @@ func newPostgresDBForTest(t *testing.T) *url.URL {
 
 	srv, err := postgrestest.Start(ctx)
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("start postgres: %s", err)
 	}
 
 	t.Cleanup(srv.Cleanup)
