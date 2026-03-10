@@ -160,7 +160,7 @@ type node struct {
 //
 // Returns TestData struct containing all created entities and a cleanup function.
 func setupBatcherWithTestData(
-	t *testing.T,
+	t testing.TB,
 	bf batcherFunc,
 	userCount, nodesPerUser, bufferSize int,
 ) (*TestData, func()) {
