@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -108,6 +109,8 @@ func derpServerScenario(
 ) {
 	IntegrationSkip(t)
 
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	scenario, err := NewScenario(spec)
 	require.NoError(t, err)
 
@@ -151,15 +154,10 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, assertTimeout, 2*time.Second)
 	}
 
-	success := pingDerpAllHelper(t, allClients, allHostnames)
-	if len(allHostnames)*len(allClients) > success {
-		t.FailNow()
-
-		return
-	}
+	assertPingDerpAll(t, allClients, allHostnames)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -172,20 +170,15 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after first run", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, assertTimeout, 2*time.Second)
 	}
-
-	t.Logf("Run 1: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
 
 	// Let the DERP updater run a couple of times to ensure it does not
 	// break the DERPMap. The updater runs on a 10s interval by default.
 	//nolint:forbidigo // Intentional delay: must wait for DERP updater to run multiple times (interval-based)
 	time.Sleep(30 * time.Second)
 
-	success = pingDerpAllHelper(t, allClients, allHostnames)
-	if len(allHostnames)*len(allClients) > success {
-		t.Fail()
-	}
+	assertPingDerpAll(t, allClients, allHostnames)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -198,10 +191,8 @@ func derpServerScenario(
 				assert.NotContains(ct, health, "could not connect to the 'Headscale Embedded DERP' relay server.",
 					"Client %s should be connected to Headscale Embedded DERP after second run", client.Hostname())
 			}
-		}, 30*time.Second, 2*time.Second)
+		}, assertTimeout, 2*time.Second)
 	}
-
-	t.Logf("Run2: %d successful pings out of %d", success, len(allClients)*len(allHostnames))
 
 	for _, check := range furtherAssertions {
 		check(scenario)

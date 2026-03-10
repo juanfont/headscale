@@ -13,6 +13,7 @@ import (
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -30,6 +31,8 @@ import (
 // sensitive data to the response.
 func TestAPIAuthenticationBypass(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1", "user2", "user3"},
@@ -62,7 +65,7 @@ func TestAPIAuthenticationBypass(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotEmpty(ct, apiKeyOutput)
 		validAPIKey = strings.TrimSpace(apiKeyOutput)
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	// Get the API endpoint
 	endpoint := headscale.GetEndpoint()

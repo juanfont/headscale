@@ -400,7 +400,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allBatcherOffline, "All nodes should be disconnected from batcher")
-	}, 15*time.Second, 1*time.Second, "batcher disconnection validation")
+	}, integrationutil.PeerSyncTimeout(), 1*time.Second, "batcher disconnection validation")
 
 	// Stage 2: Verify nodestore offline status (up to 15 seconds due to disconnect detection delay)
 	t.Logf("Stage 2: Verifying nodestore offline status for %d nodes (allowing for 10s disconnect detection delay)", len(expectedNodes))
@@ -426,7 +426,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allNodeStoreOffline, "All nodes should be offline in nodestore")
-	}, 20*time.Second, 1*time.Second, "nodestore offline validation")
+	}, integrationutil.PeerSyncTimeout(), 1*time.Second, "nodestore offline validation")
 
 	// Stage 3: Verify map response propagation (longest delay due to peer update timing)
 	t.Logf("Stage 3: Verifying map response propagation for %d nodes (allowing for peer map update delays)", len(expectedNodes))
@@ -468,7 +468,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allMapResponsesOffline, "All nodes should be absent from peer map responses")
-	}, 60*time.Second, 2*time.Second, "map response propagation validation")
+	}, integrationutil.PeerSyncTimeout(), 2*time.Second, "map response propagation validation")
 
 	t.Logf("All stages completed: nodes are fully offline across all systems")
 }
@@ -565,59 +565,47 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 	}
 }
 
-// pingAllHelper performs ping tests between all clients and addresses, returning success count.
-// This is used to validate network connectivity in integration tests.
-// Returns the total number of successful ping operations.
-//
-//nolint:unparam // opts is variadic for extensibility even though callers currently don't pass options
-func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
+// assertPingAll waits for all clients to be able to ping all addresses
+// using EventuallyWithT with PeerSyncTimeout. On CI runners, direct
+// connections can take time to establish even after peers are visible
+// in the network map.
+func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string) {
 	t.Helper()
 
-	success := 0
-
-	for _, client := range clients {
-		for _, addr := range addrs {
-			err := client.Ping(addr, opts...)
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
-			} else {
-				success++
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		for _, client := range clients {
+			for _, addr := range addrs {
+				err := client.Ping(addr)
+				assert.NoErrorf(c, err, "ping %s from %s", addr, client.Hostname())
 			}
 		}
-	}
-
-	return success
+	}, integrationutil.PeerSyncTimeout(), 1*time.Second,
+		"all clients should be able to ping all addresses")
 }
 
-// pingDerpAllHelper performs DERP-based ping tests between all clients and addresses.
-// This specifically tests connectivity through DERP relay servers, which is important
-// for validating NAT traversal and relay functionality. Returns success count.
-func pingDerpAllHelper(t *testing.T, clients []TailscaleClient, addrs []string) int {
+// assertPingDerpAll waits for all clients to be able to ping all
+// addresses via DERP relay using EventuallyWithT. Skips self-pings.
+func assertPingDerpAll(t *testing.T, clients []TailscaleClient, addrs []string) {
 	t.Helper()
 
-	success := 0
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		for _, client := range clients {
+			for _, addr := range addrs {
+				if isSelfClient(client, addr) {
+					continue
+				}
 
-	for _, client := range clients {
-		for _, addr := range addrs {
-			if isSelfClient(client, addr) {
-				continue
-			}
-
-			err := client.Ping(
-				addr,
-				tsic.WithPingTimeout(derpPingTimeout),
-				tsic.WithPingCount(derpPingCount),
-				tsic.WithPingUntilDirect(false),
-			)
-			if err != nil {
-				t.Logf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
-			} else {
-				success++
+				err := client.Ping(
+					addr,
+					tsic.WithPingTimeout(derpPingTimeout),
+					tsic.WithPingCount(derpPingCount),
+					tsic.WithPingUntilDirect(false),
+				)
+				assert.NoErrorf(c, err, "ping %s from %s via DERP", addr, client.Hostname())
 			}
 		}
-	}
-
-	return success
+	}, integrationutil.PeerSyncTimeout(), 1*time.Second,
+		"all clients should be able to ping all addresses via DERP")
 }
 
 // isSelfClient determines if the given address belongs to the client itself.
@@ -732,7 +720,7 @@ func assertValidNetmap(t *testing.T, client TailscaleClient) {
 			assert.Falsef(c, peer.Machine().IsZero(), "peer (%s) of %q does not have a valid MachineKey", peer.ComputedName(), client.Hostname())
 			assert.Falsef(c, peer.DiscoKey().IsZero(), "peer (%s) of %q does not have a valid DiscoKey", peer.ComputedName(), client.Hostname())
 		}
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for valid netmap for %q", client.Hostname())
+	}, integrationutil.PeerSyncTimeout(), 200*time.Millisecond, "Waiting for valid netmap for %q", client.Hostname())
 }
 
 // assertValidStatus validates that a client's status has all required fields for proper operation.
