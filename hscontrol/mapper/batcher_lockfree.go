@@ -707,71 +707,108 @@ func (mc *multiChannelNodeConn) drainPending() []change.Change {
 }
 
 // send broadcasts data to all active connections for the node.
+// send broadcasts data to all connections using a two-phase approach to avoid
+// holding the write lock during potentially slow sends. Each stale connection
+// can block for up to 50ms (see connectionEntry.send), so N stale connections
+// under a single write lock would block for N*50ms. The two-phase approach:
+//
+//  1. RLock: snapshot the connections slice (cheap pointer copy)
+//  2. Unlock: send to all connections without any lock held (timeouts happen here)
+//  3. Lock: remove only the failed connections by pointer identity
+//
+// New connections added during step 2 are safe: they receive a full initial
+// map via AddNode, so missing this particular update causes no data loss.
 func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	if data == nil {
 		return nil
 	}
 
-	mc.mutex.Lock()
-	defer mc.mutex.Unlock()
-
+	// Phase 1: snapshot connections under read lock.
+	mc.mutex.RLock()
 	if len(mc.connections) == 0 {
-		// During rapid reconnection, nodes may temporarily have no active connections
-		// This is not an error - the node will receive a full map when it reconnects
+		mc.mutex.RUnlock()
 		mc.log.Debug().Caller().
 			Msg("send: skipping send to node with no active connections (likely rapid reconnection)")
 
-		return nil // Return success instead of error
+		return nil
 	}
 
+	// Copy the slice header (shares underlying array, but that's fine since
+	// we only read; writes go through the write lock in phase 3).
+	snapshot := make([]*connectionEntry, len(mc.connections))
+	copy(snapshot, mc.connections)
+	mc.mutex.RUnlock()
+
 	mc.log.Debug().Caller().
-		Int("total_connections", len(mc.connections)).
+		Int("total_connections", len(snapshot)).
 		Msg("send: broadcasting to all connections")
 
-	var lastErr error
+	// Phase 2: send to all connections without holding any lock.
+	// Stale connection timeouts (50ms each) happen here without blocking
+	// other goroutines that need the mutex.
+	var (
+		lastErr      error
+		successCount int
+		failed       []*connectionEntry
+	)
 
-	successCount := 0
-
-	var failedConnections []int // Track failed connections for removal
-
-	// Send to all connections
-	for i, conn := range mc.connections {
+	for _, conn := range snapshot {
 		mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
-			Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
+			Str(zf.ConnID, conn.id).
 			Msg("send: attempting to send to connection")
 
 		err := conn.send(data)
 		if err != nil {
 			lastErr = err
 
-			failedConnections = append(failedConnections, i)
+			failed = append(failed, conn)
+
 			mc.log.Warn().Err(err).Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
-				Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
+				Str(zf.ConnID, conn.id).
 				Msg("send: connection send failed")
 		} else {
 			successCount++
 
 			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
-				Str(zf.ConnID, conn.id).Int(zf.ConnectionIndex, i).
+				Str(zf.ConnID, conn.id).
 				Msg("send: successfully sent to connection")
 		}
 	}
 
-	// Remove failed connections (in reverse order to maintain indices)
-	for i := len(failedConnections) - 1; i >= 0; i-- {
-		idx := failedConnections[i]
-		entry := mc.removeConnectionAtIndexLocked(idx, true)
-		mc.log.Debug().Caller().
-			Str(zf.ConnID, entry.id).
-			Msg("send: removed failed connection")
+	// Phase 3: write-lock only to remove failed connections.
+	if len(failed) > 0 {
+		mc.mutex.Lock()
+		// Remove by pointer identity: only remove entries that still exist
+		// in the current connections slice and match a failed pointer.
+		// New connections added between phase 1 and 3 are not affected.
+		failedSet := make(map[*connectionEntry]struct{}, len(failed))
+		for _, f := range failed {
+			failedSet[f] = struct{}{}
+		}
+
+		clean := mc.connections[:0]
+		for _, conn := range mc.connections {
+			if _, isFailed := failedSet[conn]; !isFailed {
+				clean = append(clean, conn)
+			} else {
+				mc.log.Debug().Caller().
+					Str(zf.ConnID, conn.id).
+					Msg("send: removing failed connection")
+				// Tear down the owning session so the old serveLongPoll
+				// goroutine exits instead of lingering as a stale session.
+				mc.stopConnection(conn)
+			}
+		}
+
+		mc.connections = clean
+		mc.mutex.Unlock()
 	}
 
 	mc.updateCount.Add(1)
 
 	mc.log.Debug().
 		Int("successful_sends", successCount).
-		Int("failed_connections", len(failedConnections)).
-		Int("remaining_connections", len(mc.connections)).
+		Int("failed_connections", len(failed)).
 		Msg("send: completed broadcast")
 
 	// Success if at least one send succeeded
