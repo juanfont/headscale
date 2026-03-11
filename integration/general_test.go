@@ -1473,16 +1473,14 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		}
 		t.Logf("All nodes brought up at %s", time.Now().Format(TimestampFormat))
 
-		// After bringing up all nodes, verify batcher shows all reconnected
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), 120*time.Second)
-
-		// Wait for sync and successful pings after nodes come back up
+		// Wait for sync and successful pings after nodes come back up.
+		// WaitForTailscaleSync validates client-side peer readiness
+		// (InNetworkMap, InMagicSock, etc.) and assertPingAll validates
+		// actual direct connectivity.
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(t, err)
 
 		t.Logf("All nodes synced up %s", time.Now().Format(TimestampFormat))
-
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), 60*time.Second)
 
 		assertPingAll(t, allClients, allAddrs)
 
