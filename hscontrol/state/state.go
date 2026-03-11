@@ -450,24 +450,13 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	//   auth_key_id to NULL via ON DELETE SET NULL. Without this, Updates() would fail with a
 	//   foreign key constraint error when trying to reference a deleted PreAuthKey.
 	// See also: https://github.com/juanfont/headscale/issues/2862
-	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Updates(nodePtr).Error
+	// Use Select("*") to force GORM to persist zero-value fields (e.g. empty slices
+	// like ApprovedRoutes set to [] when rejecting all routes). Without this, GORM's
+	// Updates(struct) silently skips zero-value fields and they are never persisted.
+	// See: https://github.com/juanfont/headscale/issues/3110
+	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Select("*").Updates(nodePtr).Error
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
-	}
-
-	// GORM's Updates(struct) skips zero-value fields, which means empty slices
-	// (like ApprovedRoutes set to [] when rejecting all routes) are silently
-	// dropped. Explicitly persist empty slices to ensure they reach the database.
-	// See: https://github.com/juanfont/headscale/issues/3110
-	if len(nodePtr.ApprovedRoutes) == 0 {
-		if err := s.db.DB.Model(&types.Node{}).Where("id = ?", nodePtr.ID).Update("approved_routes", "[]").Error; err != nil {
-			return types.NodeView{}, change.Change{}, fmt.Errorf("persisting empty approved_routes: %w", err)
-		}
-	}
-	if len(nodePtr.Endpoints) == 0 {
-		if err := s.db.DB.Model(&types.Node{}).Where("id = ?", nodePtr.ID).Update("endpoints", "[]").Error; err != nil {
-			return types.NodeView{}, change.Change{}, fmt.Errorf("persisting empty endpoints: %w", err)
-		}
 	}
 
 	// Check if policy manager needs updating
