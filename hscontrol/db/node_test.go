@@ -22,7 +22,6 @@ import (
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestGetNode(t *testing.T) {
@@ -102,6 +101,8 @@ func TestExpireNode(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -115,7 +116,7 @@ func TestExpireNode(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 		Expiry:         &time.Time{},
 	}
 	db.DB.Save(node)
@@ -127,13 +128,55 @@ func TestExpireNode(t *testing.T) {
 	assert.False(t, nodeFromDB.IsExpired())
 
 	now := time.Now()
-	err = db.NodeSetExpiry(nodeFromDB.ID, now)
+	err = db.NodeSetExpiry(nodeFromDB.ID, &now)
 	require.NoError(t, err)
 
 	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.NoError(t, err)
 
 	assert.True(t, nodeFromDB.IsExpired())
+}
+
+func TestDisableNodeExpiry(t *testing.T) {
+	db, err := newSQLiteTestDB()
+	require.NoError(t, err)
+
+	user, err := db.CreateUser(types.User{Name: "test"})
+	require.NoError(t, err)
+
+	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	pakID := pak.ID
+	node := &types.Node{
+		ID:             0,
+		MachineKey:     key.NewMachine().Public(),
+		NodeKey:        key.NewNode().Public(),
+		Hostname:       "testnode",
+		UserID:         &user.ID,
+		RegisterMethod: util.RegisterMethodAuthKey,
+		AuthKeyID:      &pakID,
+		Expiry:         &time.Time{},
+	}
+	db.DB.Save(node)
+
+	// Set an expiry first.
+	past := time.Now().Add(-time.Hour)
+	err = db.NodeSetExpiry(node.ID, &past)
+	require.NoError(t, err)
+
+	nodeFromDB, err := db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.True(t, nodeFromDB.IsExpired(), "node should be expired")
+
+	// Disable expiry by setting nil.
+	err = db.NodeSetExpiry(node.ID, nil)
+	require.NoError(t, err)
+
+	nodeFromDB, err = db.getNode(types.UserID(user.ID), "testnode")
+	require.NoError(t, err)
+	assert.False(t, nodeFromDB.IsExpired(), "node should not be expired after disabling expiry")
+	assert.Nil(t, nodeFromDB.Expiry, "expiry should be nil after disabling")
 }
 
 func TestSetTags(t *testing.T) {
@@ -146,6 +189,8 @@ func TestSetTags(t *testing.T) {
 	pak, err := db.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+
 	_, err = db.getNode(types.UserID(user.ID), "testnode")
 	require.Error(t, err)
 
@@ -159,7 +204,7 @@ func TestSetTags(t *testing.T) {
 		Hostname:       "testnode",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	trx := db.DB.Save(node)
@@ -444,7 +489,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 					Hostinfo: &tailcfg.Hostinfo{
 						RoutableIPs: tt.routes,
 					},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.1")),
+					IPv4: new(netip.MustParseAddr("100.64.0.1")),
 				}
 
 				err = adb.DB.Save(&node).Error
@@ -461,7 +506,7 @@ func TestAutoApproveRoutes(t *testing.T) {
 						RoutableIPs: tt.routes,
 					},
 					Tags: []string{"tag:exit"},
-					IPv4: ptr.To(netip.MustParseAddr("100.64.0.2")),
+					IPv4: new(netip.MustParseAddr("100.64.0.2")),
 				}
 
 				err = adb.DB.Save(&nodeTagged).Error
@@ -653,6 +698,9 @@ func TestListEphemeralNodes(t *testing.T) {
 	pakEph, err := db.CreatePreAuthKey(user.TypedID(), false, true, nil, nil)
 	require.NoError(t, err)
 
+	pakID := pak.ID
+	pakEphID := pakEph.ID
+
 	node := types.Node{
 		ID:             0,
 		MachineKey:     key.NewMachine().Public(),
@@ -660,7 +708,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "test",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pak.ID),
+		AuthKeyID:      &pakID,
 	}
 
 	nodeEph := types.Node{
@@ -670,7 +718,7 @@ func TestListEphemeralNodes(t *testing.T) {
 		Hostname:       "ephemeral",
 		UserID:         &user.ID,
 		RegisterMethod: util.RegisterMethodAuthKey,
-		AuthKeyID:      ptr.To(pakEph.ID),
+		AuthKeyID:      &pakEphID,
 	}
 
 	err = db.DB.Save(&node).Error
@@ -763,8 +811,8 @@ func TestNodeNaming(t *testing.T) {
 			return err
 		}
 
-		_, _ = RegisterNodeForTest(tx, nodeInvalidHostname, ptr.To(mpp("100.64.0.66/32").Addr()), nil)
-		_, err = RegisterNodeForTest(tx, nodeShortHostname, ptr.To(mpp("100.64.0.67/32").Addr()), nil)
+		_, _ = RegisterNodeForTest(tx, nodeInvalidHostname, new(mpp("100.64.0.66/32").Addr()), nil)
+		_, err = RegisterNodeForTest(tx, nodeShortHostname, new(mpp("100.64.0.67/32").Addr()), nil)
 
 		return err
 	})

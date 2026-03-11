@@ -99,6 +99,8 @@ message DeleteNodeResponse {}
 message ExpireNodeRequest {
   uint64 node_id = 1;
   google.protobuf.Timestamp expiry = 2;
+  // When true, sets expiry to null (node will never expire).
+  bool disable_expiry = 3;
 }
 
 message ExpireNodeResponse {

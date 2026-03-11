@@ -16,6 +16,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Error is used to compare errors as per https://dave.cheney.net/2016/04/07/constant-errors
+type Error string
+
+func (e Error) Error() string { return string(e) }
+
 const (
 	errMockOidcClientIDNotDefined     = Error("MOCKOIDC_CLIENT_ID not defined")
 	errMockOidcClientSecretNotDefined = Error("MOCKOIDC_CLIENT_SECRET not defined")
@@ -34,12 +39,13 @@ var mockOidcCmd = &cobra.Command{
 	Use:   "mockoidc",
 	Short: "Runs a mock OIDC server for testing",
 	Long:  "This internal command runs a OpenID Connect for testing purposes",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		err := mockOIDC()
 		if err != nil {
-			log.Error().Err(err).Msgf("error running mock OIDC server")
-			os.Exit(1)
+			return fmt.Errorf("running mock OIDC server: %w", err)
 		}
+
+		return nil
 	},
 }
 

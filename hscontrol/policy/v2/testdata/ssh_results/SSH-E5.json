@@ -1,0 +1,38 @@
+{
+  "test_id": "SSH-E5",
+  "policy_file": "ssh_policies/ssh_e5.json",
+  "ssh_section": [{ "action": "accept", "src": ["tag:prod"], "dst": ["tag:server"], "users": ["localpart:*@passkey"] }],
+  "nodes": {
+    "user1": { "rules": [] },
+    "user-kris": { "rules": [] },
+    "user-mon": { "rules": [] },
+    "tagged-server": {
+      "rules": [
+        {
+          "principals": [{ "nodeIP": "100.103.8.15" }, { "nodeIP": "fd7a:115c:a1e0::5b37:80f" }],
+          "sshUsers": { "root": "" },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "tagged-prod": {
+      "rules": [
+        {
+          "principals": [{ "nodeIP": "100.103.8.15" }, { "nodeIP": "fd7a:115c:a1e0::5b37:80f" }],
+          "sshUsers": { "root": "" },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    }
+  }
+}

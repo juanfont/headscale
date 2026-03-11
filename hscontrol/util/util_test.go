@@ -1070,7 +1070,7 @@ func TestEnsureHostname(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
+			got := EnsureHostname(tt.hostinfo.View(), tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.want, "invalid-") {
 				if !strings.HasPrefix(got, "invalid-") {
@@ -1207,10 +1207,10 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "test",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
-				if hi.Hostname != "test" { //nolint:staticcheck // SA5011: nil check is above
+				if hi.Hostname != "test" {
 					t.Errorf("hostname = %v, want test", hi.Hostname)
 				}
 
@@ -1241,10 +1241,10 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 			wantHostname: "123456789012345678901234567890123456789012345678901234567890123",
 			checkHostinfo: func(t *testing.T, hi *tailcfg.Hostinfo) { //nolint:thelper
 				if hi == nil {
-					t.Error("hostinfo should not be nil")
+					t.Fatal("hostinfo should not be nil")
 				}
 
-				if len(hi.Hostname) != 63 { //nolint:staticcheck // SA5011: nil check is above
+				if len(hi.Hostname) != 63 {
 					t.Errorf("hostname length = %v, want 63", len(hi.Hostname))
 				}
 			},
@@ -1255,7 +1255,7 @@ func TestEnsureHostnameWithHostinfo(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotHostname := EnsureHostname(tt.hostinfo, tt.machineKey, tt.nodeKey)
+			gotHostname := EnsureHostname(tt.hostinfo.View(), tt.machineKey, tt.nodeKey)
 			// For invalid hostnames, we just check the prefix since the random part varies
 			if strings.HasPrefix(tt.wantHostname, "invalid-") {
 				if !strings.HasPrefix(gotHostname, "invalid-") {
@@ -1284,7 +1284,7 @@ func TestEnsureHostname_DNSLabelLimit(t *testing.T) {
 
 			hostinfo := &tailcfg.Hostinfo{Hostname: hostname}
 
-			result := EnsureHostname(hostinfo, "mkey", "nkey")
+			result := EnsureHostname(hostinfo.View(), "mkey", "nkey")
 			if len(result) > 63 {
 				t.Errorf("test case %d: hostname length = %d, want <= 63", i, len(result))
 			}
@@ -1300,8 +1300,8 @@ func TestEnsureHostname_Idempotent(t *testing.T) {
 		OS:       "linux",
 	}
 
-	hostname1 := EnsureHostname(originalHostinfo, "mkey", "nkey")
-	hostname2 := EnsureHostname(originalHostinfo, "mkey", "nkey")
+	hostname1 := EnsureHostname(originalHostinfo.View(), "mkey", "nkey")
+	hostname2 := EnsureHostname(originalHostinfo.View(), "mkey", "nkey")
 
 	if hostname1 != hostname2 {
 		t.Errorf("hostnames not equal: %v != %v", hostname1, hostname2)

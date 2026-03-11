@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var veryLargeDestination = []policyv2.AliasWithPorts{
@@ -1284,9 +1283,9 @@ func TestACLAutogroupMember(t *testing.T) {
 			ACLs: []policyv2.ACL{
 				{
 					Action:  "accept",
-					Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+					Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 					Destinations: []policyv2.AliasWithPorts{
-						aliasWithPorts(ptr.To(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
+						aliasWithPorts(new(policyv2.AutoGroupMember), tailcfg.PortRangeAny),
 					},
 				},
 			},
@@ -1372,9 +1371,9 @@ func TestACLAutogroupTagged(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupTagged)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupTagged)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupTagged), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -1657,9 +1656,9 @@ func TestACLAutogroupSelf(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 			{
@@ -1957,9 +1956,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		ACLs: []policyv2.ACL{
 			{
 				Action:  "accept",
-				Sources: []policyv2.Alias{ptr.To(policyv2.AutoGroupMember)},
+				Sources: []policyv2.Alias{new(policyv2.AutoGroupMember)},
 				Destinations: []policyv2.AliasWithPorts{
-					aliasWithPorts(ptr.To(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
+					aliasWithPorts(new(policyv2.AutoGroupSelf), tailcfg.PortRangeAny),
 				},
 			},
 		},
@@ -2460,10 +2459,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: true,                  // user2 can access user1 (has tag:shared)
 			tagChange:     []string{"tag:other"}, // replace with tag:other
@@ -2553,10 +2556,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: false,                  // user2 cannot access (tag:team-a not in ACL)
 			tagChange:     []string{"tag:team-b"}, // change to tag:team-b
@@ -2646,10 +2653,14 @@ func TestACLTagPropagation(t *testing.T) {
 				err = scenario.WaitForTailscaleSync()
 				require.NoError(t, err)
 
-				nodes, err := headscale.ListNodes("user1")
+				// Tagged nodes have no user_id, so list all and find by tag.
+				allNodes, err := headscale.ListNodes()
 				require.NoError(t, err)
 
-				return user2Node, user1Node, nodes[0].GetId()
+				tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+				require.NotNil(t, tagged, "expected a tagged node")
+
+				return user2Node, user1Node, tagged.GetId()
 			},
 			initialAccess: true,                     // user2 can access (has tag:web)
 			tagChange:     []string{"tag:internal"}, // remove tag:web, keep tag:internal
@@ -2784,34 +2795,10 @@ func TestACLTagPropagation(t *testing.T) {
 
 			// Verify tag was applied
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				// List nodes by iterating through all users since tagged nodes may "move"
-				var node *v1.Node
+				allNodes, err := headscale.ListNodes()
+				assert.NoError(c, err)
 
-				for _, user := range tt.spec.Users {
-					nodes, err := headscale.ListNodes(user)
-					if err != nil {
-						continue
-					}
-
-					for _, n := range nodes {
-						if n.GetId() == targetNodeID {
-							node = n
-							break
-						}
-					}
-				}
-				// Also check nodes without user filter
-				if node == nil {
-					// Try listing all nodes
-					allNodes, _ := headscale.ListNodes("")
-					for _, n := range allNodes {
-						if n.GetId() == targetNodeID {
-							node = n
-							break
-						}
-					}
-				}
-
+				node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
 				assert.NotNil(c, node, "Node should still exist")
 
 				if node != nil {
@@ -2992,10 +2979,14 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = scenario.WaitForTailscaleSync()
 	require.NoError(t, err)
 
-	nodes, err := headscale.ListNodes("user1")
+	// Tagged nodes have no user_id, so list all and find by tag.
+	allNodes, err := headscale.ListNodes()
 	require.NoError(t, err)
 
-	targetNodeID := nodes[0].GetId()
+	tagged := findNode(allNodes, func(n *v1.Node) bool { return len(n.GetTags()) > 0 })
+	require.NotNil(t, tagged, "expected a tagged node")
+
+	targetNodeID := tagged.GetId()
 
 	targetFQDN, err := user1Node.FQDN()
 	require.NoError(t, err)

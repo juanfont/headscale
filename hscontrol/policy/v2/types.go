@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-json-experiment/json"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -16,7 +17,6 @@ import (
 	"go4.org/netipx"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 	"tailscale.com/types/views"
 	"tailscale.com/util/multierr"
 	"tailscale.com/util/slicesx"
@@ -44,6 +44,18 @@ var (
 	ErrSSHAutogroupSelfRequiresUserSource = errors.New("autogroup:self destination requires source to contain only users or groups, not tags or autogroup:tagged")
 	ErrSSHTagSourceToAutogroupMember      = errors.New("tags in SSH source cannot access autogroup:member (user-owned devices)")
 	ErrSSHWildcardDestination             = errors.New("wildcard (*) is not supported as SSH destination")
+	ErrSSHCheckPeriodBelowMin             = errors.New("checkPeriod below minimum of 1 minute")
+	ErrSSHCheckPeriodAboveMax             = errors.New("checkPeriod above maximum of 168 hours (1 week)")
+	ErrSSHCheckPeriodOnNonCheck           = errors.New("checkPeriod is only valid with action \"check\"")
+	ErrInvalidLocalpart                   = errors.New("invalid localpart format, must be localpart:*@<domain>")
+)
+
+// SSH check period constants per Tailscale docs:
+// https://tailscale.com/kb/1193/tailscale-ssh
+const (
+	SSHCheckPeriodDefault = 12 * time.Hour
+	SSHCheckPeriodMin     = time.Minute
+	SSHCheckPeriodMax     = 168 * time.Hour
 )
 
 // ACL validation errors.
@@ -762,17 +774,17 @@ func parseAlias(vs string) (Alias, error) {
 	case isWildcard(vs):
 		return Wildcard, nil
 	case isUser(vs):
-		return ptr.To(Username(vs)), nil
+		return new(Username(vs)), nil
 	case isGroup(vs):
-		return ptr.To(Group(vs)), nil
+		return new(Group(vs)), nil
 	case isTag(vs):
-		return ptr.To(Tag(vs)), nil
+		return new(Tag(vs)), nil
 	case isAutoGroup(vs):
-		return ptr.To(AutoGroup(vs)), nil
+		return new(AutoGroup(vs)), nil
 	}
 
 	if isHost(vs) {
-		return ptr.To(Host(vs)), nil
+		return new(Host(vs)), nil
 	}
 
 	return nil, fmt.Errorf("%w: %q", ErrInvalidAlias, vs)
@@ -933,11 +945,11 @@ func (aa AutoApprovers) MarshalJSON() ([]byte, error) {
 func parseAutoApprover(s string) (AutoApprover, error) {
 	switch {
 	case isUser(s):
-		return ptr.To(Username(s)), nil
+		return new(Username(s)), nil
 	case isGroup(s):
-		return ptr.To(Group(s)), nil
+		return new(Group(s)), nil
 	case isTag(s):
-		return ptr.To(Tag(s)), nil
+		return new(Tag(s)), nil
 	}
 
 	return nil, fmt.Errorf("%w: %q", ErrInvalidAutoApprover, s)
@@ -1027,11 +1039,11 @@ func (o Owners) MarshalJSON() ([]byte, error) {
 func parseOwner(s string) (Owner, error) {
 	switch {
 	case isUser(s):
-		return ptr.To(Username(s)), nil
+		return new(Username(s)), nil
 	case isGroup(s):
-		return ptr.To(Group(s)), nil
+		return new(Group(s)), nil
 	case isTag(s):
-		return ptr.To(Tag(s)), nil
+		return new(Tag(s)), nil
 	}
 
 	return nil, fmt.Errorf("%w: %q", ErrInvalidOwner, s)
@@ -1954,6 +1966,14 @@ func (p *Policy) validate() error {
 					continue
 				}
 			}
+
+			if user.IsLocalpart() {
+				_, err := user.ParseLocalpart()
+				if err != nil {
+					errs = append(errs, err)
+					continue
+				}
+			}
 		}
 
 		for _, src := range ssh.Sources {
@@ -2019,6 +2039,19 @@ func (p *Policy) validate() error {
 		err := validateSSHSrcDstCombination(ssh.Sources, ssh.Destinations)
 		if err != nil {
 			errs = append(errs, err)
+		}
+
+		// Validate checkPeriod
+		if ssh.CheckPeriod != nil {
+			switch {
+			case ssh.Action != SSHActionCheck:
+				errs = append(errs, ErrSSHCheckPeriodOnNonCheck)
+			default:
+				err := ssh.CheckPeriod.Validate()
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
 		}
 	}
 
@@ -2098,13 +2131,76 @@ func (p *Policy) validate() error {
 	return nil
 }
 
+// SSHCheckPeriod represents the check period for SSH "check" mode rules.
+// nil means not specified (runtime default of 12h applies).
+// Always=true means "always" (check on every request).
+// Duration is an explicit period (min 1m, max 168h).
+type SSHCheckPeriod struct {
+	Always   bool
+	Duration time.Duration
+}
+
+// UnmarshalJSON implements JSON unmarshaling for SSHCheckPeriod.
+func (p *SSHCheckPeriod) UnmarshalJSON(b []byte) error {
+	str := strings.Trim(string(b), `"`)
+	if str == "always" {
+		p.Always = true
+
+		return nil
+	}
+
+	d, err := model.ParseDuration(str)
+	if err != nil {
+		return fmt.Errorf("parsing checkPeriod %q: %w", str, err)
+	}
+
+	p.Duration = time.Duration(d)
+
+	return nil
+}
+
+// MarshalJSON implements JSON marshaling for SSHCheckPeriod.
+func (p SSHCheckPeriod) MarshalJSON() ([]byte, error) {
+	if p.Always {
+		return []byte(`"always"`), nil
+	}
+
+	return fmt.Appendf(nil, "%q", p.Duration.String()), nil
+}
+
+// Validate checks that the SSHCheckPeriod is within allowed bounds.
+func (p *SSHCheckPeriod) Validate() error {
+	if p.Always {
+		return nil
+	}
+
+	if p.Duration < SSHCheckPeriodMin {
+		return fmt.Errorf(
+			"%w: got %s",
+			ErrSSHCheckPeriodBelowMin,
+			p.Duration,
+		)
+	}
+
+	if p.Duration > SSHCheckPeriodMax {
+		return fmt.Errorf(
+			"%w: got %s",
+			ErrSSHCheckPeriodAboveMax,
+			p.Duration,
+		)
+	}
+
+	return nil
+}
+
 // SSH controls who can ssh into which machines.
 type SSH struct {
-	Action       SSHAction      `json:"action"`
-	Sources      SSHSrcAliases  `json:"src"`
-	Destinations SSHDstAliases  `json:"dst"`
-	Users        SSHUsers       `json:"users"`
-	CheckPeriod  model.Duration `json:"checkPeriod,omitempty"`
+	Action       SSHAction       `json:"action"`
+	Sources      SSHSrcAliases   `json:"src"`
+	Destinations SSHDstAliases   `json:"dst"`
+	Users        SSHUsers        `json:"users"`
+	CheckPeriod  *SSHCheckPeriod `json:"checkPeriod,omitempty"`
+	AcceptEnv    []string        `json:"acceptEnv,omitempty"`
 }
 
 // SSHSrcAliases is a list of aliases that can be used as sources in an SSH rule.
@@ -2256,6 +2352,11 @@ type SSHDstAliases []Alias
 
 type SSHUsers []SSHUser
 
+// SSHUserLocalpartPrefix is the prefix for localpart SSH user entries.
+// Format: localpart:*@<domain>
+// See: https://tailscale.com/docs/features/tailscale-ssh#users
+const SSHUserLocalpartPrefix = "localpart:"
+
 func (u SSHUsers) ContainsRoot() bool {
 	return slices.Contains(u, "root")
 }
@@ -2264,9 +2365,25 @@ func (u SSHUsers) ContainsNonRoot() bool {
 	return slices.Contains(u, SSHUser(AutoGroupNonRoot))
 }
 
+// ContainsLocalpart returns true if any entry has the localpart: prefix.
+func (u SSHUsers) ContainsLocalpart() bool {
+	return slices.ContainsFunc(u, func(user SSHUser) bool {
+		return user.IsLocalpart()
+	})
+}
+
+// NormalUsers returns all SSH users that are not root, autogroup:nonroot,
+// or localpart: entries.
 func (u SSHUsers) NormalUsers() []SSHUser {
 	return slicesx.Filter(nil, u, func(user SSHUser) bool {
-		return user != "root" && user != SSHUser(AutoGroupNonRoot)
+		return user != "root" && user != SSHUser(AutoGroupNonRoot) && !user.IsLocalpart()
+	})
+}
+
+// LocalpartEntries returns only the localpart: prefixed entries.
+func (u SSHUsers) LocalpartEntries() []SSHUser {
+	return slicesx.Filter(nil, u, func(user SSHUser) bool {
+		return user.IsLocalpart()
 	})
 }
 
@@ -2274,6 +2391,41 @@ type SSHUser string
 
 func (u SSHUser) String() string {
 	return string(u)
+}
+
+// IsLocalpart returns true if the SSHUser has the localpart: prefix.
+func (u SSHUser) IsLocalpart() bool {
+	return strings.HasPrefix(string(u), SSHUserLocalpartPrefix)
+}
+
+// ParseLocalpart validates and extracts the domain from a localpart: entry.
+// The expected format is localpart:*@<domain>.
+// Returns the domain part or an error if the format is invalid.
+func (u SSHUser) ParseLocalpart() (string, error) {
+	if !u.IsLocalpart() {
+		return "", fmt.Errorf("%w: missing prefix %q in %q", ErrInvalidLocalpart, SSHUserLocalpartPrefix, u)
+	}
+
+	pattern := strings.TrimPrefix(string(u), SSHUserLocalpartPrefix)
+
+	// Must be *@<domain>
+	atIdx := strings.LastIndex(pattern, "@")
+	if atIdx < 0 {
+		return "", fmt.Errorf("%w: missing @ in %q", ErrInvalidLocalpart, u)
+	}
+
+	localPart := pattern[:atIdx]
+	domain := pattern[atIdx+1:]
+
+	if localPart != "*" {
+		return "", fmt.Errorf("%w: local part must be *, got %q in %q", ErrInvalidLocalpart, localPart, u)
+	}
+
+	if domain == "" {
+		return "", fmt.Errorf("%w: empty domain in %q", ErrInvalidLocalpart, u)
+	}
+
+	return domain, nil
 }
 
 // MarshalJSON marshals the SSHUser to JSON.
@@ -2299,8 +2451,7 @@ func unmarshalPolicy(b []byte) (*Policy, error) {
 	ast.Standardize()
 
 	if err = json.Unmarshal(ast.Pack(), &policy, policyJSONOpts...); err != nil { //nolint:noinlineerr
-		var serr *json.SemanticError
-		if errors.As(err, &serr) && errors.Is(serr.Err, json.ErrUnknownName) {
+		if serr, ok := errors.AsType[*json.SemanticError](err); ok && errors.Is(serr.Err, json.ErrUnknownName) {
 			ptr := serr.JSONPointer
 			name := ptr.LastToken()
 

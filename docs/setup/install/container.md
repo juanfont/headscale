@@ -18,17 +18,17 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
 
 ## Configure and run headscale
 
-1.  Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the [SQLite](https://www.sqlite.org/) database:
+1. Create a directory on the container host to store headscale's [configuration](../../ref/configuration.md) and the [SQLite](https://www.sqlite.org/) database:
 
     ```shell
     mkdir -p ./headscale/{config,lib}
     cd ./headscale
     ```
 
-1.  Download the example configuration for your chosen version and save it as: `$(pwd)/config/config.yaml`. Adjust the
-    configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
+1. Download the example configuration for your chosen version and save it as: `$(pwd)/config/config.yaml`. Adjust the
+   configuration to suit your local environment. See [Configuration](../../ref/configuration.md) for details.
 
-1.  Start headscale from within the previously created `./headscale` directory:
+1. Start headscale from within the previously created `./headscale` directory:
 
     ```shell
     docker run \
@@ -74,7 +74,7 @@ Registry](https://github.com/juanfont/headscale/pkgs/container/headscale). The c
             test: ["CMD", "headscale", "health"]
     ```
 
-1.  Verify headscale is running:
+1. Verify headscale is running:
 
     Follow the container logs:
 

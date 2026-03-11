@@ -2,6 +2,8 @@ package v2
 
 import (
 	"errors"
+	"fmt"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,10 +21,44 @@ var (
 	ErrPortMustBePositive     = errors.New("first port must be >0, or use '*' for wildcard")
 	ErrInvalidPortNumber      = errors.New("invalid port number")
 	ErrPortNumberOutOfRange   = errors.New("port number out of range")
+	ErrBracketsNotIPv6        = errors.New("square brackets are only valid around IPv6 addresses")
 )
 
 // splitDestinationAndPort takes an input string and returns the destination and port as a tuple, or an error if the input is invalid.
+// It supports two bracketed IPv6 forms:
+//   - "[addr]:port" (RFC 3986, e.g. "[::1]:80")
+//   - "[addr]/prefix:port" (e.g. "[fd7a::1]/128:80,443")
+//
+// Brackets are only accepted around IPv6 addresses, not IPv4, hostnames, or other alias types.
+// Bracket stripping reduces both forms to bare "addr:port" or "addr/prefix:port",
+// which the normal LastIndex(":") split handles correctly because port strings
+// never contain colons.
 func splitDestinationAndPort(input string) (string, string, error) {
+	// Handle RFC 3986 bracketed IPv6 (e.g. "[::1]:80" or "[fd7a::1]/128:80,443").
+	// Strip brackets after validation and fall through to normal parsing.
+	if strings.HasPrefix(input, "[") {
+		closeBracket := strings.Index(input, "]")
+		if closeBracket == -1 {
+			return "", "", ErrBracketsNotIPv6
+		}
+
+		host := input[1:closeBracket]
+
+		addr, err := netip.ParseAddr(host)
+		if err != nil || !addr.Is6() {
+			return "", "", fmt.Errorf("%w: %q", ErrBracketsNotIPv6, host)
+		}
+
+		rest := input[closeBracket+1:]
+		if len(rest) == 0 || (rest[0] != ':' && rest[0] != '/') {
+			return "", "", fmt.Errorf("%w: %q", ErrBracketsNotIPv6, input)
+		}
+
+		// Strip brackets: "[addr]:port" → "addr:port",
+		// "[addr]/prefix:port" → "addr/prefix:port".
+		input = host + rest
+	}
+
 	// Find the last occurrence of the colon character
 	lastColonIndex := strings.LastIndex(input, ":")
 

@@ -319,19 +319,51 @@ func (pol *Policy) compileACLWithAutogroupSelf(
 	return rules, nil
 }
 
-func sshAction(accept bool, duration time.Duration) tailcfg.SSHAction {
+var sshAccept = tailcfg.SSHAction{
+	Reject:                    false,
+	Accept:                    true,
+	AllowAgentForwarding:      true,
+	AllowLocalPortForwarding:  true,
+	AllowRemotePortForwarding: true,
+}
+
+// checkPeriodFromRule extracts the check period duration from an SSH rule.
+// Returns SSHCheckPeriodDefault if no checkPeriod is configured,
+// 0 if checkPeriod is "always", or the configured duration otherwise.
+func checkPeriodFromRule(rule SSH) time.Duration {
+	switch {
+	case rule.CheckPeriod == nil:
+		return SSHCheckPeriodDefault
+	case rule.CheckPeriod.Always:
+		return 0
+	default:
+		return rule.CheckPeriod.Duration
+	}
+}
+
+func sshCheck(baseURL string, duration time.Duration) tailcfg.SSHAction {
+	holdURL := baseURL + "/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER"
+
 	return tailcfg.SSHAction{
-		Reject:                    !accept,
-		Accept:                    accept,
-		SessionDuration:           duration,
+		Reject:          false,
+		Accept:          false,
+		SessionDuration: duration,
+		// Replaced in the client:
+		//   * $SRC_NODE_IP (URL escaped)
+		//   * $SRC_NODE_ID (Node.ID as int64 string)
+		//   * $DST_NODE_IP (URL escaped)
+		//   * $DST_NODE_ID (Node.ID as int64 string)
+		//   * $SSH_USER (URL escaped, ssh user requested)
+		//   * $LOCAL_USER (URL escaped, local user mapped)
+		HoldAndDelegate:           holdURL,
 		AllowAgentForwarding:      true,
 		AllowLocalPortForwarding:  true,
 		AllowRemotePortForwarding: true,
 	}
 }
 
-//nolint:gocyclo // complex SSH policy compilation logic
 func (pol *Policy) compileSSHPolicy(
+	baseURL string,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
@@ -345,13 +377,7 @@ func (pol *Policy) compileSSHPolicy(
 	var rules []*tailcfg.SSHRule
 
 	for index, rule := range pol.SSHs {
-		// Separate destinations into autogroup:self and others
-		// This is needed because autogroup:self requires filtering sources to same-user only,
-		// while other destinations should use all resolved sources
-		var (
-			autogroupSelfDests []Alias
-			otherDests         []Alias
-		)
+		var autogroupSelfDests, otherDests []Alias
 
 		for _, dst := range rule.Destinations {
 			if ag, ok := dst.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
@@ -361,12 +387,11 @@ func (pol *Policy) compileSSHPolicy(
 			}
 		}
 
-		// Note: Tagged nodes can't match autogroup:self destinations, but can still match other destinations
-
-		// Resolve sources once - we'll use them differently for each destination type
 		srcIPs, err := rule.Sources.Resolve(pol, users, nodes)
 		if err != nil {
-			log.Trace().Caller().Err(err).Msgf("ssh policy compilation failed resolving source ips for rule %+v", rule)
+			log.Trace().Caller().Err(err).Msgf(
+				"ssh policy compilation failed resolving source ips for rule %+v", rule,
+			)
 		}
 
 		if srcIPs == nil || len(srcIPs.Prefixes()) == 0 {
@@ -377,99 +402,91 @@ func (pol *Policy) compileSSHPolicy(
 
 		switch rule.Action {
 		case SSHActionAccept:
-			action = sshAction(true, 0)
+			action = sshAccept
 		case SSHActionCheck:
-			action = sshAction(true, time.Duration(rule.CheckPeriod))
+			action = sshCheck(baseURL, checkPeriodFromRule(rule))
 		default:
-			return nil, fmt.Errorf("parsing SSH policy, unknown action %q, index: %d: %w", rule.Action, index, err)
+			return nil, fmt.Errorf(
+				"parsing SSH policy, unknown action %q, index: %d: %w",
+				rule.Action, index, err,
+			)
 		}
 
-		userMap := make(map[string]string, len(rule.Users))
+		acceptEnv := rule.AcceptEnv
+
+		// Build the common userMap (always has at least a root entry).
+		const rootUser = "root"
+
+		baseUserMap := make(map[string]string, len(rule.Users))
 		if rule.Users.ContainsNonRoot() {
-			userMap["*"] = "="
-			// by default, we do not allow root unless explicitly stated
-			userMap["root"] = ""
+			baseUserMap["*"] = "="
 		}
 
 		if rule.Users.ContainsRoot() {
-			userMap["root"] = "root"
+			baseUserMap[rootUser] = rootUser
+		} else {
+			baseUserMap[rootUser] = ""
 		}
 
 		for _, u := range rule.Users.NormalUsers() {
-			userMap[u.String()] = u.String()
+			baseUserMap[u.String()] = u.String()
 		}
 
-		// Handle autogroup:self destinations (if any)
-		// Note: Tagged nodes can't match autogroup:self, so skip this block for tagged nodes
-		if len(autogroupSelfDests) > 0 && !node.IsTagged() {
-			// Build destination set for autogroup:self (same-user untagged devices only)
-			var dest netipx.IPSetBuilder
+		hasLocalpart := rule.Users.ContainsLocalpart()
 
-			for _, n := range nodes.All() {
-				if !n.IsTagged() && n.User().ID() == node.User().ID() {
-					n.AppendToIPSet(&dest)
-				}
-			}
+		var localpartByUser map[uint]string
+		if hasLocalpart {
+			localpartByUser = resolveLocalparts(
+				rule.Users.LocalpartEntries(), users,
+			)
+		}
 
-			destSet, err := dest.IPSet()
-			if err != nil {
-				return nil, err
-			}
+		userIDs, principalsByUser, taggedPrincipals := groupSourcesByUser(
+			nodes, srcIPs,
+		)
 
-			// Only create rule if this node is in the destination set
-			if node.InIPSet(destSet) {
-				// Filter sources to only same-user untagged devices
-				// Pre-filter to same-user untagged devices for efficiency
-				sameUserNodes := make([]types.NodeView, 0)
+		// appendRules emits a common rule and, if the user has a
+		// localpart match, a per-user localpart rule.
+		appendRules := func(principals []*tailcfg.SSHPrincipal, uid uint, hasUID bool) {
+			rules = append(rules, &tailcfg.SSHRule{
+				Principals: principals,
+				SSHUsers:   baseUserMap,
+				Action:     &action,
+				AcceptEnv:  acceptEnv,
+			})
 
-				for _, n := range nodes.All() {
-					if !n.IsTagged() && n.User().ID() == node.User().ID() {
-						sameUserNodes = append(sameUserNodes, n)
-					}
-				}
-
-				var filteredSrcIPs netipx.IPSetBuilder
-
-				for _, n := range sameUserNodes {
-					// Check if any of this node's IPs are in the source set
-					if slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
-						n.AppendToIPSet(&filteredSrcIPs) // Found this node, move to next
-					}
-				}
-
-				filteredSrcSet, err := filteredSrcIPs.IPSet()
-				if err != nil {
-					return nil, err
-				}
-
-				if filteredSrcSet != nil && len(filteredSrcSet.Prefixes()) > 0 {
-					var principals []*tailcfg.SSHPrincipal
-					for addr := range util.IPSetAddrIter(filteredSrcSet) {
-						principals = append(principals, &tailcfg.SSHPrincipal{
-							NodeIP: addr.String(),
-						})
-					}
-
-					if len(principals) > 0 {
-						rules = append(rules, &tailcfg.SSHRule{
-							Principals: principals,
-							SSHUsers:   userMap,
-							Action:     &action,
-						})
-					}
+			if hasUID {
+				if lp, ok := localpartByUser[uid]; ok {
+					rules = append(rules, &tailcfg.SSHRule{
+						Principals: principals,
+						SSHUsers:   map[string]string{lp: lp},
+						Action:     &action,
+						AcceptEnv:  acceptEnv,
+					})
 				}
 			}
 		}
 
-		// Handle other destinations (if any)
+		// Handle autogroup:self destinations.
+		// Tagged nodes can't match autogroup:self.
+		if len(autogroupSelfDests) > 0 &&
+			!node.IsTagged() && node.User().Valid() {
+			uid := node.User().ID()
+
+			if principals := principalsByUser[uid]; len(principals) > 0 {
+				appendRules(principals, uid, true)
+			}
+		}
+
+		// Handle other destinations.
 		if len(otherDests) > 0 {
-			// Build destination set for other destinations
 			var dest netipx.IPSetBuilder
 
 			for _, dst := range otherDests {
 				ips, err := dst.Resolve(pol, users, nodes)
 				if err != nil {
-					log.Trace().Caller().Err(err).Msgf("resolving destination ips")
+					log.Trace().Caller().Err(err).
+						Msgf("resolving destination ips")
 				}
 
 				if ips != nil {
@@ -482,30 +499,204 @@ func (pol *Policy) compileSSHPolicy(
 				return nil, err
 			}
 
-			// Only create rule if this node is in the destination set
 			if node.InIPSet(destSet) {
-				// For non-autogroup:self destinations, use all resolved sources (no filtering)
-				var principals []*tailcfg.SSHPrincipal
-				for addr := range util.IPSetAddrIter(srcIPs) {
-					principals = append(principals, &tailcfg.SSHPrincipal{
-						NodeIP: addr.String(),
-					})
-				}
+				// Node is a destination — emit rules.
+				// When localpart entries exist, interleave common
+				// and localpart rules per source user to match
+				// Tailscale SaaS first-match-wins ordering.
+				if hasLocalpart {
+					for _, uid := range userIDs {
+						appendRules(principalsByUser[uid], uid, true)
+					}
 
-				if len(principals) > 0 {
-					rules = append(rules, &tailcfg.SSHRule{
-						Principals: principals,
-						SSHUsers:   userMap,
-						Action:     &action,
-					})
+					if len(taggedPrincipals) > 0 {
+						appendRules(taggedPrincipals, 0, false)
+					}
+				} else {
+					if principals := ipSetToPrincipals(srcIPs); len(principals) > 0 {
+						rules = append(rules, &tailcfg.SSHRule{
+							Principals: principals,
+							SSHUsers:   baseUserMap,
+							Action:     &action,
+							AcceptEnv:  acceptEnv,
+						})
+					}
+				}
+			} else if hasLocalpart && node.InIPSet(srcIPs) {
+				// Self-access: source node not in destination set
+				// receives rules scoped to its own user.
+				if node.IsTagged() {
+					var builder netipx.IPSetBuilder
+
+					node.AppendToIPSet(&builder)
+
+					ipSet, err := builder.IPSet()
+					if err == nil && ipSet != nil {
+						if principals := ipSetToPrincipals(ipSet); len(principals) > 0 {
+							appendRules(principals, 0, false)
+						}
+					}
+				} else if node.User().Valid() {
+					uid := node.User().ID()
+					if principals := principalsByUser[uid]; len(principals) > 0 {
+						appendRules(principals, uid, true)
+					}
 				}
 			}
 		}
 	}
 
+	// Sort rules: check (HoldAndDelegate) before accept, per Tailscale
+	// evaluation order (most-restrictive first).
+	slices.SortStableFunc(rules, func(a, b *tailcfg.SSHRule) int {
+		aIsCheck := a.Action != nil && a.Action.HoldAndDelegate != ""
+
+		bIsCheck := b.Action != nil && b.Action.HoldAndDelegate != ""
+		if aIsCheck == bIsCheck {
+			return 0
+		}
+
+		if aIsCheck {
+			return -1
+		}
+
+		return 1
+	})
+
 	return &tailcfg.SSHPolicy{
 		Rules: rules,
 	}, nil
+}
+
+// ipSetToPrincipals converts an IPSet into SSH principals, one per address.
+func ipSetToPrincipals(ipSet *netipx.IPSet) []*tailcfg.SSHPrincipal {
+	if ipSet == nil {
+		return nil
+	}
+
+	var principals []*tailcfg.SSHPrincipal
+
+	for addr := range util.IPSetAddrIter(ipSet) {
+		principals = append(principals, &tailcfg.SSHPrincipal{
+			NodeIP: addr.String(),
+		})
+	}
+
+	return principals
+}
+
+// resolveLocalparts maps each user whose email matches a localpart:*@<domain>
+// entry to their email local-part. Returns userID → localPart (e.g. {1: "alice"}).
+// This is a pure data function — no node walking or IP resolution.
+func resolveLocalparts(
+	entries []SSHUser,
+	users types.Users,
+) map[uint]string {
+	if len(entries) == 0 {
+		return nil
+	}
+
+	result := make(map[uint]string)
+
+	for _, entry := range entries {
+		domain, err := entry.ParseLocalpart()
+		if err != nil {
+			log.Warn().Err(err).Msgf(
+				"skipping invalid localpart entry %q during SSH compilation",
+				entry,
+			)
+
+			continue
+		}
+
+		for _, user := range users {
+			if user.Email == "" {
+				continue
+			}
+
+			atIdx := strings.LastIndex(user.Email, "@")
+			if atIdx < 0 {
+				continue
+			}
+
+			if !strings.EqualFold(user.Email[atIdx+1:], domain) {
+				continue
+			}
+
+			result[user.ID] = user.Email[:atIdx]
+		}
+	}
+
+	return result
+}
+
+// groupSourcesByUser groups source node IPs by user ownership. Returns sorted
+// user IDs for deterministic iteration, per-user principals, and tagged principals.
+// Only includes nodes whose IPs are in the srcIPs set.
+func groupSourcesByUser(
+	nodes views.Slice[types.NodeView],
+	srcIPs *netipx.IPSet,
+) ([]uint, map[uint][]*tailcfg.SSHPrincipal, []*tailcfg.SSHPrincipal) {
+	userIPSets := make(map[uint]*netipx.IPSetBuilder)
+
+	var taggedIPSet netipx.IPSetBuilder
+
+	hasTagged := false
+
+	for _, n := range nodes.All() {
+		if !slices.ContainsFunc(n.IPs(), srcIPs.Contains) {
+			continue
+		}
+
+		if n.IsTagged() {
+			n.AppendToIPSet(&taggedIPSet)
+
+			hasTagged = true
+
+			continue
+		}
+
+		if !n.User().Valid() {
+			continue
+		}
+
+		uid := n.User().ID()
+
+		if _, ok := userIPSets[uid]; !ok {
+			userIPSets[uid] = &netipx.IPSetBuilder{}
+		}
+
+		n.AppendToIPSet(userIPSets[uid])
+	}
+
+	var userIDs []uint
+
+	principalsByUser := make(map[uint][]*tailcfg.SSHPrincipal, len(userIPSets))
+
+	for uid, builder := range userIPSets {
+		ipSet, err := builder.IPSet()
+		if err != nil || ipSet == nil {
+			continue
+		}
+
+		if principals := ipSetToPrincipals(ipSet); len(principals) > 0 {
+			principalsByUser[uid] = principals
+			userIDs = append(userIDs, uid)
+		}
+	}
+
+	slices.Sort(userIDs)
+
+	var tagged []*tailcfg.SSHPrincipal
+
+	if hasTagged {
+		taggedSet, err := taggedIPSet.IPSet()
+		if err == nil && taggedSet != nil {
+			tagged = ipSetToPrincipals(taggedSet)
+		}
+	}
+
+	return userIDs, principalsByUser, tagged
 }
 
 func ipSetToPrefixStringList(ips *netipx.IPSet) []string {

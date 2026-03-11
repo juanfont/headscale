@@ -3,8 +3,10 @@ package hscontrol
 import (
 	"context"
 	"testing"
+	"time"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
+	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -186,13 +188,12 @@ func TestSetTags_TaggedNode(t *testing.T) {
 	taggedNode, found := app.state.GetNodeByNodeKey(nodeKey.Public())
 	require.True(t, found)
 	assert.True(t, taggedNode.IsTagged(), "Node should be tagged")
-	assert.True(t, taggedNode.UserID().Valid(), "Tagged node should have UserID for tracking")
+	assert.False(t, taggedNode.UserID().Valid(), "Tagged node should not have UserID")
 
 	// Create API server instance
 	apiServer := newHeadscaleV1APIServer(app)
 
-	// Test: SetTags should NOT reject tagged nodes with "user-owned" error
-	// (Even though they have UserID set, IsTagged() identifies them correctly)
+	// Test: SetTags should work on tagged nodes.
 	resp, err := apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
 		NodeId: uint64(taggedNode.ID()),
 		Tags:   []string{"tag:initial"}, // Keep existing tag to avoid ACL validation issues
@@ -281,6 +282,80 @@ func TestDeleteUser_ReturnsProperChangeSignal(t *testing.T) {
 	changeSignal, err := app.state.DeleteUser(*user.TypedID())
 	require.NoError(t, err, "DeleteUser should succeed")
 	assert.False(t, changeSignal.IsEmpty(), "DeleteUser should return a non-empty change signal (issue #2967)")
+}
+
+// TestDeleteUser_TaggedNodeSurvives tests that deleting a user succeeds when
+// the user's only nodes are tagged, and that those nodes remain in the
+// NodeStore with nil UserID.
+// https://github.com/juanfont/headscale/issues/3077
+func TestDeleteUser_TaggedNodeSurvives(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("legacy-user")
+
+	// Register a tagged node via the full auth flow.
+	tags := []string{"tag:server"}
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), true, false, nil, tags)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "tagged-server",
+		},
+		Expiry: time.Now().Add(24 * time.Hour),
+	}
+
+	resp, err := app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+	require.True(t, resp.MachineAuthorized)
+
+	// Verify the registered node has nil UserID (enforced invariant).
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.True(t, node.IsTagged())
+	assert.False(t, node.UserID().Valid(),
+		"tagged node should have nil UserID after registration")
+
+	nodeID := node.ID()
+
+	// NodeStore should not list the tagged node under any user.
+	nodesForUser := app.state.ListNodesByUser(types.UserID(user.ID))
+	assert.Equal(t, 0, nodesForUser.Len(),
+		"tagged nodes should not appear in nodesByUser index")
+
+	// Delete the user.
+	changeSignal, err := app.state.DeleteUser(*user.TypedID())
+	require.NoError(t, err)
+	assert.False(t, changeSignal.IsEmpty())
+
+	// Tagged node survives in the NodeStore.
+	nodeAfter, found := app.state.GetNodeByID(nodeID)
+	require.True(t, found, "tagged node should survive user deletion")
+	assert.True(t, nodeAfter.IsTagged())
+	assert.False(t, nodeAfter.UserID().Valid())
+
+	// Tagged node appears in the global list.
+	allNodes := app.state.ListNodes()
+	foundInAll := false
+
+	for _, n := range allNodes.All() {
+		if n.ID() == nodeID {
+			foundInAll = true
+
+			break
+		}
+	}
+
+	assert.True(t, foundInAll, "tagged node should appear in the global node list")
 }
 
 // TestExpireApiKey_ByID tests that API keys can be expired by ID.

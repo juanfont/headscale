@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/net/tsaddr"
-	"tailscale.com/types/ptr"
 )
 
 var mpp = func(pref string) *netip.Prefix {
@@ -491,8 +490,8 @@ func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 
 	alloc, err := NewIPAllocator(
 		db,
-		ptr.To(tsaddr.CGNATRange()),
-		ptr.To(tsaddr.TailscaleULARange()),
+		new(tsaddr.CGNATRange()),
+		new(tsaddr.TailscaleULARange()),
 		types.IPAllocationStrategySequential,
 	)
 	if err != nil {
@@ -500,17 +499,17 @@ func TestIPAllocatorNextNoReservedIPs(t *testing.T) {
 	}
 
 	// Validate that we do not give out 100.100.100.100
-	nextQuad100, err := alloc.next(na("100.100.100.99"), ptr.To(tsaddr.CGNATRange()))
+	nextQuad100, err := alloc.next(na("100.100.100.99"), new(tsaddr.CGNATRange()))
 	require.NoError(t, err)
 	assert.Equal(t, na("100.100.100.101"), *nextQuad100)
 
 	// Validate that we do not give out fd7a:115c:a1e0::53
-	nextQuad100v6, err := alloc.next(na("fd7a:115c:a1e0::52"), ptr.To(tsaddr.TailscaleULARange()))
+	nextQuad100v6, err := alloc.next(na("fd7a:115c:a1e0::52"), new(tsaddr.TailscaleULARange()))
 	require.NoError(t, err)
 	assert.Equal(t, na("fd7a:115c:a1e0::54"), *nextQuad100v6)
 
 	// Validate that we do not give out fd7a:115c:a1e0::53
-	nextChrome, err := alloc.next(na("100.115.91.255"), ptr.To(tsaddr.CGNATRange()))
+	nextChrome, err := alloc.next(na("100.115.91.255"), new(tsaddr.CGNATRange()))
 	t.Logf("chrome: %s", nextChrome.String())
 	require.NoError(t, err)
 	assert.Equal(t, na("100.115.94.0"), *nextChrome)

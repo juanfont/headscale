@@ -107,6 +107,8 @@ run `make lint` and `make fmt` before committing any code.
 The **Proto** code is linted with [`buf`](https://docs.buf.build/lint/overview) and
 formatted with [`clang-format`](https://clang.llvm.org/docs/ClangFormat.html).
 
+The **docs** are formatted with [`mdformat`](https://mdformat.readthedocs.io).
+
 The **rest** (Markdown, YAML, etc) is formatted with [`prettier`](https://prettier.io).
 
 Check out the `.golangci.yaml` and `Makefile` to see the specific configuration.

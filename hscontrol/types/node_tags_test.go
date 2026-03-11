@@ -6,7 +6,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/gorm"
-	"tailscale.com/types/ptr"
 )
 
 // TestNodeIsTagged tests the IsTagged() method for determining if a node is tagged.
@@ -69,7 +68,7 @@ func TestNodeIsTagged(t *testing.T) {
 		{
 			name: "node with user and no tags - not tagged",
 			node: Node{
-				UserID: ptr.To(uint(42)),
+				UserID: new(uint(42)),
 				Tags:   []string{},
 			},
 			want: false,
@@ -112,7 +111,7 @@ func TestNodeViewIsTagged(t *testing.T) {
 		{
 			name: "user-owned node",
 			node: Node{
-				UserID: ptr.To(uint(1)),
+				UserID: new(uint(1)),
 			},
 			want: false,
 		},
@@ -223,7 +222,7 @@ func TestNodeTagsImmutableAfterRegistration(t *testing.T) {
 	// Test that a user-owned node is not tagged
 	userNode := Node{
 		ID:             2,
-		UserID:         ptr.To(uint(42)),
+		UserID:         new(uint(42)),
 		Tags:           []string{},
 		RegisterMethod: util.RegisterMethodOIDC,
 	}
@@ -243,7 +242,7 @@ func TestNodeOwnershipModel(t *testing.T) {
 			name: "tagged node has tags, UserID is informational",
 			node: Node{
 				ID:     1,
-				UserID: ptr.To(uint(5)), // "created by" user 5
+				UserID: new(uint(5)), // "created by" user 5
 				Tags:   []string{"tag:server"},
 			},
 			wantIsTagged: true,
@@ -253,7 +252,7 @@ func TestNodeOwnershipModel(t *testing.T) {
 			name: "user-owned node has no tags",
 			node: Node{
 				ID:     2,
-				UserID: ptr.To(uint(5)),
+				UserID: new(uint(5)),
 				Tags:   []string{},
 			},
 			wantIsTagged: false,
@@ -265,7 +264,7 @@ func TestNodeOwnershipModel(t *testing.T) {
 			name: "node with only authkey tags - not tagged (tags should be copied)",
 			node: Node{
 				ID:     3,
-				UserID: ptr.To(uint(5)), // "created by" user 5
+				UserID: new(uint(5)), // "created by" user 5
 				AuthKey: &PreAuthKey{
 					Tags: []string{"tag:database"},
 				},

@@ -1,0 +1,30 @@
+{
+  "test_id": "SSH-B6",
+  "policy_file": "ssh_policies/ssh_b6.json",
+  "ssh_section": [{ "action": "accept", "src": ["autogroup:tagged"], "dst": ["tag:server"], "users": ["root"] }],
+  "nodes": {
+    "user1": { "rules": [] },
+    "user-kris": { "rules": [] },
+    "user-mon": { "rules": [] },
+    "tagged-server": {
+      "rules": [
+        {
+          "principals": [
+            { "nodeIP": "100.103.8.15" },
+            { "nodeIP": "100.108.74.26" },
+            { "nodeIP": "fd7a:115c:a1e0::5b37:80f" },
+            { "nodeIP": "fd7a:115c:a1e0::b901:4a87" }
+          ],
+          "sshUsers": { "root": "root" },
+          "action": {
+            "accept": true,
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true
+          }
+        }
+      ]
+    },
+    "tagged-prod": { "rules": [] }
+  }
+}

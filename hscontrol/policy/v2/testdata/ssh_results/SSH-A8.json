@@ -1,0 +1,99 @@
+{
+  "test_id": "SSH-A8",
+  "policy_file": "ssh_policies/ssh_a8.json",
+  "ssh_section": [
+    {
+      "action": "check",
+      "src": [
+        "autogroup:member"
+      ],
+      "dst": [
+        "autogroup:self"
+      ],
+      "users": [
+        "root"
+      ],
+      "checkPeriod": "always"
+    }
+  ],
+  "nodes": {
+    "user1": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "root": "root"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 0
+          }
+        }
+      ]
+    },
+    "user-kris": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "root": "root"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 0
+          }
+        }
+      ]
+    },
+    "user-mon": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "root": "root"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 0
+          }
+        }
+      ]
+    },
+    "tagged-server": {
+      "rules": []
+    },
+    "tagged-prod": {
+      "rules": []
+    }
+  }
+}

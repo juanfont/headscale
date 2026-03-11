@@ -1,16 +1,14 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
-	"io"
 	"os"
 
 	v1 "github.com/juanfont/headscale/gen/go/headscale/v1"
 	"github.com/juanfont/headscale/hscontrol/db"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"tailscale.com/types/views"
 )
@@ -19,6 +17,25 @@ const (
 	bypassFlag = "bypass-grpc-and-access-database-directly" //nolint:gosec // not a credential
 )
 
+var errAborted = errors.New("command aborted by user")
+
+// bypassDatabase loads the server config and opens the database directly,
+// bypassing the gRPC server. The caller is responsible for closing the
+// returned database handle.
+func bypassDatabase() (*db.HSDatabase, error) {
+	cfg, err := types.LoadServerConfig()
+	if err != nil {
+		return nil, fmt.Errorf("loading config: %w", err)
+	}
+
+	d, err := db.NewHeadscaleDatabase(cfg, nil)
+	if err != nil {
+		return nil, fmt.Errorf("opening database: %w", err)
+	}
+
+	return d, nil
+}
+
 func init() {
 	rootCmd.AddCommand(policyCmd)
 
@@ -26,22 +43,12 @@ func init() {
 	policyCmd.AddCommand(getPolicy)
 
 	setPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-
-	err := setPolicy.MarkFlagRequired("file")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
 	setPolicy.Flags().BoolP(bypassFlag, "", false, "Uses the headscale config to directly access the database, bypassing gRPC and does not require the server to be running")
+	mustMarkRequired(setPolicy, "file")
 	policyCmd.AddCommand(setPolicy)
 
 	checkPolicy.Flags().StringP("file", "f", "", "Path to a policy file in HuJSON format")
-
-	err = checkPolicy.MarkFlagRequired("file")
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
+	mustMarkRequired(checkPolicy, "file")
 	policyCmd.AddCommand(checkPolicy)
 }
 
@@ -54,59 +61,46 @@ var getPolicy = &cobra.Command{
 	Use:     "get",
 	Short:   "Print the current ACL Policy",
 	Aliases: []string{"show", "view", "fetch"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
-		var policy string
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var policyData string
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			confirm := false
-			force, _ := cmd.Flags().GetBool("force")
-			if !force {
-				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
+			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+				return errAborted
 			}
 
-			if !confirm && !force {
-				ErrorOutput(nil, "Aborting command", output)
-				return
-			}
-
-			cfg, err := types.LoadServerConfig()
+			d, err := bypassDatabase()
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed loading config: %s", err), output)
+				return err
 			}
-
-			d, err := db.NewHeadscaleDatabase(
-				cfg,
-				nil,
-			)
-			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed to open database: %s", err), output)
-			}
+			defer d.Close()
 
 			pol, err := d.GetPolicy()
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed loading Policy from database: %s", err), output)
+				return fmt.Errorf("loading policy from database: %w", err)
 			}
 
-			policy = pol.Data
+			policyData = pol.Data
 		} else {
-			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+			if err != nil {
+				return fmt.Errorf("connecting to headscale: %w", err)
+			}
 			defer cancel()
 			defer conn.Close()
 
-			request := &v1.GetPolicyRequest{}
-
-			response, err := client.GetPolicy(ctx, request)
+			response, err := client.GetPolicy(ctx, &v1.GetPolicyRequest{})
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed loading ACL Policy: %s", err), output)
+				return fmt.Errorf("loading ACL policy: %w", err)
 			}
 
-			policy = response.GetPolicy()
+			policyData = response.GetPolicy()
 		}
 
-		// TODO(pallabpain): Maybe print this better?
-		// This does not pass output as we dont support yaml, json or json-line
-		// output for this command. It is HuJSON already.
-		SuccessOutput("", policy, "")
+		// This does not pass output format as we don't support yaml, json or
+		// json-line output for this command. It is HuJSON already.
+		fmt.Println(policyData)
+
+		return nil
 	},
 }
 
@@ -117,100 +111,79 @@ var setPolicy = &cobra.Command{
 	Updates the existing ACL Policy with the provided policy. The policy must be a valid HuJSON object.
 	This command only works when the acl.policy_mode is set to "db", and the policy will be stored in the database.`,
 	Aliases: []string{"put", "update"},
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
 
-		f, err := os.Open(policyPath)
+		policyBytes, err := os.ReadFile(policyPath)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
-		}
-		defer f.Close()
-
-		policyBytes, err := io.ReadAll(f)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
+			return fmt.Errorf("reading policy file: %w", err)
 		}
 
 		if bypass, _ := cmd.Flags().GetBool(bypassFlag); bypass {
-			confirm := false
-			force, _ := cmd.Flags().GetBool("force")
-			if !force {
-				confirm = util.YesNo("DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?")
+			if !confirmAction(cmd, "DO NOT run this command if an instance of headscale is running, are you sure headscale is not running?") {
+				return errAborted
 			}
 
-			if !confirm && !force {
-				ErrorOutput(nil, "Aborting command", output)
-				return
-			}
-
-			cfg, err := types.LoadServerConfig()
+			d, err := bypassDatabase()
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed loading config: %s", err), output)
+				return err
 			}
-
-			d, err := db.NewHeadscaleDatabase(
-				cfg,
-				nil,
-			)
-			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed to open database: %s", err), output)
-			}
+			defer d.Close()
 
 			users, err := d.ListUsers()
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed to load users for policy validation: %s", err), output)
+				return fmt.Errorf("loading users for policy validation: %w", err)
 			}
 
 			_, err = policy.NewPolicyManager(policyBytes, users, views.Slice[types.NodeView]{})
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
-				return
+				return fmt.Errorf("parsing policy file: %w", err)
 			}
 
 			_, err = d.SetPolicy(string(policyBytes))
 			if err != nil {
-				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+				return fmt.Errorf("setting ACL policy: %w", err)
 			}
 		} else {
 			request := &v1.SetPolicyRequest{Policy: string(policyBytes)}
 
-			ctx, client, conn, cancel := newHeadscaleCLIWithConfig()
+			ctx, client, conn, cancel, err := newHeadscaleCLIWithConfig()
+			if err != nil {
+				return fmt.Errorf("connecting to headscale: %w", err)
+			}
 			defer cancel()
 			defer conn.Close()
 
-			if _, err := client.SetPolicy(ctx, request); err != nil { //nolint:noinlineerr
-				ErrorOutput(err, fmt.Sprintf("Failed to set ACL Policy: %s", err), output)
+			_, err = client.SetPolicy(ctx, request)
+			if err != nil {
+				return fmt.Errorf("setting ACL policy: %w", err)
 			}
 		}
 
-		SuccessOutput(nil, "Policy updated.", "")
+		fmt.Println("Policy updated.")
+
+		return nil
 	},
 }
 
 var checkPolicy = &cobra.Command{
 	Use:   "check",
 	Short: "Check the Policy file for errors",
-	Run: func(cmd *cobra.Command, args []string) {
-		output, _ := cmd.Flags().GetString("output")
+	RunE: func(cmd *cobra.Command, args []string) error {
 		policyPath, _ := cmd.Flags().GetString("file")
 
-		f, err := os.Open(policyPath)
+		policyBytes, err := os.ReadFile(policyPath)
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error opening the policy file: %s", err), output)
-		}
-		defer f.Close()
-
-		policyBytes, err := io.ReadAll(f)
-		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error reading the policy file: %s", err), output)
+			return fmt.Errorf("reading policy file: %w", err)
 		}
 
 		_, err = policy.NewPolicyManager(policyBytes, nil, views.Slice[types.NodeView]{})
 		if err != nil {
-			ErrorOutput(err, fmt.Sprintf("Error parsing the policy file: %s", err), output)
+			return fmt.Errorf("parsing policy file: %w", err)
 		}
 
-		SuccessOutput(nil, "Policy is valid", "")
+		fmt.Println("Policy is valid")
+
+		return nil
 	},
 }

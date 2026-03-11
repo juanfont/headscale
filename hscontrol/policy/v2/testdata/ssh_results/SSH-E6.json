@@ -1,0 +1,240 @@
+{
+  "test_id": "SSH-E6",
+  "policy_file": "ssh_policies/ssh_e6.json",
+  "ssh_section": [
+    {
+      "action": "check",
+      "src": [
+        "autogroup:member"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": [
+        "localpart:*@passkey"
+      ],
+      "checkPeriod": "1h"
+    }
+  ],
+  "nodes": {
+    "user1": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        }
+      ]
+    },
+    "user-kris": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        }
+      ]
+    },
+    "user-mon": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        }
+      ]
+    },
+    "tagged-server": {
+      "rules": [
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "root": ""
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        },
+        {
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
+          "action": {
+            "holdAndDelegate": "unused-server-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
+            "allowAgentForwarding": true,
+            "allowLocalPortForwarding": true,
+            "allowRemotePortForwarding": true,
+            "sessionDuration": 3600000000000
+          }
+        }
+      ]
+    },
+    "tagged-prod": {
+      "rules": []
+    }
+  }
+}

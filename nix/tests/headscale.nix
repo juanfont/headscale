@@ -38,10 +38,13 @@ in
             settings = {
               server_url = "https://headscale";
               ip_prefixes = [ "100.64.0.0/10" ];
-              derp.server = {
-                enabled = true;
-                region_id = 999;
-                stun_listen_addr = "0.0.0.0:${toString stunPort}";
+              derp = {
+                server = {
+                  enabled = true;
+                  region_id = 999;
+                  stun_listen_addr = "0.0.0.0:${toString stunPort}";
+                };
+                urls = [ ];
               };
               dns = {
                 base_domain = "tailnet";

@@ -16,12 +16,13 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 type AuthProvider interface {
 	RegisterHandler(w http.ResponseWriter, r *http.Request)
-	AuthURL(regID types.RegistrationID) string
+	AuthHandler(w http.ResponseWriter, r *http.Request)
+	RegisterURL(authID types.AuthID) string
+	AuthURL(authID types.AuthID) string
 }
 
 func (h *Headscale) handleRegister(
@@ -116,8 +117,7 @@ func (h *Headscale) handleRegister(
 		resp, err := h.handleRegisterWithAuthKey(req, machineKey)
 		if err != nil {
 			// Preserve HTTPError types so they can be handled properly by the HTTP layer
-			var httpErr HTTPError
-			if errors.As(err, &httpErr) {
+			if httpErr, ok := errors.AsType[HTTPError](err); ok {
 				return nil, httpErr
 			}
 
@@ -217,7 +217,9 @@ func (h *Headscale) handleLogout(
 
 	// Update the internal state with the nodes new expiry, meaning it is
 	// logged out.
-	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), req.Expiry)
+	expiry := req.Expiry
+
+	updatedNode, c, err := h.state.SetNodeExpiry(node.ID(), &expiry)
 	if err != nil {
 		return nil, fmt.Errorf("setting node expiry: %w", err)
 	}
@@ -266,22 +268,24 @@ func (h *Headscale) waitForFollowup(
 		return nil, NewHTTPError(http.StatusUnauthorized, "invalid followup URL", err)
 	}
 
-	followupReg, err := types.RegistrationIDFromString(strings.ReplaceAll(fu.Path, "/register/", ""))
+	followupReg, err := types.AuthIDFromString(strings.ReplaceAll(fu.Path, "/register/", ""))
 	if err != nil {
 		return nil, NewHTTPError(http.StatusUnauthorized, "invalid registration ID", err)
 	}
 
-	if reg, ok := h.state.GetRegistrationCacheEntry(followupReg); ok {
+	if reg, ok := h.state.GetAuthCacheEntry(followupReg); ok {
 		select {
 		case <-ctx.Done():
 			return nil, NewHTTPError(http.StatusUnauthorized, "registration timed out", err)
-		case node := <-reg.Registered:
-			if node == nil {
-				// registration is expired in the cache, instruct the client to try a new registration
-				return h.reqToNewRegisterResponse(req, machineKey)
-			}
+		case verdict := <-reg.WaitForAuth():
+			if verdict.Accept() {
+				if !verdict.Node.Valid() {
+					// registration is expired in the cache, instruct the client to try a new registration
+					return h.reqToNewRegisterResponse(req, machineKey)
+				}
 
-			return nodeToRegisterResponse(node.View()), nil
+				return nodeToRegisterResponse(verdict.Node), nil
+			}
 		}
 	}
 
@@ -296,14 +300,14 @@ func (h *Headscale) reqToNewRegisterResponse(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	newRegID, err := types.NewRegistrationID()
+	newAuthID, err := types.NewAuthID()
 	if err != nil {
 		return nil, NewHTTPError(http.StatusInternalServerError, "failed to generate registration ID", err)
 	}
 
 	// Ensure we have a valid hostname
 	hostname := util.EnsureHostname(
-		req.Hostinfo,
+		req.Hostinfo.View(),
 		machineKey.String(),
 		req.NodeKey.String(),
 	)
@@ -312,25 +316,25 @@ func (h *Headscale) reqToNewRegisterResponse(
 	hostinfo := cmp.Or(req.Hostinfo, &tailcfg.Hostinfo{})
 	hostinfo.Hostname = hostname
 
-	nodeToRegister := types.NewRegisterNode(
-		types.Node{
-			Hostname:   hostname,
-			MachineKey: machineKey,
-			NodeKey:    req.NodeKey,
-			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
-		},
-	)
-
-	if !req.Expiry.IsZero() {
-		nodeToRegister.Node.Expiry = &req.Expiry
+	nodeToRegister := types.Node{
+		Hostname:   hostname,
+		MachineKey: machineKey,
+		NodeKey:    req.NodeKey,
+		Hostinfo:   hostinfo,
+		LastSeen:   new(time.Now()),
 	}
 
-	log.Info().Msgf("new followup node registration using key: %s", newRegID)
-	h.state.SetRegistrationCacheEntry(newRegID, nodeToRegister)
+	if !req.Expiry.IsZero() {
+		nodeToRegister.Expiry = &req.Expiry
+	}
+
+	authRegReq := types.NewRegisterAuthRequest(nodeToRegister)
+
+	log.Info().Msgf("new followup node registration using auth id: %s", newAuthID)
+	h.state.SetAuthCacheEntry(newAuthID, authRegReq)
 
 	return &tailcfg.RegisterResponse{
-		AuthURL: h.authProvider.AuthURL(newRegID),
+		AuthURL: h.authProvider.RegisterURL(newAuthID),
 	}, nil
 }
 
@@ -347,8 +351,7 @@ func (h *Headscale) handleRegisterWithAuthKey(
 			return nil, NewHTTPError(http.StatusUnauthorized, "invalid pre auth key", nil)
 		}
 
-		var perr types.PAKError
-		if errors.As(err, &perr) {
+		if perr, ok := errors.AsType[types.PAKError](err); ok {
 			return nil, NewHTTPError(http.StatusUnauthorized, perr.Error(), nil)
 		}
 
@@ -382,13 +385,6 @@ func (h *Headscale) handleRegisterWithAuthKey(
 	// Send both changes. Empty changes are ignored by Change().
 	h.Change(changed, routesChange)
 
-	// TODO(kradalby): I think this is covered above, but we need to validate that.
-	// // If policy changed due to node registration, send a separate policy change
-	// if policyChanged {
-	// 	policyChange := change.PolicyChange()
-	// 	h.Change(policyChange)
-	// }
-
 	resp := &tailcfg.RegisterResponse{
 		MachineAuthorized: true,
 		NodeKeyExpired:    node.IsExpired(),
@@ -410,14 +406,14 @@ func (h *Headscale) handleRegisterInteractive(
 	req tailcfg.RegisterRequest,
 	machineKey key.MachinePublic,
 ) (*tailcfg.RegisterResponse, error) {
-	registrationId, err := types.NewRegistrationID()
+	authID, err := types.NewAuthID()
 	if err != nil {
 		return nil, fmt.Errorf("generating registration ID: %w", err)
 	}
 
 	// Ensure we have a valid hostname
 	hostname := util.EnsureHostname(
-		req.Hostinfo,
+		req.Hostinfo.View(),
 		machineKey.String(),
 		req.NodeKey.String(),
 	)
@@ -440,28 +436,28 @@ func (h *Headscale) handleRegisterInteractive(
 
 	hostinfo.Hostname = hostname
 
-	nodeToRegister := types.NewRegisterNode(
-		types.Node{
-			Hostname:   hostname,
-			MachineKey: machineKey,
-			NodeKey:    req.NodeKey,
-			Hostinfo:   hostinfo,
-			LastSeen:   ptr.To(time.Now()),
-		},
-	)
-
-	if !req.Expiry.IsZero() {
-		nodeToRegister.Node.Expiry = &req.Expiry
+	nodeToRegister := types.Node{
+		Hostname:   hostname,
+		MachineKey: machineKey,
+		NodeKey:    req.NodeKey,
+		Hostinfo:   hostinfo,
+		LastSeen:   new(time.Now()),
 	}
 
-	h.state.SetRegistrationCacheEntry(
-		registrationId,
-		nodeToRegister,
+	if !req.Expiry.IsZero() {
+		nodeToRegister.Expiry = &req.Expiry
+	}
+
+	authRegReq := types.NewRegisterAuthRequest(nodeToRegister)
+
+	h.state.SetAuthCacheEntry(
+		authID,
+		authRegReq,
 	)
 
-	log.Info().Msgf("starting node registration using key: %s", registrationId)
+	log.Info().Msgf("starting node registration using auth id: %s", authID)
 
 	return &tailcfg.RegisterResponse{
-		AuthURL: h.authProvider.AuthURL(registrationId),
+		AuthURL: h.authProvider.RegisterURL(authID),
 	}, nil
 }

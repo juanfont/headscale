@@ -20,22 +20,26 @@ var (
 	ErrRequestedTagsInvalidOrNotPermitted = errors.New("requested tags")
 )
 
-// validateNodeOwnership ensures proper node ownership model.
-// A node must be EITHER user-owned OR tagged (mutually exclusive by behavior).
-// Tagged nodes CAN have a UserID for "created by" tracking, but the tag is the owner.
-func validateNodeOwnership(node *types.Node) error {
-	isTagged := node.IsTagged()
+// ErrTaggedNodeHasUser is returned when a tagged node has a UserID set.
+var ErrTaggedNodeHasUser = errors.New("tagged node must not have user_id set")
 
-	// Tagged nodes: Must have tags, UserID is optional (just "created by")
-	if isTagged {
+// validateNodeOwnership ensures proper node ownership model.
+// A node must be either user-owned or tagged, and these are mutually exclusive:
+// tagged nodes must not have a UserID, and user-owned nodes must not have tags.
+func validateNodeOwnership(node *types.Node) error {
+	if node.IsTagged() {
 		if len(node.Tags) == 0 {
 			return fmt.Errorf("%w: %q", ErrNodeMarkedTaggedButHasNoTags, node.Hostname)
 		}
-		// UserID can be set (created by) or nil (orphaned), both valid for tagged nodes
+
+		if node.UserID != nil {
+			return fmt.Errorf("%w: %q", ErrTaggedNodeHasUser, node.Hostname)
+		}
+
 		return nil
 	}
 
-	// User-owned nodes: Must have UserID, must NOT have tags
+	// User-owned nodes must have a UserID.
 	if node.UserID == nil {
 		return fmt.Errorf("%w: %q", ErrNodeHasNeitherUserNorTags, node.Hostname)
 	}
@@ -59,7 +63,7 @@ func logTagOperation(existingNode types.NodeView, newTags []string) {
 
 		log.Info().
 			EmbedObject(existingNode).
-			Uint("created.by.user", userID).
+			Uint("previous.user", userID).
 			Strs("new.tags", newTags).
 			Msg("Converting user-owned node to tagged node")
 	}

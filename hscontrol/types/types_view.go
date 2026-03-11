@@ -215,10 +215,8 @@ func (v NodeView) Hostname() string { return v.ж.Hostname }
 // parts of headscale.
 func (v NodeView) GivenName() string { return v.ж.GivenName }
 
-// UserID is set for ALL nodes (tagged and user-owned) to track "created by".
-// For tagged nodes, this is informational only - the tag is the owner.
-// For user-owned nodes, this identifies the owner.
-// Only nil for orphaned nodes (should not happen in normal operation).
+// UserID identifies the owning user for user-owned nodes.
+// Nil for tagged nodes, which are owned by their tags.
 func (v NodeView) UserID() views.ValuePointer[uint] { return views.ValuePointerOf(v.ж.UserID) }
 
 func (v NodeView) User() UserView         { return v.ж.User.View() }

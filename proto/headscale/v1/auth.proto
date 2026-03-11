@@ -1,0 +1,26 @@
+syntax = "proto3";
+package headscale.v1;
+option go_package = "github.com/juanfont/headscale/gen/go/v1";
+
+import "headscale/v1/node.proto";
+
+message AuthRegisterRequest {
+  string user = 1;
+  string auth_id = 2;
+}
+
+message AuthRegisterResponse {
+  Node node = 1;
+}
+
+message AuthApproveRequest {
+  string auth_id = 1;
+}
+
+message AuthApproveResponse {}
+
+message AuthRejectRequest {
+  string auth_id = 1;
+}
+
+message AuthRejectResponse {}

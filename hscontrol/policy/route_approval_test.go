@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
-	"tailscale.com/types/ptr"
 )
 
 func TestNodeCanApproveRoute(t *testing.T) {
@@ -25,24 +24,24 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		ID:       1,
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 	}
 
 	exitNode := types.Node{
 		ID:       2,
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 	}
 
 	taggedNode := types.Node{
 		ID:       3,
 		Hostname: "tagged-server",
 		IPv4:     ap("100.64.0.3"),
-		UserID:   ptr.To(uint(3)),
-		User:     ptr.To(users[2]),
+		UserID:   new(uint(3)),
+		User:     new(users[2]),
 		Tags:     []string{"tag:router"},
 	}
 
@@ -50,8 +49,8 @@ func TestNodeCanApproveRoute(t *testing.T) {
 		ID:       4,
 		Hostname: "multi-tag-node",
 		IPv4:     ap("100.64.0.4"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 		Tags:     []string{"tag:router", "tag:server"},
 	}
 

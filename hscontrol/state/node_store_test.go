@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/types/key"
-	"tailscale.com/types/ptr"
 )
 
 func TestSnapshotFromNodes(t *testing.T) {
@@ -175,7 +174,7 @@ func createTestNode(nodeID types.NodeID, userID uint, username, hostname string)
 		DiscoKey:   discoKey.Public(),
 		Hostname:   hostname,
 		GivenName:  hostname,
-		UserID:     ptr.To(userID),
+		UserID:     new(userID),
 		User: &types.User{
 			Name:        username,
 			DisplayName: username,
@@ -883,7 +882,7 @@ func createConcurrentTestNode(id types.NodeID, hostname string) types.Node {
 		Hostname:   hostname,
 		MachineKey: machineKey.Public(),
 		NodeKey:    nodeKey.Public(),
-		UserID:     ptr.To(uint(1)),
+		UserID:     new(uint(1)),
 		User: &types.User{
 			Name: "concurrent-test-user",
 		},

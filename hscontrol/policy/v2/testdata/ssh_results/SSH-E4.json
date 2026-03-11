@@ -1,0 +1,12 @@
+{
+  "test_id": "SSH-E4",
+  "policy_file": "ssh_policies/ssh_e4.json",
+  "ssh_section": null,
+  "nodes": {
+    "user1": { "rules": [] },
+    "user-kris": { "rules": [] },
+    "user-mon": { "rules": [] },
+    "tagged-server": { "rules": [] },
+    "tagged-prod": { "rules": [] }
+  }
+}

@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 const tagTestUser = "taguser"
@@ -30,9 +29,9 @@ const tagTestUser = "taguser"
 func tagsTestPolicy() *policyv2.Policy {
 	return &policyv2.Policy{
 		TagOwners: policyv2.TagOwners{
-			"tag:valid-owned":   policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:second":        policyv2.Owners{ptr.To(policyv2.Username(tagTestUser + "@"))},
-			"tag:valid-unowned": policyv2.Owners{ptr.To(policyv2.Username("other-user@"))},
+			"tag:valid-owned":   policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:second":        policyv2.Owners{new(policyv2.Username(tagTestUser + "@"))},
+			"tag:valid-unowned": policyv2.Owners{new(policyv2.Username("other-user@"))},
 			// Note: tag:nonexistent deliberately NOT defined
 		},
 		ACLs: []policyv2.ACL{
@@ -177,7 +176,7 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 
 		// Check what tags the node actually has
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -245,7 +244,7 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 
 	// Wait for node to be registered and verify it has the key's tags
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -316,7 +315,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 
 	// Wait for initial registration
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -344,7 +343,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 
 		// Check if tags actually changed
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -417,7 +416,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 
 	// Wait for initial registration
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
@@ -441,7 +440,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 
 		// Check if tags remain unchanged
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -516,7 +515,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -534,7 +533,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 
 	// Verify admin assignment took effect (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -562,7 +561,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 
 	// Verify admin tags are preserved even after reauth - admin decisions are authoritative (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.GreaterOrEqual(c, len(nodes), 1, "Should have at least 1 node")
 
@@ -644,7 +643,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -659,7 +658,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -687,7 +686,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 
 	// Verify admin tags are preserved - CLI should not be able to reduce them (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -771,7 +770,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 		t.Logf("Test 3.1 UNEXPECTED: Registration succeeded when it should have failed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -837,7 +836,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 
 	// Verify node has no tags
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -907,7 +906,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 
 	// Wait for initial registration
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -934,7 +933,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 		t.Logf("Test 3.3: CLI command succeeded, checking if tags actually changed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -1009,7 +1008,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -1025,7 +1024,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1052,7 +1051,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 
 	// Verify admin tags are preserved - --reset should not remove them (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -1130,7 +1129,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -1145,7 +1144,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1172,7 +1171,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 
 	// Verify admin tags are preserved - empty --advertise-tags should not remove them (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -1250,7 +1249,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -1265,7 +1264,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1292,7 +1291,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 
 	// Verify admin tags are preserved - CLI should not be able to reduce them (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -1374,7 +1373,7 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 
 	// Verify node has the advertised tag
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -1445,7 +1444,7 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 	} else {
 		// Check the result - if registration succeeded, the node should not have the invalid tag
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err, "Should be able to list nodes")
 
 			if len(nodes) == 0 {
@@ -1513,7 +1512,7 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 
 	// Check the result - user should NOT be able to claim an unowned tag
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err, "Should be able to list nodes")
 
 		// Either: no nodes registered (ideal), or node registered without the unowned tag
@@ -1584,7 +1583,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 
 	// Verify initial tag
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1605,7 +1604,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 
 	// Check final state - EventuallyWithT handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) >= 1 {
@@ -1676,7 +1675,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 
 	// Verify initial tags
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1697,7 +1696,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 
 	// Check final state - EventuallyWithT handles waiting for propagation
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) >= 1 {
@@ -1770,7 +1769,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -1786,7 +1785,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1811,7 +1810,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 
 	// Verify admin tags are preserved - CLI advertise-tags should be a no-op after admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -1888,7 +1887,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -1903,7 +1902,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 
 	// Verify admin assignment (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -1928,7 +1927,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 
 	// Verify admin tags are preserved - CLI should not be able to remove admin-assigned tags (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Should have exactly 1 node")
 
@@ -2009,7 +2008,7 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 		t.Logf("Test 2.7 UNEXPECTED: Registration succeeded when it should have failed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -2080,7 +2079,7 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 		t.Logf("Test 2.8 UNEXPECTED: Registration succeeded when it should have failed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -2155,7 +2154,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 		t.Logf("Test 3.7 UNEXPECTED: Registration succeeded when it should have failed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -2226,7 +2225,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 		t.Logf("Test 3.8 UNEXPECTED: Registration succeeded when it should have failed")
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) == 1 {
@@ -2297,7 +2296,7 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2370,7 +2369,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2387,7 +2386,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 
 	// Verify the tag was applied (server-side)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2459,7 +2458,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2477,7 +2476,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 
 	// Verify original tags are preserved
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2582,7 +2581,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2609,7 +2608,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 
 	// Verify server-side update happened
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -2681,7 +2680,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 
 	// Verify server-side update
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 
 		if len(nodes) == 1 {
@@ -2783,7 +2782,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 	var nodeID uint64
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2801,7 +2800,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 
 	// Verify original tags are preserved
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes(tagTestUser)
+		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
 
@@ -2887,7 +2886,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		var initialNodeID uint64
 
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 			assert.Len(c, nodes, 1, "Expected exactly one node")
 
@@ -2950,7 +2949,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		// Step 3: Verify tags are removed and ownership is returned to user
 		// This is the key assertion for bug #2979
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
-			nodes, err := headscale.ListNodes(tagTestUser)
+			nodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 
 			if len(nodes) >= 1 {
@@ -3123,7 +3122,7 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 
 // TestTagsAuthKeyConvertToUserViaCLIRegister reproduces the panic from
 // issue #3038: register a node with a tags-only preauthkey (no user), then
-// convert it to a user-owned node via "headscale nodes register --user <user> --key ...".
+// convert it to a user-owned node via "headscale auth register --auth-id <id> --user <user>".
 // The crash happens in the mapper's generateUserProfiles when node.User is nil
 // after the tag→user conversion in processReauthTags.
 //

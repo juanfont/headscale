@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/mux"
 	"github.com/juanfont/headscale/hscontrol/assets"
 	"github.com/juanfont/headscale/hscontrol/templates"
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -36,8 +35,7 @@ const (
 
 // httpError logs an error and sends an HTTP error response with the given.
 func httpError(w http.ResponseWriter, err error) {
-	var herr HTTPError
-	if errors.As(err, &herr) {
+	if herr, ok := errors.AsType[HTTPError](err); ok {
 		http.Error(w, herr.Msg, herr.Code)
 		log.Error().Err(herr.Err).Int("code", herr.Code).Msgf("user msg: %s", herr.Msg)
 	} else {
@@ -246,11 +244,58 @@ func NewAuthProviderWeb(serverURL string) *AuthProviderWeb {
 	}
 }
 
-func (a *AuthProviderWeb) AuthURL(registrationId types.RegistrationID) string {
+func (a *AuthProviderWeb) RegisterURL(authID types.AuthID) string {
 	return fmt.Sprintf(
 		"%s/register/%s",
 		strings.TrimSuffix(a.serverURL, "/"),
-		registrationId.String())
+		authID.String())
+}
+
+func (a *AuthProviderWeb) AuthURL(authID types.AuthID) string {
+	return fmt.Sprintf(
+		"%s/auth/%s",
+		strings.TrimSuffix(a.serverURL, "/"),
+		authID.String())
+}
+
+func (a *AuthProviderWeb) AuthHandler(
+	writer http.ResponseWriter,
+	req *http.Request,
+) {
+	authID, err := authIDFromRequest(req)
+	if err != nil {
+		httpError(writer, err)
+		return
+	}
+
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.WriteHeader(http.StatusOK)
+
+	_, err = writer.Write([]byte(templates.AuthWeb(
+		"Authentication check",
+		"Run the command below in the headscale server to approve this authentication request:",
+		"headscale auth approve --auth-id "+authID.String(),
+	).Render()))
+	if err != nil {
+		log.Error().Err(err).Msg("failed to write auth response")
+	}
+}
+
+func authIDFromRequest(req *http.Request) (types.AuthID, error) {
+	raw, err := urlParam[string](req, "auth_id")
+	if err != nil {
+		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
+	}
+
+	// We need to make sure we dont open for XSS style injections, if the parameter that
+	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
+	// the template and log an error.
+	authId, err := types.AuthIDFromString(raw)
+	if err != nil {
+		return "", NewHTTPError(http.StatusBadRequest, "invalid auth id", fmt.Errorf("parsing auth_id from URL: %w", err))
+	}
+
+	return authId, nil
 }
 
 // RegisterHandler shows a simple message in the browser to point to the CLI
@@ -262,22 +307,20 @@ func (a *AuthProviderWeb) RegisterHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	vars := mux.Vars(req)
-	registrationIdStr := vars["registration_id"]
-
-	// We need to make sure we dont open for XSS style injections, if the parameter that
-	// is passed as a key is not parsable/validated as a NodePublic key, then fail to render
-	// the template and log an error.
-	registrationId, err := types.RegistrationIDFromString(registrationIdStr)
+	authId, err := authIDFromRequest(req)
 	if err != nil {
-		httpError(writer, NewHTTPError(http.StatusBadRequest, "invalid registration id", err))
+		httpError(writer, err)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.WriteHeader(http.StatusOK)
 
-	_, err = writer.Write([]byte(templates.RegisterWeb(registrationId).Render()))
+	_, err = writer.Write([]byte(templates.AuthWeb(
+		"Node registration",
+		"Run the command below in the headscale server to add this node to your network:",
+		fmt.Sprintf("headscale auth register --auth-id %s --user USERNAME", authId.String()),
+	).Render()))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to write register response")
 	}

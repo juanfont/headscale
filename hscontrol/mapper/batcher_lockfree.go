@@ -16,7 +16,6 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 // LockFreeBatcher errors.
@@ -151,7 +150,7 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	// No active connections - keep the node entry alive for rapid reconnections
 	// The node will get a fresh full map when it reconnects
 	nlog.Debug().Caller().Msg("node disconnected from batcher, keeping entry for rapid reconnection")
-	b.connected.Store(id, ptr.To(time.Now()))
+	b.connected.Store(id, new(time.Now()))
 
 	return false
 }

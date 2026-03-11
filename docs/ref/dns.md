@@ -25,7 +25,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
     Currently, [only A and AAAA records are processed by Tailscale](https://github.com/tailscale/tailscale/blob/v1.86.5/ipn/ipnlocal/node_backend.go#L662).
 
-1.  Configure extra DNS records using one of the available configuration options:
+1. Configure extra DNS records using one of the available configuration options:
 
     === "Static entries, via `dns.extra_records`"
 
@@ -66,12 +66,12 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
 
         !!! tip "Good to know"
 
-            * The `dns.extra_records_path` option in the [configuration file](./configuration.md) needs to reference the
+            - The `dns.extra_records_path` option in the [configuration file](./configuration.md) needs to reference the
               JSON file containing extra DNS records.
-            * Be sure to "sort keys" and produce a stable output in case you generate the JSON file with a script.
+            - Be sure to "sort keys" and produce a stable output in case you generate the JSON file with a script.
               Headscale uses a checksum to detect changes to the file and a stable output avoids unnecessary processing.
 
-1.  Verify that DNS records are properly set using the DNS querying tool of your choice:
+1. Verify that DNS records are properly set using the DNS querying tool of your choice:
 
     === "Query with dig"
 
@@ -87,7 +87,7 @@ hostname and port combination "http://hostname-in-magic-dns.myvpn.example.com:30
         100.64.0.3
         ```
 
-1.  Optional: Setup the reverse proxy
+1. Optional: Setup the reverse proxy
 
     The motivating example here was to be able to access internal monitoring services on the same host without
     specifying a port, depicted as NGINX configuration snippet:

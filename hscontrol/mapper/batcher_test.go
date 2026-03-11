@@ -95,8 +95,8 @@ var allBatcherFunctions = []batcherTestCase{
 }
 
 // emptyCache creates an empty registration cache for testing.
-func emptyCache() *zcache.Cache[types.RegistrationID, types.RegisterNode] {
-	return zcache.New[types.RegistrationID, types.RegisterNode](time.Minute, time.Hour)
+func emptyCache() *zcache.Cache[types.AuthID, types.AuthRequest] {
+	return zcache.New[types.AuthID, types.AuthRequest](time.Minute, time.Hour)
 }
 
 // Test configuration constants.

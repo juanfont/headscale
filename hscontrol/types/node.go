@@ -105,10 +105,8 @@ type Node struct {
 	// parts of headscale.
 	GivenName string `gorm:"type:varchar(63);unique_index"`
 
-	// UserID is set for ALL nodes (tagged and user-owned) to track "created by".
-	// For tagged nodes, this is informational only - the tag is the owner.
-	// For user-owned nodes, this identifies the owner.
-	// Only nil for orphaned nodes (should not happen in normal operation).
+	// UserID identifies the owning user for user-owned nodes.
+	// Nil for tagged nodes, which are owned by their tags.
 	UserID *uint
 	User   *User `gorm:"constraint:OnDelete:CASCADE;"`
 
@@ -802,11 +800,11 @@ func (nv NodeView) InIPSet(set *netipx.IPSet) bool {
 }
 
 func (nv NodeView) CanAccess(matchers []matcher.Match, node2 NodeView) bool {
-	if !nv.Valid() {
+	if !nv.Valid() || !node2.Valid() {
 		return false
 	}
 
-	return nv.ж.CanAccess(matchers, node2.AsStruct())
+	return nv.ж.CanAccess(matchers, node2.ж)
 }
 
 func (nv NodeView) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
@@ -1109,7 +1107,7 @@ func (nv NodeView) TailNode(
 
 	primaryRoutes := primaryRouteFunc(nv.ID())
 	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
-	tsaddr.SortPrefixes(allowedIPs)
+	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},

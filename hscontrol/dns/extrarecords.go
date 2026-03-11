@@ -100,7 +100,7 @@ func (e *ExtraRecordsMan) Run() {
 
 				e.updateRecords()
 
-				// If a file is removed or renamed, fsnotify will loose track of it
+				// If a file is removed or renamed, fsnotify will lose track of it
 				// and not watch it. We will therefore attempt to re-add it with a backoff.
 			case fsnotify.Remove, fsnotify.Rename:
 				_, err := backoff.Retry(context.Background(), func() (struct{}, error) {

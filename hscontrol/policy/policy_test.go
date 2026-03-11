@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
-	"tailscale.com/types/ptr"
 )
 
 var ap = func(ipStr string) *netip.Addr {
@@ -1078,27 +1077,29 @@ func TestSSHPolicyRules(t *testing.T) {
 		{Name: "user1", Model: gorm.Model{ID: 1}},
 		{Name: "user2", Model: gorm.Model{ID: 2}},
 		{Name: "user3", Model: gorm.Model{ID: 3}},
+		{Name: "alice", Email: "alice@example.com", Model: gorm.Model{ID: 4}},
+		{Name: "bob", Email: "bob@example.com", Model: gorm.Model{ID: 5}},
 	}
 
 	// Create standard node setups used across tests
 	nodeUser1 := types.Node{
 		Hostname: "user1-device",
 		IPv4:     ap("100.64.0.1"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 	}
 	nodeUser2 := types.Node{
 		Hostname: "user2-device",
 		IPv4:     ap("100.64.0.2"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 	}
 
 	taggedClient := types.Node{
 		Hostname: "tagged-client",
 		IPv4:     ap("100.64.0.4"),
-		UserID:   ptr.To(uint(2)),
-		User:     ptr.To(users[1]),
+		UserID:   new(uint(2)),
+		User:     new(users[1]),
 		Tags:     []string{"tag:client"},
 	}
 
@@ -1106,9 +1107,23 @@ func TestSSHPolicyRules(t *testing.T) {
 	nodeTaggedServer := types.Node{
 		Hostname: "tagged-server",
 		IPv4:     ap("100.64.0.5"),
-		UserID:   ptr.To(uint(1)),
-		User:     ptr.To(users[0]),
+		UserID:   new(uint(1)),
+		User:     new(users[0]),
 		Tags:     []string{"tag:server"},
+	}
+
+	// Nodes for localpart tests (users with email addresses)
+	nodeAlice := types.Node{
+		Hostname: "alice-device",
+		IPv4:     ap("100.64.0.6"),
+		UserID:   new(uint(4)),
+		User:     new(users[3]),
+	}
+	nodeBob := types.Node{
+		Hostname: "bob-device",
+		IPv4:     ap("100.64.0.7"),
+		UserID:   new(uint(5)),
+		User:     new(users[4]),
 	}
 
 	tests := []struct {
@@ -1189,8 +1204,9 @@ func TestSSHPolicyRules(t *testing.T) {
 						"root": "",
 					},
 					Action: &tailcfg.SSHAction{
-						Accept:                    true,
+						Accept:                    false,
 						SessionDuration:           24 * time.Hour,
+						HoldAndDelegate:           "unused-url/machine/ssh/action/from/$SRC_NODE_ID/to/$DST_NODE_ID?ssh_user=$SSH_USER&local_user=$LOCAL_USER",
 						AllowAgentForwarding:      true,
 						AllowLocalPortForwarding:  true,
 						AllowRemotePortForwarding: true,
@@ -1446,7 +1462,110 @@ func TestSSHPolicyRules(t *testing.T) {
 					},
 					SSHUsers: map[string]string{
 						"debian": "debian",
+						"root":   "",
 					},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "localpart-maps-email-to-os-user",
+			targetNode: nodeTaggedServer,
+			peers:      types.Nodes{&nodeAlice, &nodeBob},
+			policy: `{
+				"tagOwners": {
+					"tag:server": ["alice@example.com"]
+				},
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["autogroup:member"],
+						"dst": ["tag:server"],
+						"users": ["localpart:*@example.com"]
+					}
+				]
+			}`,
+			// Per-user common+localpart interleaved: each user gets root deny then localpart.
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
+					SSHUsers:   map[string]string{"root": ""},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
+					SSHUsers:   map[string]string{"alice": "alice"},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.7"}},
+					SSHUsers:   map[string]string{"root": ""},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.7"}},
+					SSHUsers:   map[string]string{"bob": "bob"},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+			}},
+		},
+		{
+			name:       "localpart-combined-with-root",
+			targetNode: nodeTaggedServer,
+			peers:      types.Nodes{&nodeAlice},
+			policy: `{
+				"tagOwners": {
+					"tag:server": ["alice@example.com"]
+				},
+				"ssh": [
+					{
+						"action": "accept",
+						"src": ["autogroup:member"],
+						"dst": ["tag:server"],
+						"users": ["localpart:*@example.com", "root"]
+					}
+				]
+			}`,
+			// Common root rule followed by alice's per-user localpart rule (interleaved).
+			wantSSH: &tailcfg.SSHPolicy{Rules: []*tailcfg.SSHRule{
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
+					SSHUsers:   map[string]string{"root": "root"},
+					Action: &tailcfg.SSHAction{
+						Accept:                    true,
+						AllowAgentForwarding:      true,
+						AllowLocalPortForwarding:  true,
+						AllowRemotePortForwarding: true,
+					},
+				},
+				{
+					Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.64.0.6"}},
+					SSHUsers:   map[string]string{"alice": "alice"},
 					Action: &tailcfg.SSHAction{
 						Accept:                    true,
 						AllowAgentForwarding:      true,
@@ -1477,7 +1596,7 @@ func TestSSHPolicyRules(t *testing.T) {
 
 				require.NoError(t, err)
 
-				got, err := pm.SSHPolicy(tt.targetNode.View())
+				got, err := pm.SSHPolicy("unused-url", tt.targetNode.View())
 				require.NoError(t, err)
 
 				if diff := cmp.Diff(tt.wantSSH, got); diff != "" {

@@ -63,10 +63,10 @@ maps fetched via URL or to offer your own, custom DERP servers to nodes.
     ID. You can explicitly disable a specific region by setting its region ID to `null`. The following sample
     `derp.yaml` disables the New York DERP region (which has the region ID 1):
 
-     ```yaml title="derp.yaml"
-     regions:
-       1: null
-     ```
+    ```yaml title="derp.yaml"
+    regions:
+      1: null
+    ```
 
     Use the following configuration to serve the default DERP map (excluding New York) to nodes:
 
@@ -165,11 +165,10 @@ Any Tailscale client may be used to introspect the DERP map and to check for con
 Additional DERP related metrics and information is available via the [metrics and debug
 endpoint](./debug.md#metrics-and-debug-endpoint).
 
-[^1]:
-    This assumes that the default region code of the [configuration file](./configuration.md) is used.
-
 ## Limitations
 
 - The embedded DERP server can't be used for Tailscale's captive portal checks as it doesn't support the `/generate_204`
   endpoint via HTTP on port tcp/80.
 - There are no speed or throughput optimisations, the main purpose is to assist in node connectivity.
+
+[^1]: This assumes that the default region code of the [configuration file](./configuration.md) is used.
