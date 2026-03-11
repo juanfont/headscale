@@ -568,13 +568,23 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 // assertPingAll waits for all clients to be able to ping all addresses.
 // Each client gets its own EventuallyWithT block so that one slow client
 // does not consume the retry budget of others.
+//
+// A low ping count (3) is used deliberately: each failed attempt with
+// --until-direct=true blocks for count×timeout seconds. Using 3 instead
+// of the default 10 means a failed probe takes ~15s instead of ~50s,
+// allowing ~7 EventuallyWithT retries within PeerSyncTimeout instead of
+// ~2. WireGuard continues establishing direct connections in the
+// background between retries.
 func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string) {
 	t.Helper()
 
 	for _, client := range clients {
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			for _, addr := range addrs {
-				err := client.Ping(addr)
+				err := client.Ping(
+					addr,
+					tsic.WithPingCount(3),
+				)
 				assert.NoErrorf(c, err, "ping %s from %s", addr, client.Hostname())
 			}
 		}, integrationutil.PeerSyncTimeout(), 1*time.Second,
