@@ -179,10 +179,10 @@
             yq-go
             ripgrep
             postgresql
-            python313Packages.mdformat
-            python313Packages.mdformat-footnote
-            python313Packages.mdformat-frontmatter
-            python313Packages.mdformat-mkdocs
+            python314Packages.mdformat
+            python314Packages.mdformat-footnote
+            python314Packages.mdformat-frontmatter
+            python314Packages.mdformat-mkdocs
             prek
 
             # 'dot' is needed for pprof graphs
