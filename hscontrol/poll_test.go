@@ -59,7 +59,10 @@ func (w *delayedSuccessResponseWriter) Write(data []byte) (int, error) {
 			close(w.firstWriteStarted)
 		})
 
-		time.Sleep(w.firstWriteDelay)
+		timer := time.NewTimer(w.firstWriteDelay)
+		defer timer.Stop()
+
+		<-timer.C
 
 		w.firstWriteFinishedOnce.Do(func() {
 			close(w.firstWriteFinished)
@@ -117,6 +120,7 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 
 	reloadedState, err := state.NewState(app.cfg)
 	require.NoError(t, err)
+
 	app.state = reloadedState
 
 	app.mapBatcher = mapper.NewBatcherAndMapper(app.cfg, app.state)
@@ -140,6 +144,7 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 	}, writer, node)
 
 	serveDone := make(chan struct{})
+
 	go func() {
 		session.serveLongPoll()
 		close(serveDone)
@@ -148,11 +153,14 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 	t.Cleanup(func() {
 		dummyCh := make(chan *tailcfg.MapResponse, 1)
 		_ = app.mapBatcher.AddNode(node.ID, dummyCh, tailcfg.CapabilityVersion(100), nil)
+
 		cancel()
+
 		select {
 		case <-serveDone:
 		case <-time.After(2 * time.Second):
 		}
+
 		_ = app.mapBatcher.RemoveNode(node.ID, dummyCh)
 	})
 
@@ -163,6 +171,7 @@ func TestGitHubIssue3129_TransientlyBlockedWriteDoesNotLeaveLiveStaleSession(t *
 	}
 
 	streamsClosed := make(chan struct{})
+
 	go func() {
 		app.clientStreamsOpen.Wait()
 		close(streamsClosed)
