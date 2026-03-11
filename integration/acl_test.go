@@ -2007,10 +2007,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 	// Non-asserting warm-up: give data-plane time to settle after
 	// control-plane sync. WaitForTailscaleSync ensures network map
-	// readiness, but data-plane connectivity (DNS + HTTP) may need
-	// additional time on resource-constrained CI runners. We poll
-	// without asserting because the policy phase assertions below
-	// will catch actual failures.
+	// readiness, but data-plane connectivity may need additional
+	// time on resource-constrained CI runners. We use IP addresses
+	// (not FQDNs) to avoid dependence on MagicDNS readiness.
 	warmupDeadline := time.Now().Add(2 * assertTimeout)
 	warmupTicker := time.NewTicker(1 * time.Second)
 
@@ -2033,14 +2032,9 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					continue
 				}
 
-				fqdn, err := peer.FQDN()
-				if err != nil {
-					allOK = false
+				peerIP := peer.MustIPv4()
 
-					break
-				}
-
-				result, err := client.Curl(fmt.Sprintf("http://%s/etc/hostname", fqdn))
+				result, err := client.Curl(fmt.Sprintf("http://%s/etc/hostname", peerIP.String()))
 				if err != nil || len(result) != 13 {
 					allOK = false
 
@@ -2078,6 +2072,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Test all-to-all connectivity after state is settled.
 		// Each client gets its own EventuallyWithT so one broken client
 		// does not consume retry budget for other clients.
+		// Uses IP addresses instead of FQDNs to avoid MagicDNS flakiness.
 		t.Logf("Iteration %d: Phase 1 - Testing all-to-all connectivity", iteration)
 
 		for _, client := range allClients {
@@ -2087,15 +2082,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 						continue
 					}
 
-					fqdn, err := peer.FQDN()
-					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for %s", iteration, peer.Hostname()) {
-						continue
-					}
-
-					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+					peerIP := peer.MustIPv4()
+					url := fmt.Sprintf("http://%s/etc/hostname", peerIP.String())
 					result, err := client.Curl(url)
-					assert.NoError(ct, err, "iteration %d: %s should reach %s with allow-all policy", iteration, client.Hostname(), fqdn)
-					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
+					assert.NoError(ct, err, "iteration %d: %s should reach %s with allow-all policy", iteration, client.Hostname(), peerIP)
+					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peerIP)
 				}
 			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 1 - %s should reach all peers", iteration, client.Hostname())
 		}
@@ -2116,6 +2107,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		t.Logf("Iteration %d: Phase 2 - Testing all connectivity with autogroup:self", iteration)
 
 		// Positive: each user1 client can access user1's nodes
+		// Uses IP addresses instead of FQDNs to avoid MagicDNS flakiness.
 		for _, client := range user1Clients {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1Clients {
@@ -2123,12 +2115,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 						continue
 					}
 
-					fqdn, err := peer.FQDN()
-					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user1 peer %s", iteration, peer.Hostname()) {
-						continue
-					}
-
-					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+					peerIP := peer.MustIPv4()
+					url := fmt.Sprintf("http://%s/etc/hostname", peerIP.String())
 					result, err := client.Curl(url)
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
@@ -2137,6 +2125,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		}
 
 		// Positive: each user2 client can access user2's nodes
+		// Uses IP addresses instead of FQDNs to avoid MagicDNS flakiness.
 		for _, client := range user2Clients {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
@@ -2144,15 +2133,11 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 						continue
 					}
 
-					fqdn, err := peer.FQDN()
-					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user2 peer %s", iteration, peer.Hostname()) {
-						continue
-					}
-
-					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+					peerIP := peer.MustIPv4()
+					url := fmt.Sprintf("http://%s/etc/hostname", peerIP.String())
 					result, err := client.Curl(url)
-					assert.NoError(ct, err, "iteration %d: user2 %s should reach user2's node %s", iteration, client.Hostname(), fqdn)
-					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), fqdn)
+					assert.NoError(ct, err, "iteration %d: user2 %s should reach user2's node %s", iteration, client.Hostname(), peer.Hostname())
+					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
 				}
 			}, assertTimeout, 500*time.Millisecond, "iteration %d: Phase 2 - user2 %s should reach user2 peers", iteration, client.Hostname())
 		}
@@ -2222,6 +2207,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		require.Len(t, user1ClientsWithNew, 3, "iteration %d: user1 should have 3 nodes", iteration)
 
 		// Positive: each user1 node can access other user1 nodes
+		// Uses IP addresses instead of FQDNs to avoid MagicDNS flakiness.
 		for _, client := range user1ClientsWithNew {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user1ClientsWithNew {
@@ -2229,12 +2215,8 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 						continue
 					}
 
-					fqdn, err := peer.FQDN()
-					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for peer %s", iteration, peer.Hostname()) {
-						continue
-					}
-
-					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+					peerIP := peer.MustIPv4()
+					url := fmt.Sprintf("http://%s/etc/hostname", peerIP.String())
 					result, err := client.Curl(url)
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())
@@ -2348,15 +2330,12 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		t.Logf("Iteration %d: Phase 3 - Testing all connectivity with directional policy", iteration)
 
 		// Positive: each user1 client can access user2's nodes
+		// Uses IP addresses instead of FQDNs to avoid MagicDNS flakiness.
 		for _, client := range user1Clients {
 			assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 				for _, peer := range user2Clients {
-					fqdn, err := peer.FQDN()
-					if !assert.NoError(ct, err, "iteration %d: failed to get FQDN for user2 peer %s", iteration, peer.Hostname()) {
-						continue
-					}
-
-					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
+					peerIP := peer.MustIPv4()
+					url := fmt.Sprintf("http://%s/etc/hostname", peerIP.String())
 					result, err := client.Curl(url)
 					assert.NoError(ct, err, "iteration %d: user1 node %s should reach user2 node %s", iteration, client.Hostname(), peer.Hostname())
 					assert.Len(ct, result, 13, "iteration %d: response from %s to %s should be valid", iteration, client.Hostname(), peer.Hostname())

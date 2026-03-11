@@ -565,31 +565,32 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 	}
 }
 
-// assertPingAll waits for all clients to be able to ping all addresses
-// using EventuallyWithT with PeerSyncTimeout. On CI runners, direct
-// connections can take time to establish even after peers are visible
-// in the network map.
+// assertPingAll waits for all clients to be able to ping all addresses.
+// Each client gets its own EventuallyWithT block so that one slow client
+// does not consume the retry budget of others.
 func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string) {
 	t.Helper()
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		for _, client := range clients {
+	for _, client := range clients {
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			for _, addr := range addrs {
 				err := client.Ping(addr)
 				assert.NoErrorf(c, err, "ping %s from %s", addr, client.Hostname())
 			}
-		}
-	}, integrationutil.PeerSyncTimeout(), 1*time.Second,
-		"all clients should be able to ping all addresses")
+		}, integrationutil.PeerSyncTimeout(), 1*time.Second,
+			"client %s should be able to ping all addresses", client.Hostname())
+	}
 }
 
 // assertPingDerpAll waits for all clients to be able to ping all
-// addresses via DERP relay using EventuallyWithT. Skips self-pings.
+// addresses via DERP relay. Each client gets its own EventuallyWithT
+// block so that one slow client does not consume the retry budget of
+// others. Skips self-pings.
 func assertPingDerpAll(t *testing.T, clients []TailscaleClient, addrs []string) {
 	t.Helper()
 
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		for _, client := range clients {
+	for _, client := range clients {
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
 			for _, addr := range addrs {
 				if isSelfClient(client, addr) {
 					continue
@@ -603,9 +604,9 @@ func assertPingDerpAll(t *testing.T, clients []TailscaleClient, addrs []string) 
 				)
 				assert.NoErrorf(c, err, "ping %s from %s via DERP", addr, client.Hostname())
 			}
-		}
-	}, integrationutil.PeerSyncTimeout(), 1*time.Second,
-		"all clients should be able to ping all addresses via DERP")
+		}, integrationutil.PeerSyncTimeout(), 1*time.Second,
+			"client %s should be able to ping all addresses via DERP", client.Hostname())
+	}
 }
 
 // isSelfClient determines if the given address belongs to the client itself.
