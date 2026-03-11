@@ -2493,7 +2493,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		return change.Change{}, fmt.Errorf("saving to database: %w", err)
 	}
 
-	if policyChange.IsFull() {
+	if !policyChange.IsEmpty() {
 		return policyChange, nil
 	}
 
