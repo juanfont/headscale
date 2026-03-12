@@ -1,0 +1,11 @@
+dbs:
+  - path: /var/lib/headscale/db.sqlite
+    replicas:
+      - type: s3
+        bucket: mcpm-headscale-dev
+        path: headscale/db/${DEPLOY_ID}
+        region: us-east-1
+        sync-interval: 1s
+        snapshot-interval: 24h
+        retention: 168h
+        retention-check-interval: 1h
