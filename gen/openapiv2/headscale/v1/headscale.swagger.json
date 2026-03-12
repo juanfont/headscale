@@ -351,6 +351,36 @@
         ]
       }
     },
+    "/api/v1/node/by-node-key/{nodeKey}": {
+      "get": {
+        "operationId": "HeadscaleService_GetNodeByNodeKey",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetNodeByNodeKeyResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "nodeKey",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "HeadscaleService"
+        ]
+      }
+    },
     "/api/v1/node/register": {
       "post": {
         "operationId": "HeadscaleService_RegisterNode",
@@ -1193,6 +1223,14 @@
     },
     "v1ExpirePreAuthKeyResponse": {
       "type": "object"
+    },
+    "v1GetNodeByNodeKeyResponse": {
+      "type": "object",
+      "properties": {
+        "node": {
+          "$ref": "#/definitions/v1Node"
+        }
+      }
     },
     "v1GetNodeResponse": {
       "type": "object",
