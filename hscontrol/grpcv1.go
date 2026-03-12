@@ -312,6 +312,23 @@ func (api headscaleV1APIServer) GetNode(
 	return &v1.GetNodeResponse{Node: resp}, nil
 }
 
+func (api headscaleV1APIServer) GetNodeByNodeKey(
+	ctx context.Context,
+	request *v1.GetNodeByNodeKeyRequest,
+) (*v1.GetNodeByNodeKeyResponse, error) {
+	var nodeKey key.NodePublic
+	if err := nodeKey.UnmarshalText([]byte(request.GetNodeKey())); err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid node_key: %s", err)
+	}
+
+	node, ok := api.h.state.GetNodeByNodeKey(nodeKey)
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "node not found")
+	}
+
+	return &v1.GetNodeByNodeKeyResponse{Node: node.Proto()}, nil
+}
+
 func (api headscaleV1APIServer) SetTags(
 	ctx context.Context,
 	request *v1.SetTagsRequest,
