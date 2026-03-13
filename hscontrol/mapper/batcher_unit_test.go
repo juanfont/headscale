@@ -1068,3 +1068,119 @@ func TestBatcher_CloseStopsTicker(t *testing.T) {
 		// Expected: no tick received.
 	}
 }
+
+// ============================================================================
+// Regression tests for M1, M3, M7
+// ============================================================================
+
+// TestBatcher_CloseBeforeStart_DoesNotHang is a regression guard for M1.
+// Before the fix, done was nil until Start() was called. queueWork and
+// MapResponseFromChange select on done, so a nil channel would block
+// forever when workCh was full. With done initialized in NewBatcher,
+// Close() can be called safely before Start().
+func TestBatcher_CloseBeforeStart_DoesNotHang(t *testing.T) {
+	b := NewBatcher(50*time.Millisecond, 2, nil)
+
+	// Close without Start must not panic or hang.
+	done := make(chan struct{})
+
+	go func() {
+		b.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success: Close returned promptly.
+	case <-time.After(2 * time.Second): //nolint:forbidigo // test timing
+		t.Fatal("Close() before Start() hung; done channel was likely nil")
+	}
+}
+
+// TestBatcher_QueueWorkAfterClose_DoesNotHang verifies that queueWork
+// returns immediately via the done channel when the batcher is closed,
+// even without Start() having been called.
+func TestBatcher_QueueWorkAfterClose_DoesNotHang(t *testing.T) {
+	b := NewBatcher(50*time.Millisecond, 1, nil)
+	b.Close()
+
+	done := make(chan struct{})
+
+	go func() {
+		// queueWork selects on done; with done closed this must return.
+		b.queueWork(work{})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(2 * time.Second): //nolint:forbidigo // test timing
+		t.Fatal("queueWork hung after Close(); done channel select not working")
+	}
+}
+
+// TestIsConnected_FalseAfterAddNodeFailure is a regression guard for M3.
+// Before the fix, AddNode error paths removed the connection but left
+// b.connected with its previous value (nil = connected). IsConnected
+// would return true for a node with zero active connections.
+func TestIsConnected_FalseAfterAddNodeFailure(t *testing.T) {
+	b := NewBatcher(50*time.Millisecond, 2, nil)
+	b.Start()
+
+	defer b.Close()
+
+	id := types.NodeID(42)
+
+	// Simulate a previous session leaving the node marked as connected.
+	b.connected.Store(id, nil) // nil = connected
+
+	// Pre-create the node entry so AddNode reuses it, and set up a
+	// multiChannelNodeConn with no mapper so MapResponseFromChange will fail.
+	nc := newMultiChannelNodeConn(id, nil)
+	b.nodes.Store(id, nc)
+
+	ch := make(chan *tailcfg.MapResponse, 1)
+
+	err := b.AddNode(id, ch, 100, func() {})
+	require.Error(t, err, "AddNode should fail with nil mapper")
+
+	// After failure, the node should NOT be reported as connected.
+	assert.False(t, b.IsConnected(id),
+		"IsConnected should return false after AddNode failure with no remaining connections")
+}
+
+// TestRemoveConnectionAtIndex_NilsTrailingSlot is a regression guard for M7.
+// Before the fix, removeConnectionAtIndexLocked used append(s[:i], s[i+1:]...)
+// which left a stale pointer in the backing array's last slot. The fix
+// uses copy + explicit nil of the trailing element.
+func TestRemoveConnectionAtIndex_NilsTrailingSlot(t *testing.T) {
+	mc := newMultiChannelNodeConn(1, nil)
+
+	// Manually add three entries under the lock.
+	entries := make([]*connectionEntry, 3)
+	for i := range entries {
+		entries[i] = &connectionEntry{id: fmt.Sprintf("conn-%d", i), c: make(chan<- *tailcfg.MapResponse)}
+	}
+
+	mc.mutex.Lock()
+	mc.connections = append(mc.connections, entries...)
+
+	// Remove the middle entry (index 1).
+	removed := mc.removeConnectionAtIndexLocked(1, false)
+	require.Equal(t, entries[1], removed)
+
+	// After removal, len should be 2 and the backing array slot at
+	// index 2 (the old len-1) should be nil.
+	require.Len(t, mc.connections, 2)
+	assert.Equal(t, entries[0], mc.connections[0])
+	assert.Equal(t, entries[2], mc.connections[1])
+
+	// Check the backing array directly: the slot just past the new
+	// length must be nil to avoid retaining the pointer.
+	backing := mc.connections[:3]
+	assert.Nil(t, backing[2],
+		"trailing slot in backing array should be nil after removal")
+
+	mc.mutex.Unlock()
+}
