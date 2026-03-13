@@ -991,12 +991,20 @@ func (entry *connectionEntry) send(data *tailcfg.MapResponse) error {
 	// Use a short timeout to detect stale connections where the client isn't reading the channel.
 	// This is critical for detecting Docker containers that are forcefully terminated
 	// but still have channels that appear open.
+	//
+	// We use time.NewTimer + Stop instead of time.After to avoid leaking timers.
+	// time.After creates a timer that lives in the runtime's timer heap until it fires,
+	// even when the send succeeds immediately. On the hot path (1000+ nodes per tick),
+	// this leaks thousands of timers per second.
+	timer := time.NewTimer(50 * time.Millisecond) //nolint:mnd
+	defer timer.Stop()
+
 	select {
 	case entry.c <- data:
 		// Update last used timestamp on successful send
 		entry.lastUsed.Store(time.Now().Unix())
 		return nil
-	case <-time.After(50 * time.Millisecond):
+	case <-timer.C:
 		// Connection is likely stale - client isn't reading from channel
 		// This catches the case where Docker containers are killed but channels remain open
 		return fmt.Errorf("connection %s: %w", entry.id, ErrConnectionSendTimeout)
