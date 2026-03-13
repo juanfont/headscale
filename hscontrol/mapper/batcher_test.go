@@ -104,29 +104,19 @@ func emptyCache() *zcache.Cache[types.AuthID, types.AuthRequest] {
 // Test configuration constants.
 const (
 	// Test data configuration.
-	TEST_USER_COUNT     = 3
-	TEST_NODES_PER_USER = 2
-
-	// Load testing configuration.
-	HIGH_LOAD_NODES   = 25  // Increased from 9
-	HIGH_LOAD_CYCLES  = 100 // Increased from 20
-	HIGH_LOAD_UPDATES = 50  // Increased from 20
-
-	// Extreme load testing configuration.
-	EXTREME_LOAD_NODES   = 50
-	EXTREME_LOAD_CYCLES  = 200
-	EXTREME_LOAD_UPDATES = 100
+	testUserCount    = 3
+	testNodesPerUser = 2
 
 	// Timing configuration.
-	TEST_TIMEOUT     = 120 * time.Second // Increased for more intensive tests
-	UPDATE_TIMEOUT   = 5 * time.Second
-	DEADLOCK_TIMEOUT = 30 * time.Second
+	testTimeout     = 120 * time.Second // Increased for more intensive tests
+	updateTimeout   = 5 * time.Second
+	deadlockTimeout = 30 * time.Second
 
 	// Channel configuration.
-	NORMAL_BUFFER_SIZE = 50
-	SMALL_BUFFER_SIZE  = 3
-	TINY_BUFFER_SIZE   = 1 // For maximum contention
-	LARGE_BUFFER_SIZE  = 200
+	normalBufferSize = 50
+	smallBufferSize  = 3
+	tinyBufferSize   = 1 // For maximum contention
+	largeBufferSize  = 200
 )
 
 // TestData contains all test entities created for a test scenario.
@@ -355,7 +345,7 @@ func assertDERPMapResponse(t *testing.T, resp *tailcfg.MapResponse) {
 
 	assert.NotNil(t, resp.DERPMap, "DERPMap should not be nil in response")
 	assert.Len(t, resp.DERPMap.Regions, 1, "Expected exactly one DERP region in response")
-	assert.Equal(t, 999, resp.DERPMap.Regions[999].RegionID, "Expected DERP region ID to be 1337")
+	assert.Equal(t, 999, resp.DERPMap.Regions[999].RegionID, "Expected DERP region ID to be 999")
 }
 
 func assertOnlineMapResponse(t *testing.T, resp *tailcfg.MapResponse, expected bool) {
@@ -690,7 +680,7 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 						assert.Equal(c, len(allNodes), connectedCount, "all nodes should achieve full connectivity")
 					}, 5*time.Minute, 5*time.Second, "waiting for full connectivity")
 
-					t.Logf("✅ All nodes achieved full connectivity!")
+					t.Logf("All nodes achieved full connectivity")
 
 					totalTime := time.Since(startTime)
 
@@ -778,13 +768,13 @@ func TestBatcherScalabilityAllToAll(t *testing.T) {
 					// this should always pass, but we verify the final state for completeness
 					if successfulNodes == len(allNodes) {
 						t.Logf(
-							"✅ PASS: All-to-all connectivity achieved for %d nodes",
+							"PASS: All-to-all connectivity achieved for %d nodes",
 							len(allNodes),
 						)
 					} else {
 						// This should not happen since we loop until success, but handle it just in case
 						failedNodes := len(allNodes) - successfulNodes
-						t.Errorf("❌ UNEXPECTED: %d/%d nodes still failed after waiting for connectivity (expected %d, some saw %d-%d)",
+						t.Errorf("UNEXPECTED: %d/%d nodes still failed after waiting for connectivity (expected %d, some saw %d-%d)",
 							failedNodes, len(allNodes), expectedPeers, minPeersSeen, maxPeersGlobal)
 
 						// Show details of failed nodes for debugging
@@ -1362,8 +1352,8 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			testData, cleanup := setupBatcherWithTestData(
 				t,
 				batcherFunc.fn,
-				TEST_USER_COUNT,
-				TEST_NODES_PER_USER,
+				testUserCount,
+				testNodesPerUser,
 				8,
 			)
 			defer cleanup()
@@ -1380,7 +1370,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 
 			for i := range stableNodes {
 				node := &stableNodes[i]
-				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+				ch := make(chan *tailcfg.MapResponse, normalBufferSize)
 				stableChannels[node.n.ID] = ch
 				_ = batcher.AddNode(node.n.ID, ch, tailcfg.CapabilityVersion(100), nil)
 
@@ -1402,7 +1392,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 							} else {
 								t.Errorf("Invalid update received for stable node %d: %s", nodeID, reason)
 							}
-						case <-time.After(TEST_TIMEOUT):
+						case <-time.After(testTimeout):
 							return
 						}
 					}
@@ -1450,7 +1440,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 								wg.Done()
 							}()
 
-							ch := make(chan *tailcfg.MapResponse, SMALL_BUFFER_SIZE)
+							ch := make(chan *tailcfg.MapResponse, smallBufferSize)
 
 							churningChannelsMutex.Lock()
 
@@ -1545,7 +1535,7 @@ func TestBatcherConcurrentClients(t *testing.T) {
 			select {
 			case <-done:
 				t.Logf("Connection churn cycles completed successfully")
-			case <-time.After(DEADLOCK_TIMEOUT):
+			case <-time.After(deadlockTimeout):
 				t.Error("Test timed out - possible deadlock detected")
 				return
 			}
@@ -1963,7 +1953,7 @@ func XTestBatcherScalability(t *testing.T) {
 					select {
 					case <-done:
 						t.Logf("Test completed successfully")
-					case <-time.After(TEST_TIMEOUT):
+					case <-time.After(testTimeout):
 						deadlockDetected = true
 						// Collect diagnostic information
 						allStats := tracker.getAllStats()
@@ -1975,7 +1965,7 @@ func XTestBatcherScalability(t *testing.T) {
 
 						interimPanics := atomic.LoadInt64(&panicCount)
 
-						t.Logf("TIMEOUT DIAGNOSIS: Test timed out after %v", TEST_TIMEOUT)
+						t.Logf("TIMEOUT DIAGNOSIS: Test timed out after %v", testTimeout)
 						t.Logf(
 							"   Progress at timeout: %d total updates, %d panics",
 							totalUpdates,
@@ -2129,10 +2119,10 @@ func XTestBatcherScalability(t *testing.T) {
 
 					// Clear success/failure indication
 					if testPassed {
-						t.Logf("✅ PASS: %s | %d nodes, %d updates, 0 panics, no deadlock",
+						t.Logf("PASS: %s | %d nodes, %d updates, 0 panics, no deadlock",
 							tc.name, len(testNodes), totalUpdates)
 					} else {
-						t.Logf("❌ FAIL: %s | %d nodes, %d updates, %d panics, deadlock: %v",
+						t.Logf("FAIL: %s | %d nodes, %d updates, %d panics, deadlock: %v",
 							tc.name, len(testNodes), totalUpdates, finalPanicCount, deadlockDetected)
 					}
 				})
@@ -2656,7 +2646,7 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 	for _, batcherFunc := range allBatcherFunctions {
 		t.Run(batcherFunc.name, func(t *testing.T) {
 			// Create test environment with 3 nodes
-			testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 3, NORMAL_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 3, normalBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -2771,13 +2761,13 @@ func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
 	for _, batcherFunc := range allBatcherFunctions {
 		t.Run(batcherFunc.name, func(t *testing.T) {
 			t.Run("marks disconnected when removed channel was last active connection", func(t *testing.T) {
-				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
+				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, normalBufferSize)
 				defer cleanup()
 
 				lfb := unwrapBatcher(testData.Batcher)
 
 				nodeID := testData.Nodes[0].n.ID
-				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+				ch := make(chan *tailcfg.MapResponse, normalBufferSize)
 				require.NoError(t, lfb.AddNode(nodeID, ch, tailcfg.CapabilityVersion(100), nil))
 
 				assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2799,14 +2789,14 @@ func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
 			})
 
 			t.Run("keeps connected when another connection is still active", func(t *testing.T) {
-				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
+				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, normalBufferSize)
 				defer cleanup()
 
 				lfb := unwrapBatcher(testData.Batcher)
 
 				nodeID := testData.Nodes[0].n.ID
-				ch1 := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
-				ch2 := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
+				ch1 := make(chan *tailcfg.MapResponse, normalBufferSize)
+				ch2 := make(chan *tailcfg.MapResponse, normalBufferSize)
 
 				require.NoError(t, lfb.AddNode(nodeID, ch1, tailcfg.CapabilityVersion(100), nil))
 				require.NoError(t, lfb.AddNode(nodeID, ch2, tailcfg.CapabilityVersion(100), nil))
