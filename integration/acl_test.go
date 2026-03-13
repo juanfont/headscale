@@ -1911,14 +1911,15 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
-			// Install iptables to enable packet filtering for ACL tests.
-			// Packet filters are essential for testing autogroup:self and other ACL policies.
-			tsic.WithPackages("curl", "iptables", "ip6tables"),
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
 			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("aclpropagation"),
 		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithEmbeddedDERPServerOnly(),
+		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
