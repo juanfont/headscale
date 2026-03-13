@@ -1,9 +1,8 @@
 package mapper
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -53,12 +52,14 @@ type multiChannelNodeConn struct {
 	lastSentPeers *xsync.Map[tailcfg.NodeID, struct{}]
 }
 
+// connIDCounter is a monotonically increasing counter used to generate
+// unique connection identifiers without the overhead of crypto/rand.
+// Connection IDs are process-local and need not be cryptographically random.
+var connIDCounter atomic.Uint64
+
 // generateConnectionID generates a unique connection identifier.
 func generateConnectionID() string {
-	bytes := make([]byte, 8)
-	_, _ = rand.Read(bytes)
-
-	return hex.EncodeToString(bytes)
+	return strconv.FormatUint(connIDCounter.Add(1), 10)
 }
 
 // newMultiChannelNodeConn creates a new multi-channel node connection.
