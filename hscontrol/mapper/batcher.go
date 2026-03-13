@@ -819,22 +819,13 @@ func (mc *multiChannelNodeConn) removeConnectionAtIndexLocked(i int, stopConnect
 
 // addConnection adds a new connection.
 func (mc *multiChannelNodeConn) addConnection(entry *connectionEntry) {
-	mutexWaitStart := time.Now()
-
-	mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", entry.c)).Str(zf.ConnID, entry.id).
-		Msg("addConnection: waiting for mutex - POTENTIAL CONTENTION POINT")
-
 	mc.mutex.Lock()
-
-	mutexWaitDur := time.Since(mutexWaitStart)
-
 	defer mc.mutex.Unlock()
 
 	mc.connections = append(mc.connections, entry)
-	mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", entry.c)).Str(zf.ConnID, entry.id).
+	mc.log.Debug().Str(zf.ConnID, entry.id).
 		Int("total_connections", len(mc.connections)).
-		Dur("mutex_wait_time", mutexWaitDur).
-		Msg("successfully added connection after mutex wait")
+		Msg("connection added")
 }
 
 // removeConnectionByChannel removes a connection by matching channel pointer.
@@ -845,9 +836,9 @@ func (mc *multiChannelNodeConn) removeConnectionByChannel(c chan<- *tailcfg.MapR
 	for i, entry := range mc.connections {
 		if entry.c == c {
 			mc.removeConnectionAtIndexLocked(i, false)
-			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", c)).
+			mc.log.Debug().Str(zf.ConnID, entry.id).
 				Int("remaining_connections", len(mc.connections)).
-				Msg("successfully removed connection")
+				Msg("connection removed")
 
 			return true
 		}
@@ -909,8 +900,8 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 	if len(mc.connections) == 0 {
 		mc.mutex.RUnlock()
-		mc.log.Debug().Caller().
-			Msg("send: skipping send to node with no active connections (likely rapid reconnection)")
+		mc.log.Trace().
+			Msg("send: no active connections, skipping")
 
 		return nil
 	}
@@ -920,9 +911,9 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	copy(snapshot, mc.connections)
 	mc.mutex.RUnlock()
 
-	mc.log.Debug().Caller().
+	mc.log.Trace().
 		Int("total_connections", len(snapshot)).
-		Msg("send: broadcasting to all connections")
+		Msg("send: broadcasting")
 
 	// Send to all connections without holding any lock.
 	// Stale connection timeouts (50ms each) happen here without blocking
@@ -934,25 +925,17 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 	)
 
 	for _, conn := range snapshot {
-		mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
-			Str(zf.ConnID, conn.id).
-			Msg("send: attempting to send to connection")
-
 		err := conn.send(data)
 		if err != nil {
 			lastErr = err
 
 			failed = append(failed, conn)
 
-			mc.log.Warn().Err(err).Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
+			mc.log.Warn().Err(err).
 				Str(zf.ConnID, conn.id).
-				Msg("send: connection send failed")
+				Msg("send: connection failed")
 		} else {
 			successCount++
-
-			mc.log.Debug().Caller().Str(zf.Chan, fmt.Sprintf("%p", conn.c)).
-				Str(zf.ConnID, conn.id).
-				Msg("send: successfully sent to connection")
 		}
 	}
 
@@ -972,7 +955,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 			if _, isFailed := failedSet[conn]; !isFailed {
 				clean = append(clean, conn)
 			} else {
-				mc.log.Debug().Caller().
+				mc.log.Debug().
 					Str(zf.ConnID, conn.id).
 					Msg("send: removing failed connection")
 				// Tear down the owning session so the old serveLongPoll
@@ -987,10 +970,10 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 
 	mc.updateCount.Add(1)
 
-	mc.log.Debug().
+	mc.log.Trace().
 		Int("successful_sends", successCount).
 		Int("failed_connections", len(failed)).
-		Msg("send: completed broadcast")
+		Msg("send: broadcast complete")
 
 	// Success if at least one send succeeded
 	if successCount > 0 {
