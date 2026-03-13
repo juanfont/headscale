@@ -150,13 +150,12 @@ func BenchmarkUpdateSentPeers(b *testing.B) {
 // helper, it doesn't register cleanup and suppresses logging.
 func benchBatcher(nodeCount, bufferSize int) (*LockFreeBatcher, map[types.NodeID]chan *tailcfg.MapResponse) {
 	b := &LockFreeBatcher{
-		tick:           time.NewTicker(1 * time.Hour), // never fires during bench
-		workers:        4,
-		workCh:         make(chan work, 4*200),
-		nodes:          xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected:      xsync.NewMap[types.NodeID, *time.Time](),
-		pendingChanges: xsync.NewMap[types.NodeID, []change.Change](),
-		done:           make(chan struct{}),
+		tick:      time.NewTicker(1 * time.Hour), // never fires during bench
+		workers:   4,
+		workCh:    make(chan work, 4*200),
+		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
+		connected: xsync.NewMap[types.NodeID, *time.Time](),
+		done:      make(chan struct{}),
 	}
 
 	channels := make(map[types.NodeID]chan *tailcfg.MapResponse, nodeCount)
@@ -204,8 +203,8 @@ func BenchmarkAddToBatch_Broadcast(b *testing.B) {
 			for range b.N {
 				batcher.addToBatch(ch)
 				// Clear pending to avoid unbounded growth
-				batcher.pendingChanges.Range(func(id types.NodeID, _ []change.Change) bool {
-					batcher.pendingChanges.Delete(id)
+				batcher.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+					nc.drainPending()
 					return true
 				})
 			}
@@ -242,8 +241,8 @@ func BenchmarkAddToBatch_Targeted(b *testing.B) {
 				batcher.addToBatch(ch)
 				// Clear pending periodically to avoid growth
 				if i%100 == 99 {
-					batcher.pendingChanges.Range(func(id types.NodeID, _ []change.Change) bool {
-						batcher.pendingChanges.Delete(id)
+					batcher.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+						nc.drainPending()
 						return true
 					})
 				}
@@ -298,7 +297,9 @@ func BenchmarkProcessBatchedChanges(b *testing.B) {
 				b.StopTimer()
 				// Seed pending changes
 				for i := 1; i <= nodeCount; i++ {
-					batcher.pendingChanges.Store(types.NodeID(i), []change.Change{change.DERPMap()}) //nolint:gosec // benchmark
+					if nc, ok := batcher.nodes.Load(types.NodeID(i)); ok { //nolint:gosec // benchmark
+						nc.appendPending(change.DERPMap())
+					}
 				}
 
 				b.StartTimer()
@@ -411,8 +412,8 @@ func BenchmarkConcurrentAddToBatch(b *testing.B) {
 					case <-batcher.done:
 						return
 					default:
-						batcher.pendingChanges.Range(func(id types.NodeID, _ []change.Change) bool {
-							batcher.pendingChanges.Delete(id)
+						batcher.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+							nc.drainPending()
 							return true
 						})
 						time.Sleep(time.Millisecond) //nolint:forbidigo // benchmark drain loop
@@ -646,7 +647,7 @@ func BenchmarkAddNode(b *testing.B) {
 				// Connect all nodes (measuring AddNode cost)
 				for i := range allNodes {
 					node := &allNodes[i]
-					_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+					_ = batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 				}
 
 				b.StopTimer()
@@ -707,7 +708,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 			for i := range allNodes {
 				node := &allNodes[i]
 
-				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 				if err != nil {
 					b.Fatalf("failed to add node %d: %v", i, err)
 				}
@@ -762,7 +763,7 @@ func BenchmarkMapResponseFromChange(b *testing.B) {
 			for i := range allNodes {
 				node := &allNodes[i]
 
-				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100))
+				err := batcher.AddNode(node.n.ID, node.ch, tailcfg.CapabilityVersion(100), nil)
 				if err != nil {
 					b.Fatalf("failed to add node %d: %v", i, err)
 				}

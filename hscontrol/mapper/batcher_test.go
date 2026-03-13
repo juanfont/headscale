@@ -2302,8 +2302,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			t.Logf("=== RAPID RECONNECTION TEST ===")
 			t.Logf("Testing rapid connect/disconnect with %d nodes", len(allNodes))
 
-			// Phase 1: Connect all nodes initially
-			t.Logf("Phase 1: Connecting all nodes...")
+			// Connect all nodes initially.
+			t.Logf("Connecting all nodes...")
 
 			for i := range allNodes {
 				node := &allNodes[i]
@@ -2321,8 +2321,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				}
 			}, 5*time.Second, 50*time.Millisecond, "waiting for connections to settle")
 
-			// Phase 2: Rapid disconnect ALL nodes (simulating nodes going down)
-			t.Logf("Phase 2: Rapid disconnect all nodes...")
+			// Rapid disconnect ALL nodes (simulating nodes going down).
+			t.Logf("Rapid disconnect all nodes...")
 
 			for i := range allNodes {
 				node := &allNodes[i]
@@ -2330,8 +2330,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				t.Logf("Node %d RemoveNode result: %t", i, removed)
 			}
 
-			// Phase 3: Rapid reconnect with NEW channels (simulating nodes coming back up)
-			t.Logf("Phase 3: Rapid reconnect with new channels...")
+			// Rapid reconnect with NEW channels (simulating nodes coming back up).
+			t.Logf("Rapid reconnect with new channels...")
 
 			newChannels := make([]chan *tailcfg.MapResponse, len(allNodes))
 			for i := range allNodes {
@@ -2351,8 +2351,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				}
 			}, 5*time.Second, 50*time.Millisecond, "waiting for reconnections to settle")
 
-			// Phase 4: Check debug status - THIS IS WHERE THE BUG SHOULD APPEAR
-			t.Logf("Phase 4: Checking debug status...")
+			// Check debug status after reconnection.
+			t.Logf("Checking debug status...")
 
 			if debugBatcher, ok := batcher.(interface {
 				Debug() map[types.NodeID]any
@@ -2396,8 +2396,8 @@ func TestBatcherRapidReconnection(t *testing.T) {
 				t.Logf("Batcher does not implement Debug() method")
 			}
 
-			// Phase 5: Test if "disconnected" nodes can actually receive updates
-			t.Logf("Phase 5: Testing if nodes can receive updates despite debug status...")
+			// Test if "disconnected" nodes can actually receive updates.
+			t.Logf("Testing if nodes can receive updates despite debug status...")
 
 			// Send a change that should reach all nodes
 			batcher.AddWork(change.DERPMap())
@@ -2442,8 +2442,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 
 			t.Logf("=== MULTI-CONNECTION TEST ===")
 
-			// Phase 1: Connect first node with initial connection
-			t.Logf("Phase 1: Connecting node 1 with first connection...")
+			// Connect first node with initial connection.
+			t.Logf("Connecting node 1 with first connection...")
 
 			err := batcher.AddNode(node1.n.ID, node1.ch, tailcfg.CapabilityVersion(100), nil)
 			if err != nil {
@@ -2462,8 +2462,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 				assert.True(c, batcher.IsConnected(node2.n.ID), "node2 should be connected")
 			}, time.Second, 10*time.Millisecond, "waiting for initial connections")
 
-			// Phase 2: Add second connection for node1 (multi-connection scenario)
-			t.Logf("Phase 2: Adding second connection for node 1...")
+			// Add second connection for node1 (multi-connection scenario).
+			t.Logf("Adding second connection for node 1...")
 
 			secondChannel := make(chan *tailcfg.MapResponse, 10)
 
@@ -2475,8 +2475,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Yield to allow connection to be processed
 			runtime.Gosched()
 
-			// Phase 3: Add third connection for node1
-			t.Logf("Phase 3: Adding third connection for node 1...")
+			// Add third connection for node1.
+			t.Logf("Adding third connection for node 1...")
 
 			thirdChannel := make(chan *tailcfg.MapResponse, 10)
 
@@ -2488,8 +2488,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Yield to allow connection to be processed
 			runtime.Gosched()
 
-			// Phase 4: Verify debug status shows correct connection count
-			t.Logf("Phase 4: Verifying debug status shows multiple connections...")
+			// Verify debug status shows correct connection count.
+			t.Logf("Verifying debug status shows multiple connections...")
 
 			if debugBatcher, ok := batcher.(interface {
 				Debug() map[types.NodeID]any
@@ -2525,8 +2525,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 				}
 			}
 
-			// Phase 5: Send update and verify ALL connections receive it
-			t.Logf("Phase 5: Testing update distribution to all connections...")
+			// Send update and verify ALL connections receive it.
+			t.Logf("Testing update distribution to all connections...")
 
 			// Clear any existing updates from all channels
 			clearChannel := func(ch chan *tailcfg.MapResponse) {
@@ -2591,8 +2591,8 @@ func TestBatcherMultiConnection(t *testing.T) {
 					connection1Received, connection2Received, connection3Received)
 			}
 
-			// Phase 6: Test connection removal and verify remaining connections still work
-			t.Logf("Phase 6: Testing connection removal...")
+			// Test connection removal and verify remaining connections still work.
+			t.Logf("Testing connection removal...")
 
 			// Remove the second connection
 			removed := batcher.RemoveNode(node1.n.ID, secondChannel)
