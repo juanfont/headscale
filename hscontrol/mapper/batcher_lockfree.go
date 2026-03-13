@@ -132,7 +132,7 @@ func (b *LockFreeBatcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRespo
 	nlog := log.With().Uint64(zf.NodeID, id.Uint64()).Logger()
 
 	nodeConn, exists := b.nodes.Load(id)
-	if !exists {
+	if !exists || nodeConn == nil {
 		nlog.Debug().Caller().Msg("removeNode called for non-existent node")
 		return false
 	}
@@ -190,6 +190,9 @@ func (b *LockFreeBatcher) Close() {
 
 	// Close the underlying channels supplying the data to the clients.
 	b.nodes.Range(func(nodeID types.NodeID, conn *multiChannelNodeConn) bool {
+		if conn == nil {
+			return true
+		}
 		conn.close()
 		return true
 	})
@@ -239,7 +242,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 			if w.resultCh != nil {
 				var result workResult
 
-				if nc, exists := b.nodes.Load(w.nodeID); exists {
+				if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
 					var err error
 
 					result.mapResponse, err = generateMapResponse(nc, b.mapper, w.c)
@@ -277,7 +280,7 @@ func (b *LockFreeBatcher) worker(workerID int) {
 			// If resultCh is nil, this is an asynchronous work request
 			// that should be processed and sent to the node instead of
 			// returned to the caller.
-			if nc, exists := b.nodes.Load(w.nodeID); exists {
+			if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
 				// Apply change to node - this will handle offline nodes gracefully
 				// and queue work for when they reconnect
 				err := nc.change(w.c)
@@ -347,6 +350,10 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 	// means we can skip sending individual changes.
 	if change.HasFull(changes) {
 		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+			if nc == nil {
+				return true
+			}
+
 			nc.pendingMu.Lock()
 			nc.pending = []change.Change{change.FullUpdate()}
 			nc.pendingMu.Unlock()
@@ -361,7 +368,7 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 
 	// Handle targeted changes - send only to the specific node
 	for _, ch := range targeted {
-		if nc, ok := b.nodes.Load(ch.TargetNode); ok {
+		if nc, ok := b.nodes.Load(ch.TargetNode); ok && nc != nil {
 			nc.appendPending(ch)
 		}
 	}
@@ -369,6 +376,9 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 	// Handle broadcast changes - send to all nodes, filtering as needed
 	if len(broadcast) > 0 {
 		b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+			if nc == nil {
+				return true
+			}
 			filtered := change.FilterForNode(nodeID, broadcast)
 
 			if len(filtered) > 0 {
@@ -383,6 +393,10 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 // processBatchedChanges processes all pending batched changes.
 func (b *LockFreeBatcher) processBatchedChanges() {
 	b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+		if nc == nil {
+			return true
+		}
+
 		pending := nc.drainPending()
 		if len(pending) == 0 {
 			return true
@@ -398,6 +412,8 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 }
 
 // cleanupOfflineNodes removes nodes that have been offline for too long to prevent memory leaks.
+// Uses Compute() for atomic check-and-delete to prevent TOCTOU races where a node
+// reconnects between the hasActiveConnections() check and the Delete() call.
 // TODO(kradalby): reevaluate if we want to keep this.
 func (b *LockFreeBatcher) cleanupOfflineNodes() {
 	cleanupThreshold := 15 * time.Minute
@@ -408,30 +424,46 @@ func (b *LockFreeBatcher) cleanupOfflineNodes() {
 	// Find nodes that have been offline for too long
 	b.connected.Range(func(nodeID types.NodeID, disconnectTime *time.Time) bool {
 		if disconnectTime != nil && now.Sub(*disconnectTime) > cleanupThreshold {
-			// Double-check the node doesn't have active connections
-			if nodeConn, exists := b.nodes.Load(nodeID); exists {
-				if !nodeConn.hasActiveConnections() {
-					nodesToCleanup = append(nodesToCleanup, nodeID)
-				}
-			}
+			nodesToCleanup = append(nodesToCleanup, nodeID)
 		}
 
 		return true
 	})
 
-	// Clean up the identified nodes
+	// Clean up the identified nodes using Compute() for atomic check-and-delete.
+	// This prevents a TOCTOU race where a node reconnects (adding an active
+	// connection) between the hasActiveConnections() check and the Delete() call.
+	cleaned := 0
 	for _, nodeID := range nodesToCleanup {
-		log.Info().Uint64(zf.NodeID, nodeID.Uint64()).
-			Dur("offline_duration", cleanupThreshold).
-			Msg("cleaning up node that has been offline for too long")
+		deleted := false
 
-		b.nodes.Delete(nodeID)
-		b.connected.Delete(nodeID)
-		b.totalNodes.Add(-1)
+		b.nodes.Compute(
+			nodeID,
+			func(conn *multiChannelNodeConn, loaded bool) (*multiChannelNodeConn, xsync.ComputeOp) {
+				if !loaded || conn == nil || conn.hasActiveConnections() {
+					return conn, xsync.CancelOp
+				}
+
+				deleted = true
+
+				return conn, xsync.DeleteOp
+			},
+		)
+
+		if deleted {
+			log.Info().Uint64(zf.NodeID, nodeID.Uint64()).
+				Dur("offline_duration", cleanupThreshold).
+				Msg("cleaning up node that has been offline for too long")
+
+			b.connected.Delete(nodeID)
+			b.totalNodes.Add(-1)
+
+			cleaned++
+		}
 	}
 
-	if len(nodesToCleanup) > 0 {
-		log.Info().Int(zf.CleanedNodes, len(nodesToCleanup)).
+	if cleaned > 0 {
+		log.Info().Int(zf.CleanedNodes, cleaned).
 			Msg("completed cleanup of long-offline nodes")
 	}
 }
@@ -439,7 +471,7 @@ func (b *LockFreeBatcher) cleanupOfflineNodes() {
 // IsConnected is lock-free read that checks if a node has any active connections.
 func (b *LockFreeBatcher) IsConnected(id types.NodeID) bool {
 	// First check if we have active connections for this node
-	if nodeConn, exists := b.nodes.Load(id); exists {
+	if nodeConn, exists := b.nodes.Load(id); exists && nodeConn != nil {
 		if nodeConn.hasActiveConnections() {
 			return true
 		}
@@ -465,6 +497,9 @@ func (b *LockFreeBatcher) ConnectedMap() *xsync.Map[types.NodeID, bool] {
 
 	// First, add all nodes with active connections
 	b.nodes.Range(func(id types.NodeID, nodeConn *multiChannelNodeConn) bool {
+		if nodeConn == nil {
+			return true
+		}
 		if nodeConn.hasActiveConnections() {
 			ret.Store(id, true)
 		}
@@ -860,6 +895,9 @@ func (b *LockFreeBatcher) Debug() map[types.NodeID]DebugNodeInfo {
 	// Get all nodes with their connection status using immediate connection logic
 	// (no grace period) for debug purposes
 	b.nodes.Range(func(id types.NodeID, nodeConn *multiChannelNodeConn) bool {
+		if nodeConn == nil {
+			return true
+		}
 		nodeConn.mutex.RLock()
 		activeConnCount := len(nodeConn.connections)
 		nodeConn.mutex.RUnlock()
