@@ -191,6 +191,16 @@ type OIDCConfig struct {
 	Expiry                     time.Duration
 	UseExpiryFromToken         bool
 	PKCE                       PKCEConfig
+	// UsernameClaimOrder controls which OIDC claims are used to derive the
+	// Headscale username (login name) when authenticating via OIDC.
+	// The first non-empty, valid value is selected. Supported values:
+	//   - "preferred_username" (OIDC standard)
+	//   - "email" (full email address)
+	//   - "email_localpart" (portion before '@')
+	//   - "name" (full display name)
+	//   - "sub" (subject)
+	// If empty, the default order is: preferred_username, email_localpart, email, name, sub.
+	UsernameClaimOrder []string
 }
 
 type DERPConfig struct {
