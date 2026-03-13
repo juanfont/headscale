@@ -624,7 +624,7 @@ func BenchmarkAddNode(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -687,7 +687,7 @@ func BenchmarkFullPipeline(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -742,7 +742,7 @@ func BenchmarkMapResponseFromChange(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 100} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher

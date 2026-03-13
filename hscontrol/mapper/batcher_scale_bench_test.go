@@ -724,7 +724,7 @@ func BenchmarkScale_AddAllNodes(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -787,7 +787,7 @@ func BenchmarkScale_SingleAddNode(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500, 1000} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -853,7 +853,7 @@ func BenchmarkScale_MapResponse_DERPMap(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
@@ -905,7 +905,7 @@ func BenchmarkScale_MapResponse_FullUpdate(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 50, 100, 200, 500} {
 		b.Run(strconv.Itoa(nodeCount), func(b *testing.B) {
-			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, LARGE_BUFFER_SIZE)
+			testData, cleanup := setupBatcherWithTestData(b, NewBatcherAndMapper, 1, nodeCount, largeBufferSize)
 			defer cleanup()
 
 			batcher := testData.Batcher
