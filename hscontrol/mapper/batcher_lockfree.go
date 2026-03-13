@@ -41,8 +41,7 @@ type LockFreeBatcher struct {
 	done       chan struct{}
 	doneOnce   sync.Once // Ensures done is only closed once
 
-	// Batching state
-	pendingChanges *xsync.Map[types.NodeID, []change.Change]
+	started atomic.Bool // Ensures Start() is only called once
 
 	// Metrics
 	totalNodes      atomic.Int64
@@ -167,7 +166,12 @@ func (b *LockFreeBatcher) AddWork(r ...change.Change) {
 }
 
 func (b *LockFreeBatcher) Start() {
+	if !b.started.CompareAndSwap(false, true) {
+		return
+	}
+
 	b.done = make(chan struct{})
+
 	go b.doWork()
 }
 
@@ -336,15 +340,16 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 			}
 
 			b.connected.Delete(removedID)
-			b.pendingChanges.Delete(removedID)
 		}
 	}
 
 	// Short circuit if any of the changes is a full update, which
 	// means we can skip sending individual changes.
 	if change.HasFull(changes) {
-		b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
-			b.pendingChanges.Store(nodeID, []change.Change{change.FullUpdate()})
+		b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
+			nc.pendingMu.Lock()
+			nc.pending = []change.Change{change.FullUpdate()}
+			nc.pendingMu.Unlock()
 
 			return true
 		})
@@ -356,20 +361,18 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 
 	// Handle targeted changes - send only to the specific node
 	for _, ch := range targeted {
-		pending, _ := b.pendingChanges.LoadOrStore(ch.TargetNode, []change.Change{})
-		pending = append(pending, ch)
-		b.pendingChanges.Store(ch.TargetNode, pending)
+		if nc, ok := b.nodes.Load(ch.TargetNode); ok {
+			nc.appendPending(ch)
+		}
 	}
 
 	// Handle broadcast changes - send to all nodes, filtering as needed
 	if len(broadcast) > 0 {
-		b.nodes.Range(func(nodeID types.NodeID, _ *multiChannelNodeConn) bool {
+		b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
 			filtered := change.FilterForNode(nodeID, broadcast)
 
 			if len(filtered) > 0 {
-				pending, _ := b.pendingChanges.LoadOrStore(nodeID, []change.Change{})
-				pending = append(pending, filtered...)
-				b.pendingChanges.Store(nodeID, pending)
+				nc.appendPending(filtered...)
 			}
 
 			return true
@@ -379,12 +382,8 @@ func (b *LockFreeBatcher) addToBatch(changes ...change.Change) {
 
 // processBatchedChanges processes all pending batched changes.
 func (b *LockFreeBatcher) processBatchedChanges() {
-	if b.pendingChanges == nil {
-		return
-	}
-
-	// Process all pending changes
-	b.pendingChanges.Range(func(nodeID types.NodeID, pending []change.Change) bool {
+	b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+		pending := nc.drainPending()
 		if len(pending) == 0 {
 			return true
 		}
@@ -393,9 +392,6 @@ func (b *LockFreeBatcher) processBatchedChanges() {
 		for _, ch := range pending {
 			b.queueWork(work{c: ch, nodeID: nodeID, resultCh: nil})
 		}
-
-		// Clear the pending changes for this node
-		b.pendingChanges.Delete(nodeID)
 
 		return true
 	})
@@ -532,6 +528,13 @@ type multiChannelNodeConn struct {
 	mutex       sync.RWMutex
 	connections []*connectionEntry
 
+	// pendingMu protects pending changes independently of the connection mutex.
+	// This avoids contention between addToBatch (which appends changes) and
+	// send() (which sends data to connections).
+	pendingMu sync.Mutex
+	pending   []change.Change
+
+	closeOnce   sync.Once
 	updateCount atomic.Int64
 
 	// lastSentPeers tracks which peers were last sent to this node.
@@ -560,12 +563,14 @@ func newMultiChannelNodeConn(id types.NodeID, mapper *mapper) *multiChannelNodeC
 }
 
 func (mc *multiChannelNodeConn) close() {
-	mc.mutex.Lock()
-	defer mc.mutex.Unlock()
+	mc.closeOnce.Do(func() {
+		mc.mutex.Lock()
+		defer mc.mutex.Unlock()
 
-	for _, conn := range mc.connections {
-		mc.stopConnection(conn)
-	}
+		for _, conn := range mc.connections {
+			mc.stopConnection(conn)
+		}
+	})
 }
 
 // stopConnection marks a connection as closed and tears down the owning session
@@ -645,6 +650,25 @@ func (mc *multiChannelNodeConn) getActiveConnectionCount() int {
 	defer mc.mutex.RUnlock()
 
 	return len(mc.connections)
+}
+
+// appendPending appends changes to this node's pending change list.
+// Thread-safe via pendingMu; does not contend with the connection mutex.
+func (mc *multiChannelNodeConn) appendPending(changes ...change.Change) {
+	mc.pendingMu.Lock()
+	mc.pending = append(mc.pending, changes...)
+	mc.pendingMu.Unlock()
+}
+
+// drainPending atomically removes and returns all pending changes.
+// Returns nil if there are no pending changes.
+func (mc *multiChannelNodeConn) drainPending() []change.Change {
+	mc.pendingMu.Lock()
+	p := mc.pending
+	mc.pending = nil
+	mc.pendingMu.Unlock()
+
+	return p
 }
 
 // send broadcasts data to all active connections for the node.
