@@ -26,6 +26,10 @@ var (
 	ErrNodeNotFoundMapper = errors.New("node not found")
 )
 
+// offlineNodeCleanupThreshold is how long a node must be disconnected
+// before cleanupOfflineNodes removes its in-memory state.
+const offlineNodeCleanupThreshold = 15 * time.Minute
+
 var mapResponseGenerated = promauto.NewCounterVec(prometheus.CounterOpts{
 	Namespace: "headscale",
 	Name:      "mapresponse_generated_total",
@@ -327,7 +331,7 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) boo
 
 // AddWork queues a change to be processed by the batcher.
 func (b *Batcher) AddWork(r ...change.Change) {
-	b.addWork(r...)
+	b.addToBatch(r...)
 }
 
 func (b *Batcher) Start() {
@@ -477,10 +481,6 @@ func (b *Batcher) worker(workerID int) {
 	}
 }
 
-func (b *Batcher) addWork(r ...change.Change) {
-	b.addToBatch(r...)
-}
-
 // queueWork safely queues work.
 func (b *Batcher) queueWork(w work) {
 	b.workQueuedCount.Add(1)
@@ -595,14 +595,13 @@ func (b *Batcher) processBatchedChanges() {
 // reconnects between the hasActiveConnections() check and the Delete() call.
 // TODO(kradalby): reevaluate if we want to keep this.
 func (b *Batcher) cleanupOfflineNodes() {
-	cleanupThreshold := 15 * time.Minute
 	now := time.Now()
 
 	var nodesToCleanup []types.NodeID
 
 	// Find nodes that have been offline for too long
 	b.connected.Range(func(nodeID types.NodeID, disconnectTime *time.Time) bool {
-		if disconnectTime != nil && now.Sub(*disconnectTime) > cleanupThreshold {
+		if disconnectTime != nil && now.Sub(*disconnectTime) > offlineNodeCleanupThreshold {
 			nodesToCleanup = append(nodesToCleanup, nodeID)
 		}
 
@@ -632,7 +631,7 @@ func (b *Batcher) cleanupOfflineNodes() {
 				cleaned++
 
 				log.Info().Uint64(zf.NodeID, nodeID.Uint64()).
-					Dur("offline_duration", cleanupThreshold).
+					Dur("offline_duration", offlineNodeCleanupThreshold).
 					Msg("cleaning up node that has been offline for too long")
 
 				return conn, xsync.DeleteOp
@@ -750,9 +749,7 @@ func (b *Batcher) Debug() map[types.NodeID]DebugNodeInfo {
 			return true
 		}
 
-		nodeConn.mutex.RLock()
-		activeConnCount := len(nodeConn.connections)
-		nodeConn.mutex.RUnlock()
+		activeConnCount := nodeConn.getActiveConnectionCount()
 
 		// Use immediate connection status: if active connections exist, node is connected
 		// If not, check the connected map for nil (connected) vs timestamp (disconnected)
