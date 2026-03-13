@@ -25,6 +25,8 @@ import (
 
 var errNodeNotFoundAfterAdd = errors.New("node not found after adding to batcher")
 
+type batcherFunc func(cfg *types.Config, state *state.State) *Batcher
+
 // batcherTestCase defines a batcher function with a descriptive name for testing.
 type batcherTestCase struct {
 	name string
@@ -34,7 +36,7 @@ type batcherTestCase struct {
 // testBatcherWrapper wraps a real batcher to add online/offline notifications
 // that would normally be sent by poll.go in production.
 type testBatcherWrapper struct {
-	Batcher
+	*Batcher
 
 	state *state.State
 }
@@ -85,13 +87,13 @@ func (t *testBatcherWrapper) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapRe
 }
 
 // wrapBatcherForTest wraps a batcher with test-specific behavior.
-func wrapBatcherForTest(b Batcher, state *state.State) Batcher {
+func wrapBatcherForTest(b *Batcher, state *state.State) *testBatcherWrapper {
 	return &testBatcherWrapper{Batcher: b, state: state}
 }
 
 // allBatcherFunctions contains all batcher implementations to test.
 var allBatcherFunctions = []batcherTestCase{
-	{"LockFree", NewBatcherAndMapper},
+	{"Default", NewBatcherAndMapper},
 }
 
 // emptyCache creates an empty registration cache for testing.
@@ -134,7 +136,7 @@ type TestData struct {
 	Nodes    []node
 	State    *state.State
 	Config   *types.Config
-	Batcher  Batcher
+	Batcher  *testBatcherWrapper
 }
 
 type node struct {
@@ -2354,46 +2356,35 @@ func TestBatcherRapidReconnection(t *testing.T) {
 			// Check debug status after reconnection.
 			t.Logf("Checking debug status...")
 
-			if debugBatcher, ok := batcher.(interface {
-				Debug() map[types.NodeID]any
-			}); ok {
-				debugInfo := debugBatcher.Debug()
-				disconnectedCount := 0
+			debugInfo := batcher.Debug()
+			disconnectedCount := 0
 
-				for i := range allNodes {
-					node := &allNodes[i]
-					if info, exists := debugInfo[node.n.ID]; exists {
-						t.Logf("Node %d (ID %d): debug info = %+v", i, node.n.ID, info)
+			for i := range allNodes {
+				node := &allNodes[i]
+				if info, exists := debugInfo[node.n.ID]; exists {
+					t.Logf("Node %d (ID %d): debug info = %+v", i, node.n.ID, info)
 
-						// Check if the debug info shows the node as connected
-						if infoMap, ok := info.(map[string]any); ok {
-							if connected, ok := infoMap["connected"].(bool); ok && !connected {
-								disconnectedCount++
-
-								t.Logf("BUG REPRODUCED: Node %d shows as disconnected in debug but should be connected", i)
-							}
-						}
-					} else {
+					if !info.Connected {
 						disconnectedCount++
 
-						t.Logf("Node %d missing from debug info entirely", i)
+						t.Logf("BUG REPRODUCED: Node %d shows as disconnected in debug but should be connected", i)
 					}
-
-					// Also check IsConnected method
-					if !batcher.IsConnected(node.n.ID) {
-						t.Logf("Node %d IsConnected() returns false", i)
-					}
-				}
-
-				if disconnectedCount > 0 {
-					t.Logf("ISSUE REPRODUCED: %d/%d nodes show as disconnected in debug", disconnectedCount, len(allNodes))
-					// This is expected behavior for multi-channel batcher according to user
-					// "it has never worked with the multi"
 				} else {
-					t.Logf("All nodes show as connected - working correctly")
+					disconnectedCount++
+
+					t.Logf("Node %d missing from debug info entirely", i)
 				}
+
+				// Also check IsConnected method
+				if !batcher.IsConnected(node.n.ID) {
+					t.Logf("Node %d IsConnected() returns false", i)
+				}
+			}
+
+			if disconnectedCount > 0 {
+				t.Logf("ISSUE REPRODUCED: %d/%d nodes show as disconnected in debug", disconnectedCount, len(allNodes))
 			} else {
-				t.Logf("Batcher does not implement Debug() method")
+				t.Logf("All nodes show as connected - working correctly")
 			}
 
 			// Test if "disconnected" nodes can actually receive updates.
@@ -2491,37 +2482,25 @@ func TestBatcherMultiConnection(t *testing.T) {
 			// Verify debug status shows correct connection count.
 			t.Logf("Verifying debug status shows multiple connections...")
 
-			if debugBatcher, ok := batcher.(interface {
-				Debug() map[types.NodeID]any
-			}); ok {
-				debugInfo := debugBatcher.Debug()
+			debugInfo := batcher.Debug()
 
-				if info, exists := debugInfo[node1.n.ID]; exists {
-					t.Logf("Node1 debug info: %+v", info)
+			if info, exists := debugInfo[node1.n.ID]; exists {
+				t.Logf("Node1 debug info: %+v", info)
 
-					if infoMap, ok := info.(map[string]any); ok {
-						if activeConnections, ok := infoMap["active_connections"].(int); ok {
-							if activeConnections != 3 {
-								t.Errorf("Node1 should have 3 active connections, got %d", activeConnections)
-							} else {
-								t.Logf("SUCCESS: Node1 correctly shows 3 active connections")
-							}
-						}
-
-						if connected, ok := infoMap["connected"].(bool); ok && !connected {
-							t.Errorf("Node1 should show as connected with 3 active connections")
-						}
-					}
+				if info.ActiveConnections != 3 {
+					t.Errorf("Node1 should have 3 active connections, got %d", info.ActiveConnections)
+				} else {
+					t.Logf("SUCCESS: Node1 correctly shows 3 active connections")
 				}
 
-				if info, exists := debugInfo[node2.n.ID]; exists {
-					if infoMap, ok := info.(map[string]any); ok {
-						if activeConnections, ok := infoMap["active_connections"].(int); ok {
-							if activeConnections != 1 {
-								t.Errorf("Node2 should have 1 active connection, got %d", activeConnections)
-							}
-						}
-					}
+				if !info.Connected {
+					t.Errorf("Node1 should show as connected with 3 active connections")
+				}
+			}
+
+			if info, exists := debugInfo[node2.n.ID]; exists {
+				if info.ActiveConnections != 1 {
+					t.Errorf("Node2 should have 1 active connection, got %d", info.ActiveConnections)
 				}
 			}
 
@@ -2604,20 +2583,12 @@ func TestBatcherMultiConnection(t *testing.T) {
 			runtime.Gosched()
 
 			// Verify debug status shows 2 connections now
-			if debugBatcher, ok := batcher.(interface {
-				Debug() map[types.NodeID]any
-			}); ok {
-				debugInfo := debugBatcher.Debug()
-				if info, exists := debugInfo[node1.n.ID]; exists {
-					if infoMap, ok := info.(map[string]any); ok {
-						if activeConnections, ok := infoMap["active_connections"].(int); ok {
-							if activeConnections != 2 {
-								t.Errorf("Node1 should have 2 active connections after removal, got %d", activeConnections)
-							} else {
-								t.Logf("SUCCESS: Node1 correctly shows 2 active connections after removal")
-							}
-						}
-					}
+			debugInfo2 := batcher.Debug()
+			if info, exists := debugInfo2[node1.n.ID]; exists {
+				if info.ActiveConnections != 2 {
+					t.Errorf("Node1 should have 2 active connections after removal, got %d", info.ActiveConnections)
+				} else {
+					t.Logf("SUCCESS: Node1 correctly shows 2 active connections after removal")
 				}
 			}
 
@@ -2731,11 +2702,9 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 			}, 5*time.Second, 50*time.Millisecond, "waiting for nodes to connect")
 
 			// Get initial work errors count
-			var initialWorkErrors int64
-			if lfb, ok := unwrapBatcher(batcher).(*LockFreeBatcher); ok {
-				initialWorkErrors = lfb.WorkErrors()
-				t.Logf("Initial work errors: %d", initialWorkErrors)
-			}
+			lfb := unwrapBatcher(batcher)
+			initialWorkErrors := lfb.WorkErrors()
+			t.Logf("Initial work errors: %d", initialWorkErrors)
 
 			// Clear channels to prepare for the test
 			drainCh(node1.ch)
@@ -2777,11 +2746,7 @@ func TestNodeDeletedWhileChangesPending(t *testing.T) {
 			// With the fix, no new errors should occur because the deleted node
 			// was cleaned up from batcher state when NodeRemoved was processed
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				var finalWorkErrors int64
-				if lfb, ok := unwrapBatcher(batcher).(*LockFreeBatcher); ok {
-					finalWorkErrors = lfb.WorkErrors()
-				}
-
+				finalWorkErrors := lfb.WorkErrors()
 				newErrors := finalWorkErrors - initialWorkErrors
 				assert.Zero(c, newErrors, "Fix for #2924: should have no work errors after node deletion")
 			}, 5*time.Second, 100*time.Millisecond, "waiting for work processing to complete without errors")
@@ -2809,8 +2774,7 @@ func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
 				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
 				defer cleanup()
 
-				lfb, ok := unwrapBatcher(testData.Batcher).(*LockFreeBatcher)
-				require.True(t, ok, "expected LockFreeBatcher")
+				lfb := unwrapBatcher(testData.Batcher)
 
 				nodeID := testData.Nodes[0].n.ID
 				ch := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
@@ -2838,8 +2802,7 @@ func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
 				testData, cleanup := setupBatcherWithTestData(t, batcherFunc.fn, 1, 1, NORMAL_BUFFER_SIZE)
 				defer cleanup()
 
-				lfb, ok := unwrapBatcher(testData.Batcher).(*LockFreeBatcher)
-				require.True(t, ok, "expected LockFreeBatcher")
+				lfb := unwrapBatcher(testData.Batcher)
 
 				nodeID := testData.Nodes[0].n.ID
 				ch1 := make(chan *tailcfg.MapResponse, NORMAL_BUFFER_SIZE)
@@ -2867,11 +2830,7 @@ func TestRemoveNodeChannelAlreadyRemoved(t *testing.T) {
 	}
 }
 
-// unwrapBatcher extracts the underlying batcher from wrapper types.
-func unwrapBatcher(b Batcher) Batcher {
-	if wrapper, ok := b.(*testBatcherWrapper); ok {
-		return unwrapBatcher(wrapper.Batcher)
-	}
-
-	return b
+// unwrapBatcher extracts the underlying *Batcher from the test wrapper.
+func unwrapBatcher(b *testBatcherWrapper) *Batcher {
+	return b.Batcher
 }

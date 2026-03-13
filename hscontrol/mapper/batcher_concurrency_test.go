@@ -35,7 +35,7 @@ import (
 // lightweightBatcher provides a batcher with pre-populated nodes for testing
 // the batching, channel, and concurrency mechanics without database overhead.
 type lightweightBatcher struct {
-	b        *LockFreeBatcher
+	b        *Batcher
 	channels map[types.NodeID]chan *tailcfg.MapResponse
 }
 
@@ -46,7 +46,7 @@ type lightweightBatcher struct {
 func setupLightweightBatcher(t *testing.T, nodeCount, bufferSize int) *lightweightBatcher {
 	t.Helper()
 
-	b := &LockFreeBatcher{
+	b := &Batcher{
 		tick:      time.NewTicker(10 * time.Millisecond),
 		workers:   4,
 		workCh:    make(chan work, 4*200),
@@ -86,7 +86,7 @@ func (lb *lightweightBatcher) cleanup() {
 }
 
 // countTotalPending counts total pending change entries across all nodes.
-func countTotalPending(b *LockFreeBatcher) int {
+func countTotalPending(b *Batcher) int {
 	count := 0
 
 	b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
@@ -101,7 +101,7 @@ func countTotalPending(b *LockFreeBatcher) int {
 }
 
 // countNodesPending counts how many nodes have pending changes.
-func countNodesPending(b *LockFreeBatcher) int {
+func countNodesPending(b *Batcher) int {
 	count := 0
 
 	b.nodes.Range(func(_ types.NodeID, nc *multiChannelNodeConn) bool {
@@ -120,7 +120,7 @@ func countNodesPending(b *LockFreeBatcher) int {
 }
 
 // getPendingForNode returns pending changes for a specific node.
-func getPendingForNode(b *LockFreeBatcher, id types.NodeID) []change.Change {
+func getPendingForNode(b *Batcher, id types.NodeID) []change.Change {
 	nc, ok := b.nodes.Load(id)
 	if !ok {
 		return nil
@@ -1167,7 +1167,7 @@ func TestScale1000_MultiChannelBroadcast(t *testing.T) {
 	)
 
 	// Create nodes with varying connection counts
-	b := &LockFreeBatcher{
+	b := &Batcher{
 		tick:      time.NewTicker(10 * time.Millisecond),
 		workers:   4,
 		workCh:    make(chan work, 4*200),
@@ -1569,7 +1569,7 @@ func TestScale1000_WorkChannelSaturation(t *testing.T) {
 	defer zerolog.SetGlobalLevel(zerolog.DebugLevel)
 
 	// Create batcher with SMALL work channel to force saturation
-	b := &LockFreeBatcher{
+	b := &Batcher{
 		tick:      time.NewTicker(10 * time.Millisecond),
 		workers:   2,
 		workCh:    make(chan work, 10), // Very small - will saturate

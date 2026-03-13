@@ -148,8 +148,8 @@ func BenchmarkUpdateSentPeers(b *testing.B) {
 
 // benchBatcher creates a lightweight batcher for benchmarks. Unlike the test
 // helper, it doesn't register cleanup and suppresses logging.
-func benchBatcher(nodeCount, bufferSize int) (*LockFreeBatcher, map[types.NodeID]chan *tailcfg.MapResponse) {
-	b := &LockFreeBatcher{
+func benchBatcher(nodeCount, bufferSize int) (*Batcher, map[types.NodeID]chan *tailcfg.MapResponse) {
+	b := &Batcher{
 		tick:      time.NewTicker(1 * time.Hour), // never fires during bench
 		workers:   4,
 		workCh:    make(chan work, 4*200),

@@ -101,7 +101,7 @@ type Headscale struct {
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
-	mapBatcher     mapper.Batcher
+	mapBatcher     *mapper.Batcher
 
 	clientStreamsOpen sync.WaitGroup
 }
