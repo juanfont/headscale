@@ -422,6 +422,10 @@ func (node *Node) Proto() *v1.Node {
 		nodeProto.Expiry = timestamppb.New(*node.Expiry)
 	}
 
+	if node.Hostinfo != nil {
+		nodeProto.ClientVersion = node.Hostinfo.View().IPNVersion()
+	}
+
 	return nodeProto
 }
 

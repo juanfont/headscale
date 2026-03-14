@@ -98,6 +98,7 @@ type Node struct {
 	AvailableRoutes []string `protobuf:"bytes,24,rep,name=available_routes,json=availableRoutes,proto3" json:"available_routes,omitempty"`
 	SubnetRoutes    []string `protobuf:"bytes,25,rep,name=subnet_routes,json=subnetRoutes,proto3" json:"subnet_routes,omitempty"`
 	Tags            []string `protobuf:"bytes,26,rep,name=tags,proto3" json:"tags,omitempty"`
+	ClientVersion   string   `protobuf:"bytes,27,opt,name=client_version,json=clientVersion,proto3" json:"client_version,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -256,6 +257,13 @@ func (x *Node) GetTags() []string {
 		return x.Tags
 	}
 	return nil
+}
+
+func (x *Node) GetClientVersion() string {
+	if x != nil {
+		return x.ClientVersion
+	}
+	return ""
 }
 
 type RegisterNodeRequest struct {

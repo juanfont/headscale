@@ -53,6 +53,7 @@ message Node {
   repeated string available_routes = 24;
   repeated string subnet_routes = 25;
   repeated string tags = 26;
+  string client_version = 27;
 }
 
 message RegisterNodeRequest {
