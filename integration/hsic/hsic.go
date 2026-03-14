@@ -274,14 +274,6 @@ func WithTimezone(timezone string) Option {
 	}
 }
 
-// WithDERPAsIP enables using IP address instead of hostname for DERP server.
-// This is useful for integration tests where DNS resolution may be unreliable.
-func WithDERPAsIP() Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_DEBUG_DERP_USE_IP"] = "1"
-	}
-}
-
 // buildEntrypoint builds the container entrypoint command based on configuration.
 // It constructs proper wait conditions instead of fixed sleeps:
 // 1. Wait for network to be ready

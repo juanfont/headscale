@@ -46,6 +46,11 @@ func DefaultConfigEnv() map[string]string {
 		"DERP_DEBUG_LOGS":                        "true",
 		"DERP_PROBER_DEBUG_LOGS":                 "true",
 
+		// Docker containers cannot reliably resolve other container
+		// hostnames for DERP connections. Advertise the embedded DERP
+		// server by IP address instead of hostname.
+		"HEADSCALE_DEBUG_DERP_USE_IP": "1",
+
 		// a bunch of tests (ACL/Policy) rely on predictable IP alloc,
 		// so ensure the sequential alloc is used by default.
 		"HEADSCALE_PREFIXES_ALLOCATION": string(types.IPAllocationStrategySequential),

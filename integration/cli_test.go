@@ -1630,9 +1630,9 @@ func TestPolicyCommand(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
-		hsic.WithTestName("clins"),
+		hsic.WithTestName("cli-policy"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
+			"HEADSCALE_POLICY_MODE": "database", // test sets/gets policy via CLI
 		}),
 	)
 	require.NoError(t, err)
@@ -1717,7 +1717,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithTestName("cli-policybad"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
+			"HEADSCALE_POLICY_MODE": "database", // test sets invalid policy via CLI
 		}),
 	)
 	require.NoError(t, err)

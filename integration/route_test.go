@@ -2301,7 +2301,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					opts := []hsic.Option{
 						hsic.WithTestName("autoapprovemulti"),
 						hsic.WithACLPolicy(pol),
-						hsic.WithPolicyMode(polMode),
+						hsic.WithPolicyMode(polMode), // test iterates over file and DB policy modes
 					}
 
 					tsOpts := []tsic.Option{
@@ -3018,7 +3018,7 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 		tsic.WithAcceptRoutes(),
 	}, hsic.WithTestName("routeaclfilter"),
 		hsic.WithACLPolicy(aclPolicy),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

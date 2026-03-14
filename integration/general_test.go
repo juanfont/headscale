@@ -41,6 +41,9 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyip"),
+		// All other tests use the default sequential allocation.
+		// This test uses random allocation to ensure it does not
+		// break basic connectivity.
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -100,6 +103,10 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyippubderp"),
+		// Explicitly use public DERP relays instead of the embedded
+		// DERP server to verify connectivity through Tailscale's
+		// infrastructure. TLS is disabled because the headscale
+		// server does not need to terminate TLS for this test.
 		hsic.WithPublicDERP(),
 		hsic.WithoutTLS(),
 	)
@@ -128,6 +135,8 @@ func TestEphemeral(t *testing.T) {
 	testEphemeralWithOptions(t, hsic.WithTestName("ephemeral"))
 }
 
+// TestEphemeralInAlternateTimezone verifies that ephemeral node
+// expiry works correctly when the server runs in a non-UTC timezone.
 func TestEphemeralInAlternateTimezone(t *testing.T) {
 	testEphemeralWithOptions(
 		t,
@@ -1401,7 +1410,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyipmany"),
-		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

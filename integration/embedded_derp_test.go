@@ -119,7 +119,9 @@ func derpServerScenario(
 			tsic.WithWebsocketDERP(websocket),
 		},
 		hsic.WithTestName(testName),
+		// Expose STUN port for DERP NAT traversal.
 		hsic.WithExtraPorts([]string{"3478/udp"}),
+		// DERP clients expect the server on the standard HTTPS port.
 		hsic.WithPort(443),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":   "true",

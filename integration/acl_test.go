@@ -1165,7 +1165,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -1435,7 +1435,10 @@ func TestACLAutogroupTagged(t *testing.T) {
 				network = networks[0]
 			}
 
-			// Create the tailscale node with appropriate options
+			// Create the tailscale node with appropriate options.
+			// CACert and HeadscaleName are passed explicitly because
+			// nodes created via CreateTailscaleNode are not part of
+			// the standard CreateHeadscaleEnv flow.
 			opts := []tsic.Option{
 				tsic.WithCACert(headscale.GetCert()),
 				tsic.WithHeadscaleName(headscale.GetHostname()),
@@ -1724,7 +1727,10 @@ func TestACLAutogroupSelf(t *testing.T) {
 	authKey, err := scenario.CreatePreAuthKeyWithTags(routerUser.GetId(), true, false, []string{"tag:router-node"})
 	require.NoError(t, err)
 
-	// Create router node (tags come from the PreAuthKey)
+	// Create router node (tags come from the PreAuthKey).
+	// CACert and HeadscaleName are passed explicitly because
+	// nodes created via tsic.New are not part of the standard
+	// CreateHeadscaleEnv flow.
 	routerClient, err := tsic.New(
 		scenario.Pool(),
 		"unstable",
@@ -1920,7 +1926,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("aclpropagation"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3358,7 +3364,7 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		},
 		hsic.WithACLPolicy(initialPolicy),
 		hsic.WithTestName("acl-exact-repro"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3535,7 +3541,7 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		},
 		hsic.WithACLPolicy(validPolicy),
 		hsic.WithTestName("acl-dynamic-unknown"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3691,7 +3697,7 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policyWithUnknown),
 		hsic.WithTestName("acl-unknown-removal"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
