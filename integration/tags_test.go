@@ -9,6 +9,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -122,6 +123,8 @@ func assertNodeSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClient
 func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 	IntegrationSkip(t)
 
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	policy := tagsTestPolicy()
 
 	spec := ScenarioSpec{
@@ -182,7 +185,7 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -196,6 +199,8 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 // Expected: Registration succeeds, node has ["tag:valid-owned"] (inherited from key).
 func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -253,7 +258,7 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 			t.Logf("Node registered with tags: %v", node.GetTags())
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying node inherited tags from auth key")
+	}, assertTimeout, 500*time.Millisecond, "verifying node inherited tags from auth key")
 
 	t.Logf("Test 2.2 completed - node inherited tags from auth key")
 }
@@ -269,6 +274,8 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 // Expected: Command fails with error containing "requested tags [tag:second] are invalid or not permitted".
 func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -322,7 +329,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	t.Logf("Node registered with tag:valid-owned, now attempting to add tag:second via CLI")
 
@@ -355,7 +362,7 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
-		}, 10*time.Second, 500*time.Millisecond, "verifying tags unchanged")
+		}, assertTimeout, 500*time.Millisecond, "verifying tags unchanged")
 	}
 }
 
@@ -370,6 +377,8 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 // Expected: Command fails, tags remain ["tag:valid-owned"].
 func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -419,7 +428,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1)
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	t.Logf("Node registered, now attempting to change to different tag via CLI")
 
@@ -451,7 +460,7 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
-		}, 10*time.Second, 500*time.Millisecond, "verifying tags unchanged")
+		}, assertTimeout, 500*time.Millisecond, "verifying tags unchanged")
 	}
 }
 
@@ -467,6 +476,8 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 // Expected: After step 2 tags are ["tag:second"], after step 3 tags remain ["tag:second"].
 func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -523,7 +534,7 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	t.Logf("Step 1 complete: Node %d registered with tag:valid-owned", nodeID)
 
@@ -540,12 +551,12 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 			t.Logf("After admin assignment, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin tag assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
 
 	t.Logf("Step 2 complete: Admin assigned tag:second (verified on both server and node self)")
 
@@ -573,12 +584,12 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 			// Expected: admin-assigned tags are preserved through reauth
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:second"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after reauth on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after reauth on server")
 
 	// Verify admin tags are preserved in node's self view after reauth (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after reauth in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after reauth in node self")
 
 	t.Logf("Test 2.5 PASS: Admin tags preserved through reauth (admin decisions are authoritative)")
 }
@@ -595,6 +606,8 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 // Expected: Command either fails or is no-op, tags remain ["tag:valid-owned", "tag:second"].
 func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -650,7 +663,7 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 		if len(nodes) == 1 {
 			nodeID = nodes[0].GetId()
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns multiple tags via headscale CLI
 	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-owned", "tag:second"})
@@ -664,12 +677,12 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin tag assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
 
 	t.Logf("Admin assigned both tags, now attempting to reduce via CLI")
 
@@ -696,12 +709,12 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 			// Expected: tags should remain unchanged (admin wins)
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved after CLI attempt on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after CLI attempt on server")
 
 	// Verify admin tags are preserved in node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after CLI attempt in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after CLI attempt in node self")
 
 	t.Logf("Test 2.6 PASS: Admin tags preserved - CLI cannot modify admin-assigned tags")
 }
@@ -718,6 +731,8 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 // Expected: Registration fails with error containing "requested tags [tag:valid-owned] are invalid or not permitted".
 func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -776,7 +791,7 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -790,6 +805,8 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 // Expected: Registration succeeds, node has no tags (empty tag set).
 func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -844,7 +861,7 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 			t.Logf("Node registered with tags: %v", nodes[0].GetTags())
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
 		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying node has no tags")
+	}, assertTimeout, 500*time.Millisecond, "verifying node has no tags")
 
 	t.Logf("Test 3.2 completed - node registered without tags")
 }
@@ -860,6 +877,8 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 // Expected: Command fails, node remains with no tags.
 func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -913,7 +932,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	t.Logf("Node registered without tags, attempting to add via CLI")
 
@@ -944,7 +963,7 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 					assert.Fail(c, "Tags should not have changed")
 				}
 			}
-		}, 10*time.Second, 500*time.Millisecond, "verifying tags unchanged")
+		}, assertTimeout, 500*time.Millisecond, "verifying tags unchanged")
 	}
 }
 
@@ -960,6 +979,8 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 // Expected: Command is no-op, tags remain ["tag:valid-owned"].
 func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1016,7 +1037,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			assertNodeHasNoTagsWithCollect(c, nodes[0])
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns tags
 	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-owned"})
@@ -1030,12 +1051,12 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin tag assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
 
 	t.Logf("Admin assigned tag, now running CLI with --reset")
 
@@ -1059,12 +1080,12 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 			t.Logf("After --reset, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved after --reset on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after --reset on server")
 
 	// Verify admin tags are preserved in node's self view after --reset (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after --reset in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after --reset in node self")
 
 	t.Logf("Test 3.4 PASS: Admin tags preserved after --reset")
 }
@@ -1081,6 +1102,8 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 // Expected: Command is no-op, tags remain ["tag:valid-owned"].
 func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1136,7 +1159,7 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 		if len(nodes) == 1 {
 			nodeID = nodes[0].GetId()
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns tags
 	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-owned"})
@@ -1150,12 +1173,12 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin tag assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
 
 	t.Logf("Admin assigned tag, now running CLI with empty --advertise-tags")
 
@@ -1179,12 +1202,12 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 			t.Logf("After empty --advertise-tags, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved after empty --advertise-tags on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after empty --advertise-tags on server")
 
 	// Verify admin tags are preserved in node's self view after empty --advertise-tags (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after empty --advertise-tags in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after empty --advertise-tags in node self")
 
 	t.Logf("Test 3.5 PASS: Admin tags preserved after empty --advertise-tags")
 }
@@ -1201,6 +1224,8 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 // Expected: Command is no-op (or fails), tags remain ["tag:valid-owned", "tag:second"].
 func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1256,7 +1281,7 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 		if len(nodes) == 1 {
 			nodeID = nodes[0].GetId()
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns multiple tags
 	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-owned", "tag:second"})
@@ -1270,12 +1295,12 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin tag assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin tag assignment propagated to node self")
 
 	t.Logf("Admin assigned both tags, now attempting to reduce via CLI")
 
@@ -1299,12 +1324,12 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 			t.Logf("After CLI reduce attempt, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved after CLI reduce attempt on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after CLI reduce attempt on server")
 
 	// Verify admin tags are preserved in node's self view after CLI reduce attempt (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved after CLI reduce attempt in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved after CLI reduce attempt in node self")
 
 	t.Logf("Test 3.6 PASS: Admin tags preserved - CLI cannot reduce admin-assigned multi-tag set")
 }
@@ -1321,6 +1346,8 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 // Expected: Node has ["tag:valid-owned"].
 func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1368,7 +1395,7 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for client to be running
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify node has the advertised tag
@@ -1381,7 +1408,7 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 			t.Logf("Node registered with tags: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying node has advertised tag")
+	}, assertTimeout, 500*time.Millisecond, "verifying node has advertised tag")
 
 	t.Logf("Test 1.1 completed - web auth with owned tag succeeded")
 }
@@ -1394,6 +1421,8 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 // Expected: Registration fails - node should not be registered OR should have no tags.
 func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1455,7 +1484,7 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 					"Non-existent tag should not be applied to node")
 				t.Logf("Test 1.2: Node registered with tags: %v (non-existent tag correctly rejected)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node registration result")
+		}, assertTimeout, 500*time.Millisecond, "checking node registration result")
 	}
 }
 
@@ -1467,6 +1496,8 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 // Expected: Registration fails - node should not be registered OR should have no tags.
 func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1524,7 +1555,7 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 				"Unowned tag should not be applied to node (tag:valid-unowned is owned by other-user)")
 			t.Logf("Test 1.3: Node registered with tags: %v (unowned tag correctly rejected)", nodes[0].GetTags())
 		}
-	}, 10*time.Second, 500*time.Millisecond, "checking node registration result")
+	}, assertTimeout, 500*time.Millisecond, "checking node registration result")
 }
 
 // TestTagsUserLoginAddTagViaCLIReauth tests that a user can add tags via CLI reauthentication.
@@ -1537,6 +1568,8 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 // Expected: Triggers full reauthentication, node has both tags.
 func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1578,7 +1611,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial tag
@@ -1589,7 +1622,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 		if len(nodes) == 1 {
 			t.Logf("Initial tags: %v", nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "checking initial tags")
+	}, assertTimeout, 500*time.Millisecond, "checking initial tags")
 
 	// Step 2: Try to add second tag via CLI
 	t.Logf("Attempting to add second tag via CLI reauth")
@@ -1616,7 +1649,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 				t.Logf("Test 1.4: Tags are %v (may require manual reauth completion)", nodes[0].GetTags())
 			}
 		}
-	}, 30*time.Second, 500*time.Millisecond, "checking tags after CLI")
+	}, assertTimeout, 500*time.Millisecond, "checking tags after CLI")
 }
 
 // TestTagsUserLoginRemoveTagViaCLIReauth tests that a user can remove tags via CLI reauthentication.
@@ -1629,6 +1662,8 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 // Expected: Triggers full reauthentication, node has only ["tag:valid-owned"].
 func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1670,7 +1705,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial tags
@@ -1681,7 +1716,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 		if len(nodes) == 1 {
 			t.Logf("Initial tags: %v", nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "checking initial tags")
+	}, assertTimeout, 500*time.Millisecond, "checking initial tags")
 
 	// Step 2: Try to remove second tag via CLI
 	t.Logf("Attempting to remove tag via CLI reauth")
@@ -1706,7 +1741,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 				t.Logf("Test 1.5 PASS: Only one tag after removal")
 			}
 		}
-	}, 30*time.Second, 500*time.Millisecond, "checking tags after CLI")
+	}, assertTimeout, 500*time.Millisecond, "checking tags after CLI")
 }
 
 // TestTagsUserLoginCLINoOpAfterAdminAssignment tests that CLI advertise-tags becomes
@@ -1721,6 +1756,8 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 // Expected: Step 3 does NOT trigger reauthentication, tags remain ["tag:second"].
 func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1762,7 +1799,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Get node ID
@@ -1777,7 +1814,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			t.Logf("Step 1: Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns different tag
 	err = headscale.SetNodeTags(nodeID, []string{"tag:second"})
@@ -1792,12 +1829,12 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 			t.Logf("Step 2: After admin assignment, server tags: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin assignment propagated to node self")
 
 	// Step 3: Try to change tags via CLI
 	command := []string{
@@ -1818,12 +1855,12 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 			t.Logf("Step 3: After CLI, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved - CLI advertise-tags should be no-op on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved - CLI advertise-tags should be no-op on server")
 
 	// Verify admin tags are preserved in node's self view after CLI attempt (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved - CLI advertise-tags should be no-op in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved - CLI advertise-tags should be no-op in node self")
 
 	t.Logf("Test 1.6 PASS: Admin tags preserved (CLI was no-op)")
 }
@@ -1839,6 +1876,8 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 // Expected: Command is no-op, tags remain ["tag:valid-owned", "tag:second"].
 func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -1880,7 +1919,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Get node ID
@@ -1894,7 +1933,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 		if len(nodes) == 1 {
 			nodeID = nodes[0].GetId()
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Step 2: Admin assigns both tags
 	err = headscale.SetNodeTags(nodeID, []string{"tag:valid-owned", "tag:second"})
@@ -1909,12 +1948,12 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 			t.Logf("After admin assignment, server tags: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying admin assignment on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin assignment on server")
 
 	// Verify admin assignment propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying admin assignment propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying admin assignment propagated to node self")
 
 	// Step 3: Try to reduce tags via CLI
 	command := []string{
@@ -1935,12 +1974,12 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 			t.Logf("Test 1.7: After CLI, server tags are: %v", nodes[0].GetTags())
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned", "tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "admin tags should be preserved - CLI cannot remove them on server")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved - CLI cannot remove them on server")
 
 	// Verify admin tags are preserved in node's self view after CLI attempt (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned", "tag:second"})
-	}, 30*time.Second, 500*time.Millisecond, "admin tags should be preserved - CLI cannot remove them in node self")
+	}, assertTimeout, 500*time.Millisecond, "admin tags should be preserved - CLI cannot remove them in node self")
 
 	t.Logf("Test 1.7 PASS: Admin tags preserved (CLI cannot remove)")
 }
@@ -1957,6 +1996,8 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 // Expected: Registration fails with error containing "requested tags".
 func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2014,7 +2055,7 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -2028,6 +2069,8 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 // Expected: Registration fails with error containing "requested tags".
 func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2085,7 +2128,7 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -2103,6 +2146,8 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 // Expected: Registration fails with error containing "requested tags".
 func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2160,7 +2205,7 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -2174,6 +2219,8 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 // Expected: Registration fails with error containing "requested tags".
 func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2231,7 +2278,7 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 			if len(nodes) == 1 {
 				t.Logf("Node registered with tags: %v (expected rejection)", nodes[0].GetTags())
 			}
-		}, 10*time.Second, 500*time.Millisecond, "checking node state")
+		}, assertTimeout, 500*time.Millisecond, "checking node state")
 
 		t.Fail()
 	}
@@ -2249,6 +2296,8 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 // Expected: SetNodeTags returns error.
 func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2304,7 +2353,7 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for registration")
 
 	// Try to set a non-existent tag via admin API - should fail
 	err = headscale.SetNodeTags(nodeID, []string{"tag:nonexistent"})
@@ -2322,6 +2371,8 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 // Expected: SetNodeTags succeeds (admin can assign any existing tag).
 func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2377,7 +2428,7 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for registration")
 
 	// Admin sets an "unowned" tag - should SUCCEED because admin has full authority
 	// (tag:valid-unowned is owned by other-user, but admin can assign it)
@@ -2393,12 +2444,12 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-unowned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying unowned tag was applied on server")
+	}, assertTimeout, 500*time.Millisecond, "verifying unowned tag was applied on server")
 
 	// Verify the tag was propagated to node's self view (issue #2978)
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
-	}, 30*time.Second, 500*time.Millisecond, "verifying unowned tag propagated to node self")
+	}, assertTimeout, 500*time.Millisecond, "verifying unowned tag propagated to node self")
 
 	t.Logf("Test 4.2 PASS: Admin API correctly allowed setting unowned tag")
 }
@@ -2411,6 +2462,8 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 // Expected: SetNodeTags returns error.
 func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2466,7 +2519,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for registration")
 
 	// Try to remove all tags - should fail
 	err = headscale.SetNodeTags(nodeID, []string{})
@@ -2483,7 +2536,7 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
+	}, assertTimeout, 500*time.Millisecond, "verifying original tags preserved")
 }
 
 // assertNetmapSelfHasTagsWithCollect asserts that the client's netmap self node has expected tags.
@@ -2526,6 +2579,8 @@ func assertNetmapSelfHasTagsWithCollect(c *assert.CollectT, client TailscaleClie
 // This test uses web auth with --advertise-tags to match the reporter's flow.
 func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2574,7 +2629,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for client to be running
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Wait for initial registration with tag:valid-owned
@@ -2589,12 +2644,12 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for initial registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for initial registration")
 
 	// Verify client initially sees tag:valid-owned
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-owned"})
-	}, 30*time.Second, 500*time.Millisecond, "client should see initial tag")
+	}, assertTimeout, 500*time.Millisecond, "client should see initial tag")
 
 	t.Logf("Step 1: Node %d registered via web auth with --advertise-tags=tag:valid-owned, client sees it", nodeID)
 
@@ -2614,7 +2669,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:second"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "server should show tag:second after first call")
+	}, assertTimeout, 500*time.Millisecond, "server should show tag:second after first call")
 
 	t.Log("Step 2a: Server shows tag:second after first call")
 
@@ -2664,11 +2719,11 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	t.Log("Step 3a: Verifying client self view updates after SECOND call")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 10*time.Second, 500*time.Millisecond, "client status.Self should update to tag:second after SECOND call")
+	}, assertTimeout, 500*time.Millisecond, "client status.Self should update to tag:second after SECOND call")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNetmapSelfHasTagsWithCollect(c, client, []string{"tag:second"})
-	}, 10*time.Second, 500*time.Millisecond, "client netmap.SelfNode should update to tag:second after SECOND call")
+	}, assertTimeout, 500*time.Millisecond, "client netmap.SelfNode should update to tag:second after SECOND call")
 
 	t.Log("Step 3b: Client self view updated to tag:second after SECOND call")
 
@@ -2686,7 +2741,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-unowned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "server should show tag:valid-unowned")
+	}, assertTimeout, 500*time.Millisecond, "server should show tag:valid-unowned")
 
 	t.Log("Step 4a: Server shows tag:valid-unowned after first call")
 
@@ -2718,11 +2773,11 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	t.Log("Step 5a: Verifying client self view updates after SECOND call")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNodeSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
-	}, 10*time.Second, 500*time.Millisecond, "client status.Self should update to tag:valid-unowned after SECOND call")
+	}, assertTimeout, 500*time.Millisecond, "client status.Self should update to tag:valid-unowned after SECOND call")
 
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertNetmapSelfHasTagsWithCollect(c, client, []string{"tag:valid-unowned"})
-	}, 10*time.Second, 500*time.Millisecond, "client netmap.SelfNode should update to tag:valid-unowned after SECOND call")
+	}, assertTimeout, 500*time.Millisecond, "client netmap.SelfNode should update to tag:valid-unowned after SECOND call")
 
 	t.Log("Test complete - see logs for bug reproduction details")
 }
@@ -2735,6 +2790,8 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 // Expected: SetNodeTags returns error.
 func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -2790,7 +2847,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 			nodeID = nodes[0].GetId()
 			t.Logf("Node %d registered with tags: %v", nodeID, nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "waiting for registration")
+	}, assertTimeout, 500*time.Millisecond, "waiting for registration")
 
 	// Try to set a tag without the "tag:" prefix - should fail
 	err = headscale.SetNodeTags(nodeID, []string{"invalid-no-prefix"})
@@ -2807,7 +2864,7 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 		if len(nodes) == 1 {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 		}
-	}, 10*time.Second, 500*time.Millisecond, "verifying original tags preserved")
+	}, assertTimeout, 500*time.Millisecond, "verifying original tags preserved")
 }
 
 // =============================================================================
@@ -2826,6 +2883,8 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 // client doesn't trigger a full reauth to the server - it only updates local state.
 func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	t.Run("with force-reauth", func(t *testing.T) {
 		tc := struct {
@@ -2879,7 +2938,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		err = scenario.runHeadscaleRegister(tagTestUser, body)
 		require.NoError(t, err)
 
-		err = client.WaitForRunning(120 * time.Second)
+		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 		require.NoError(t, err)
 
 		// Verify initial tags
@@ -2899,7 +2958,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 				// Verify node has the expected tags
 				assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned", "tag:second"})
 			}
-		}, 30*time.Second, 500*time.Millisecond, "checking initial tags")
+		}, assertTimeout, 500*time.Millisecond, "checking initial tags")
 
 		// Step 2: Reauth with empty tags to remove all tags
 		t.Logf("Step 2: Reauthenticating with empty tag list to untag device (%s)", tc.name)
@@ -2930,7 +2989,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 			err = scenario.runHeadscaleRegister(tagTestUser, body)
 			require.NoError(t, err)
 
-			err = client.WaitForRunning(120 * time.Second)
+			err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			require.NoError(t, err)
 			t.Logf("Completed reauth with empty tags")
 		} else {
@@ -2975,7 +3034,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 						tc.name, tagTestUser, node.GetTags(), node.GetUser().GetName())
 				}
 			}
-		}, 60*time.Second, 1*time.Second, "verifying tags removed and ownership returned")
+		}, assertTimeout, 1*time.Second, "verifying tags removed and ownership returned")
 	})
 }
 
@@ -2991,6 +3050,8 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 // Expected: Node registers with the tags from the auth key.
 func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	policy := tagsTestPolicy()
 
@@ -3049,7 +3110,7 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 			t.Logf("Node registered with tags: %v", node.GetTags())
 			assertNodeHasTagsWithCollect(c, node, []string{"tag:valid-owned"})
 		}
-	}, 30*time.Second, 500*time.Millisecond, "verifying node inherited tags from auth key")
+	}, assertTimeout, 500*time.Millisecond, "verifying node inherited tags from auth key")
 
 	t.Logf("Test 5.1 PASS: Node inherited tags from tags-only auth key")
 }
@@ -3131,6 +3192,8 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	IntegrationSkip(t)
 
+	assertTimeout := integrationutil.PeerSyncTimeout()
+
 	policy := tagsTestPolicy()
 
 	spec := ScenarioSpec{
@@ -3176,7 +3239,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial state: node is tagged
@@ -3189,7 +3252,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 			assertNodeHasTagsWithCollect(c, nodes[0], []string{"tag:valid-owned"})
 			t.Logf("Initial state - Node ID: %d, Tags: %v", nodes[0].GetId(), nodes[0].GetTags())
 		}
-	}, 30*time.Second, 500*time.Millisecond, "node should be tagged initially")
+	}, assertTimeout, 500*time.Millisecond, "node should be tagged initially")
 
 	// Step 2: Force reauth with empty tags (triggers web auth flow)
 	command := []string{
@@ -3213,7 +3276,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Step 4: Verify node is now user-owned and the mapper didn't panic.
@@ -3232,5 +3295,5 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 			t.Logf("After conversion - Node ID: %d, Tags: %v, User: %s",
 				nodes[0].GetId(), nodes[0].GetTags(), nodes[0].GetUser().GetName())
 		}
-	}, 60*time.Second, 1*time.Second, "node should be user-owned after conversion via CLI register")
+	}, assertTimeout, 1*time.Second, "node should be user-owned after conversion via CLI register")
 }

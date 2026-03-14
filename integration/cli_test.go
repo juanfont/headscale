@@ -16,6 +16,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,8 @@ func sortWithID[T GRPCSortable](a, b T) int {
 
 func TestUserCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1", "user2"},
@@ -91,7 +94,7 @@ func TestUserCommand(t *testing.T) {
 			result,
 			"Should have user1 and user2 in users list",
 		)
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	_, err = headscale.Execute(
 		[]string{
@@ -129,7 +132,7 @@ func TestUserCommand(t *testing.T) {
 			result,
 			"Should have user1 and newname after rename operation",
 		)
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	var listByUsername []*v1.User
 
@@ -146,7 +149,7 @@ func TestUserCommand(t *testing.T) {
 			&listByUsername,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for user list by username")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for user list by username")
 
 	slices.SortFunc(listByUsername, sortWithID)
 
@@ -177,7 +180,7 @@ func TestUserCommand(t *testing.T) {
 			&listByID,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for user list by ID")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for user list by ID")
 
 	slices.SortFunc(listByID, sortWithID)
 
@@ -234,7 +237,7 @@ func TestUserCommand(t *testing.T) {
 		if diff := tcmp.Diff(want, listAfterIDDelete, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			assert.Fail(ct, "unexpected users", "diff (-want +got):\n%s", diff)
 		}
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	deleteResult, err = headscale.Execute(
 		[]string{
@@ -263,11 +266,13 @@ func TestUserCommand(t *testing.T) {
 		)
 		assert.NoError(c, err)
 		assert.Empty(c, listAfterNameDelete)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for user list after name delete")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for user list after name delete")
 }
 
 func TestPreAuthKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	user := "preauthkeyspace"
 	count := 3
@@ -314,7 +319,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 				&preAuthKey,
 			)
 			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth key creation")
+		}, assertTimeout, 200*time.Millisecond, "Waiting for preauth key creation")
 
 		keys[index] = &preAuthKey
 	}
@@ -336,7 +341,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for preauth keys list")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 4)
@@ -412,7 +417,7 @@ func TestPreAuthKeyCommand(t *testing.T) {
 			&listedPreAuthKeysAfterExpire,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list after expire")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for preauth keys list after expire")
 
 	assert.True(t, listedPreAuthKeysAfterExpire[1].GetExpiration().AsTime().Before(time.Now()))
 	assert.True(t, listedPreAuthKeysAfterExpire[2].GetExpiration().AsTime().After(time.Now()))
@@ -421,6 +426,8 @@ func TestPreAuthKeyCommand(t *testing.T) {
 
 func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	user := "pre-auth-key-without-exp-user"
 	spec := ScenarioSpec{
@@ -456,7 +463,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			&preAuthKey,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth key creation without expiry")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for preauth key creation without expiry")
 
 	var listedPreAuthKeys []v1.PreAuthKey
 
@@ -473,7 +480,7 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for preauth keys list")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 2)
@@ -487,6 +494,8 @@ func TestPreAuthKeyCommandWithoutExpiry(t *testing.T) {
 
 func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	user := "pre-auth-key-reus-ephm-user"
 	spec := ScenarioSpec{
@@ -522,7 +531,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&preAuthReusableKey,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for reusable preauth key creation")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for reusable preauth key creation")
 
 	var preAuthEphemeralKey v1.PreAuthKey
 
@@ -542,7 +551,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&preAuthEphemeralKey,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for ephemeral preauth key creation")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for ephemeral preauth key creation")
 
 	assert.True(t, preAuthEphemeralKey.GetEphemeral())
 	assert.False(t, preAuthEphemeralKey.GetReusable())
@@ -562,7 +571,7 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 			&listedPreAuthKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for preauth keys list after reusable/ephemeral creation")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for preauth keys list after reusable/ephemeral creation")
 
 	// There is one key created by "scenario.CreateHeadscaleEnv"
 	assert.Len(t, listedPreAuthKeys, 3)
@@ -570,6 +579,8 @@ func TestPreAuthKeyCommandReusableEphemeral(t *testing.T) {
 
 func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	//nolint:goconst // test data, not worth extracting
 	user1 := "user1"
@@ -622,7 +633,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 			&user2Key,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for user2 preauth key creation")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for user2 preauth key creation")
 
 	var listNodes []*v1.Node
 
@@ -633,7 +644,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.Len(ct, listNodes, 1, "Should have exactly 1 node for user1")
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "Node should belong to user1")
-	}, 15*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
@@ -654,7 +665,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
 			"Expected node to be logged out, backend state: %s", status.BackendState)
-	}, 30*time.Second, 2*time.Second)
+	}, assertTimeout, 2*time.Second)
 
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
 	require.NoError(t, err)
@@ -666,7 +677,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
 		// The PreAuthKey was created with tags, so the node is tagged
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
-	}, 30*time.Second, 2*time.Second)
+	}, assertTimeout, 2*time.Second)
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
@@ -677,11 +688,13 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
 		// Second node is tagged (created with tagged PreAuthKey), so it shows as "tagged-devices"
 		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 }
 
 func TestTaggedNodesCLIOutput(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	user1 := "user1"
 	user2 := "user2"
@@ -733,7 +746,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 			&user2Key,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for user2 tagged preauth key creation")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for user2 tagged preauth key creation")
 
 	allClients, err := scenario.ListTailscaleClients()
 	requireNoErrListClients(t, err)
@@ -754,7 +767,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		assert.NoError(ct, err)
 		assert.NotContains(ct, []string{"Starting", "Running"}, status.BackendState,
 			"Expected node to be logged out, backend state: %s", status.BackendState)
-	}, 30*time.Second, 2*time.Second)
+	}, assertTimeout, 2*time.Second)
 
 	// Log in with the tagged PreAuthKey (from user2, with tags)
 	err = client.Login(headscale.GetEndpoint(), user2Key.GetKey())
@@ -766,7 +779,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		assert.Equal(ct, "Running", status.BackendState, "Expected node to be logged in, backend state: %s", status.BackendState)
 		// With tags-as-identity model, tagged nodes show as TaggedDevices user (2147455555)
 		assert.Equal(ct, "userid:2147455555", status.Self.UserID.String(), "Expected node to be logged in as tagged-devices user")
-	}, 30*time.Second, 2*time.Second)
+	}, assertTimeout, 2*time.Second)
 
 	// Wait for the second node to appear
 	var listNodes []*v1.Node
@@ -779,7 +792,7 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 		assert.Len(ct, listNodes, 2, "Should have 2 nodes after re-login with tagged key")
 		assert.Equal(ct, user1, listNodes[0].GetUser().GetName(), "First node should belong to user1")
 		assert.Equal(ct, "tagged-devices", listNodes[1].GetUser().GetName(), "Second node should be tagged-devices")
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	// Test: tailscale status output should show "tagged-devices" not "userid:2147455555"
 	// This is the fix for issue #2970 - the Tailscale client should display user-friendly names
@@ -794,11 +807,13 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 
 		// The output should NOT show the raw numeric userid to the user
 		assert.NotContains(ct, stdout, "userid:2147455555", "Tailscale status should not show numeric userid for tagged nodes")
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 }
 
 func TestApiKeyCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	count := 5
 
@@ -853,7 +868,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for API keys list")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for API keys list")
 
 	assert.Len(t, listedAPIKeys, 5)
 
@@ -928,7 +943,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAfterExpireAPIKeys,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for API keys list after expire")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for API keys list after expire")
 
 	for index := range listedAfterExpireAPIKeys {
 		if _, ok := expiredPrefixes[listedAfterExpireAPIKeys[index].GetPrefix()]; ok {
@@ -970,7 +985,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterDelete,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for API keys list after delete")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for API keys list after delete")
 
 	assert.Len(t, listedAPIKeysAfterDelete, 4)
 
@@ -999,7 +1014,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterExpireByID,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for API keys list after expire by ID")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for API keys list after expire by ID")
 
 	// Verify the key was expired
 	for idx := range listedAPIKeysAfterExpireByID {
@@ -1035,7 +1050,7 @@ func TestApiKeyCommand(t *testing.T) {
 			&listedAPIKeysAfterDeleteByID,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for API keys list after delete by ID")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for API keys list after delete by ID")
 
 	assert.Len(t, listedAPIKeysAfterDeleteByID, 3)
 
@@ -1048,6 +1063,8 @@ func TestApiKeyCommand(t *testing.T) {
 
 func TestNodeCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-user", "other-user"},
@@ -1112,14 +1129,14 @@ func TestNodeCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for node registration")
+		}, assertTimeout, 200*time.Millisecond, "Waiting for node registration")
 
 		nodes[index] = &node
 	}
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.Len(ct, nodes, len(regIDs), "Should have correct number of nodes after CLI operations")
-	}, 15*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	// Test list all nodes after added seconds
 	var listAll []v1.Node
@@ -1138,7 +1155,7 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, listAll, len(regIDs), "Should list all nodes after CLI operations")
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	assert.Equal(t, uint64(1), listAll[0].GetId())
 	assert.Equal(t, uint64(2), listAll[1].GetId())
@@ -1197,14 +1214,14 @@ func TestNodeCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for other-user node registration")
+		}, assertTimeout, 200*time.Millisecond, "Waiting for other-user node registration")
 
 		otherUserMachines[index] = &node
 	}
 
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		assert.Len(ct, otherUserMachines, len(otherUserRegIDs), "Should have correct number of otherUser machines after CLI operations")
-	}, 15*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 
 	// Test list all nodes after added otherUser
 	var listAllWithotherUser []v1.Node
@@ -1222,7 +1239,7 @@ func TestNodeCommand(t *testing.T) {
 			&listAllWithotherUser,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list after adding other-user nodes")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list after adding other-user nodes")
 
 	// All nodes, nodes + otherUser
 	assert.Len(t, listAllWithotherUser, 7)
@@ -1251,7 +1268,7 @@ func TestNodeCommand(t *testing.T) {
 			&listOnlyotherUserMachineUser,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list filtered by other-user")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list filtered by other-user")
 
 	assert.Len(t, listOnlyotherUserMachineUser, 2)
 
@@ -1304,11 +1321,13 @@ func TestNodeCommand(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, listOnlyMachineUserAfterDelete, 4, "Should have 4 nodes for node-user after deletion")
-	}, 20*time.Second, 1*time.Second)
+	}, assertTimeout, 1*time.Second)
 }
 
 func TestNodeExpireCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-expire-user"},
@@ -1371,7 +1390,7 @@ func TestNodeExpireCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for node-expire-user node registration")
+		}, assertTimeout, 200*time.Millisecond, "Waiting for node-expire-user node registration")
 
 		nodes[index] = &node
 	}
@@ -1393,7 +1412,7 @@ func TestNodeExpireCommand(t *testing.T) {
 			&listAll,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list in expire test")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list in expire test")
 
 	assert.Len(t, listAll, 5)
 
@@ -1431,7 +1450,7 @@ func TestNodeExpireCommand(t *testing.T) {
 			&listAllAfterExpiry,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list after expiry")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list after expiry")
 
 	assert.Len(t, listAllAfterExpiry, 5)
 
@@ -1444,6 +1463,8 @@ func TestNodeExpireCommand(t *testing.T) {
 
 func TestNodeRenameCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"node-rename-command"},
@@ -1508,7 +1529,7 @@ func TestNodeRenameCommand(t *testing.T) {
 				&node,
 			)
 			assert.NoError(c, err)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for node-rename-command node registration")
+		}, assertTimeout, 200*time.Millisecond, "Waiting for node-rename-command node registration")
 
 		nodes[index] = &node
 	}
@@ -1530,7 +1551,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAll,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list in rename test")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list in rename test")
 
 	assert.Len(t, listAll, 5)
 
@@ -1571,7 +1592,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAllAfterRename,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list after rename")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list after rename")
 
 	assert.Len(t, listAllAfterRename, 5)
 
@@ -1609,7 +1630,7 @@ func TestNodeRenameCommand(t *testing.T) {
 			&listAllAfterRenameAttempt,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for nodes list after failed rename attempt")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for nodes list after failed rename attempt")
 
 	assert.Len(t, listAllAfterRenameAttempt, 5)
 
@@ -1622,6 +1643,8 @@ func TestNodeRenameCommand(t *testing.T) {
 
 func TestPolicyCommand(t *testing.T) {
 	IntegrationSkip(t)
+
+	assertTimeout := integrationutil.PeerSyncTimeout()
 
 	spec := ScenarioSpec{
 		Users: []string{"user1"},
@@ -1698,7 +1721,7 @@ func TestPolicyCommand(t *testing.T) {
 			&output,
 		)
 		assert.NoError(c, err)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for policy get command")
+	}, assertTimeout, 200*time.Millisecond, "Waiting for policy get command")
 
 	assert.Len(t, output.TagOwners, 1)
 	assert.Len(t, output.ACLs, 1)

@@ -61,6 +61,11 @@ jobs:
         with:
           name: go-cache
           path: /tmp/artifacts
+      - name: Download integration images
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          name: integration-images
+          path: /tmp/artifacts
       - name: Download postgres image
         if: ${{ inputs.postgres_flag == '--postgres=1' }}
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
@@ -89,6 +94,7 @@ jobs:
         run: |
           gunzip -c /tmp/artifacts/headscale-image.tar.gz | docker load
           gunzip -c /tmp/artifacts/tailscale-head-image.tar.gz | docker load
+          gunzip -c /tmp/artifacts/integration-images.tar.gz | docker load
           if [ -f /tmp/artifacts/postgres-image.tar.gz ]; then
             gunzip -c /tmp/artifacts/postgres-image.tar.gz | docker load
           fi

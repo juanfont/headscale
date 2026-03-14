@@ -632,24 +632,30 @@ func (s *State) ListNodesByUser(userID types.UserID) views.Slice[types.NodeView]
 }
 
 // ListPeers retrieves nodes that can communicate with the specified node based on policy.
+// When peerIDs are specified, only those peers are returned, but they are still filtered
+// through the policy-aware peer map to ensure visibility is enforced. This prevents a
+// race condition where a NodeAdded change (instead of PolicyChange) could bypass peer
+// visibility checks after a tag change that should revoke access.
 func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Slice[types.NodeView] {
+	// Get the policy-aware peer list from NodeStore.
+	// This uses peersByNode which is rebuilt after policy changes.
+	allPeers := s.nodeStore.ListPeers(nodeID)
+
 	if len(peerIDs) == 0 {
-		return s.nodeStore.ListPeers(nodeID)
+		return allPeers
 	}
 
-	// For specific peerIDs, filter from all nodes
-	allNodes := s.nodeStore.ListNodes()
-
-	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
+	// Filter the policy-aware peer list to only include requested peerIDs.
+	peerIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
 	for _, id := range peerIDs {
-		nodeIDSet[id] = struct{}{}
+		peerIDSet[id] = struct{}{}
 	}
 
 	var filteredNodes []types.NodeView
 
-	for _, node := range allNodes.All() {
-		if _, exists := nodeIDSet[node.ID()]; exists {
-			filteredNodes = append(filteredNodes, node)
+	for _, peer := range allPeers.All() {
+		if _, exists := peerIDSet[peer.ID()]; exists {
+			filteredNodes = append(filteredNodes, peer)
 		}
 	}
 
@@ -2312,7 +2318,7 @@ func (s *State) UpdateNodeFromMapRequest(id types.NodeID, req tailcfg.MapRequest
 		return change.Change{}, fmt.Errorf("saving to database: %w", err)
 	}
 
-	if policyChange.IsFull() {
+	if !policyChange.IsEmpty() {
 		return policyChange, nil
 	}
 

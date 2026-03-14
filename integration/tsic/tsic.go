@@ -39,8 +39,8 @@ import (
 
 const (
 	tsicHashLength       = 6
-	defaultPingTimeout   = 200 * time.Millisecond
-	defaultPingCount     = 5
+	defaultPingTimeout   = 5 * time.Second
+	defaultPingCount     = 10
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
@@ -1240,6 +1240,9 @@ func (t *TailscaleInContainer) waitForBackendState(state string, timeout time.Du
 // - All peers are Online
 // - All peers have a hostname
 // - All peers have a DERP relay assigned
+// - All peers are in the network map (InNetworkMap)
+// - All peers are tracked by magicsock (InMagicSock)
+// - All peers have a DNSName assigned
 //
 // Uses multierr to collect all validation errors.
 func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval time.Duration) error {
@@ -1295,6 +1298,18 @@ func (t *TailscaleInContainer) WaitForPeers(expected int, timeout, retryInterval
 
 				if peer.Relay == "" {
 					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DERP", t.hostname, peer.HostName)) //nolint:err113
+				}
+
+				if !peer.InNetworkMap {
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not InNetworkMap", t.hostname, peer.HostName)) //nolint:err113
+				}
+
+				if !peer.InMagicSock {
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s is not InMagicSock", t.hostname, peer.HostName)) //nolint:err113
+				}
+
+				if peer.DNSName == "" {
+					peerErrors = append(peerErrors, fmt.Errorf("[%s] peer count correct, but %s does not have a DNSName", t.hostname, peer.HostName)) //nolint:err113
 				}
 			}
 
@@ -1443,7 +1458,7 @@ func WithCurlRetry(ret int) CurlOption {
 const (
 	defaultConnectionTimeout = 1 * time.Second
 	defaultMaxTime           = 3 * time.Second
-	defaultRetry             = 3
+	defaultRetry             = 0
 	defaultRetryDelay        = 200 * time.Millisecond
 	defaultRetryMaxTime      = 5 * time.Second
 )
@@ -1489,17 +1504,6 @@ func (t *TailscaleInContainer) Curl(url string, opts ...CurlOption) (string, err
 	}
 
 	return result, nil
-}
-
-// CurlFailFast executes the Tailscale curl command with aggressive timeouts
-// optimized for testing expected connection failures. It uses minimal timeouts
-// to quickly detect blocked connections without waiting for multiple retries.
-func (t *TailscaleInContainer) CurlFailFast(url string) (string, error) {
-	// Use aggressive timeouts for fast failure detection
-	return t.Curl(url,
-		WithCurlConnectionTimeout(1*time.Second),
-		WithCurlMaxTime(2*time.Second),
-		WithCurlRetry(1))
 }
 
 func (t *TailscaleInContainer) Traceroute(ip netip.Addr) (util.Traceroute, error) {
