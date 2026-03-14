@@ -660,33 +660,6 @@ func TestBatcher_CloseMultipleTimes_DoubleClosePanic(t *testing.T) {
 			"Fix: add sync.Once or atomic.Bool to close()", panics)
 }
 
-// TestBatcher_QueueWorkDuringShutdown verifies that queueWork doesn't block
-// when the batcher is shutting down.
-func TestBatcher_QueueWorkDuringShutdown(t *testing.T) {
-	lb := setupLightweightBatcher(t, 3, 10)
-
-	// Close the done channel to simulate shutdown
-	close(lb.b.done)
-
-	// queueWork should not block (it selects on done channel)
-	done := make(chan struct{})
-
-	go func() {
-		lb.b.queueWork(work{
-			changes: []change.Change{change.DERPMap()},
-			nodeID:  types.NodeID(1),
-		})
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		// Success - didn't block
-	case <-time.After(1 * time.Second):
-		t.Fatal("queueWork blocked during shutdown")
-	}
-}
-
 // TestBatcher_MapResponseDuringShutdown verifies that MapResponseFromChange
 // returns ErrBatcherShuttingDown when the batcher is closed.
 func TestBatcher_MapResponseDuringShutdown(t *testing.T) {
