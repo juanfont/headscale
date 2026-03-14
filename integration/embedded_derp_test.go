@@ -28,7 +28,7 @@ func TestDERPServerScenario(t *testing.T) {
 		},
 	}
 
-	derpServerScenario(t, spec, false, func(scenario *Scenario) {
+	derpServerScenario(t, spec, "derp-tcp", false, func(scenario *Scenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		requireNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
@@ -78,7 +78,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 		},
 	}
 
-	derpServerScenario(t, spec, true, func(scenario *Scenario) {
+	derpServerScenario(t, spec, "derp-ws", true, func(scenario *Scenario) {
 		allClients, err := scenario.ListTailscaleClients()
 		requireNoErrListClients(t, err)
 		t.Logf("checking %d clients for websocket connections", len(allClients))
@@ -103,6 +103,7 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 func derpServerScenario(
 	t *testing.T,
 	spec ScenarioSpec,
+	testName string,
 	websocket bool,
 	furtherAssertions ...func(*Scenario),
 ) {
@@ -117,11 +118,9 @@ func derpServerScenario(
 		[]tsic.Option{
 			tsic.WithWebsocketDERP(websocket),
 		},
-		hsic.WithTestName("derpserver"),
+		hsic.WithTestName(testName),
 		hsic.WithExtraPorts([]string{"3478/udp"}),
-		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithPort(443),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":   "true",
 			"HEADSCALE_DERP_UPDATE_FREQUENCY":      "10s",

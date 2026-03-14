@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/juanfont/headscale/integration/dockertestutil"
+	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func TestHeadscale(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
-		headscale, err := scenario.Headscale()
+		headscale, err := scenario.Headscale(hsic.WithTestName("scenariohs"))
 		if err != nil {
 			t.Fatalf("failed to create start headcale: %s", err)
 		}
@@ -89,7 +90,7 @@ func TestTailscaleNodesJoiningHeadcale(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	t.Run("start-headscale", func(t *testing.T) {
-		headscale, err := scenario.Headscale()
+		headscale, err := scenario.Headscale(hsic.WithTestName("scenariojoin"))
 		if err != nil {
 			t.Fatalf("failed to create start headcale: %s", err)
 		}

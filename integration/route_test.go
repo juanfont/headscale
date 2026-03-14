@@ -55,7 +55,7 @@ func TestEnablingRoutes(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{tsic.WithAcceptRoutes()},
-		hsic.WithTestName("clienableroute"))
+		hsic.WithTestName("rt-enable"))
 	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -261,9 +261,7 @@ func TestHASubnetRouterFailover(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{tsic.WithAcceptRoutes()},
-		hsic.WithTestName("clienableroute"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName("rt-hafailover"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1363,7 +1361,7 @@ func TestSubnetRouteACL(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithAcceptRoutes(),
-	}, hsic.WithTestName("clienableroute"), hsic.WithACLPolicy(
+	}, hsic.WithTestName("rt-subnetacl"), hsic.WithACLPolicy(
 		&policyv2.Policy{
 			Groups: policyv2.Groups{
 				policyv2.Group("group:admins"): []policyv2.Username{policyv2.Username(user + "@")},
@@ -1616,7 +1614,7 @@ func TestEnablingExitRoutes(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{
 		tsic.WithExtraLoginArgs([]string{"--advertise-exit-node"}),
-	}, hsic.WithTestName("clienableroute"))
+	}, hsic.WithTestName("rt-exitroute"))
 	requireNoErrHeadscaleEnv(t, err)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1729,9 +1727,7 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithAcceptRoutes()},
-		hsic.WithTestName("clienableroute"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName("rt-multinet"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1884,9 +1880,7 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
-		hsic.WithTestName("clienableroute"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName("rt-multinetexit"),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2306,8 +2300,6 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 					opts := []hsic.Option{
 						hsic.WithTestName("autoapprovemulti"),
-						hsic.WithEmbeddedDERPServerOnly(),
-						hsic.WithTLS(),
 						hsic.WithACLPolicy(pol),
 						hsic.WithPolicyMode(polMode),
 					}

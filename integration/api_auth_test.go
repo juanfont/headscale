@@ -435,7 +435,6 @@ func TestGRPCAuthenticationBypass(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("grpcauthtest"),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			// Enable gRPC on the standard port
 			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
@@ -560,7 +559,6 @@ func TestCLIWithConfigAuthenticationBypass(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("cliconfigauth"),
-		hsic.WithTLS(),
 		hsic.WithConfigEnv(map[string]string{
 			"HEADSCALE_GRPC_LISTEN_ADDR": "0.0.0.0:50443",
 		}),

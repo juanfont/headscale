@@ -41,8 +41,6 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyip"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -102,6 +100,8 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyippubderp"),
+		hsic.WithPublicDERP(),
+		hsic.WithoutTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -387,8 +387,6 @@ func TestTaildrop(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("taildrop"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1403,9 +1401,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyipmany"),
-		hsic.WithEmbeddedDERPServerOnly(),
 		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1512,8 +1508,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("deletenocrash"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

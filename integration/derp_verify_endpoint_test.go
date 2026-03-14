@@ -72,6 +72,9 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
+	// WithHostname is used instead of WithTestName because the hostname
+	// must match the pre-generated TLS certificate created above.
+	// The test name "derpverify" is embedded in the hostname variable.
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithCACert(derper.GetCert())},
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),

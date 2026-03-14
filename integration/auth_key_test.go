@@ -35,14 +35,8 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{
-				hsic.WithTestName("pingallbyip"),
-				hsic.WithEmbeddedDERPServerOnly(),
+				hsic.WithTestName("authkey-relogsame"),
 				hsic.WithDERPAsIP(),
-			}
-			if https {
-				opts = append(opts, []hsic.Option{
-					hsic.WithTLS(),
-				}...)
 			}
 
 			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
@@ -241,7 +235,6 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("keyrelognewuser"),
-		hsic.WithTLS(),
 		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -375,13 +368,8 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			opts := []hsic.Option{
-				hsic.WithTestName("pingallbyip"),
+				hsic.WithTestName("authkey-rlogexpired"),
 				hsic.WithDERPAsIP(),
-			}
-			if https {
-				opts = append(opts, []hsic.Option{
-					hsic.WithTLS(),
-				}...)
 			}
 
 			err = scenario.CreateHeadscaleEnv([]tsic.Option{}, opts...)
@@ -503,7 +491,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("delkey"), hsic.WithTLS(), hsic.WithDERPAsIP())
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("delkey"), hsic.WithDERPAsIP())
 	requireNoErrHeadscaleEnv(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -621,7 +609,6 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			tsic.WithExtraLoginArgs([]string{"--advertise-routes=" + advertiseRoute}),
 		},
 		hsic.WithTestName("routelogout"),
-		hsic.WithTLS(),
 		hsic.WithACLPolicy(
 			&policyv2.Policy{
 				ACLs: []policyv2.ACL{

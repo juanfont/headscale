@@ -58,6 +58,7 @@ var veryLargeDestination = []policyv2.AliasWithPorts{
 func aclScenario(
 	t *testing.T,
 	policy *policyv2.Policy,
+	testName string,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
@@ -81,9 +82,7 @@ func aclScenario(
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("acl"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName(testName),
 	)
 	require.NoError(t, err)
 
@@ -305,6 +304,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
+				hsic.WithTestName("aclnetmap"),
 				hsic.WithACLPolicy(&testCase.policy),
 			)
 
@@ -351,6 +351,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuser80",
 		1,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -414,6 +415,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 				},
 			},
 		},
+		"acl-denyport80",
 		4,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -462,6 +464,7 @@ func TestACLAllowUserDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuserdst",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -524,6 +527,7 @@ func TestACLAllowStarDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowstar",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -591,6 +595,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 				},
 			},
 		},
+		"acl-namedsubnet",
 		3,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -743,6 +748,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t,
 				&testCase.policy,
+				"acl-namedreach",
 				2,
 			)
 			defer scenario.ShutdownAssertNoPanics(t)
@@ -1044,7 +1050,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario := aclScenario(t, &testCase.policy, 1)
+			scenario := aclScenario(t, &testCase.policy, "acl-dev1dev2", 1)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
@@ -1290,6 +1296,7 @@ func TestACLAutogroupMember(t *testing.T) {
 				},
 			},
 		},
+		"acl-agmember",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -1383,8 +1390,6 @@ func TestACLAutogroupTagged(t *testing.T) {
 	headscale, err := scenario.Headscale(
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-tagged"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1698,8 +1703,6 @@ func TestACLAutogroupSelf(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-self"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1918,8 +1921,6 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		},
 		hsic.WithTestName("aclpropagation"),
 		hsic.WithPolicyMode(types.PolicyModeDB),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -2738,8 +2739,6 @@ func TestACLTagPropagation(t *testing.T) {
 				},
 				hsic.WithACLPolicy(tt.policy),
 				hsic.WithTestName("acl-tag-"+tt.name),
-				hsic.WithEmbeddedDERPServerOnly(),
-				hsic.WithTLS(),
 			)
 			require.NoError(t, err)
 
@@ -2926,8 +2925,6 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-tag-port-specific"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -3090,8 +3087,6 @@ func TestACLGroupWithUnknownUser(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-unknown-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -3192,8 +3187,6 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-deleted-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB), // Use DB mode so policy persists after user deletion
 	)
 	require.NoError(t, err)
@@ -3386,8 +3379,6 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		},
 		hsic.WithACLPolicy(initialPolicy),
 		hsic.WithTestName("acl-exact-repro"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB),
 	)
 	require.NoError(t, err)
@@ -3565,8 +3556,6 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		},
 		hsic.WithACLPolicy(validPolicy),
 		hsic.WithTestName("acl-dynamic-unknown"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB),
 	)
 	require.NoError(t, err)
@@ -3723,8 +3712,6 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policyWithUnknown),
 		hsic.WithTestName("acl-unknown-removal"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB),
 	)
 	require.NoError(t, err)
