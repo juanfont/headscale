@@ -256,6 +256,19 @@ func createGoTestContainer(ctx context.Context, cli *client.Client, config *RunC
 	// Set GOCACHE to a known location (used by both bind mount and volume cases)
 	env = append(env, "GOCACHE=/cache/go-build")
 
+	// Ensure Docker API version compatibility with newer Docker daemons (29.x+).
+	// dockertest's go-dockerclient uses old API versions (e.g., 1.25) in URLs which
+	// newer Docker daemons reject (minimum 1.44). Setting DOCKER_API_VERSION makes
+	// the client use a compatible version, and DOCKER_MACHINE_NAME triggers the
+	// NewClientFromEnv() code path in dockertest which respects DOCKER_API_VERSION.
+	if os.Getenv("DOCKER_API_VERSION") == "" {
+		env = append(env, "DOCKER_API_VERSION=1.44")
+	} else {
+		env = append(env, "DOCKER_API_VERSION="+os.Getenv("DOCKER_API_VERSION"))
+	}
+
+	env = append(env, "DOCKER_MACHINE_NAME=integration")
+
 	containerConfig := &container.Config{
 		Image:      "golang:" + config.GoVersion,
 		Cmd:        goTestCmd,
