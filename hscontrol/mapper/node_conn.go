@@ -42,6 +42,13 @@ type multiChannelNodeConn struct {
 	pendingMu sync.Mutex
 	pending   []change.Change
 
+	// workMu serializes change processing for this node across batch ticks.
+	// Without this, two workers could process consecutive ticks' bundles
+	// concurrently, causing out-of-order MapResponse delivery and races
+	// on lastSentPeers (Clear+Store in updateSentPeers vs Range in
+	// computePeerDiff).
+	workMu sync.Mutex
+
 	closeOnce   sync.Once
 	updateCount atomic.Int64
 

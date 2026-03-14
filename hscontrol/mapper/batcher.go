@@ -171,8 +171,12 @@ type workResult struct {
 }
 
 // work represents a unit of work to be processed by workers.
+// All pending changes for a node are bundled into a single work item
+// so that one worker processes them sequentially. This prevents
+// out-of-order MapResponse delivery and races on lastSentPeers
+// that occur when multiple workers process changes for the same node.
 type work struct {
-	c        change.Change
+	changes  []change.Change
 	nodeID   types.NodeID
 	resultCh chan<- workResult // optional channel for synchronous operations
 }
@@ -417,29 +421,33 @@ func (b *Batcher) worker(workerID int) {
 
 			b.workProcessed.Add(1)
 
-			// If the resultCh is set, it means that this is a work request
-			// where there is a blocking function waiting for the map that
-			// is being generated.
-			// This is used for synchronous map generation.
+			// Synchronous path: a caller is blocking on resultCh
+			// waiting for a generated MapResponse (used by AddNode
+			// for the initial map). Always contains a single change.
 			if w.resultCh != nil {
 				var result workResult
 
 				if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
+					// Hold workMu so concurrent async work for this
+					// node waits until the initial map is sent.
+					nc.workMu.Lock()
+
 					var err error
 
-					result.mapResponse, err = generateMapResponse(nc, b.mapper, w.c)
+					result.mapResponse, err = generateMapResponse(nc, b.mapper, w.changes[0])
 
 					result.err = err
 					if result.err != nil {
 						b.workErrors.Add(1)
 						wlog.Error().Err(result.err).
 							Uint64(zf.NodeID, w.nodeID.Uint64()).
-							Str(zf.Reason, w.c.Reason).
+							Str(zf.Reason, w.changes[0].Reason).
 							Msg("failed to generate map response for synchronous work")
 					} else if result.mapResponse != nil {
-						// Update peer tracking for synchronous responses too
 						nc.updateSentPeers(result.mapResponse)
 					}
+
+					nc.workMu.Unlock()
 				} else {
 					result.err = fmt.Errorf("%w: %d", ErrNodeNotFoundMapper, w.nodeID)
 
@@ -449,7 +457,6 @@ func (b *Batcher) worker(workerID int) {
 						Msg("node not found for synchronous work")
 				}
 
-				// Send result
 				select {
 				case w.resultCh <- result:
 				case <-b.done:
@@ -459,20 +466,24 @@ func (b *Batcher) worker(workerID int) {
 				continue
 			}
 
-			// If resultCh is nil, this is an asynchronous work request
-			// that should be processed and sent to the node instead of
-			// returned to the caller.
+			// Async path: process all bundled changes sequentially.
+			// workMu ensures that if another worker picks up the next
+			// tick's bundle for the same node, it waits until we
+			// finish — preventing out-of-order delivery and races
+			// on lastSentPeers (Clear+Store vs Range).
 			if nc, exists := b.nodes.Load(w.nodeID); exists && nc != nil {
-				// Apply change to node - this will handle offline nodes gracefully
-				// and queue work for when they reconnect
-				err := nc.change(w.c)
-				if err != nil {
-					b.workErrors.Add(1)
-					wlog.Error().Err(err).
-						Uint64(zf.NodeID, w.nodeID.Uint64()).
-						Str(zf.Reason, w.c.Reason).
-						Msg("failed to apply change")
+				nc.workMu.Lock()
+				for _, ch := range w.changes {
+					err := nc.change(ch)
+					if err != nil {
+						b.workErrors.Add(1)
+						wlog.Error().Err(err).
+							Uint64(zf.NodeID, w.nodeID.Uint64()).
+							Str(zf.Reason, ch.Reason).
+							Msg("failed to apply change")
+					}
 				}
+				nc.workMu.Unlock()
 			}
 		case <-b.done:
 			wlog.Debug().Msg("batcher shutting down, exiting worker")
@@ -581,10 +592,10 @@ func (b *Batcher) processBatchedChanges() {
 			return true
 		}
 
-		// Send all batched changes for this node
-		for _, ch := range pending {
-			b.queueWork(work{c: ch, nodeID: nodeID, resultCh: nil})
-		}
+		// Queue a single work item containing all pending changes.
+		// One item per node ensures a single worker processes them
+		// sequentially, preventing out-of-order delivery.
+		b.queueWork(work{changes: pending, nodeID: nodeID, resultCh: nil})
 
 		return true
 	})
@@ -721,7 +732,7 @@ func (b *Batcher) MapResponseFromChange(id types.NodeID, ch change.Change) (*tai
 	resultCh := make(chan workResult, 1)
 
 	// Queue the work with a result channel using the safe queueing method
-	b.queueWork(work{c: ch, nodeID: id, resultCh: resultCh})
+	b.queueWork(work{changes: []change.Change{ch}, nodeID: id, resultCh: resultCh})
 
 	// Wait for the result
 	select {
