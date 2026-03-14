@@ -116,6 +116,14 @@ message RenameNodeResponse {
   Node node = 1;
 }
 
+message GetNodeByNodeKeyRequest {
+  string node_key = 1;
+}
+
+message GetNodeByNodeKeyResponse {
+  Node node = 1;
+}
+
 message ListNodesRequest {
   string user = 1;
 }
