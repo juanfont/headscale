@@ -136,8 +136,23 @@ derp:
 # Disables the automatic check for headscale updates on startup
 disable_check_updates: false
 
-# Time before an inactive ephemeral node is deleted?
-ephemeral_node_inactivity_timeout: 30m
+# Node lifecycle configuration.
+node:
+  # Default key expiry for non-tagged nodes, regardless of registration method
+  # (auth key, CLI, web auth). Tagged nodes are exempt and never expire.
+  #
+  # This is the base default. OIDC can override this via oidc.expiry.
+  # If a client explicitly requests a specific expiry, the client value is used.
+  #
+  # Setting the value to "0" means no default expiry (nodes never expire unless
+  # explicitly expired via `headscale nodes expire`).
+  #
+  # Default: 180d (matches Tailscale SaaS behaviour)
+  expiry: 180d
+
+  ephemeral:
+    # Time before an inactive ephemeral node is deleted.
+    inactivity_timeout: 30m
 
 database:
   # Database type. Available options: sqlite, postgres
@@ -346,15 +361,16 @@ unix_socket_permission: "0770"
 #   # `LoadCredential` straightforward:
 #   client_secret_path: "${CREDENTIALS_DIRECTORY}/oidc_client_secret"
 #
-#   # The amount of time a node is authenticated with OpenID until it expires
-#   # and needs to reauthenticate.
-#   # Setting the value to "0" will mean no expiry.
-#   expiry: 180d
+#   # Override the default node expiry (node.expiry) for OIDC-authenticated nodes.
+#   # If not set, falls back to node.expiry.
+#   # Setting the value to "0" will mean no expiry for OIDC nodes.
+#   # expiry: 180d
 #
 #   # Use the expiry from the token received from OpenID when the user logged
 #   # in. This will typically lead to frequent need to reauthenticate and should
 #   # only be enabled if you know what you are doing.
-#   # Note: enabling this will cause `oidc.expiry` to be ignored.
+#   # Note: enabling this will cause `oidc.expiry` and `node.expiry` to be ignored
+#   # for OIDC-authenticated nodes.
 #   use_expiry_from_token: false
 #
 #   # The OIDC scopes to use, defaults to "openid", "profile" and "email".

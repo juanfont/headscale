@@ -1397,11 +1397,11 @@ func TestNodeExpireCommand(t *testing.T) {
 
 	assert.Len(t, listAll, 5)
 
-	assert.True(t, listAll[0].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[1].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[2].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[3].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAll[4].GetExpiry().AsTime().IsZero())
+	// With node.expiry defaulting to 180d, non-tagged nodes get a future expiry.
+	for i := range 5 {
+		assert.True(t, listAll[i].GetExpiry().AsTime().After(time.Now()),
+			"node %d should have a future expiry from default node.expiry", i)
+	}
 
 	for idx := range 3 {
 		_, err := headscale.Execute(
@@ -1438,8 +1438,8 @@ func TestNodeExpireCommand(t *testing.T) {
 	assert.True(t, listAllAfterExpiry[0].GetExpiry().AsTime().Before(time.Now()))
 	assert.True(t, listAllAfterExpiry[1].GetExpiry().AsTime().Before(time.Now()))
 	assert.True(t, listAllAfterExpiry[2].GetExpiry().AsTime().Before(time.Now()))
-	assert.True(t, listAllAfterExpiry[3].GetExpiry().AsTime().IsZero())
-	assert.True(t, listAllAfterExpiry[4].GetExpiry().AsTime().IsZero())
+	assert.True(t, listAllAfterExpiry[3].GetExpiry().AsTime().After(time.Now()))
+	assert.True(t, listAllAfterExpiry[4].GetExpiry().AsTime().After(time.Now()))
 }
 
 func TestNodeRenameCommand(t *testing.T) {
