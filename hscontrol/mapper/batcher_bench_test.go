@@ -150,12 +150,11 @@ func BenchmarkUpdateSentPeers(b *testing.B) {
 // helper, it doesn't register cleanup and suppresses logging.
 func benchBatcher(nodeCount, bufferSize int) (*Batcher, map[types.NodeID]chan *tailcfg.MapResponse) {
 	b := &Batcher{
-		tick:      time.NewTicker(1 * time.Hour), // never fires during bench
-		workers:   4,
-		workCh:    make(chan work, 4*200),
-		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected: xsync.NewMap[types.NodeID, *time.Time](),
-		done:      make(chan struct{}),
+		tick:    time.NewTicker(1 * time.Hour), // never fires during bench
+		workers: 4,
+		workCh:  make(chan work, 4*200),
+		nodes:   xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
+		done:    make(chan struct{}),
 	}
 
 	channels := make(map[types.NodeID]chan *tailcfg.MapResponse, nodeCount)
@@ -172,7 +171,6 @@ func benchBatcher(nodeCount, bufferSize int) (*Batcher, map[types.NodeID]chan *t
 		entry.lastUsed.Store(time.Now().Unix())
 		mc.addConnection(entry)
 		b.nodes.Store(id, mc)
-		b.connected.Store(id, nil)
 		channels[id] = ch
 	}
 
@@ -471,7 +469,7 @@ func BenchmarkConnectedMap(b *testing.B) {
 
 	for _, nodeCount := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("%dnodes", nodeCount), func(b *testing.B) {
-			batcher, _ := benchBatcher(nodeCount, 1)
+			batcher, channels := benchBatcher(nodeCount, 1)
 
 			defer func() {
 				close(batcher.done)
@@ -481,8 +479,11 @@ func BenchmarkConnectedMap(b *testing.B) {
 			// Disconnect 10% of nodes for a realistic mix
 			for i := 1; i <= nodeCount; i++ {
 				if i%10 == 0 {
-					now := time.Now()
-					batcher.connected.Store(types.NodeID(i), &now) //nolint:gosec // benchmark
+					id := types.NodeID(i) //nolint:gosec // benchmark
+					if mc, ok := batcher.nodes.Load(id); ok {
+						mc.removeConnectionByChannel(channels[id])
+						mc.markDisconnected()
+					}
 				}
 			}
 

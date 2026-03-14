@@ -47,12 +47,11 @@ func setupLightweightBatcher(t *testing.T, nodeCount, bufferSize int) *lightweig
 	t.Helper()
 
 	b := &Batcher{
-		tick:      time.NewTicker(10 * time.Millisecond),
-		workers:   4,
-		workCh:    make(chan work, 4*200),
-		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected: xsync.NewMap[types.NodeID, *time.Time](),
-		done:      make(chan struct{}),
+		tick:    time.NewTicker(10 * time.Millisecond),
+		workers: 4,
+		workCh:  make(chan work, 4*200),
+		nodes:   xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
+		done:    make(chan struct{}),
 	}
 
 	channels := make(map[types.NodeID]chan *tailcfg.MapResponse, nodeCount)
@@ -69,7 +68,6 @@ func setupLightweightBatcher(t *testing.T, nodeCount, bufferSize int) *lightweig
 		entry.lastUsed.Store(time.Now().Unix())
 		mc.addConnection(entry)
 		b.nodes.Store(id, mc)
-		b.connected.Store(id, nil) // nil = connected
 		channels[id] = ch
 	}
 
@@ -299,12 +297,9 @@ func TestAddToBatch_NodeRemovalCleanup(t *testing.T) {
 		PeersRemoved: []types.NodeID{removedNode},
 	})
 
-	// Node should be removed from all maps
+	// Node should be removed from the nodes map
 	_, exists = lb.b.nodes.Load(removedNode)
 	assert.False(t, exists, "node 3 should be removed from nodes map")
-
-	_, exists = lb.b.connected.Load(removedNode)
-	assert.False(t, exists, "node 3 should be removed from connected map")
 
 	pending := getPendingForNode(lb.b, removedNode)
 	assert.Empty(t, pending, "node 3 should have no pending changes")
@@ -546,13 +541,13 @@ func TestCleanupOfflineNodes_RemovesOld(t *testing.T) {
 	lb := setupLightweightBatcher(t, 5, 10)
 	defer lb.cleanup()
 
-	// Make node 3 appear offline for 20 minutes
-	oldTime := time.Now().Add(-20 * time.Minute)
-	lb.b.connected.Store(types.NodeID(3), &oldTime)
-	// Remove its active connections so it appears truly offline
+	// Remove node 3's active connections and mark it disconnected 20 minutes ago
 	if mc, ok := lb.b.nodes.Load(types.NodeID(3)); ok {
 		ch := lb.channels[types.NodeID(3)]
 		mc.removeConnectionByChannel(ch)
+
+		oldTime := time.Now().Add(-20 * time.Minute)
+		mc.disconnectedAt.Store(&oldTime)
 	}
 
 	lb.b.cleanupOfflineNodes()
@@ -571,13 +566,13 @@ func TestCleanupOfflineNodes_KeepsRecent(t *testing.T) {
 	lb := setupLightweightBatcher(t, 5, 10)
 	defer lb.cleanup()
 
-	// Make node 3 appear offline for only 5 minutes (under threshold)
-	recentTime := time.Now().Add(-5 * time.Minute)
-	lb.b.connected.Store(types.NodeID(3), &recentTime)
-
+	// Remove node 3's connections and mark it disconnected 5 minutes ago (under threshold)
 	if mc, ok := lb.b.nodes.Load(types.NodeID(3)); ok {
 		ch := lb.channels[types.NodeID(3)]
 		mc.removeConnectionByChannel(ch)
+
+		recentTime := time.Now().Add(-5 * time.Minute)
+		mc.disconnectedAt.Store(&recentTime)
 	}
 
 	lb.b.cleanupOfflineNodes()
@@ -593,8 +588,10 @@ func TestCleanupOfflineNodes_KeepsActive(t *testing.T) {
 	defer lb.cleanup()
 
 	// Set old disconnect time but keep the connection active
-	oldTime := time.Now().Add(-20 * time.Minute)
-	lb.b.connected.Store(types.NodeID(3), &oldTime)
+	if mc, ok := lb.b.nodes.Load(types.NodeID(3)); ok {
+		oldTime := time.Now().Add(-20 * time.Minute)
+		mc.disconnectedAt.Store(&oldTime)
+	}
 	// Don't remove connection - node still has active connections
 
 	lb.b.cleanupOfflineNodes()
@@ -717,13 +714,11 @@ func TestBatcher_IsConnectedReflectsState(t *testing.T) {
 	// Non-existent node should not be connected
 	assert.False(t, lb.b.IsConnected(types.NodeID(999)))
 
-	// Disconnect node 3 (remove connection + set disconnect time)
+	// Disconnect node 3 (remove connection + mark disconnected)
 	if mc, ok := lb.b.nodes.Load(types.NodeID(3)); ok {
 		mc.removeConnectionByChannel(lb.channels[types.NodeID(3)])
+		mc.markDisconnected()
 	}
-
-	now := time.Now()
-	lb.b.connected.Store(types.NodeID(3), &now)
 
 	assert.False(t, lb.b.IsConnected(types.NodeID(3)),
 		"node 3 should not be connected after disconnection")
@@ -742,10 +737,8 @@ func TestBatcher_ConnectedMapConsistency(t *testing.T) {
 	// Disconnect node 2
 	if mc, ok := lb.b.nodes.Load(types.NodeID(2)); ok {
 		mc.removeConnectionByChannel(lb.channels[types.NodeID(2)])
+		mc.markDisconnected()
 	}
-
-	now := time.Now()
-	lb.b.connected.Store(types.NodeID(2), &now)
 
 	cm := lb.b.ConnectedMap()
 
@@ -789,13 +782,13 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 
 	targetNode := types.NodeID(3)
 
-	// Make node 3 appear offline for >15 minutes (past cleanup threshold)
-	oldTime := time.Now().Add(-20 * time.Minute)
-	lb.b.connected.Store(targetNode, &oldTime)
-	// Remove its active connections so it appears truly offline
+	// Remove node 3's active connections and mark it disconnected >15 minutes ago
 	if mc, ok := lb.b.nodes.Load(targetNode); ok {
 		ch := lb.channels[targetNode]
 		mc.removeConnectionByChannel(ch)
+
+		oldTime := time.Now().Add(-20 * time.Minute)
+		mc.disconnectedAt.Store(&oldTime)
 	}
 
 	// Verify node 3 has no active connections before we start.
@@ -819,7 +812,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 	}
 	entry.lastUsed.Store(time.Now().Unix())
 	mc.addConnection(entry)
-	lb.b.connected.Store(targetNode, nil) // nil = connected
+	mc.markConnected()
 	lb.channels[targetNode] = newCh
 
 	// Now run cleanup. Node 3 is in the candidates list (old disconnect
@@ -840,7 +833,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 	mc.removeConnectionByChannel(newCh)
 
 	oldTime2 := time.Now().Add(-20 * time.Minute)
-	lb.b.connected.Store(targetNode, &oldTime2)
+	mc.disconnectedAt.Store(&oldTime2)
 
 	var wg sync.WaitGroup
 
@@ -861,7 +854,7 @@ func TestBug3_CleanupOfflineNodes_TOCTOU(t *testing.T) {
 				}
 				reconnEntry.lastUsed.Store(time.Now().Unix())
 				mc.addConnection(reconnEntry)
-				lb.b.connected.Store(targetNode, nil)
+				mc.markConnected()
 			}
 		})
 
@@ -1028,13 +1021,13 @@ func TestBug7_CleanupOfflineNodes_PendingChangesCleanedStructurally(t *testing.T
 
 	targetNode := types.NodeID(3)
 
-	// Make node 3 appear offline for >15 minutes
-	oldTime := time.Now().Add(-20 * time.Minute)
-	lb.b.connected.Store(targetNode, &oldTime)
-
+	// Remove node 3's connections and mark it disconnected >15 minutes ago
 	if mc, ok := lb.b.nodes.Load(targetNode); ok {
 		ch := lb.channels[targetNode]
 		mc.removeConnectionByChannel(ch)
+
+		oldTime := time.Now().Add(-20 * time.Minute)
+		mc.disconnectedAt.Store(&oldTime)
 	}
 
 	// Add pending changes for node 3 before cleanup
@@ -1049,12 +1042,9 @@ func TestBug7_CleanupOfflineNodes_PendingChangesCleanedStructurally(t *testing.T
 	// Run cleanup
 	lb.b.cleanupOfflineNodes()
 
-	// Node 3 should be removed from nodes and connected
+	// Node 3 should be removed from the nodes map
 	_, existsInNodes := lb.b.nodes.Load(targetNode)
 	assert.False(t, existsInNodes, "node 3 should be removed from nodes map")
-
-	_, existsInConnected := lb.b.connected.Load(targetNode)
-	assert.False(t, existsInConnected, "node 3 should be removed from connected map")
 
 	// Pending changes are structurally gone because the node was deleted.
 	// getPendingForNode returns nil for non-existent nodes.
@@ -1282,12 +1272,11 @@ func TestScale1000_MultiChannelBroadcast(t *testing.T) {
 
 	// Create nodes with varying connection counts
 	b := &Batcher{
-		tick:      time.NewTicker(10 * time.Millisecond),
-		workers:   4,
-		workCh:    make(chan work, 4*200),
-		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected: xsync.NewMap[types.NodeID, *time.Time](),
-		done:      make(chan struct{}),
+		tick:    time.NewTicker(10 * time.Millisecond),
+		workers: 4,
+		workCh:  make(chan work, 4*200),
+		nodes:   xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
+		done:    make(chan struct{}),
 	}
 
 	defer func() {
@@ -1551,16 +1540,17 @@ func TestScale1000_IsConnectedConsistency(t *testing.T) {
 		}
 	})
 
-	// Goroutine modifying connection state
+	// Goroutine modifying connection state via disconnectedAt on the node conn
 
 	wg.Go(func() {
 		for i := range 100 {
 			id := types.NodeID(1 + (i % 1000)) //nolint:gosec // test
-			if i%2 == 0 {
-				now := time.Now()
-				lb.b.connected.Store(id, &now) // disconnect
-			} else {
-				lb.b.connected.Store(id, nil) // reconnect
+			if mc, ok := lb.b.nodes.Load(id); ok {
+				if i%2 == 0 {
+					mc.markDisconnected() // disconnect
+				} else {
+					mc.markConnected() // reconnect
+				}
 			}
 		}
 	})
@@ -1617,7 +1607,6 @@ func TestScale1000_BroadcastDuringNodeChurn(t *testing.T) {
 					if cycle%2 == 0 {
 						// "Remove" node
 						lb.b.nodes.Delete(id)
-						lb.b.connected.Delete(id)
 					} else {
 						// "Add" node back
 						mc := newMultiChannelNodeConn(id, nil)
@@ -1631,7 +1620,6 @@ func TestScale1000_BroadcastDuringNodeChurn(t *testing.T) {
 						entry.lastUsed.Store(time.Now().Unix())
 						mc.addConnection(entry)
 						lb.b.nodes.Store(id, mc)
-						lb.b.connected.Store(id, nil)
 					}
 				}()
 			}
@@ -1684,12 +1672,11 @@ func TestScale1000_WorkChannelSaturation(t *testing.T) {
 
 	// Create batcher with SMALL work channel to force saturation
 	b := &Batcher{
-		tick:      time.NewTicker(10 * time.Millisecond),
-		workers:   2,
-		workCh:    make(chan work, 10), // Very small - will saturate
-		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected: xsync.NewMap[types.NodeID, *time.Time](),
-		done:      make(chan struct{}),
+		tick:    time.NewTicker(10 * time.Millisecond),
+		workers: 2,
+		workCh:  make(chan work, 10), // Very small - will saturate
+		nodes:   xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
+		done:    make(chan struct{}),
 	}
 
 	defer func() {

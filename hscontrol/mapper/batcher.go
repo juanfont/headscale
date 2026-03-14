@@ -43,10 +43,9 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *Batcher {
 		tick:    time.NewTicker(batchTime),
 
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
-		workCh:    make(chan work, workers*200),
-		done:      make(chan struct{}),
-		nodes:     xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
-		connected: xsync.NewMap[types.NodeID, *time.Time](),
+		workCh: make(chan work, workers*200),
+		done:   make(chan struct{}),
+		nodes:  xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 	}
 }
 
@@ -200,8 +199,7 @@ type Batcher struct {
 	mapper  *mapper
 	workers int
 
-	nodes     *xsync.Map[types.NodeID, *multiChannelNodeConn]
-	connected *xsync.Map[types.NodeID, *time.Time]
+	nodes *xsync.Map[types.NodeID, *multiChannelNodeConn]
 
 	// Work queue channel
 	workCh   chan work
@@ -264,7 +262,10 @@ func (b *Batcher) AddNode(
 	if err != nil {
 		nlog.Error().Err(err).Msg("initial map generation failed")
 		nodeConn.removeConnectionByChannel(c)
-		b.markDisconnectedIfNoConns(id, nodeConn)
+
+		if !nodeConn.hasActiveConnections() {
+			nodeConn.markDisconnected()
+		}
 
 		return fmt.Errorf("generating initial map for node %d: %w", id, err)
 	}
@@ -279,13 +280,16 @@ func (b *Batcher) AddNode(
 		nlog.Debug().Caller().Dur("timeout.duration", 5*time.Second). //nolint:mnd
 										Msg("initial map send timed out because channel was blocked or receiver not ready")
 		nodeConn.removeConnectionByChannel(c)
-		b.markDisconnectedIfNoConns(id, nodeConn)
+
+		if !nodeConn.hasActiveConnections() {
+			nodeConn.markDisconnected()
+		}
 
 		return fmt.Errorf("%w for node %d", ErrInitialMapSendTimeout, id)
 	}
 
-	// Update connection status
-	b.connected.Store(id, nil) // nil = connected
+	// Mark the node as connected now that the initial map was sent.
+	nodeConn.markConnected()
 
 	// Node will automatically receive updates through the normal flow
 	// The initial full map already contains all current state
@@ -328,7 +332,7 @@ func (b *Batcher) RemoveNode(id types.NodeID, c chan<- *tailcfg.MapResponse) boo
 	// No active connections - keep the node entry alive for rapid reconnections
 	// The node will get a fresh full map when it reconnects
 	nlog.Debug().Caller().Msg("node disconnected from batcher, keeping entry for rapid reconnection")
-	b.connected.Store(id, new(time.Now()))
+	nodeConn.markDisconnected()
 
 	return false
 }
@@ -530,8 +534,6 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 					Uint64(zf.NodeID, removedID.Uint64()).
 					Msg("removed deleted node from batcher")
 			}
-
-			b.connected.Delete(removedID)
 		}
 	}
 
@@ -604,15 +606,13 @@ func (b *Batcher) processBatchedChanges() {
 // cleanupOfflineNodes removes nodes that have been offline for too long to prevent memory leaks.
 // Uses Compute() for atomic check-and-delete to prevent TOCTOU races where a node
 // reconnects between the hasActiveConnections() check and the Delete() call.
-// TODO(kradalby): reevaluate if we want to keep this.
 func (b *Batcher) cleanupOfflineNodes() {
-	now := time.Now()
-
 	var nodesToCleanup []types.NodeID
 
-	// Find nodes that have been offline for too long
-	b.connected.Range(func(nodeID types.NodeID, disconnectTime *time.Time) bool {
-		if disconnectTime != nil && now.Sub(*disconnectTime) > offlineNodeCleanupThreshold {
+	// Find nodes that have been offline for too long by scanning b.nodes
+	// and checking each node's disconnectedAt timestamp.
+	b.nodes.Range(func(nodeID types.NodeID, nc *multiChannelNodeConn) bool {
+		if nc != nil && !nc.hasActiveConnections() && nc.offlineDuration() > offlineNodeCleanupThreshold {
 			nodesToCleanup = append(nodesToCleanup, nodeID)
 		}
 
@@ -635,8 +635,7 @@ func (b *Batcher) cleanupOfflineNodes() {
 				// Perform all bookkeeping inside the Compute callback so
 				// that a concurrent AddNode (which calls LoadOrStore on
 				// b.nodes) cannot slip in between the delete and the
-				// connected/counter updates.
-				b.connected.Delete(nodeID)
+				// counter update.
 				b.totalNodes.Add(-1)
 
 				cleaned++
@@ -656,74 +655,32 @@ func (b *Batcher) cleanupOfflineNodes() {
 	}
 }
 
-// IsConnected is lock-free read that checks if a node has any active connections.
+// IsConnected is a lock-free read that checks if a node is connected.
+// A node is considered connected if it has active connections or has
+// not been marked as disconnected.
 func (b *Batcher) IsConnected(id types.NodeID) bool {
-	// First check if we have active connections for this node
-	if nodeConn, exists := b.nodes.Load(id); exists && nodeConn != nil {
-		if nodeConn.hasActiveConnections() {
-			return true
-		}
-	}
-
-	// Check disconnected timestamp with grace period
-	val, ok := b.connected.Load(id)
-	if !ok {
+	nodeConn, exists := b.nodes.Load(id)
+	if !exists || nodeConn == nil {
 		return false
 	}
 
-	// nil means connected
-	if val == nil {
-		return true
-	}
-
-	return false
+	return nodeConn.isConnected()
 }
 
-// ConnectedMap returns a lock-free map of all connected nodes.
+// ConnectedMap returns a lock-free map of all known nodes and their
+// connection status (true = connected, false = disconnected).
 func (b *Batcher) ConnectedMap() *xsync.Map[types.NodeID, bool] {
 	ret := xsync.NewMap[types.NodeID, bool]()
 
-	// First, add all nodes with active connections
-	b.nodes.Range(func(id types.NodeID, nodeConn *multiChannelNodeConn) bool {
-		if nodeConn == nil {
-			return true
-		}
-
-		if nodeConn.hasActiveConnections() {
-			ret.Store(id, true)
-		}
-
-		return true
-	})
-
-	// Then add all entries from the connected map
-	b.connected.Range(func(id types.NodeID, val *time.Time) bool {
-		// Only add if not already added as connected above
-		if _, exists := ret.Load(id); !exists {
-			if val == nil {
-				// nil means connected
-				ret.Store(id, true)
-			} else {
-				// timestamp means disconnected
-				ret.Store(id, false)
-			}
+	b.nodes.Range(func(id types.NodeID, nc *multiChannelNodeConn) bool {
+		if nc != nil {
+			ret.Store(id, nc.isConnected())
 		}
 
 		return true
 	})
 
 	return ret
-}
-
-// markDisconnectedIfNoConns stores a disconnect timestamp in b.connected
-// when the node has no remaining active connections. This prevents
-// IsConnected from returning a stale true after all connections have been
-// removed on an error path (e.g. AddNode failure).
-func (b *Batcher) markDisconnectedIfNoConns(id types.NodeID, nc *multiChannelNodeConn) {
-	if !nc.hasActiveConnections() {
-		now := time.Now()
-		b.connected.Store(id, &now)
-	}
 }
 
 // MapResponseFromChange queues work to generate a map response and waits for the result.
@@ -753,45 +710,14 @@ type DebugNodeInfo struct {
 func (b *Batcher) Debug() map[types.NodeID]DebugNodeInfo {
 	result := make(map[types.NodeID]DebugNodeInfo)
 
-	// Get all nodes with their connection status using immediate connection logic
-	// (no grace period) for debug purposes
-	b.nodes.Range(func(id types.NodeID, nodeConn *multiChannelNodeConn) bool {
-		if nodeConn == nil {
+	b.nodes.Range(func(id types.NodeID, nc *multiChannelNodeConn) bool {
+		if nc == nil {
 			return true
 		}
 
-		activeConnCount := nodeConn.getActiveConnectionCount()
-
-		// Use immediate connection status: if active connections exist, node is connected
-		// If not, check the connected map for nil (connected) vs timestamp (disconnected)
-		connected := false
-		if activeConnCount > 0 {
-			connected = true
-		} else {
-			// Check connected map for immediate status
-			if val, ok := b.connected.Load(id); ok && val == nil {
-				connected = true
-			}
-		}
-
 		result[id] = DebugNodeInfo{
-			Connected:         connected,
-			ActiveConnections: activeConnCount,
-		}
-
-		return true
-	})
-
-	// Add all entries from the connected map to capture both connected and disconnected nodes
-	b.connected.Range(func(id types.NodeID, val *time.Time) bool {
-		// Only add if not already processed above
-		if _, exists := result[id]; !exists {
-			// Use immediate connection status for debug (no grace period)
-			connected := (val == nil) // nil means connected, timestamp means disconnected
-			result[id] = DebugNodeInfo{
-				Connected:         connected,
-				ActiveConnections: 0,
-			}
+			Connected:         nc.isConnected(),
+			ActiveConnections: nc.getActiveConnectionCount(),
 		}
 
 		return true

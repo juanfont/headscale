@@ -52,6 +52,12 @@ type multiChannelNodeConn struct {
 	closeOnce   sync.Once
 	updateCount atomic.Int64
 
+	// disconnectedAt records when the last connection was removed.
+	// nil means the node is considered connected (or newly created);
+	// non-nil means the node disconnected at the stored timestamp.
+	// Used by cleanupOfflineNodes to evict stale entries.
+	disconnectedAt atomic.Pointer[time.Time]
+
 	// lastSentPeers tracks which peers were last sent to this node.
 	// This enables computing diffs for policy changes instead of sending
 	// full peer lists (which clients interpret as "no change" when empty).
@@ -160,6 +166,41 @@ func (mc *multiChannelNodeConn) getActiveConnectionCount() int {
 	defer mc.mutex.RUnlock()
 
 	return len(mc.connections)
+}
+
+// markConnected clears the disconnect timestamp, indicating the node
+// has an active connection.
+func (mc *multiChannelNodeConn) markConnected() {
+	mc.disconnectedAt.Store(nil)
+}
+
+// markDisconnected records the current time as the moment the node
+// lost its last connection. Used by cleanupOfflineNodes to determine
+// how long the node has been offline.
+func (mc *multiChannelNodeConn) markDisconnected() {
+	now := time.Now()
+	mc.disconnectedAt.Store(&now)
+}
+
+// isConnected returns true if the node has active connections or has
+// not been marked as disconnected.
+func (mc *multiChannelNodeConn) isConnected() bool {
+	if mc.hasActiveConnections() {
+		return true
+	}
+
+	return mc.disconnectedAt.Load() == nil
+}
+
+// offlineDuration returns how long the node has been disconnected.
+// Returns 0 if the node is connected or has never been marked as disconnected.
+func (mc *multiChannelNodeConn) offlineDuration() time.Duration {
+	t := mc.disconnectedAt.Load()
+	if t == nil {
+		return 0
+	}
+
+	return time.Since(*t)
 }
 
 // appendPending appends changes to this node's pending change list.

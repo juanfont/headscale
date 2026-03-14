@@ -1121,9 +1121,9 @@ func TestBatcher_QueueWorkAfterClose_DoesNotHang(t *testing.T) {
 }
 
 // TestIsConnected_FalseAfterAddNodeFailure is a regression guard for M3.
-// Before the fix, AddNode error paths removed the connection but left
-// b.connected with its previous value (nil = connected). IsConnected
-// would return true for a node with zero active connections.
+// Before the fix, AddNode error paths removed the connection but did not
+// mark the node as disconnected. IsConnected would return true for a
+// node with zero active connections.
 func TestIsConnected_FalseAfterAddNodeFailure(t *testing.T) {
 	b := NewBatcher(50*time.Millisecond, 2, nil)
 	b.Start()
@@ -1132,12 +1132,11 @@ func TestIsConnected_FalseAfterAddNodeFailure(t *testing.T) {
 
 	id := types.NodeID(42)
 
-	// Simulate a previous session leaving the node marked as connected.
-	b.connected.Store(id, nil) // nil = connected
-
 	// Pre-create the node entry so AddNode reuses it, and set up a
 	// multiChannelNodeConn with no mapper so MapResponseFromChange will fail.
+	// markConnected() simulates a previous session leaving it connected.
 	nc := newMultiChannelNodeConn(id, nil)
+	nc.markConnected()
 	b.nodes.Store(id, nc)
 
 	ch := make(chan *tailcfg.MapResponse, 1)
