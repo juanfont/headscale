@@ -305,7 +305,7 @@ func BenchmarkScale_ConnectedMap(b *testing.B) {
 
 	for _, n := range scaleCountsHeavy {
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
-			batcher, _ := benchBatcher(n, 1)
+			batcher, channels := benchBatcher(n, 1)
 
 			defer func() {
 				close(batcher.done)
@@ -315,8 +315,11 @@ func BenchmarkScale_ConnectedMap(b *testing.B) {
 			// 10% disconnected for realism
 			for i := 1; i <= n; i++ {
 				if i%10 == 0 {
-					now := time.Now()
-					batcher.connected.Store(types.NodeID(i), &now) //nolint:gosec
+					id := types.NodeID(i) //nolint:gosec
+					if mc, ok := batcher.nodes.Load(id); ok {
+						mc.removeConnectionByChannel(channels[id])
+						mc.markDisconnected()
+					}
 				}
 			}
 
