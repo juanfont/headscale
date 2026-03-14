@@ -1,0 +1,20 @@
+# minimum to not fatal
+noise:
+  private_key_path: "private_key.pem"
+server_url: "https://derp.no"
+
+prefixes:
+  v4: "100.64.0.0/10"
+
+database:
+  type: sqlite3
+
+dns:
+  magic_dns: false
+  base_domain: example.com
+  override_local_dns: false
+
+  nameservers:
+    split:
+      foo.bar.com:
+        - 1.1.1.1
