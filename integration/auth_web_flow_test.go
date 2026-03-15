@@ -32,9 +32,6 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("webauthping"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -73,8 +70,6 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("weblogout"),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -239,8 +234,6 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("webflowrelnewuser"),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

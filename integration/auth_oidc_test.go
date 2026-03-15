@@ -51,11 +51,13 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		"HEADSCALE_OIDC_CLIENT_SECRET_PATH": "${CREDENTIALS_DIRECTORY_TEST}/hs_client_oidc_secret",
 	}
 
+	// OIDC tests configure the mock OIDC provider via environment
+	// variables and inject the client secret as a file. This
+	// pattern is shared by all OIDC integration tests.
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
 		hsic.WithTestName("oidcauthping"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -374,7 +376,6 @@ func TestOIDC024UserCreation(t *testing.T) {
 				nil,
 				hsic.WithTestName("oidcmigration"),
 				hsic.WithConfigEnv(oidcMap),
-				hsic.WithTLS(),
 				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 			)
 			requireNoErrHeadscaleEnv(t, err)
@@ -432,7 +433,6 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		nil,
 		hsic.WithTestName("oidcauthpkce"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -487,12 +487,9 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
-		hsic.WithTestName("oidcauthrelog"),
+		hsic.WithTestName("oidc-authrelog"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -899,11 +896,9 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnvWithLoginURL(
 		nil,
-		hsic.WithTestName("oidcauthrelog"),
+		hsic.WithTestName("oidc-followup"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
 	)
 	require.NoError(t, err)
 
@@ -1011,9 +1006,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 		nil,
 		hsic.WithTestName("oidcauthrelog"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
 	)
 	require.NoError(t, err)
 
@@ -1145,10 +1138,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		nil,
 		hsic.WithTestName("oidcsameuser"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1373,10 +1363,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 		nil,
 		hsic.WithTestName("oidcexpiry"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1524,7 +1511,6 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		},
 		hsic.WithTestName("oidcaclpolicy"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 		hsic.WithACLPolicy(
 			&policyv2.Policy{
@@ -1801,10 +1787,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		},
 		hsic.WithTestName("oidcrouterelogin"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
 		hsic.WithACLPolicy(
 			&policyv2.Policy{
 				ACLs: []policyv2.ACL{
