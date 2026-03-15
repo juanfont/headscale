@@ -82,6 +82,7 @@ type HeadscaleInContainer struct {
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
 	env              map[string]string
+	tlsCACert        []byte
 	tlsCert          []byte
 	tlsKey           []byte
 	noTLS            bool
@@ -126,10 +127,14 @@ func WithoutTLS() Option {
 }
 
 // WithCustomTLS uses the given certificates for the Headscale instance.
-func WithCustomTLS(cert, key []byte) Option {
+// The caCert is installed into the container's trust store and returned
+// by GetCert() so that clients can trust this server.
+func WithCustomTLS(caCert, cert, key []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
+		hsic.tlsCACert = caCert
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
+		hsic.caCerts = append(hsic.caCerts, caCert)
 	}
 }
 
@@ -356,13 +361,19 @@ func New(
 	// disabled via WithoutTLS() and no custom cert was provided
 	// via WithCustomTLS().
 	if !hsic.noTLS && len(hsic.tlsCert) == 0 {
-		cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
+		caCert, cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
 		if err != nil {
 			return nil, fmt.Errorf("creating default TLS certificates: %w", err)
 		}
 
+		hsic.tlsCACert = caCert
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
+
+		// Install the CA cert into the headscale container's trust
+		// store so that tools like curl trust the server's own
+		// certificate.
+		hsic.caCerts = append(hsic.caCerts, caCert)
 	}
 
 	log.Println("NAME: ", hsic.hostname)
@@ -1028,9 +1039,10 @@ func (t *HeadscaleInContainer) getEndpoint(useIP bool) string {
 	return "http://" + hostEndpoint
 }
 
-// GetCert returns the public certificate of the HeadscaleInContainer.
+// GetCert returns the CA certificate that clients should trust to
+// verify this server's TLS certificate.
 func (t *HeadscaleInContainer) GetCert() []byte {
-	return t.tlsCert
+	return t.tlsCACert
 }
 
 // GetHostname returns the hostname of the HeadscaleInContainer.
