@@ -46,6 +46,12 @@ const (
 	// of length. Then that many bytes of JSON-encoded tailcfg.EarlyNoise.
 	// The early payload is optional. Some servers may not send it... But we do!
 	earlyPayloadMagic = "\xff\xff\xffTS"
+
+	// noiseBodyLimit is the maximum allowed request body size for Noise protocol
+	// handlers. This prevents unauthenticated OOM attacks via unbounded io.ReadAll.
+	// No legitimate Noise request (MapRequest, RegisterRequest, etc.) comes close
+	// to this limit; typical payloads are a few KB.
+	noiseBodyLimit int64 = 1048576 // 1 MiB
 )
 
 type noiseServer struct {
@@ -110,6 +116,17 @@ func (h *Headscale) NoiseUpgradeHandler(
 	// a single hijacked connection from /ts2021, using netutil.NewOneConnListener
 
 	r := chi.NewRouter()
+
+	// Limit request body size to prevent unauthenticated OOM attacks.
+	// The Noise handshake accepts any machine key without checking
+	// registration, so all endpoints behind this router are reachable
+	// without credentials.
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, noiseBodyLimit)
+			next.ServeHTTP(w, r)
+		})
+	})
 	r.Use(metrics.Collector(metrics.CollectorOpts{
 		Host:  false,
 		Proto: true,
@@ -251,8 +268,7 @@ func rejectUnsupported(
 }
 
 func (ns *noiseServer) NotImplementedHandler(writer http.ResponseWriter, req *http.Request) {
-	d, _ := io.ReadAll(req.Body)
-	log.Trace().Caller().Str("path", req.URL.String()).Bytes("body", d).Msgf("not implemented handler hit")
+	log.Trace().Caller().Str("path", req.URL.String()).Msg("not implemented handler hit")
 	http.Error(writer, "Not implemented yet", http.StatusNotImplemented)
 }
 
@@ -535,10 +551,10 @@ func (ns *noiseServer) PollNetMapHandler(
 	writer http.ResponseWriter,
 	req *http.Request,
 ) {
-	body, _ := io.ReadAll(req.Body)
-
 	var mapRequest tailcfg.MapRequest
-	if err := json.Unmarshal(body, &mapRequest); err != nil { //nolint:noinlineerr
+
+	err := json.NewDecoder(req.Body).Decode(&mapRequest)
+	if err != nil {
 		httpError(writer, err)
 		return
 	}
@@ -584,13 +600,10 @@ func (ns *noiseServer) RegistrationHandler(
 	registerRequest, registerResponse := func() (*tailcfg.RegisterRequest, *tailcfg.RegisterResponse) { //nolint:contextcheck
 		var resp *tailcfg.RegisterResponse
 
-		body, err := io.ReadAll(req.Body)
-		if err != nil {
-			return &tailcfg.RegisterRequest{}, regErr(err)
-		}
-
 		var regReq tailcfg.RegisterRequest
-		if err := json.Unmarshal(body, &regReq); err != nil { //nolint:noinlineerr
+
+		err := json.NewDecoder(req.Body).Decode(&regReq)
+		if err != nil {
 			return &regReq, regErr(err)
 		}
 
