@@ -419,6 +419,61 @@ func (c *TestClient) SelfName() string {
 	return nm.SelfNode.Hostinfo().Hostname()
 }
 
+// WaitForPeerCount blocks until the client sees exactly n peers.
+func (c *TestClient) WaitForPeerCount(tb testing.TB, n int, timeout time.Duration) {
+	tb.Helper()
+
+	deadline := time.After(timeout)
+
+	for {
+		if nm := c.Netmap(); nm != nil && len(nm.Peers) == n {
+			return
+		}
+
+		select {
+		case <-c.updates:
+			// Check again.
+		case <-deadline:
+			nm := c.Netmap()
+
+			got := 0
+			if nm != nil {
+				got = len(nm.Peers)
+			}
+
+			tb.Fatalf("servertest: WaitForPeerCount(%s, %d): timeout after %v (got %d peers)", c.Name, n, timeout, got)
+		}
+	}
+}
+
+// WaitForCondition blocks until condFn returns true on the latest
+// netmap, or until timeout expires. This is useful for waiting for
+// specific state changes (e.g., peer going offline).
+func (c *TestClient) WaitForCondition(tb testing.TB, desc string, timeout time.Duration, condFn func(*netmap.NetworkMap) bool) {
+	tb.Helper()
+
+	deadline := time.After(timeout)
+
+	for {
+		if nm := c.Netmap(); nm != nil && condFn(nm) {
+			return
+		}
+
+		select {
+		case <-c.updates:
+			// Check again.
+		case <-deadline:
+			tb.Fatalf("servertest: WaitForCondition(%s, %q): timeout after %v", c.Name, desc, timeout)
+		}
+	}
+}
+
+// Direct returns the underlying controlclient.Direct for
+// advanced operations like SetHostinfo or SendUpdate.
+func (c *TestClient) Direct() *controlclient.Direct {
+	return c.direct
+}
+
 // String implements fmt.Stringer for debug output.
 func (c *TestClient) String() string {
 	nm := c.Netmap()

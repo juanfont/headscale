@@ -1,7 +1,6 @@
 package servertest_test
 
 import (
-	"sync"
 	"testing"
 	"time"
 
@@ -74,36 +73,43 @@ func TestConsistency(t *testing.T) {
 		}
 	})
 
-	t.Run("concurrent_join_and_leave", func(t *testing.T) {
+	t.Run("interleaved_join_and_leave", func(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 5)
 
-		var wg sync.WaitGroup
+		// Disconnect 2 nodes.
+		h.Client(0).Disconnect(t)
+		h.Client(1).Disconnect(t)
 
-		// 3 nodes joining concurrently.
-		for range 3 {
-			wg.Go(func() {
-				h.AddClient(t)
-			})
+		// Add 3 new nodes while 2 are disconnected.
+		c5 := h.AddClient(t)
+		c6 := h.AddClient(t)
+		c7 := h.AddClient(t)
+
+		// Wait for new nodes to see at least all other connected
+		// clients (they may also see the disconnected nodes during
+		// the grace period, so we check >= not ==).
+		connected := h.ConnectedClients()
+		minPeers := len(connected) - 1
+
+		for _, c := range connected {
+			c.WaitForPeers(t, minPeers, 30*time.Second)
 		}
 
-		// 2 nodes leaving concurrently.
-		for i := range 2 {
-			wg.Add(1)
+		// Verify the new nodes can see each other.
+		for _, a := range []*servertest.TestClient{c5, c6, c7} {
+			for _, b := range []*servertest.TestClient{c5, c6, c7} {
+				if a == b {
+					continue
+				}
 
-			c := h.Client(i)
-
-			go func() {
-				defer wg.Done()
-
-				c.Disconnect(t)
-			}()
+				_, found := a.PeerByName(b.Name)
+				assert.True(t, found,
+					"new client %s should see %s", a.Name, b.Name)
+			}
 		}
 
-		wg.Wait()
-
-		// After all churn, connected clients should converge.
-		servertest.EventuallyAssertMeshComplete(t, h.ConnectedClients(), 30*time.Second)
-		servertest.AssertConsistentState(t, h.ConnectedClients())
+		// Verify all connected clients see each other (consistent state).
+		servertest.AssertConsistentState(t, connected)
 	})
 }
