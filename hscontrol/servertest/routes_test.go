@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
-	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/tailcfg"
@@ -214,19 +213,4 @@ func TestRoutes(t *testing.T) {
 	})
 }
 
-// findNodeID looks up a node's ID by hostname in the server state.
-func findNodeID(tb testing.TB, srv *servertest.TestServer, hostname string) types.NodeID {
-	tb.Helper()
-
-	nodes := srv.State().ListNodes()
-	for i := range nodes.Len() {
-		n := nodes.At(i)
-		if n.Hostname() == hostname {
-			return n.ID()
-		}
-	}
-
-	tb.Fatalf("node %q not found in server state", hostname)
-
-	return 0
-}
+// findNodeID is defined in issues_test.go.

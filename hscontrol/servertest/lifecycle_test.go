@@ -35,28 +35,45 @@ func TestConnectionLifecycle(t *testing.T) {
 		servertest.AssertSymmetricVisibility(t, h.Clients())
 	})
 
-	t.Run("node_departs_peers_update", func(t *testing.T) {
+	t.Run("node_departs_peer_goes_offline", func(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 3)
 
 		departingName := h.Client(2).Name
-		h.Client(2).Disconnect(t)
 
-		// The remaining clients should eventually see the departed
-		// node go offline or disappear. The grace period in poll.go
-		// is 10 seconds, so we need a generous timeout.
-		h.Client(0).WaitForCondition(t, "peer offline or gone", 60*time.Second,
+		// First verify the departing node is online (may need a moment
+		// for Online status to propagate after mesh formation).
+		h.Client(0).WaitForCondition(t, "peer initially online", 15*time.Second,
 			func(nm *netmap.NetworkMap) bool {
 				for _, p := range nm.Peers {
 					hi := p.Hostinfo()
 					if hi.Valid() && hi.Hostname() == departingName {
 						isOnline, known := p.Online().GetOk()
-						// Peer is still present but offline is acceptable.
+
+						return known && isOnline
+					}
+				}
+
+				return false
+			})
+
+		h.Client(2).Disconnect(t)
+
+		// After the 10-second grace period, the remaining clients
+		// should see the departed node as offline. The peer stays
+		// in the peer list (non-ephemeral nodes are not removed).
+		h.Client(0).WaitForCondition(t, "peer goes offline", 30*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				for _, p := range nm.Peers {
+					hi := p.Hostinfo()
+					if hi.Valid() && hi.Hostname() == departingName {
+						isOnline, known := p.Online().GetOk()
+
 						return known && !isOnline
 					}
 				}
-				// Peer gone entirely is also acceptable.
-				return true
+
+				return false
 			})
 	})
 
