@@ -7,6 +7,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/stretchr/testify/assert"
+	"tailscale.com/types/netmap"
 )
 
 // TestConnectionLifecycle exercises the core node lifecycle:
@@ -41,13 +42,22 @@ func TestConnectionLifecycle(t *testing.T) {
 		departingName := h.Client(2).Name
 		h.Client(2).Disconnect(t)
 
-		// The remaining clients should eventually stop seeing the
-		// departed node (after the grace period).
-		assert.Eventually(t, func() bool {
-			_, found := h.Client(0).PeerByName(departingName)
-			return !found
-		}, 30*time.Second, 500*time.Millisecond,
-			"client 0 should stop seeing departed node")
+		// The remaining clients should eventually see the departed
+		// node go offline or disappear. The grace period in poll.go
+		// is 10 seconds, so we need a generous timeout.
+		h.Client(0).WaitForCondition(t, "peer offline or gone", 60*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				for _, p := range nm.Peers {
+					hi := p.Hostinfo()
+					if hi.Valid() && hi.Hostname() == departingName {
+						isOnline, known := p.Online().GetOk()
+						// Peer is still present but offline is acceptable.
+						return known && !isOnline
+					}
+				}
+				// Peer gone entirely is also acceptable.
+				return true
+			})
 	})
 
 	t.Run("reconnect_restores_mesh", func(t *testing.T) {

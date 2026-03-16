@@ -167,6 +167,50 @@ func AssertConsistentState(tb testing.TB, clients []*TestClient) {
 	}
 }
 
+// AssertDERPMapPresent checks that the netmap contains a DERP map.
+func AssertDERPMapPresent(tb testing.TB, client *TestClient) {
+	tb.Helper()
+
+	nm := client.Netmap()
+	if nm == nil {
+		tb.Errorf("AssertDERPMapPresent: %s has no netmap", client.Name)
+
+		return
+	}
+
+	if nm.DERPMap == nil {
+		tb.Errorf("AssertDERPMapPresent: %s has nil DERPMap", client.Name)
+
+		return
+	}
+
+	if len(nm.DERPMap.Regions) == 0 {
+		tb.Errorf("AssertDERPMapPresent: %s has empty DERPMap regions", client.Name)
+	}
+}
+
+// AssertSelfHasAddresses checks that the self node has at least one address.
+func AssertSelfHasAddresses(tb testing.TB, client *TestClient) {
+	tb.Helper()
+
+	nm := client.Netmap()
+	if nm == nil {
+		tb.Errorf("AssertSelfHasAddresses: %s has no netmap", client.Name)
+
+		return
+	}
+
+	if !nm.SelfNode.Valid() {
+		tb.Errorf("AssertSelfHasAddresses: %s self node is invalid", client.Name)
+
+		return
+	}
+
+	if nm.SelfNode.Addresses().Len() == 0 {
+		tb.Errorf("AssertSelfHasAddresses: %s self node has no addresses", client.Name)
+	}
+}
+
 // EventuallyAssertMeshComplete retries AssertMeshComplete up to
 // timeout, useful when waiting for state to propagate.
 func EventuallyAssertMeshComplete(tb testing.TB, clients []*TestClient, timeout time.Duration) {

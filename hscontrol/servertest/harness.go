@@ -152,6 +152,31 @@ func (h *TestHarness) WaitForConvergence(tb testing.TB, timeout time.Duration) {
 	h.WaitForMeshComplete(tb, timeout)
 }
 
+// ChangePolicy sets an ACL policy on the server and propagates changes
+// to all connected nodes. The policy should be a valid HuJSON policy document.
+func (h *TestHarness) ChangePolicy(tb testing.TB, policy []byte) {
+	tb.Helper()
+
+	changed, err := h.Server.State().SetPolicy(policy)
+	if err != nil {
+		tb.Fatalf("servertest: ChangePolicy: %v", err)
+	}
+
+	if changed {
+		changes, err := h.Server.State().ReloadPolicy()
+		if err != nil {
+			tb.Fatalf("servertest: ReloadPolicy: %v", err)
+		}
+
+		h.Server.App.Change(changes...)
+	}
+}
+
+// DefaultUser returns the shared user for adding more clients.
+func (h *TestHarness) DefaultUser() *types.User {
+	return h.defaultUser
+}
+
 func clientName(index int) string {
 	return fmt.Sprintf("node-%d", index)
 }
