@@ -58,7 +58,7 @@ func TestUserCommand(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-user"))
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -588,9 +588,7 @@ func TestPreAuthKeyCorrectUserLoggedInCommand(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
-		hsic.WithTestName("clipak"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName("cli-paklogin"),
 	)
 	require.NoError(t, err)
 
@@ -699,8 +697,6 @@ func TestTaggedNodesCLIOutput(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("tagcli"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -811,7 +807,7 @@ func TestApiKeyCommand(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-apikey"))
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1058,7 +1054,7 @@ func TestNodeCommand(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-node"))
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1319,7 +1315,7 @@ func TestNodeExpireCommand(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-nodeexpire"))
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1454,7 +1450,7 @@ func TestNodeRenameCommand(t *testing.T) {
 	require.NoError(t, err)
 	defer scenario.ShutdownAssertNoPanics(t)
 
-	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("clins"))
+	err = scenario.CreateHeadscaleEnv([]tsic.Option{}, hsic.WithTestName("cli-noderename"))
 	require.NoError(t, err)
 
 	headscale, err := scenario.Headscale()
@@ -1634,9 +1630,9 @@ func TestPolicyCommand(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
-		hsic.WithTestName("clins"),
+		hsic.WithTestName("cli-policy"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
+			"HEADSCALE_POLICY_MODE": "database", // test sets/gets policy via CLI
 		}),
 	)
 	require.NoError(t, err)
@@ -1719,9 +1715,9 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
-		hsic.WithTestName("clins"),
+		hsic.WithTestName("cli-policybad"),
 		hsic.WithConfigEnv(map[string]string{
-			"HEADSCALE_POLICY_MODE": "database",
+			"HEADSCALE_POLICY_MODE": "database", // test sets invalid policy via CLI
 		}),
 	)
 	require.NoError(t, err)

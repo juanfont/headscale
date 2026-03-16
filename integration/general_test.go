@@ -41,8 +41,9 @@ func TestPingAllByIP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyip"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		// All other tests use the default sequential allocation.
+		// This test uses random allocation to ensure it does not
+		// break basic connectivity.
 		hsic.WithIPAllocationStrategy(types.IPAllocationStrategyRandom),
 	)
 	requireNoErrHeadscaleEnv(t, err)
@@ -102,6 +103,12 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyippubderp"),
+		// Explicitly use public DERP relays instead of the embedded
+		// DERP server to verify connectivity through Tailscale's
+		// infrastructure. TLS is disabled because the headscale
+		// server does not need to terminate TLS for this test.
+		hsic.WithPublicDERP(),
+		hsic.WithoutTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -128,6 +135,8 @@ func TestEphemeral(t *testing.T) {
 	testEphemeralWithOptions(t, hsic.WithTestName("ephemeral"))
 }
 
+// TestEphemeralInAlternateTimezone verifies that ephemeral node
+// expiry works correctly when the server runs in a non-UTC timezone.
 func TestEphemeralInAlternateTimezone(t *testing.T) {
 	testEphemeralWithOptions(
 		t,
@@ -387,8 +396,6 @@ func TestTaildrop(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{},
 		hsic.WithTestName("taildrop"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1403,9 +1410,6 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("pingallbyipmany"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithDERPAsIP(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1512,8 +1516,6 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{},
 		hsic.WithTestName("deletenocrash"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

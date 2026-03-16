@@ -104,8 +104,6 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			"HEADSCALE_DNS_EXTRA_RECORDS_PATH": erPath,
 		}),
 		hsic.WithFileInContainer(erPath, b),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
