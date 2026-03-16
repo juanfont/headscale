@@ -6,6 +6,7 @@ import (
 
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"tailscale.com/types/netmap"
 )
 
@@ -52,25 +53,32 @@ func TestEphemeralNodes(t *testing.T) {
 
 		regular.WaitForPeers(t, 1, 10*time.Second)
 
+		// Verify ephemeral peer is present before disconnect.
+		_, found := regular.PeerByName("eph-cleanup-ephemeral")
+		require.True(t, found, "ephemeral peer should be visible before disconnect")
+
+		// Ensure the ephemeral node's long-poll session is fully
+		// established on the server before disconnecting. Without
+		// this, the Disconnect may cancel a PollNetMap that hasn't
+		// yet reached serveLongPoll, so no grace period or ephemeral
+		// GC would ever be scheduled.
+		ephemeral.WaitForPeers(t, 1, 10*time.Second)
+
 		// Disconnect the ephemeral node.
 		ephemeral.Disconnect(t)
 
-		// After the grace period (10s) + ephemeral timeout (3s) +
-		// some propagation time, the regular node should no longer
-		// see the ephemeral node. This tests the full cleanup path.
-		regular.WaitForCondition(t, "ephemeral peer gone or offline",
+		// After the grace period (10s) + ephemeral timeout (3s),
+		// the ephemeral node should be deleted from the server and
+		// disappear from the regular node's peer list entirely.
+		// Unlike non-ephemeral nodes which go offline but stay in
+		// the peer list, ephemeral nodes should be garbage collected.
+		regular.WaitForCondition(t, "ephemeral peer removed from peer list",
 			60*time.Second,
 			func(nm *netmap.NetworkMap) bool {
 				for _, p := range nm.Peers {
 					hi := p.Hostinfo()
 					if hi.Valid() && hi.Hostname() == "eph-cleanup-ephemeral" {
-						// Still present -- check if offline.
-						isOnline, known := p.Online().GetOk()
-						if known && !isOnline {
-							return true // offline is acceptable
-						}
-
-						return false // still online
+						return false // still present
 					}
 				}
 
