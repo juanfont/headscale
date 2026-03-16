@@ -6,6 +6,7 @@ package servertest
 
 import (
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -37,6 +38,7 @@ type serverConfig struct {
 func defaultServerConfig() *serverConfig {
 	return &serverConfig{
 		batchDelay:       50 * time.Millisecond,
+		bufferedChanSize: 30,
 		batcherWorkers:   1,
 		ephemeralTimeout: 30 * time.Second,
 	}
@@ -70,11 +72,17 @@ func NewServer(tb testing.TB, opts ...ServerOption) *TestServer {
 
 	tmpDir := tb.TempDir()
 
+	prefixV4 := netip.MustParsePrefix("100.64.0.0/10")
+	prefixV6 := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+
 	cfg := types.Config{
 		// Placeholder; updated below once httptest server starts.
 		ServerURL:                      "http://localhost:0",
 		NoisePrivateKeyPath:            tmpDir + "/noise_private.key",
 		EphemeralNodeInactivityTimeout: sc.ephemeralTimeout,
+		PrefixV4:                       &prefixV4,
+		PrefixV6:                       &prefixV6,
+		IPAllocation:                   types.IPAllocationStrategySequential,
 		Database: types.DatabaseConfig{
 			Type: "sqlite3",
 			Sqlite: types.SqliteConfig{
