@@ -2435,10 +2435,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2453,10 +2451,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2532,10 +2528,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2550,10 +2544,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2629,10 +2621,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2647,10 +2637,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2737,10 +2725,8 @@ func TestACLTagPropagation(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{
 					tsic.WithNetfilter("off"),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 				},
 				hsic.WithACLPolicy(tt.policy),
@@ -2923,10 +2909,8 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh", "-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
@@ -2949,10 +2933,8 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user1Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
+		tsic.WithWebserver(80),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
@@ -2968,10 +2950,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user2Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
