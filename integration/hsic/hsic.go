@@ -82,8 +82,10 @@ type HeadscaleInContainer struct {
 	hostPortBindings map[string][]string
 	aclPolicy        *policyv2.Policy
 	env              map[string]string
+	tlsCACert        []byte
 	tlsCert          []byte
 	tlsKey           []byte
+	noTLS            bool
 	filesInContainer []fileInContainer
 	postgres         bool
 	policyMode       types.PolicyMode
@@ -115,24 +117,24 @@ func WithCACert(cert []byte) Option {
 	}
 }
 
-// WithTLS creates certificates and enables HTTPS.
-func WithTLS() Option {
+// WithoutTLS disables the default TLS configuration.
+// Most tests should not need this. Use only for tests that
+// explicitly need to test non-TLS behavior.
+func WithoutTLS() Option {
 	return func(hsic *HeadscaleInContainer) {
-		cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
-		if err != nil {
-			log.Fatalf("creating certificates for headscale test: %s", err)
-		}
-
-		hsic.tlsCert = cert
-		hsic.tlsKey = key
+		hsic.noTLS = true
 	}
 }
 
 // WithCustomTLS uses the given certificates for the Headscale instance.
-func WithCustomTLS(cert, key []byte) Option {
+// The caCert is installed into the container's trust store and returned
+// by GetCert() so that clients can trust this server.
+func WithCustomTLS(caCert, cert, key []byte) Option {
 	return func(hsic *HeadscaleInContainer) {
+		hsic.tlsCACert = caCert
 		hsic.tlsCert = cert
 		hsic.tlsKey = key
+		hsic.caCerts = append(hsic.caCerts, caCert)
 	}
 }
 
@@ -216,25 +218,20 @@ func WithIPAllocationStrategy(strategy types.IPAllocationStrategy) Option {
 	}
 }
 
-// WithEmbeddedDERPServerOnly configures Headscale to start
-// and only use the embedded DERP server.
-// It requires WithTLS and WithHostnameAsServerURL to be
-// set.
-//
-//nolint:goconst // env var values like "true" and "headscale" are clearer inline
-func WithEmbeddedDERPServerOnly() Option {
+// WithPublicDERP disables the embedded DERP server and restores
+// the default public DERP relay configuration. Use this for tests
+// that explicitly need to test public DERP behavior.
+func WithPublicDERP() Option {
 	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_DERP_URLS"] = ""
-		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "true"
-		hsic.env["HEADSCALE_DERP_SERVER_REGION_ID"] = "999"
-		hsic.env["HEADSCALE_DERP_SERVER_REGION_CODE"] = "headscale"
-		hsic.env["HEADSCALE_DERP_SERVER_REGION_NAME"] = "Headscale Embedded DERP"
-		hsic.env["HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR"] = "0.0.0.0:3478"
-		hsic.env["HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH"] = "/tmp/derp.key"
-
-		// Envknob for enabling DERP debug logs
-		hsic.env["DERP_DEBUG_LOGS"] = "true"
-		hsic.env["DERP_PROBER_DEBUG_LOGS"] = "true"
+		hsic.env["HEADSCALE_DERP_URLS"] = "https://controlplane.tailscale.com/derpmap/default"
+		hsic.env["HEADSCALE_DERP_SERVER_ENABLED"] = "false"
+		delete(hsic.env, "HEADSCALE_DERP_SERVER_REGION_ID")
+		delete(hsic.env, "HEADSCALE_DERP_SERVER_REGION_CODE")
+		delete(hsic.env, "HEADSCALE_DERP_SERVER_REGION_NAME")
+		delete(hsic.env, "HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR")
+		delete(hsic.env, "HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH")
+		delete(hsic.env, "DERP_DEBUG_LOGS")
+		delete(hsic.env, "DERP_PROBER_DEBUG_LOGS")
 	}
 }
 
@@ -279,14 +276,6 @@ func WithTuning(batchTimeout time.Duration, mapSessionChanSize int) Option {
 func WithTimezone(timezone string) Option {
 	return func(hsic *HeadscaleInContainer) {
 		hsic.env["TZ"] = timezone
-	}
-}
-
-// WithDERPAsIP enables using IP address instead of hostname for DERP server.
-// This is useful for integration tests where DNS resolution may be unreliable.
-func WithDERPAsIP() Option {
-	return func(hsic *HeadscaleInContainer) {
-		hsic.env["HEADSCALE_DEBUG_DERP_USE_IP"] = "1"
 	}
 }
 
@@ -365,6 +354,26 @@ func New(
 
 	for _, opt := range opts {
 		opt(hsic)
+	}
+
+	// TLS is enabled by default for all integration tests.
+	// Generate a self-signed certificate if TLS was not explicitly
+	// disabled via WithoutTLS() and no custom cert was provided
+	// via WithCustomTLS().
+	if !hsic.noTLS && len(hsic.tlsCert) == 0 {
+		caCert, cert, key, err := integrationutil.CreateCertificate(hsic.hostname)
+		if err != nil {
+			return nil, fmt.Errorf("creating default TLS certificates: %w", err)
+		}
+
+		hsic.tlsCACert = caCert
+		hsic.tlsCert = cert
+		hsic.tlsKey = key
+
+		// Install the CA cert into the headscale container's trust
+		// store so that tools like curl trust the server's own
+		// certificate.
+		hsic.caCerts = append(hsic.caCerts, caCert)
 	}
 
 	log.Println("NAME: ", hsic.hostname)
@@ -1030,9 +1039,10 @@ func (t *HeadscaleInContainer) getEndpoint(useIP bool) string {
 	return "http://" + hostEndpoint
 }
 
-// GetCert returns the public certificate of the HeadscaleInContainer.
+// GetCert returns the CA certificate that clients should trust to
+// verify this server's TLS certificate.
 func (t *HeadscaleInContainer) GetCert() []byte {
-	return t.tlsCert
+	return t.tlsCACert
 }
 
 // GetHostname returns the hostname of the HeadscaleInContainer.

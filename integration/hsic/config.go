@@ -28,10 +28,23 @@ func DefaultConfigEnv() map[string]string {
 		"HEADSCALE_PRIVATE_KEY_PATH":                  "/tmp/private.key",
 		"HEADSCALE_NOISE_PRIVATE_KEY_PATH":            "/tmp/noise_private.key",
 		"HEADSCALE_METRICS_LISTEN_ADDR":               "0.0.0.0:9090",
-		"HEADSCALE_DERP_URLS":                         "https://controlplane.tailscale.com/derpmap/default",
-		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":          "false",
-		"HEADSCALE_DERP_UPDATE_FREQUENCY":             "1m",
 		"HEADSCALE_DEBUG_PORT":                        "40000",
+
+		// Embedded DERP is the default for test isolation.
+		// Tests should not depend on external DERP infrastructure.
+		// Use WithPublicDERP() to opt out for tests that explicitly
+		// need public DERP relays.
+		"HEADSCALE_DERP_URLS":                    "",
+		"HEADSCALE_DERP_AUTO_UPDATE_ENABLED":     "false",
+		"HEADSCALE_DERP_UPDATE_FREQUENCY":        "1m",
+		"HEADSCALE_DERP_SERVER_ENABLED":          "true",
+		"HEADSCALE_DERP_SERVER_REGION_ID":        "999",
+		"HEADSCALE_DERP_SERVER_REGION_CODE":      "headscale",
+		"HEADSCALE_DERP_SERVER_REGION_NAME":      "Headscale Embedded DERP",
+		"HEADSCALE_DERP_SERVER_STUN_LISTEN_ADDR": "0.0.0.0:3478",
+		"HEADSCALE_DERP_SERVER_PRIVATE_KEY_PATH": "/tmp/derp.key",
+		"DERP_DEBUG_LOGS":                        "true",
+		"DERP_PROBER_DEBUG_LOGS":                 "true",
 
 		// a bunch of tests (ACL/Policy) rely on predictable IP alloc,
 		// so ensure the sequential alloc is used by default.

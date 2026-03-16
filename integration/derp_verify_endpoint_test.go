@@ -32,7 +32,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	headscalePort := 8080
 
 	// Create cert for headscale
-	certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
+	caHeadscale, certHeadscale, keyHeadscale, err := integrationutil.CreateCertificate(hostname)
 	require.NoError(t, err)
 
 	spec := ScenarioSpec{
@@ -46,7 +46,7 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	derper, err := scenario.CreateDERPServer("head",
-		dsic.WithCACert(certHeadscale),
+		dsic.WithCACert(caHeadscale),
 		dsic.WithVerifyClientURL(fmt.Sprintf("https://%s/verify", net.JoinHostPort(hostname, strconv.Itoa(headscalePort)))),
 	)
 	require.NoError(t, err)
@@ -72,10 +72,18 @@ func TestDERPVerifyEndpoint(t *testing.T) {
 		},
 	}
 
+	// WithHostname is used instead of WithTestName because the hostname
+	// must match the pre-generated TLS certificate created above.
+	// The test name "derpverify" is embedded in the hostname variable.
+	//
+	// WithCACert passes the external DERP server's certificate so
+	// tailscale clients trust it. WithCustomTLS and WithDERPConfig
+	// configure headscale to use the external DERP server created
+	// above instead of the default embedded one.
 	err = scenario.CreateHeadscaleEnv([]tsic.Option{tsic.WithCACert(derper.GetCert())},
 		hsic.WithHostname(hostname),
 		hsic.WithPort(headscalePort),
-		hsic.WithCustomTLS(certHeadscale, keyHeadscale),
+		hsic.WithCustomTLS(caHeadscale, certHeadscale, keyHeadscale),
 		hsic.WithDERPConfig(derpMap))
 	requireNoErrHeadscaleEnv(t, err)
 

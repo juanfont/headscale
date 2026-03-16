@@ -27,7 +27,7 @@ func isSSHNoAccessStdError(stderr string) bool {
 		strings.Contains(stderr, "tailnet policy does not permit you to SSH")
 }
 
-func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Scenario {
+func sshScenario(t *testing.T, policy *policyv2.Policy, testName string, clientsPerUser int) *Scenario {
 	t.Helper()
 
 	spec := ScenarioSpec{
@@ -50,7 +50,7 @@ func sshScenario(t *testing.T, policy *policyv2.Policy, clientsPerUser int) *Sce
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("ssh"),
+		hsic.WithTestName(testName),
 	)
 	require.NoError(t, err)
 
@@ -95,6 +95,7 @@ func TestSSHOneUserToAll(t *testing.T) {
 				},
 			},
 		},
+		"ssh-onetoall",
 		len(MustTestVersions),
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -168,6 +169,7 @@ func TestSSHMultipleUsersAllToAll(t *testing.T) {
 				},
 			},
 		},
+		"ssh-multiall",
 		len(MustTestVersions),
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -242,6 +244,7 @@ func TestSSHNoSSHConfigured(t *testing.T) {
 			},
 			SSHs: []policyv2.SSH{},
 		},
+		"ssh-nosshcfg",
 		len(MustTestVersions),
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -293,6 +296,7 @@ func TestSSHIsBlockedInACL(t *testing.T) {
 				},
 			},
 		},
+		"ssh-blocked",
 		len(MustTestVersions),
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -354,6 +358,7 @@ func TestSSHUserOnlyIsolation(t *testing.T) {
 				},
 			},
 		},
+		"ssh-isolation",
 		len(MustTestVersions),
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -571,6 +576,7 @@ func TestSSHAutogroupSelf(t *testing.T) {
 				},
 			},
 		},
+		"ssh-agself",
 		2, // 2 clients per user
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -811,7 +817,7 @@ func findNewSSHCheckAuthID(
 func TestSSHOneUserToOneCheckModeCLI(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := sshScenario(t, sshCheckPolicy(), 1)
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-checkcli", 1)
 	// defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -920,7 +926,6 @@ func TestSSHOneUserToOneCheckModeOIDC(t *testing.T) {
 		hsic.WithACLPolicy(sshCheckPolicy()),
 		hsic.WithTestName("sshcheckoidc"),
 		hsic.WithConfigEnv(oidcMap),
-		hsic.WithTLS(),
 		hsic.WithFileInContainer(
 			"/tmp/hs_client_oidc_secret",
 			[]byte(scenario.mockOIDC.ClientSecret()),
@@ -1087,7 +1092,7 @@ func TestSSHCheckModeCheckPeriodCLI(t *testing.T) {
 	IntegrationSkip(t)
 
 	// 1 minute is the documented minimum checkPeriod
-	scenario := sshScenario(t, sshCheckPolicyWithPeriod(time.Minute), 1)
+	scenario := sshScenario(t, sshCheckPolicyWithPeriod(time.Minute), "ssh-checkperiod", 1)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1182,7 +1187,7 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 	IntegrationSkip(t)
 
 	// 5 minute checkPeriod — long enough not to expire during test
-	scenario := sshScenario(t, sshCheckPolicyWithPeriod(5*time.Minute), 1)
+	scenario := sshScenario(t, sshCheckPolicyWithPeriod(5*time.Minute), "ssh-autoapprove", 1)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1247,7 +1252,7 @@ func TestSSHCheckModeAutoApprove(t *testing.T) {
 func TestSSHCheckModeNegativeCLI(t *testing.T) {
 	IntegrationSkip(t)
 
-	scenario := sshScenario(t, sshCheckPolicy(), 1)
+	scenario := sshScenario(t, sshCheckPolicy(), "ssh-negcli", 1)
 	defer scenario.ShutdownAssertNoPanics(t)
 
 	allClients, err := scenario.ListTailscaleClients()
@@ -1509,7 +1514,6 @@ func TestSSHLocalpart(t *testing.T) {
 				hsic.WithTestName("sshlocalpart"),
 				hsic.WithACLPolicy(tt.policy),
 				hsic.WithConfigEnv(oidcMap),
-				hsic.WithTLS(),
 				hsic.WithFileInContainer("/tmp/hs_client_oidc_secret", []byte(scenario.mockOIDC.ClientSecret())),
 			)
 			requireNoErrHeadscaleEnv(t, err)
