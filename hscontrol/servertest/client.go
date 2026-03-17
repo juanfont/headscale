@@ -266,6 +266,25 @@ func (c *TestClient) Reconnect(tb testing.TB) {
 		}
 	}
 
+	// Clear stale netmap data so that callers like WaitForPeers
+	// actually wait for the new session's map instead of returning
+	// immediately based on the old session's cached state.
+	c.mu.Lock()
+	c.netmap = nil
+	c.mu.Unlock()
+
+	// Drain any pending updates from the old session so they
+	// don't satisfy a subsequent WaitForPeers/WaitForUpdate.
+	for {
+		select {
+		case <-c.updates:
+		default:
+			goto drained
+		}
+	}
+
+drained:
+
 	// Re-register and start polling again.
 	c.register(tb)
 

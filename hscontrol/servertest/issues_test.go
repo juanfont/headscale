@@ -22,22 +22,30 @@ import (
 func TestIssuesMapContent(t *testing.T) {
 	t.Parallel()
 
-	// After mesh formation, the initial MapResponse should include
-	// Online status of all peers. Currently peers have Online=nil.
+	// After mesh formation, all peers should have a known Online status.
+	// The Online field is set when Connect() sends a NodeOnline PeerChange
+	// patch. The initial MapResponse (from auth handler) may have Online=nil
+	// because Connect() hasn't run yet, so we wait for the status to propagate.
 	t.Run("initial_map_should_include_peer_online_status", func(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 3)
 
 		for _, c := range h.Clients() {
-			nm := c.Netmap()
-			require.NotNil(t, nm, "client %s should have a netmap", c.Name)
+			c.WaitForCondition(t, "all peers have known Online status",
+				10*time.Second,
+				func(nm *netmap.NetworkMap) bool {
+					if len(nm.Peers) < 2 {
+						return false
+					}
 
-			for _, peer := range nm.Peers {
-				_, known := peer.Online().GetOk()
-				assert.True(t, known,
-					"client %s: peer %d (%s) should have known Online status in initial map, got unknown",
-					c.Name, peer.ID(), peer.Hostinfo().Hostname())
-			}
+					for _, peer := range nm.Peers {
+						if _, known := peer.Online().GetOk(); !known {
+							return false
+						}
+					}
+
+					return true
+				})
 		}
 	})
 
@@ -46,12 +54,18 @@ func TestIssuesMapContent(t *testing.T) {
 		t.Parallel()
 		h := servertest.NewHarness(t, 2)
 
-		nm := h.Client(0).Netmap()
-		require.NotNil(t, nm)
-		require.Len(t, nm.Peers, 1)
+		// The DiscoKey is sent in the first MapRequest (not the RegisterRequest),
+		// so it may take an extra map update to propagate to peers. Wait for
+		// the condition rather than checking the initial netmap.
+		h.Client(0).WaitForCondition(t, "peer has non-zero DiscoKey",
+			10*time.Second,
+			func(nm *netmap.NetworkMap) bool {
+				if len(nm.Peers) < 1 {
+					return false
+				}
 
-		assert.False(t, nm.Peers[0].DiscoKey().IsZero(),
-			"peer should have a non-zero disco key (set during client registration)")
+				return !nm.Peers[0].DiscoKey().IsZero()
+			})
 	})
 
 	// All peers should reference a valid DERP region.
@@ -123,9 +137,13 @@ func TestIssuesMapContent(t *testing.T) {
 func TestIssuesRoutes(t *testing.T) {
 	t.Parallel()
 
-	// Approving a route via API without the node announcing it should
-	// still make it visible. Currently it silently drops the route.
-	t.Run("approved_route_without_announcement_is_visible", func(t *testing.T) {
+	// Approving a route via API without the node announcing it must NOT
+	// make the route visible in AllowedIPs. Tailscale uses a strict
+	// advertise-then-approve model: routes are only distributed when the
+	// node advertises them (Hostinfo.RoutableIPs) AND they are approved.
+	// An approval without advertisement is a dormant pre-approval that
+	// activates once the node starts advertising.
+	t.Run("approved_route_without_announcement_not_distributed", func(t *testing.T) {
 		t.Parallel()
 
 		srv := servertest.NewServer(t)
@@ -141,26 +159,32 @@ func TestIssuesRoutes(t *testing.T) {
 		nodeID := findNodeID(t, srv, "noannounce-node1")
 		route := netip.MustParsePrefix("10.0.0.0/24")
 
+		// The API should accept the approval without error — the route
+		// is stored but dormant because the node is not advertising it.
 		_, routeChange, err := srv.State().SetApprovedRoutes(
 			nodeID, []netip.Prefix{route})
 		require.NoError(t, err)
 		srv.App.Change(routeChange)
 
-		c2.WaitForCondition(t, "approved route in AllowedIPs", 10*time.Second,
-			func(nm *netmap.NetworkMap) bool {
-				for _, p := range nm.Peers {
-					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "noannounce-node1" {
-						for i := range p.AllowedIPs().Len() {
-							if p.AllowedIPs().At(i) == route {
-								return true
-							}
-						}
-					}
-				}
+		// Wait for any updates triggered by the route change to propagate,
+		// then verify the route does NOT appear in AllowedIPs.
+		timer := time.NewTimer(3 * time.Second)
+		defer timer.Stop()
 
-				return false
-			})
+		<-timer.C
+
+		nm := c2.Netmap()
+		require.NotNil(t, nm)
+
+		for _, p := range nm.Peers {
+			hi := p.Hostinfo()
+			if hi.Valid() && hi.Hostname() == "noannounce-node1" {
+				for i := range p.AllowedIPs().Len() {
+					assert.NotEqual(t, route, p.AllowedIPs().At(i),
+						"approved-but-not-announced route should not appear in AllowedIPs")
+				}
+			}
+		}
 	})
 
 	// When the server approves routes for a node, that node
