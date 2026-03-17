@@ -862,7 +862,7 @@ func warnBanner(lines []string) {
 	b.WriteString("###                                                          ###\n")
 
 	for _, line := range lines {
-		b.WriteString(fmt.Sprintf("###  %-56s  ###\n", line))
+		b.WriteString(fmt.Sprintf("###  %-54s  ###\n", line))
 	}
 
 	b.WriteString("###                                                          ###\n")
@@ -968,8 +968,9 @@ func LoadServerConfig() (*Config, error) {
 			"Please revert your prefixes to subsets of the standard",
 			"ranges as described in the example configuration.",
 			"",
-			"Any issue raised using a range outside of the supported",
-			"range will be labelled as wontfix and closed.",
+			"Any issue raised using a range outside of the",
+			"supported range will be labelled as wontfix",
+			"and closed.",
 		})
 	}
 
