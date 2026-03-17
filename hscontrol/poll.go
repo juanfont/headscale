@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/change"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/juanfont/headscale/hscontrol/util/zlog/zf"
 	"github.com/rs/zerolog"
@@ -147,11 +148,24 @@ func (m *mapSession) serveLongPoll() {
 
 	m.log.Trace().Caller().Msg("long poll session started")
 
+	// connectGen is set by Connect() below and captured by the deferred cleanup closure.
+	// It allows Disconnect() to reject stale calls from old sessions — if a newer session
+	// has called Connect() (incrementing the generation), the old session's Disconnect()
+	// sees a mismatched generation and becomes a no-op.
+	var connectGen uint64
+
 	// Clean up the session when the client disconnects
 	defer func() {
 		m.stopFromBatcher()
 
-		_ = m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
+		stillConnected := m.h.mapBatcher.RemoveNode(m.node.ID, m.ch)
+
+		// If another session already exists for this node (reconnect
+		// happened before this cleanup ran), skip the grace period
+		// entirely — the node is not actually disconnecting.
+		if stillConnected {
+			return
+		}
 
 		// When a node disconnects, it might rapidly reconnect (e.g. mobile clients, network weather).
 		// Instead of immediately marking the node as offline, we wait a few seconds to see if it reconnects.
@@ -176,7 +190,11 @@ func (m *mapSession) serveLongPoll() {
 		}
 
 		if disconnected {
-			disconnectChanges, err := m.h.state.Disconnect(m.node.ID)
+			// Pass the generation from our Connect() call. If a newer session has
+			// connected since (bumping the generation), Disconnect() will detect
+			// the mismatch and skip the state update, preventing the race where
+			// an old grace period goroutine overwrites a newer session's online status.
+			disconnectChanges, err := m.h.state.Disconnect(m.node.ID, connectGen)
 			if err != nil {
 				m.log.Error().Caller().Err(err).Msg("failed to disconnect node")
 			}
@@ -215,7 +233,9 @@ func (m *mapSession) serveLongPoll() {
 	// 2. Connect: marks the node online and recalculates primary routes based on the updated state
 	// While this results in two notifications, it ensures route data is synchronized before
 	// primary route selection occurs, which is critical for proper HA subnet router failover.
-	connectChanges := m.h.state.Connect(m.node.ID)
+	var connectChanges []change.Change
+
+	connectChanges, connectGen = m.h.state.Connect(m.node.ID)
 
 	m.log.Info().Caller().Str(zf.Chan, fmt.Sprintf("%p", m.ch)).Msg("node has connected")
 
