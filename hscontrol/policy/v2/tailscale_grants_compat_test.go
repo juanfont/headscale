@@ -260,24 +260,6 @@ var grantSkipReasons = map[string]string{
 	"GRANT-P15_3":   "SUBNET_ROUTE_FILTER_RULES: dst=10.32.0.0/14 port 22 — subnet-router gets no rules",
 
 	// ========================================================================
-	// AUTOGROUP_SELF_CIDR_FORMAT (4 tests)
-	//
-	// TODO: Use bare IPs (not CIDR notation) in DstPorts for autogroup:self grants.
-	//
-	// When compiling autogroup:self grants, headscale appends /32 to IPv4
-	// and /128 to IPv6 DstPort IPs. Tailscale uses bare IPs without a CIDR
-	// suffix.
-	//
-	// Example diff (user1 node, autogroup:member -> autogroup:self):
-	//   DstPorts: tailscale=[{IP:"100.90.199.68"}, {IP:"fd7a:...::2d01:c747"}]
-	//   DstPorts: headscale=[{IP:"100.90.199.68/32"}, {IP:"fd7a:...::2d01:c747/128"}]
-	// ========================================================================
-	"GRANT-P09_4E":  "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self — DstPorts IPs have /32 and /128 suffix",
-	"GRANT-P09_13E": "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self with ip:[*] — DstPorts IPs have CIDR suffix",
-	"GRANT-P09_13F": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22] — DstPorts IPs have CIDR suffix",
-	"GRANT-P09_13G": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22,80,443] — DstPorts IPs have CIDR suffix",
-
-	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
 	//
 	// TODO: Handle user:*@passkey wildcard pattern in grant src/dst.
@@ -567,14 +549,13 @@ var grantSkipReasons = map[string]string{
 //	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
 //	SUBNET_ROUTE_FILTER_RULES          -  11 tests: Generate filter rules for subnet-routed CIDRs
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
-//	AUTOGROUP_SELF_CIDR_FORMAT         -   4 tests: DstPorts IPs get /32 or /128 suffix for autogroup:self
 //	VIA_COMPILATION                    -   3 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 113 tests skipped, ~124 tests expected to pass.
+// Total: 109 tests skipped, ~128 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
