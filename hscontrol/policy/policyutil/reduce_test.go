@@ -209,10 +209,15 @@ func TestReduceFilterRules(t *testing.T) {
 				{
 					SrcIPs: []string{
 						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.1",
+							Ports: tailcfg.PortRangeAny,
+						},
+						{
+							IP:    "fd7a:115c:a1e0::1",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
@@ -347,7 +352,10 @@ func TestReduceFilterRules(t *testing.T) {
 				// autogroup:internet does NOT generate packet filters - it's handled
 				// by exit node routing via AllowedIPs, not by packet filtering.
 				{
-					SrcIPs: []string{"100.64.0.1-100.64.0.2"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100",
@@ -447,7 +455,10 @@ func TestReduceFilterRules(t *testing.T) {
 			want: []tailcfg.FilterRule{
 				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1-100.64.0.2"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100",
@@ -549,7 +560,10 @@ func TestReduceFilterRules(t *testing.T) {
 			want: []tailcfg.FilterRule{
 				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1-100.64.0.2"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100",
@@ -629,7 +643,10 @@ func TestReduceFilterRules(t *testing.T) {
 			want: []tailcfg.FilterRule{
 				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1-100.64.0.2"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100",
@@ -696,10 +713,17 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1"},
+					SrcIPs: []string{
+						"100.64.0.1",
+						"fd7a:115c:a1e0::1",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
 							IP:    "100.64.0.100",
+							Ports: tailcfg.PortRangeAny,
+						},
+						{
+							IP:    "fd7a:115c:a1e0::100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
