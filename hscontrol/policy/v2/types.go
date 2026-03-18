@@ -118,6 +118,7 @@ var (
 	ErrAutogroupSelfSrc            = errors.New("\"autogroup:self\" not valid on the src side of a rule")
 	ErrAutogroupNotSupportedACLSrc = errors.New("autogroup not supported for ACL sources")
 	ErrAutogroupNotSupportedACLDst = errors.New("autogroup not supported for ACL destinations")
+	ErrAutogroupDangerAllDst       = errors.New("cannot use autogroup:danger-all as a dst")
 	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
 	ErrAutogroupNotSupportedSSHDst = errors.New("autogroup not supported for SSH destinations")
 	ErrAutogroupNotSupportedSSHUsr = errors.New("autogroup not supported for SSH user")
@@ -701,11 +702,12 @@ func (p *Prefix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]
 type AutoGroup string
 
 const (
-	AutoGroupInternet AutoGroup = "autogroup:internet"
-	AutoGroupMember   AutoGroup = "autogroup:member"
-	AutoGroupNonRoot  AutoGroup = "autogroup:nonroot"
-	AutoGroupTagged   AutoGroup = "autogroup:tagged"
-	AutoGroupSelf     AutoGroup = "autogroup:self"
+	AutoGroupInternet  AutoGroup = "autogroup:internet"
+	AutoGroupMember    AutoGroup = "autogroup:member"
+	AutoGroupNonRoot   AutoGroup = "autogroup:nonroot"
+	AutoGroupTagged    AutoGroup = "autogroup:tagged"
+	AutoGroupSelf      AutoGroup = "autogroup:self"
+	AutoGroupDangerAll AutoGroup = "autogroup:danger-all"
 )
 
 var autogroups = []AutoGroup{
@@ -714,6 +716,7 @@ var autogroups = []AutoGroup{
 	AutoGroupNonRoot,
 	AutoGroupTagged,
 	AutoGroupSelf,
+	AutoGroupDangerAll,
 }
 
 func (ag *AutoGroup) Validate() error {
@@ -785,6 +788,15 @@ func (ag *AutoGroup) resolve(p *Policy, users types.Users, nodes views.Slice[typ
 		// This cannot be resolved in the general context and should be handled
 		// specially during policy compilation per-node for security.
 		return nil, ErrAutogroupSelfRequiresPerNodeResolution
+
+	case AutoGroupDangerAll:
+		// autogroup:danger-all matches ALL IP addresses, including
+		// non-Tailscale addresses. Resolves to 0.0.0.0/0 + ::/0.
+		// Filter compilation converts this to SrcIPs: ["*"].
+		build.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+		build.AddPrefix(netip.MustParsePrefix("::/0"))
+
+		return build.IPSet()
 
 	case AutoGroupNonRoot:
 		// autogroup:nonroot represents non-root users on multi-user devices.
@@ -1986,7 +1998,7 @@ type Policy struct {
 
 var (
 	// TODO(kradalby): Add these checks for tagOwners and autoApprovers.
-	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged}
+	autogroupForSrc       = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupDangerAll}
 	autogroupForDst       = []AutoGroup{AutoGroupInternet, AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
 	autogroupForSSHSrc    = []AutoGroup{AutoGroupMember, AutoGroupTagged}
 	autogroupForSSHDst    = []AutoGroup{AutoGroupMember, AutoGroupTagged, AutoGroupSelf}
@@ -2031,6 +2043,10 @@ func validateAutogroupForSrc(src *AutoGroup) error {
 func validateAutogroupForDst(dst *AutoGroup) error {
 	if dst == nil {
 		return nil
+	}
+
+	if dst.Is(AutoGroupDangerAll) {
+		return ErrAutogroupDangerAllDst
 	}
 
 	if !slices.Contains(autogroupForDst, *dst) {
