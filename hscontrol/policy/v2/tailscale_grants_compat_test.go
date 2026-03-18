@@ -227,149 +227,7 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 // Total: 207 tests skipped, 30 tests expected to pass.
 var grantSkipReasons = map[string]string{
 	// ========================================================================
-	// MISSING_IPV6_ADDRS (90 tests)
-	//
-	// TODO: Include IPv6 addresses when resolving identity-based aliases in
-	// filter rules.
-	//
-	// When compiling filter rules, headscale resolves identity-based aliases
-	// (tags, groups, users, autogroups) to only IPv4 addresses. Tailscale
-	// includes both IPv4 AND the corresponding fd7a:115c:a1e0:: IPv6 address
-	// in SrcIPs and DstPorts.
-	//
-	// IMPORTANT: This only applies to IDENTITY-based aliases. Address-based
-	// aliases (raw IPs like "100.108.74.26", host aliases like "webserver")
-	// correctly resolve to IPv4-only in both Tailscale and headscale.
-	//
-	// The rule (verified 100% across 790 node-IP references in test data):
-	//   Identity aliases (tag:X, group:X, user@Y, autogroup:X, *)
-	//     → include BOTH node.IPv4 and node.IPv6
-	//   Address aliases (raw IPv4/IPv6, host alias names)
-	//     → include ONLY the literal/resolved IP
-	//
-	// Example diff (tag:client src → tagged-server node):
-	//   SrcIPs: headscale=["100.83.200.69"]
-	//   SrcIPs: tailscale=["100.83.200.69", "fd7a:115c:a1e0::c537:c845"]
-	//
-	// Fix: When resolving an identity alias (tag, group, user, autogroup, *)
-	// to IPs, include both node.IPv4 and node.IPv6 addresses. When resolving
-	// an address alias (raw IP, host alias), keep only the literal IP.
-	// ========================================================================
-
-	// J-series: Protocol-specific IP grants with identity src/dst
-	"GRANT-J1": "MISSING_IPV6_ADDRS",
-	"GRANT-J2": "MISSING_IPV6_ADDRS",
-	"GRANT-J3": "MISSING_IPV6_ADDRS",
-	"GRANT-J4": "MISSING_IPV6_ADDRS",
-	"GRANT-J5": "MISSING_IPV6_ADDRS",
-	"GRANT-J6": "MISSING_IPV6_ADDRS",
-
-	// K-series: Various IP grant patterns with identity aliases
-	"GRANT-K4":  "MISSING_IPV6_ADDRS",
-	"GRANT-K16": "MISSING_IPV6_ADDRS",
-	"GRANT-K17": "MISSING_IPV6_ADDRS",
-	"GRANT-K22": "MISSING_IPV6_ADDRS",
-	"GRANT-K26": "MISSING_IPV6_ADDRS",
-
-	// P02-series: Source targeting (user, group, tag)
-	"GRANT-P02_1":         "MISSING_IPV6_ADDRS",
-	"GRANT-P02_2":         "MISSING_IPV6_ADDRS",
-	"GRANT-P02_3":         "MISSING_IPV6_ADDRS",
-	"GRANT-P02_4":         "MISSING_IPV6_ADDRS",
-	"GRANT-P02_5_CORRECT": "MISSING_IPV6_ADDRS",
-	"GRANT-P02_5_NAIVE":   "MISSING_IPV6_ADDRS",
-
-	// P03-series: Destination targeting
-	"GRANT-P03_1": "MISSING_IPV6_ADDRS",
-	"GRANT-P03_2": "MISSING_IPV6_ADDRS",
-	"GRANT-P03_3": "MISSING_IPV6_ADDRS",
-	"GRANT-P03_4": "MISSING_IPV6_ADDRS",
-
-	// P04-series: autogroup:member grants
-	"GRANT-P04_1": "MISSING_IPV6_ADDRS",
-	"GRANT-P04_2": "MISSING_IPV6_ADDRS",
-
-	// P06-series: IP protocol grants
-	"GRANT-P06_1": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_2": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_3": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_4": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_5": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_6": "MISSING_IPV6_ADDRS",
-	"GRANT-P06_7": "MISSING_IPV6_ADDRS",
-
-	// P08-series: Multiple grants / rule merging
-	"GRANT-P08_1": "MISSING_IPV6_ADDRS",
-	"GRANT-P08_2": "MISSING_IPV6_ADDRS",
-	"GRANT-P08_4": "MISSING_IPV6_ADDRS",
-	"GRANT-P08_5": "MISSING_IPV6_ADDRS",
-	"GRANT-P08_6": "MISSING_IPV6_ADDRS",
-	"GRANT-P08_7": "MISSING_IPV6_ADDRS",
-
-	// P09-series: ACL-to-grant conversion equivalence tests
-	"GRANT-P09_1A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_1B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_1C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_1D":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_1E":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_2A_CORRECT": "MISSING_IPV6_ADDRS",
-	"GRANT-P09_2A_NAIVE":   "MISSING_IPV6_ADDRS",
-	"GRANT-P09_2B_CORRECT": "MISSING_IPV6_ADDRS",
-	"GRANT-P09_2B_NAIVE":   "MISSING_IPV6_ADDRS",
-	"GRANT-P09_2C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_3A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_3B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_3C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4D":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4F":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_4G":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_5A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_5B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_5C_NAIVE":   "MISSING_IPV6_ADDRS",
-	"GRANT-P09_6C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_7B_NAIVE":   "MISSING_IPV6_ADDRS",
-	"GRANT-P09_7C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_7D_NAIVE":   "MISSING_IPV6_ADDRS",
-	"GRANT-P09_8A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_8B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_8C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_9A":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_9B":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_9C":         "MISSING_IPV6_ADDRS",
-	"GRANT-P09_10A":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_10B":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_10C":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_10D":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_11A":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_11B":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_11C_NAIVE":  "MISSING_IPV6_ADDRS",
-	"GRANT-P09_11D":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_12A":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_12B":        "MISSING_IPV6_ADDRS + SUBNET_ROUTE_FILTER_RULES: tagged-server subtest missing IPv6; subnet-router subtest missing entire rule for 10.0.0.0/8",
-	"GRANT-P09_14A":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14B":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14C":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14D":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14E":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14F":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14G":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14H":        "MISSING_IPV6_ADDRS",
-	"GRANT-P09_14I":        "MISSING_IPV6_ADDRS",
-
-	// P10-series: Host alias grants (only identity-src subtests fail)
-	"GRANT-P10_2": "MISSING_IPV6_ADDRS",
-
-	// P11-series: autogroup:tagged grants
-	"GRANT-P11_2": "MISSING_IPV6_ADDRS",
-
-	// P13-series: CIDR destination grants (identity-src subtests)
-	"GRANT-P13_4": "MISSING_IPV6_ADDRS",
-
-	// ========================================================================
-	// SUBNET_ROUTE_FILTER_RULES (10 tests)
+	// SUBNET_ROUTE_FILTER_RULES (11 tests)
 	//
 	// TODO: Generate filter rules for non-Tailscale CIDR destinations on
 	// subnet-router nodes.
@@ -390,16 +248,16 @@ var grantSkipReasons = map[string]string{
 	// overlaps with any subnet route advertised by the current node, and
 	// if so, generate the appropriate FilterRule.
 	// ========================================================================
-	"GRANT-P08_8":  "SUBNET_ROUTE_FILTER_RULES: dst=10.0.0.0/8 — subnet-router gets no rules",
-	"GRANT-P09_6D": "SUBNET_ROUTE_FILTER_RULES: dst=internal (host alias for 10.0.0.0/8) — subnet-router gets no rules",
-	"GRANT-P10_3":  "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
-	"GRANT-P10_4":  "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
-	"GRANT-P13_1":  "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 22 — subnet-router gets no rules",
-	"GRANT-P13_2":  "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 80-443 — subnet-router gets no rules",
-	"GRANT-P13_3":  "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 ports 22,80,443 — subnet-router gets no rules",
-	"GRANT-P15_1":  "SUBNET_ROUTE_FILTER_RULES: dst=10.33.1.0/24 port 22 — subnet-router gets no rules",
-	"GRANT-P15_3":  "SUBNET_ROUTE_FILTER_RULES: dst=10.32.0.0/14 port 22 — subnet-router gets no rules",
-	// Note: GRANT-P09_12B also has a subnet-router subtest failure — listed under MISSING_IPV6_ADDRS above
+	"GRANT-P08_8":   "SUBNET_ROUTE_FILTER_RULES: dst=10.0.0.0/8 — subnet-router gets no rules",
+	"GRANT-P09_6D":  "SUBNET_ROUTE_FILTER_RULES: dst=internal (host alias for 10.0.0.0/8) — subnet-router gets no rules",
+	"GRANT-P10_3":   "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
+	"GRANT-P10_4":   "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
+	"GRANT-P13_1":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 22 — subnet-router gets no rules",
+	"GRANT-P13_2":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 80-443 — subnet-router gets no rules",
+	"GRANT-P13_3":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 ports 22,80,443 — subnet-router gets no rules",
+	"GRANT-P09_12B": "SUBNET_ROUTE_FILTER_RULES: subnet-router subtest missing entire rule for 10.0.0.0/8",
+	"GRANT-P15_1":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.1.0/24 port 22 — subnet-router gets no rules",
+	"GRANT-P15_3":   "SUBNET_ROUTE_FILTER_RULES: dst=10.32.0.0/14 port 22 — subnet-router gets no rules",
 
 	// ========================================================================
 	// AUTOGROUP_SELF_CIDR_FORMAT (4 tests)
@@ -408,18 +266,16 @@ var grantSkipReasons = map[string]string{
 	//
 	// When compiling autogroup:self grants, headscale appends /32 to IPv4
 	// and /128 to IPv6 DstPort IPs. Tailscale uses bare IPs without a CIDR
-	// suffix. These tests also have missing IPv6 in SrcIPs.
+	// suffix.
 	//
 	// Example diff (user1 node, autogroup:member -> autogroup:self):
 	//   DstPorts: tailscale=[{IP:"100.90.199.68"}, {IP:"fd7a:...::2d01:c747"}]
 	//   DstPorts: headscale=[{IP:"100.90.199.68/32"}, {IP:"fd7a:...::2d01:c747/128"}]
-	//   SrcIPs:   tailscale=["100.90.199.68", "fd7a:...::2d01:c747"]
-	//   SrcIPs:   headscale=["100.90.199.68"]
 	// ========================================================================
-	"GRANT-P09_4E":  "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self — DstPorts IPs have /32 and /128 suffix + missing IPv6 in SrcIPs",
-	"GRANT-P09_13E": "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self with ip:[*] — DstPorts IPs have CIDR suffix + missing IPv6 in SrcIPs",
-	"GRANT-P09_13F": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22] — DstPorts IPs have CIDR suffix + missing IPv6 in SrcIPs",
-	"GRANT-P09_13G": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22,80,443] — DstPorts IPs have CIDR suffix + missing IPv6 in SrcIPs",
+	"GRANT-P09_4E":  "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self — DstPorts IPs have /32 and /128 suffix",
+	"GRANT-P09_13E": "AUTOGROUP_SELF_CIDR_FORMAT: autogroup:member -> autogroup:self with ip:[*] — DstPorts IPs have CIDR suffix",
+	"GRANT-P09_13F": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22] — DstPorts IPs have CIDR suffix",
+	"GRANT-P09_13G": "AUTOGROUP_SELF_CIDR_FORMAT: single user -> autogroup:self with ip:[22,80,443] — DstPorts IPs have CIDR suffix",
 
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
@@ -439,25 +295,6 @@ var grantSkipReasons = map[string]string{
 	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
 
 	// ========================================================================
-	// RAW_IPV6_ADDR_EXPANSION (2 tests)
-	//
-	// TODO: Don't expand raw IPv6 addresses to include the matching node's IPv4.
-	//
-	// When a grant uses a raw fd7a: IPv6 address as src or dst, headscale
-	// resolves it to BOTH the IPv4 and IPv6 of the matching node. Tailscale
-	// keeps only the specific address that was referenced in the grant.
-	//
-	// Example (GRANT-K14, src=fd7a:115c:a1e0::c537:c845):
-	//   SrcIPs: tailscale=["fd7a:115c:a1e0::c537:c845"]
-	//   SrcIPs: headscale=["100.83.200.69", "fd7a:115c:a1e0::c537:c845"]
-	// Example (GRANT-K15, dst=fd7a:115c:a1e0::b901:4a87):
-	//   DstPorts: tailscale=[{IP:"fd7a:...::b901:4a87"}]
-	//   DstPorts: headscale=[{IP:"100.108.74.26"}, {IP:"fd7a:...::b901:4a87"}]
-	// ========================================================================
-	"GRANT-K14": "RAW_IPV6_ADDR_EXPANSION: src=fd7a:...::c537:c845 — headscale adds extra IPv4 SrcIP + missing IPv6 in DstPorts",
-	"GRANT-K15": "RAW_IPV6_ADDR_EXPANSION: dst=fd7a:...::b901:4a87 — headscale adds extra IPv4 DstPort entry",
-
-	// ========================================================================
 	// SRCIPS_WILDCARD_NODE_DEDUP (1 test)
 	//
 	// TODO: When src includes both * (wildcard) and specific identities,
@@ -465,13 +302,11 @@ var grantSkipReasons = map[string]string{
 	// headscale only produces the wildcard ranges, omitting the individual
 	// node IPs that are technically covered by those ranges.
 	//
-	// Also has missing IPv6 in DstPorts.
-	//
 	// Example (GRANT-P09_7A, src=[*, autogroup:member, tag:client, ...]):
 	//   SrcIPs: tailscale=[individual IPs + CGNAT ranges + IPv6s] (20 entries)
 	//   SrcIPs: headscale=[10.33.0.0/16, CGNAT ranges, fd7a::/48] (4 entries)
 	// ========================================================================
-	"GRANT-P09_7A": "SRCIPS_WILDCARD_NODE_DEDUP: src=[*,...] — individual node IPs missing from SrcIPs + missing IPv6 in DstPorts",
+	"GRANT-P09_7A": "SRCIPS_WILDCARD_NODE_DEDUP: src=[*,...] — individual node IPs missing from SrcIPs",
 
 	// ========================================================================
 	// CAPGRANT_COMPILATION (49 tests)
@@ -729,19 +564,17 @@ var grantSkipReasons = map[string]string{
 //
 //	CAPGRANT_COMPILATION               -  49 tests: Implement app->CapGrant FilterRule compilation
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
-//	MISSING_IPV6_ADDRS                 -  90 tests: Include IPv6 for identity-based alias resolution
 //	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
-//	SUBNET_ROUTE_FILTER_RULES          -  10 tests: Generate filter rules for subnet-routed CIDRs
+//	SUBNET_ROUTE_FILTER_RULES          -  11 tests: Generate filter rules for subnet-routed CIDRs
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
 //	AUTOGROUP_SELF_CIDR_FORMAT         -   4 tests: DstPorts IPs get /32 or /128 suffix for autogroup:self
 //	VIA_COMPILATION                    -   3 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
-//	RAW_IPV6_ADDR_EXPANSION            -   2 tests: Raw fd7a: IPv6 src/dst expanded to include IPv4
 //	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 207 tests skipped, 30 tests expected to pass.
+// Total: 113 tests skipped, ~124 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 

@@ -578,7 +578,7 @@ func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeVie
 	return newResolvedAddresses(h.resolve(p, nil, nodes))
 }
 
-func (h *Host) resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (h *Host) resolve(p *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
@@ -594,24 +594,10 @@ func (h *Host) resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeVie
 		errs = append(errs, err)
 	}
 
+	// Address-based aliases (host names) resolve to exactly the
+	// literal prefix from the hosts map. They do NOT expand to
+	// include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(pref))
-
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
-
-	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
-	// should a host with a non single IP be able to resolve the full host (inc all IPs).
-	ipsTemp, err := ips.IPSet()
-	if err != nil {
-		errs = append(errs, err)
-	}
-
-	for _, node := range nodes.All() {
-		if node.InIPSet(ipsTemp) {
-			node.AppendToIPSet(&ips)
-		}
-	}
 
 	return buildIPSetMultiErr(&ips, errs)
 }
@@ -679,32 +665,18 @@ func (p *Prefix) Resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeV
 	return newResolvedAddresses(p.resolve(nil, nil, nodes))
 }
 
-func (p *Prefix) resolve(_ *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (p *Prefix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
+	// Address-based aliases resolve to exactly the literal prefix.
+	// Unlike identity-based aliases (tags, users, groups), they do
+	// NOT expand to include the matching node's other IP addresses.
 	ips.AddPrefix(netip.Prefix(*p))
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(*p))
 
 	return buildIPSetMultiErr(&ips, errs)
-}
-
-// appendIfNodeHasIP appends the IPs of the nodes to the IPSet if the node has the
-// IP address in the prefix.
-func appendIfNodeHasIP(nodes views.Slice[types.NodeView], ips *netipx.IPSetBuilder, pref netip.Prefix) {
-	if !pref.IsSingleIP() && !tsaddr.IsTailscaleIP(pref.Addr()) {
-		return
-	}
-
-	for _, node := range nodes.All() {
-		if node.HasIP(pref.Addr()) {
-			node.AppendToIPSet(ips)
-		}
-	}
 }
 
 // AutoGroup is a special string which is always prefixed with `autogroup:`.

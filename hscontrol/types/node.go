@@ -297,25 +297,18 @@ func (node *Node) InIPSet(set *netipx.IPSet) bool {
 	return slices.ContainsFunc(node.IPs(), set.Contains)
 }
 
-// AppendToIPSet adds the individual ips in NodeAddresses to a
-// given netipx.IPSetBuilder.
+// AppendToIPSet adds all IP addresses of the node to the given
+// netipx.IPSetBuilder. For identity-based aliases (tags, users,
+// groups, autogroups), both IPv4 and IPv6 must be included to
+// match Tailscale's behavior in the FilterRule wire format.
 func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
 	if node.IPv4 != nil {
 		build.Add(*node.IPv4)
-		return
 	}
 
 	if node.IPv6 != nil {
 		build.Add(*node.IPv6)
 	}
-
-	// TODO(kradalby): Evaluate what we want to do here:
-	// Tailscale only adds the IPv4 addresses to any packet filter rule that is resolved to a given node.
-	// Presumably, it will add the IPv4 if a node does not have an IPv4.
-	// Until this change, we always added both, and that might be something people are dependent on, and we might want to keep it.
-	// for _, ip := range node.IPs() {
-	// 	build.Add(ip)
-	// }
 }
 
 func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
