@@ -38,7 +38,13 @@
         }
       ]
     },
-    "grants_section": [{ "src": ["*"], "dst": ["autogroup:internet"], "ip": ["tcp:443"] }],
+    "grants_section": [
+      {
+        "src": ["*"],
+        "dst": ["autogroup:internet"],
+        "ip": ["tcp:443"]
+      }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -61,7 +67,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",

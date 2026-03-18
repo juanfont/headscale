@@ -55,7 +55,9 @@
         "hostname": "subnet-router",
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "hostname": "tagged-client",
