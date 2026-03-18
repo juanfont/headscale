@@ -67,14 +67,12 @@ var (
 
 // Grant validation errors.
 var (
-	ErrGrantIPAndAppMutuallyExclusive = errors.New("grants cannot specify both 'ip' and 'app' fields")
-	ErrGrantMissingIPOrApp            = errors.New("grants must specify either 'ip' or 'app' field")
-	ErrGrantInvalidViaTag             = errors.New("grant 'via' tag is not defined in policy")
-	ErrGrantViaNotSupported           = errors.New("grant 'via' routing is not yet supported in headscale")
-	ErrGrantAppProtocolConflict       = errors.New("grants with 'app' cannot specify 'ip' protocols")
-	ErrGrantEmptySources              = errors.New("grant sources cannot be empty")
-	ErrGrantEmptyDestinations         = errors.New("grant destinations cannot be empty")
-	ErrProtocolPortInvalidFormat      = errors.New("expected only one colon in Internet protocol and port type")
+	ErrGrantMissingIPOrApp       = errors.New("grants must specify either 'ip' or 'app' field")
+	ErrGrantInvalidViaTag        = errors.New("grant 'via' tag is not defined in policy")
+	ErrGrantViaNotSupported      = errors.New("grant 'via' routing is not yet supported in headscale")
+	ErrGrantEmptySources         = errors.New("grant sources cannot be empty")
+	ErrGrantEmptyDestinations    = errors.New("grant destinations cannot be empty")
+	ErrProtocolPortInvalidFormat = errors.New("expected only one colon in Internet protocol and port type")
 )
 
 // Policy validation errors.
@@ -2380,13 +2378,9 @@ func (p *Policy) validate() error {
 	}
 
 	for _, grant := range p.Grants {
-		// Validate ip/app mutual exclusivity
+		// Validate that grants have at least ip or app
 		hasIP := len(grant.InternetProtocols) > 0
 		hasApp := len(grant.App) > 0
-
-		if hasIP && hasApp {
-			errs = append(errs, ErrGrantIPAndAppMutuallyExclusive)
-		}
 
 		if !hasIP && !hasApp {
 			errs = append(errs, ErrGrantMissingIPOrApp)

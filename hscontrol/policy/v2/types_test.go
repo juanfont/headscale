@@ -4583,7 +4583,7 @@ func TestUnmarshalGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid-grant-both-ip-and-app",
+			name: "valid-grant-both-ip-and-app",
 			input: `
 {
 	"grants": [
@@ -4598,7 +4598,24 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grants cannot specify both 'ip' and 'app' fields",
+			want: &Policy{
+				Grants: []Grant{
+					{
+						Sources: Aliases{
+							Wildcard,
+						},
+						Destinations: Aliases{
+							Wildcard,
+						},
+						InternetProtocols: []ProtocolPort{
+							{Protocol: "tcp", Ports: []tailcfg.PortRange{{First: 443, Last: 443}}},
+						},
+						App: tailcfg.PeerCapMap{
+							"tailscale.com/cap/relay": []tailcfg.RawMessage{},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "invalid-grant-missing-ip-and-app",

@@ -118,6 +118,7 @@ func findNodeByGivenName(nodes types.Nodes, name string) *types.Node {
 // It sorts SrcIPs and DstPorts to handle ordering differences.
 func cmpOptions() []cmp.Option {
 	return []cmp.Option{
+		cmpopts.EquateComparable(netip.Prefix{}, netip.Addr{}),
 		cmpopts.SortSlices(func(a, b string) bool { return a < b }),
 		cmpopts.SortSlices(func(a, b tailcfg.NetPortRange) bool {
 			if a.IP != b.IP {
@@ -131,6 +132,54 @@ func cmpOptions() []cmp.Option {
 			return a.Ports.Last < b.Ports.Last
 		}),
 		cmpopts.SortSlices(func(a, b int) bool { return a < b }),
+		cmpopts.SortSlices(func(a, b netip.Prefix) bool {
+			if a.Addr() != b.Addr() {
+				return a.Addr().Less(b.Addr())
+			}
+
+			return a.Bits() < b.Bits()
+		}),
+		// Compare json.RawMessage semantically rather than by exact
+		// bytes to handle indentation differences between the policy
+		// source and the golden capture data.
+		cmp.Comparer(func(a, b json.RawMessage) bool {
+			var va, vb any
+
+			err := json.Unmarshal(a, &va)
+			if err != nil {
+				return string(a) == string(b)
+			}
+
+			err = json.Unmarshal(b, &vb)
+			if err != nil {
+				return string(a) == string(b)
+			}
+
+			ja, _ := json.Marshal(va)
+			jb, _ := json.Marshal(vb)
+
+			return string(ja) == string(jb)
+		}),
+		// Compare tailcfg.RawMessage semantically (it's a string type
+		// containing JSON) to handle indentation differences.
+		cmp.Comparer(func(a, b tailcfg.RawMessage) bool {
+			var va, vb any
+
+			err := json.Unmarshal([]byte(a), &va)
+			if err != nil {
+				return a == b
+			}
+
+			err = json.Unmarshal([]byte(b), &vb)
+			if err != nil {
+				return a == b
+			}
+
+			ja, _ := json.Marshal(va)
+			jb, _ := json.Marshal(vb)
+
+			return string(ja) == string(jb)
+		}),
 	}
 }
 
