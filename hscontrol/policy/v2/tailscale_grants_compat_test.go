@@ -214,20 +214,14 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 //
 // Impact summary (highest first):
 //
-//	CAPGRANT_COMPILATION               -  49 tests: Implement app->CapGrant FilterRule compilation
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
-//	MISSING_IPV6_ADDRS                 -  90 tests: Include IPv6 for identity-based alias resolution
-//	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
-//	AUTOGROUP_SELF_CIDR_FORMAT         -   4 tests: DstPorts IPs get /32 or /128 suffix for autogroup:self
-//	VIA_COMPILATION                    -   3 tests: Via route compilation
+//	VIA_COMPILATION                    -   4 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
-//	RAW_IPV6_ADDR_EXPANSION            -   2 tests: Raw fd7a: IPv6 src/dst expanded to include IPv4
-//	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 197 tests skipped, 40 tests expected to pass.
+// Total: 41 tests skipped, ~196 tests expected to pass.
 var grantSkipReasons = map[string]string{
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
@@ -247,135 +241,6 @@ var grantSkipReasons = map[string]string{
 	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
 
 	// ========================================================================
-	// SRCIPS_WILDCARD_NODE_DEDUP (1 test)
-	//
-	// TODO: When src includes both * (wildcard) and specific identities,
-	// Tailscale unions individual node IPs with the wildcard CGNAT ranges.
-	// headscale only produces the wildcard ranges, omitting the individual
-	// node IPs that are technically covered by those ranges.
-	//
-	// Example (GRANT-P09_7A, src=[*, autogroup:member, tag:client, ...]):
-	//   SrcIPs: tailscale=[individual IPs + CGNAT ranges + IPv6s] (20 entries)
-	//   SrcIPs: headscale=[10.33.0.0/16, CGNAT ranges, fd7a::/48] (4 entries)
-	// ========================================================================
-	"GRANT-P09_7A": "SRCIPS_WILDCARD_NODE_DEDUP: src=[*,...] — individual node IPs missing from SrcIPs",
-
-	// ========================================================================
-	// CAPGRANT_COMPILATION (49 tests)
-	//
-	// TODO: Implement app capability grant -> CapGrant FilterRule compilation.
-	//
-	// When a grant specifies an "app" field (application capabilities), it
-	// should produce a FilterRule with CapGrant entries instead of DstPorts.
-	// headscale currently does not compile app grants into CapGrant FilterRules,
-	// producing empty output where Tailscale produces CapGrant rules.
-	//
-	// Each CapGrant FilterRule contains:
-	//   - SrcIPs: source IP ranges (same format as DstPorts rules)
-	//   - CapGrant: []tailcfg.CapGrant with Dsts (destination IPs) and
-	//     CapMap (capability name -> JSON values)
-	//
-	// Fixing CapGrant compilation would resolve all 41 tests in this category.
-	// ========================================================================
-
-	// A-series: Basic app capability grants
-	"GRANT-A1": "CAPGRANT_COMPILATION",
-	"GRANT-A3": "CAPGRANT_COMPILATION",
-	"GRANT-A4": "CAPGRANT_COMPILATION",
-	"GRANT-A6": "CAPGRANT_COMPILATION",
-
-	// B-series: Specific capability types (kubernetes, drive, etc.)
-	"GRANT-B1": "CAPGRANT_COMPILATION",
-	"GRANT-B2": "CAPGRANT_COMPILATION",
-	"GRANT-B3": "CAPGRANT_COMPILATION",
-	"GRANT-B4": "CAPGRANT_COMPILATION",
-	"GRANT-B5": "CAPGRANT_COMPILATION",
-
-	// C-series: Capability values and multiple caps
-	"GRANT-C1": "CAPGRANT_COMPILATION",
-	"GRANT-C2": "CAPGRANT_COMPILATION",
-	"GRANT-C3": "CAPGRANT_COMPILATION",
-	"GRANT-C4": "CAPGRANT_COMPILATION",
-	"GRANT-C5": "CAPGRANT_COMPILATION",
-	"GRANT-C6": "CAPGRANT_COMPILATION",
-
-	// D-series: Source targeting with app caps
-	"GRANT-D1": "CAPGRANT_COMPILATION",
-	"GRANT-D2": "CAPGRANT_COMPILATION",
-	"GRANT-D3": "CAPGRANT_COMPILATION",
-	"GRANT-D4": "CAPGRANT_COMPILATION",
-	"GRANT-D5": "CAPGRANT_COMPILATION",
-	"GRANT-D6": "CAPGRANT_COMPILATION",
-	"GRANT-D7": "CAPGRANT_COMPILATION",
-
-	// E-series: Destination targeting with app caps
-	"GRANT-E1": "CAPGRANT_COMPILATION",
-	"GRANT-E2": "CAPGRANT_COMPILATION",
-	"GRANT-E4": "CAPGRANT_COMPILATION",
-	"GRANT-E5": "CAPGRANT_COMPILATION",
-	"GRANT-E6": "CAPGRANT_COMPILATION",
-	"GRANT-E7": "CAPGRANT_COMPILATION",
-	"GRANT-E8": "CAPGRANT_COMPILATION",
-
-	// G-series: Group-based source with app caps (pure capgrant)
-	"GRANT-G1": "CAPGRANT_COMPILATION",
-	"GRANT-G2": "CAPGRANT_COMPILATION",
-	"GRANT-G3": "CAPGRANT_COMPILATION",
-	"GRANT-G6": "CAPGRANT_COMPILATION",
-
-	// H-series: Edge cases with app caps
-	"GRANT-H2": "CAPGRANT_COMPILATION",
-	"GRANT-H6": "CAPGRANT_COMPILATION",
-
-	// K-series: Various app cap patterns
-	"GRANT-K11": "CAPGRANT_COMPILATION",
-	"GRANT-K18": "CAPGRANT_COMPILATION",
-	"GRANT-K19": "CAPGRANT_COMPILATION",
-	"GRANT-K24": "CAPGRANT_COMPILATION",
-	"GRANT-K25": "CAPGRANT_COMPILATION",
-	"GRANT-K27": "CAPGRANT_COMPILATION",
-
-	// V-series: App caps on specific tags, drive cap, autogroup:self app
-	"GRANT-V02": "CAPGRANT_COMPILATION: app grant on tag:exit — CapGrant with exit-node IPs as Dsts not compiled",
-	"GRANT-V03": "CAPGRANT_COMPILATION: app grant on tag:router — CapGrant with router IPs as Dsts not compiled",
-	"GRANT-V06": "CAPGRANT_COMPILATION: multi-dst app grant on [tag:server, tag:exit] — per-node CapGrant not compiled",
-	"GRANT-V19": "CAPGRANT_COMPILATION: drive cap on tag:exit — drive CapGrant + reverse drive-sharer not compiled",
-	"GRANT-V20": "CAPGRANT_COMPILATION: kubernetes cap on tag:router — CapGrant not compiled",
-	"GRANT-V25": "CAPGRANT_COMPILATION: autogroup:self app grant — self-targeting CapGrant per member not compiled",
-
-	// ========================================================================
-	// CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT (11 tests)
-	//
-	// TODO: These tests have BOTH DstPorts and CapGrant FilterRules.
-	// They require both CapGrant compilation AND SrcIPs format fixes.
-	// Grants with both "ip" and "app" fields produce two separate FilterRules:
-	// one with DstPorts (from "ip") and one with CapGrant (from "app").
-	//
-	// V09/V10: headscale currently rejects mixed ip+app grants with
-	// "grants cannot specify both 'ip' and 'app' fields", but Tailscale
-	// accepts them and produces two FilterRules per grant.
-	// ========================================================================
-
-	// F-series: Mixed ip+app grants
-	"GRANT-F1": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-F2": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-F3": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-F4": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-
-	// G-series: Group-based mixed grants
-	"GRANT-G4": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-G5": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-
-	// K-series: Mixed patterns
-	"GRANT-K3":  "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-K5":  "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-K28": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT",
-
-	// V-series: Mixed ip+app on specific tags
-	"GRANT-V09": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT: mixed ip+app on tag:exit — headscale rejects, Tailscale produces DstPorts + CapGrant",
-	"GRANT-V10": "CAPGRANT_COMPILATION_AND_SRCIPS_FORMAT: mixed ip+app on tag:router — headscale rejects, Tailscale produces DstPorts + CapGrant",
-
-	// ========================================================================
 	// VIA_COMPILATION (3 tests)
 	//
 	// TODO: Implement via route compilation in filter rules.
@@ -384,6 +249,7 @@ var grantSkipReasons = map[string]string{
 	// with correctly restricted SrcIPs. These tests have no SrcIPs format
 	// issue because they use specific src identities (tags, groups, members).
 	// ========================================================================
+	"GRANT-K12": "VIA_COMPILATION: via tag:router + src:* + dst:10.33.0.0/16 + app — via route with CapGrant",
 	"GRANT-V11": "VIA_COMPILATION: via tag:router + src:tag:client — SrcIPs = client IPs only",
 	"GRANT-V12": "VIA_COMPILATION: via tag:router + src:autogroup:member — SrcIPs = member IPs",
 	"GRANT-V13": "VIA_COMPILATION: via tag:router + src:group:developers + tcp:80,443 — group SrcIPs + specific ports",
@@ -514,17 +380,14 @@ var grantSkipReasons = map[string]string{
 //
 // Skip category impact summary (highest first):
 //
-//	CAPGRANT_COMPILATION               -  49 tests: Implement app->CapGrant FilterRule compilation
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
-//	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
-//	VIA_COMPILATION                    -   3 tests: Via route compilation
+//	VIA_COMPILATION                    -   4 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
-//	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 99 tests skipped, ~138 tests expected to pass.
+// Total: 41 tests skipped, ~196 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
