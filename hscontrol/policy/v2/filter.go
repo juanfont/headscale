@@ -130,6 +130,12 @@ func (pol *Policy) compileFilterRules(
 	}
 
 	for _, grant := range grants {
+		// Via grants are compiled per-node in compileViaGrant,
+		// not in the global filter set.
+		if len(grant.Via) > 0 {
+			continue
+		}
+
 		srcIPs, err := grant.Sources.Resolve(pol, users, nodes)
 		if err != nil {
 			log.Trace().Caller().Err(err).Msgf("resolving source ips")
@@ -287,19 +293,151 @@ func (pol *Policy) compileFilterRulesForNode(
 	return mergeFilterRules(rules), nil
 }
 
+// compileViaGrant compiles a grant with a "via" field. Via grants
+// produce filter rules ONLY on nodes matching a via tag that actually
+// advertise (and have approved) the destination subnets. All other
+// nodes receive no rules. App-only via grants (no ip field) produce
+// no packet filter rules.
+func (pol *Policy) compileViaGrant(
+	grant Grant,
+	users types.Users,
+	node types.NodeView,
+	nodes views.Slice[types.NodeView],
+) ([]tailcfg.FilterRule, error) {
+	// Check if the current node matches any of the via tags.
+	matchesVia := false
+
+	for _, viaTag := range grant.Via {
+		if node.HasTag(string(viaTag)) {
+			matchesVia = true
+
+			break
+		}
+	}
+
+	if !matchesVia {
+		return nil, nil
+	}
+
+	// App-only via grants produce no packet filter rules.
+	if len(grant.InternetProtocols) == 0 {
+		return nil, nil
+	}
+
+	// Find which grant destination subnets this node actually advertises.
+	nodeRoutes := node.SubnetRoutes()
+	if len(nodeRoutes) == 0 {
+		return nil, nil
+	}
+
+	// Collect destination prefixes that match the node's approved routes.
+	var viaDstPrefixes []netip.Prefix
+
+	for _, dst := range grant.Destinations {
+		p, ok := dst.(*Prefix)
+		if !ok {
+			continue
+		}
+
+		dstPrefix := netip.Prefix(*p)
+		if slices.Contains(nodeRoutes, dstPrefix) {
+			viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
+		}
+	}
+
+	if len(viaDstPrefixes) == 0 {
+		return nil, nil
+	}
+
+	// Resolve source IPs.
+	var resolvedSrcs []ResolvedAddresses
+
+	for _, src := range grant.Sources {
+		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+			return nil, errSelfInSources
+		}
+
+		ips, err := src.Resolve(pol, users, nodes)
+		if err != nil {
+			log.Trace().Caller().Err(err).Msgf("resolving source ips")
+		}
+
+		if ips != nil {
+			resolvedSrcs = append(resolvedSrcs, ips)
+		}
+	}
+
+	if len(resolvedSrcs) == 0 {
+		return nil, nil
+	}
+
+	// Build merged SrcIPs from all sources.
+	var srcIPs netipx.IPSetBuilder
+
+	for _, ips := range resolvedSrcs {
+		for _, pref := range ips.Prefixes() {
+			srcIPs.AddPrefix(pref)
+		}
+	}
+
+	srcResolved, err := newResolved(&srcIPs)
+	if err != nil {
+		return nil, err
+	}
+
+	if srcResolved.Empty() {
+		return nil, nil
+	}
+
+	hasWildcard := sourcesHaveWildcard(grant.Sources)
+	srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, nodes)
+
+	// Build DstPorts from the matching via prefixes.
+	var rules []tailcfg.FilterRule
+
+	for _, ipp := range grant.InternetProtocols {
+		var destPorts []tailcfg.NetPortRange
+
+		for _, prefix := range viaDstPrefixes {
+			for _, port := range ipp.Ports {
+				destPorts = append(destPorts, tailcfg.NetPortRange{
+					IP:    prefix.String(),
+					Ports: port,
+				})
+			}
+		}
+
+		if len(destPorts) > 0 {
+			rules = append(rules, tailcfg.FilterRule{
+				SrcIPs:   srcIPStrs,
+				DstPorts: destPorts,
+				IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
+			})
+		}
+	}
+
+	return rules, nil
+}
+
 // compileGrantWithAutogroupSelf compiles a single Grant rule, handling
 // autogroup:self per-node while supporting all other alias types normally.
 // It returns a slice of filter rules because when an Grant has both autogroup:self
 // and other destinations, they need to be split into separate rules with different
 // source filtering logic.
 //
-//nolint:gocyclo // complex ACL compilation logic
+//nolint:gocyclo,cyclop // complex ACL compilation logic
 func (pol *Policy) compileGrantWithAutogroupSelf(
 	grant Grant,
 	users types.Users,
 	node types.NodeView,
 	nodes views.Slice[types.NodeView],
 ) ([]tailcfg.FilterRule, error) {
+	// Handle via route grants — filter rules only go to the node
+	// matching the via tag that actually advertises the destination subnets.
+	if len(grant.Via) > 0 {
+		return pol.compileViaGrant(grant, users, node, nodes)
+	}
+
 	var (
 		autogroupSelfDests []Alias
 		otherDests         []Alias

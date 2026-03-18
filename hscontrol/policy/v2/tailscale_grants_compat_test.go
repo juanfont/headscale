@@ -215,13 +215,11 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 // Impact summary (highest first):
 //
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
-//	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
-//	VIA_COMPILATION                    -   4 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //
-// Total: 41 tests skipped, ~196 tests expected to pass.
+// Total: 30 tests skipped, ~207 tests expected to pass.
 var grantSkipReasons = map[string]string{
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
@@ -240,39 +238,10 @@ var grantSkipReasons = map[string]string{
 	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey, dst=tag:server — source can't be resolved, no rules produced",
 	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
 
-	// ========================================================================
-	// VIA_COMPILATION (3 tests)
-	//
-	// TODO: Implement via route compilation in filter rules.
-	//
-	// Via routes with specific (non-wildcard) sources produce DstPorts rules
-	// with correctly restricted SrcIPs. These tests have no SrcIPs format
-	// issue because they use specific src identities (tags, groups, members).
-	// ========================================================================
-	"GRANT-K12": "VIA_COMPILATION: via tag:router + src:* + dst:10.33.0.0/16 + app — via route with CapGrant",
-	"GRANT-V11": "VIA_COMPILATION: via tag:router + src:tag:client — SrcIPs = client IPs only",
-	"GRANT-V12": "VIA_COMPILATION: via tag:router + src:autogroup:member — SrcIPs = member IPs",
-	"GRANT-V13": "VIA_COMPILATION: via tag:router + src:group:developers + tcp:80,443 — group SrcIPs + specific ports",
+	// (VIA_COMPILATION tests removed — via route compilation now implemented)
 
-	// ========================================================================
-	// VIA_COMPILATION_AND_SRCIPS_FORMAT (7 tests)
-	//
-	// TODO: Implement via route compilation in filter rules.
-	//
-	// Via routes ("via" field in grants) specify that traffic to a destination
-	// CIDR should be routed through a specific tagged subnet router. The via
-	// field is currently parsed and validated but NOT compiled into FilterRules.
-	//
-	// These tests also have SrcIPs format differences (wildcard src expands
-	// to split CGNAT ranges).
-	// ========================================================================
-	"GRANT-I1":  "VIA_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-I2":  "VIA_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-I3":  "VIA_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-K13": "VIA_COMPILATION_AND_SRCIPS_FORMAT",
-	"GRANT-V17": "VIA_COMPILATION_AND_SRCIPS_FORMAT: via tag:router + multi-dst — unadvertised subnets silently dropped",
-	"GRANT-V21": "VIA_COMPILATION_AND_SRCIPS_FORMAT: via [tag:router, tag:exit] — only advertising nodes get rules",
-	"GRANT-V23": "VIA_COMPILATION_AND_SRCIPS_FORMAT: via tag:router + tcp:22,80,443 — via + multiple ports",
+	// (VIA_COMPILATION_AND_SRCIPS_FORMAT tests removed — via route compilation
+	// and SrcIPs format are both now implemented),
 
 	// ========================================================================
 	// AUTOGROUP_DANGER_ALL (3 tests)
@@ -381,13 +350,11 @@ var grantSkipReasons = map[string]string{
 // Skip category impact summary (highest first):
 //
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
-//	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
-//	VIA_COMPILATION                    -   4 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //
-// Total: 41 tests skipped, ~196 tests expected to pass.
+// Total: 30 tests skipped, ~207 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
