@@ -214,10 +214,9 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 //
 // Impact summary (highest first):
 //
-//	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //
-// Total: 5 tests skipped, ~232 tests expected to pass.
+// Total: 2 tests skipped, ~235 tests expected to pass.
 var grantSkipReasons = map[string]string{
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
@@ -235,23 +234,6 @@ var grantSkipReasons = map[string]string{
 	// ========================================================================
 	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey, dst=tag:server — source can't be resolved, no rules produced",
 	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
-
-	// ========================================================================
-	// AUTOGROUP_DANGER_ALL (3 tests)
-	//
-	// TODO: Implement autogroup:danger-all support.
-	//
-	// autogroup:danger-all matches ALL IPs including non-Tailscale addresses.
-	// When used as a source, it should expand to 0.0.0.0/0 and ::/0.
-	// When used as a destination, Tailscale rejects it with an error.
-	//
-	// GRANT-K6: autogroup:danger-all as src (success test, produces rules)
-	// GRANT-K7: autogroup:danger-all as dst (error: "cannot use autogroup:danger-all as a dst")
-	// GRANT-K8: autogroup:danger-all as both src and dst (error: same message)
-	// ========================================================================
-	"GRANT-K6": "AUTOGROUP_DANGER_ALL",
-	"GRANT-K7": "AUTOGROUP_DANGER_ALL",
-	"GRANT-K8": "AUTOGROUP_DANGER_ALL",
 }
 
 // TestGrantsCompat is a data-driven test that loads all 237 GRANT-*.json
@@ -269,10 +251,9 @@ var grantSkipReasons = map[string]string{
 //
 // Skip category impact summary (highest first):
 //
-//	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
 //
-// Total: 5 tests skipped, ~232 tests expected to pass.
+// Total: 2 tests skipped, ~235 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 

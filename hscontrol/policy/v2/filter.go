@@ -97,13 +97,32 @@ func sourcesHaveWildcard(srcs Aliases) bool {
 	return false
 }
 
+// sourcesHaveDangerAll returns true if any of the source aliases is
+// autogroup:danger-all. When present, SrcIPs should be ["*"] to
+// represent all IP addresses including non-Tailscale addresses.
+func sourcesHaveDangerAll(srcs Aliases) bool {
+	for _, src := range srcs {
+		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupDangerAll) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // srcIPsWithRoutes returns the SrcIPs string slice, appending
 // approved subnet routes when the sources include a wildcard.
+// When hasDangerAll is true, returns ["*"] to represent all IPs.
 func srcIPsWithRoutes(
 	resolved ResolvedAddresses,
 	hasWildcard bool,
+	hasDangerAll bool,
 	nodes views.Slice[types.NodeView],
 ) []string {
+	if hasDangerAll {
+		return []string{"*"}
+	}
+
 	ips := resolved.Strings()
 	if hasWildcard {
 		ips = append(ips, approvedSubnetRoutes(nodes)...)
@@ -146,13 +165,14 @@ func (pol *Policy) compileFilterRules(
 		}
 
 		hasWildcard := sourcesHaveWildcard(grant.Sources)
+		hasDangerAll := sourcesHaveDangerAll(grant.Sources)
 
 		for _, ipp := range grant.InternetProtocols {
 			destPorts := pol.destinationsToNetPortRange(users, nodes, grant.Destinations, ipp.Ports)
 
 			if len(destPorts) > 0 {
 				rules = append(rules, tailcfg.FilterRule{
-					SrcIPs:   srcIPsWithRoutes(srcIPs, hasWildcard, nodes),
+					SrcIPs:   srcIPsWithRoutes(srcIPs, hasWildcard, hasDangerAll, nodes),
 					DstPorts: destPorts,
 					IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 				})
@@ -180,7 +200,7 @@ func (pol *Policy) compileFilterRules(
 				dstIPStrings = append(dstIPStrings, ips.Strings()...)
 			}
 
-			srcIPStrs := srcIPsWithRoutes(srcIPs, hasWildcard, nodes)
+			srcIPStrs := srcIPsWithRoutes(srcIPs, hasWildcard, hasDangerAll, nodes)
 			rules = append(rules, tailcfg.FilterRule{
 				SrcIPs:   srcIPStrs,
 				CapGrant: capGrants,
@@ -390,7 +410,8 @@ func (pol *Policy) compileViaGrant(
 	}
 
 	hasWildcard := sourcesHaveWildcard(grant.Sources)
-	srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, nodes)
+	hasDangerAll := sourcesHaveDangerAll(grant.Sources)
+	srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, hasDangerAll, nodes)
 
 	// Build DstPorts from the matching via prefixes.
 	var rules []tailcfg.FilterRule
@@ -491,6 +512,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 	}
 
 	hasWildcard := sourcesHaveWildcard(grant.Sources)
+	hasDangerAll := sourcesHaveDangerAll(grant.Sources)
 
 	for _, ipp := range grant.InternetProtocols {
 		// Handle non-self destinations first to match Tailscale's
@@ -513,7 +535,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
 
 				if len(destPorts) > 0 {
-					srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, nodes)
+					srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, hasDangerAll, nodes)
 
 					// When sources include a wildcard (*) alongside
 					// explicit sources (tags, groups, etc.), Tailscale
@@ -625,7 +647,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 				}
 
 				if !srcResolved.Empty() {
-					srcIPStrs = srcIPsWithRoutes(srcResolved, hasWildcard, nodes)
+					srcIPStrs = srcIPsWithRoutes(srcResolved, hasWildcard, hasDangerAll, nodes)
 
 					if hasWildcard && len(nonWildcardSrcs) > 0 {
 						seen := make(map[string]bool, len(srcIPStrs))
