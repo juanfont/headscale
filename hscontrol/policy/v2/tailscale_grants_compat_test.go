@@ -218,7 +218,6 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
 //	MISSING_IPV6_ADDRS                 -  90 tests: Include IPv6 for identity-based alias resolution
 //	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
-//	SUBNET_ROUTE_FILTER_RULES          -  10 tests: Generate filter rules for subnet-routed CIDRs
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
 //	AUTOGROUP_SELF_CIDR_FORMAT         -   4 tests: DstPorts IPs get /32 or /128 suffix for autogroup:self
 //	VIA_COMPILATION                    -   3 tests: Via route compilation
@@ -228,41 +227,8 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 //	RAW_IPV6_ADDR_EXPANSION            -   2 tests: Raw fd7a: IPv6 src/dst expanded to include IPv4
 //	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 207 tests skipped, 30 tests expected to pass.
+// Total: 197 tests skipped, 40 tests expected to pass.
 var grantSkipReasons = map[string]string{
-	// ========================================================================
-	// SUBNET_ROUTE_FILTER_RULES (11 tests)
-	//
-	// TODO: Generate filter rules for non-Tailscale CIDR destinations on
-	// subnet-router nodes.
-	//
-	// When a grant targets a non-Tailscale CIDR (e.g., 10.0.0.0/8,
-	// 10.33.0.0/16, 10.33.1.0/24), Tailscale generates FilterRules on the
-	// subnet-router node that advertises overlapping routes. headscale
-	// produces no rules for these destinations, resulting in empty output
-	// on the subnet-router node.
-	//
-	// Example (GRANT-P13_1, dst=10.33.0.0/16):
-	//   tailscale produces on subnet-router:
-	//     SrcIPs=["100.103.90.82","100.110.121.96","100.90.199.68", + IPv6s]
-	//     DstPorts=[{IP:"10.33.0.0/16", Ports:"22"}]
-	//   headscale produces: [] (empty)
-	//
-	// Fix: During filter rule compilation, check if a destination CIDR
-	// overlaps with any subnet route advertised by the current node, and
-	// if so, generate the appropriate FilterRule.
-	// ========================================================================
-	"GRANT-P08_8":   "SUBNET_ROUTE_FILTER_RULES: dst=10.0.0.0/8 — subnet-router gets no rules",
-	"GRANT-P09_6D":  "SUBNET_ROUTE_FILTER_RULES: dst=internal (host alias for 10.0.0.0/8) — subnet-router gets no rules",
-	"GRANT-P10_3":   "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
-	"GRANT-P10_4":   "SUBNET_ROUTE_FILTER_RULES: dst=host alias for 10.33.0.0/16 — subnet-router gets no rules",
-	"GRANT-P13_1":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 22 — subnet-router gets no rules",
-	"GRANT-P13_2":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 port 80-443 — subnet-router gets no rules",
-	"GRANT-P13_3":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.0.0/16 ports 22,80,443 — subnet-router gets no rules",
-	"GRANT-P09_12B": "SUBNET_ROUTE_FILTER_RULES: subnet-router subtest missing entire rule for 10.0.0.0/8",
-	"GRANT-P15_1":   "SUBNET_ROUTE_FILTER_RULES: dst=10.33.1.0/24 port 22 — subnet-router gets no rules",
-	"GRANT-P15_3":   "SUBNET_ROUTE_FILTER_RULES: dst=10.32.0.0/14 port 22 — subnet-router gets no rules",
-
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
 	//
@@ -551,7 +517,6 @@ var grantSkipReasons = map[string]string{
 //	CAPGRANT_COMPILATION               -  49 tests: Implement app->CapGrant FilterRule compilation
 //	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
 //	CAPGRANT_COMPILATION_AND_SRCIPS    -  11 tests: Both CapGrant compilation + SrcIPs format
-//	SUBNET_ROUTE_FILTER_RULES          -  11 tests: Generate filter rules for subnet-routed CIDRs
 //	VIA_COMPILATION_AND_SRCIPS_FORMAT  -   7 tests: Via route compilation + SrcIPs format
 //	VIA_COMPILATION                    -   3 tests: Via route compilation
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
@@ -559,7 +524,7 @@ var grantSkipReasons = map[string]string{
 //	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //	SRCIPS_WILDCARD_NODE_DEDUP         -   1 test:  Wildcard+specific source node IP deduplication
 //
-// Total: 109 tests skipped, ~128 tests expected to pass.
+// Total: 99 tests skipped, ~138 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 

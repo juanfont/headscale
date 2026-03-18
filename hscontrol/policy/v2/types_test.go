@@ -590,7 +590,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `tag not defined in policy: "tag:test"`,
+			wantErr: `tag not found: "tag:test"`,
 		},
 		{
 			name: "autogroup:internet-in-ssh-dst-not-allowed",
@@ -854,7 +854,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-dst",
@@ -873,7 +873,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-ssh-src",
@@ -892,7 +892,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-ssh-dst",
@@ -914,7 +914,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   ]
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-autoapprover-route",
@@ -927,7 +927,7 @@ func TestUnmarshalPolicy(t *testing.T) {
   },
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "tag-must-be-defined-acl-autoapprover-exitnode",
@@ -938,7 +938,7 @@ func TestUnmarshalPolicy(t *testing.T) {
    },
 }
 `,
-			wantErr: `tag not defined in policy: "tag:notdefined"`,
+			wantErr: `tag not found: "tag:notdefined"`,
 		},
 		{
 			name: "missing-dst-port-is-err",
@@ -3928,7 +3928,7 @@ func TestACL_UnmarshalJSON_InvalidAction(t *testing.T) {
 
 	_, err := unmarshalPolicy([]byte(policyJSON))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), `invalid ACL action: "deny"`)
+	assert.Contains(t, err.Error(), `action="deny" is not supported`)
 }
 
 // Helper function to parse aliases for testing.
@@ -4691,7 +4691,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "tag not defined in policy",
+			wantErr: "tag not found",
 		},
 		{
 			name: "invalid-grant-undefined-destination-host",
@@ -4724,7 +4724,7 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "autogroup:self destination requires sources to be users, groups, or autogroup:member only",
+			wantErr: "autogroup:self can only be used with users, groups, or supported autogroups",
 		},
 	}
 

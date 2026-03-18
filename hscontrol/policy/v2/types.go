@@ -62,7 +62,7 @@ const (
 
 // ACL validation errors.
 var (
-	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self destination requires sources to be users, groups, or autogroup:member only")
+	ErrACLAutogroupSelfInvalidSource = errors.New("autogroup:self can only be used with users, groups, or supported autogroups")
 )
 
 // Grant validation errors.
@@ -102,7 +102,7 @@ var (
 	ErrGroupValueNotArray          = errors.New("group value must be an array of users")
 	ErrNestedGroups                = errors.New("nested groups are not allowed")
 	ErrInvalidHostIP               = errors.New("hostname contains invalid IP address")
-	ErrTagNotDefined               = errors.New("tag not defined in policy")
+	ErrTagNotDefined               = errors.New("tag not found")
 	ErrAutoApproverNotAlias        = errors.New("auto approver is not an alias")
 	ErrInvalidACLAction            = errors.New("invalid ACL action")
 	ErrInvalidSSHAction            = errors.New("invalid SSH action")
@@ -111,7 +111,7 @@ var (
 	ErrProtocolOutOfRange          = errors.New("protocol number out of range (0-255)")
 	ErrAutogroupNotSupported       = errors.New("autogroup not supported in headscale")
 	ErrAutogroupInternetSrc        = errors.New("autogroup:internet can only be used in ACL destinations")
-	ErrAutogroupSelfSrc            = errors.New("autogroup:self can only be used in ACL destinations")
+	ErrAutogroupSelfSrc            = errors.New("\"autogroup:self\" not valid on the src side of a rule")
 	ErrAutogroupNotSupportedACLSrc = errors.New("autogroup not supported for ACL sources")
 	ErrAutogroupNotSupportedACLDst = errors.New("autogroup not supported for ACL destinations")
 	ErrAutogroupNotSupportedSSHSrc = errors.New("autogroup not supported for SSH sources")
@@ -835,6 +835,8 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 			err       error
 		)
 
+		originalDst := vs
+
 		if strings.Contains(vs, ":") {
 			vs, portsPart, err = splitDestinationAndPort(vs)
 			if err != nil {
@@ -843,7 +845,10 @@ func (ve *AliasWithPorts) UnmarshalJSON(b []byte) error {
 
 			ports, err := parsePortRange(portsPart)
 			if err != nil {
-				return err
+				return fmt.Errorf(
+					"dst=%q: port range %q: %w",
+					originalDst, portsPart, err,
+				)
 			}
 
 			ve.Ports = ports
@@ -895,7 +900,7 @@ func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
 		if !strings.Contains(vs, ":") {
 			ports, err := parsePortRange(vs)
 			if err != nil {
-				return err
+				return fmt.Errorf("port range %q: %w", vs, err)
 			}
 
 			ve.Protocol = ProtocolNameWildcard
@@ -920,7 +925,7 @@ func (ve *ProtocolPort) UnmarshalJSON(b []byte) error {
 
 		ports, err := parsePortRange(portsPart)
 		if err != nil {
-			return err
+			return fmt.Errorf("port range %q: %w", portsPart, err)
 		}
 
 		ve.Protocol = protocol
@@ -1588,7 +1593,7 @@ func (a *Action) UnmarshalJSON(b []byte) error {
 	case "accept":
 		*a = ActionAccept
 	default:
-		return fmt.Errorf("%w: %q, must be %q", ErrInvalidACLAction, str, ActionAccept)
+		return fmt.Errorf("action=%q is not supported: %w", str, ErrInvalidACLAction)
 	}
 
 	return nil
@@ -2178,7 +2183,7 @@ func (p *Policy) validate() error {
 
 				err := p.TagOwners.Contains(tagOwner)
 				if err != nil {
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("src=%w", err))
 				}
 			}
 		}
@@ -2209,7 +2214,7 @@ func (p *Policy) validate() error {
 			case *Tag:
 				err := p.TagOwners.Contains(h)
 				if err != nil {
-					errs = append(errs, err)
+					errs = append(errs, fmt.Errorf("dst=%q: %w", *h, err))
 				}
 			}
 		}

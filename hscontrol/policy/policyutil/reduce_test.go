@@ -453,7 +453,10 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs)
+				// Exit routes (0.0.0.0/0, ::/0) are skipped when checking RoutableIPs
+				// overlap, matching Tailscale SaaS behavior. Only destinations that
+				// contain the node's own Tailscale IP (via InIPSet) are kept.
+				// Here, 64.0.0.0/2 contains 100.64.0.100 (CGNAT range), so it matches.
 				{
 					SrcIPs: []string{
 						"100.64.0.1-100.64.0.2",
@@ -464,36 +467,7 @@ func TestReduceFilterRules(t *testing.T) {
 							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
-						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "12.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
-						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "172.0.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "172.32.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "172.64.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "172.128.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "173.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "174.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "176.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "192.0.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "192.128.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "192.160.0.0/13", Ports: tailcfg.PortRangeAny},
-						{IP: "192.169.0.0/16", Ports: tailcfg.PortRangeAny},
-						{IP: "192.170.0.0/15", Ports: tailcfg.PortRangeAny},
-						{IP: "192.172.0.0/14", Ports: tailcfg.PortRangeAny},
-						{IP: "192.176.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "192.192.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "193.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "194.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "196.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
 				},
 			},
