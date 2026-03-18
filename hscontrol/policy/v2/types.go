@@ -296,19 +296,33 @@ func (a Asterix) Resolve(p *Policy, u types.Users, n views.Slice[types.NodeView]
 	return newResolvedAddresses(a.resolve(p, u, n))
 }
 
-func (a Asterix) resolve(p *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
-	if p != nil && len(p.AutoApprovers.prefixes()) > 0 {
-		var ipb netipx.IPSetBuilder
-		ipb.AddSet(asterixResolved())
+func (a Asterix) resolve(_ *Policy, _ types.Users, _ views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	return asterixResolved(), nil
+}
 
-		for _, pfx := range p.AutoApprovers.prefixes() {
-			ipb.AddPrefix(pfx)
+// approvedSubnetRoutes collects all approved non-exit subnet routes
+// advertised across all nodes. Per Tailscale documentation, wildcard
+// (*) SrcIPs include "any approved subnets".
+//
+// These are collected separately from the Asterix IPSet because
+// IPSet merges overlapping ranges (e.g. 10.0.0.0/8 absorbs
+// 10.33.0.0/16), but Tailscale preserves individual route entries.
+func approvedSubnetRoutes(nodes views.Slice[types.NodeView]) []string {
+	seen := make(map[string]bool)
+
+	var routes []string
+
+	for _, node := range nodes.All() {
+		for _, route := range node.SubnetRoutes() {
+			s := route.String()
+			if !seen[s] {
+				seen[s] = true
+				routes = append(routes, s)
+			}
 		}
-
-		return ipb.IPSet()
 	}
 
-	return asterixResolved(), nil
+	return routes
 }
 
 // Username is a string that represents a username, it must contain an @.
@@ -1479,22 +1493,6 @@ func (ap AutoApproverPolicy) MarshalJSON() ([]byte, error) {
 	}
 
 	return json.Marshal(&obj)
-}
-
-// prefixes returns the prefixes that have auto-approvers defined in the policy.
-// It filters out exit routes since they are not associated with a specific prefix and are handled separately.
-func (ap AutoApproverPolicy) prefixes() []netip.Prefix {
-	prefixes := make([]netip.Prefix, 0, len(ap.Routes))
-
-	for prefix := range ap.Routes {
-		if tsaddr.IsExitRoute(prefix) {
-			continue
-		}
-
-		prefixes = append(prefixes, prefix)
-	}
-
-	return prefixes
 }
 
 // resolveAutoApprovers resolves the AutoApprovers to a map of netip.Prefix to netipx.IPSet.

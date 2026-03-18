@@ -21,6 +21,34 @@ var (
 	errSelfInSources = errors.New("autogroup:self cannot be used in sources")
 )
 
+// sourcesHaveWildcard returns true if any of the source aliases is
+// a wildcard (*). Used to determine whether approved subnet routes
+// should be appended to SrcIPs.
+func sourcesHaveWildcard(srcs Aliases) bool {
+	for _, src := range srcs {
+		if _, ok := src.(Asterix); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// srcIPsWithRoutes returns the SrcIPs string slice, appending
+// approved subnet routes when the sources include a wildcard.
+func srcIPsWithRoutes(
+	resolved ResolvedAddresses,
+	hasWildcard bool,
+	nodes views.Slice[types.NodeView],
+) []string {
+	ips := resolved.Strings()
+	if hasWildcard {
+		ips = append(ips, approvedSubnetRoutes(nodes)...)
+	}
+
+	return ips
+}
+
 // compileFilterRules takes a set of nodes and an ACLPolicy and generates a
 // set of Tailscale compatible FilterRules used to allow traffic on clients.
 func (pol *Policy) compileFilterRules(
@@ -48,12 +76,14 @@ func (pol *Policy) compileFilterRules(
 			continue
 		}
 
+		hasWildcard := sourcesHaveWildcard(grant.Sources)
+
 		for _, ipp := range grant.InternetProtocols {
 			destPorts := pol.destinationsToNetPortRange(users, nodes, grant.Destinations, ipp.Ports)
 
 			if len(destPorts) > 0 {
 				rules = append(rules, tailcfg.FilterRule{
-					SrcIPs:   srcIPs.Strings(),
+					SrcIPs:   srcIPsWithRoutes(srcIPs, hasWildcard, nodes),
 					DstPorts: destPorts,
 					IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 				})
@@ -76,7 +106,7 @@ func (pol *Policy) compileFilterRules(
 			}
 
 			rules = append(rules, tailcfg.FilterRule{
-				SrcIPs:   srcIPs.Strings(),
+				SrcIPs:   srcIPsWithRoutes(srcIPs, hasWildcard, nodes),
 				CapGrant: capGrants,
 			})
 		}
@@ -222,7 +252,38 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 		return rules, nil
 	}
 
+	hasWildcard := sourcesHaveWildcard(grant.Sources)
+
 	for _, ipp := range grant.InternetProtocols {
+		// Handle non-self destinations first to match Tailscale's
+		// rule ordering in the FilterRule wire format.
+		if len(otherDests) > 0 {
+			var srcIPs netipx.IPSetBuilder
+
+			for _, ips := range resolvedSrcs {
+				for _, pref := range ips.Prefixes() {
+					srcIPs.AddPrefix(pref)
+				}
+			}
+
+			srcResolved, err := newResolved(&srcIPs)
+			if err != nil {
+				return nil, err
+			}
+
+			if !srcResolved.Empty() {
+				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
+
+				if len(destPorts) > 0 {
+					rules = append(rules, tailcfg.FilterRule{
+						SrcIPs:   srcIPsWithRoutes(srcResolved, hasWildcard, nodes),
+						DstPorts: destPorts,
+						IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
+					})
+				}
+			}
+		}
+
 		// Handle autogroup:self destinations (if any)
 		// Tagged nodes don't participate in autogroup:self (identity is tag-based, not user-based)
 		if len(autogroupSelfDests) > 0 && !node.IsTagged() {
@@ -274,33 +335,6 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 							IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 						})
 					}
-				}
-			}
-		}
-
-		if len(otherDests) > 0 {
-			var srcIPs netipx.IPSetBuilder
-
-			for _, ips := range resolvedSrcs {
-				for _, pref := range ips.Prefixes() {
-					srcIPs.AddPrefix(pref)
-				}
-			}
-
-			srcResolved, err := newResolved(&srcIPs)
-			if err != nil {
-				return nil, err
-			}
-
-			if !srcResolved.Empty() {
-				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
-
-				if len(destPorts) > 0 {
-					rules = append(rules, tailcfg.FilterRule{
-						SrcIPs:   srcResolved.Strings(),
-						DstPorts: destPorts,
-						IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
-					})
 				}
 			}
 		}
