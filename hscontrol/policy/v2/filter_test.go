@@ -1846,7 +1846,7 @@ func TestAutogroupSelfWithSpecificUserSource(t *testing.T) {
 		actualDestIPs = append(actualDestIPs, dst.IP)
 	}
 
-	expectedDestIPs := []string{"100.64.0.1/32", "100.64.0.2/32"}
+	expectedDestIPs := []string{"100.64.0.1", "100.64.0.2"}
 	assert.ElementsMatch(t, expectedDestIPs, actualDestIPs)
 
 	node2 := nodes[2].View()

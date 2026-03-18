@@ -3,7 +3,6 @@ package v2
 import (
 	"errors"
 	"fmt"
-	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -135,6 +134,7 @@ func (pol *Policy) destinationsToNetPortRange(
 				if pref.IsSingleIP() {
 					pr.IP = pref.Addr().String()
 				}
+
 				ret = append(ret, pr)
 			}
 		}
@@ -260,7 +260,7 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 						for _, port := range ipp.Ports {
 							for _, ip := range n.IPs() {
 								destPorts = append(destPorts, tailcfg.NetPortRange{
-									IP:    netip.PrefixFrom(ip, ip.BitLen()).String(),
+									IP:    ip.String(),
 									Ports: port,
 								})
 							}
