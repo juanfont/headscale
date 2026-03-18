@@ -214,12 +214,10 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 //
 // Impact summary (highest first):
 //
-//	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
-//	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //
-// Total: 30 tests skipped, ~207 tests expected to pass.
+// Total: 5 tests skipped, ~232 tests expected to pass.
 var grantSkipReasons = map[string]string{
 	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
@@ -238,11 +236,6 @@ var grantSkipReasons = map[string]string{
 	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey, dst=tag:server — source can't be resolved, no rules produced",
 	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
 
-	// (VIA_COMPILATION tests removed — via route compilation now implemented)
-
-	// (VIA_COMPILATION_AND_SRCIPS_FORMAT tests removed — via route compilation
-	// and SrcIPs format are both now implemented),
-
 	// ========================================================================
 	// AUTOGROUP_DANGER_ALL (3 tests)
 	//
@@ -259,79 +252,6 @@ var grantSkipReasons = map[string]string{
 	"GRANT-K6": "AUTOGROUP_DANGER_ALL",
 	"GRANT-K7": "AUTOGROUP_DANGER_ALL",
 	"GRANT-K8": "AUTOGROUP_DANGER_ALL",
-
-	// ========================================================================
-	// ERROR_VALIDATION_GAP (23 tests)
-	//
-	// TODO: Implement grant validation rules that Tailscale enforces but
-	// headscale does not yet.
-	//
-	// These are policies that Tailscale rejects (api_response_code=400) but
-	// headscale currently accepts without error. Each test documents the
-	// specific validation that needs to be added.
-	// ========================================================================
-
-	// Capability name format validation:
-	// Tailscale requires cap names to be {domain}/{path} without https:// prefix
-	// and rejects caps in the tailscale.com domain.
-	"GRANT-A2":  "ERROR_VALIDATION_GAP: capability name must have the form {domain}/{path} — headscale should reject https:// prefix in cap names",
-	"GRANT-A5":  "ERROR_VALIDATION_GAP: capability name must not be in the tailscale.com domain — headscale should reject tailscale.com/cap/relay-target",
-	"GRANT-K9":  "ERROR_VALIDATION_GAP: capability name must not be in the tailscale.com domain — headscale should reject tailscale.com/cap/ingress",
-	"GRANT-K10": "ERROR_VALIDATION_GAP: capability name must not be in the tailscale.com domain — headscale should reject tailscale.com/cap/funnel",
-
-	// autogroup:self validation:
-	// Tailscale only allows autogroup:self as dst when src is a user, group,
-	// or supported autogroup (like autogroup:member). It rejects autogroup:self
-	// when src is "*" (which includes tags) or when src is a tag.
-	"GRANT-E3":              "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] includes tags",
-	"GRANT-H9":              "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] includes tags",
-	"GRANT-P04_3":           "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] with ip grant",
-	"GRANT-P09_13A":         "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] with ip:[*]",
-	"GRANT-P09_13B":         "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] with ip:[22]",
-	"GRANT-P09_13C":         "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] with ip:[22,80,443]",
-	"GRANT-P09_13D":         "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — src=[*] with ip:[80-443]",
-	"GRANT-P09_13H_CORRECT": "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — multi-grant with self",
-	"GRANT-P09_13H_NAIVE":   "ERROR_VALIDATION_GAP: autogroup:self can only be used with users, groups, or supported autogroups — naive multi-dst with self",
-
-	// Via route validation:
-	// Tailscale requires "via" to be a tag, rejects other values.
-	"GRANT-I4": "ERROR_VALIDATION_GAP: via can only be a tag — headscale should reject non-tag via values",
-
-	// autogroup:internet + app grants validation:
-	// Tailscale rejects app grants when dst includes autogroup:internet.
-	"GRANT-V01": "ERROR_VALIDATION_GAP: cannot use app grants with autogroup:internet — headscale does not reject",
-	"GRANT-V22": "ERROR_VALIDATION_GAP: cannot use app grants with autogroup:internet — headscale returns different error (rejects mixed ip+app instead)",
-
-	// Raw default route CIDR validation:
-	// Tailscale rejects 0.0.0.0/0 and ::/0 as grant dst, requiring "*" or
-	// "autogroup:internet" instead. This applies with or without via.
-	"GRANT-V04": "ERROR_VALIDATION_GAP: dst 0.0.0.0/0 rejected — headscale should reject raw default route CIDRs in grant dst",
-	"GRANT-V05": "ERROR_VALIDATION_GAP: dst ::/0 rejected — headscale should reject raw default route CIDRs in grant dst",
-	"GRANT-V08": "ERROR_VALIDATION_GAP: dst 0.0.0.0/0 with ip grant — same rejection as V04",
-	"GRANT-V14": "ERROR_VALIDATION_GAP: dst 0.0.0.0/0 with via — rejected even with via field",
-	"GRANT-V15": "ERROR_VALIDATION_GAP: dst ::/0 with via — rejected even with via field",
-	"GRANT-V16": "ERROR_VALIDATION_GAP: dst [0.0.0.0/0, ::/0] with via — both rejected",
-	"GRANT-V18": "ERROR_VALIDATION_GAP: dst 0.0.0.0/0 with via + app — rejected regardless of via or app",
-
-	// Empty src/dst validation difference:
-	// Tailscale ACCEPTS empty src/dst arrays (producing no filter rules),
-	// but headscale rejects them with "grant sources/destinations cannot be empty".
-	// headscale is stricter here — should match Tailscale and accept empty arrays.
-	"GRANT-H4": "VALIDATION_STRICTNESS: headscale rejects empty src=[] but Tailscale accepts it (producing no rules)",
-	"GRANT-H5": "VALIDATION_STRICTNESS: headscale rejects empty dst=[] but Tailscale accepts it (producing no rules)",
-
-	// ========================================================================
-	// NIL_VS_EMPTY_RULES (varies)
-	//
-	// TODO: headscale returns empty []FilterRule{} where Tailscale returns null.
-	//
-	// Some success tests have null packet_filter_rules for online nodes,
-	// meaning Tailscale determined no rules apply. headscale may still produce
-	// empty-but-non-nil results due to how filter compilation works.
-	// These are handled by cmpopts.EquateEmpty() in the comparison, so they
-	// should no longer fail. If they still fail, the specific test needs
-	// investigation.
-	// ========================================================================
 }
 
 // TestGrantsCompat is a data-driven test that loads all 237 GRANT-*.json
@@ -349,12 +269,10 @@ var grantSkipReasons = map[string]string{
 //
 // Skip category impact summary (highest first):
 //
-//	ERROR_VALIDATION_GAP               -  23 tests: Implement missing grant validation rules
 //	AUTOGROUP_DANGER_ALL               -   3 tests: Implement autogroup:danger-all support
 //	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
-//	VALIDATION_STRICTNESS              -   2 tests: headscale too strict (rejects what Tailscale accepts)
 //
-// Total: 30 tests skipped, ~207 tests expected to pass.
+// Total: 5 tests skipped, ~232 tests expected to pass.
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
@@ -431,6 +349,9 @@ var grantErrorMessageMap = map[string]string{
 	// Tailscale says "ip and app can not both be empty",
 	// headscale says "grants must specify either 'ip' or 'app' field"
 	"ip and app can not both be empty": "grants must specify either",
+	// Tailscale says "via can only be a tag",
+	// headscale rejects at unmarshal time via Tag.UnmarshalJSON: "tag must start with 'tag:'"
+	"via can only be a tag": "tag must start with",
 }
 
 // assertGrantErrorContains checks that an error message contains the expected
