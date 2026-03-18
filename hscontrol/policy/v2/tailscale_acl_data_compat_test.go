@@ -89,7 +89,11 @@ func setupACLCompatNodes(users types.Users) types.Nodes {
 		{
 			ID: 7, GivenName: "subnet-router",
 			IPv4: ptrAddr("100.92.142.61"), IPv6: ptrAddr("fd7a:115c:a1e0::3e37:8e3d"),
-			Tags: []string{"tag:router"}, Hostinfo: &tailcfg.Hostinfo{},
+			Tags: []string{"tag:router"},
+			Hostinfo: &tailcfg.Hostinfo{
+				RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
+			},
+			ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 		},
 		{
 			ID: 8, GivenName: "exit-node",
@@ -146,11 +150,13 @@ type aclTestFile struct {
 	} `json:"input"`
 	Topology struct {
 		Nodes map[string]struct {
-			Hostname string   `json:"hostname"`
-			Tags     []string `json:"tags"`
-			IPv4     string   `json:"ipv4"`
-			IPv6     string   `json:"ipv6"`
-			User     string   `json:"user"`
+			Hostname       string   `json:"hostname"`
+			Tags           []string `json:"tags"`
+			IPv4           string   `json:"ipv4"`
+			IPv6           string   `json:"ipv6"`
+			User           string   `json:"user"`
+			RoutableIPs    []string `json:"routable_ips"`
+			ApprovedRoutes []string `json:"approved_routes"`
 		} `json:"nodes"`
 	} `json:"topology"`
 	Captures map[string]struct {

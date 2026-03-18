@@ -20,6 +20,7 @@ package v2
 
 import (
 	"encoding/json"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -136,7 +137,10 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		IPv4:      ptrAddr("100.92.142.61"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::3e37:8e3d"),
 		Tags:      []string{"tag:router"},
-		Hostinfo:  &tailcfg.Hostinfo{},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
+		},
+		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 	}
 
 	nodeExitNode := &types.Node{
