@@ -3,6 +3,7 @@ package policyutil
 import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -33,12 +34,19 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 				continue DEST_LOOP
 			}
 
-			// If the node exposes routes, ensure they are note removed
-			// when the filters are reduced.
+			// If the node exposes routes, ensure they are not removed
+			// when the filters are reduced. Exit routes (0.0.0.0/0, ::/0)
+			// are skipped here because exit nodes handle traffic via
+			// AllowedIPs/routing, not packet filter rules. This matches
+			// Tailscale SaaS behavior where exit nodes do not receive
+			// filter rules for destinations that only overlap via exit routes.
 			if node.Hostinfo().Valid() {
 				routableIPs := node.Hostinfo().RoutableIPs()
 				if routableIPs.Len() > 0 {
 					for _, routableIP := range routableIPs.All() {
+						if tsaddr.IsExitRoute(routableIP) {
+							continue
+						}
 						if expanded.OverlapsPrefix(routableIP) {
 							dests = append(dests, dest)
 							continue DEST_LOOP

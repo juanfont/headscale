@@ -162,8 +162,8 @@ func TestParsePort(t *testing.T) {
 		{"65535", 65535, ""},
 		{"-1", 0, "port number out of range"},
 		{"65536", 0, "port number out of range"},
-		{"abc", 0, "invalid port number"},
-		{"", 0, "invalid port number"},
+		{"abc", 0, "invalid first integer"},
+		{"", 0, "invalid first integer"},
 	}
 
 	for _, test := range tests {
@@ -195,9 +195,9 @@ func TestParsePortRange(t *testing.T) {
 		{"*", []tailcfg.PortRange{tailcfg.PortRangeAny}, ""},
 		{"80-", nil, "invalid port range format"},
 		{"-90", nil, "invalid port range format"},
-		{"80-90,", nil, "invalid port number"},
+		{"80-90,", nil, "invalid first integer"},
 		{"80,90-", nil, "invalid port range format"},
-		{"80-90,abc", nil, "invalid port number"},
+		{"80-90,abc", nil, "invalid first integer"},
 		{"80-90,65536", nil, "port number out of range"},
 		{"80-90,90-80", nil, "invalid port range: first port is greater than last port"},
 	}
