@@ -40,7 +40,15 @@
         }
       ]
     },
-    "grants_section": [{ "src": ["100.90.199.68"], "dst": ["tag:server"], "app": { "example.com/cap/test": [{}] } }],
+    "grants_section": [
+      {
+        "src": ["100.90.199.68"],
+        "dst": ["tag:server"],
+        "app": {
+          "example.com/cap/test": [{}]
+        }
+      }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -63,7 +71,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -313,7 +323,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
-              "CapMap": { "example.com/cap/test": [{}] }
+              "CapMap": {
+                "example.com/cap/test": [{}]
+              }
             }
           ]
         }
@@ -325,8 +337,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.108.74.26/32", "Cap": "example.com/cap/test", "Values": [{}] },
-            { "Dst": "fd7a:115c:a1e0::b901:4a87/128", "Cap": "example.com/cap/test", "Values": [{}] }
+            {
+              "Dst": "100.108.74.26/32",
+              "Cap": "example.com/cap/test",
+              "Values": [{}]
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::b901:4a87/128",
+              "Cap": "example.com/cap/test",
+              "Values": [{}]
+            }
           ]
         }
       ],
@@ -387,8 +407,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -397,8 +423,14 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
-            "CapMap": { "example.com/cap/test": [{}] }
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
+            "CapMap": {
+              "example.com/cap/test": [{}]
+            }
           }
         }
       }
@@ -546,8 +578,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -557,7 +595,11 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },

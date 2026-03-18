@@ -49,7 +49,14 @@
       {
         "src": ["autogroup:member"],
         "dst": ["autogroup:self"],
-        "app": { "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }] }
+        "app": {
+          "tailscale.com/cap/drive": [
+            {
+              "shares": ["*"],
+              "access": "rw"
+            }
+          ]
+        }
       }
     ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
@@ -74,7 +81,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -369,7 +378,14 @@
           "CapGrant": [
             {
               "Dsts": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
-              "CapMap": { "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }] }
+              "CapMap": {
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
+              }
             }
           ]
         },
@@ -378,7 +394,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -393,12 +411,22 @@
             {
               "Dst": "100.110.121.96/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
             {
               "Dst": "fd7a:115c:a1e0::1737:7960/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -408,8 +436,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.110.121.96/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::1737:7960/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.110.121.96/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::1737:7960/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -462,7 +498,14 @@
           "CapGrant": [
             {
               "Dsts": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
-              "CapMap": { "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }] }
+              "CapMap": {
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
+              }
             }
           ]
         },
@@ -471,7 +514,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -486,12 +531,22 @@
             {
               "Dst": "100.103.90.82/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
             {
               "Dst": "fd7a:115c:a1e0::9e37:5a52/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -501,8 +556,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.103.90.82/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::9e37:5a52/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.103.90.82/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::9e37:5a52/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -555,7 +618,14 @@
           "CapGrant": [
             {
               "Dsts": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
-              "CapMap": { "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }] }
+              "CapMap": {
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
+              }
             }
           ]
         },
@@ -564,7 +634,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -579,12 +651,22 @@
             {
               "Dst": "100.90.199.68/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
             {
               "Dst": "fd7a:115c:a1e0::2d01:c747/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -594,8 +676,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.90.199.68/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::2d01:c747/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.90.199.68/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::2d01:c747/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],

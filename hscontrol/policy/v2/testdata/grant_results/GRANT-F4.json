@@ -57,8 +57,17 @@
         "dst": ["*"],
         "ip": ["tcp:443"],
         "app": {
-          "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
-          "example.com/cap/extra": [{ "mode": "full" }]
+          "tailscale.com/cap/drive": [
+            {
+              "shares": ["*"],
+              "access": "rw"
+            }
+          ],
+          "example.com/cap/extra": [
+            {
+              "mode": "full"
+            }
+          ]
         }
       }
     ],
@@ -84,7 +93,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -156,7 +167,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -170,8 +189,17 @@
             {
               "Dsts": ["100.85.66.106/32", "fd7a:115c:a1e0::7c37:426a/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -186,7 +214,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.85.66.106/32", "fd7a:115c:a1e0::7c37:426a/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -213,8 +243,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -240,17 +282,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.85.66.106/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.85.66.106/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.85.66.106/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::7c37:426a/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::7c37:426a/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::7c37:426a/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -276,8 +344,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.85.66.106/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::7c37:426a/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.85.66.106/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::7c37:426a/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -307,8 +383,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -319,10 +401,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -352,8 +447,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -363,10 +464,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -396,8 +510,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -407,10 +527,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -440,8 +573,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -451,10 +590,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -485,8 +637,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -495,10 +653,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -529,8 +700,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -545,8 +722,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -577,8 +763,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -587,10 +779,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -610,7 +815,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -624,8 +837,17 @@
             {
               "Dsts": ["100.92.142.61/32", "fd7a:115c:a1e0::3e37:8e3d/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -640,7 +862,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.92.142.61/32", "fd7a:115c:a1e0::3e37:8e3d/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -667,8 +891,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -694,17 +930,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.92.142.61/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.92.142.61/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.92.142.61/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::3e37:8e3d/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::3e37:8e3d/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::3e37:8e3d/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -730,8 +992,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.92.142.61/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::3e37:8e3d/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.92.142.61/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::3e37:8e3d/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -761,8 +1031,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -772,10 +1048,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -805,8 +1094,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -816,10 +1111,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -849,8 +1157,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -860,10 +1174,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -893,8 +1220,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -904,10 +1237,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -938,8 +1284,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -948,10 +1300,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -982,8 +1347,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -998,8 +1369,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1030,8 +1410,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -1040,10 +1426,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1063,7 +1462,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -1077,8 +1484,17 @@
             {
               "Dsts": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -1093,7 +1509,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -1120,8 +1538,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -1147,17 +1577,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.83.200.69/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.83.200.69/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.83.200.69/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::c537:c845/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::c537:c845/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::c537:c845/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -1183,8 +1639,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.83.200.69/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::c537:c845/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.83.200.69/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::c537:c845/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -1214,8 +1678,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -1225,10 +1695,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1258,8 +1741,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -1270,10 +1759,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1303,8 +1805,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -1314,10 +1822,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1347,8 +1868,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -1358,10 +1885,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1392,8 +1932,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -1402,10 +1948,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1436,8 +1995,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -1452,8 +2017,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1484,8 +2058,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -1494,10 +2074,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1517,7 +2110,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -1531,8 +2132,17 @@
             {
               "Dsts": ["100.103.8.15/32", "fd7a:115c:a1e0::5b37:80f/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -1547,7 +2157,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.103.8.15/32", "fd7a:115c:a1e0::5b37:80f/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -1574,8 +2186,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -1601,17 +2225,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.103.8.15/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.103.8.15/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.103.8.15/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::5b37:80f/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::5b37:80f/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::5b37:80f/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -1637,8 +2287,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.103.8.15/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::5b37:80f/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.103.8.15/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::5b37:80f/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -1668,8 +2326,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -1679,10 +2343,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1712,8 +2389,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -1724,10 +2407,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1757,8 +2453,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -1768,10 +2470,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1801,8 +2516,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -1812,10 +2533,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1846,8 +2580,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -1856,10 +2596,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1890,8 +2643,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -1906,8 +2665,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1938,8 +2706,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -1948,10 +2722,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -1971,7 +2758,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -1985,8 +2780,17 @@
             {
               "Dsts": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -2001,7 +2805,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.108.74.26/32", "fd7a:115c:a1e0::b901:4a87/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -2028,8 +2834,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -2058,15 +2876,41 @@
             {
               "Dst": "100.108.74.26/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "100.108.74.26/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.108.74.26/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::b901:4a87/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::b901:4a87/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] }
+            {
+              "Dst": "fd7a:115c:a1e0::b901:4a87/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            }
           ]
         },
         {
@@ -2091,8 +2935,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.108.74.26/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::b901:4a87/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.108.74.26/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::b901:4a87/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -2122,8 +2974,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -2133,10 +2991,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2166,8 +3037,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -2178,10 +3055,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2211,8 +3101,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -2222,10 +3118,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2255,8 +3164,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -2266,10 +3181,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2300,8 +3228,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -2310,10 +3244,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2344,8 +3291,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -2360,8 +3313,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2392,8 +3354,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -2402,10 +3370,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2425,7 +3406,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -2439,8 +3428,17 @@
             {
               "Dsts": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -2455,7 +3453,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.110.121.96/32", "fd7a:115c:a1e0::1737:7960/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -2482,8 +3482,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -2509,17 +3521,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.110.121.96/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.110.121.96/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.110.121.96/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::1737:7960/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::1737:7960/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::1737:7960/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -2545,8 +3583,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.110.121.96/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::1737:7960/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.110.121.96/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::1737:7960/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -2576,8 +3622,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -2587,10 +3639,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2620,8 +3685,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -2632,10 +3703,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2665,8 +3749,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -2676,10 +3766,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2709,8 +3812,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -2720,10 +3829,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2753,8 +3875,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -2764,10 +3892,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2798,8 +3939,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -2814,8 +3961,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2846,8 +4002,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -2856,10 +4018,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -2879,7 +4054,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -2893,8 +4076,17 @@
             {
               "Dsts": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -2909,7 +4101,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.103.90.82/32", "fd7a:115c:a1e0::9e37:5a52/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -2936,8 +4130,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -2963,17 +4169,43 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.103.90.82/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.103.90.82/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.103.90.82/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::9e37:5a52/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "fd7a:115c:a1e0::9e37:5a52/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "fd7a:115c:a1e0::9e37:5a52/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             }
           ]
         },
@@ -2999,8 +4231,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.103.90.82/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::9e37:5a52/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.103.90.82/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::9e37:5a52/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -3030,8 +4270,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -3041,10 +4287,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3074,8 +4333,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -3086,10 +4351,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3119,8 +4397,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -3130,10 +4414,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3163,8 +4460,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -3174,10 +4477,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3207,8 +4523,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -3218,10 +4540,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3252,8 +4587,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -3262,10 +4603,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3296,8 +4650,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -3306,10 +4666,23 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3329,7 +4702,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "*", "Ports": { "First": 443, "Last": 443 } }],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
+          ],
           "IPProto": [6]
         },
         {
@@ -3343,8 +4724,17 @@
             {
               "Dsts": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
               "CapMap": {
-                "example.com/cap/extra": [{ "mode": "full" }],
-                "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }]
+                "example.com/cap/extra": [
+                  {
+                    "mode": "full"
+                  }
+                ],
+                "tailscale.com/cap/drive": [
+                  {
+                    "shares": ["*"],
+                    "access": "rw"
+                  }
+                ]
               }
             }
           ]
@@ -3359,7 +4749,9 @@
           "CapGrant": [
             {
               "Dsts": ["100.90.199.68/32", "fd7a:115c:a1e0::2d01:c747/128"],
-              "CapMap": { "tailscale.com/cap/drive-sharer": null }
+              "CapMap": {
+                "tailscale.com/cap/drive-sharer": null
+              }
             }
           ]
         }
@@ -3386,8 +4778,20 @@
           ],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "::/0", "Ports": { "First": 443, "Last": 443 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            }
           ],
           "Caps": []
         },
@@ -3413,18 +4817,44 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.90.199.68/32", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] },
+            {
+              "Dst": "100.90.199.68/32",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            },
             {
               "Dst": "100.90.199.68/32",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
             {
               "Dst": "fd7a:115c:a1e0::2d01:c747/128",
               "Cap": "tailscale.com/cap/drive",
-              "Values": [{ "shares": ["*"], "access": "rw" }]
+              "Values": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ]
             },
-            { "Dst": "fd7a:115c:a1e0::2d01:c747/128", "Cap": "example.com/cap/extra", "Values": [{ "mode": "full" }] }
+            {
+              "Dst": "fd7a:115c:a1e0::2d01:c747/128",
+              "Cap": "example.com/cap/extra",
+              "Values": [
+                {
+                  "mode": "full"
+                }
+              ]
+            }
           ]
         },
         {
@@ -3449,8 +4879,16 @@
           "SrcCaps": null,
           "Dsts": [],
           "Caps": [
-            { "Dst": "100.90.199.68/32", "Cap": "tailscale.com/cap/drive-sharer", "Values": null },
-            { "Dst": "fd7a:115c:a1e0::2d01:c747/128", "Cap": "tailscale.com/cap/drive-sharer", "Values": null }
+            {
+              "Dst": "100.90.199.68/32",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            },
+            {
+              "Dst": "fd7a:115c:a1e0::2d01:c747/128",
+              "Cap": "tailscale.com/cap/drive-sharer",
+              "Values": null
+            }
           ]
         }
       ],
@@ -3480,8 +4918,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -3491,10 +4935,23 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3524,8 +4981,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -3536,10 +4999,23 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3569,8 +5045,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -3580,10 +5062,23 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3613,8 +5108,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -3624,10 +5125,23 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3657,8 +5171,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -3668,10 +5188,23 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3702,8 +5235,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -3712,10 +5251,23 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }
@@ -3746,8 +5298,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -3762,8 +5320,17 @@
               "DisplayName": "monitorpasskeykradalby"
             },
             "CapMap": {
-              "example.com/cap/extra": [{ "mode": "full" }],
-              "tailscale.com/cap/drive": [{ "shares": ["*"], "access": "rw" }],
+              "example.com/cap/extra": [
+                {
+                  "mode": "full"
+                }
+              ],
+              "tailscale.com/cap/drive": [
+                {
+                  "shares": ["*"],
+                  "access": "rw"
+                }
+              ],
               "tailscale.com/cap/drive-sharer": null
             }
           }

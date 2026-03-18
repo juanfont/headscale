@@ -39,7 +39,14 @@
         }
       ]
     },
-    "grants_section": [{ "src": ["*"], "dst": ["10.33.0.0/16", "192.168.1.0/24"], "via": ["tag:router"], "ip": ["*"] }],
+    "grants_section": [
+      {
+        "src": ["*"],
+        "dst": ["10.33.0.0/16", "192.168.1.0/24"],
+        "via": ["tag:router"],
+        "ip": ["*"]
+      }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -62,7 +69,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -154,8 +163,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -166,7 +181,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -215,7 +234,15 @@
             "100.64.0.0-100.115.91.255",
             "fd7a:115c:a1e0::/48"
           ],
-          "DstPorts": [{ "IP": "10.33.0.0/16", "Ports": { "First": 0, "Last": 65535 } }]
+          "DstPorts": [
+            {
+              "IP": "10.33.0.0/16",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
         }
       ],
       "packet_filter_matches": [
@@ -239,7 +266,15 @@
             "fd7a:115c:a1e0::/48"
           ],
           "SrcCaps": null,
-          "Dsts": [{ "Net": "10.33.0.0/16", "Ports": { "First": 0, "Last": 65535 } }],
+          "Dsts": [
+            {
+              "Net": "10.33.0.0/16",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ],
           "Caps": []
         }
       ],
@@ -269,8 +304,14 @@
                 "OS": "linux",
                 "Hostname": "exit-node",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37000 },
-                  { "Proto": "peerapi6", "Port": 37000 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37000
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37000
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:20.566112173Z",
@@ -280,7 +321,11 @@
               "ComputedName": "exit-node",
               "ComputedNameWithHost": "exit-node"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -309,8 +354,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -320,7 +371,11 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -349,8 +404,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -360,7 +421,11 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -389,8 +454,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -400,7 +471,11 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -430,8 +505,14 @@
                 "OS": "linux",
                 "Hostname": "user-kris",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 40159 },
-                  { "Proto": "peerapi6", "Port": 40159 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 40159
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 40159
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:34.803901523Z",
@@ -440,7 +521,11 @@
               "ComputedName": "user-kris",
               "ComputedNameWithHost": "user-kris"
             },
-            "UserProfile": { "ID": 4538565228176803, "LoginName": "kristoffer@dalby.cc", "DisplayName": "kristoffer" },
+            "UserProfile": {
+              "ID": 4538565228176803,
+              "LoginName": "kristoffer@dalby.cc",
+              "DisplayName": "kristoffer"
+            },
             "CapMap": null
           }
         },
@@ -470,8 +555,14 @@
                 "OS": "linux",
                 "Hostname": "user-mon",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 33201 },
-                  { "Proto": "peerapi6", "Port": 33201 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 33201
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 33201
+                  }
                 ]
               },
               "Created": "2026-02-20T14:09:00.203639664Z",
@@ -514,8 +605,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -524,7 +621,11 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": null
           }
         }
@@ -568,8 +669,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -580,7 +687,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -649,8 +760,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -661,7 +778,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -730,8 +851,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -742,7 +869,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -811,8 +942,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -823,7 +960,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -892,8 +1033,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -904,7 +1051,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -973,8 +1124,14 @@
                 "OS": "linux",
                 "Hostname": "subnet-router",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 63250 },
-                  { "Proto": "peerapi6", "Port": 63250 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 63250
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 63250
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:15.731478784Z",
@@ -985,7 +1142,11 @@
               "ComputedName": "subnet-router",
               "ComputedNameWithHost": "subnet-router"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },

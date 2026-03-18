@@ -38,7 +38,13 @@
         }
       ]
     },
-    "grants_section": [{ "src": ["100.64.0.0/16"], "dst": ["*"], "ip": ["*"] }],
+    "grants_section": [
+      {
+        "src": ["100.64.0.0/16"],
+        "dst": ["*"],
+        "ip": ["*"]
+      }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -61,7 +67,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -126,7 +134,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -134,8 +153,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -184,7 +215,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -192,8 +234,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -242,7 +296,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -250,8 +315,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -300,7 +377,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -308,8 +396,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -358,7 +458,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -366,8 +477,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -416,7 +539,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -424,8 +558,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -474,7 +620,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -482,8 +639,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }
@@ -532,7 +701,18 @@
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
       "packet_filter_rules": [
-        { "SrcIPs": ["100.64.0.0/16"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }] }
+        {
+          "SrcIPs": ["100.64.0.0/16"],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
       ],
       "packet_filter_matches": [
         {
@@ -540,8 +720,20 @@
           "Srcs": ["100.64.0.0/16"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "0.0.0.0/0", "Ports": { "First": 0, "Last": 65535 } },
-            { "Net": "::/0", "Ports": { "First": 0, "Last": 65535 } }
+            {
+              "Net": "0.0.0.0/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "Net": "::/0",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
           ],
           "Caps": []
         }

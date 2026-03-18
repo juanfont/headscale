@@ -83,7 +83,9 @@
         "user_id": 7489538288452506,
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "mts_name": "tagged-client",
@@ -275,8 +277,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-prod",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 37678 },
-                  { "Proto": "peerapi6", "Port": 37678 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 37678
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 37678
+                  }
                 ]
               },
               "Created": "2026-02-20T14:03:12.89283153Z",
@@ -286,7 +294,11 @@
               "ComputedName": "tagged-prod",
               "ComputedNameWithHost": "tagged-prod"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -315,8 +327,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-server",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46499 },
-                  { "Proto": "peerapi6", "Port": 46499 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46499
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46499
+                  }
                 ]
               },
               "Created": "2026-01-23T10:10:26.365653609Z",
@@ -326,7 +344,11 @@
               "ComputedName": "tagged-server",
               "ComputedNameWithHost": "tagged-server"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -366,8 +388,14 @@
                 "OS": "linux",
                 "Hostname": "user1",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 46708 },
-                  { "Proto": "peerapi6", "Port": 46708 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 46708
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 46708
+                  }
                 ]
               },
               "Created": "2026-01-23T10:04:13.531671894Z",
@@ -376,7 +404,11 @@
               "ComputedName": "user1",
               "ComputedNameWithHost": "user1"
             },
-            "UserProfile": { "ID": 4156223528223174, "LoginName": "kratail2tid@passkey", "DisplayName": "kratail2tid" },
+            "UserProfile": {
+              "ID": 4156223528223174,
+              "LoginName": "kratail2tid@passkey",
+              "DisplayName": "kratail2tid"
+            },
             "CapMap": null
           }
         }
@@ -391,27 +423,153 @@
         {
           "SrcIPs": ["100.83.200.69", "fd7a:115c:a1e0::c537:c845"],
           "DstPorts": [
-            { "IP": "100.103.8.15", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "fd7a:115c:a1e0::5b37:80f", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.103.8.15", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5b37:80f",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.103.8.15",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ]
         }
       ],
@@ -421,27 +579,153 @@
           "Srcs": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "100.103.8.15/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "fd7a:115c:a1e0::5b37:80f/128", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.103.8.15/32", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::5b37:80f/128",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.103.8.15/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ],
           "Caps": []
         }
@@ -482,8 +766,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -493,7 +783,11 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -528,34 +822,202 @@
         {
           "SrcIPs": ["100.83.200.69", "fd7a:115c:a1e0::c537:c845"],
           "DstPorts": [
-            { "IP": "100.108.74.26", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "fd7a:115c:a1e0::b901:4a87", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.108.74.26", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::b901:4a87",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.108.74.26",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ]
         }
       ],
@@ -565,34 +1027,202 @@
           "Srcs": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "100.108.74.26/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "fd7a:115c:a1e0::b901:4a87/128", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.108.74.26/32", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::b901:4a87/128",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.108.74.26/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ],
           "Caps": []
         }
@@ -633,8 +1263,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -644,7 +1280,11 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },
@@ -769,34 +1409,202 @@
         {
           "SrcIPs": ["100.83.200.69", "fd7a:115c:a1e0::c537:c845"],
           "DstPorts": [
-            { "IP": "100.90.199.68", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "100.90.199.68", "Ports": { "First": 9000, "Last": 9000 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 22, "Last": 22 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 5432, "Last": 5432 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 80, "Last": 80 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 443, "Last": 443 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 8080, "Last": 8080 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 3000, "Last": 3000 } },
-            { "IP": "fd7a:115c:a1e0::2d01:c747", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "100.90.199.68",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::2d01:c747",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ]
         }
       ],
@@ -806,34 +1614,202 @@
           "Srcs": ["100.83.200.69/32", "fd7a:115c:a1e0::c537:c845/128"],
           "SrcCaps": null,
           "Dsts": [
-            { "Net": "100.90.199.68/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "100.90.199.68/32", "Ports": { "First": 9000, "Last": 9000 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 22, "Last": 22 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 5432, "Last": 5432 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 80, "Last": 80 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 443, "Last": 443 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 8080, "Last": 8080 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 3000, "Last": 3000 } },
-            { "Net": "fd7a:115c:a1e0::2d01:c747/128", "Ports": { "First": 9000, "Last": 9000 } }
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "100.90.199.68/32",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 22,
+                "Last": 22
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 5432,
+                "Last": 5432
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 80,
+                "Last": 80
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 443,
+                "Last": 443
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 8080,
+                "Last": 8080
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 3000,
+                "Last": 3000
+              }
+            },
+            {
+              "Net": "fd7a:115c:a1e0::2d01:c747/128",
+              "Ports": {
+                "First": 9000,
+                "Last": 9000
+              }
+            }
           ],
           "Caps": []
         }
@@ -874,8 +1850,14 @@
                 "OS": "linux",
                 "Hostname": "tagged-client",
                 "Services": [
-                  { "Proto": "peerapi4", "Port": 41378 },
-                  { "Proto": "peerapi6", "Port": 41378 }
+                  {
+                    "Proto": "peerapi4",
+                    "Port": 41378
+                  },
+                  {
+                    "Proto": "peerapi6",
+                    "Port": 41378
+                  }
                 ]
               },
               "Created": "2026-02-23T00:13:11.017324028Z",
@@ -885,7 +1867,11 @@
               "ComputedName": "tagged-client",
               "ComputedNameWithHost": "tagged-client"
             },
-            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "UserProfile": {
+              "ID": 1260082990019555,
+              "LoginName": "tagged-devices",
+              "DisplayName": "Tagged Devices"
+            },
             "CapMap": null
           }
         },

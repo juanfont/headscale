@@ -52,37 +52,49 @@
         "hostname": "big-router",
         "tags": ["tag:router"],
         "ipv4": "100.97.174.21",
-        "ipv6": "fd7a:115c:a1e0::5137:ae15"
+        "ipv6": "fd7a:115c:a1e0::5137:ae15",
+        "routable_ips": ["10.0.0.0/8"],
+        "approved_routes": ["10.0.0.0/8"]
       },
       "exit-node": {
         "hostname": "exit-node",
         "tags": ["tag:exit"],
         "ipv4": "100.85.66.106",
-        "ipv6": "fd7a:115c:a1e0::7c37:426a"
+        "ipv6": "fd7a:115c:a1e0::7c37:426a",
+        "routable_ips": ["0.0.0.0/0", "::/0"],
+        "approved_routes": ["0.0.0.0/0", "::/0"]
       },
       "ha-router1": {
         "hostname": "ha-router1",
         "tags": ["tag:ha"],
         "ipv4": "100.121.186.70",
-        "ipv6": "fd7a:115c:a1e0::6737:ba46"
+        "ipv6": "fd7a:115c:a1e0::6737:ba46",
+        "routable_ips": ["192.168.1.0/24"],
+        "approved_routes": ["192.168.1.0/24"]
       },
       "ha-router2": {
         "hostname": "ha-router2",
         "tags": ["tag:ha"],
         "ipv4": "100.117.104.82",
-        "ipv6": "fd7a:115c:a1e0::7437:6852"
+        "ipv6": "fd7a:115c:a1e0::7437:6852",
+        "routable_ips": ["192.168.1.0/24"],
+        "approved_routes": ["192.168.1.0/24"]
       },
       "multi-router": {
         "hostname": "multi-router",
         "tags": ["tag:exit", "tag:router"],
         "ipv4": "100.119.241.111",
-        "ipv6": "fd7a:115c:a1e0::3337:f16f"
+        "ipv6": "fd7a:115c:a1e0::3337:f16f",
+        "routable_ips": ["172.16.0.0/24"],
+        "approved_routes": ["172.16.0.0/24"]
       },
       "subnet-router": {
         "hostname": "subnet-router",
         "tags": ["tag:router"],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
       },
       "tagged-client": {
         "hostname": "tagged-client",
