@@ -1891,17 +1891,64 @@ type Grant struct {
 func aclToGrants(acl ACL) []Grant {
 	ret := make([]Grant, 0, len(acl.Destinations))
 
+	// Check if the ACL has any non-autogroup destinations. If so,
+	// reorder to place non-self grants before self grants. This matches
+	// Tailscale's behavior where autogroup-only ACLs (self + member)
+	// preserve policy order, but ACLs with groups, users, tags, or
+	// hosts emit non-self rules first.
+	hasNonAutogroup := false
 	for _, dst := range acl.Destinations {
-		g := Grant{
-			Sources:      acl.Sources,
-			Destinations: Aliases{dst.Alias},
-			InternetProtocols: []ProtocolPort{{
-				Protocol: acl.Protocol,
-				Ports:    dst.Ports,
-			}},
+		if _, ok := dst.Alias.(*AutoGroup); !ok {
+			hasNonAutogroup = true
+
+			break
+		}
+	}
+
+	if hasNonAutogroup {
+		// Non-self destinations first, self destinations second.
+		for _, dst := range acl.Destinations {
+			if ag, ok := dst.Alias.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
+				continue
+			}
+
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
 		}
 
-		ret = append(ret, g)
+		for _, dst := range acl.Destinations {
+			ag, ok := dst.Alias.(*AutoGroup)
+			if !ok || !ag.Is(AutoGroupSelf) {
+				continue
+			}
+
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
+		}
+	} else {
+		// All-autogroup ACL: preserve policy order.
+		for _, dst := range acl.Destinations {
+			ret = append(ret, Grant{
+				Sources:      acl.Sources,
+				Destinations: Aliases{dst.Alias},
+				InternetProtocols: []ProtocolPort{{
+					Protocol: acl.Protocol,
+					Ports:    dst.Ports,
+				}},
+			})
+		}
 	}
 
 	return ret
