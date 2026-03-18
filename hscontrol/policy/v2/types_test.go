@@ -4632,7 +4632,7 @@ func TestUnmarshalGrants(t *testing.T) {
 			wantErr: "grants must specify either 'ip' or 'app' field",
 		},
 		{
-			name: "invalid-grant-empty-sources",
+			name: "valid-grant-empty-sources",
 			input: `
 {
 	"grants": [
@@ -4644,10 +4644,20 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grant sources cannot be empty",
+			want: &Policy{
+				Grants: []Grant{
+					{
+						Sources:      Aliases{},
+						Destinations: Aliases{Wildcard},
+						InternetProtocols: []ProtocolPort{
+							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+						},
+					},
+				},
+			},
 		},
 		{
-			name: "invalid-grant-empty-destinations",
+			name: "valid-grant-empty-destinations",
 			input: `
 {
 	"grants": [
@@ -4659,7 +4669,17 @@ func TestUnmarshalGrants(t *testing.T) {
 	]
 }
 `,
-			wantErr: "grant destinations cannot be empty",
+			want: &Policy{
+				Grants: []Grant{
+					{
+						Sources:      Aliases{Wildcard},
+						Destinations: Aliases{},
+						InternetProtocols: []ProtocolPort{
+							{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+						},
+					},
+				},
+			},
 		},
 		{
 			name: "invalid-grant-undefined-via-tag",

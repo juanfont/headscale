@@ -478,6 +478,14 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 		}
 	}
 
+	// When the grant has literally empty src=[] or dst=[], produce no rules
+	// at all — Tailscale returns null for these. This is distinct from sources
+	// that resolve to empty (e.g., group:empty) where Tailscale still produces
+	// CapGrant rules with empty SrcIPs.
+	if len(grant.Sources) == 0 || len(grant.Destinations) == 0 {
+		return rules, nil
+	}
+
 	if len(resolvedSrcs) == 0 && grant.App == nil {
 		return rules, nil
 	}
