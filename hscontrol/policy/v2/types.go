@@ -1897,6 +1897,7 @@ func aclToGrants(acl ACL) []Grant {
 	// preserve policy order, but ACLs with groups, users, tags, or
 	// hosts emit non-self rules first.
 	hasNonAutogroup := false
+
 	for _, dst := range acl.Destinations {
 		if _, ok := dst.Alias.(*AutoGroup); !ok {
 			hasNonAutogroup = true

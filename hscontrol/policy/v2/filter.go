@@ -232,8 +232,13 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 	var rules []tailcfg.FilterRule
 
 	var resolvedSrcs []ResolvedAddresses
+	// Track non-wildcard source IPs separately. When the grant has a
+	// wildcard (*) source plus explicit sources (tags, groups, etc.),
+	// Tailscale preserves the explicit IPs alongside the wildcard
+	// CGNAT ranges rather than merging them into the IPSet.
+	var nonWildcardSrcs []ResolvedAddresses
 
-	for _, src := range grant.Sources {
+	for i, src := range grant.Sources {
 		if ag, ok := src.(*AutoGroup); ok && ag.Is(AutoGroupSelf) {
 			return nil, errSelfInSources
 		}
@@ -245,6 +250,9 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 
 		if ips != nil {
 			resolvedSrcs = append(resolvedSrcs, ips)
+			if _, isWildcard := grant.Sources[i].(Asterix); !isWildcard {
+				nonWildcardSrcs = append(nonWildcardSrcs, ips)
+			}
 		}
 	}
 
@@ -275,8 +283,31 @@ func (pol *Policy) compileGrantWithAutogroupSelf(
 				destPorts := pol.destinationsToNetPortRange(users, nodes, otherDests, ipp.Ports)
 
 				if len(destPorts) > 0 {
+					srcIPStrs := srcIPsWithRoutes(srcResolved, hasWildcard, nodes)
+
+					// When sources include a wildcard (*) alongside
+					// explicit sources (tags, groups, etc.), Tailscale
+					// preserves the individual IPs from non-wildcard
+					// sources alongside the merged wildcard CGNAT
+					// ranges rather than absorbing them.
+					if hasWildcard && len(nonWildcardSrcs) > 0 {
+						seen := make(map[string]bool, len(srcIPStrs))
+						for _, s := range srcIPStrs {
+							seen[s] = true
+						}
+
+						for _, ips := range nonWildcardSrcs {
+							for _, s := range ips.Strings() {
+								if !seen[s] {
+									seen[s] = true
+									srcIPStrs = append(srcIPStrs, s)
+								}
+							}
+						}
+					}
+
 					rules = append(rules, tailcfg.FilterRule{
-						SrcIPs:   srcIPsWithRoutes(srcResolved, hasWildcard, nodes),
+						SrcIPs:   srcIPStrs,
 						DstPorts: destPorts,
 						IPProto:  ipp.Protocol.toIANAProtocolNumbers(),
 					})
