@@ -1,10 +1,12 @@
 package db
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/juanfont/headscale/hscontrol/types"
@@ -13,6 +15,20 @@ import (
 	"gorm.io/gorm"
 	"tailscale.com/util/set"
 )
+
+// bcryptCacheEntry stores the result of a bcrypt validation, using sync.Once
+// to ensure that only one goroutine performs the expensive comparison while
+// others block and reuse the result (singleflight pattern).
+type bcryptCacheEntry struct {
+	once sync.Once
+	err  error
+}
+
+// bcryptCache maps "prefix:sha256(bcryptHash)" to validation results.
+// This eliminates redundant bcrypt.CompareHashAndPassword calls when:
+// 1. Multiple goroutines validate the same key concurrently (singleflight)
+// 2. The same key is looked up multiple times during a registration flow
+var bcryptCache sync.Map
 
 var (
 	ErrPreAuthKeyNotFound          = errors.New("auth-key not found")
@@ -254,10 +270,17 @@ func findAuthKey(tx *gorm.DB, keyStr string) (*types.PreAuthKey, error) {
 		return nil, ErrPreAuthKeyNotFound
 	}
 
-	// Verify hash matches
-	err = bcrypt.CompareHashAndPassword(pak.Hash, []byte(hash))
-	if err != nil {
-		return nil, fmt.Errorf("invalid auth key: %w", err)
+	// Verify hash matches, using singleflight cache to avoid redundant bcrypt work.
+	// Cache key includes both the prefix and a SHA-256 of the bcrypt hash to ensure
+	// correctness if the stored hash is ever rotated.
+	cacheKey := prefix + ":" + fmt.Sprintf("%x", sha256.Sum256(pak.Hash))
+	entry, _ := bcryptCache.LoadOrStore(cacheKey, &bcryptCacheEntry{})
+	cached := entry.(*bcryptCacheEntry)
+	cached.once.Do(func() {
+		cached.err = bcrypt.CompareHashAndPassword(pak.Hash, []byte(hash))
+	})
+	if cached.err != nil {
+		return nil, fmt.Errorf("invalid auth key: %w", cached.err)
 	}
 
 	return &pak, nil
