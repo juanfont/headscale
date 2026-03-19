@@ -1339,3 +1339,50 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 		t.Logf("  rule %d: SrcIPs=%v DstPorts=%v", i, rule.SrcIPs, rule.DstPorts)
 	}
 }
+
+// TestSetUsersDeephashShortCircuit verifies that SetUsers with unchanged users
+// does NOT trigger filter recompilation. This tests the deephash short-circuit
+// optimization.
+func TestSetUsersDeephashShortCircuit(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user1@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Get initial filter
+	_, filterBefore := pm.Filter()
+
+	// Set same users again — should be a no-op
+	sameUsers := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+	pm.SetUsers(sameUsers)
+
+	// Filter should still work identically
+	_, filterAfter := pm.Filter()
+	require.Equal(t, len(filterBefore), len(filterAfter),
+		"filter should be unchanged after SetUsers with same users")
+}

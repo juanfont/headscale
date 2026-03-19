@@ -51,6 +51,11 @@ type PolicyManager struct {
 	// Lazy map of per-node filter rules (reduced, for packet filters)
 	filterRulesMap    map[types.NodeID][]tailcfg.FilterRule
 	usesAutogroupSelf bool
+
+	// Hash of the users list to short-circuit SetUsers when users haven't changed.
+	// During bulk registration, SetUsers is called for every new node with the same
+	// user list, triggering expensive O(rules * nodes) filter recompilation each time.
+	usersHash deephash.Sum
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -570,6 +575,15 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	// Short-circuit: if users haven't changed, skip the expensive updateLocked.
+	// During bulk registration the same user list is passed on every node add,
+	// but updateLocked recompiles all filter rules O(rules * nodes) each time.
+	newHash := deephash.Hash(&users)
+	if newHash == pm.usersHash {
+		return false, nil
+	}
+	pm.usersHash = newHash
 
 	pm.users = users
 
