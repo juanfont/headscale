@@ -107,6 +107,14 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
+	// Enable resolve cache for the duration of this update.
+	// Same Group/Username/Tag resolves identically within one update cycle
+	// but may be referenced hundreds of times across 14K+ ACL rules.
+	if pm.pol != nil {
+		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
+		defer func() { pm.pol.resolveCache = nil }()
+	}
+
 	// Check if policy uses autogroup:self
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
 
@@ -366,14 +374,44 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 
 // ensureFilterCompiled compiles filter rules if the filterDirty flag is set.
 // Must be called with pm.mu held.
+//
+// Only recompiles the filter rules and matchers. Does NOT re-resolve
+// tagOwners/autoApprovers since SetNodes already resolved them eagerly
+// when it marked filterDirty. This avoids redundant O(tags × nodes)
+// work on every ComputeNodePeers call.
 func (pm *PolicyManager) ensureFilterCompiled() error {
 	if !pm.filterDirty {
 		return nil
 	}
 	pm.filterDirty = false
 
-	_, err := pm.updateLocked()
-	return err
+	// Enable resolve cache for filter compilation.
+	if pm.pol != nil {
+		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
+		defer func() { pm.pol.resolveCache = nil }()
+	}
+
+	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
+
+	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
+	if err != nil {
+		return fmt.Errorf("compiling filter rules: %w", err)
+	}
+
+	filterHash := deephash.Hash(&filterAndPolicy{
+		Filter: filter,
+		Policy: pm.pol,
+	})
+
+	pm.filter = filter
+
+	if filterHash != pm.filterHash {
+		pm.filterHash = filterHash
+		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+		pm.srcMatcherCache = nil
+	}
+
+	return nil
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.

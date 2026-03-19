@@ -274,7 +274,13 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["u:"+string(*u)]; ok {
+			return cached, nil
+		}
+	}
+
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
@@ -301,7 +307,12 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 		}
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	result, err := buildIPSetMultiErr(&ips, errs)
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["u:"+string(*u)] = result
+	}
+
+	return result, err
 }
 
 // Group is a special string which is always prefixed with `group:`.
@@ -354,13 +365,19 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 }
 
 func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["g:"+string(*g)]; ok {
+			return cached, nil
+		}
+	}
+
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
 	for _, user := range p.Groups[*g] {
-		uips, err := user.Resolve(nil, users, nodes)
+		uips, err := user.Resolve(p, users, nodes)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -368,7 +385,12 @@ func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		ips.AddSet(uips)
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	result, err := buildIPSetMultiErr(&ips, errs)
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["g:"+string(*g)] = result
+	}
+
+	return result, err
 }
 
 // Tag is a special string which is always prefixed with `tag:`.
@@ -394,6 +416,12 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 }
 
 func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["t:"+string(*t)]; ok {
+			return cached, nil
+		}
+	}
+
 	var ips netipx.IPSetBuilder
 
 	for _, node := range nodes.All() {
@@ -403,7 +431,12 @@ func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Node
 		}
 	}
 
-	return ips.IPSet()
+	result, err := ips.IPSet()
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["t:"+string(*t)] = result
+	}
+
+	return result, err
 }
 
 func (t *Tag) CanBeAutoApprover() bool {
@@ -1654,6 +1687,11 @@ type Policy struct {
 	// It is not safe to use before it is validated, and
 	// callers using it should panic if not
 	validated bool `json:"-"`
+
+	// resolveCache is a transient cache for Alias.Resolve results during
+	// filter compilation. Set by compileFilterRules, cleared after. Keyed
+	// by type prefix + alias string (e.g. "g:group:eng", "u:user@example.com").
+	resolveCache map[string]*netipx.IPSet `json:"-"`
 
 	Groups        Groups             `json:"groups,omitempty"`
 	Hosts         Hosts              `json:"hosts,omitempty"`
