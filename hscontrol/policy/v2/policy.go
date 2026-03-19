@@ -516,15 +516,19 @@ func (pm *PolicyManager) getSrcMatcherIndices(node types.NodeView) []int {
 // This is equivalent to CanAccess but avoids iterating all matchers.
 func canAccessIndexed(matchers []matcher.Match, srcIndices []int, dst types.NodeView) bool {
 	dstIPs := dst.IPs()
+	subnetRoutes := dst.SubnetRoutes()
+	hasSubnets := len(subnetRoutes) > 0
+	isExit := dst.IsExitNode()
+
 	for _, mi := range srcIndices {
 		m := &matchers[mi]
 		if m.DestsContainsIP(dstIPs...) {
 			return true
 		}
-		if m.DestsOverlapsPrefixes(dst.SubnetRoutes()...) {
+		if hasSubnets && m.DestsOverlapsPrefixes(subnetRoutes...) {
 			return true
 		}
-		if m.DestsIsTheInternet() && dst.IsExitNode() {
+		if isExit && m.DestsIsTheInternet() {
 			return true
 		}
 	}
