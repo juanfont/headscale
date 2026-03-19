@@ -2152,15 +2152,22 @@ func (s *State) UpdatePolicyManagerUsersForTest() error {
 func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
-	changed, err := s.polMan.SetNodes(nodes)
+	changed, identityChanged, err := s.polMan.SetNodes(nodes)
 	if err != nil {
 		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
-	if changed {
-		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)
-		// affect ACL visibility. Without this, cached peer relationships use stale data.
+	if identityChanged {
+		// Existing node identity changed (tags, user, IPs) — must rebuild peer maps
+		// because ACL visibility depends on node identity.
 		s.nodeStore.RebuildPeerMaps()
+		return change.PolicyChange(), nil
+	}
+
+	if changed {
+		// Nodes were added/removed but no identity changes. The peer map will be
+		// rebuilt naturally when the NodeStore processes the PutNode/DeleteNode
+		// operation in applyBatch. Signal a policy change so clients get updates.
 		return change.PolicyChange(), nil
 	}
 

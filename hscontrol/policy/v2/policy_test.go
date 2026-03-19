@@ -699,7 +699,7 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 	updatedNodes := types.Nodes{user1NodeUpdated, user2Node}
 
 	// SetNodes should detect the tag change
-	changed, err := pm.SetNodes(updatedNodes.ViewSlice())
+	changed, _, err := pm.SetNodes(updatedNodes.ViewSlice())
 	require.NoError(t, err)
 	require.True(t, changed, "SetNodes should return true when tags change")
 
@@ -1385,4 +1385,87 @@ func TestSetUsersDeephashShortCircuit(t *testing.T) {
 	_, filterAfter := pm.Filter()
 	require.Equal(t, len(filterBefore), len(filterAfter),
 		"filter should be unchanged after SetUsers with same users")
+}
+
+// TestLazyFilterCompilationCorrectness verifies that lazy filter compilation
+// (via the filterDirty flag) produces the same results as eager compilation.
+// This tests the deferred filter compilation optimization in SetNodes.
+func TestLazyFilterCompilationCorrectness(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	node2 := &types.Node{
+		ID:       2,
+		Hostname: "node2",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user2@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1, node2}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// FilterForNode returns inbound filter (rules where node is destination).
+	// node2 is user2, and the rule is user1->user2:*, so node2's filter should have rules.
+	filter2Before, err := pm.FilterForNode(node2.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter2Before, "node2 should have inbound filter rules (user1->user2)")
+
+	// Add a new node belonging to user2 — this should mark filters as dirty (lazy compilation)
+	node3 := &types.Node{
+		ID:       3,
+		Hostname: "node3",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.3"),
+		IPv6:     ap("fd7a:115c:a1e0::3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	updatedNodes := types.Nodes{node1, node2, node3}
+	changed, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	// Now get node3's filter — should be lazily compiled
+	// node3 also belongs to user2, so it should get the same inbound rule (user1->user2:*)
+	filter3After, err := pm.FilterForNode(node3.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter3After, "node3 should have inbound filter rules after lazy compilation")
+
+	// Verify node3's filter includes user1's source IP
+	foundUser1IP := false
+	for _, rule := range filter3After {
+		for _, srcIP := range rule.SrcIPs {
+			if srcIP == "100.64.0.1/32" {
+				foundUser1IP = true
+			}
+		}
+	}
+	require.True(t, foundUser1IP, "lazily compiled filter for node3 should include user1 source IP")
 }

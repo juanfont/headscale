@@ -26,7 +26,7 @@ type PolicyManager interface {
 	SSHCheckParams(srcNodeID, dstNodeID types.NodeID) (time.Duration, bool)
 	SetPolicy(pol []byte) (bool, error)
 	SetUsers(users []types.User) (bool, error)
-	SetNodes(nodes views.Slice[types.NodeView]) (bool, error)
+	SetNodes(nodes views.Slice[types.NodeView]) (changed bool, identityChanged bool, err error)
 	// NodeCanHaveTag reports whether the given node can have the given tag.
 	NodeCanHaveTag(node types.NodeView, tag string) bool
 

@@ -56,6 +56,12 @@ type PolicyManager struct {
 	// During bulk registration, SetUsers is called for every new node with the same
 	// user list, triggering expensive O(rules * nodes) filter recompilation each time.
 	usersHash deephash.Sum
+
+	// filterDirty indicates that nodes have changed since the last filter compilation.
+	// When true, the next call to Filter(), FilterForNode(), or MatchersForNode() will
+	// trigger a full recompilation. This allows SetNodes to defer the expensive
+	// O(rules * nodes) compilation during bulk registration.
+	filterDirty bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -352,6 +358,18 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	return pm.updateLocked()
 }
 
+// ensureFilterCompiled compiles filter rules if the filterDirty flag is set.
+// Must be called with pm.mu held.
+func (pm *PolicyManager) ensureFilterCompiled() error {
+	if !pm.filterDirty {
+		return nil
+	}
+	pm.filterDirty = false
+
+	_, err := pm.updateLocked()
+	return err
+}
+
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
 func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	if pm == nil {
@@ -360,6 +378,10 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules on demand")
+	}
 
 	return pm.filter, pm.matchers
 }
@@ -375,6 +397,11 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules for BuildPeerMap")
+		return nil
+	}
 
 	// If we have a global filter, use it for all nodes (normal case)
 	if !pm.usesAutogroupSelf {
@@ -535,6 +562,10 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	if err := pm.ensureFilterCompiled(); err != nil {
+		return nil, err
+	}
+
 	return pm.filterForNodeLocked(node)
 }
 
@@ -551,6 +582,10 @@ func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, 
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		return nil, err
+	}
 
 	// For global policies, return the shared global matchers
 	if !pm.usesAutogroupSelf {
@@ -606,60 +641,76 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	return changed, nil
 }
 
-// SetNodes updates the nodes in the policy manager and updates the filter rules.
-func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, error) {
+// SetNodes updates the nodes in the policy manager.
+// Returns (changed, identityChanged, error):
+//   - changed: true if the node list differs from the previous one
+//   - identityChanged: true if an existing node's identity (tags, user, IPs) changed,
+//     as opposed to just new nodes being added. This helps callers decide whether
+//     a full peer map rebuild is needed (identity change) vs incremental update (addition).
+func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool, error) {
 	if pm == nil {
-		return false, nil
+		return false, false, nil
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	policyChanged := pm.nodesHavePolicyAffectingChanges(nodes)
+	identityChanged := pm.nodesHaveIdentityChanges(nodes)
+	countChanged := pm.nodes.Len() != nodes.Len()
 
 	// Invalidate cache entries for nodes that changed.
-	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
-	// For global policies: invalidate only nodes whose properties changed (IPs, routes).
 	pm.invalidateNodeCache(nodes)
 
 	pm.nodes = nodes
 
-	// When policy-affecting node properties change, we must recompile filters because:
-	// 1. User/group aliases (like "user1@") resolve to node IPs
-	// 2. Tag aliases (like "tag:server") match nodes based on their tags
-	// 3. Filter compilation needs nodes to generate rules
-	//
-	// For autogroup:self: return true when nodes change even if the global filter
-	// hash didn't change. The global filter is empty for autogroup:self (each node
-	// has its own filter), so the hash never changes. But peer relationships DO
-	// change when nodes are added/removed, so we must signal this to trigger updates.
-	// For global policies: the filter must be recompiled to include the new nodes.
-	if policyChanged {
-		// Recompile filter with the new node list
-		needsUpdate, err := pm.updateLocked()
-		if err != nil {
-			return false, err
-		}
-
-		if !needsUpdate {
-			// This ensures fresh filter rules are generated for all nodes
-			clear(pm.sshPolicyMap)
-			clear(pm.compiledFilterRulesMap)
-			clear(pm.filterRulesMap)
-		}
-		// Always return true when nodes changed, even if filter hash didn't change
-		// (can happen with autogroup:self or when nodes are added but don't affect rules)
-		return true, nil
+	if !identityChanged && !countChanged {
+		return false, false, nil
 	}
 
-	return false, nil
+	if identityChanged {
+		// Existing node properties changed — must recompile filters eagerly
+		// because matchers need to reflect the new identity immediately.
+		_, err := pm.updateLocked()
+		if err != nil {
+			return false, false, err
+		}
+	} else {
+		// Only new nodes were added. Defer the expensive filter compilation
+		// (O(rules * nodes)) until filters are actually accessed. Eagerly resolve
+		// tag owners and auto-approvers since they're needed during registration
+		// for route approval.
+		pm.filterDirty = true
+
+		// Clear per-node caches since the node list changed
+		clear(pm.sshPolicyMap)
+		clear(pm.compiledFilterRulesMap)
+		clear(pm.filterRulesMap)
+
+		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
+		tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
+		if err != nil {
+			return false, false, fmt.Errorf("resolving tag owners: %w", err)
+		}
+		pm.tagOwnerMap = tagMap
+		pm.tagOwnerMapHash = deephash.Hash(&tagMap)
+
+		// Eagerly resolve auto-approvers (needed for route approval during registration)
+		autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+		if err != nil {
+			return false, false, fmt.Errorf("resolving auto approvers: %w", err)
+		}
+		pm.autoApproveMap = autoMap
+		pm.autoApproveMapHash = deephash.Hash(&autoMap)
+		pm.exitSet = exitSet
+		pm.exitSetHash = deephash.Hash(&exitSet)
+	}
+
+	return true, identityChanged, nil
 }
 
-func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[types.NodeView]) bool {
-	if pm.nodes.Len() != newNodes.Len() {
-		return true
-	}
-
+// nodesHaveIdentityChanges checks if any existing node changed its policy-affecting
+// properties (tags, user, IPs, routes). Returns false for pure additions/removals.
+func (pm *PolicyManager) nodesHaveIdentityChanges(newNodes views.Slice[types.NodeView]) bool {
 	oldNodes := make(map[types.NodeID]types.NodeView, pm.nodes.Len())
 	for _, node := range pm.nodes.All() {
 		oldNodes[node.ID()] = node
@@ -668,7 +719,7 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 	for _, newNode := range newNodes.All() {
 		oldNode, exists := oldNodes[newNode.ID()]
 		if !exists {
-			return true
+			continue // new node, not an identity change
 		}
 
 		if newNode.HasPolicyChange(oldNode) {
