@@ -62,6 +62,11 @@ type PolicyManager struct {
 	// trigger a full recompilation. This allows SetNodes to defer the expensive
 	// O(rules * nodes) compilation during bulk registration.
 	filterDirty bool
+
+	// srcMatcherCache maps node IDs to the indices of matchers where that node's
+	// IPs appear in the source set. This avoids iterating all matchers in CanAccess
+	// when only a small subset are relevant. Invalidated when filters are recompiled.
+	srcMatcherCache map[types.NodeID][]int
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -139,6 +144,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.filterHash = filterHash
 	if filterChanged {
 		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+		pm.srcMatcherCache = nil // Invalidate cached source matcher indices
 	}
 
 	// Order matters, tags might be used in autoapprovers, so we need to ensure
@@ -480,10 +486,60 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	return ret
 }
 
+// getSrcMatcherIndices returns the indices of matchers where the given node's
+// IPs appear in the source set. Results are cached per node ID and invalidated
+// when filters are recompiled. This reduces CanAccess from O(M) to O(relevant)
+// where relevant << M for large rule sets.
+func (pm *PolicyManager) getSrcMatcherIndices(node types.NodeView) []int {
+	if cached, ok := pm.srcMatcherCache[node.ID()]; ok {
+		return cached
+	}
+
+	ips := node.IPs()
+	indices := make([]int, 0, 32)
+	for i := range pm.matchers {
+		if pm.matchers[i].SrcsContainsIPs(ips...) {
+			indices = append(indices, i)
+		}
+	}
+
+	if pm.srcMatcherCache == nil {
+		pm.srcMatcherCache = make(map[types.NodeID][]int)
+	}
+	pm.srcMatcherCache[node.ID()] = indices
+
+	return indices
+}
+
+// canAccessIndexed checks if a source node can access a destination node,
+// but only checks the matchers at the given indices (pre-filtered by source IP).
+// This is equivalent to CanAccess but avoids iterating all matchers.
+func canAccessIndexed(matchers []matcher.Match, srcIndices []int, dst types.NodeView) bool {
+	dstIPs := dst.IPs()
+	for _, mi := range srcIndices {
+		m := &matchers[mi]
+		if m.DestsContainsIP(dstIPs...) {
+			return true
+		}
+		if m.DestsOverlapsPrefixes(dst.SubnetRoutes()...) {
+			return true
+		}
+		if m.DestsIsTheInternet() && dst.IsExitNode() {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ComputeNodePeers computes the list of peers visible to a single node by
 // checking it against all provided nodes. This is O(N) per new node instead of
 // O(N²) for a full BuildPeerMap. Used by the NodeStore's incremental snapshot
 // path when only new nodes are added (no identity changes).
+//
+// Uses a cached source matcher index to avoid iterating all matchers for each
+// node pair. With 14K+ rules but only ~100 relevant per node, this reduces
+// IPSet lookups by ~100x.
 func (pm *PolicyManager) ComputeNodePeers(
 	node types.NodeView,
 	allNodes []types.NodeView,
@@ -503,12 +559,17 @@ func (pm *PolicyManager) ComputeNodePeers(
 	var peers []types.NodeView
 
 	if !pm.usesAutogroupSelf {
-		// Global filter: check the new node against all existing nodes
+		// Pre-compute which matchers have the new node as a source.
+		// Other nodes' source indices are cached across calls.
+		nodeSrcIdx := pm.getSrcMatcherIndices(node)
+
 		for _, other := range allNodes {
 			if other.ID() == node.ID() {
 				continue
 			}
-			if node.CanAccess(pm.matchers, other) || other.CanAccess(pm.matchers, node) {
+			otherSrcIdx := pm.getSrcMatcherIndices(other)
+			if canAccessIndexed(pm.matchers, nodeSrcIdx, other) ||
+				canAccessIndexed(pm.matchers, otherSrcIdx, node) {
 				peers = append(peers, other)
 			}
 		}

@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 	"testing"
@@ -1722,4 +1723,87 @@ func TestHostResolveCGNATSkip(t *testing.T) {
 	filter, err := pm.FilterForNode(node1.View())
 	require.NoError(t, err)
 	require.NotEmpty(t, filter, "filter should contain rules for both hosts")
+}
+
+// TestSrcMatcherCacheCorrectness verifies that the source matcher index
+// cache produces the same CanAccess results as checking all matchers.
+func TestSrcMatcherCacheCorrectness(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	var nodeList types.Nodes
+	for i := 1; i <= 20; i++ {
+		userIdx := (i - 1) % 3
+		n := &types.Node{
+			ID:       types.NodeID(i),
+			Hostname: fmt.Sprintf("node-%d", i),
+			User:     new(users[userIdx]),
+			UserID:   new(users[userIdx].ID),
+			IPv4:     ap(fmt.Sprintf("100.64.0.%d", i)),
+			IPv6:     ap(fmt.Sprintf("fd7a:115c:a1e0::%d", i)),
+			Hostinfo: &tailcfg.Hostinfo{},
+		}
+		if i%5 == 0 {
+			n.Tags = []string{"tag:web"}
+		}
+		nodeList = append(nodeList, n)
+	}
+
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:web": ["user2@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["tag:web:80,443"]
+			},
+			{
+				"action": "accept",
+				"src": ["user2@example.com"],
+				"dst": ["user1@example.com:22"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodeList.ViewSlice())
+	require.NoError(t, err)
+
+	fullPeerMap := pm.BuildPeerMap(nodeList.ViewSlice())
+	vs := nodeList.ViewSlice()
+	allViews := make([]types.NodeView, vs.Len())
+	for i := range vs.Len() {
+		allViews[i] = vs.At(i)
+	}
+
+	for _, nodeView := range allViews {
+		computedPeers := pm.ComputeNodePeers(nodeView, allViews)
+		fullPeers := fullPeerMap[nodeView.ID()]
+
+		computedIDs := make([]types.NodeID, len(computedPeers))
+		for i, p := range computedPeers {
+			computedIDs[i] = p.ID()
+		}
+		fullIDs := make([]types.NodeID, len(fullPeers))
+		for i, p := range fullPeers {
+			fullIDs[i] = p.ID()
+		}
+		slices.Sort(computedIDs)
+		slices.Sort(fullIDs)
+
+		require.Equal(t, fullIDs, computedIDs,
+			"srcMatcherCache: node %d (%s) peer mismatch", nodeView.ID(), nodeView.Hostname())
+	}
 }
