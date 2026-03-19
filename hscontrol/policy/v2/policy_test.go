@@ -1668,3 +1668,58 @@ func TestComputeNodePeersMatchesBuildPeerMap(t *testing.T) {
 			nodeView.ID(), nodeView.Hostname())
 	}
 }
+
+// TestHostResolveCGNATSkip verifies that prefixOverlapsCGNAT correctly
+// identifies CGNAT/ULA prefixes and that Host.Resolve works correctly
+// with policies containing hosts in both CGNAT and non-CGNAT ranges.
+func TestHostResolveCGNATSkip(t *testing.T) {
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.64.0.0/24")),
+		"100.64.0.0/24 overlaps CGNAT")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.64.0.1/32")),
+		"100.64.0.1/32 overlaps CGNAT")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.127.255.255/32")),
+		"100.127.255.255/32 is in CGNAT range")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
+		"ULA address overlaps CGNAT/ULA")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("fd7a:115c:a1e0::/48")),
+		"ULA prefix overlaps")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("192.168.1.0/24")),
+		"192.168.1.0/24 does NOT overlap CGNAT")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("10.0.0.0/8")),
+		"10.0.0.0/8 does NOT overlap CGNAT")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("172.16.0.0/12")),
+		"172.16.0.0/12 does NOT overlap CGNAT")
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID: 1, Hostname: "node1",
+		User: new(users[0]), UserID: new(users[0].ID),
+		IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"hosts": {
+			"internal-server": "100.64.0.1/32",
+			"external-server": "192.168.1.100/32"
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["internal-server:*", "external-server:443"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	filter, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter, "filter should contain rules for both hosts")
+}

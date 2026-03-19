@@ -445,6 +445,15 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// prefixOverlapsCGNAT returns true if the prefix could overlap with Tailscale's
+// CGNAT range (100.64.0.0/10) or ULA range (fd7a:115c:a1e0::/48). Only prefixes
+// that overlap these ranges can possibly match a headscale node's IP.
+func prefixOverlapsCGNAT(pref netip.Prefix) bool {
+	cgnat := netip.MustParsePrefix("100.64.0.0/10")
+	ula := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	return pref.Overlaps(cgnat) || pref.Overlaps(ula)
+}
+
 func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
@@ -463,20 +472,21 @@ func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeVie
 
 	ips.AddPrefix(netip.Prefix(pref))
 
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
+	// Skip O(N) node iteration for prefixes that can never match a headscale
+	// node. Nodes only have Tailscale CGNAT (100.64.0.0/10) or ULA IPs, so
+	// hosts like "10.0.0.0/24" can never resolve to any node.
+	if prefixOverlapsCGNAT(netip.Prefix(pref)) {
+		appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
 
-	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
-	// should a host with a non single IP be able to resolve the full host (inc all IPs).
-	ipsTemp, err := ips.IPSet()
-	if err != nil {
-		errs = append(errs, err)
-	}
+		ipsTemp, err := ips.IPSet()
+		if err != nil {
+			errs = append(errs, err)
+		}
 
-	for _, node := range nodes.All() {
-		if node.InIPSet(ipsTemp) {
-			node.AppendToIPSet(&ips)
+		for _, node := range nodes.All() {
+			if node.InIPSet(ipsTemp) {
+				node.AppendToIPSet(&ips)
+			}
 		}
 	}
 
