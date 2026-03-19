@@ -107,12 +107,17 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// Enable resolve cache for the duration of this update.
+	// Enable resolve cache and node IP indexes for the duration of this update.
 	// Same Group/Username/Tag resolves identically within one update cycle
 	// but may be referenced hundreds of times across 14K+ ACL rules.
 	if pm.pol != nil {
 		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
-		defer func() { pm.pol.resolveCache = nil }()
+		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
+		defer func() {
+			pm.pol.resolveCache = nil
+			pm.pol.nodeIPsByUser = nil
+			pm.pol.nodeIPsByTag = nil
+		}()
 	}
 
 	// Check if policy uses autogroup:self
@@ -385,10 +390,15 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 	}
 	pm.filterDirty = false
 
-	// Enable resolve cache for filter compilation.
+	// Enable resolve cache and node IP indexes for filter compilation.
 	if pm.pol != nil {
 		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
-		defer func() { pm.pol.resolveCache = nil }()
+		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
+		defer func() {
+			pm.pol.resolveCache = nil
+			pm.pol.nodeIPsByUser = nil
+			pm.pol.nodeIPsByTag = nil
+		}()
 	}
 
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
@@ -412,6 +422,54 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 	}
 
 	return nil
+}
+
+// buildNodeIPIndexes builds pre-computed IP sets indexed by UserID and tag.
+// This allows Username.Resolve and Tag.Resolve to do O(1) lookups instead
+// of scanning all N nodes. Built once per filter compilation cycle.
+func buildNodeIPIndexes(nodes views.Slice[types.NodeView]) (
+	map[uint]*netipx.IPSet,
+	map[string]*netipx.IPSet,
+) {
+	userBuilders := make(map[uint]*netipx.IPSetBuilder)
+	tagBuilders := make(map[string]*netipx.IPSetBuilder)
+
+	for _, node := range nodes.All() {
+		if node.IsTagged() {
+			// Tagged nodes: index by each tag
+			for _, tag := range node.Tags().All() {
+				b, ok := tagBuilders[tag]
+				if !ok {
+					b = &netipx.IPSetBuilder{}
+					tagBuilders[tag] = b
+				}
+				node.AppendToIPSet(b)
+			}
+		} else if node.User().Valid() {
+			// User-owned nodes: index by user ID (uint from gorm.Model)
+			uid := node.User().ID()
+			b, ok := userBuilders[uid]
+			if !ok {
+				b = &netipx.IPSetBuilder{}
+				userBuilders[uid] = b
+			}
+			node.AppendToIPSet(b)
+		}
+	}
+
+	userSets := make(map[uint]*netipx.IPSet, len(userBuilders))
+	for uid, b := range userBuilders {
+		ipset, _ := b.IPSet()
+		userSets[uid] = ipset
+	}
+
+	tagSets := make(map[string]*netipx.IPSet, len(tagBuilders))
+	for tag, b := range tagBuilders {
+		ipset, _ := b.IPSet()
+		tagSets[tag] = ipset
+	}
+
+	return userSets, tagSets
 }
 
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
@@ -820,7 +878,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 	identityChanged := pm.nodesHaveIdentityChanges(nodes)
 	countChanged := pm.nodes.Len() != nodes.Len()
 
-	// Track which nodes are genuinely new additions (not in old set).
+	// Track which nodes are new (added since last SetNodes).
 	oldNodeSet := make(map[types.NodeID]struct{}, pm.nodes.Len())
 	for _, n := range pm.nodes.All() {
 		oldNodeSet[n.ID()] = struct{}{}

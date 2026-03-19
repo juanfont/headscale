@@ -291,6 +291,23 @@ func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types
 		errs = append(errs, err)
 	}
 
+	// Fast path: use pre-built index if available
+	if p != nil && p.nodeIPsByUser != nil {
+		if ipset, ok := p.nodeIPsByUser[user.ID]; ok {
+			result := ipset
+			if p.resolveCache != nil {
+				p.resolveCache["u:"+string(*u)] = result
+			}
+			return result, errors.Join(errs...)
+		}
+		// User exists but has no nodes — return empty set
+		result, _ := ips.IPSet()
+		if p.resolveCache != nil {
+			p.resolveCache["u:"+string(*u)] = result
+		}
+		return result, errors.Join(errs...)
+	}
+
 	for _, node := range nodes.All() {
 		// Skip tagged nodes - they are identified by tags, not users
 		if node.IsTagged() {
@@ -420,6 +437,22 @@ func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Node
 		if cached, ok := p.resolveCache["t:"+string(*t)]; ok {
 			return cached, nil
 		}
+	}
+
+	// Fast path: use pre-built index if available
+	if p != nil && p.nodeIPsByTag != nil {
+		var result *netipx.IPSet
+		if ipset, ok := p.nodeIPsByTag[string(*t)]; ok {
+			result = ipset
+		} else {
+			// Tag exists but no nodes have it — return empty set
+			var empty netipx.IPSetBuilder
+			result, _ = empty.IPSet()
+		}
+		if p.resolveCache != nil {
+			p.resolveCache["t:"+string(*t)] = result
+		}
+		return result, nil
 	}
 
 	var ips netipx.IPSetBuilder
@@ -1692,6 +1725,13 @@ type Policy struct {
 	// filter compilation. Set by compileFilterRules, cleared after. Keyed
 	// by type prefix + alias string (e.g. "g:group:eng", "u:user@example.com").
 	resolveCache map[string]*netipx.IPSet `json:"-"`
+
+	// nodeIPsByUser and nodeIPsByTag are pre-built indexes for O(1) lookups
+	// during filter compilation. Built once per ensureFilterCompiled cycle,
+	// cleared after. Eliminates O(N) node scanning in Username.Resolve and
+	// Tag.Resolve.
+	nodeIPsByUser map[uint]*netipx.IPSet   `json:"-"`
+	nodeIPsByTag  map[string]*netipx.IPSet `json:"-"`
 
 	Groups        Groups             `json:"groups,omitempty"`
 	Hosts         Hosts              `json:"hosts,omitempty"`
