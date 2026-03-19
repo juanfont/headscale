@@ -1321,3 +1321,168 @@ func TestRebuildPeerMapsWithChangedPeersFunc(t *testing.T) {
 	assert.Equal(t, 1, peers1.Len(), "ListPeers for node1 should return 1")
 	assert.Equal(t, 1, peers2.Len(), "ListPeers for node2 should return 1")
 }
+
+// incrementalPeersFuncFrom derives an IncrementalPeersFunc from a PeersFunc.
+func incrementalPeersFuncFrom(peersFunc PeersFunc) IncrementalPeersFunc {
+	return func(newNode types.NodeView, allNodes []types.NodeView) []types.NodeView {
+		fullMap := peersFunc(allNodes)
+		return fullMap[newNode.ID()]
+	}
+}
+
+// TestIncrementalSnapshotMatchesFullRebuild verifies that the incremental
+// peer map computation produces identical results to the full O(N²) rebuild.
+func TestIncrementalSnapshotMatchesFullRebuild(t *testing.T) {
+	tests := []struct {
+		name      string
+		peersFunc PeersFunc
+	}{
+		{"allow-all", allowAllPeersFunc},
+		{"odd-even", oddEvenPeersFunc},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			incFunc := incrementalPeersFuncFrom(tt.peersFunc)
+
+			store := NewNodeStore(nil, tt.peersFunc, TestBatchSize, TestBatchTimeout)
+			store.incrementalPeersFunc = incFunc
+			store.Start()
+			defer store.Stop()
+
+			for i := 1; i <= 10; i++ {
+				node := createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user%d", i), fmt.Sprintf("node%d", i))
+				store.PutNode(node)
+			}
+
+			incSnap := store.data.Load()
+
+			fullStore := NewNodeStore(nil, tt.peersFunc, TestBatchSize, TestBatchTimeout)
+			fullStore.Start()
+			defer fullStore.Stop()
+
+			for i := 1; i <= 10; i++ {
+				node := createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user%d", i), fmt.Sprintf("node%d", i))
+				fullStore.PutNode(node)
+			}
+
+			fullSnap := fullStore.data.Load()
+
+			assert.Equal(t, len(fullSnap.peersByNode), len(incSnap.peersByNode),
+				"peer map sizes should match")
+
+			for nodeID, fullPeers := range fullSnap.peersByNode {
+				incPeers := incSnap.peersByNode[nodeID]
+				assert.Equal(t, len(fullPeers), len(incPeers),
+					"peer count mismatch for node %d", nodeID)
+
+				fullIDs := make([]types.NodeID, len(fullPeers))
+				for j, p := range fullPeers {
+					fullIDs[j] = p.ID()
+				}
+				incIDs := make([]types.NodeID, len(incPeers))
+				for j, p := range incPeers {
+					incIDs[j] = p.ID()
+				}
+
+				for a := range fullIDs {
+					for b := a + 1; b < len(fullIDs); b++ {
+						if fullIDs[a] > fullIDs[b] {
+							fullIDs[a], fullIDs[b] = fullIDs[b], fullIDs[a]
+						}
+					}
+				}
+				for a := range incIDs {
+					for b := a + 1; b < len(incIDs); b++ {
+						if incIDs[a] > incIDs[b] {
+							incIDs[a], incIDs[b] = incIDs[b], incIDs[a]
+						}
+					}
+				}
+
+				assert.Equal(t, fullIDs, incIDs,
+					"peer IDs mismatch for node %d", nodeID)
+			}
+		})
+	}
+}
+
+// TestUpdateOnlyBatchPreservesPeerRelationships verifies that update-only
+// batches produce correct peer relationships.
+func TestUpdateOnlyBatchPreservesPeerRelationships(t *testing.T) {
+	store := NewNodeStore(nil, allowAllPeersFunc, TestBatchSize, TestBatchTimeout)
+	store.Start()
+	defer store.Stop()
+
+	for i := 1; i <= 5; i++ {
+		store.PutNode(createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user%d", i), fmt.Sprintf("node%d", i)))
+	}
+
+	for i := 1; i <= 5; i++ {
+		id := types.NodeID(i)
+		store.UpdateNode(id, func(n *types.Node) {
+			n.Hostname = fmt.Sprintf("updated-node%d", i)
+		})
+	}
+
+	require.Eventually(t, func() bool {
+		snap := store.data.Load()
+		n, exists := snap.nodesByID[1]
+		return exists && n.Hostname == "updated-node1"
+	}, 2*time.Second, 10*time.Millisecond)
+
+	snap := store.data.Load()
+	for i := types.NodeID(1); i <= 5; i++ {
+		peers := snap.peersByNode[i]
+		assert.Len(t, peers, 4, "node %d should still have 4 peers after update", i)
+	}
+
+	for i := types.NodeID(1); i <= 5; i++ {
+		for _, peer := range snap.peersByNode[i] {
+			assert.Contains(t, peer.Hostname(), "updated-",
+				"peer views should reflect updated hostname")
+		}
+	}
+}
+
+// TestIncrementalPutWithMixedBatch tests concurrent puts and updates.
+func TestIncrementalPutWithMixedBatch(t *testing.T) {
+	incFunc := incrementalPeersFuncFrom(allowAllPeersFunc)
+
+	store := NewNodeStore(nil, allowAllPeersFunc, 100, TestBatchTimeout)
+	store.incrementalPeersFunc = incFunc
+	store.Start()
+	defer store.Stop()
+
+	for i := 1; i <= 5; i++ {
+		store.PutNode(createTestNode(types.NodeID(i), uint(i), fmt.Sprintf("user%d", i), fmt.Sprintf("node%d", i)))
+	}
+
+	var wg sync.WaitGroup
+	for i := 6; i <= 10; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			store.PutNode(createTestNode(types.NodeID(id), uint(id), fmt.Sprintf("user%d", id), fmt.Sprintf("node%d", id)))
+		}(i)
+	}
+	for i := 1; i <= 5; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			store.UpdateNode(types.NodeID(id), func(n *types.Node) {
+				n.Hostname = fmt.Sprintf("updated-node%d", id)
+			})
+		}(i)
+	}
+	wg.Wait()
+
+	snap := store.data.Load()
+	assert.Len(t, snap.nodesByID, 10, "should have 10 nodes")
+
+	for i := types.NodeID(1); i <= 10; i++ {
+		peers := snap.peersByNode[i]
+		assert.Len(t, peers, 9,
+			"node %d should have 9 peers, got %d", i, len(peers))
+	}
+}

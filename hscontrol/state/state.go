@@ -210,6 +210,9 @@ func NewState(cfg *types.Config) (*State, error) {
 		batchSize,
 		batchTimeout,
 	)
+	// Wire up incremental peers function for O(N) per-node peer computation
+	// instead of O(N²) full rebuild when only new nodes are added.
+	nodeStore.incrementalPeersFunc = polMan.ComputeNodePeers
 	nodeStore.Start()
 
 	return &State{
@@ -2152,7 +2155,7 @@ func (s *State) UpdatePolicyManagerUsersForTest() error {
 func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
-	changed, identityChanged, err := s.polMan.SetNodes(nodes)
+	changed, identityChanged, newNodeIDs, err := s.polMan.SetNodes(nodes)
 	if err != nil {
 		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
@@ -2165,9 +2168,13 @@ func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	}
 
 	if changed {
-		// Nodes were added/removed but no identity changes. The peer map will be
-		// rebuilt naturally when the NodeStore processes the PutNode/DeleteNode
-		// operation in applyBatch. Signal a policy change so clients get updates.
+		// Nodes were added/removed. The peer map built during PutNode used stale
+		// policy data (ComputeNodePeers ran before SetNodes updated the policy
+		// with the new node's IPs). Refresh peers for newly added nodes only
+		// (O(K×N) instead of O(N²) full rebuild).
+		if len(newNodeIDs) > 0 {
+			s.nodeStore.RefreshPeersForNodes(newNodeIDs)
+		}
 		return change.PolicyChange(), nil
 	}
 

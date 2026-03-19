@@ -699,7 +699,7 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 	updatedNodes := types.Nodes{user1NodeUpdated, user2Node}
 
 	// SetNodes should detect the tag change
-	changed, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	changed, _, _, err := pm.SetNodes(updatedNodes.ViewSlice())
 	require.NoError(t, err)
 	require.True(t, changed, "SetNodes should return true when tags change")
 
@@ -1448,7 +1448,7 @@ func TestLazyFilterCompilationCorrectness(t *testing.T) {
 	}
 
 	updatedNodes := types.Nodes{node1, node2, node3}
-	changed, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	changed, _, _, err := pm.SetNodes(updatedNodes.ViewSlice())
 	require.NoError(t, err)
 	require.True(t, changed)
 
@@ -1468,4 +1468,203 @@ func TestLazyFilterCompilationCorrectness(t *testing.T) {
 		}
 	}
 	require.True(t, foundUser1IP, "lazily compiled filter for node3 should include user1 source IP")
+}
+
+// TestSetNodesIdentityChangeDetection verifies that SetNodes correctly
+// distinguishes between identity changes (tags/users) and non-identity
+// changes (hostname, endpoints).
+func TestSetNodesIdentityChangeDetection(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user1@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Change only hostname (non-identity change) — SetNodes should NOT report
+	// this as changed since hostname doesn't affect policy evaluation.
+	node1Updated := *node1
+	node1Updated.Hostname = "node1-updated"
+	updatedNodes := types.Nodes{&node1Updated}
+
+	changed, identityChanged, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.False(t, changed, "hostname-only change should NOT be detected (not policy-relevant)")
+	require.False(t, identityChanged, "hostname change is NOT an identity change")
+
+	// Change tags (identity change)
+	node1Tagged := node1Updated
+	node1Tagged.Tags = []string{"tag:server"}
+	taggedNodes := types.Nodes{&node1Tagged}
+
+	changed, identityChanged, _, err = pm.SetNodes(taggedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, identityChanged, "tag change IS an identity change")
+}
+
+// TestSetNodesCountChangeIsNotIdentityChange verifies that adding a new node
+// is correctly distinguished from an identity change.
+func TestSetNodesCountChangeIsNotIdentityChange(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	node2 := &types.Node{
+		ID:       2,
+		Hostname: "node2",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	updatedNodes := types.Nodes{node1, node2}
+	changed, identityChanged, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed, "adding a node should be detected as a change")
+	require.False(t, identityChanged, "adding a NEW node should NOT be an identity change")
+
+	filter, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter, "filter should be compiled after lazy compilation")
+}
+
+// TestComputeNodePeersMatchesBuildPeerMap verifies that per-node
+// ComputeNodePeers produces the same peer relationships as BuildPeerMap.
+func TestComputeNodePeersMatchesBuildPeerMap(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	adminNode := &types.Node{
+		ID: 1, Hostname: "admin-dev",
+		User: new(users[0]), UserID: new(users[0].ID),
+		IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	user1Node := &types.Node{
+		ID: 2, Hostname: "user1-dev",
+		User: new(users[1]), UserID: new(users[1].ID),
+		IPv4: ap("100.64.0.2"), IPv6: ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	user2Node := &types.Node{
+		ID: 3, Hostname: "user2-dev",
+		User: new(users[2]), UserID: new(users[2].ID),
+		IPv4: ap("100.64.0.3"), IPv6: ap("fd7a:115c:a1e0::3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	taggedNode := &types.Node{
+		ID: 4, Hostname: "tagged-server",
+		User: new(users[2]), UserID: new(users[2].ID),
+		IPv4: ap("100.64.0.4"), IPv6: ap("fd7a:115c:a1e0::4"),
+		Tags: []string{"tag:web"}, Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{adminNode, user1Node, user2Node, taggedNode}
+
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:web": ["user2@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["tag:web:80"]
+			},
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	fullPeerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	viewSlice := nodes.ViewSlice()
+	allNodeViews := make([]types.NodeView, viewSlice.Len())
+	for i := range viewSlice.Len() {
+		allNodeViews[i] = viewSlice.At(i)
+	}
+	for _, nodeView := range allNodeViews {
+		computedPeers := pm.ComputeNodePeers(nodeView, allNodeViews)
+		fullPeers := fullPeerMap[nodeView.ID()]
+
+		computedIDs := make([]types.NodeID, len(computedPeers))
+		for i, p := range computedPeers {
+			computedIDs[i] = p.ID()
+		}
+		fullIDs := make([]types.NodeID, len(fullPeers))
+		for i, p := range fullPeers {
+			fullIDs[i] = p.ID()
+		}
+		slices.Sort(computedIDs)
+		slices.Sort(fullIDs)
+
+		require.Equal(t, fullIDs, computedIDs,
+			"ComputeNodePeers for node %d (%s) should match BuildPeerMap",
+			nodeView.ID(), nodeView.Hostname())
+	}
 }

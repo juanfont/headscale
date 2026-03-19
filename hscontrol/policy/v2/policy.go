@@ -480,6 +480,65 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	return ret
 }
 
+// ComputeNodePeers computes the list of peers visible to a single node by
+// checking it against all provided nodes. This is O(N) per new node instead of
+// O(N²) for a full BuildPeerMap. Used by the NodeStore's incremental snapshot
+// path when only new nodes are added (no identity changes).
+func (pm *PolicyManager) ComputeNodePeers(
+	node types.NodeView,
+	allNodes []types.NodeView,
+) []types.NodeView {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules for ComputeNodePeers")
+		return nil
+	}
+
+	var peers []types.NodeView
+
+	if !pm.usesAutogroupSelf {
+		// Global filter: check the new node against all existing nodes
+		for _, other := range allNodes {
+			if other.ID() == node.ID() {
+				continue
+			}
+			if node.CanAccess(pm.matchers, other) || other.CanAccess(pm.matchers, node) {
+				peers = append(peers, other)
+			}
+		}
+	} else {
+		// autogroup:self: compile per-node matchers and check
+		nodeMatchers, err := pm.compileFilterRulesForNodeLocked(node)
+		if err != nil {
+			return nil
+		}
+		nodeMatcherList := matcher.MatchesFromFilterRules(nodeMatchers)
+
+		for _, other := range allNodes {
+			if other.ID() == node.ID() {
+				continue
+			}
+			otherMatchers, err := pm.compileFilterRulesForNodeLocked(other)
+			if err != nil {
+				continue
+			}
+			otherMatcherList := matcher.MatchesFromFilterRules(otherMatchers)
+
+			if node.CanAccess(nodeMatcherList, other) || other.CanAccess(otherMatcherList, node) {
+				peers = append(peers, other)
+			}
+		}
+	}
+
+	return peers
+}
+
 // compileFilterRulesForNodeLocked returns the unreduced compiled filter rules for a node
 // when using autogroup:self. This is used by BuildPeerMap to determine peer relationships.
 // For packet filters sent to nodes, use filterForNodeLocked which returns reduced rules.
@@ -647,9 +706,9 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 //   - identityChanged: true if an existing node's identity (tags, user, IPs) changed,
 //     as opposed to just new nodes being added. This helps callers decide whether
 //     a full peer map rebuild is needed (identity change) vs incremental update (addition).
-func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool, error) {
+func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool, []types.NodeID, error) {
 	if pm == nil {
-		return false, false, nil
+		return false, false, nil, nil
 	}
 
 	pm.mu.Lock()
@@ -658,13 +717,25 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 	identityChanged := pm.nodesHaveIdentityChanges(nodes)
 	countChanged := pm.nodes.Len() != nodes.Len()
 
+	// Track which nodes are genuinely new additions (not in old set).
+	oldNodeSet := make(map[types.NodeID]struct{}, pm.nodes.Len())
+	for _, n := range pm.nodes.All() {
+		oldNodeSet[n.ID()] = struct{}{}
+	}
+	var newNodeIDs []types.NodeID
+	for _, n := range nodes.All() {
+		if _, exists := oldNodeSet[n.ID()]; !exists {
+			newNodeIDs = append(newNodeIDs, n.ID())
+		}
+	}
+
 	// Invalidate cache entries for nodes that changed.
 	pm.invalidateNodeCache(nodes)
 
 	pm.nodes = nodes
 
 	if !identityChanged && !countChanged {
-		return false, false, nil
+		return false, false, nil, nil
 	}
 
 	if identityChanged {
@@ -672,7 +743,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		// because matchers need to reflect the new identity immediately.
 		_, err := pm.updateLocked()
 		if err != nil {
-			return false, false, err
+			return false, false, nil, err
 		}
 	} else {
 		// Only new nodes were added. Defer the expensive filter compilation
@@ -689,7 +760,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
 		tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
 		if err != nil {
-			return false, false, fmt.Errorf("resolving tag owners: %w", err)
+			return false, false, nil, fmt.Errorf("resolving tag owners: %w", err)
 		}
 		pm.tagOwnerMap = tagMap
 		pm.tagOwnerMapHash = deephash.Hash(&tagMap)
@@ -697,7 +768,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		// Eagerly resolve auto-approvers (needed for route approval during registration)
 		autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
 		if err != nil {
-			return false, false, fmt.Errorf("resolving auto approvers: %w", err)
+			return false, false, nil, fmt.Errorf("resolving auto approvers: %w", err)
 		}
 		pm.autoApproveMap = autoMap
 		pm.autoApproveMapHash = deephash.Hash(&autoMap)
@@ -705,7 +776,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		pm.exitSetHash = deephash.Hash(&exitSet)
 	}
 
-	return true, identityChanged, nil
+	return true, identityChanged, newNodeIDs, nil
 }
 
 // nodesHaveIdentityChanges checks if any existing node changed its policy-affecting
