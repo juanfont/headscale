@@ -191,8 +191,10 @@ You may refer to users in the Headscale policy via:
 !!! note "A user identifier in the policy must contain a single `@`"
 
     The Headscale policy requires a single `@` to reference a user. If the username or provider identifier doesn't
-    already contain a single `@`, it needs to be appended at the end. For example: the username `ssmith` has to be
-    written as `ssmith@` to be correctly identified as user within the policy.
+    already contain a single `@`, it needs to be appended at the end. For example: the Headscale username `ssmith` has
+    to be written as `ssmith@` to be correctly identified as user within the policy.
+
+    Ensure that the Headscale username itself does not end with `@`.
 
 !!! warning "Email address or username might be updated by users"
 
