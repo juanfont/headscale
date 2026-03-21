@@ -138,7 +138,6 @@ func TestTagsAuthKeyWithTagRequestDifferentTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-diff"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -213,7 +212,6 @@ func TestTagsAuthKeyWithTagNoAdvertiseFlag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-inherit"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -286,7 +284,6 @@ func TestTagsAuthKeyWithTagCannotAddViaCLI(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-noadd"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -387,7 +384,6 @@ func TestTagsAuthKeyWithTagCannotChangeViaCLI(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-nochange"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -484,7 +480,6 @@ func TestTagsAuthKeyWithTagAdminOverrideReauthPreserves(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-admin"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -612,7 +607,6 @@ func TestTagsAuthKeyWithTagCLICannotModifyAdminTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-noadmin"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -735,7 +729,6 @@ func TestTagsAuthKeyWithoutTagCannotRequestTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-req"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -807,7 +800,6 @@ func TestTagsAuthKeyWithoutTagRegisterNoTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-noreg"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -877,7 +869,6 @@ func TestTagsAuthKeyWithoutTagCannotAddViaCLI(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-noadd"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -977,7 +968,6 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithReset(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-reset"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1098,7 +1088,6 @@ func TestTagsAuthKeyWithoutTagCLINoOpAfterAdminWithEmptyAdvertise(t *testing.T) 
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-empty"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1218,7 +1207,6 @@ func TestTagsAuthKeyWithoutTagCLICannotReduceAdminMultiTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-reduce"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1340,7 +1328,6 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-owned"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1411,7 +1398,6 @@ func TestTagsUserLoginNonExistentTagAtRegistration(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-nonexist"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1484,7 +1470,6 @@ func TestTagsUserLoginUnownedTagAtRegistration(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-unowned"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1554,7 +1539,6 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-addtag"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1646,7 +1630,6 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-rmtag"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1738,7 +1721,6 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-adminwin"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1856,7 +1838,6 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-webauth-norem"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -1974,7 +1955,6 @@ func TestTagsAuthKeyWithTagRequestNonExistentTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-nonexist"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2045,7 +2025,6 @@ func TestTagsAuthKeyWithTagRequestUnownedTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-unowned"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2120,7 +2099,6 @@ func TestTagsAuthKeyWithoutTagRequestNonExistentTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-nonexist"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2191,7 +2169,6 @@ func TestTagsAuthKeyWithoutTagRequestUnownedTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-nokey-unowned"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2266,7 +2243,6 @@ func TestTagsAdminAPICannotSetNonExistentTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-admin-nonexist"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2339,7 +2315,6 @@ func TestTagsAdminAPICanSetUnownedTag(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-admin-unowned"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2428,7 +2403,6 @@ func TestTagsAdminAPICannotRemoveAllTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-admin-empty"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2546,7 +2520,6 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-issue-2978"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2752,7 +2725,6 @@ func TestTagsAdminAPICannotSetInvalidFormat(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-admin-invalid"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -2853,7 +2825,6 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 			[]tsic.Option{},
 			hsic.WithACLPolicy(policy),
 			hsic.WithTestName("tags-reauth-untag-2979-"+tc.testName),
-			hsic.WithTLS(),
 		)
 		requireNoErrHeadscaleEnv(t, err)
 
@@ -3008,7 +2979,6 @@ func TestTagsAuthKeyWithoutUserInheritsTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-no-user-inherit"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -3080,7 +3050,6 @@ func TestTagsAuthKeyWithoutUserRejectsAdvertisedTags(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-no-user-reject-advertise"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 
@@ -3147,7 +3116,6 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 		[]tsic.Option{},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("tags-authkey-to-user-cli-3038"),
-		hsic.WithTLS(),
 	)
 	requireNoErrHeadscaleEnv(t, err)
 

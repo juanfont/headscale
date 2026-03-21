@@ -233,7 +233,7 @@ type AuthRequest struct {
 
 func NewAuthRequest() AuthRequest {
 	return AuthRequest{
-		finished: make(chan AuthVerdict),
+		finished: make(chan AuthVerdict, 1),
 		closed:   &atomic.Bool{},
 	}
 }
@@ -241,7 +241,7 @@ func NewAuthRequest() AuthRequest {
 func NewRegisterAuthRequest(node Node) AuthRequest {
 	return AuthRequest{
 		node:     &node,
-		finished: make(chan AuthVerdict),
+		finished: make(chan AuthVerdict, 1),
 		closed:   &atomic.Bool{},
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -101,7 +102,7 @@ type Headscale struct {
 	// Things that generate changes
 	extraRecordMan *dns.ExtraRecordsMan
 	authProvider   AuthProvider
-	mapBatcher     mapper.Batcher
+	mapBatcher     *mapper.Batcher
 
 	clientStreamsOpen sync.WaitGroup
 }
@@ -1067,6 +1068,56 @@ func readOrCreatePrivateKey(path string) (*key.MachinePrivate, error) {
 // ignored.
 func (h *Headscale) Change(cs ...change.Change) {
 	h.mapBatcher.AddWork(cs...)
+}
+
+// HTTPHandler returns an http.Handler for the Headscale control server.
+// The handler serves the Tailscale control protocol including the /key
+// endpoint and /ts2021 Noise upgrade path.
+func (h *Headscale) HTTPHandler() http.Handler {
+	return h.createRouter(grpcRuntime.NewServeMux())
+}
+
+// NoisePublicKey returns the server's Noise protocol public key.
+func (h *Headscale) NoisePublicKey() key.MachinePublic {
+	return h.noisePrivateKey.Public()
+}
+
+// GetState returns the server's state manager for programmatic access
+// to users, nodes, policies, and other server state.
+func (h *Headscale) GetState() *state.State {
+	return h.state
+}
+
+// SetServerURLForTest updates the server URL in the configuration.
+// This is needed for test servers where the URL is not known until
+// the HTTP test server starts.
+// It panics when called outside of tests.
+func (h *Headscale) SetServerURLForTest(tb testing.TB, url string) {
+	tb.Helper()
+
+	h.cfg.ServerURL = url
+}
+
+// StartBatcherForTest initialises and starts the map response batcher.
+// It registers a cleanup function on tb to stop the batcher.
+// It panics when called outside of tests.
+func (h *Headscale) StartBatcherForTest(tb testing.TB) {
+	tb.Helper()
+
+	h.mapBatcher = mapper.NewBatcherAndMapper(h.cfg, h.state)
+	h.mapBatcher.Start()
+	tb.Cleanup(func() { h.mapBatcher.Close() })
+}
+
+// StartEphemeralGCForTest starts the ephemeral node garbage collector.
+// It registers a cleanup function on tb to stop the collector.
+// It panics when called outside of tests.
+func (h *Headscale) StartEphemeralGCForTest(tb testing.TB) {
+	tb.Helper()
+
+	go h.ephemeralGC.Start()
+
+	tb.Cleanup(func() { h.ephemeralGC.Close() })
 }
 
 // Provide some middleware that can inspect the ACME/autocert https calls

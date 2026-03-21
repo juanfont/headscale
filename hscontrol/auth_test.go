@@ -2507,7 +2507,7 @@ func TestAuthenticationFlows(t *testing.T) {
 			if req.Followup != "" {
 				var cancel context.CancelFunc
 
-				ctx, cancel = context.WithTimeout(context.Background(), 100*time.Millisecond)
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 			}
 

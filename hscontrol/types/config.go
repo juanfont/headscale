@@ -842,54 +842,72 @@ func dnsToTailcfgDNS(dns DNSConfig) *tailcfg.DNSConfig {
 	return &cfg
 }
 
-func prefixV4() (*netip.Prefix, error) {
+// warnBanner prints a highly visible warning banner to the log output.
+// It wraps the provided lines in an ASCII-art box with a "Warning!" header.
+// This is intended for critical configuration issues that users must not ignore.
+func warnBanner(lines []string) {
+	var b strings.Builder
+
+	b.WriteString("\n")
+	b.WriteString("################################################################\n")
+	b.WriteString("###      __          __              _             _         ###\n")
+	b.WriteString("###      \\ \\        / /             (_)           | |        ###\n")
+	b.WriteString("###       \\ \\  /\\  / /_ _ _ __ _ __  _ _ __   __ _| |        ###\n")
+	b.WriteString("###        \\ \\/  \\/ / _` | '__| '_ \\| | '_ \\ / _` | |        ###\n")
+	b.WriteString("###         \\  /\\  / (_| | |  | | | | | | | | (_| |_|        ###\n")
+	b.WriteString("###          \\/  \\/ \\__,_|_|  |_| |_|_|_| |_|\\__, (_)        ###\n")
+	b.WriteString("###                                           __/ |          ###\n")
+	b.WriteString("###                                          |___/           ###\n")
+	b.WriteString("################################################################\n")
+	b.WriteString("###                                                          ###\n")
+
+	for _, line := range lines {
+		b.WriteString(fmt.Sprintf("###  %-54s  ###\n", line))
+	}
+
+	b.WriteString("###                                                          ###\n")
+	b.WriteString("################################################################")
+
+	log.Warn().Msg(b.String())
+}
+
+func prefixV4() (*netip.Prefix, bool, error) {
 	prefixV4Str := viper.GetString("prefixes.v4")
 
 	if prefixV4Str == "" {
-		return nil, nil //nolint:nilnil // empty prefix is valid, not an error
+		return nil, false, nil
 	}
 
 	prefixV4, err := netip.ParsePrefix(prefixV4Str)
 	if err != nil {
-		return nil, fmt.Errorf("parsing IPv4 prefix from config: %w", err)
+		return nil, false, fmt.Errorf("parsing IPv4 prefix from config: %w", err)
 	}
 
 	builder := netipx.IPSetBuilder{}
 	builder.AddPrefix(tsaddr.CGNATRange())
 
 	ipSet, _ := builder.IPSet()
-	if !ipSet.ContainsPrefix(prefixV4) {
-		log.Warn().
-			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
-				prefixV4Str, tsaddr.CGNATRange())
-	}
 
-	return &prefixV4, nil
+	return &prefixV4, !ipSet.ContainsPrefix(prefixV4), nil
 }
 
-func prefixV6() (*netip.Prefix, error) {
+func prefixV6() (*netip.Prefix, bool, error) {
 	prefixV6Str := viper.GetString("prefixes.v6")
 
 	if prefixV6Str == "" {
-		return nil, nil //nolint:nilnil // empty prefix is valid, not an error
+		return nil, false, nil
 	}
 
 	prefixV6, err := netip.ParsePrefix(prefixV6Str)
 	if err != nil {
-		return nil, fmt.Errorf("parsing IPv6 prefix from config: %w", err)
+		return nil, false, fmt.Errorf("parsing IPv6 prefix from config: %w", err)
 	}
 
 	builder := netipx.IPSetBuilder{}
 	builder.AddPrefix(tsaddr.TailscaleULARange())
 	ipSet, _ := builder.IPSet()
 
-	if !ipSet.ContainsPrefix(prefixV6) {
-		log.Warn().
-			Msgf("Prefix %s is not in the %s range. This is an unsupported configuration.",
-				prefixV6Str, tsaddr.TailscaleULARange())
-	}
-
-	return &prefixV6, nil
+	return &prefixV6, !ipSet.ContainsPrefix(prefixV6), nil
 }
 
 // LoadCLIConfig returns the needed configuration for the CLI client
@@ -921,18 +939,39 @@ func LoadServerConfig() (*Config, error) {
 	logConfig := logConfig()
 	zerolog.SetGlobalLevel(logConfig.Level)
 
-	prefix4, err := prefixV4()
+	prefix4, v4NonStandard, err := prefixV4()
 	if err != nil {
 		return nil, err
 	}
 
-	prefix6, err := prefixV6()
+	prefix6, v6NonStandard, err := prefixV6()
 	if err != nil {
 		return nil, err
 	}
 
 	if prefix4 == nil && prefix6 == nil {
 		return nil, ErrNoPrefixConfigured
+	}
+
+	if v4NonStandard || v6NonStandard {
+		warnBanner([]string{
+			"You have overridden the default Headscale IP prefixes",
+			"with a range outside of the standard CGNAT and/or ULA",
+			"ranges. This is NOT a supported configuration.",
+			"",
+			"Using subsets of the default ranges (100.64.0.0/10 for",
+			"IPv4, fd7a:115c:a1e0::/48 for IPv6) is fine. Using",
+			"ranges outside of these will cause undefined behaviour",
+			"as the Tailscale client is NOT designed to operate on",
+			"any other ranges.",
+			"",
+			"Please revert your prefixes to subsets of the standard",
+			"ranges as described in the example configuration.",
+			"",
+			"Any issue raised using a range outside of the",
+			"supported range will be labelled as wontfix",
+			"and closed.",
+		})
 	}
 
 	allocStr := viper.GetString("prefixes.allocation")

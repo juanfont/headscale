@@ -58,6 +58,7 @@ var veryLargeDestination = []policyv2.AliasWithPorts{
 func aclScenario(
 	t *testing.T,
 	policy *policyv2.Policy,
+	testName string,
 	clientsPerUser int,
 ) *Scenario {
 	t.Helper()
@@ -81,9 +82,7 @@ func aclScenario(
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
-		hsic.WithTestName("acl"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
+		hsic.WithTestName(testName),
 	)
 	require.NoError(t, err)
 
@@ -305,6 +304,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{},
+				hsic.WithTestName("aclnetmap"),
 				hsic.WithACLPolicy(&testCase.policy),
 			)
 
@@ -351,6 +351,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuser80",
 		1,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -414,6 +415,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 				},
 			},
 		},
+		"acl-denyport80",
 		4,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -462,6 +464,7 @@ func TestACLAllowUserDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowuserdst",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -524,6 +527,7 @@ func TestACLAllowStarDst(t *testing.T) {
 				},
 			},
 		},
+		"acl-allowstar",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -591,6 +595,7 @@ func TestACLNamedHostsCanReachBySubnet(t *testing.T) {
 				},
 			},
 		},
+		"acl-namedsubnet",
 		3,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -743,6 +748,7 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			scenario := aclScenario(t,
 				&testCase.policy,
+				"acl-namedreach",
 				2,
 			)
 			defer scenario.ShutdownAssertNoPanics(t)
@@ -1044,7 +1050,7 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 	for name, testCase := range tests {
 		t.Run(name, func(t *testing.T) {
-			scenario := aclScenario(t, &testCase.policy, 1)
+			scenario := aclScenario(t, &testCase.policy, "acl-dev1dev2", 1)
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
@@ -1159,7 +1165,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("policyreload"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -1290,6 +1296,7 @@ func TestACLAutogroupMember(t *testing.T) {
 				},
 			},
 		},
+		"acl-agmember",
 		2,
 	)
 	defer scenario.ShutdownAssertNoPanics(t)
@@ -1383,8 +1390,6 @@ func TestACLAutogroupTagged(t *testing.T) {
 	headscale, err := scenario.Headscale(
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-tagged"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1430,7 +1435,10 @@ func TestACLAutogroupTagged(t *testing.T) {
 				network = networks[0]
 			}
 
-			// Create the tailscale node with appropriate options
+			// Create the tailscale node with appropriate options.
+			// CACert and HeadscaleName are passed explicitly because
+			// nodes created via CreateTailscaleNode are not part of
+			// the standard CreateHeadscaleEnv flow.
 			opts := []tsic.Option{
 				tsic.WithCACert(headscale.GetCert()),
 				tsic.WithHeadscaleName(headscale.GetHostname()),
@@ -1698,8 +1706,6 @@ func TestACLAutogroupSelf(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-autogroup-self"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -1721,7 +1727,10 @@ func TestACLAutogroupSelf(t *testing.T) {
 	authKey, err := scenario.CreatePreAuthKeyWithTags(routerUser.GetId(), true, false, []string{"tag:router-node"})
 	require.NoError(t, err)
 
-	// Create router node (tags come from the PreAuthKey)
+	// Create router node (tags come from the PreAuthKey).
+	// CACert and HeadscaleName are passed explicitly because
+	// nodes created via tsic.New are not part of the standard
+	// CreateHeadscaleEnv flow.
 	routerClient, err := tsic.New(
 		scenario.Pool(),
 		"unstable",
@@ -1911,14 +1920,13 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
-			// Install iptables to enable packet filtering for ACL tests.
-			// Packet filters are essential for testing autogroup:self and other ACL policies.
-			tsic.WithPackages("curl", "iptables", "ip6tables"),
+			tsic.WithNetfilter("off"),
+			tsic.WithPackages("curl"),
 			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithTestName("aclpropagation"),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -2427,10 +2435,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2445,10 +2451,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2524,10 +2528,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2542,10 +2544,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2621,10 +2621,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user1Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2639,10 +2637,8 @@ func TestACLTagPropagation(t *testing.T) {
 				user2Node, err := scenario.CreateTailscaleNode(
 					"head",
 					tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 					tsic.WithNetfilter("off"),
 				)
@@ -2729,16 +2725,12 @@ func TestACLTagPropagation(t *testing.T) {
 			err = scenario.CreateHeadscaleEnv(
 				[]tsic.Option{
 					tsic.WithNetfilter("off"),
-					tsic.WithDockerEntrypoint([]string{
-						"/bin/sh", "-c",
-						"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-					}),
+					tsic.WithPackages("curl"),
+					tsic.WithWebserver(80),
 					tsic.WithDockerWorkdir("/"),
 				},
 				hsic.WithACLPolicy(tt.policy),
 				hsic.WithTestName("acl-tag-"+tt.name),
-				hsic.WithEmbeddedDERPServerOnly(),
-				hsic.WithTLS(),
 			)
 			require.NoError(t, err)
 
@@ -2917,16 +2909,12 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = scenario.CreateHeadscaleEnv(
 		[]tsic.Option{
 			tsic.WithNetfilter("off"),
-			tsic.WithDockerEntrypoint([]string{
-				"/bin/sh", "-c",
-				"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-			}),
+			tsic.WithPackages("curl"),
+			tsic.WithWebserver(80),
 			tsic.WithDockerWorkdir("/"),
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-tag-port-specific"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -2945,10 +2933,8 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user1Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; python3 -m http.server --bind :: 80 & tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
+		tsic.WithWebserver(80),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
@@ -2964,10 +2950,7 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	user2Node, err := scenario.CreateTailscaleNode(
 		"head",
 		tsic.WithNetwork(scenario.networks[scenario.testDefaultNetwork]),
-		tsic.WithDockerEntrypoint([]string{
-			"/bin/sh", "-c",
-			"/bin/sleep 3 ; apk add python3 curl ; update-ca-certificates ; tailscaled --tun=tsdev",
-		}),
+		tsic.WithPackages("curl"),
 		tsic.WithDockerWorkdir("/"),
 		tsic.WithNetfilter("off"),
 	)
@@ -3089,8 +3072,6 @@ func TestACLGroupWithUnknownUser(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-unknown-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 	)
 	require.NoError(t, err)
 
@@ -3191,8 +3172,6 @@ func TestACLGroupAfterUserDeletion(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policy),
 		hsic.WithTestName("acl-deleted-user"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
 		hsic.WithPolicyMode(types.PolicyModeDB), // Use DB mode so policy persists after user deletion
 	)
 	require.NoError(t, err)
@@ -3385,9 +3364,7 @@ func TestACLGroupDeletionExactReproduction(t *testing.T) {
 		},
 		hsic.WithACLPolicy(initialPolicy),
 		hsic.WithTestName("acl-exact-repro"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3564,9 +3541,7 @@ func TestACLDynamicUnknownUserAddition(t *testing.T) {
 		},
 		hsic.WithACLPolicy(validPolicy),
 		hsic.WithTestName("acl-dynamic-unknown"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 
@@ -3722,9 +3697,7 @@ func TestACLDynamicUnknownUserRemoval(t *testing.T) {
 		},
 		hsic.WithACLPolicy(policyWithUnknown),
 		hsic.WithTestName("acl-unknown-removal"),
-		hsic.WithEmbeddedDERPServerOnly(),
-		hsic.WithTLS(),
-		hsic.WithPolicyMode(types.PolicyModeDB),
+		hsic.WithPolicyMode(types.PolicyModeDB), // test updates policy at runtime via CLI
 	)
 	require.NoError(t, err)
 

@@ -61,7 +61,7 @@ options, run:
 ## Manage headscale users
 
 In headscale, a node (also known as machine or device) is [typically assigned to a headscale
-user](../ref/registration.md#identity-model). Such a headscale user may have many nodes assigned to them and can be
+user](../ref/registration.md#identity-model). Such a headscale user[^1] may have many nodes assigned to them and can be
 managed with the `headscale users` command. Invoke the built-in help for more information: `headscale users --help`.
 
 ### Create a headscale user
@@ -149,3 +149,5 @@ The command returns the preauthkey on success which is used to connect a node to
 ```shell
 tailscale up --login-server <YOUR_HEADSCALE_URL> --authkey <YOUR_AUTH_KEY>
 ```
+
+[^1]: [Ensure that the Headscale username does not end with `@`.](../ref/oidc.md#reference-a-user-in-the-policy)

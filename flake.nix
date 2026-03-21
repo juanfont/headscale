@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           buildGo = pkgs.buildGo126Module;
-          vendorHash = "sha256-oUN53ELb3+xn4yA7lEfXyT2c7NxbQC6RtbkGVq6+RLU=";
+          vendorHash = "sha256-jom1279Lx2Knff93rfoEgGeBBk+EjJO7GAkaQYlchgY=";
         in
         {
           headscale = buildGo {
@@ -179,10 +179,10 @@
             yq-go
             ripgrep
             postgresql
-            python313Packages.mdformat
-            python313Packages.mdformat-footnote
-            python313Packages.mdformat-frontmatter
-            python313Packages.mdformat-mkdocs
+            python314Packages.mdformat
+            python314Packages.mdformat-footnote
+            python314Packages.mdformat-frontmatter
+            python314Packages.mdformat-mkdocs
             prek
 
             # 'dot' is needed for pprof graphs
