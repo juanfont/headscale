@@ -36,8 +36,16 @@ var (
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
-// netip.Prefixes representing the primary routes for that node.
+// netip.Prefixes representing the routes for that node.
 type RouteFunc func(id NodeID) []netip.Prefix
+
+// ViaRouteResult describes via grant effects for a viewer-peer pair.
+type ViaRouteResult struct {
+	// Include contains prefixes this peer should serve to this viewer (via-designated).
+	Include []netip.Prefix
+	// Exclude contains prefixes steered to OTHER peers (suppress from global primary).
+	Exclude []netip.Prefix
+}
 
 type (
 	NodeID  uint64
@@ -1110,9 +1118,19 @@ func (nv NodeView) TailNode(
 		keyExpiry = nv.Expiry().Get()
 	}
 
-	primaryRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
+	// routeFunc returns ALL routes (subnet + exit) for this node.
+	allRoutes := primaryRouteFunc(nv.ID())
+	allowedIPs := slices.Concat(nv.Prefixes(), allRoutes)
 	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
+
+	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
+	var primaryRoutes []netip.Prefix
+
+	for _, r := range allRoutes {
+		if !tsaddr.IsExitRoute(r) {
+			primaryRoutes = append(primaryRoutes, r)
+		}
+	}
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},

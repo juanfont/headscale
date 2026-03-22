@@ -1061,6 +1061,44 @@ func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.primaryRoutes.PrimaryRoutes(nodeID)
 }
 
+// RoutesForPeer computes the routes a peer should advertise to a specific viewer,
+// applying via grant steering on top of global primary election and exit routes.
+// When no via grants apply, this falls back to existing behavior (global primaries + exit routes).
+func (s *State) RoutesForPeer(
+	viewer, peer types.NodeView,
+	matchers []matcher.Match,
+) []netip.Prefix {
+	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
+
+	globalPrimaries := s.primaryRoutes.PrimaryRoutes(peer.ID())
+	exitRoutes := peer.ExitRoutes()
+
+	// Fast path: no via grants affect this pair — existing behavior.
+	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
+		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
+
+		return policy.ReduceRoutes(viewer, allRoutes, matchers)
+	}
+
+	// Remove excluded routes (steered to a different peer for this viewer).
+	var routes []netip.Prefix
+
+	for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
+		if !slices.Contains(viaResult.Exclude, p) {
+			routes = append(routes, p)
+		}
+	}
+
+	// Add included routes (this peer is via-designated for this viewer).
+	for _, p := range viaResult.Include {
+		if !slices.Contains(routes, p) {
+			routes = append(routes, p)
+		}
+	}
+
+	return policy.ReduceRoutes(viewer, routes, matchers)
+}
+
 // PrimaryRoutesString returns a string representation of all primary routes.
 func (s *State) PrimaryRoutesString() string {
 	return s.primaryRoutes.String()

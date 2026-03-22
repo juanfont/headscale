@@ -821,6 +821,100 @@ func (pm *PolicyManager) NodeCanApproveRoute(node types.NodeView, route netip.Pr
 	return false
 }
 
+// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
+// For each via grant where the viewer matches the source, it checks whether the
+// peer advertises any of the grant's destination prefixes. If the peer has the
+// via tag, those prefixes go into Include; otherwise into Exclude.
+func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult {
+	var result types.ViaRouteResult
+
+	if pm == nil || pm.pol == nil {
+		return result
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	// Self-steering doesn't apply.
+	if viewer.ID() == peer.ID() {
+		return result
+	}
+
+	grants := pm.pol.Grants
+	for _, acl := range pm.pol.ACLs {
+		grants = append(grants, aclToGrants(acl)...)
+	}
+
+	for _, grant := range grants {
+		if len(grant.Via) == 0 {
+			continue
+		}
+
+		// Check if viewer matches any grant source.
+		viewerMatches := false
+
+		for _, src := range grant.Sources {
+			ips, err := src.Resolve(pm.pol, pm.users, pm.nodes)
+			if err != nil {
+				continue
+			}
+
+			if ips != nil && slices.ContainsFunc(viewer.IPs(), ips.Contains) {
+				viewerMatches = true
+
+				break
+			}
+		}
+
+		if !viewerMatches {
+			continue
+		}
+
+		// Collect destination prefixes that the peer actually advertises.
+		peerSubnetRoutes := peer.SubnetRoutes()
+		peerExitRoutes := peer.ExitRoutes()
+
+		var matchedPrefixes []netip.Prefix
+
+		for _, dst := range grant.Destinations {
+			switch d := dst.(type) {
+			case *Prefix:
+				dstPrefix := netip.Prefix(*d)
+				if slices.Contains(peerSubnetRoutes, dstPrefix) {
+					matchedPrefixes = append(matchedPrefixes, dstPrefix)
+				}
+			case *AutoGroup:
+				if d.Is(AutoGroupInternet) && len(peerExitRoutes) > 0 {
+					matchedPrefixes = append(matchedPrefixes, peerExitRoutes...)
+				}
+			}
+		}
+
+		if len(matchedPrefixes) == 0 {
+			continue
+		}
+
+		// Check if peer has any of the via tags.
+		peerHasVia := false
+
+		for _, viaTag := range grant.Via {
+			if peer.HasTag(string(viaTag)) {
+				peerHasVia = true
+
+				break
+			}
+		}
+
+		if peerHasVia {
+			result.Include = append(result.Include, matchedPrefixes...)
+		} else {
+			result.Exclude = append(result.Exclude, matchedPrefixes...)
+		}
+	}
+
+	return result
+}
+
 func (pm *PolicyManager) Version() int {
 	return 2
 }
