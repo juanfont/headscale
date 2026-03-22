@@ -36,6 +36,12 @@ type PolicyManager interface {
 	// NodeCanApproveRoute reports whether the given node can approve the given route.
 	NodeCanApproveRoute(node types.NodeView, route netip.Prefix) bool
 
+	// ViaRoutesForPeer computes via grant effects for a viewer-peer pair.
+	// It returns which routes should be included (peer is via-designated for viewer)
+	// and excluded (steered to a different peer). When no via grants apply,
+	// both fields are empty and the caller falls back to existing behavior.
+	ViaRoutesForPeer(viewer, peer types.NodeView) types.ViaRouteResult
+
 	Version() int
 	DebugString() string
 }
