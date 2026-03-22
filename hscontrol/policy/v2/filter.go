@@ -344,9 +344,11 @@ func (pol *Policy) compileViaGrant(
 		return nil, nil
 	}
 
-	// Find which grant destination subnets this node actually advertises.
-	nodeRoutes := node.SubnetRoutes()
-	if len(nodeRoutes) == 0 {
+	// Find which grant destination subnets/exit routes this node actually advertises.
+	nodeSubnetRoutes := node.SubnetRoutes()
+	nodeExitRoutes := node.ExitRoutes()
+
+	if len(nodeSubnetRoutes) == 0 && len(nodeExitRoutes) == 0 {
 		return nil, nil
 	}
 
@@ -354,14 +356,16 @@ func (pol *Policy) compileViaGrant(
 	var viaDstPrefixes []netip.Prefix
 
 	for _, dst := range grant.Destinations {
-		p, ok := dst.(*Prefix)
-		if !ok {
-			continue
-		}
-
-		dstPrefix := netip.Prefix(*p)
-		if slices.Contains(nodeRoutes, dstPrefix) {
-			viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
+		switch d := dst.(type) {
+		case *Prefix:
+			dstPrefix := netip.Prefix(*d)
+			if slices.Contains(nodeSubnetRoutes, dstPrefix) {
+				viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
+			}
+		case *AutoGroup:
+			if d.Is(AutoGroupInternet) && len(nodeExitRoutes) > 0 {
+				viaDstPrefixes = append(viaDstPrefixes, nodeExitRoutes...)
+			}
 		}
 	}
 
