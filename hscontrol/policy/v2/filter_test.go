@@ -3172,3 +3172,950 @@ func TestGroupSourcesByUser(t *testing.T) {
 		})
 	}
 }
+
+func TestCompanionCapGrantRules(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		dstIPStrings []string
+		srcPrefixes  []netip.Prefix
+		capMap       tailcfg.PeerCapMap
+		want         []tailcfg.FilterRule
+	}{
+		{
+			name:         "drive produces drive-sharer companion with reversed IPs",
+			dstIPStrings: []string{"100.64.0.1"},
+			srcPrefixes:  []netip.Prefix{mp("100.64.0.2/32")},
+			capMap: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityTaildrive: {tailcfg.RawMessage(`{}`)},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.1"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{mp("100.64.0.2/32")},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityTaildriveSharer: nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "relay produces relay-target companion with reversed IPs",
+			dstIPStrings: []string{"100.64.0.10"},
+			srcPrefixes:  []netip.Prefix{mp("100.64.0.20/32")},
+			capMap: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityRelay: {tailcfg.RawMessage(`{}`)},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.10"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{mp("100.64.0.20/32")},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityRelayTarget: nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "both drive and relay sorted by original cap name",
+			dstIPStrings: []string{"100.64.0.1"},
+			srcPrefixes:  []netip.Prefix{mp("100.64.0.2/32")},
+			capMap: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityRelay:     {tailcfg.RawMessage(`{}`)},
+				tailcfg.PeerCapabilityTaildrive: {tailcfg.RawMessage(`{}`)},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					// drive < relay alphabetically
+					SrcIPs: []string{"100.64.0.1"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{mp("100.64.0.2/32")},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityTaildriveSharer: nil,
+							},
+						},
+					},
+				},
+				{
+					SrcIPs: []string{"100.64.0.1"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{mp("100.64.0.2/32")},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityRelayTarget: nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name:         "unknown capability produces no companion",
+			dstIPStrings: []string{"100.64.0.1"},
+			srcPrefixes:  []netip.Prefix{mp("100.64.0.2/32")},
+			capMap: tailcfg.PeerCapMap{
+				"example.com/cap/custom": {tailcfg.RawMessage(`{}`)},
+			},
+			want: []tailcfg.FilterRule{},
+		},
+		{
+			name:         "companion has nil CapMap value not original",
+			dstIPStrings: []string{"100.64.0.5"},
+			srcPrefixes:  []netip.Prefix{mp("100.64.0.6/32")},
+			capMap: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityTaildrive: {
+					tailcfg.RawMessage(`{"access":"rw"}`),
+				},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.5"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{mp("100.64.0.6/32")},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityTaildriveSharer: nil,
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "multiple IP ranges reversed correctly",
+			dstIPStrings: []string{
+				"100.64.0.10",
+				"100.64.0.11",
+			},
+			srcPrefixes: []netip.Prefix{
+				mp("100.64.0.20/32"),
+				mp("100.64.0.21/32"),
+			},
+			capMap: tailcfg.PeerCapMap{
+				tailcfg.PeerCapabilityRelay: {tailcfg.RawMessage(`{}`)},
+			},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.10", "100.64.0.11"},
+					CapGrant: []tailcfg.CapGrant{
+						{
+							Dsts: []netip.Prefix{
+								mp("100.64.0.20/32"),
+								mp("100.64.0.21/32"),
+							},
+							CapMap: tailcfg.PeerCapMap{
+								tailcfg.PeerCapabilityRelayTarget: nil,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := companionCapGrantRules(tt.dstIPStrings, tt.srcPrefixes, tt.capMap)
+			if diff := cmp.Diff(tt.want, got, util.Comparers...); diff != "" {
+				t.Errorf("companionCapGrantRules() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestSourcesHaveWildcard(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		srcs Aliases
+		want bool
+	}{
+		{
+			name: "wildcard only",
+			srcs: Aliases{Wildcard},
+			want: true,
+		},
+		{
+			name: "wildcard mixed with specific",
+			srcs: Aliases{up("user@"), Wildcard, tp("tag:server")},
+			want: true,
+		},
+		{
+			name: "no wildcard",
+			srcs: Aliases{up("user@"), tp("tag:server")},
+			want: false,
+		},
+		{
+			name: "empty",
+			srcs: Aliases{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, sourcesHaveWildcard(tt.srcs))
+		})
+	}
+}
+
+func TestSourcesHaveDangerAll(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		srcs Aliases
+		want bool
+	}{
+		{
+			name: "danger-all only",
+			srcs: Aliases{agp(string(AutoGroupDangerAll))},
+			want: true,
+		},
+		{
+			name: "danger-all mixed with others",
+			srcs: Aliases{up("user@"), agp(string(AutoGroupDangerAll))},
+			want: true,
+		},
+		{
+			name: "no danger-all",
+			srcs: Aliases{up("user@"), agp(string(AutoGroupMember))},
+			want: false,
+		},
+		{
+			name: "empty",
+			srcs: Aliases{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, sourcesHaveDangerAll(tt.srcs))
+		})
+	}
+}
+
+func TestSrcIPsWithRoutes(t *testing.T) {
+	t.Parallel()
+
+	// Build a resolved address set for a single IP.
+	var b netipx.IPSetBuilder
+	b.AddPrefix(netip.MustParsePrefix("100.64.0.1/32"))
+
+	resolved, err := newResolved(&b)
+	require.NoError(t, err)
+
+	// Node with approved subnet route.
+	nodeWithRoutes := types.Nodes{
+		&types.Node{
+			IPv4: ap("100.64.0.5"),
+			Hostinfo: &tailcfg.Hostinfo{
+				RoutableIPs: []netip.Prefix{
+					mp("10.0.0.0/24"),
+				},
+			},
+			ApprovedRoutes: []netip.Prefix{
+				mp("10.0.0.0/24"),
+			},
+		},
+	}.ViewSlice()
+
+	emptyNodes := types.Nodes{}.ViewSlice()
+
+	tests := []struct {
+		name         string
+		resolved     ResolvedAddresses
+		hasWildcard  bool
+		hasDangerAll bool
+		nodes        func() []string
+		want         []string
+	}{
+		{
+			name:         "danger-all returns star regardless",
+			resolved:     resolved,
+			hasWildcard:  false,
+			hasDangerAll: true,
+			want:         []string{"*"},
+		},
+		{
+			name:         "danger-all takes precedence over wildcard",
+			resolved:     resolved,
+			hasWildcard:  true,
+			hasDangerAll: true,
+			want:         []string{"*"},
+		},
+		{
+			name:         "wildcard appends approved subnet routes",
+			resolved:     resolved,
+			hasWildcard:  true,
+			hasDangerAll: false,
+		},
+		{
+			name:         "neither returns resolved addrs only",
+			resolved:     resolved,
+			hasWildcard:  false,
+			hasDangerAll: false,
+			want:         []string{"100.64.0.1"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			nodes := emptyNodes
+			if tt.hasWildcard && !tt.hasDangerAll {
+				nodes = nodeWithRoutes
+			}
+
+			got := srcIPsWithRoutes(tt.resolved, tt.hasWildcard, tt.hasDangerAll, nodes)
+
+			if tt.hasDangerAll {
+				assert.Equal(t, []string{"*"}, got)
+			} else if tt.hasWildcard {
+				assert.Contains(t, got, "100.64.0.1", "should contain the resolved IP")
+				assert.Contains(t, got, "10.0.0.0/24", "should contain approved subnet route")
+			} else {
+				assert.Equal(t, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestFilterAllowAllFix(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "testuser"},
+	}
+	nodes := types.Nodes{
+		&types.Node{
+			IPv4:     ap("100.64.0.1"),
+			User:     &users[0],
+			Hostinfo: &tailcfg.Hostinfo{},
+		},
+	}.ViewSlice()
+
+	tests := []struct {
+		name            string
+		pol             *Policy
+		wantFilterAllow bool
+	}{
+		{
+			name: "grants only should not return FilterAllowAll",
+			pol: &Policy{
+				Grants: []Grant{
+					{
+						Sources:      Aliases{up("testuser@")},
+						Destinations: Aliases{pp("100.64.0.1/32")},
+						InternetProtocols: []ProtocolPort{
+							{Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+						},
+					},
+				},
+			},
+			wantFilterAllow: false,
+		},
+		{
+			name:            "nil ACLs and nil grants returns FilterAllowAll",
+			pol:             &Policy{},
+			wantFilterAllow: true,
+		},
+		{
+			name: "nil ACLs and empty grants returns FilterAllowAll",
+			pol: &Policy{
+				Grants: []Grant{},
+			},
+			wantFilterAllow: true,
+		},
+		{
+			name: "both ACLs and grants should not return FilterAllowAll",
+			pol: &Policy{
+				ACLs: []ACL{
+					{
+						Action:  "accept",
+						Sources: Aliases{up("testuser@")},
+						Destinations: []AliasWithPorts{
+							aliasWithPorts(pp("100.64.0.1/32"), tailcfg.PortRangeAny),
+						},
+					},
+				},
+				Grants: []Grant{
+					{
+						Sources:      Aliases{up("testuser@")},
+						Destinations: Aliases{pp("100.64.0.1/32")},
+						InternetProtocols: []ProtocolPort{
+							{Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+						},
+					},
+				},
+			},
+			wantFilterAllow: false,
+		},
+		{
+			name:            "nil policy returns FilterAllowAll",
+			pol:             nil,
+			wantFilterAllow: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			rules, err := tt.pol.compileFilterRules(users, nodes)
+			require.NoError(t, err)
+
+			isFilterAllowAll := cmp.Diff(tailcfg.FilterAllowAll, rules) == ""
+			assert.Equal(t, tt.wantFilterAllow, isFilterAllowAll,
+				"FilterAllowAll mismatch: got rules=%v", rules)
+		})
+	}
+}
+
+func TestCompileViaGrant(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "testuser"},
+	}
+
+	allPorts := []ProtocolPort{
+		{Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+	}
+
+	// Node matching via tag with approved subnet routes.
+	viaNode := &types.Node{
+		IPv4: ap("100.64.0.1"),
+		User: &users[0],
+		Tags: []string{"tag:relay"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				mp("10.0.0.0/24"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			mp("10.0.0.0/24"),
+		},
+	}
+
+	// Node matching via tag with exit routes (0.0.0.0/0, ::/0).
+	exitNode := &types.Node{
+		IPv4: ap("100.64.0.2"),
+		User: &users[0],
+		Tags: []string{"tag:exit"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				mp("0.0.0.0/0"),
+				mp("::/0"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			mp("0.0.0.0/0"),
+			mp("::/0"),
+		},
+	}
+
+	// Node matching via tag but no advertised routes.
+	taggedNoRoutes := &types.Node{
+		IPv4:     ap("100.64.0.3"),
+		User:     &users[0],
+		Tags:     []string{"tag:relay"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// Node not matching any via tag.
+	nonViaNode := &types.Node{
+		IPv4:     ap("100.64.0.4"),
+		User:     &users[0],
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	// Source node with IP.
+	srcNode := &types.Node{
+		IPv4:     ap("100.64.0.10"),
+		User:     &users[0],
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	tests := []struct {
+		name    string
+		grant   Grant
+		node    *types.Node
+		nodes   types.Nodes
+		pol     *Policy
+		want    []tailcfg.FilterRule
+		wantErr error
+	}{
+		{
+			name: "node not matching via tag returns nil",
+			grant: Grant{
+				Sources:           Aliases{up("testuser@")},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  nonViaNode,
+			nodes: types.Nodes{nonViaNode, srcNode},
+			pol:   &Policy{},
+			want:  nil,
+		},
+		{
+			name: "node matching via tag no advertised routes returns nil",
+			grant: Grant{
+				Sources:           Aliases{up("testuser@")},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  taggedNoRoutes,
+			nodes: types.Nodes{taggedNoRoutes, srcNode},
+			pol:   &Policy{},
+			want:  nil,
+		},
+		{
+			name: "node matching via tag with matching subnet routes returns rules",
+			grant: Grant{
+				Sources:           Aliases{up("testuser@")},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.10"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.0.0.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+		},
+		{
+			name: "autogroup:internet with exit routes produces rules",
+			grant: Grant{
+				Sources:           Aliases{up("testuser@")},
+				Destinations:      Aliases{agp(string(AutoGroupInternet))},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:exit"},
+			},
+			node:  exitNode,
+			nodes: types.Nodes{exitNode, srcNode},
+			pol:   &Policy{},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.10"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "0.0.0.0/0", Ports: tailcfg.PortRangeAny},
+						{IP: "::/0", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+		},
+		{
+			name: "autogroup:internet without exit routes returns nil",
+			grant: Grant{
+				Sources:           Aliases{up("testuser@")},
+				Destinations:      Aliases{agp(string(AutoGroupInternet))},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+			want:  nil,
+		},
+		{
+			name: "autogroup:self in sources returns errSelfInSources",
+			grant: Grant{
+				Sources:           Aliases{agp(string(AutoGroupSelf))},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:    viaNode,
+			nodes:   types.Nodes{viaNode, srcNode},
+			pol:     &Policy{},
+			want:    nil,
+			wantErr: errSelfInSources,
+		},
+		{
+			name: "wildcard sources include subnet routes in SrcIPs",
+			grant: Grant{
+				Sources:           Aliases{Wildcard},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+		},
+		{
+			name: "danger-all sources produce SrcIPs star",
+			grant: Grant{
+				Sources:           Aliases{agp(string(AutoGroupDangerAll))},
+				Destinations:      Aliases{pp("10.0.0.0/24")},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.0.0.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+		},
+		{
+			name: "app-only via grant with no ip field returns nil",
+			grant: Grant{
+				Sources:      Aliases{up("testuser@")},
+				Destinations: Aliases{pp("10.0.0.0/24")},
+				App: tailcfg.PeerCapMap{
+					tailcfg.PeerCapabilityRelay: {tailcfg.RawMessage(`{}`)},
+				},
+				Via: []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+			want:  nil,
+		},
+		{
+			name: "multiple destinations some matching some not",
+			grant: Grant{
+				Sources: Aliases{up("testuser@")},
+				Destinations: Aliases{
+					pp("10.0.0.0/24"),    // matches viaNode route
+					pp("192.168.0.0/16"), // does not match viaNode route
+				},
+				InternetProtocols: allPorts,
+				Via:               []Tag{"tag:relay"},
+			},
+			node:  viaNode,
+			nodes: types.Nodes{viaNode, srcNode},
+			pol:   &Policy{},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"100.64.0.10"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.0.0.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			nodeView := tt.node.View()
+			nodesSlice := tt.nodes.ViewSlice()
+
+			got, err := tt.pol.compileViaGrant(tt.grant, users, nodeView, nodesSlice)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			if tt.name == "wildcard sources include subnet routes in SrcIPs" {
+				// Wildcard resolves to CGNAT ranges; just check the route is appended.
+				require.Len(t, got, 1)
+				assert.Contains(t, got[0].SrcIPs, "10.0.0.0/24",
+					"wildcard SrcIPs should include approved subnet route")
+
+				return
+			}
+
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("compileViaGrant() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1"},
+		{Model: gorm.Model{ID: 2}, Name: "user2"},
+	}
+
+	node1 := &types.Node{
+		User:     new(users[0]),
+		IPv4:     ap("100.64.0.1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	node2 := &types.Node{
+		User:     new(users[0]),
+		IPv4:     ap("100.64.0.2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	node3 := &types.Node{
+		User:     new(users[1]),
+		IPv4:     ap("100.64.0.3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	taggedNode := &types.Node{
+		User:     &users[0],
+		IPv4:     ap("100.64.0.10"),
+		Tags:     []string{"tag:server"},
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	allNodes := types.Nodes{node1, node2, node3, taggedNode}
+
+	allPorts := []ProtocolPort{
+		{Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+	}
+
+	tests := []struct {
+		name    string
+		grant   Grant
+		node    *types.Node
+		pol     *Policy
+		want    []tailcfg.FilterRule
+		wantErr error
+	}{
+		{
+			name: "empty sources produces no rules",
+			grant: Grant{
+				Sources:           Aliases{},
+				Destinations:      Aliases{pp("100.64.0.3/32")},
+				InternetProtocols: allPorts,
+			},
+			node: node1,
+			pol:  &Policy{},
+			want: nil,
+		},
+		{
+			name: "empty destinations produces no rules",
+			grant: Grant{
+				Sources:           Aliases{up("user1@")},
+				Destinations:      Aliases{},
+				InternetProtocols: allPorts,
+			},
+			node: node1,
+			pol:  &Policy{},
+			want: nil,
+		},
+		{
+			name: "autogroup:self in sources returns errSelfInSources",
+			grant: Grant{
+				Sources:           Aliases{agp(string(AutoGroupSelf))},
+				Destinations:      Aliases{pp("100.64.0.3/32")},
+				InternetProtocols: allPorts,
+			},
+			node:    node1,
+			pol:     &Policy{},
+			wantErr: errSelfInSources,
+		},
+		{
+			name: "autogroup:self destination for tagged node is skipped",
+			grant: Grant{
+				Sources:           Aliases{up("user1@")},
+				Destinations:      Aliases{agp(string(AutoGroupSelf))},
+				InternetProtocols: allPorts,
+			},
+			node: taggedNode,
+			pol:  &Policy{},
+			want: nil,
+		},
+		{
+			name: "autogroup:self destination for untagged node produces same-user devices",
+			grant: Grant{
+				Sources:           Aliases{up("user1@")},
+				Destinations:      Aliases{agp(string(AutoGroupSelf))},
+				InternetProtocols: allPorts,
+			},
+			node: node1,
+			pol:  &Policy{},
+		},
+		{
+			name: "combined IP and App grant produces both DstPorts and CapGrant rules",
+			grant: Grant{
+				Sources:      Aliases{up("user1@")},
+				Destinations: Aliases{pp("100.64.0.3/32")},
+				InternetProtocols: []ProtocolPort{
+					{Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+				},
+				App: tailcfg.PeerCapMap{
+					"example.com/cap/custom": {tailcfg.RawMessage(`{}`)},
+				},
+			},
+			node: node1,
+			pol:  &Policy{},
+		},
+		{
+			name: "danger-all in sources produces SrcIPs star",
+			grant: Grant{
+				Sources:           Aliases{agp(string(AutoGroupDangerAll))},
+				Destinations:      Aliases{pp("100.64.0.3/32")},
+				InternetProtocols: allPorts,
+			},
+			node: node1,
+			pol:  &Policy{},
+			want: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"*"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "100.64.0.3", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			nodeView := tt.node.View()
+			nodesSlice := allNodes.ViewSlice()
+
+			got, err := tt.pol.compileGrantWithAutogroupSelf(
+				tt.grant, users, nodeView, nodesSlice,
+			)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+
+				return
+			}
+
+			require.NoError(t, err)
+
+			switch tt.name {
+			case "autogroup:self destination for untagged node produces same-user devices":
+				// Should produce rules; sources and destinations should only
+				// include user1's untagged devices (node1 and node2).
+				// IPs are merged into ranges by IPSet (e.g. "100.64.0.1-100.64.0.2").
+				require.NotEmpty(t, got, "expected rules for autogroup:self")
+				rule := got[0]
+				// SrcIPs from IPSet may be a merged range.
+				require.Len(t, rule.SrcIPs, 1)
+				assert.Equal(t, "100.64.0.1-100.64.0.2", rule.SrcIPs[0],
+					"SrcIPs should contain merged range for user1 untagged devices")
+
+				var destIPs []string
+				for _, dp := range rule.DstPorts {
+					destIPs = append(destIPs, dp.IP)
+				}
+
+				// DstPorts use individual IPs (not IPSet ranges).
+				assert.ElementsMatch(t, []string{"100.64.0.1", "100.64.0.2"}, destIPs,
+					"DstPorts should be user1 untagged devices only")
+
+			case "combined IP and App grant produces both DstPorts and CapGrant rules":
+				hasDstPorts := false
+				hasCapGrant := false
+
+				for _, rule := range got {
+					if len(rule.DstPorts) > 0 {
+						hasDstPorts = true
+					}
+
+					if len(rule.CapGrant) > 0 {
+						hasCapGrant = true
+					}
+				}
+
+				assert.True(t, hasDstPorts, "should have rules with DstPorts")
+				assert.True(t, hasCapGrant, "should have rules with CapGrant")
+
+			default:
+				if diff := cmp.Diff(tt.want, got); diff != "" {
+					t.Errorf("compileGrantWithAutogroupSelf() mismatch (-want +got):\n%s", diff)
+				}
+			}
+		})
+	}
+}
+
+func TestDestinationsToNetPortRange_AutogroupInternet(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "testuser"},
+	}
+	nodes := types.Nodes{
+		&types.Node{
+			IPv4:     ap("100.64.0.1"),
+			User:     &users[0],
+			Hostinfo: &tailcfg.Hostinfo{},
+		},
+	}.ViewSlice()
+
+	pol := &Policy{}
+	ports := []tailcfg.PortRange{tailcfg.PortRangeAny}
+
+	tests := []struct {
+		name     string
+		dests    Aliases
+		wantLen  int
+		wantStar bool
+	}{
+		{
+			name:    "autogroup:internet produces no DstPorts",
+			dests:   Aliases{agp(string(AutoGroupInternet))},
+			wantLen: 0,
+		},
+		{
+			name:     "wildcard produces DstPorts with star",
+			dests:    Aliases{Wildcard},
+			wantLen:  1,
+			wantStar: true,
+		},
+		{
+			name:    "explicit prefix produces DstPorts",
+			dests:   Aliases{pp("100.64.0.1/32")},
+			wantLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := pol.destinationsToNetPortRange(users, nodes, tt.dests, ports)
+			assert.Len(t, got, tt.wantLen)
+
+			if tt.wantStar && len(got) > 0 {
+				assert.Equal(t, "*", got[0].IP)
+			}
+
+			if !tt.wantStar && tt.wantLen > 0 && len(got) > 0 {
+				assert.NotEqual(t, "*", got[0].IP)
+			}
+		})
+	}
+}
