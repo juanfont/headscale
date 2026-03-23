@@ -233,6 +233,8 @@ jobs:
           - TestNodeOnlineStatus
           - TestPingAllByIPManyUpDown
           - Test2118DeletingOnlineNodePanics
+          - TestGrantCapRelay
+          - TestGrantCapDrive
           - TestEnablingRoutes
           - TestHASubnetRouterFailover
           - TestSubnetRouteACL
@@ -246,6 +248,9 @@ jobs:
           - TestAutoApproveMultiNetwork/webauth-user.*
           - TestAutoApproveMultiNetwork/webauth-group.*
           - TestSubnetRouteACLFiltering
+          - TestGrantViaSubnetSteering
+          - TestGrantViaExitNodeSteering
+          - TestGrantViaMixedSteering
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
