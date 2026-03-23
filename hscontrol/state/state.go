@@ -460,7 +460,7 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 	// like ApprovedRoutes set to [] when rejecting all routes). Without this, GORM's
 	// Updates(struct) silently skips zero-value fields and they are never persisted.
 	// See: https://github.com/juanfont/headscale/issues/3110
-	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Select("*").Updates(nodePtr).Error
+	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Select("*").Updates(nodePtr).Error //nolint:unqueryvet // Select("*") is intentional: GORM skips zero-value fields in struct Updates, so empty slices like ApprovedRoutes=[] are never persisted without it
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
