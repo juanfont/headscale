@@ -239,7 +239,9 @@ func (m *mapper) policyChangeResponse(
 
 	// Send remaining peers in PeersChanged - their AllowedIPs may have
 	// changed due to the policy update (e.g., different routes allowed).
+	// Include UserProfiles so newly visible peers have displayable identity.
 	if currentPeers.Len() > 0 {
+		builder.WithUserProfiles(currentPeers)
 		builder.WithPeerChanges(currentPeers)
 	}
 
