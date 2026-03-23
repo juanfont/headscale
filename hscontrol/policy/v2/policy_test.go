@@ -1339,3 +1339,379 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 		t.Logf("  rule %d: SrcIPs=%v DstPorts=%v", i, rule.SrcIPs, rule.DstPorts)
 	}
 }
+
+func TestViaRoutesForPeer(t *testing.T) {
+	t.Parallel()
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@"},
+		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@"},
+	}
+
+	t.Run("self_returns_empty", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		//nolint:goconst
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[0].View())
+		require.Empty(t, result.Include)
+		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("viewer_not_in_source", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[1]),
+				UserID:   new(users[1].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		//nolint:goconst
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		// user2 is not in the grant source (user1@), so result should be empty.
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Empty(t, result.Include)
+		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("peer_does_not_advertise_destination", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					// Advertises 192.168.0.0/24, not 10.0.0.0/24.
+					RoutableIPs: []netip.Prefix{mp("192.168.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("192.168.0.0/24")},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Empty(t, result.Include)
+		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("peer_with_via_tag_include", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Include)
+		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("peer_without_via_tag_exclude", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "other-router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:other"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"],
+				"tag:other": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		// Peer has tag:other, not tag:router, so route goes to Exclude.
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Empty(t, result.Include)
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, result.Exclude)
+	})
+
+	t.Run("mixed_prefix_and_autogroup_internet", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						mp("10.0.0.0/24"),
+						mp("0.0.0.0/0"),
+						mp("::/0"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					mp("10.0.0.0/24"),
+					mp("0.0.0.0/0"),
+					mp("::/0"),
+				},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["10.0.0.0/24", "autogroup:internet"],
+				"ip": ["*"],
+				"via": ["tag:router"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		// Include should have the subnet route and both exit routes.
+		require.Contains(t, result.Include, mp("10.0.0.0/24"))
+		require.Contains(t, result.Include, mp("0.0.0.0/0"))
+		require.Contains(t, result.Include, mp("::/0"))
+		require.Len(t, result.Include, 3)
+		require.Empty(t, result.Exclude)
+	})
+
+	t.Run("autogroup_internet_exit_routes", func(t *testing.T) {
+		t.Parallel()
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "viewer",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "exit-node",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:exit"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						mp("0.0.0.0/0"),
+						mp("::/0"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					mp("0.0.0.0/0"),
+					mp("::/0"),
+				},
+			},
+			{
+				ID:       3,
+				Hostname: "non-exit",
+				IPv4:     ap("100.64.0.3"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:other"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						mp("0.0.0.0/0"),
+						mp("::/0"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					mp("0.0.0.0/0"),
+					mp("::/0"),
+				},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:exit": ["user1@"],
+				"tag:other": ["user1@"]
+			},
+			"grants": [{
+				"src": ["user1@"],
+				"dst": ["autogroup:internet"],
+				"ip": ["*"],
+				"via": ["tag:exit"]
+			}]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		// Peer with tag:exit -> Include gets exit routes.
+		resultExit := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
+		require.Contains(t, resultExit.Include, mp("0.0.0.0/0"))
+		require.Contains(t, resultExit.Include, mp("::/0"))
+		require.Len(t, resultExit.Include, 2)
+		require.Empty(t, resultExit.Exclude)
+
+		// Peer without tag:exit -> Exclude gets exit routes.
+		resultOther := pm.ViaRoutesForPeer(nodes[0].View(), nodes[2].View())
+		require.Empty(t, resultOther.Include)
+		require.Contains(t, resultOther.Exclude, mp("0.0.0.0/0"))
+		require.Contains(t, resultOther.Exclude, mp("::/0"))
+		require.Len(t, resultOther.Exclude, 2)
+	})
+}
