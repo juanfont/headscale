@@ -1144,6 +1144,12 @@ func (nv NodeView) TailNode(
 		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
 
+	// Enable Taildrive sharing and access on all nodes. The actual
+	// access control is enforced by cap/drive grants in FilterRules;
+	// without a matching grant these attributes alone do nothing.
+	capMap[tailcfg.NodeAttrsTaildriveShare] = []tailcfg.RawMessage{}
+	capMap[tailcfg.NodeAttrsTaildriveAccess] = []tailcfg.RawMessage{}
+
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range
 		ID:       tailcfg.NodeID(nv.ID()),

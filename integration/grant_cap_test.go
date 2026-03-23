@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"net/netip"
 	"strings"
 	"testing"
@@ -510,4 +511,471 @@ func TestGrantCapRelay(t *testing.T) {
 				peerA.PeerRelay, peerA.Relay, peerA.CurAddr, peerA.Active)
 		}
 	}, assertTimeout, 2*time.Second, "B should resume peer relay to A")
+}
+
+// driveURL constructs a Taildrive WebDAV URL via the local proxy.
+func driveURL(domain, sharerName, path string) string {
+	return fmt.Sprintf(
+		"http://100.100.100.100:8080/%s/%s/%s",
+		domain, sharerName, path,
+	)
+}
+
+// TestGrantCapDrive validates Taildrive (cap/drive) grant-based access control:
+//  1. Node attributes (drive:share, drive:access) are set in all nodes' CapMap
+//  2. Cap grants compile correctly (cap/drive + cap/drive-sharer in packet filters)
+//  3. RW client can read, write, and delete files on the sharer
+//  4. RO client can read but NOT write or delete files on the sharer
+//  5. No-access node (no cap/drive grant) cannot read or write files
+func TestGrantCapDrive(t *testing.T) {
+	IntegrationSkip(t)
+
+	assertTimeout := 120 * time.Second
+
+	spec := ScenarioSpec{
+		NodesPerUser: 0,
+		Users:        []string{"sharer", "rwclient", "roclient", "noaccess"},
+		Networks: map[string][]string{
+			"usernet1": {"sharer", "rwclient", "roclient", "noaccess"},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	pol := &policyv2.Policy{
+		TagOwners: policyv2.TagOwners{
+			policyv2.Tag("tag:sharer"):    policyv2.Owners{usernameOwner("sharer@")},
+			policyv2.Tag("tag:rw-client"): policyv2.Owners{usernameOwner("rwclient@")},
+			policyv2.Tag("tag:ro-client"): policyv2.Owners{usernameOwner("roclient@")},
+			policyv2.Tag("tag:no-access"): policyv2.Owners{usernameOwner("noaccess@")},
+		},
+		Grants: []policyv2.Grant{
+			// Grant 1: IP connectivity between ALL nodes.
+			{
+				Sources: policyv2.Aliases{
+					tagp("tag:sharer"), tagp("tag:rw-client"),
+					tagp("tag:ro-client"), tagp("tag:no-access"),
+				},
+				Destinations: policyv2.Aliases{
+					tagp("tag:sharer"), tagp("tag:rw-client"),
+					tagp("tag:ro-client"), tagp("tag:no-access"),
+				},
+				InternetProtocols: []policyv2.ProtocolPort{
+					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
+				},
+			},
+			// Grant 2: cap/drive RW - rw-client can read+write sharer's drives.
+			{
+				Sources:      policyv2.Aliases{tagp("tag:rw-client")},
+				Destinations: policyv2.Aliases{tagp("tag:sharer")},
+				App: tailcfg.PeerCapMap{
+					tailcfg.PeerCapabilityTaildrive: {
+						tailcfg.RawMessage(`{"shares":["*"],"access":"rw"}`),
+					},
+				},
+			},
+			// Grant 3: cap/drive RO - ro-client can only read sharer's drives.
+			{
+				Sources:      policyv2.Aliases{tagp("tag:ro-client")},
+				Destinations: policyv2.Aliases{tagp("tag:sharer")},
+				App: tailcfg.PeerCapMap{
+					tailcfg.PeerCapabilityTaildrive: {
+						tailcfg.RawMessage(`{"shares":["*"],"access":"ro"}`),
+					},
+				},
+			},
+			// NO cap/drive grant for tag:no-access (intentional).
+		},
+	}
+
+	headscale, err := scenario.Headscale(
+		hsic.WithTestName("grant-cap-drive"),
+		hsic.WithACLPolicy(pol),
+		hsic.WithPolicyMode(types.PolicyModeDB),
+	)
+	requireNoErrGetHeadscale(t, err)
+
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	// Create users on headscale server.
+	_, err = scenario.CreateUser("sharer")
+	require.NoError(t, err)
+	_, err = scenario.CreateUser("rwclient")
+	require.NoError(t, err)
+	_, err = scenario.CreateUser("roclient")
+	require.NoError(t, err)
+	_, err = scenario.CreateUser("noaccess")
+	require.NoError(t, err)
+
+	userMap, err := headscale.MapUsers()
+	require.NoError(t, err)
+
+	// --- Create Sharer node ---
+	sharer, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+
+	defer func() { _, _, _ = sharer.Shutdown() }()
+
+	pakSharer, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["sharer"].GetId(), false, false, []string{"tag:sharer"},
+	)
+	require.NoError(t, err)
+	err = sharer.Login(headscale.GetEndpoint(), pakSharer.GetKey())
+	require.NoError(t, err)
+	err = sharer.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// --- Create RW client node ---
+	rwClient, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+
+	defer func() { _, _, _ = rwClient.Shutdown() }()
+
+	pakRW, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["rwclient"].GetId(), false, false, []string{"tag:rw-client"},
+	)
+	require.NoError(t, err)
+	err = rwClient.Login(headscale.GetEndpoint(), pakRW.GetKey())
+	require.NoError(t, err)
+	err = rwClient.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// --- Create RO client node ---
+	roClient, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+
+	defer func() { _, _, _ = roClient.Shutdown() }()
+
+	pakRO, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["roclient"].GetId(), false, false, []string{"tag:ro-client"},
+	)
+	require.NoError(t, err)
+	err = roClient.Login(headscale.GetEndpoint(), pakRO.GetKey())
+	require.NoError(t, err)
+	err = roClient.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// --- Create No-access node ---
+	noAccess, err := scenario.CreateTailscaleNode("head",
+		tsic.WithNetwork(usernet1),
+	)
+	require.NoError(t, err)
+
+	defer func() { _, _, _ = noAccess.Shutdown() }()
+
+	pakNA, err := scenario.CreatePreAuthKeyWithTags(
+		userMap["noaccess"].GetId(), false, false, []string{"tag:no-access"},
+	)
+	require.NoError(t, err)
+	err = noAccess.Login(headscale.GetEndpoint(), pakNA.GetKey())
+	require.NoError(t, err)
+	err = noAccess.WaitForRunning(30 * time.Second)
+	require.NoError(t, err)
+
+	// ===== Phase 1: Wait for all peers =====
+	t.Log("Phase 1: Wait for all peers to be visible")
+
+	allNodes := []TailscaleClient{sharer, rwClient, roClient, noAccess}
+	for _, node := range allNodes {
+		err = node.WaitForPeers(len(allNodes)-1, 60*time.Second, 1*time.Second)
+		require.NoErrorf(t, err, "node %s failed to see all peers", node.Hostname())
+	}
+
+	sharerIPv4 := sharer.MustIPv4()
+
+	// ===== Phase 2: Validate node attributes (self CapMap) =====
+	t.Log("Phase 2: Validate Taildrive node attributes in CapMap")
+
+	for _, node := range allNodes {
+		assert.EventuallyWithT(t, func(c *assert.CollectT) {
+			nm, err := node.Netmap()
+			assert.NoError(c, err)
+
+			if nm == nil {
+				return
+			}
+
+			assert.True(c, nm.SelfNode.Valid(),
+				"%s: SelfNode should be valid", node.Hostname())
+
+			if nm.SelfNode.Valid() {
+				assert.True(c, nm.SelfNode.HasCap(tailcfg.NodeAttrsTaildriveShare),
+					"%s: should have drive:share cap", node.Hostname())
+				assert.True(c, nm.SelfNode.HasCap(tailcfg.NodeAttrsTaildriveAccess),
+					"%s: should have drive:access cap", node.Hostname())
+			}
+		}, assertTimeout, 500*time.Millisecond,
+			"all nodes should have Taildrive node attributes")
+	}
+
+	// ===== Phase 3: Validate cap grants in packet filters =====
+	t.Log("Phase 3: Validate cap/drive grants in packet filters")
+
+	// --- Positive checks ---
+
+	// Sharer should have cap/drive targeting its own IP (it's the drive destination).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := sharer.PacketFilter()
+		assert.NoError(c, err)
+		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildrive, sharerIPv4),
+			"Sharer should have cap/drive with Dst matching sharer's IP %s", sharerIPv4)
+	}, assertTimeout, 500*time.Millisecond, "sharer should have cap/drive targeting its own IP")
+
+	// RW client should have cap/drive-sharer (companion) targeting rw-client's IP.
+	rwClientIPv4 := rwClient.MustIPv4()
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := rwClient.PacketFilter()
+		assert.NoError(c, err)
+		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildriveSharer, rwClientIPv4),
+			"RW client should have cap/drive-sharer with Dst matching rw-client's IP %s", rwClientIPv4)
+	}, assertTimeout, 500*time.Millisecond, "rw-client should have cap/drive-sharer")
+
+	// RO client should have cap/drive-sharer (companion) targeting ro-client's IP.
+	roClientIPv4 := roClient.MustIPv4()
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := roClient.PacketFilter()
+		assert.NoError(c, err)
+		assert.True(c, hasCapMatchForIP(pf, tailcfg.PeerCapabilityTaildriveSharer, roClientIPv4),
+			"RO client should have cap/drive-sharer with Dst matching ro-client's IP %s", roClientIPv4)
+	}, assertTimeout, 500*time.Millisecond, "ro-client should have cap/drive-sharer")
+
+	// --- Negative checks ---
+
+	// No-access node should NOT have cap/drive or cap/drive-sharer.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := noAccess.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+			"no-access should NOT have cap/drive")
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildriveSharer),
+			"no-access should NOT have cap/drive-sharer")
+	}, 10*time.Second, 500*time.Millisecond, "no-access should have no drive caps")
+
+	// Sharer should NOT have cap/drive-sharer (it's a destination, not a source).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := sharer.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildriveSharer),
+			"sharer should NOT have cap/drive-sharer")
+	}, 10*time.Second, 500*time.Millisecond, "sharer should not have cap/drive-sharer")
+
+	// RW client should NOT have cap/drive (it's a source, not a destination).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := rwClient.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+			"rw-client should NOT have cap/drive")
+	}, 10*time.Second, 500*time.Millisecond, "rw-client should not have cap/drive")
+
+	// RO client should NOT have cap/drive (it's a source, not a destination).
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		pf, err := roClient.PacketFilter()
+		assert.NoError(c, err)
+		assert.False(c, hasCapMatchInPacketFilter(pf, tailcfg.PeerCapabilityTaildrive),
+			"ro-client should NOT have cap/drive")
+	}, 10*time.Second, 500*time.Millisecond, "ro-client should not have cap/drive")
+
+	// ===== Phase 4: Create share on sharer =====
+	t.Log("Phase 4: Create share on sharer node")
+
+	_, _, err = sharer.Execute([]string{"mkdir", "-p", "/tmp/testshare"})
+	require.NoError(t, err)
+	_, _, err = sharer.Execute([]string{
+		"sh", "-c", `echo "hello-taildrive" > /tmp/testshare/testfile.txt`,
+	})
+	require.NoError(t, err)
+	_, _, err = sharer.Execute([]string{
+		"tailscale", "drive", "share", "testshare", "/tmp/testshare",
+	})
+	require.NoError(t, err)
+
+	// Verify share is listed.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := sharer.Execute([]string{"tailscale", "drive", "list"})
+		assert.NoError(c, err)
+		assert.Contains(c, result, "testshare",
+			"sharer should list 'testshare' in drive list")
+	}, 10*time.Second, 500*time.Millisecond, "sharer should have testshare listed")
+
+	// Build the drive URL components from the sharer's FQDN.
+	fqdn := strings.TrimSuffix(sharer.MustFQDN(), ".")
+	parts := strings.SplitN(fqdn, ".", 2)
+	sharerName := parts[0]
+	domain := parts[1]
+
+	// ===== Phase 5: RW client - read file (positive) =====
+	t.Log("Phase 5: RW client reads file from sharer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := rwClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			driveURL(domain, sharerName, "testshare/testfile.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Equal(c, "hello-taildrive", strings.TrimSpace(result),
+			"rw-client should read testfile.txt content")
+	}, 60*time.Second, 2*time.Second, "rw-client should read file from sharer")
+
+	// ===== Phase 6: RW client - write file (positive) =====
+	t.Log("Phase 6: RW client writes file to sharer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := rwClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			"-X", "PUT", "--data-binary", "written-by-rw",
+			driveURL(domain, sharerName, "testshare/rw-wrote.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Contains(c, result, "20",
+			"rw-client PUT should return 2xx status")
+	}, 30*time.Second, 2*time.Second, "rw-client should write file to sharer")
+
+	// Verify the file exists on sharer.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		content, err := sharer.ReadFile("/tmp/testshare/rw-wrote.txt")
+		assert.NoError(c, err)
+		assert.Equal(c, "written-by-rw", strings.TrimSpace(string(content)))
+	}, 10*time.Second, 500*time.Millisecond, "rw-wrote.txt should exist on sharer")
+
+	// ===== Phase 7: RO client - read file (positive) =====
+	t.Log("Phase 7: RO client reads file from sharer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := roClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			driveURL(domain, sharerName, "testshare/testfile.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Equal(c, "hello-taildrive", strings.TrimSpace(result),
+			"ro-client should read testfile.txt content")
+	}, 60*time.Second, 2*time.Second, "ro-client should read file from sharer")
+
+	// ===== Phase 8: RO client - write file (NEGATIVE - expect 403) =====
+	t.Log("Phase 8: RO client write attempt (should be denied)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := roClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			"-X", "PUT", "--data-binary", "should-not-work",
+			driveURL(domain, sharerName, "testshare/ro-wrote.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Equal(c, "403", strings.TrimSpace(result),
+			"ro-client PUT should return 403 Forbidden")
+	}, 30*time.Second, 2*time.Second, "ro-client write should be 403 Forbidden")
+
+	// Verify file was NOT created on sharer.
+	_, err = sharer.ReadFile("/tmp/testshare/ro-wrote.txt")
+	require.Error(t, err, "ro-wrote.txt should not exist on sharer")
+
+	// ===== Phase 9: No-access node - read file (NEGATIVE) =====
+	t.Log("Phase 9: No-access node read attempt (should fail)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := noAccess.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			driveURL(domain, sharerName, "testshare/testfile.txt"),
+		})
+		// Either error (connection refused) or non-200 status.
+		if err == nil {
+			assert.NotEqual(c, "200", strings.TrimSpace(result),
+				"no-access node should NOT get 200 from sharer's drive")
+		}
+	}, 30*time.Second, 2*time.Second, "no-access node should not read sharer's files")
+
+	// ===== Phase 10: No-access node - write file (NEGATIVE) =====
+	t.Log("Phase 10: No-access node write attempt (should fail)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := noAccess.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			"-X", "PUT", "--data-binary", "should-not-work",
+			driveURL(domain, sharerName, "testshare/no-access-wrote.txt"),
+		})
+		if err == nil {
+			assert.NotEqual(c, "200", strings.TrimSpace(result),
+				"no-access node should not get 200 on PUT")
+			assert.NotEqual(c, "201", strings.TrimSpace(result),
+				"no-access node should not get 201 on PUT")
+		}
+	}, 30*time.Second, 2*time.Second, "no-access node should not write sharer's files")
+
+	// Verify file NOT created on sharer.
+	_, err = sharer.ReadFile("/tmp/testshare/no-access-wrote.txt")
+	require.Error(t, err, "no-access-wrote.txt should not exist on sharer")
+
+	// ===== Phase 11: RW client - list directory via PROPFIND (positive) =====
+	t.Log("Phase 11: RW client lists directory via PROPFIND")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := rwClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-X", "PROPFIND", "-H", "Depth: 1",
+			driveURL(domain, sharerName, "testshare/"),
+		})
+		assert.NoError(c, err)
+		assert.Contains(c, result, "testfile.txt",
+			"PROPFIND should list testfile.txt")
+		assert.Contains(c, result, "rw-wrote.txt",
+			"PROPFIND should list rw-wrote.txt")
+	}, 30*time.Second, 2*time.Second, "rw-client PROPFIND should list files")
+
+	// ===== Phase 12: RW client - delete file (positive) =====
+	t.Log("Phase 12: RW client deletes file from sharer")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := rwClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			"-X", "DELETE",
+			driveURL(domain, sharerName, "testshare/rw-wrote.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Contains(c, result, "20",
+			"rw-client DELETE should return 2xx status")
+	}, 30*time.Second, 2*time.Second, "rw-client should delete file from sharer")
+
+	// Verify deleted on sharer.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		_, err := sharer.ReadFile("/tmp/testshare/rw-wrote.txt")
+		assert.Error(c, err, "rw-wrote.txt should be deleted from sharer")
+	}, 10*time.Second, 500*time.Millisecond, "rw-wrote.txt should be gone")
+
+	// ===== Phase 13: RO client - delete file (NEGATIVE - expect 403) =====
+	t.Log("Phase 13: RO client delete attempt (should be denied)")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, _, err := roClient.Execute([]string{
+			"curl", "-s", "--max-time", "5",
+			"-o", "/dev/null", "-w", "%{http_code}",
+			"-X", "DELETE",
+			driveURL(domain, sharerName, "testshare/testfile.txt"),
+		})
+		assert.NoError(c, err)
+		assert.Equal(c, "403", strings.TrimSpace(result),
+			"ro-client DELETE should return 403 Forbidden")
+	}, 30*time.Second, 2*time.Second, "ro-client delete should be 403 Forbidden")
+
+	// Verify file still exists on sharer.
+	content, err := sharer.ReadFile("/tmp/testshare/testfile.txt")
+	require.NoError(t, err)
+	assert.Equal(t, "hello-taildrive", strings.TrimSpace(string(content)),
+		"testfile.txt should still exist after RO delete attempt")
 }
