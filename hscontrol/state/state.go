@@ -1089,14 +1089,18 @@ func (s *State) RoutesForPeer(
 		}
 	}
 
-	// Add included routes (this peer is via-designated for this viewer).
+	// Reduce only the non-via routes through matchers.
+	reduced := policy.ReduceRoutes(viewer, routes, matchers)
+
+	// Append via-included routes directly — the via grant IS the authorization,
+	// so these must not be filtered by the viewer's matchers.
 	for _, p := range viaResult.Include {
-		if !slices.Contains(routes, p) {
-			routes = append(routes, p)
+		if !slices.Contains(reduced, p) {
+			reduced = append(reduced, p)
 		}
 	}
 
-	return policy.ReduceRoutes(viewer, routes, matchers)
+	return reduced
 }
 
 // PrimaryRoutesString returns a string representation of all primary routes.

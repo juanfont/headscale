@@ -1714,4 +1714,85 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.Contains(t, resultOther.Exclude, mp("::/0"))
 		require.Len(t, resultOther.Exclude, 2)
 	})
+
+	t.Run("via_routes_survive_reduce_routes", func(t *testing.T) {
+		t.Parallel()
+
+		// This test validates that via-included routes are not
+		// filtered out by ReduceRoutes. The viewer's matchers
+		// allow tag-to-tag IP connectivity but don't explicitly
+		// cover the subnet prefix, so ReduceRoutes alone would
+		// drop it. The fix in state.RoutesForPeer applies
+		// ReduceRoutes first, then appends via-included routes.
+
+		nodes := types.Nodes{
+			{
+				ID:       1,
+				Hostname: "client",
+				IPv4:     ap("100.64.0.1"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:group-a"},
+				Hostinfo: &tailcfg.Hostinfo{},
+			},
+			{
+				ID:       2,
+				Hostname: "router",
+				IPv4:     ap("100.64.0.2"),
+				User:     new(users[0]),
+				UserID:   new(users[0].ID),
+				Tags:     []string{"tag:router-a"},
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{mp("10.0.0.0/24")},
+				},
+				ApprovedRoutes: []netip.Prefix{mp("10.0.0.0/24")},
+			},
+		}
+
+		pol := `{
+			"tagOwners": {
+				"tag:router-a": ["user1@"],
+				"tag:group-a":  ["user1@"]
+			},
+			"grants": [
+				{
+					"src": ["tag:group-a", "tag:router-a"],
+					"dst": ["tag:group-a", "tag:router-a"],
+					"ip": ["*"]
+				},
+				{
+					"src": ["tag:group-a"],
+					"dst": ["10.0.0.0/24"],
+					"ip": ["*"],
+					"via": ["tag:router-a"]
+				}
+			]
+		}`
+
+		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
+		require.NoError(t, err)
+
+		client := nodes[0].View()
+		router := nodes[1].View()
+
+		// ViaRoutesForPeer says router should include 10.0.0.0/24.
+		viaResult := pm.ViaRoutesForPeer(client, router)
+		require.Equal(t, []netip.Prefix{mp("10.0.0.0/24")}, viaResult.Include)
+		require.Empty(t, viaResult.Exclude)
+
+		// Matchers for the client cover tag-to-tag connectivity
+		// but do NOT cover the 10.0.0.0/24 subnet prefix.
+		matchers, err := pm.MatchersForNode(client)
+		require.NoError(t, err)
+		require.NotEmpty(t, matchers)
+
+		// CanAccessRoute with the client's matchers returns false for
+		// 10.0.0.0/24 because the matchers only cover tag-to-tag IPs.
+		// This means ReduceRoutes would filter it out, which is why
+		// state.RoutesForPeer must add via routes AFTER ReduceRoutes.
+		canAccess := client.CanAccessRoute(matchers, mp("10.0.0.0/24"))
+		require.False(t, canAccess,
+			"client should NOT be able to access 10.0.0.0/24 via matchers alone; "+
+				"state.RoutesForPeer adds via routes after ReduceRoutes to fix this")
+	})
 }
