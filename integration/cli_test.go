@@ -1762,7 +1762,7 @@ func TestPolicyBrokenConfigCommand(t *testing.T) {
 			policyFilePath,
 		},
 	)
-	require.ErrorContains(t, err, `invalid ACL action: "unknown-action"`)
+	require.ErrorContains(t, err, `action="unknown-action" is not supported: invalid ACL action`)
 
 	// The new policy was invalid, the old one should still be in place, which
 	// is none.
