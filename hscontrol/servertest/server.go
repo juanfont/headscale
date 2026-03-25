@@ -175,6 +175,20 @@ func (s *TestServer) CreatePreAuthKey(tb testing.TB, userID types.UserID) string
 	return pak.Key
 }
 
+// CreateTaggedPreAuthKey creates a reusable pre-auth key with ACL tags.
+func (s *TestServer) CreateTaggedPreAuthKey(tb testing.TB, userID types.UserID, tags []string) string {
+	tb.Helper()
+
+	uid := userID
+
+	pak, err := s.st.CreatePreAuthKey(&uid, true, false, nil, tags)
+	if err != nil {
+		tb.Fatalf("servertest: CreateTaggedPreAuthKey: %v", err)
+	}
+
+	return pak.Key
+}
+
 // CreateEphemeralPreAuthKey creates an ephemeral pre-auth key.
 func (s *TestServer) CreateEphemeralPreAuthKey(tb testing.TB, userID types.UserID) string {
 	tb.Helper()
