@@ -432,6 +432,7 @@ taildrop:
   # When enabled, nodes can send files to other nodes owned by the same user.
   # Tagged devices and cross-user transfers are not permitted by Tailscale clients.
   enabled: true
+
 # Advanced performance tuning parameters.
 # The defaults are carefully chosen and should rarely need adjustment.
 # Only modify these if you have identified a specific performance issue.
