@@ -65,6 +65,25 @@ Please have a look at the [`documentation`](https://headscale.net/stable/).
 
 For NixOS users, a module is available in [`nix/`](./nix/).
 
+## Builds from `main`
+
+Each push to `main` automatically builds container images and binaries.
+These track the latest development state and are not versioned releases.
+
+**Container images** (multi-arch: amd64, arm64):
+
+- `ghcr.io/juanfont/headscale:main-<sha>`
+- `docker.io/headscale/headscale:main-<sha>`
+
+**Binary downloads** (latest successful build via [nightly.link](https://nightly.link/juanfont/headscale/workflows/container-main/main)):
+
+| OS    | Arch  | Download                                                                                                                   |
+| ----- | ----- | -------------------------------------------------------------------------------------------------------------------------- |
+| Linux | amd64 | [headscale-linux-amd64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-linux-amd64.zip)   |
+| Linux | arm64 | [headscale-linux-arm64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-linux-arm64.zip)   |
+| macOS | amd64 | [headscale-darwin-amd64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-darwin-amd64.zip) |
+| macOS | arm64 | [headscale-darwin-arm64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-darwin-arm64.zip) |
+
 ## Talks
 
 - Fosdem 2026 (video): [Headscale & Tailscale: The complementary open source clone](https://fosdem.org/2026/schedule/event/KYQ3LL-headscale-the-complementary-open-source-clone/)
