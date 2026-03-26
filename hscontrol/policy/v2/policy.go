@@ -51,6 +51,12 @@ type PolicyManager struct {
 	// Lazy map of per-node filter rules (reduced, for packet filters)
 	filterRulesMap    map[types.NodeID][]tailcfg.FilterRule
 	usesAutogroupSelf bool
+
+	// needsPerNodeFilter is true when filter rules must be compiled
+	// per-node rather than globally. This is required when the policy
+	// uses autogroup:self (node-relative destinations) or via grants
+	// (per-router filter rules for steered traffic).
+	needsPerNodeFilter bool
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -78,6 +84,7 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 		compiledFilterRulesMap: make(map[types.NodeID][]tailcfg.FilterRule, nodes.Len()),
 		filterRulesMap:         make(map[types.NodeID][]tailcfg.FilterRule, nodes.Len()),
 		usesAutogroupSelf:      policy.usesAutogroupSelf(),
+		needsPerNodeFilter:     policy.usesAutogroupSelf() || policy.hasViaGrants(),
 	}
 
 	_, err = pm.updateLocked()
@@ -91,8 +98,9 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
-	// Check if policy uses autogroup:self
+	// Check if policy uses autogroup:self or via grants
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
+	pm.needsPerNodeFilter = pm.usesAutogroupSelf || pm.pol.hasViaGrants()
 
 	var filter []tailcfg.FilterRule
 
@@ -482,7 +490,7 @@ func (pm *PolicyManager) filterForNodeLocked(node types.NodeView) ([]tailcfg.Fil
 		return nil, nil
 	}
 
-	if !pm.usesAutogroupSelf {
+	if !pm.needsPerNodeFilter {
 		// For global filters, reduce to only rules relevant to this node.
 		// Cache the reduced filter per node for efficiency.
 		if rules, ok := pm.filterRulesMap[node.ID()]; ok {
@@ -497,7 +505,8 @@ func (pm *PolicyManager) filterForNodeLocked(node types.NodeView) ([]tailcfg.Fil
 		return reducedFilter, nil
 	}
 
-	// For autogroup:self, compile per-node rules then reduce them.
+	// Per-node compilation is needed when the policy uses autogroup:self
+	// (node-relative destinations) or via grants (per-router filter rules).
 	// Check if we have cached reduced rules for this node.
 	if rules, ok := pm.filterRulesMap[node.ID()]; ok {
 		return rules, nil
@@ -658,6 +667,14 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 		}
 
 		if newNode.HasPolicyChange(oldNode) {
+			return true
+		}
+
+		// Via grants and autogroup:self compile filter rules per-node
+		// that depend on the node's route state (SubnetRoutes, ExitRoutes).
+		// Route changes are policy-affecting in this context because they
+		// alter which filter rules get generated for the via-designated node.
+		if pm.needsPerNodeFilter && newNode.HasNetworkChanges(oldNode) {
 			return true
 		}
 	}
