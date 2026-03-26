@@ -958,6 +958,37 @@ func TestHasNetworkChanges(t *testing.T) {
 			},
 			changed: false,
 		},
+		{
+			name: "ExitRoutes approved",
+			old: &Node{
+				ID:       1,
+				IPv4:     mustIPPtr("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
+			},
+			changed: true,
+		},
+		{
+			name: "ExitRoutes unchanged when SubnetRoutes change",
+			old: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0")},
+			},
+			new: &Node{
+				ID:             1,
+				IPv4:           mustIPPtr("100.64.0.1"),
+				Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")}},
+				ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0"), netip.MustParsePrefix("::/0"), netip.MustParsePrefix("10.0.0.0/24")},
+			},
+			changed: true,
+		},
 	}
 
 	for _, tt := range tests {
