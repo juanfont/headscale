@@ -27,8 +27,6 @@ builds:
       - linux_arm64
     flags:
       - -mod=readonly
-    tags:
-      - ts2019
 
 archives:
   - id: golang-cross
