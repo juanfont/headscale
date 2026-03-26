@@ -1,6 +1,7 @@
 package servertest_test
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
@@ -148,4 +149,88 @@ func TestPolicyChanges(t *testing.T) {
 		servertest.AssertMeshComplete(t,
 			[]*servertest.TestClient{c1, c2, c3})
 	})
+}
+
+// TestIPv6OnlyPrefixACL verifies that an ACL using only IPv6 prefixes
+// correctly generates filter rules for IPv6 traffic. Address-based aliases
+// (Prefix, Host) resolve to exactly the literal prefix and do NOT expand
+// to include the matching node's other IP addresses.
+//
+// PacketFilter rules are INBOUND: they tell the destination node what
+// traffic to accept. So the IPv6 destination rule appears in test2's
+// PacketFilter (the destination), not test1's (the source).
+func TestIPv6OnlyPrefixACL(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	user := srv.CreateUser(t, "ipv6-user")
+
+	// Set a policy that only uses IPv6 prefixes.
+	changed, err := srv.State().SetPolicy([]byte(`{
+		"hosts": {
+			"test1": "fd7a:115c:a1e0::1/128",
+			"test2": "fd7a:115c:a1e0::2/128"
+		},
+		"acls": [{
+			"action": "accept",
+			"src": ["test1"],
+			"dst": ["test2:*"]
+		}]
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	c1 := servertest.NewClient(t, srv, "test1",
+		servertest.WithUser(user))
+	c2 := servertest.NewClient(t, srv, "test2",
+		servertest.WithUser(user))
+
+	c1.WaitForPeers(t, 1, 10*time.Second)
+	c2.WaitForPeers(t, 1, 10*time.Second)
+
+	// PacketFilter is an INBOUND filter: test2 (the destination) should
+	// have the rule allowing traffic FROM test1's IPv6.
+	nm2 := c2.Netmap()
+	require.NotNil(t, nm2)
+	require.NotNil(t, nm2.PacketFilter,
+		"c2 PacketFilter should not be nil with IPv6-only policy")
+
+	// Verify that IPv6 destination is present in the filter rules on test2.
+	var foundIPv6Dst bool
+
+	expectedDst := netip.MustParseAddr("fd7a:115c:a1e0::2")
+
+	for _, m := range nm2.PacketFilter {
+		for _, dst := range m.Dsts {
+			if dst.Net.Addr() == expectedDst {
+				foundIPv6Dst = true
+			}
+		}
+	}
+
+	assert.True(t, foundIPv6Dst,
+		"test2 PacketFilter should contain IPv6 destination fd7a:115c:a1e0::2 from IPv6-only host definition")
+
+	// With the current resolve behavior, the filter should NOT contain
+	// the corresponding IPv4 address as a destination, because
+	// address-based aliases resolve to exactly the literal prefix.
+	var foundIPv4Dst bool
+
+	ipv4Dst := netip.MustParseAddr("100.64.0.2")
+
+	for _, m := range nm2.PacketFilter {
+		for _, dst := range m.Dsts {
+			if dst.Net.Addr() == ipv4Dst {
+				foundIPv4Dst = true
+			}
+		}
+	}
+
+	assert.False(t, foundIPv4Dst,
+		"test2 PacketFilter should NOT contain IPv4 destination 100.64.0.2 when policy only specifies IPv6 hosts")
 }
