@@ -115,6 +115,19 @@ type Scenario struct {
 	testDefaultNetwork string
 }
 
+// NetworkSpec describes a Docker network for the test scenario.
+type NetworkSpec struct {
+	// Users is the list of usernames whose nodes will be placed on this network.
+	Users []string
+
+	// Subnet, if set, is the CIDR for the Docker network (e.g. "198.51.100.0/24").
+	// When empty, Docker auto-assigns a subnet from its default pool (RFC1918).
+	// Use RFC 5737 TEST-NET ranges for networks that must be reachable through
+	// Tailscale exit nodes, since Tailscale's shrinkDefaultRoute strips RFC1918
+	// ranges from exit node forwarding filters.
+	Subnet string
+}
+
 // ScenarioSpec describes the users, nodes, and network topology to
 // set up for a given scenario.
 type ScenarioSpec struct {
@@ -131,7 +144,7 @@ type ScenarioSpec struct {
 	// added there.
 	// Please note that Docker networks are not necessarily routable and
 	// connections between them might fall back to DERP.
-	Networks map[string][]string
+	Networks map[string]NetworkSpec
 
 	// ExtraService, if set, is additional a map of network to additional
 	// container services that should be set up. These container services
@@ -199,15 +212,15 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 	var userToNetwork map[string]*dockertest.Network
 
 	if spec.Networks != nil || len(spec.Networks) != 0 {
-		for name, users := range s.spec.Networks {
+		for name, netSpec := range s.spec.Networks {
 			networkName := testHashPrefix + "-" + name
 
-			network, err := s.AddNetwork(networkName)
+			network, err := s.AddNetworkWithSubnet(networkName, netSpec.Subnet)
 			if err != nil {
 				return nil, err
 			}
 
-			for _, user := range users {
+			for _, user := range netSpec.Users {
 				if n2, ok := userToNetwork[user]; ok {
 					return nil, fmt.Errorf("users can only have nodes placed in one network: %s into %s but already in %s", user, network.Network.Name, n2.Network.Name) //nolint:err113
 				}
@@ -251,7 +264,11 @@ func NewScenario(spec ScenarioSpec) (*Scenario, error) {
 }
 
 func (s *Scenario) AddNetwork(name string) (*dockertest.Network, error) {
-	network, err := dockertestutil.GetFirstOrCreateNetwork(s.pool, name)
+	return s.AddNetworkWithSubnet(name, "")
+}
+
+func (s *Scenario) AddNetworkWithSubnet(name, subnet string) (*dockertest.Network, error) {
+	network, err := dockertestutil.GetFirstOrCreateNetworkWithSubnet(s.pool, name, subnet)
 	if err != nil {
 		return nil, fmt.Errorf("creating or getting network: %w", err)
 	}
