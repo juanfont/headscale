@@ -656,6 +656,241 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 	})
 }
 
+// TestGrantViaSubnetFilterRules verifies that routers with via grants
+// receive PacketFilter rules that allow the steered subnet traffic.
+// This is a regression test: without per-node filter compilation for
+// via grants, the router's PacketFilter would lack rules for the
+// via-steered subnet destinations, causing traffic to be dropped.
+func TestGrantViaSubnetFilterRules(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	routerUser := srv.CreateUser(t, "rt-user")
+	clientUser := srv.CreateUser(t, "cl-user")
+
+	route := netip.MustParsePrefix("10.0.0.0/24")
+
+	changed, err := srv.State().SetPolicy([]byte(`{
+		"tagOwners": {
+			"tag:router-a": ["rt-user@"],
+			"tag:group-a":  ["cl-user@"]
+		},
+		"grants": [
+			{
+				"src": ["tag:router-a", "tag:group-a"],
+				"dst": ["tag:router-a", "tag:group-a"],
+				"ip": ["*"]
+			},
+			{
+				"src": ["tag:group-a"],
+				"dst": ["10.0.0.0/24"],
+				"ip": ["*"],
+				"via": ["tag:router-a"]
+			}
+		],
+		"autoApprovers": {
+			"routes": {
+				"10.0.0.0/24": ["tag:router-a"]
+			}
+		}
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	routerA := servertest.NewClient(t, srv, "router-a",
+		servertest.WithUser(routerUser),
+		servertest.WithTags("tag:router-a"))
+	clientA := servertest.NewClient(t, srv, "client-a",
+		servertest.WithUser(clientUser),
+		servertest.WithTags("tag:group-a"))
+
+	routerA.WaitForPeers(t, 1, 15*time.Second)
+	clientA.WaitForPeers(t, 1, 15*time.Second)
+
+	// Advertise and approve route on router.
+	routerA.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-router-a",
+		Hostname:     "router-a",
+		RoutableIPs:  []netip.Prefix{route},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = routerA.Direct().SendUpdate(ctx)
+
+	routerAID := findNodeID(t, srv, "router-a")
+	_, routeChange, err := srv.State().SetApprovedRoutes(
+		routerAID, []netip.Prefix{route})
+	require.NoError(t, err)
+	srv.App.Change(routeChange)
+
+	// Wait for clientA to see the route in AllowedIPs.
+	clientA.WaitForCondition(t, "clientA sees route via router-a",
+		15*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			for _, p := range nm.Peers {
+				hi := p.Hostinfo()
+				if hi.Valid() && hi.Hostname() == "router-a" {
+					for i := range p.AllowedIPs().Len() {
+						if p.AllowedIPs().At(i) == route {
+							return true
+						}
+					}
+				}
+			}
+
+			return false
+		})
+
+	// Critical: the router's PacketFilter MUST contain rules with
+	// the via-steered subnet (10.0.0.0/24) as a destination.
+	// Without this, the router drops traffic forwarded through it.
+	routerNM := routerA.Netmap()
+	require.NotNil(t, routerNM)
+	require.NotNil(t, routerNM.PacketFilter,
+		"router PacketFilter should not be nil")
+
+	var foundSubnetDst bool
+
+	for _, m := range routerNM.PacketFilter {
+		for _, dst := range m.Dsts {
+			dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
+			if route.Contains(dstPrefix.Addr()) && dstPrefix.Bits() >= route.Bits() {
+				foundSubnetDst = true
+			}
+		}
+	}
+
+	assert.True(t, foundSubnetDst,
+		"router PacketFilter should contain destination rules for via-steered subnet 10.0.0.0/24; "+
+			"without per-node filter compilation for via grants, these rules are missing")
+}
+
+// TestGrantViaExitNodeFilterRules verifies that exit nodes with via grants
+// receive PacketFilter rules for exit traffic (0.0.0.0/0, ::/0).
+func TestGrantViaExitNodeFilterRules(t *testing.T) {
+	t.Parallel()
+
+	srv := servertest.NewServer(t)
+	exitUser := srv.CreateUser(t, "exit-user")
+	clientUser := srv.CreateUser(t, "cl-user")
+
+	exitRouteV4 := netip.MustParsePrefix("0.0.0.0/0")
+	exitRouteV6 := netip.MustParsePrefix("::/0")
+
+	changed, err := srv.State().SetPolicy([]byte(`{
+		"tagOwners": {
+			"tag:exit-a": ["exit-user@"],
+			"tag:group-a":  ["cl-user@"]
+		},
+		"grants": [
+			{
+				"src": ["tag:exit-a", "tag:group-a"],
+				"dst": ["tag:exit-a", "tag:group-a"],
+				"ip": ["*"]
+			},
+			{
+				"src": ["tag:group-a"],
+				"dst": ["autogroup:internet"],
+				"ip": ["*"],
+				"via": ["tag:exit-a"]
+			}
+		],
+		"autoApprovers": {
+			"exitNode": ["tag:exit-a"]
+		}
+	}`))
+	require.NoError(t, err)
+
+	if changed {
+		changes, err := srv.State().ReloadPolicy()
+		require.NoError(t, err)
+		srv.App.Change(changes...)
+	}
+
+	exitA := servertest.NewClient(t, srv, "exit-a",
+		servertest.WithUser(exitUser),
+		servertest.WithTags("tag:exit-a"))
+	clientA := servertest.NewClient(t, srv, "client-a",
+		servertest.WithUser(clientUser),
+		servertest.WithTags("tag:group-a"))
+
+	exitA.WaitForPeers(t, 1, 15*time.Second)
+	clientA.WaitForPeers(t, 1, 15*time.Second)
+
+	// Advertise and approve exit routes.
+	exitA.Direct().SetHostinfo(&tailcfg.Hostinfo{
+		BackendLogID: "servertest-exit-a",
+		Hostname:     "exit-a",
+		RoutableIPs:  []netip.Prefix{exitRouteV4, exitRouteV6},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_ = exitA.Direct().SendUpdate(ctx)
+
+	exitAID := findNodeID(t, srv, "exit-a")
+	_, routeChange, err := srv.State().SetApprovedRoutes(
+		exitAID, []netip.Prefix{exitRouteV4, exitRouteV6})
+	require.NoError(t, err)
+	srv.App.Change(routeChange)
+
+	// Wait for clientA to see the exit routes in AllowedIPs.
+	clientA.WaitForCondition(t, "clientA sees exit routes via exit-a",
+		15*time.Second,
+		func(nm *netmap.NetworkMap) bool {
+			for _, p := range nm.Peers {
+				hi := p.Hostinfo()
+				if hi.Valid() && hi.Hostname() == "exit-a" {
+					for i := range p.AllowedIPs().Len() {
+						if p.AllowedIPs().At(i) == exitRouteV4 {
+							return true
+						}
+					}
+				}
+			}
+
+			return false
+		})
+
+	// Critical: exit node's PacketFilter must contain rules for
+	// exit traffic (0.0.0.0/0 or ::/0) from the via grant.
+	exitNM := exitA.Netmap()
+	require.NotNil(t, exitNM)
+	require.NotNil(t, exitNM.PacketFilter,
+		"exit node PacketFilter should not be nil")
+
+	var foundExitDst bool
+
+	for _, m := range exitNM.PacketFilter {
+		for _, dst := range m.Dsts {
+			dstPrefix := netip.PrefixFrom(dst.Net.Addr(), dst.Net.Bits())
+			if dstPrefix == exitRouteV4 || dstPrefix == exitRouteV6 {
+				foundExitDst = true
+			}
+		}
+	}
+
+	assert.True(t, foundExitDst,
+		"exit node PacketFilter should contain destination rules for exit routes (0.0.0.0/0 or ::/0); "+
+			"via grant filter rules for exit traffic are missing")
+
+	// Log the actual PacketFilter for debugging.
+	if !foundExitDst {
+		for i, m := range exitNM.PacketFilter {
+			t.Logf("PacketFilter[%d]: Srcs=%v, Dsts=%v, Caps=%d",
+				i, m.Srcs, m.Dsts, len(m.Caps))
+		}
+	}
+}
+
 // hasCapMatches returns true if any Match in the slice contains a
 // non-empty Caps (CapMatch) list.
 func hasCapMatches(matches []filtertype.Match) bool {
