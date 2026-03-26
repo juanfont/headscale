@@ -80,10 +80,10 @@ func TestGrantCapRelay(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 0,
 		Users:        []string{"relay", "clienta", "clientb"},
-		Networks: map[string][]string{
-			"usernet1": {"clienta"},
-			"usernet2": {"clientb"},
-			"usernet3": {"relay"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"clienta"}},
+			"usernet2": {Users: []string{"clientb"}},
+			"usernet3": {Users: []string{"relay"}},
 		},
 		Versions: []string{"head"},
 	}
@@ -535,8 +535,8 @@ func TestGrantCapDrive(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 0,
 		Users:        []string{"sharer", "rwclient", "roclient", "noaccess"},
-		Networks: map[string][]string{
-			"usernet1": {"sharer", "rwclient", "roclient", "noaccess"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"sharer", "rwclient", "roclient", "noaccess"}},
 		},
 		Versions: []string{"head"},
 	}

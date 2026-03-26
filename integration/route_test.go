@@ -244,9 +244,9 @@ func TestHASubnetRouterFailover(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 3,
 		Users:        []string{"user1", "user2"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -1713,9 +1713,9 @@ func TestSubnetRouterMultiNetwork(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -1866,9 +1866,9 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -2073,9 +2073,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2108,9 +2108,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2146,9 +2146,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2181,9 +2181,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2220,9 +2220,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2259,9 +2259,9 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 			spec: ScenarioSpec{
 				NodesPerUser: 3,
 				Users:        []string{"user1", "user2"},
-				Networks: map[string][]string{
-					"usernet1": {"user1"},
-					"usernet2": {"user2"},
+				Networks: map[string]NetworkSpec{
+					"usernet1": {Users: []string{"user1"}},
+					"usernet2": {Users: []string{"user2"}},
 				},
 				ExtraService: map[string][]extraServiceFunc{
 					"usernet1": {Webservice},
@@ -2952,8 +2952,8 @@ func TestSubnetRouteACLFiltering(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{routerUser, nodeUser},
-		Networks: map[string][]string{
-			"usernet1": {routerUser, nodeUser},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{routerUser, nodeUser}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -3163,9 +3163,9 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 0,
 		Users:        []string{"router", "client"},
-		Networks: map[string][]string{
-			"usernet1": {"router"},
-			"usernet2": {"client"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"router"}},
+			"usernet2": {Users: []string{"client"}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -3485,9 +3485,9 @@ func TestGrantViaExitNodeSteering(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 0,
 		Users:        []string{"exit", "client"},
-		Networks: map[string][]string{
-			"usernet1": {"exit"},
-			"usernet2": {"client"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"exit"}},
+			"usernet2": {Users: []string{"client"}},
 		},
 		ExtraService: map[string][]extraServiceFunc{
 			"usernet1": {Webservice},
@@ -3831,9 +3831,9 @@ func TestGrantViaMixedSteering(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 0,
 		Users:        []string{"server", "client"},
-		Networks: map[string][]string{
-			"usernet1": {"server"},
-			"usernet2": {"client"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"server"}},
+			"usernet2": {Users: []string{"client"}},
 			"externet": {},
 		},
 		ExtraService: map[string][]extraServiceFunc{

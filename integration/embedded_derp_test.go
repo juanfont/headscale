@@ -22,10 +22,10 @@ func TestDERPServerScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2", "user3"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
-			"usernet3": {"user3"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+			"usernet3": {Users: []string{"user3"}},
 		},
 	}
 
@@ -72,10 +72,10 @@ func TestDERPServerWebsocketScenario(t *testing.T) {
 	spec := ScenarioSpec{
 		NodesPerUser: 1,
 		Users:        []string{"user1", "user2", "user3"},
-		Networks: map[string][]string{
-			"usernet1": {"user1"},
-			"usernet2": {"user2"},
-			"usernet3": {"user3"},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{"user1"}},
+			"usernet2": {Users: []string{"user2"}},
+			"usernet3": {Users: []string{"user3"}},
 		},
 	}
 
