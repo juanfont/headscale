@@ -3084,3 +3084,19 @@ func (p *Policy) usesAutogroupSelf() bool {
 
 	return false
 }
+
+// hasViaGrants returns true if any grant in the policy has a
+// non-empty Via field, requiring per-node filter compilation.
+func (p *Policy) hasViaGrants() bool {
+	if p == nil {
+		return false
+	}
+
+	for _, grant := range p.Grants {
+		if len(grant.Via) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
