@@ -59,6 +59,14 @@ A new `headscale auth` CLI command group supports the approval flow:
 - Generalise auth templates into reusable `AuthSuccess` and `AuthWeb` components [#1850](https://github.com/juanfont/headscale/pull/1850)
 - Unify auth pipeline with `AuthVerdict` type, supporting registration, reauthentication, and SSH checks [#1850](https://github.com/juanfont/headscale/pull/1850)
 
+## 0.28.1 (2026-03-27)
+
+**Minimum supported Tailscale client version: v1.74.0**
+
+### Changes
+
+- Limit request body size on Noise protocol endpoints to prevent unauthenticated OOM attacks [#3146](https://github.com/juanfont/headscale/pull/3146)
+
 ## 0.28.0 (2026-02-04)
 
 **Minimum supported Tailscale client version: v1.74.0**
