@@ -160,6 +160,48 @@ func TestDestroyUserErrors(t *testing.T) {
 				require.ErrorIs(t, err, ErrUserStillHasNodes)
 			},
 		},
+		{
+			// Regression test for https://github.com/juanfont/headscale/issues/3154
+			// DestroyUser must only delete the target user's pre-auth keys,
+			// not all pre-auth keys in the database.
+			name: "success_only_deletes_own_preauthkeys",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				userA := db.CreateUserForTest("usera")
+				userB := db.CreateUserForTest("userb")
+
+				// Create 2 keys for userA, 1 key for userB.
+				_, err := db.CreatePreAuthKey(userA.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				_, err = db.CreatePreAuthKey(userA.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+				_, err = db.CreatePreAuthKey(userB.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				// Sanity check: 3 keys exist.
+				allKeys, err := db.ListPreAuthKeys()
+				require.NoError(t, err)
+				require.Len(t, allKeys, 3)
+
+				// Delete userB.
+				err = db.DestroyUser(types.UserID(userB.ID))
+				require.NoError(t, err)
+
+				// Only userA's 2 keys should remain.
+				remaining, err := db.ListPreAuthKeys()
+				require.NoError(t, err)
+				assert.Len(t, remaining, 2,
+					"expected 2 keys for userA, got %d — DestroyUser deleted keys from other users",
+					len(remaining))
+
+				for _, key := range remaining {
+					assert.NotNil(t, key.UserID)
+					assert.Equal(t, userA.ID, *key.UserID,
+						"remaining key should belong to userA")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
