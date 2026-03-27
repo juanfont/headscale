@@ -170,6 +170,7 @@ nav:
           - Community packages: setup/install/community.md
           - Container: setup/install/container.md
           - Build from source: setup/install/source.md
+          - Development builds: setup/install/main.md
       - Upgrade: setup/upgrade.md
   - Usage:
       - Getting started: usage/getting-started.md
