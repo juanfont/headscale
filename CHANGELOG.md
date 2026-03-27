@@ -90,6 +90,12 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 - Fix exit node approval not triggering filter rule recalculation for peers [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
 
+## 0.28.1 (202x-xx-xx)
+
+### Changes
+
+- **User deletion**: Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3155](https://github.com/juanfont/headscale/pull/3155)
+
 ## 0.28.0 (2026-02-04)
 
 **Minimum supported Tailscale client version: v1.74.0**
