@@ -115,8 +115,9 @@
         mode = "file";
         path = "/var/lib/headscale/policy.hujson";
 
-        # Validate policy before starting (default: true)
-        # If validation fails, nixos-rebuild switch will fail
+        # Validate policy during the system build (default: true)
+        # The file must exist when nixos-rebuild runs
+        # If validation fails, nixos-rebuild build/test/switch will fail before activation
         # Set to false to bypass validation for edge cases
         validatePolicy = true;
       };

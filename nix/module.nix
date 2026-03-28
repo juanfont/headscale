@@ -20,6 +20,30 @@ let
   settingsFormat = pkgs.formats.yaml { };
   cliConfigFile = settingsFormat.generate "headscale.yaml" cliConfig;
 
+  shouldValidatePolicy =
+    cfg.settings.policy.mode == "file"
+    && cfg.settings.policy.path != null
+    && cfg.settings.policy.validatePolicy;
+
+  validatedPolicyFile =
+    if shouldValidatePolicy then
+      pkgs.runCommand "headscale-policy.hujson" { } ''
+        cp "${cfg.settings.policy.path}" "$out"
+        ${lib.getExe cfg.package} policy check -f "$out" >/dev/null
+      ''
+    else
+      null;
+
+  renderedSettings =
+    cfg.settings
+    // {
+      policy = cfg.settings.policy // {
+        path = if shouldValidatePolicy then "/etc/headscale/policy.hujson" else cfg.settings.policy.path;
+      };
+    };
+
+  generatedConfigFile = settingsFormat.generate "headscale.yaml" renderedSettings;
+
   assertRemovedOption = option: message: {
     assertion = !lib.hasAttrByPath option cfg;
     message =
@@ -39,7 +63,7 @@ in
       configFile = lib.mkOption {
         type = lib.types.path;
         readOnly = true;
-        default = settingsFormat.generate "headscale.yaml" cfg.settings;
+        default = generatedConfigFile;
         defaultText = lib.literalExpression ''(pkgs.formats.yaml { }).generate "headscale.yaml" config.services.headscale.settings'';
         description = ''
           Path to the configuration file of headscale.
@@ -576,8 +600,10 @@ in
                 type = lib.types.bool;
                 default = true;
                 description = ''
-                  Whether to validate the policy file before starting headscale.
-                  If validation fails, the service will not start.
+                  Whether to validate the policy file while building the NixOS configuration.
+                  When enabled, the policy file must exist during the build and is checked
+                  with the configured headscale binary
+                  and invalid policies fail before activation.
                   Only applies when policy.mode is set to "file" and policy.path is set.
                   Set to false to bypass validation for edge cases.
                 '';
@@ -705,9 +731,18 @@ in
     ];
 
     environment = {
-      # Headscale CLI needs a minimal config to be able to locate the unix socket
-      # to talk to the server instance.
-      etc."headscale/config.yaml".source = cliConfigFile;
+      etc = lib.mkMerge [
+        {
+          # Headscale CLI needs a minimal config to be able to locate the unix socket
+          # to talk to the server instance.
+          "headscale/config.yaml".source = cliConfigFile;
+        }
+        (lib.mkIf shouldValidatePolicy {
+          # Keep the validated policy in the build graph so invalid policies fail
+          # while building the system, before activation is attempted.
+          "headscale/policy.hujson".source = validatedPolicyFile;
+        })
+      ];
 
       systemPackages = [ cfg.package ];
     };
@@ -720,15 +755,6 @@ in
       group = cfg.group;
       isSystemUser = true;
     };
-
-    system.activationScripts.headscale-policy-check = lib.mkIf (
-      cfg.settings.policy.mode == "file"
-      && cfg.settings.policy.path != null
-      && cfg.settings.policy.validatePolicy
-    ) ''
-      # Validate headscale policy file
-      ${lib.getExe cfg.package} policy check -f "${cfg.settings.policy.path}"
-    '';
 
     systemd.services.headscale = {
       description = "headscale coordination server for Tailscale";
@@ -793,14 +819,6 @@ in
           ];
           SystemCallArchitectures = "native";
           RestrictAddressFamilies = "AF_INET AF_INET6 AF_UNIX";
-        } // lib.optionalAttrs (
-          cfg.settings.policy.mode == "file"
-          && cfg.settings.policy.path != null
-          && cfg.settings.policy.validatePolicy
-        ) {
-          ExecStartPre = [
-            "${lib.getExe cfg.package} policy check -f ${cfg.settings.policy.path}"
-          ];
         };
     };
   };
