@@ -379,8 +379,10 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// If we have a global filter, use it for all nodes (normal case)
-	if !pm.usesAutogroupSelf {
+	// If we have a global filter, use it for all nodes (normal case).
+	// Via grants require the per-node path because the global filter
+	// skips via grants (compileFilterRules: if len(grant.Via) > 0 { continue }).
+	if !pm.needsPerNodeFilter {
 		ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
 
 		// Build the map of all peers according to the matchers.
@@ -403,7 +405,7 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 		return ret
 	}
 
-	// For autogroup:self (empty global filter), build per-node peer relationships
+	// For autogroup:self or via grants, build per-node peer relationships
 	ret := make(map[types.NodeID][]types.NodeView, nodes.Len())
 
 	// Pre-compute per-node matchers using unreduced compiled rules
@@ -438,15 +440,21 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 			nodeJ := nodes.At(j)
 			matchersJ, hasFilterJ := nodeMatchers[nodeJ.ID()]
 
-			// If either node can access the other, both should see each other as peers.
-			// This symmetric visibility is required for proper network operation:
-			// - Admin with *:* rule should see tagged servers (even if servers
-			//   can't access admin)
-			// - Servers should see admin so they can respond to admin's connections
+			// Check all access directions for symmetric peer visibility.
+			// For via grants, filter rules exist on the via-designated node
+			// (e.g., router-a) with sources being the client (group-a).
+			// We need to check BOTH:
+			//   1. nodeI.CanAccess(matchersI, nodeJ) — can nodeI reach nodeJ?
+			//   2. nodeJ.CanAccess(matchersI, nodeI) — can nodeJ reach nodeI
+			//      using nodeI's matchers? (reverse direction: the matchers
+			//      on the via node accept traffic FROM the source)
+			// Same for matchersJ in both directions.
 			canIAccessJ := hasFilterI && nodeI.CanAccess(matchersI, nodeJ)
 			canJAccessI := hasFilterJ && nodeJ.CanAccess(matchersJ, nodeI)
+			canJReachI := hasFilterI && nodeJ.CanAccess(matchersI, nodeI)
+			canIReachJ := hasFilterJ && nodeI.CanAccess(matchersJ, nodeJ)
 
-			if canIAccessJ || canJAccessI {
+			if canIAccessJ || canJAccessI || canJReachI || canIReachJ {
 				ret[nodeI.ID()] = append(ret[nodeI.ID()], nodeJ)
 				ret[nodeJ.ID()] = append(ret[nodeJ.ID()], nodeI)
 			}
@@ -556,12 +564,14 @@ func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	// For global policies, return the shared global matchers
-	if !pm.usesAutogroupSelf {
+	// For global policies, return the shared global matchers.
+	// Via grants require per-node matchers because the global matchers
+	// are empty for via-grant-only policies.
+	if !pm.needsPerNodeFilter {
 		return pm.matchers, nil
 	}
 
-	// For autogroup:self, get unreduced compiled rules and create matchers
+	// For autogroup:self or via grants, get unreduced compiled rules and create matchers
 	compiledRules, err := pm.compileFilterRulesForNodeLocked(node)
 	if err != nil {
 		return nil, err
@@ -889,7 +899,6 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 
 		// Collect destination prefixes that the peer actually advertises.
 		peerSubnetRoutes := peer.SubnetRoutes()
-		peerExitRoutes := peer.ExitRoutes()
 
 		var matchedPrefixes []netip.Prefix
 
@@ -901,9 +910,11 @@ func (pm *PolicyManager) ViaRoutesForPeer(viewer, peer types.NodeView) types.Via
 					matchedPrefixes = append(matchedPrefixes, dstPrefix)
 				}
 			case *AutoGroup:
-				if d.Is(AutoGroupInternet) && len(peerExitRoutes) > 0 {
-					matchedPrefixes = append(matchedPrefixes, peerExitRoutes...)
-				}
+				// autogroup:internet via grants do NOT affect AllowedIPs or
+				// route steering for exit nodes. Tailscale SaaS handles exit
+				// traffic forwarding through the client's exit node selection
+				// mechanism, not through AllowedIPs. Verified by golden
+				// captures GRANT-V14 through GRANT-V36.
 			}
 		}
 
