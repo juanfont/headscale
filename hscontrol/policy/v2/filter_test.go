@@ -3710,7 +3710,11 @@ func TestCompileViaGrant(t *testing.T) {
 			},
 		},
 		{
-			name: "autogroup:internet with exit routes produces rules",
+			// autogroup:internet via grants do NOT produce PacketFilter rules
+			// on exit nodes. Tailscale SaaS handles exit traffic forwarding
+			// through the client's exit node mechanism, not PacketFilter.
+			// Verified by golden captures GRANT-V14 through GRANT-V36.
+			name: "autogroup:internet with exit routes produces no rules",
 			grant: Grant{
 				Sources:           Aliases{up("testuser@")},
 				Destinations:      Aliases{agp(string(AutoGroupInternet))},
@@ -3720,15 +3724,7 @@ func TestCompileViaGrant(t *testing.T) {
 			node:  exitNode,
 			nodes: types.Nodes{exitNode, srcNode},
 			pol:   &Policy{},
-			want: []tailcfg.FilterRule{
-				{
-					SrcIPs: []string{"100.64.0.10"},
-					DstPorts: []tailcfg.NetPortRange{
-						{IP: "0.0.0.0/0", Ports: tailcfg.PortRangeAny},
-						{IP: "::/0", Ports: tailcfg.PortRangeAny},
-					},
-				},
-			},
+			want:  nil,
 		},
 		{
 			name: "autogroup:internet without exit routes returns nil",

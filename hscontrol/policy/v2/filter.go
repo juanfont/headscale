@@ -363,9 +363,11 @@ func (pol *Policy) compileViaGrant(
 				viaDstPrefixes = append(viaDstPrefixes, dstPrefix)
 			}
 		case *AutoGroup:
-			if d.Is(AutoGroupInternet) && len(nodeExitRoutes) > 0 {
-				viaDstPrefixes = append(viaDstPrefixes, nodeExitRoutes...)
-			}
+			// autogroup:internet via grants do NOT produce PacketFilter rules
+			// on the exit node. Tailscale SaaS handles exit traffic forwarding
+			// through the client's exit node selection mechanism (AllowedIPs +
+			// ExitNodeOption), not through PacketFilter rules. Verified by
+			// golden captures GRANT-V14 through GRANT-V36.
 		}
 	}
 

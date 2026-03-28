@@ -1,9 +1,9 @@
 {
-  "test_id": "GRANT-V14",
-  "timestamp": "2026-03-28T11:50:41Z",
+  "test_id": "GRANT-V31",
+  "timestamp": "2026-03-28T11:52:34Z",
   "propagation_wait_seconds": 8,
   "input": {
-    "policy_file": "grant_policies_via/grant_v14.json",
+    "policy_file": "grant_policies_via/grant_v31.json",
     "full_policy": {
       "groups": {
         "group:admins": ["kratail2tid@passkey"],
@@ -40,14 +40,33 @@
       },
       "grants": [
         {
-          "src": ["tag:client"],
+          "src": ["tag:exit-a", "tag:exit-b", "tag:group-a", "tag:group-b"],
+          "dst": ["tag:exit-a", "tag:exit-b", "tag:group-a", "tag:group-b"],
+          "ip": ["*"]
+        },
+        {
+          "src": ["tag:group-a"],
           "dst": ["autogroup:internet"],
-          "via": ["tag:exit"],
+          "via": ["tag:exit-a"],
+          "ip": ["*"]
+        },
+        {
+          "src": ["tag:group-b"],
+          "dst": ["autogroup:internet"],
+          "via": ["tag:exit-b"],
           "ip": ["*"]
         }
       ]
     },
-    "grants_section": [{ "src": ["tag:client"], "dst": ["autogroup:internet"], "via": ["tag:exit"], "ip": ["*"] }],
+    "grants_section": [
+      {
+        "src": ["tag:exit-a", "tag:exit-b", "tag:group-a", "tag:group-b"],
+        "dst": ["tag:exit-a", "tag:exit-b", "tag:group-a", "tag:group-b"],
+        "ip": ["*"]
+      },
+      { "src": ["tag:group-a"], "dst": ["autogroup:internet"], "via": ["tag:exit-a"], "ip": ["*"] },
+      { "src": ["tag:group-b"], "dst": ["autogroup:internet"], "via": ["tag:exit-b"], "ip": ["*"] }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -197,13 +216,79 @@
         "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock debug localapi POST debug-packet-filter-rules",
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
-      "packet_filter_rules": null,
-      "packet_filter_matches": [],
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.107.162.14",
+            "100.116.18.24",
+            "100.124.195.93",
+            "100.77.135.18",
+            "fd7a:115c:a1e0::4b37:8712",
+            "fd7a:115c:a1e0::7837:c35d",
+            "fd7a:115c:a1e0::a237:a20e",
+            "fd7a:115c:a1e0::ff37:1218"
+          ],
+          "DstPorts": [
+            { "IP": "100.124.195.93", "Ports": { "First": 0, "Last": 65535 } },
+            { "IP": "fd7a:115c:a1e0::7837:c35d", "Ports": { "First": 0, "Last": 65535 } }
+          ]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [6, 17, 1, 58],
+          "Srcs": [
+            "100.107.162.14/32",
+            "100.116.18.24/32",
+            "100.124.195.93/32",
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128",
+            "fd7a:115c:a1e0::7837:c35d/128",
+            "fd7a:115c:a1e0::a237:a20e/128",
+            "fd7a:115c:a1e0::ff37:1218/128"
+          ],
+          "SrcCaps": null,
+          "Dsts": [
+            { "Net": "100.124.195.93/32", "Ports": { "First": 0, "Last": 65535 } },
+            { "Net": "fd7a:115c:a1e0::7837:c35d/128", "Ports": { "First": 0, "Last": 65535 } }
+          ],
+          "Caps": []
+        }
+      ],
       "whois": {
         "100.116.18.24": {
           "peer_name": "exit-b",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.116.18.24",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 2230775583277936,
+              "StableID": "ndK1N8hKRJ11CNTRL",
+              "Name": "exit-b.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+              "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+              "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-b",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 61723 },
+                  { "Proto": "peerapi6", "Port": 61723 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:00.655990366Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-b"],
+              "Online": true,
+              "ComputedName": "exit-b",
+              "ComputedNameWithHost": "exit-b"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.85.66.106": {
           "peer_name": "exit-node",
@@ -213,12 +298,70 @@
         "100.107.162.14": {
           "peer_name": "group-a-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.107.162.14",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 6999435610919250,
+              "StableID": "nyckVfJ4fw11CNTRL",
+              "Name": "group-a-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+              "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+              "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-a-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 36543 },
+                  { "Proto": "peerapi6", "Port": 36543 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:04.339428828Z",
+              "Cap": 131,
+              "Tags": ["tag:group-a"],
+              "Online": true,
+              "ComputedName": "group-a-client",
+              "ComputedNameWithHost": "group-a-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.77.135.18": {
           "peer_name": "group-b-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.77.135.18",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 1008089393782498,
+              "StableID": "ndUwgLoZs811CNTRL",
+              "Name": "group-b-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+              "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+              "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-b-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 47173 },
+                  { "Proto": "peerapi6", "Port": 47173 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:08.031309668Z",
+              "Cap": 131,
+              "Tags": ["tag:group-b"],
+              "Online": true,
+              "ComputedName": "group-b-client",
+              "ComputedNameWithHost": "group-b-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.105.127.107": {
           "peer_name": "multi-exit-router",
@@ -310,19 +453,98 @@
           "ComputedNameWithHost": "exit-a"
         },
         "AllCaps": [
-          "ssh-behavior-v1",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/tailnet-lock",
           "probe-udp-lifetime",
+          "ssh-env-vars",
           "store-appc-routes",
           "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/tailnet-lock",
           "https://tailscale.com/cap/is-owner",
-          "ssh-env-vars",
-          "https://tailscale.com/cap/file-sharing"
+          "https://tailscale.com/cap/file-sharing",
+          "ssh-behavior-v1",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
         "MachineKey": "mkey:d4a36168723163165bbdcb0b17762903171593d01c26c5bb12216932f6d10876",
-        "Peers": [],
+        "Peers": [
+          {
+            "ID": 1008089393782498,
+            "StableID": "ndUwgLoZs811CNTRL",
+            "Name": "group-b-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+            "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+            "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-b-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 47173 },
+                { "Proto": "peerapi6", "Port": 47173 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:08.031309668Z",
+            "Cap": 131,
+            "Tags": ["tag:group-b"],
+            "Online": true,
+            "ComputedName": "group-b-client",
+            "ComputedNameWithHost": "group-b-client"
+          },
+          {
+            "ID": 2230775583277936,
+            "StableID": "ndK1N8hKRJ11CNTRL",
+            "Name": "exit-b.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+            "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+            "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-b",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 61723 },
+                { "Proto": "peerapi6", "Port": 61723 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:00.655990366Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-b"],
+            "Online": true,
+            "ComputedName": "exit-b",
+            "ComputedNameWithHost": "exit-b"
+          },
+          {
+            "ID": 6999435610919250,
+            "StableID": "nyckVfJ4fw11CNTRL",
+            "Name": "group-a-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+            "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+            "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-a-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 36543 },
+                { "Proto": "peerapi6", "Port": 36543 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:04.339428828Z",
+            "Cap": 131,
+            "Tags": ["tag:group-a"],
+            "Online": true,
+            "ComputedName": "group-a-client",
+            "ComputedNameWithHost": "group-a-client"
+          }
+        ],
         "DNS": {
           "Routes": {
             "tail78f774.ts.net.": null,
@@ -332,8 +554,45 @@
           "Proxied": true,
           "ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]
         },
-        "PacketFilter": [],
-        "PacketFilterRules": null,
+        "PacketFilter": [
+          {
+            "IPProto": [6, 17, 1, 58],
+            "Srcs": [
+              "100.107.162.14/32",
+              "100.116.18.24/32",
+              "100.124.195.93/32",
+              "100.77.135.18/32",
+              "fd7a:115c:a1e0::4b37:8712/128",
+              "fd7a:115c:a1e0::7837:c35d/128",
+              "fd7a:115c:a1e0::a237:a20e/128",
+              "fd7a:115c:a1e0::ff37:1218/128"
+            ],
+            "SrcCaps": null,
+            "Dsts": [
+              { "Net": "100.124.195.93/32", "Ports": { "First": 0, "Last": 65535 } },
+              { "Net": "fd7a:115c:a1e0::7837:c35d/128", "Ports": { "First": 0, "Last": 65535 } }
+            ],
+            "Caps": []
+          }
+        ],
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.107.162.14",
+              "100.116.18.24",
+              "100.124.195.93",
+              "100.77.135.18",
+              "fd7a:115c:a1e0::4b37:8712",
+              "fd7a:115c:a1e0::7837:c35d",
+              "fd7a:115c:a1e0::a237:a20e",
+              "fd7a:115c:a1e0::ff37:1218"
+            ],
+            "DstPorts": [
+              { "IP": "100.124.195.93", "Ports": { "First": 0, "Last": 65535 } },
+              { "IP": "fd7a:115c:a1e0::7837:c35d", "Ports": { "First": 0, "Last": 65535 } }
+            ]
+          }
+        ],
         "SSHPolicy": { "rules": [] },
         "CollectServices": false,
         "DERPMap": {
@@ -1295,6 +1554,11 @@
         "Domain": "kratail2tid@passkey",
         "DomainAuditLogID": "",
         "UserProfiles": {
+          "1260082990019555": {
+            "ID": 1260082990019555,
+            "LoginName": "tagged-devices",
+            "DisplayName": "Tagged Devices"
+          },
           "3118755726458377": {
             "ID": 3118755726458377,
             "LoginName": "exit-a.tail78f774.ts.net",
@@ -1308,13 +1572,79 @@
         "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock debug localapi POST debug-packet-filter-rules",
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
-      "packet_filter_rules": null,
-      "packet_filter_matches": [],
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.107.162.14",
+            "100.116.18.24",
+            "100.124.195.93",
+            "100.77.135.18",
+            "fd7a:115c:a1e0::4b37:8712",
+            "fd7a:115c:a1e0::7837:c35d",
+            "fd7a:115c:a1e0::a237:a20e",
+            "fd7a:115c:a1e0::ff37:1218"
+          ],
+          "DstPorts": [
+            { "IP": "100.116.18.24", "Ports": { "First": 0, "Last": 65535 } },
+            { "IP": "fd7a:115c:a1e0::ff37:1218", "Ports": { "First": 0, "Last": 65535 } }
+          ]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [6, 17, 1, 58],
+          "Srcs": [
+            "100.107.162.14/32",
+            "100.116.18.24/32",
+            "100.124.195.93/32",
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128",
+            "fd7a:115c:a1e0::7837:c35d/128",
+            "fd7a:115c:a1e0::a237:a20e/128",
+            "fd7a:115c:a1e0::ff37:1218/128"
+          ],
+          "SrcCaps": null,
+          "Dsts": [
+            { "Net": "100.116.18.24/32", "Ports": { "First": 0, "Last": 65535 } },
+            { "Net": "fd7a:115c:a1e0::ff37:1218/128", "Ports": { "First": 0, "Last": 65535 } }
+          ],
+          "Caps": []
+        }
+      ],
       "whois": {
         "100.124.195.93": {
           "peer_name": "exit-a",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.124.195.93",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 3118755726458377,
+              "StableID": "nvFTscRVMR11CNTRL",
+              "Name": "exit-a.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+              "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+              "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-a",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 57826 },
+                  { "Proto": "peerapi6", "Port": 57826 }
+                ]
+              },
+              "Created": "2026-03-28T10:37:56.932966573Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-a"],
+              "Online": true,
+              "ComputedName": "exit-a",
+              "ComputedNameWithHost": "exit-a"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.85.66.106": {
           "peer_name": "exit-node",
@@ -1324,12 +1654,70 @@
         "100.107.162.14": {
           "peer_name": "group-a-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.107.162.14",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 6999435610919250,
+              "StableID": "nyckVfJ4fw11CNTRL",
+              "Name": "group-a-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+              "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+              "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-a-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 36543 },
+                  { "Proto": "peerapi6", "Port": 36543 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:04.339428828Z",
+              "Cap": 131,
+              "Tags": ["tag:group-a"],
+              "Online": true,
+              "ComputedName": "group-a-client",
+              "ComputedNameWithHost": "group-a-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.77.135.18": {
           "peer_name": "group-b-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.77.135.18",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 1008089393782498,
+              "StableID": "ndUwgLoZs811CNTRL",
+              "Name": "group-b-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+              "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+              "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-b-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 47173 },
+                  { "Proto": "peerapi6", "Port": 47173 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:08.031309668Z",
+              "Cap": 131,
+              "Tags": ["tag:group-b"],
+              "Online": true,
+              "ComputedName": "group-b-client",
+              "ComputedNameWithHost": "group-b-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.105.127.107": {
           "peer_name": "multi-exit-router",
@@ -1421,19 +1809,98 @@
           "ComputedNameWithHost": "exit-b"
         },
         "AllCaps": [
+          "ssh-behavior-v1",
+          "tailnet-display-name",
+          "https://tailscale.com/cap/ssh",
           "https://tailscale.com/cap/file-sharing",
-          "probe-udp-lifetime",
           "ssh-env-vars",
           "store-appc-routes",
           "https://tailscale.com/cap/tailnet-lock",
-          "https://tailscale.com/cap/is-owner",
-          "ssh-behavior-v1",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/ssh"
+          "probe-udp-lifetime",
+          "https://tailscale.com/cap/is-owner"
         ],
         "NodeKey": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
         "MachineKey": "mkey:f4cbc28e2db0f8d8a6a5fc3991b055477e5efc6c025d24b72d3509fa3743401c",
-        "Peers": [],
+        "Peers": [
+          {
+            "ID": 1008089393782498,
+            "StableID": "ndUwgLoZs811CNTRL",
+            "Name": "group-b-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+            "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+            "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-b-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 47173 },
+                { "Proto": "peerapi6", "Port": 47173 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:08.031309668Z",
+            "Cap": 131,
+            "Tags": ["tag:group-b"],
+            "Online": true,
+            "ComputedName": "group-b-client",
+            "ComputedNameWithHost": "group-b-client"
+          },
+          {
+            "ID": 3118755726458377,
+            "StableID": "nvFTscRVMR11CNTRL",
+            "Name": "exit-a.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+            "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+            "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-a",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 57826 },
+                { "Proto": "peerapi6", "Port": 57826 }
+              ]
+            },
+            "Created": "2026-03-28T10:37:56.932966573Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-a"],
+            "Online": true,
+            "ComputedName": "exit-a",
+            "ComputedNameWithHost": "exit-a"
+          },
+          {
+            "ID": 6999435610919250,
+            "StableID": "nyckVfJ4fw11CNTRL",
+            "Name": "group-a-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+            "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+            "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-a-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 36543 },
+                { "Proto": "peerapi6", "Port": 36543 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:04.339428828Z",
+            "Cap": 131,
+            "Tags": ["tag:group-a"],
+            "Online": true,
+            "ComputedName": "group-a-client",
+            "ComputedNameWithHost": "group-a-client"
+          }
+        ],
         "DNS": {
           "Routes": {
             "tail78f774.ts.net.": null,
@@ -1443,8 +1910,45 @@
           "Proxied": true,
           "ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]
         },
-        "PacketFilter": [],
-        "PacketFilterRules": null,
+        "PacketFilter": [
+          {
+            "IPProto": [6, 17, 1, 58],
+            "Srcs": [
+              "100.107.162.14/32",
+              "100.116.18.24/32",
+              "100.124.195.93/32",
+              "100.77.135.18/32",
+              "fd7a:115c:a1e0::4b37:8712/128",
+              "fd7a:115c:a1e0::7837:c35d/128",
+              "fd7a:115c:a1e0::a237:a20e/128",
+              "fd7a:115c:a1e0::ff37:1218/128"
+            ],
+            "SrcCaps": null,
+            "Dsts": [
+              { "Net": "100.116.18.24/32", "Ports": { "First": 0, "Last": 65535 } },
+              { "Net": "fd7a:115c:a1e0::ff37:1218/128", "Ports": { "First": 0, "Last": 65535 } }
+            ],
+            "Caps": []
+          }
+        ],
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.107.162.14",
+              "100.116.18.24",
+              "100.124.195.93",
+              "100.77.135.18",
+              "fd7a:115c:a1e0::4b37:8712",
+              "fd7a:115c:a1e0::7837:c35d",
+              "fd7a:115c:a1e0::a237:a20e",
+              "fd7a:115c:a1e0::ff37:1218"
+            ],
+            "DstPorts": [
+              { "IP": "100.116.18.24", "Ports": { "First": 0, "Last": 65535 } },
+              { "IP": "fd7a:115c:a1e0::ff37:1218", "Ports": { "First": 0, "Last": 65535 } }
+            ]
+          }
+        ],
         "SSHPolicy": { "rules": [] },
         "CollectServices": false,
         "DERPMap": {
@@ -2406,6 +2910,11 @@
         "Domain": "kratail2tid@passkey",
         "DomainAuditLogID": "",
         "UserProfiles": {
+          "1260082990019555": {
+            "ID": 1260082990019555,
+            "LoginName": "tagged-devices",
+            "DisplayName": "Tagged Devices"
+          },
           "2230775583277936": {
             "ID": 2230775583277936,
             "LoginName": "exit-b.tail78f774.ts.net",
@@ -2537,10 +3046,10 @@
           "probe-udp-lifetime",
           "ssh-behavior-v1",
           "https://tailscale.com/cap/ssh",
-          "https://tailscale.com/cap/tailnet-lock",
-          "store-appc-routes",
           "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/is-owner"
+          "https://tailscale.com/cap/is-owner",
+          "https://tailscale.com/cap/tailnet-lock",
+          "store-appc-routes"
         ],
         "NodeKey": "nodekey:90f4a7b9dc024f1ddec414a49de2aa7611a2dd86efc9d7bae30862ad7c954269",
         "MachineKey": "mkey:e3be47b2090e55400f3e64825cd3092841529cd7b5b775e9e4553f12308abc2a",
@@ -3530,18 +4039,113 @@
         "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
-      "packet_filter_rules": null,
-      "packet_filter_matches": [],
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.107.162.14",
+            "100.116.18.24",
+            "100.124.195.93",
+            "100.77.135.18",
+            "fd7a:115c:a1e0::4b37:8712",
+            "fd7a:115c:a1e0::7837:c35d",
+            "fd7a:115c:a1e0::a237:a20e",
+            "fd7a:115c:a1e0::ff37:1218"
+          ],
+          "DstPorts": [
+            { "IP": "100.107.162.14", "Ports": { "First": 0, "Last": 65535 } },
+            { "IP": "fd7a:115c:a1e0::a237:a20e", "Ports": { "First": 0, "Last": 65535 } }
+          ]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [6, 17, 1, 58],
+          "Srcs": [
+            "100.107.162.14/32",
+            "100.116.18.24/32",
+            "100.124.195.93/32",
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128",
+            "fd7a:115c:a1e0::7837:c35d/128",
+            "fd7a:115c:a1e0::a237:a20e/128",
+            "fd7a:115c:a1e0::ff37:1218/128"
+          ],
+          "SrcCaps": null,
+          "Dsts": [
+            { "Net": "100.107.162.14/32", "Ports": { "First": 0, "Last": 65535 } },
+            { "Net": "fd7a:115c:a1e0::a237:a20e/128", "Ports": { "First": 0, "Last": 65535 } }
+          ],
+          "Caps": []
+        }
+      ],
       "whois": {
         "100.124.195.93": {
           "peer_name": "exit-a",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.124.195.93",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 3118755726458377,
+              "StableID": "nvFTscRVMR11CNTRL",
+              "Name": "exit-a.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+              "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+              "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-a",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 57826 },
+                  { "Proto": "peerapi6", "Port": 57826 }
+                ]
+              },
+              "Created": "2026-03-28T10:37:56.932966573Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-a"],
+              "Online": true,
+              "ComputedName": "exit-a",
+              "ComputedNameWithHost": "exit-a"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.116.18.24": {
           "peer_name": "exit-b",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.116.18.24",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 2230775583277936,
+              "StableID": "ndK1N8hKRJ11CNTRL",
+              "Name": "exit-b.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+              "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+              "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-b",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 61723 },
+                  { "Proto": "peerapi6", "Port": 61723 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:00.655990366Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-b"],
+              "Online": true,
+              "ComputedName": "exit-b",
+              "ComputedNameWithHost": "exit-b"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.85.66.106": {
           "peer_name": "exit-node",
@@ -3551,7 +4155,36 @@
         "100.77.135.18": {
           "peer_name": "group-b-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.77.135.18",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 1008089393782498,
+              "StableID": "ndUwgLoZs811CNTRL",
+              "Name": "group-b-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+              "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+              "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+              "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-b-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 47173 },
+                  { "Proto": "peerapi6", "Port": 47173 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:08.031309668Z",
+              "Cap": 131,
+              "Tags": ["tag:group-b"],
+              "Online": true,
+              "ComputedName": "group-b-client",
+              "ComputedNameWithHost": "group-b-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.105.127.107": {
           "peer_name": "multi-exit-router",
@@ -3642,19 +4275,98 @@
           "ComputedNameWithHost": "group-a-client"
         },
         "AllCaps": [
+          "https://tailscale.com/cap/file-sharing",
           "probe-udp-lifetime",
-          "https://tailscale.com/cap/is-owner",
+          "store-appc-routes",
           "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/tailnet-lock",
-          "store-appc-routes",
           "ssh-env-vars",
-          "https://tailscale.com/cap/file-sharing"
+          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/is-owner",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
         "MachineKey": "mkey:fd2d0c2953440569b6c045d6bb1826bf138bf65b4ed4433532e4d91e09fd6b6b",
-        "Peers": [],
+        "Peers": [
+          {
+            "ID": 1008089393782498,
+            "StableID": "ndUwgLoZs811CNTRL",
+            "Name": "group-b-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
+            "DiscoKey": "discokey:e972182cda0d0b459c91b2881624b81749a7e44390a5dde1b9bc17c1ae67715a",
+            "Addresses": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "AllowedIPs": ["100.77.135.18/32", "fd7a:115c:a1e0::4b37:8712/128"],
+            "Endpoints": ["77.164.248.136:49377", "10.65.0.27:49377", "172.17.0.1:49377"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-b-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 47173 },
+                { "Proto": "peerapi6", "Port": 47173 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:08.031309668Z",
+            "Cap": 131,
+            "Tags": ["tag:group-b"],
+            "Online": true,
+            "ComputedName": "group-b-client",
+            "ComputedNameWithHost": "group-b-client"
+          },
+          {
+            "ID": 2230775583277936,
+            "StableID": "ndK1N8hKRJ11CNTRL",
+            "Name": "exit-b.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+            "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+            "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-b",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 61723 },
+                { "Proto": "peerapi6", "Port": 61723 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:00.655990366Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-b"],
+            "Online": true,
+            "ComputedName": "exit-b",
+            "ComputedNameWithHost": "exit-b"
+          },
+          {
+            "ID": 3118755726458377,
+            "StableID": "nvFTscRVMR11CNTRL",
+            "Name": "exit-a.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+            "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+            "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-a",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 57826 },
+                { "Proto": "peerapi6", "Port": 57826 }
+              ]
+            },
+            "Created": "2026-03-28T10:37:56.932966573Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-a"],
+            "Online": true,
+            "ComputedName": "exit-a",
+            "ComputedNameWithHost": "exit-a"
+          }
+        ],
         "DNS": {
           "Routes": {
             "tail78f774.ts.net.": null,
@@ -3664,8 +4376,45 @@
           "Proxied": true,
           "ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]
         },
-        "PacketFilter": [],
-        "PacketFilterRules": null,
+        "PacketFilter": [
+          {
+            "IPProto": [6, 17, 1, 58],
+            "Srcs": [
+              "100.107.162.14/32",
+              "100.116.18.24/32",
+              "100.124.195.93/32",
+              "100.77.135.18/32",
+              "fd7a:115c:a1e0::4b37:8712/128",
+              "fd7a:115c:a1e0::7837:c35d/128",
+              "fd7a:115c:a1e0::a237:a20e/128",
+              "fd7a:115c:a1e0::ff37:1218/128"
+            ],
+            "SrcCaps": null,
+            "Dsts": [
+              { "Net": "100.107.162.14/32", "Ports": { "First": 0, "Last": 65535 } },
+              { "Net": "fd7a:115c:a1e0::a237:a20e/128", "Ports": { "First": 0, "Last": 65535 } }
+            ],
+            "Caps": []
+          }
+        ],
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.107.162.14",
+              "100.116.18.24",
+              "100.124.195.93",
+              "100.77.135.18",
+              "fd7a:115c:a1e0::4b37:8712",
+              "fd7a:115c:a1e0::7837:c35d",
+              "fd7a:115c:a1e0::a237:a20e",
+              "fd7a:115c:a1e0::ff37:1218"
+            ],
+            "DstPorts": [
+              { "IP": "100.107.162.14", "Ports": { "First": 0, "Last": 65535 } },
+              { "IP": "fd7a:115c:a1e0::a237:a20e", "Ports": { "First": 0, "Last": 65535 } }
+            ]
+          }
+        ],
         "SSHPolicy": { "rules": [] },
         "CollectServices": false,
         "DERPMap": {
@@ -4627,6 +5376,11 @@
         "Domain": "kratail2tid@passkey",
         "DomainAuditLogID": "",
         "UserProfiles": {
+          "1260082990019555": {
+            "ID": 1260082990019555,
+            "LoginName": "tagged-devices",
+            "DisplayName": "Tagged Devices"
+          },
           "6999435610919250": {
             "ID": 6999435610919250,
             "LoginName": "group-a-client.tail78f774.ts.net",
@@ -4640,18 +5394,113 @@
         "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
         "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
       },
-      "packet_filter_rules": null,
-      "packet_filter_matches": [],
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.107.162.14",
+            "100.116.18.24",
+            "100.124.195.93",
+            "100.77.135.18",
+            "fd7a:115c:a1e0::4b37:8712",
+            "fd7a:115c:a1e0::7837:c35d",
+            "fd7a:115c:a1e0::a237:a20e",
+            "fd7a:115c:a1e0::ff37:1218"
+          ],
+          "DstPorts": [
+            { "IP": "100.77.135.18", "Ports": { "First": 0, "Last": 65535 } },
+            { "IP": "fd7a:115c:a1e0::4b37:8712", "Ports": { "First": 0, "Last": 65535 } }
+          ]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [6, 17, 1, 58],
+          "Srcs": [
+            "100.107.162.14/32",
+            "100.116.18.24/32",
+            "100.124.195.93/32",
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128",
+            "fd7a:115c:a1e0::7837:c35d/128",
+            "fd7a:115c:a1e0::a237:a20e/128",
+            "fd7a:115c:a1e0::ff37:1218/128"
+          ],
+          "SrcCaps": null,
+          "Dsts": [
+            { "Net": "100.77.135.18/32", "Ports": { "First": 0, "Last": 65535 } },
+            { "Net": "fd7a:115c:a1e0::4b37:8712/128", "Ports": { "First": 0, "Last": 65535 } }
+          ],
+          "Caps": []
+        }
+      ],
       "whois": {
         "100.124.195.93": {
           "peer_name": "exit-a",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.124.195.93",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 3118755726458377,
+              "StableID": "nvFTscRVMR11CNTRL",
+              "Name": "exit-a.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+              "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+              "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+              "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-a",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 57826 },
+                  { "Proto": "peerapi6", "Port": 57826 }
+                ]
+              },
+              "Created": "2026-03-28T10:37:56.932966573Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-a"],
+              "Online": true,
+              "ComputedName": "exit-a",
+              "ComputedNameWithHost": "exit-a"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.116.18.24": {
           "peer_name": "exit-b",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.116.18.24",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 2230775583277936,
+              "StableID": "ndK1N8hKRJ11CNTRL",
+              "Name": "exit-b.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+              "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+              "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+              "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "exit-b",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 61723 },
+                  { "Proto": "peerapi6", "Port": 61723 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:00.655990366Z",
+              "Cap": 131,
+              "Tags": ["tag:exit-b"],
+              "Online": true,
+              "ComputedName": "exit-b",
+              "ComputedNameWithHost": "exit-b"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.85.66.106": {
           "peer_name": "exit-node",
@@ -4661,7 +5510,36 @@
         "100.107.162.14": {
           "peer_name": "group-a-client",
           "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.107.162.14",
-          "response": null
+          "response": {
+            "Node": {
+              "ID": 6999435610919250,
+              "StableID": "nyckVfJ4fw11CNTRL",
+              "Name": "group-a-client.tail78f774.ts.net.",
+              "User": 1260082990019555,
+              "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+              "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+              "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+              "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+              "HomeDERP": 14,
+              "Hostinfo": {
+                "OS": "linux",
+                "Hostname": "group-a-client",
+                "Services": [
+                  { "Proto": "peerapi4", "Port": 36543 },
+                  { "Proto": "peerapi6", "Port": 36543 }
+                ]
+              },
+              "Created": "2026-03-28T10:38:04.339428828Z",
+              "Cap": 131,
+              "Tags": ["tag:group-a"],
+              "Online": true,
+              "ComputedName": "group-a-client",
+              "ComputedNameWithHost": "group-a-client"
+            },
+            "UserProfile": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" },
+            "CapMap": null
+          }
         },
         "100.105.127.107": {
           "peer_name": "multi-exit-router",
@@ -4754,17 +5632,96 @@
         "AllCaps": [
           "https://tailscale.com/cap/ssh",
           "ssh-env-vars",
-          "probe-udp-lifetime",
-          "https://tailscale.com/cap/tailnet-lock",
-          "store-appc-routes",
           "https://tailscale.com/cap/is-owner",
           "ssh-behavior-v1",
           "tailnet-display-name",
-          "https://tailscale.com/cap/file-sharing"
+          "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/tailnet-lock",
+          "store-appc-routes",
+          "probe-udp-lifetime"
         ],
         "NodeKey": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
         "MachineKey": "mkey:f151b3ba7be457f1484c96d8daf48e032d8c9ed890a7f9b2f32c51458a19a05c",
-        "Peers": [],
+        "Peers": [
+          {
+            "ID": 2230775583277936,
+            "StableID": "ndK1N8hKRJ11CNTRL",
+            "Name": "exit-b.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
+            "DiscoKey": "discokey:63071b08ff89860a2d98005f8f6f65f3b92e05b7b1338b1be71e4ad866f12728",
+            "Addresses": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "AllowedIPs": ["100.116.18.24/32", "fd7a:115c:a1e0::ff37:1218/128"],
+            "Endpoints": ["77.164.248.136:35565", "10.65.0.27:35565", "172.17.0.1:35565"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-b",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 61723 },
+                { "Proto": "peerapi6", "Port": 61723 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:00.655990366Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-b"],
+            "Online": true,
+            "ComputedName": "exit-b",
+            "ComputedNameWithHost": "exit-b"
+          },
+          {
+            "ID": 3118755726458377,
+            "StableID": "nvFTscRVMR11CNTRL",
+            "Name": "exit-a.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:21ab6fa3288e3bf8cecced295316c6327f427649765eb1746cc6ee9978bcc35c",
+            "DiscoKey": "discokey:0c8595f67987ed47cf551646d6266c21a635d622409d10745cc08f6922066e49",
+            "Addresses": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "AllowedIPs": ["100.124.195.93/32", "fd7a:115c:a1e0::7837:c35d/128"],
+            "Endpoints": ["77.164.248.136:37550", "10.65.0.27:37550", "172.17.0.1:37550"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "exit-a",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 57826 },
+                { "Proto": "peerapi6", "Port": 57826 }
+              ]
+            },
+            "Created": "2026-03-28T10:37:56.932966573Z",
+            "Cap": 131,
+            "Tags": ["tag:exit-a"],
+            "Online": true,
+            "ComputedName": "exit-a",
+            "ComputedNameWithHost": "exit-a"
+          },
+          {
+            "ID": 6999435610919250,
+            "StableID": "nyckVfJ4fw11CNTRL",
+            "Name": "group-a-client.tail78f774.ts.net.",
+            "User": 1260082990019555,
+            "Key": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
+            "DiscoKey": "discokey:bc93c2d3b81606e44eb1c96d721e7cd73c9497aa7d3efbe2f5e0d1e2e95b190f",
+            "Addresses": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "AllowedIPs": ["100.107.162.14/32", "fd7a:115c:a1e0::a237:a20e/128"],
+            "Endpoints": ["77.164.248.136:51980", "10.65.0.27:51980", "172.17.0.1:51980"],
+            "HomeDERP": 14,
+            "Hostinfo": {
+              "OS": "linux",
+              "Hostname": "group-a-client",
+              "Services": [
+                { "Proto": "peerapi4", "Port": 36543 },
+                { "Proto": "peerapi6", "Port": 36543 }
+              ]
+            },
+            "Created": "2026-03-28T10:38:04.339428828Z",
+            "Cap": 131,
+            "Tags": ["tag:group-a"],
+            "Online": true,
+            "ComputedName": "group-a-client",
+            "ComputedNameWithHost": "group-a-client"
+          }
+        ],
         "DNS": {
           "Routes": {
             "tail78f774.ts.net.": null,
@@ -4774,8 +5731,45 @@
           "Proxied": true,
           "ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]
         },
-        "PacketFilter": [],
-        "PacketFilterRules": null,
+        "PacketFilter": [
+          {
+            "IPProto": [6, 17, 1, 58],
+            "Srcs": [
+              "100.107.162.14/32",
+              "100.116.18.24/32",
+              "100.124.195.93/32",
+              "100.77.135.18/32",
+              "fd7a:115c:a1e0::4b37:8712/128",
+              "fd7a:115c:a1e0::7837:c35d/128",
+              "fd7a:115c:a1e0::a237:a20e/128",
+              "fd7a:115c:a1e0::ff37:1218/128"
+            ],
+            "SrcCaps": null,
+            "Dsts": [
+              { "Net": "100.77.135.18/32", "Ports": { "First": 0, "Last": 65535 } },
+              { "Net": "fd7a:115c:a1e0::4b37:8712/128", "Ports": { "First": 0, "Last": 65535 } }
+            ],
+            "Caps": []
+          }
+        ],
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.107.162.14",
+              "100.116.18.24",
+              "100.124.195.93",
+              "100.77.135.18",
+              "fd7a:115c:a1e0::4b37:8712",
+              "fd7a:115c:a1e0::7837:c35d",
+              "fd7a:115c:a1e0::a237:a20e",
+              "fd7a:115c:a1e0::ff37:1218"
+            ],
+            "DstPorts": [
+              { "IP": "100.77.135.18", "Ports": { "First": 0, "Last": 65535 } },
+              { "IP": "fd7a:115c:a1e0::4b37:8712", "Ports": { "First": 0, "Last": 65535 } }
+            ]
+          }
+        ],
         "SSHPolicy": { "rules": [] },
         "CollectServices": false,
         "DERPMap": {
@@ -5741,7 +6735,8 @@
             "ID": 1008089393782498,
             "LoginName": "group-b-client.tail78f774.ts.net",
             "DisplayName": "group-b-client"
-          }
+          },
+          "1260082990019555": { "ID": 1260082990019555, "LoginName": "tagged-devices", "DisplayName": "Tagged Devices" }
         }
       }
     },
@@ -5864,15 +6859,15 @@
           "ComputedNameWithHost": "multi-exit-router"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/ssh",
-          "probe-udp-lifetime",
+          "https://tailscale.com/cap/tailnet-lock",
           "ssh-behavior-v1",
           "https://tailscale.com/cap/file-sharing",
+          "ssh-env-vars",
+          "https://tailscale.com/cap/ssh",
+          "probe-udp-lifetime",
           "tailnet-display-name",
           "https://tailscale.com/cap/is-owner",
-          "store-appc-routes",
-          "https://tailscale.com/cap/tailnet-lock",
-          "ssh-env-vars"
+          "store-appc-routes"
         ],
         "NodeKey": "nodekey:b854a0d64eba757cd3215c5bd78149cc0f927e35a2ad20342e88a15ead297f6a",
         "MachineKey": "mkey:91bee804809f30d07bfc29cf556844288fc3d45e0572469a3cb0799a535fda7d",
@@ -6976,15 +7971,15 @@
           "ComputedNameWithHost": "router-a"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/tailnet-lock",
           "probe-udp-lifetime",
           "ssh-env-vars",
-          "store-appc-routes",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/tailnet-lock",
           "tailnet-display-name",
           "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/is-owner"
+          "https://tailscale.com/cap/is-owner",
+          "store-appc-routes",
+          "https://tailscale.com/cap/ssh",
+          "ssh-behavior-v1"
         ],
         "NodeKey": "nodekey:b4566fef38b3b2b15684fc8890f5fbaea4525b467825f57a02801969a5ed2b7b",
         "MachineKey": "mkey:868ba8a45654990c1c153c5ce33ef50ddd8d769841335e42decda4462d1dcf4e",
@@ -8088,15 +9083,15 @@
           "ComputedNameWithHost": "router-b"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/tailnet-lock",
-          "tailnet-display-name",
-          "store-appc-routes",
           "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/tailnet-lock",
           "https://tailscale.com/cap/file-sharing",
-          "ssh-env-vars",
           "probe-udp-lifetime",
-          "ssh-behavior-v1"
+          "store-appc-routes",
+          "ssh-behavior-v1",
+          "ssh-env-vars",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:4e6d3473c516cea37bcefdf4368932c623fd91c24aee1aacc27ca8165a41ac7a",
         "MachineKey": "mkey:d040ca033391d3dedae7b2ad7ec3334646cda7aeca501780bdaa37addec3c228",
@@ -9199,15 +10194,15 @@
           "ComputedNameWithHost": "subnet-router"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/is-owner",
-          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/ssh",
           "probe-udp-lifetime",
           "store-appc-routes",
-          "https://tailscale.com/cap/file-sharing",
-          "tailnet-display-name",
           "ssh-behavior-v1",
           "ssh-env-vars",
-          "https://tailscale.com/cap/ssh"
+          "https://tailscale.com/cap/is-owner",
+          "https://tailscale.com/cap/tailnet-lock",
+          "tailnet-display-name",
+          "https://tailscale.com/cap/file-sharing"
         ],
         "NodeKey": "nodekey:887ae2351c09c3b952f1f42bdac4095ec396ebf15824a746e4193c003e9c8e3c",
         "MachineKey": "mkey:324efa54cc51a7b4f266f6a236904c755d32b6e547a76ad3c1d1e9d348de682a",
@@ -10309,15 +11304,15 @@
           "ComputedNameWithHost": "tagged-client"
         },
         "AllCaps": [
+          "https://tailscale.com/cap/ssh",
           "https://tailscale.com/cap/is-owner",
           "probe-udp-lifetime",
-          "https://tailscale.com/cap/file-sharing",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/ssh",
           "store-appc-routes",
           "ssh-behavior-v1",
           "https://tailscale.com/cap/tailnet-lock",
-          "ssh-env-vars"
+          "ssh-env-vars",
+          "tailnet-display-name",
+          "https://tailscale.com/cap/file-sharing"
         ],
         "NodeKey": "nodekey:3011e53353e49142ea56ae11f81e0dceae0d667093d04ee086dcb1e9c5d3c844",
         "MachineKey": "mkey:92af46ce21e67878315fe620545c207854ab6cec2d03adc106c50f64f9692711",
@@ -11419,14 +12414,14 @@
         },
         "AllCaps": [
           "probe-udp-lifetime",
-          "https://tailscale.com/cap/file-sharing",
           "ssh-env-vars",
-          "store-appc-routes",
           "https://tailscale.com/cap/ssh",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/file-sharing",
+          "store-appc-routes",
           "tailnet-display-name",
-          "https://tailscale.com/cap/is-owner"
+          "ssh-behavior-v1",
+          "https://tailscale.com/cap/is-owner",
+          "https://tailscale.com/cap/tailnet-lock"
         ],
         "NodeKey": "nodekey:54c79503322a5d0a9701ce19d11963cfff9c05667ac06ef976af86275ba7080e",
         "MachineKey": "mkey:af805e02d1594ab20eaf3e2df5b379eec6453fa649344fcd564b7bae20e46a63",
@@ -12527,15 +13522,15 @@
           "ComputedNameWithHost": "tagged-server"
         },
         "AllCaps": [
-          "probe-udp-lifetime",
-          "store-appc-routes",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
           "ssh-env-vars",
+          "https://tailscale.com/cap/file-sharing",
           "https://tailscale.com/cap/is-owner",
-          "https://tailscale.com/cap/tailnet-lock"
+          "https://tailscale.com/cap/tailnet-lock",
+          "probe-udp-lifetime",
+          "https://tailscale.com/cap/ssh",
+          "store-appc-routes",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
         "MachineKey": "mkey:7d9c55c88bb618638f3f049b95c797f64eb0259810146d2644fef3e53acfdf6b",
@@ -13636,15 +14631,15 @@
           "ComputedNameWithHost": "user-kris"
         },
         "AllCaps": [
-          "ssh-env-vars",
-          "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/ssh",
-          "ssh-behavior-v1",
-          "probe-udp-lifetime",
           "store-appc-routes",
           "tailnet-display-name",
+          "https://tailscale.com/cap/file-sharing",
           "https://tailscale.com/cap/tailnet-lock",
-          "https://tailscale.com/cap/is-admin"
+          "ssh-behavior-v1",
+          "https://tailscale.com/cap/is-admin",
+          "probe-udp-lifetime",
+          "ssh-env-vars",
+          "https://tailscale.com/cap/ssh"
         ],
         "NodeKey": "nodekey:40d0f8f49fd519e4a4a2b7d278dcc8863254d4fb8b0219f1d1304cdd172e795f",
         "MachineKey": "mkey:ff16066d907c58407972ee4a05a30386bd21bc0b420d8f9290eb70b95b3e1457",
@@ -14748,12 +15743,12 @@
           "https://tailscale.com/cap/file-sharing",
           "probe-udp-lifetime",
           "tailnet-display-name",
+          "https://tailscale.com/cap/is-admin",
+          "https://tailscale.com/cap/tailnet-lock",
           "store-appc-routes",
           "https://tailscale.com/cap/ssh",
           "ssh-env-vars",
-          "https://tailscale.com/cap/is-admin",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/tailnet-lock"
+          "ssh-behavior-v1"
         ],
         "NodeKey": "nodekey:1ca6cca66d2b3811ec290c2f7ac30125c3568e19e303a8e30f6b165c9ee75a51",
         "MachineKey": "mkey:d63fc325663eef5dabd4d236e1fa5a26ed14ad31ea0711840cf755a5e8a9df39",
@@ -15855,16 +16850,16 @@
           "ComputedNameWithHost": "user1"
         },
         "AllCaps": [
+          "https://tailscale.com/cap/is-admin",
+          "ssh-env-vars",
           "https://tailscale.com/cap/file-sharing",
+          "ssh-behavior-v1",
+          "https://tailscale.com/cap/is-owner",
+          "https://tailscale.com/cap/tailnet-lock",
+          "store-appc-routes",
           "tailnet-display-name",
           "https://tailscale.com/cap/ssh",
-          "https://tailscale.com/cap/tailnet-lock",
-          "probe-udp-lifetime",
-          "https://tailscale.com/cap/is-admin",
-          "store-appc-routes",
-          "ssh-env-vars",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/is-owner"
+          "probe-udp-lifetime"
         ],
         "NodeKey": "nodekey:96338a2cd2ea803c915ed8fdf882d66ca0c6a59d0fcf0bc4b3f928d22d1ac743",
         "MachineKey": "mkey:98b7ed0fef020882cab4324b39ac93b60741794e722411083d0d3cf703833f4a",

@@ -1,9 +1,9 @@
 {
-  "test_id": "GRANT-V14",
-  "timestamp": "2026-03-28T11:50:41Z",
+  "test_id": "GRANT-V34",
+  "timestamp": "2026-03-28T11:53:16Z",
   "propagation_wait_seconds": 8,
   "input": {
-    "policy_file": "grant_policies_via/grant_v14.json",
+    "policy_file": "grant_policies_via/grant_v34.json",
     "full_policy": {
       "groups": {
         "group:admins": ["kratail2tid@passkey"],
@@ -40,14 +40,16 @@
       },
       "grants": [
         {
-          "src": ["tag:client"],
+          "src": ["*"],
           "dst": ["autogroup:internet"],
-          "via": ["tag:exit"],
+          "via": ["tag:exit-a", "tag:exit-b"],
           "ip": ["*"]
         }
       ]
     },
-    "grants_section": [{ "src": ["tag:client"], "dst": ["autogroup:internet"], "via": ["tag:exit"], "ip": ["*"] }],
+    "grants_section": [
+      { "src": ["*"], "dst": ["autogroup:internet"], "via": ["tag:exit-a", "tag:exit-b"], "ip": ["*"] }
+    ],
     "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
     "api_method": "POST",
     "api_response_code": 200
@@ -310,12 +312,12 @@
           "ComputedNameWithHost": "exit-a"
         },
         "AllCaps": [
-          "ssh-behavior-v1",
           "tailnet-display-name",
-          "https://tailscale.com/cap/tailnet-lock",
           "probe-udp-lifetime",
           "store-appc-routes",
+          "ssh-behavior-v1",
           "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/tailnet-lock",
           "https://tailscale.com/cap/is-owner",
           "ssh-env-vars",
           "https://tailscale.com/cap/file-sharing"
@@ -1422,14 +1424,14 @@
         },
         "AllCaps": [
           "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/tailnet-lock",
           "probe-udp-lifetime",
           "ssh-env-vars",
           "store-appc-routes",
-          "https://tailscale.com/cap/tailnet-lock",
-          "https://tailscale.com/cap/is-owner",
           "ssh-behavior-v1",
           "tailnet-display-name",
-          "https://tailscale.com/cap/ssh"
+          "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/is-owner"
         ],
         "NodeKey": "nodekey:265e1377372be0d036773ac41339bf7b53ed18e9f67f196d7d517abeff741217",
         "MachineKey": "mkey:f4cbc28e2db0f8d8a6a5fc3991b055477e5efc6c025d24b72d3509fa3743401c",
@@ -2532,13 +2534,13 @@
           "ComputedNameWithHost": "exit-node"
         },
         "AllCaps": [
-          "tailnet-display-name",
-          "ssh-env-vars",
-          "probe-udp-lifetime",
-          "ssh-behavior-v1",
           "https://tailscale.com/cap/ssh",
           "https://tailscale.com/cap/tailnet-lock",
+          "tailnet-display-name",
+          "probe-udp-lifetime",
+          "ssh-behavior-v1",
           "store-appc-routes",
+          "ssh-env-vars",
           "https://tailscale.com/cap/file-sharing",
           "https://tailscale.com/cap/is-owner"
         ],
@@ -3642,15 +3644,15 @@
           "ComputedNameWithHost": "group-a-client"
         },
         "AllCaps": [
-          "probe-udp-lifetime",
           "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
           "tailnet-display-name",
-          "https://tailscale.com/cap/tailnet-lock",
-          "store-appc-routes",
           "ssh-env-vars",
-          "https://tailscale.com/cap/file-sharing"
+          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/file-sharing",
+          "probe-udp-lifetime",
+          "store-appc-routes"
         ],
         "NodeKey": "nodekey:802726716bd4942fceb5e444218c930040fadb082698b57ea3eb59a6a26ba20d",
         "MachineKey": "mkey:fd2d0c2953440569b6c045d6bb1826bf138bf65b4ed4433532e4d91e09fd6b6b",
@@ -4752,15 +4754,15 @@
           "ComputedNameWithHost": "group-b-client"
         },
         "AllCaps": [
+          "https://tailscale.com/cap/file-sharing",
           "https://tailscale.com/cap/ssh",
-          "ssh-env-vars",
-          "probe-udp-lifetime",
           "https://tailscale.com/cap/tailnet-lock",
           "store-appc-routes",
           "https://tailscale.com/cap/is-owner",
+          "probe-udp-lifetime",
           "ssh-behavior-v1",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/file-sharing"
+          "ssh-env-vars",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:ef35a655163204a08b33e09fdc24709f1e3aaa7f40de4efd5549cf014b4d8711",
         "MachineKey": "mkey:f151b3ba7be457f1484c96d8daf48e032d8c9ed890a7f9b2f32c51458a19a05c",
@@ -5864,15 +5866,15 @@
           "ComputedNameWithHost": "multi-exit-router"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/ssh",
-          "probe-udp-lifetime",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/file-sharing",
           "tailnet-display-name",
-          "https://tailscale.com/cap/is-owner",
           "store-appc-routes",
+          "probe-udp-lifetime",
+          "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/tailnet-lock",
-          "ssh-env-vars"
+          "ssh-env-vars",
+          "https://tailscale.com/cap/ssh",
+          "ssh-behavior-v1"
         ],
         "NodeKey": "nodekey:b854a0d64eba757cd3215c5bd78149cc0f927e35a2ad20342e88a15ead297f6a",
         "MachineKey": "mkey:91bee804809f30d07bfc29cf556844288fc3d45e0572469a3cb0799a535fda7d",
@@ -6976,15 +6978,15 @@
           "ComputedNameWithHost": "router-a"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/ssh",
+          "https://tailscale.com/cap/is-owner",
           "probe-udp-lifetime",
-          "ssh-env-vars",
           "store-appc-routes",
+          "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
           "https://tailscale.com/cap/tailnet-lock",
+          "ssh-env-vars",
           "tailnet-display-name",
-          "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/is-owner"
+          "https://tailscale.com/cap/file-sharing"
         ],
         "NodeKey": "nodekey:b4566fef38b3b2b15684fc8890f5fbaea4525b467825f57a02801969a5ed2b7b",
         "MachineKey": "mkey:868ba8a45654990c1c153c5ce33ef50ddd8d769841335e42decda4462d1dcf4e",
@@ -8088,15 +8090,15 @@
           "ComputedNameWithHost": "router-b"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/tailnet-lock",
-          "tailnet-display-name",
-          "store-appc-routes",
           "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/ssh",
-          "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/tailnet-lock",
           "ssh-env-vars",
           "probe-udp-lifetime",
-          "ssh-behavior-v1"
+          "store-appc-routes",
+          "ssh-behavior-v1",
+          "https://tailscale.com/cap/file-sharing",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:4e6d3473c516cea37bcefdf4368932c623fd91c24aee1aacc27ca8165a41ac7a",
         "MachineKey": "mkey:d040ca033391d3dedae7b2ad7ec3334646cda7aeca501780bdaa37addec3c228",
@@ -9199,15 +9201,15 @@
           "ComputedNameWithHost": "subnet-router"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/tailnet-lock",
-          "probe-udp-lifetime",
-          "store-appc-routes",
           "https://tailscale.com/cap/file-sharing",
-          "tailnet-display-name",
           "ssh-behavior-v1",
           "ssh-env-vars",
-          "https://tailscale.com/cap/ssh"
+          "https://tailscale.com/cap/ssh",
+          "probe-udp-lifetime",
+          "store-appc-routes",
+          "tailnet-display-name",
+          "https://tailscale.com/cap/is-owner"
         ],
         "NodeKey": "nodekey:887ae2351c09c3b952f1f42bdac4095ec396ebf15824a746e4193c003e9c8e3c",
         "MachineKey": "mkey:324efa54cc51a7b4f266f6a236904c755d32b6e547a76ad3c1d1e9d348de682a",
@@ -10310,14 +10312,14 @@
         },
         "AllCaps": [
           "https://tailscale.com/cap/is-owner",
-          "probe-udp-lifetime",
+          "store-appc-routes",
           "https://tailscale.com/cap/file-sharing",
+          "ssh-env-vars",
           "tailnet-display-name",
           "https://tailscale.com/cap/ssh",
-          "store-appc-routes",
+          "probe-udp-lifetime",
           "ssh-behavior-v1",
-          "https://tailscale.com/cap/tailnet-lock",
-          "ssh-env-vars"
+          "https://tailscale.com/cap/tailnet-lock"
         ],
         "NodeKey": "nodekey:3011e53353e49142ea56ae11f81e0dceae0d667093d04ee086dcb1e9c5d3c844",
         "MachineKey": "mkey:92af46ce21e67878315fe620545c207854ab6cec2d03adc106c50f64f9692711",
@@ -11418,15 +11420,15 @@
           "ComputedNameWithHost": "tagged-prod"
         },
         "AllCaps": [
-          "probe-udp-lifetime",
-          "https://tailscale.com/cap/file-sharing",
-          "ssh-env-vars",
-          "store-appc-routes",
           "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
+          "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/tailnet-lock",
+          "ssh-env-vars",
+          "store-appc-routes",
           "tailnet-display-name",
-          "https://tailscale.com/cap/is-owner"
+          "probe-udp-lifetime",
+          "https://tailscale.com/cap/file-sharing"
         ],
         "NodeKey": "nodekey:54c79503322a5d0a9701ce19d11963cfff9c05667ac06ef976af86275ba7080e",
         "MachineKey": "mkey:af805e02d1594ab20eaf3e2df5b379eec6453fa649344fcd564b7bae20e46a63",
@@ -12527,15 +12529,15 @@
           "ComputedNameWithHost": "tagged-server"
         },
         "AllCaps": [
-          "probe-udp-lifetime",
-          "store-appc-routes",
-          "tailnet-display-name",
-          "https://tailscale.com/cap/file-sharing",
-          "https://tailscale.com/cap/ssh",
           "ssh-behavior-v1",
+          "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/ssh",
           "ssh-env-vars",
           "https://tailscale.com/cap/is-owner",
-          "https://tailscale.com/cap/tailnet-lock"
+          "probe-udp-lifetime",
+          "store-appc-routes",
+          "tailnet-display-name"
         ],
         "NodeKey": "nodekey:7d5c34b3e8082069d0a82838165c33f8e1b5eb32c6211c2d23d4fe8fb9ec4a19",
         "MachineKey": "mkey:7d9c55c88bb618638f3f049b95c797f64eb0259810146d2644fef3e53acfdf6b",
@@ -13636,15 +13638,15 @@
           "ComputedNameWithHost": "user-kris"
         },
         "AllCaps": [
-          "ssh-env-vars",
-          "https://tailscale.com/cap/file-sharing",
           "https://tailscale.com/cap/ssh",
-          "ssh-behavior-v1",
-          "probe-udp-lifetime",
-          "store-appc-routes",
           "tailnet-display-name",
           "https://tailscale.com/cap/tailnet-lock",
-          "https://tailscale.com/cap/is-admin"
+          "probe-udp-lifetime",
+          "https://tailscale.com/cap/file-sharing",
+          "store-appc-routes",
+          "ssh-behavior-v1",
+          "https://tailscale.com/cap/is-admin",
+          "ssh-env-vars"
         ],
         "NodeKey": "nodekey:40d0f8f49fd519e4a4a2b7d278dcc8863254d4fb8b0219f1d1304cdd172e795f",
         "MachineKey": "mkey:ff16066d907c58407972ee4a05a30386bd21bc0b420d8f9290eb70b95b3e1457",
@@ -14745,15 +14747,15 @@
           "ComputedNameWithHost": "user-mon"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/file-sharing",
-          "probe-udp-lifetime",
           "tailnet-display-name",
-          "store-appc-routes",
-          "https://tailscale.com/cap/ssh",
-          "ssh-env-vars",
           "https://tailscale.com/cap/is-admin",
           "ssh-behavior-v1",
-          "https://tailscale.com/cap/tailnet-lock"
+          "https://tailscale.com/cap/tailnet-lock",
+          "https://tailscale.com/cap/file-sharing",
+          "https://tailscale.com/cap/ssh",
+          "ssh-env-vars",
+          "store-appc-routes",
+          "probe-udp-lifetime"
         ],
         "NodeKey": "nodekey:1ca6cca66d2b3811ec290c2f7ac30125c3568e19e303a8e30f6b165c9ee75a51",
         "MachineKey": "mkey:d63fc325663eef5dabd4d236e1fa5a26ed14ad31ea0711840cf755a5e8a9df39",
@@ -15855,16 +15857,16 @@
           "ComputedNameWithHost": "user1"
         },
         "AllCaps": [
-          "https://tailscale.com/cap/file-sharing",
-          "tailnet-display-name",
+          "https://tailscale.com/cap/is-owner",
           "https://tailscale.com/cap/ssh",
+          "ssh-env-vars",
+          "https://tailscale.com/cap/file-sharing",
+          "ssh-behavior-v1",
+          "tailnet-display-name",
           "https://tailscale.com/cap/tailnet-lock",
           "probe-udp-lifetime",
           "https://tailscale.com/cap/is-admin",
-          "store-appc-routes",
-          "ssh-env-vars",
-          "ssh-behavior-v1",
-          "https://tailscale.com/cap/is-owner"
+          "store-appc-routes"
         ],
         "NodeKey": "nodekey:96338a2cd2ea803c915ed8fdf882d66ca0c6a59d0fcf0bc4b3f928d22d1ac743",
         "MachineKey": "mkey:98b7ed0fef020882cab4324b39ac93b60741794e722411083d0d3cf703833f4a",
