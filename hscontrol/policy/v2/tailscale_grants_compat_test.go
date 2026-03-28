@@ -149,7 +149,116 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		IPv4:      ptrAddr("100.85.66.106"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::7c37:426a"),
 		Tags:      []string{"tag:exit"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("::/0"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		},
+	}
+
+	// --- New nodes for expanded via grant topology ---
+
+	nodeExitA := &types.Node{
+		ID:        9,
+		GivenName: "exit-a",
+		IPv4:      ptrAddr("100.124.195.93"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::7837:c35d"),
+		Tags:      []string{"tag:exit-a"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("::/0"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		},
+	}
+
+	nodeExitB := &types.Node{
+		ID:        10,
+		GivenName: "exit-b",
+		IPv4:      ptrAddr("100.116.18.24"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::ff37:1218"),
+		Tags:      []string{"tag:exit-b"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("::/0"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		},
+	}
+
+	nodeGroupA := &types.Node{
+		ID:        11,
+		GivenName: "group-a-client",
+		IPv4:      ptrAddr("100.107.162.14"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::a237:a20e"),
+		Tags:      []string{"tag:group-a"},
 		Hostinfo:  &tailcfg.Hostinfo{},
+	}
+
+	nodeGroupB := &types.Node{
+		ID:        12,
+		GivenName: "group-b-client",
+		IPv4:      ptrAddr("100.77.135.18"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::4b37:8712"),
+		Tags:      []string{"tag:group-b"},
+		Hostinfo:  &tailcfg.Hostinfo{},
+	}
+
+	nodeRouterA := &types.Node{
+		ID:        13,
+		GivenName: "router-a",
+		IPv4:      ptrAddr("100.109.43.124"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::a537:2b7c"),
+		Tags:      []string{"tag:router-a"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.44.0.0/16")},
+		},
+		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.44.0.0/16")},
+	}
+
+	nodeRouterB := &types.Node{
+		ID:        14,
+		GivenName: "router-b",
+		IPv4:      ptrAddr("100.65.172.123"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::5a37:ac7c"),
+		Tags:      []string{"tag:router-b"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{netip.MustParsePrefix("10.55.0.0/16")},
+		},
+		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.55.0.0/16")},
+	}
+
+	nodeMultiExitRouter := &types.Node{
+		ID:        15,
+		GivenName: "multi-exit-router",
+		IPv4:      ptrAddr("100.105.127.107"),
+		IPv6:      ptrAddr("fd7a:115c:a1e0::9537:7f6b"),
+		Tags:      []string{"tag:exit", "tag:router"},
+		Hostinfo: &tailcfg.Hostinfo{
+			RoutableIPs: []netip.Prefix{
+				netip.MustParsePrefix("10.33.0.0/16"),
+				netip.MustParsePrefix("0.0.0.0/0"),
+				netip.MustParsePrefix("::/0"),
+			},
+		},
+		ApprovedRoutes: []netip.Prefix{
+			netip.MustParsePrefix("10.33.0.0/16"),
+			netip.MustParsePrefix("0.0.0.0/0"),
+			netip.MustParsePrefix("::/0"),
+		},
 	}
 
 	return types.Nodes{
@@ -161,6 +270,13 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		nodeTaggedClient,
 		nodeSubnetRouter,
 		nodeExitNode,
+		nodeExitA,
+		nodeExitB,
+		nodeGroupA,
+		nodeGroupB,
+		nodeRouterA,
+		nodeRouterB,
+		nodeMultiExitRouter,
 	}
 }
 
@@ -264,7 +380,7 @@ func TestGrantsCompat(t *testing.T) {
 	t.Logf("Loaded %d grant test files", len(files))
 
 	users := setupGrantsCompatUsers()
-	nodes := setupGrantsCompatNodes(users)
+	allNodes := setupGrantsCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadGrantTestFile(t, file)
@@ -276,6 +392,16 @@ func TestGrantsCompat(t *testing.T) {
 			if reason, ok := grantSkipReasons[tf.TestID]; ok {
 				t.Skipf("TODO: %s — see grantSkipReasons comments for details", reason)
 				return
+			}
+
+			// Determine which node set to use based on the test's topology.
+			// Tests captured with the expanded 15-node topology (V26+) have
+			// nodes like exit-a, group-a-client, etc. Tests from the original
+			// 8-node topology should only use the first 8 nodes to avoid
+			// resolving extra IPs from nodes that weren't present during capture.
+			nodes := allNodes
+			if _, hasNewNodes := tf.Captures["exit-a"]; !hasNewNodes {
+				nodes = allNodes[:8]
 			}
 
 			// Convert Tailscale user emails to headscale @example.com format
