@@ -693,7 +693,11 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 		return s.nodeStore.ListPeers(nodeID)
 	}
 
-	// For specific peerIDs, filter from all nodes
+	// For specific peerIDs, filter from all nodes.
+	// This path is used for incremental updates (NodeAdded, NodeChanged)
+	// where the caller already knows which peer IDs are involved.
+	// The peer visibility filtering happens in the mapper's buildTailPeers
+	// via MatchersForNode/ReduceNodes.
 	allNodes := s.nodeStore.ListNodes()
 
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
