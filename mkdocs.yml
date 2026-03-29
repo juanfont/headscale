@@ -1,7 +1,7 @@
 ---
 site_name: Headscale
 site_url: https://juanfont.github.io/headscale/
-edit_uri: blob/main/docs/ # Change the master branch to main as we are using main as a main branch
+edit_uri: blob/main/docs/
 site_author: Headscale authors
 site_description: >-
   An open source, self-hosted implementation of the Tailscale control server.
@@ -47,7 +47,6 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: white
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
