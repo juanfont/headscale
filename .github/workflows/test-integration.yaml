@@ -249,8 +249,6 @@ jobs:
           - TestAutoApproveMultiNetwork/webauth-group.*
           - TestSubnetRouteACLFiltering
           - TestGrantViaSubnetSteering
-          - TestGrantViaExitNodeSteering
-          - TestGrantViaMixedSteering
           - TestHeadscale
           - TestTailscaleNodesJoiningHeadcale
           - TestSSHOneUserToAll
