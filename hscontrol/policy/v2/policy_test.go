@@ -1626,11 +1626,10 @@ func TestViaRoutesForPeer(t *testing.T) {
 		require.NoError(t, err)
 
 		result := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
-		// Include should have the subnet route and both exit routes.
+		// Include should have only the subnet route.
+		// autogroup:internet does not produce via route effects.
 		require.Contains(t, result.Include, mp("10.0.0.0/24"))
-		require.Contains(t, result.Include, mp("0.0.0.0/0"))
-		require.Contains(t, result.Include, mp("::/0"))
-		require.Len(t, result.Include, 3)
+		require.Len(t, result.Include, 1)
 		require.Empty(t, result.Exclude)
 	})
 
@@ -1700,19 +1699,17 @@ func TestViaRoutesForPeer(t *testing.T) {
 		pm, err := NewPolicyManager([]byte(pol), users, nodes.ViewSlice())
 		require.NoError(t, err)
 
-		// Peer with tag:exit -> Include gets exit routes.
+		// autogroup:internet via grants do NOT affect AllowedIPs or
+		// route steering. Tailscale SaaS handles exit traffic through
+		// the client's exit node mechanism, not ViaRoutesForPeer.
+		// Verified by golden captures GRANT-V14 through GRANT-V36.
 		resultExit := pm.ViaRoutesForPeer(nodes[0].View(), nodes[1].View())
-		require.Contains(t, resultExit.Include, mp("0.0.0.0/0"))
-		require.Contains(t, resultExit.Include, mp("::/0"))
-		require.Len(t, resultExit.Include, 2)
+		require.Empty(t, resultExit.Include)
 		require.Empty(t, resultExit.Exclude)
 
-		// Peer without tag:exit -> Exclude gets exit routes.
 		resultOther := pm.ViaRoutesForPeer(nodes[0].View(), nodes[2].View())
 		require.Empty(t, resultOther.Include)
-		require.Contains(t, resultOther.Exclude, mp("0.0.0.0/0"))
-		require.Contains(t, resultOther.Exclude, mp("::/0"))
-		require.Len(t, resultOther.Exclude, 2)
+		require.Empty(t, resultOther.Exclude)
 	})
 
 	t.Run("via_routes_survive_reduce_routes", func(t *testing.T) {

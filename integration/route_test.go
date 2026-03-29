@@ -20,7 +20,6 @@ import (
 	"github.com/juanfont/headscale/hscontrol/routes"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
-	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
 	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
@@ -1911,24 +1910,32 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 	require.NotNil(t, user1c)
 	require.NotNil(t, user2c)
 
-	// Advertise the exit nodes for the dockersubnet of user1
+	route, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+
+	// Advertise exit route AND the usernet1 subnet. The subnet route is
+	// required because Tailscale exit nodes strip locally-connected subnets
+	// from their forwarding filter (shrinkDefaultRoute + localInterfaceRoutes).
+	// Explicitly advertising the subnet adds it to localNets via the
+	// non-default-route path, allowing curl/traceroute to Docker IPs.
 	command := []string{
 		"tailscale",
 		"set",
 		"--advertise-exit-node",
+		"--advertise-routes=" + route.String(),
 	}
 	_, _, err = user1c.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+	require.NoErrorf(t, err, "failed to advertise routes: %s", err)
 
 	var nodes []*v1.Node
-	// Wait for route advertisements to propagate to NodeStore
+	// Wait for route advertisements to propagate (3 routes: v4 exit + v6 exit + subnet).
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
 		var err error
 
 		nodes, err = headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 2)
-		requireNodeRouteCountWithCollect(ct, nodes[0], 2, 0, 0)
+		requireNodeRouteCountWithCollect(ct, nodes[0], 3, 0, 0)
 	}, integrationutil.ScaledTimeout(10*time.Second), 100*time.Millisecond, "route advertisements should propagate")
 
 	// Verify that no routes has been sent to the client,
@@ -1945,29 +1952,28 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 		}
 	}, integrationutil.ScaledTimeout(5*time.Second), 200*time.Millisecond, "Verifying no routes sent to client before approval")
 
-	// Enable route
-	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{tsaddr.AllIPv4()})
+	// Approve exit routes and subnet route.
+	_, err = headscale.ApproveRoutes(nodes[0].GetId(), []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6(), *route})
 	require.NoError(t, err)
 
-	// Wait for route state changes to propagate to nodes
+	// Wait for route state changes to propagate.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		nodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 2)
-		requireNodeRouteCountWithCollect(c, nodes[0], 2, 2, 2)
+		requireNodeRouteCountWithCollect(c, nodes[0], 3, 3, 3)
 	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route state changes should propagate to nodes")
 
-	// Verify that the routes have been sent to the client
+	// Wait for exit routes to be visible to the client.
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		status, err := user2c.Status()
 		assert.NoError(c, err)
 
 		for _, peerKey := range status.Peers() {
 			peerStatus := status.Peer[peerKey]
-
-			requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{tsaddr.AllIPv4(), tsaddr.AllIPv6()})
+			assert.True(c, peerStatus.ExitNodeOption, "peer should be an exit node option")
 		}
-	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "routes should be visible to client")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "exit routes should be visible to client")
 
 	// Tell user2c to use user1c as an exit node.
 	command = []string{
@@ -1977,7 +1983,14 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 		user1c.Hostname(),
 	}
 	_, _, err = user2c.Execute(command)
-	require.NoErrorf(t, err, "failed to advertise route: %s", err)
+	require.NoErrorf(t, err, "failed to set exit node: %s", err)
+
+	// Wait for exit node to become active.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		status, err := user2c.Status()
+		assert.NoError(c, err)
+		assert.NotNil(c, status.ExitNodeStatus, "exit node should be active")
+	}, 30*time.Second, 500*time.Millisecond, "exit node activation")
 
 	usernet1, err := scenario.Network("usernet1")
 	require.NoError(t, err)
@@ -1988,17 +2001,25 @@ func TestSubnetRouterMultiNetworkExitNode(t *testing.T) {
 
 	web := services[0]
 	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
+	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
 
-	// We can't mess to much with ip forwarding in containers so
-	// we settle for a simple ping here.
-	// Direct is false since we use internal DERP which means we
-	// can't discover a direct path between docker networks.
-	err = user2c.Ping(webip.String(),
-		tsic.WithPingUntilDirect(false),
-		tsic.WithPingCount(1),
-		tsic.WithPingTimeout(7*time.Second),
-	)
-	require.NoError(t, err)
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := user2c.Curl(weburl)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, 10*time.Second, 200*time.Millisecond, "user2 should reach webservice via exit node")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := user2c.Traceroute(webip)
+		assert.NoError(c, err)
+
+		ip, err := user1c.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for user1c") {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, 10*time.Second, 200*time.Millisecond, "user2 traceroute should go through user1 exit node")
 }
 
 func MustFindNode(hostname string, nodes []*v1.Node) *v1.Node {
@@ -3471,861 +3492,4 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, assertTimeout, 200*time.Millisecond, "Client B traceroute should go through Router B")
-}
-
-// TestGrantViaExitNodeSteering validates that via grants steer different
-// source groups through different tagged exit nodes for internet traffic.
-// Per Tailscale docs, via with autogroup:internet steers exit node traffic
-// through specific tagged nodes.
-func TestGrantViaExitNodeSteering(t *testing.T) {
-	IntegrationSkip(t)
-
-	assertTimeout := 60 * time.Second
-
-	spec := ScenarioSpec{
-		NodesPerUser: 0,
-		Users:        []string{"exit", "client"},
-		Networks: map[string]NetworkSpec{
-			"usernet1": {Users: []string{"exit"}},
-			"usernet2": {Users: []string{"client"}},
-		},
-		ExtraService: map[string][]extraServiceFunc{
-			"usernet1": {Webservice},
-		},
-		Versions: []string{"head"},
-	}
-
-	scenario, err := NewScenario(spec)
-
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	pol := &policyv2.Policy{
-		TagOwners: policyv2.TagOwners{
-			policyv2.Tag("tag:exit-a"):  policyv2.Owners{usernameOwner("exit@")},
-			policyv2.Tag("tag:exit-b"):  policyv2.Owners{usernameOwner("exit@")},
-			policyv2.Tag("tag:group-a"): policyv2.Owners{usernameOwner("client@")},
-			policyv2.Tag("tag:group-b"): policyv2.Owners{usernameOwner("client@")},
-		},
-		Grants: []policyv2.Grant{
-			// Allow all tagged nodes to communicate with each other (peer connectivity).
-			{
-				Sources: policyv2.Aliases{
-					tagp("tag:exit-a"), tagp("tag:exit-b"),
-					tagp("tag:group-a"), tagp("tag:group-b"),
-				},
-				Destinations: policyv2.Aliases{
-					tagp("tag:exit-a"), tagp("tag:exit-b"),
-					tagp("tag:group-a"), tagp("tag:group-b"),
-				},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-			},
-			// Via grant: steer tag:group-a internet traffic through tag:exit-a.
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-a")},
-				Destinations: policyv2.Aliases{autogroupp("autogroup:internet")},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:exit-a")},
-			},
-			// Via grant: steer tag:group-b internet traffic through tag:exit-b.
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-b")},
-				Destinations: policyv2.Aliases{autogroupp("autogroup:internet")},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:exit-b")},
-			},
-		},
-		AutoApprovers: policyv2.AutoApproverPolicy{
-			ExitNode: policyv2.AutoApprovers{
-				tagApprover("tag:exit-a"),
-				tagApprover("tag:exit-b"),
-			},
-		},
-	}
-
-	headscale, err := scenario.Headscale(
-		hsic.WithTestName("grantvia-exit"),
-		hsic.WithACLPolicy(pol),
-		hsic.WithPolicyMode(types.PolicyModeDB),
-	)
-	requireNoErrGetHeadscale(t, err)
-
-	usernet1, err := scenario.Network("usernet1")
-	require.NoError(t, err)
-	usernet2, err := scenario.Network("usernet2")
-	require.NoError(t, err)
-
-	// Create users on headscale server.
-	_, err = scenario.CreateUser("exit")
-	require.NoError(t, err)
-	_, err = scenario.CreateUser("client")
-	require.NoError(t, err)
-
-	userMap, err := headscale.MapUsers()
-	require.NoError(t, err)
-
-	// Create Exit A (tag:exit-a) on usernet1.
-	exitA, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = exitA.Shutdown() }()
-
-	pakExitA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["exit"].GetId(), false, false, []string{"tag:exit-a"},
-	)
-	require.NoError(t, err)
-	err = exitA.Login(headscale.GetEndpoint(), pakExitA.GetKey())
-	require.NoError(t, err)
-	err = exitA.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Create Exit B (tag:exit-b) on usernet1.
-	exitB, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = exitB.Shutdown() }()
-
-	pakExitB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["exit"].GetId(), false, false, []string{"tag:exit-b"},
-	)
-	require.NoError(t, err)
-	err = exitB.Login(headscale.GetEndpoint(), pakExitB.GetKey())
-	require.NoError(t, err)
-	err = exitB.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Create Client A (tag:group-a) on usernet2.
-	clientA, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet2),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = clientA.Shutdown() }()
-
-	pakClientA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-a"},
-	)
-	require.NoError(t, err)
-	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey())
-	require.NoError(t, err)
-	err = clientA.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Create Client B (tag:group-b) on usernet2.
-	clientB, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet2),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = clientB.Shutdown() }()
-
-	pakClientB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-b"},
-	)
-	require.NoError(t, err)
-	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey())
-	require.NoError(t, err)
-	err = clientB.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Wait for all peers to see each other (4 nodes, each sees 3 peers).
-	allNodes := []TailscaleClient{exitA, exitB, clientA, clientB}
-	for _, node := range allNodes {
-		err = node.WaitForPeers(len(allNodes)-1, 60*time.Second, 1*time.Second)
-		require.NoErrorf(t, err, "node %s failed to see all peers", node.Hostname())
-	}
-
-	// Both exit nodes advertise exit routes.
-	for _, exitNode := range []TailscaleClient{exitA, exitB} {
-		command := []string{
-			"tailscale", "set",
-			"--advertise-exit-node",
-		}
-		_, _, err = exitNode.Execute(command)
-		require.NoErrorf(t, err, "failed to advertise exit node on %s", exitNode.Hostname())
-	}
-
-	// Wait for auto-approval on both exit nodes.
-	// Exit routes = 2 per node (0.0.0.0/0 + ::/0). Only check announced/approved;
-	// primary election may only give one node the subnet designation.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes()
-		assert.NoError(c, err)
-
-		exitANode := MustFindNode(exitA.Hostname(), nodes)
-		t.Logf("Exit A %s: announced=%v, approved=%v, subnet=%v",
-			exitANode.GetName(),
-			exitANode.GetAvailableRoutes(),
-			exitANode.GetApprovedRoutes(),
-			exitANode.GetSubnetRoutes())
-		assert.Len(c, exitANode.GetAvailableRoutes(), 2, "Exit A should have 2 announced routes")
-		assert.Len(c, exitANode.GetApprovedRoutes(), 2, "Exit A should have 2 approved routes")
-
-		exitBNode := MustFindNode(exitB.Hostname(), nodes)
-		t.Logf("Exit B %s: announced=%v, approved=%v, subnet=%v",
-			exitBNode.GetName(),
-			exitBNode.GetAvailableRoutes(),
-			exitBNode.GetApprovedRoutes(),
-			exitBNode.GetSubnetRoutes())
-		assert.Len(c, exitBNode.GetAvailableRoutes(), 2, "Exit B should have 2 announced routes")
-		assert.Len(c, exitBNode.GetApprovedRoutes(), 2, "Exit B should have 2 approved routes")
-	}, assertTimeout, 500*time.Millisecond, "Both exit nodes should have auto-approved exit routes")
-
-	exitAID := exitA.MustID()
-	exitBID := exitB.MustID()
-
-	// Via steering: Client A should see exit routes ONLY on Exit A (not Exit B).
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientA.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case exitAID.StableID():
-				// Client A should see Exit A's exit routes.
-				t.Logf("Client A sees Exit A: AllowedIPs=%v, ExitNode=%v",
-					peerStatus.AllowedIPs, peerStatus.ExitNode)
-				got := filterNonRoutes(peerStatus)
-				assert.NotEmpty(c, got, "Client A should see Exit A's exit routes")
-			case exitBID.StableID():
-				// Client A should NOT see Exit B's exit routes.
-				t.Logf("Client A sees Exit B: AllowedIPs=%v, ExitNode=%v",
-					peerStatus.AllowedIPs, peerStatus.ExitNode)
-				got := filterNonRoutes(peerStatus)
-				assert.Empty(c, got, "Client A should NOT see Exit B's exit routes")
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client A should see exit routes only via Exit A")
-
-	// Via steering: Client B should see exit routes ONLY on Exit B (not Exit A).
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientB.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case exitBID.StableID():
-				// Client B should see Exit B's exit routes.
-				t.Logf("Client B sees Exit B: AllowedIPs=%v, ExitNode=%v",
-					peerStatus.AllowedIPs, peerStatus.ExitNode)
-				got := filterNonRoutes(peerStatus)
-				assert.NotEmpty(c, got, "Client B should see Exit B's exit routes")
-			case exitAID.StableID():
-				// Client B should NOT see Exit A's exit routes.
-				t.Logf("Client B sees Exit A: AllowedIPs=%v, ExitNode=%v",
-					peerStatus.AllowedIPs, peerStatus.ExitNode)
-				got := filterNonRoutes(peerStatus)
-				assert.Empty(c, got, "Client B should NOT see Exit A's exit routes")
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client B should see exit routes only via Exit B")
-
-	services, err := scenario.Services("usernet1")
-	require.NoError(t, err)
-	require.Len(t, services, 1)
-
-	web := services[0]
-	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
-	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("webservice: %s, %s", webip.String(), weburl)
-
-	// Negative test: Client A tries to set the WRONG exit node (Exit B, not designated by via).
-	// Via steering removes exit routes from non-designated exit nodes in the network map,
-	// so the Tailscale client itself rejects the command since Exit B has no exit routes
-	// from Client A's perspective.
-	exitBStatus := exitB.MustStatus()
-	wrongExitCmd := []string{
-		"tailscale", "set",
-		"--exit-node=" + exitBStatus.Self.DNSName,
-	}
-	_, _, err = clientA.Execute(wrongExitCmd)
-	require.Error(t, err, "Client A should not be able to set non-designated Exit B as exit node")
-
-	// Positive test: Each client selects the exit node designated by via.
-	exitAStatus := exitA.MustStatus()
-	commandA := []string{
-		"tailscale", "set",
-		"--exit-node=" + exitAStatus.Self.DNSName,
-	}
-	_, _, err = clientA.Execute(commandA)
-	require.NoError(t, err, "Client A failed to set exit node to Exit A")
-
-	commandB := []string{
-		"tailscale", "set",
-		"--exit-node=" + exitBStatus.Self.DNSName,
-	}
-	_, _, err = clientB.Execute(commandB)
-	require.NoError(t, err, "Client B failed to set exit node to Exit B")
-
-	// Verify traffic flows through the via-designated exit nodes.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientA.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client A should reach webservice via Exit A")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientA.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := exitA.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for exitA") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client A traceroute should go through Exit A")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientB.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client B should reach webservice via Exit B")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientB.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := exitB.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for exitB") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client B traceroute should go through Exit B")
-}
-
-// TestGrantViaMixedSteering validates cross-steering when the same servers
-// advertise both subnet routes and exit routes simultaneously. Via grants
-// steer each client group through different servers for subnet vs exit traffic:
-//   - group-a uses server-a for subnet, server-b for exit
-//   - group-b uses server-b for subnet, server-a for exit
-//
-// Uses three networks:
-//   - usernet1: servers + webservice (subnet destination)
-//   - usernet2: clients
-//   - externet: webservice reachable only via exit nodes (servers also connected)
-func TestGrantViaMixedSteering(t *testing.T) {
-	IntegrationSkip(t)
-
-	assertTimeout := 60 * time.Second
-
-	spec := ScenarioSpec{
-		NodesPerUser: 0,
-		Users:        []string{"server", "client"},
-		Networks: map[string]NetworkSpec{
-			"usernet1": {Users: []string{"server"}},
-			"usernet2": {Users: []string{"client"}},
-			"externet": {},
-		},
-		ExtraService: map[string][]extraServiceFunc{
-			"usernet1": {Webservice},
-			"externet": {Webservice},
-		},
-		Versions: []string{"head"},
-	}
-
-	scenario, err := NewScenario(spec)
-
-	require.NoErrorf(t, err, "failed to create scenario: %s", err)
-	defer scenario.ShutdownAssertNoPanics(t)
-
-	route, err := scenario.SubnetOfNetwork("usernet1")
-	require.NoError(t, err)
-
-	pol := &policyv2.Policy{
-		TagOwners: policyv2.TagOwners{
-			policyv2.Tag("tag:server-a"): policyv2.Owners{usernameOwner("server@")},
-			policyv2.Tag("tag:server-b"): policyv2.Owners{usernameOwner("server@")},
-			policyv2.Tag("tag:group-a"):  policyv2.Owners{usernameOwner("client@")},
-			policyv2.Tag("tag:group-b"):  policyv2.Owners{usernameOwner("client@")},
-		},
-		Grants: []policyv2.Grant{
-			// Allow all tagged nodes to communicate with each other (peer connectivity).
-			{
-				Sources: policyv2.Aliases{
-					tagp("tag:server-a"), tagp("tag:server-b"),
-					tagp("tag:group-a"), tagp("tag:group-b"),
-				},
-				Destinations: policyv2.Aliases{
-					tagp("tag:server-a"), tagp("tag:server-b"),
-					tagp("tag:group-a"), tagp("tag:group-b"),
-				},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-			},
-			// Subnet steering: group-a through server-a, group-b through server-b.
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-a")},
-				Destinations: policyv2.Aliases{prefixp(route.String())},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:server-a")},
-			},
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-b")},
-				Destinations: policyv2.Aliases{prefixp(route.String())},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:server-b")},
-			},
-			// Exit steering: CROSSED - group-a through server-b, group-b through server-a.
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-a")},
-				Destinations: policyv2.Aliases{autogroupp("autogroup:internet")},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:server-b")},
-			},
-			{
-				Sources:      policyv2.Aliases{tagp("tag:group-b")},
-				Destinations: policyv2.Aliases{autogroupp("autogroup:internet")},
-				InternetProtocols: []policyv2.ProtocolPort{
-					{Protocol: "*", Ports: []tailcfg.PortRange{tailcfg.PortRangeAny}},
-				},
-				Via: []policyv2.Tag{policyv2.Tag("tag:server-a")},
-			},
-		},
-		AutoApprovers: policyv2.AutoApproverPolicy{
-			Routes: map[netip.Prefix]policyv2.AutoApprovers{
-				*route: {tagApprover("tag:server-a"), tagApprover("tag:server-b")},
-			},
-			ExitNode: policyv2.AutoApprovers{
-				tagApprover("tag:server-a"),
-				tagApprover("tag:server-b"),
-			},
-		},
-	}
-
-	headscale, err := scenario.Headscale(
-		hsic.WithTestName("grantvia-mixed"),
-		hsic.WithACLPolicy(pol),
-		hsic.WithPolicyMode(types.PolicyModeDB),
-	)
-	requireNoErrGetHeadscale(t, err)
-
-	usernet1, err := scenario.Network("usernet1")
-	require.NoError(t, err)
-	usernet2, err := scenario.Network("usernet2")
-	require.NoError(t, err)
-	externet, err := scenario.Network("externet")
-	require.NoError(t, err)
-
-	// Create users.
-	_, err = scenario.CreateUser("server")
-	require.NoError(t, err)
-	_, err = scenario.CreateUser("client")
-	require.NoError(t, err)
-
-	userMap, err := headscale.MapUsers()
-	require.NoError(t, err)
-
-	// Create Server A (tag:server-a) on usernet1.
-	serverA, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = serverA.Shutdown() }()
-
-	pakServerA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["server"].GetId(), false, false, []string{"tag:server-a"},
-	)
-	require.NoError(t, err)
-	err = serverA.Login(headscale.GetEndpoint(), pakServerA.GetKey())
-	require.NoError(t, err)
-	err = serverA.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Connect Server A to externet AFTER login to avoid link change race
-	// (adding a network interface restarts tailscaled's connection).
-	err = dockertestutil.AddContainerToNetwork(scenario.Pool(), externet, serverA.Hostname())
-	require.NoError(t, err, "failed to connect Server A to externet")
-
-	// Create Server B (tag:server-b) on usernet1.
-	serverB, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet1),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = serverB.Shutdown() }()
-
-	pakServerB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["server"].GetId(), false, false, []string{"tag:server-b"},
-	)
-	require.NoError(t, err)
-	err = serverB.Login(headscale.GetEndpoint(), pakServerB.GetKey())
-	require.NoError(t, err)
-	err = serverB.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Connect Server B to externet AFTER login.
-	err = dockertestutil.AddContainerToNetwork(scenario.Pool(), externet, serverB.Hostname())
-	require.NoError(t, err, "failed to connect Server B to externet")
-
-	// Create Client A (tag:group-a) on usernet2.
-	clientA, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet2),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = clientA.Shutdown() }()
-
-	pakClientA, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-a"},
-	)
-	require.NoError(t, err)
-	err = clientA.Login(headscale.GetEndpoint(), pakClientA.GetKey())
-	require.NoError(t, err)
-	err = clientA.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Create Client B (tag:group-b) on usernet2.
-	clientB, err := scenario.CreateTailscaleNode("head",
-		tsic.WithNetwork(usernet2),
-		tsic.WithAcceptRoutes(),
-	)
-	require.NoError(t, err)
-
-	defer func() { _, _, _ = clientB.Shutdown() }()
-
-	pakClientB, err := scenario.CreatePreAuthKeyWithTags(
-		userMap["client"].GetId(), false, false, []string{"tag:group-b"},
-	)
-	require.NoError(t, err)
-	err = clientB.Login(headscale.GetEndpoint(), pakClientB.GetKey())
-	require.NoError(t, err)
-	err = clientB.WaitForRunning(30 * time.Second)
-	require.NoError(t, err)
-
-	// Wait for all peers to see each other (4 nodes, each sees 3 peers).
-	allNodes := []TailscaleClient{serverA, serverB, clientA, clientB}
-	for _, node := range allNodes {
-		err = node.WaitForPeers(len(allNodes)-1, 60*time.Second, 1*time.Second)
-		require.NoErrorf(t, err, "node %s failed to see all peers", node.Hostname())
-	}
-
-	// Both servers advertise subnet + exit routes.
-	for _, server := range []TailscaleClient{serverA, serverB} {
-		command := []string{
-			"tailscale", "set",
-			"--advertise-routes=" + route.String(),
-			"--advertise-exit-node",
-		}
-		_, _, err = server.Execute(command)
-		require.NoErrorf(t, err, "failed to advertise routes on %s", server.Hostname())
-	}
-
-	// Wait for auto-approval: 1 subnet + 2 exit = 3 announced, 3 approved per server.
-	// Primary election is global, so subnet count may differ between servers.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		nodes, err := headscale.ListNodes()
-		assert.NoError(c, err)
-
-		serverANode := MustFindNode(serverA.Hostname(), nodes)
-		t.Logf("Server A %s: announced=%v, approved=%v, subnet=%v",
-			serverANode.GetName(),
-			serverANode.GetAvailableRoutes(),
-			serverANode.GetApprovedRoutes(),
-			serverANode.GetSubnetRoutes())
-		assert.Len(c, serverANode.GetAvailableRoutes(), 3, "Server A should have 3 announced routes")
-		assert.Len(c, serverANode.GetApprovedRoutes(), 3, "Server A should have 3 approved routes")
-
-		serverBNode := MustFindNode(serverB.Hostname(), nodes)
-		t.Logf("Server B %s: announced=%v, approved=%v, subnet=%v",
-			serverBNode.GetName(),
-			serverBNode.GetAvailableRoutes(),
-			serverBNode.GetApprovedRoutes(),
-			serverBNode.GetSubnetRoutes())
-		assert.Len(c, serverBNode.GetAvailableRoutes(), 3, "Server B should have 3 announced routes")
-		assert.Len(c, serverBNode.GetApprovedRoutes(), 3, "Server B should have 3 approved routes")
-	}, assertTimeout, 500*time.Millisecond, "Both servers should have auto-approved subnet + exit routes")
-
-	// Get webservice info.
-	services, err := scenario.Services("usernet1")
-	require.NoError(t, err)
-	require.Len(t, services, 1)
-
-	web := services[0]
-	webip := netip.MustParseAddr(web.GetIPInNetwork(usernet1))
-	weburl := fmt.Sprintf("http://%s/etc/hostname", webip)
-	t.Logf("webservice: %s, %s", webip.String(), weburl)
-
-	// Get externet webservice (exit-only destination, not covered by subnet route).
-	externetServices, err := scenario.Services("externet")
-	require.NoError(t, err)
-	require.Len(t, externetServices, 1)
-
-	extWeb := externetServices[0]
-	extWebIP := netip.MustParseAddr(extWeb.GetIPInNetwork(externet))
-	extWebURL := fmt.Sprintf("http://%s/etc/hostname", extWebIP)
-	t.Logf("externet webservice: %s, %s", extWebIP.String(), extWebURL)
-
-	serverAID := serverA.MustID()
-	serverBID := serverB.MustID()
-
-	// Verify Client A sees Server A's subnet route but NOT Server B's.
-	// (subnet via steering: group-a -> server-a)
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientA.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case serverAID.StableID():
-				t.Logf("Client A sees Server A: AllowedIPs=%v, PrimaryRoutes=%v",
-					peerStatus.AllowedIPs, peerStatus.PrimaryRoutes)
-				requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{*route})
-			case serverBID.StableID():
-				t.Logf("Client A sees Server B: AllowedIPs=%v, PrimaryRoutes=%v",
-					peerStatus.AllowedIPs, peerStatus.PrimaryRoutes)
-				// Server B should only show exit routes to Client A, not the subnet.
-				got := filterNonRoutes(peerStatus)
-				for _, r := range got {
-					assert.True(c, tsaddr.IsExitRoute(r),
-						"Client A should not see Server B's subnet route, got %s", r)
-				}
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client A should see subnet route only via Server A")
-
-	// Verify Client B sees Server B's subnet route but NOT Server A's.
-	// (subnet via steering: group-b -> server-b)
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientB.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case serverBID.StableID():
-				t.Logf("Client B sees Server B: AllowedIPs=%v, PrimaryRoutes=%v",
-					peerStatus.AllowedIPs, peerStatus.PrimaryRoutes)
-				requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{*route})
-			case serverAID.StableID():
-				t.Logf("Client B sees Server A: AllowedIPs=%v, PrimaryRoutes=%v",
-					peerStatus.AllowedIPs, peerStatus.PrimaryRoutes)
-				// Server A should only show exit routes to Client B, not the subnet.
-				got := filterNonRoutes(peerStatus)
-				for _, r := range got {
-					assert.True(c, tsaddr.IsExitRoute(r),
-						"Client B should not see Server A's subnet route, got %s", r)
-				}
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client B should see subnet route only via Server B")
-
-	// Verify subnet route steering: Client A reaches webservice through Server A.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientA.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client A should reach webservice")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientA.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := serverA.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverA") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client A subnet traceroute should go through Server A")
-
-	// Verify subnet route steering: Client B reaches webservice through Server B.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientB.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client B should reach webservice")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientB.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := serverB.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverB") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client B subnet traceroute should go through Server B")
-
-	// Via exit steering: Client A should see exit routes ONLY on Server B (crossed).
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientA.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case serverBID.StableID():
-				// Client A should see Server B's exit routes (via steers exit to server-b).
-				t.Logf("Client A sees Server B: AllowedIPs=%v", peerStatus.AllowedIPs)
-				got := filterNonRoutes(peerStatus)
-				hasExit := slices.ContainsFunc(got, tsaddr.IsExitRoute)
-				assert.True(c, hasExit, "Client A should see Server B's exit routes")
-			case serverAID.StableID():
-				// Client A should NOT see Server A's exit routes (only subnet).
-				t.Logf("Client A sees Server A: AllowedIPs=%v", peerStatus.AllowedIPs)
-
-				got := filterNonRoutes(peerStatus)
-				for _, r := range got {
-					assert.False(c, tsaddr.IsExitRoute(r),
-						"Client A should NOT see Server A's exit routes, got %s", r)
-				}
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client A should see exit routes only via Server B")
-
-	// Via exit steering: Client B should see exit routes ONLY on Server A (crossed).
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		status, err := clientB.Status()
-		assert.NoError(c, err)
-
-		for _, peerKey := range status.Peers() {
-			peerStatus := status.Peer[peerKey]
-
-			switch peerStatus.ID {
-			case serverAID.StableID():
-				// Client B should see Server A's exit routes (via steers exit to server-a).
-				t.Logf("Client B sees Server A: AllowedIPs=%v", peerStatus.AllowedIPs)
-				got := filterNonRoutes(peerStatus)
-				hasExit := slices.ContainsFunc(got, tsaddr.IsExitRoute)
-				assert.True(c, hasExit, "Client B should see Server A's exit routes")
-			case serverBID.StableID():
-				// Client B should NOT see Server B's exit routes (only subnet).
-				t.Logf("Client B sees Server B: AllowedIPs=%v", peerStatus.AllowedIPs)
-
-				got := filterNonRoutes(peerStatus)
-				for _, r := range got {
-					assert.False(c, tsaddr.IsExitRoute(r),
-						"Client B should NOT see Server B's exit routes, got %s", r)
-				}
-			}
-		}
-	}, assertTimeout, 500*time.Millisecond, "Client B should see exit routes only via Server A")
-
-	// Select the via-designated exit nodes, then validate traffic.
-	// Client A -> Server B (via steered), Client B -> Server A (via steered).
-	serverBStatus := serverB.MustStatus()
-	commandExitA := []string{
-		"tailscale", "set",
-		"--exit-node=" + serverBStatus.Self.DNSName,
-	}
-	_, _, err = clientA.Execute(commandExitA)
-	require.NoError(t, err, "Client A failed to set exit node to Server B")
-
-	serverAStatus := serverA.MustStatus()
-	commandExitB := []string{
-		"tailscale", "set",
-		"--exit-node=" + serverAStatus.Self.DNSName,
-	}
-	_, _, err = clientB.Execute(commandExitB)
-	require.NoError(t, err, "Client B failed to set exit node to Server A")
-
-	// Subnet traffic should still go through the subnet router (takes priority).
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientA.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client A should reach subnet webservice")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientA.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := serverA.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverA") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client A subnet traffic should go through Server A (not exit node)")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientB.Curl(weburl)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client B should reach subnet webservice")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientB.Traceroute(webip)
-		assert.NoError(c, err)
-
-		ip, err := serverB.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverB") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client B subnet traffic should go through Server B (not exit node)")
-
-	// Exit traffic to externet (not covered by subnet route) goes through exit node.
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientA.Curl(extWebURL)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client A should reach externet via exit node")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientA.Traceroute(extWebIP)
-		assert.NoError(c, err)
-
-		ip, err := serverB.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverB") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client A exit traffic should go through Server B")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := clientB.Curl(extWebURL)
-		assert.NoError(c, err)
-		assert.Len(c, result, 13)
-	}, assertTimeout, 200*time.Millisecond, "Client B should reach externet via exit node")
-
-	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		tr, err := clientB.Traceroute(extWebIP)
-		assert.NoError(c, err)
-
-		ip, err := serverA.IPv4()
-		if !assert.NoError(c, err, "failed to get IPv4 for serverA") {
-			return
-		}
-
-		assertTracerouteViaIPWithCollect(c, tr, ip)
-	}, assertTimeout, 200*time.Millisecond, "Client B exit traffic should go through Server A")
 }

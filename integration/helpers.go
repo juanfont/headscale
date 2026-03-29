@@ -1007,13 +1007,6 @@ func tagApprover(name string) policyv2.AutoApprover {
 	return new(policyv2.Tag(name))
 }
 
-// autogroupp returns a pointer to an AutoGroup as an Alias for policy v2 configurations.
-// Used in grant rules to reference autogroups like autogroup:self and autogroup:internet.
-func autogroupp(name string) policyv2.Alias {
-	ag := policyv2.AutoGroup(name)
-	return &ag
-}
-
 // oidcMockUser creates a MockUser for OIDC authentication testing.
 // Generates consistent test user data with configurable email verification status
 // for validating OIDC integration flows in headscale authentication tests.

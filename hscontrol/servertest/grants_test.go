@@ -596,7 +596,7 @@ func TestGrantPolicies(t *testing.T) { //nolint:gocyclo
 			func(nm *netmap.NetworkMap) bool {
 				for _, p := range nm.Peers {
 					hi := p.Hostinfo()
-					if hi.Valid() && hi.Hostname() == "router-a" {
+					if hi.Valid() && hi.Hostname() == "router-a" { //nolint:goconst
 						for i := range p.AllowedIPs().Len() {
 							if p.AllowedIPs().At(i) == route {
 								return true
