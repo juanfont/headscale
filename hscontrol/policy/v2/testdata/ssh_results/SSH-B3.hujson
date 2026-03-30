@@ -5,17 +5,44 @@
 // Expected: SSH rules on 1 of 5 nodes
 {
   "test_id": "SSH-B3",
-  "policy_file": "ssh_policies/ssh_b3.json",
-  "ssh_section": [{ "action": "accept", "src": ["tag:prod"], "dst": ["tag:server"], "users": ["root"] }],
+  "ssh_section": [
+    {
+      "action": "accept",
+      "src": [
+        "tag:prod"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": [
+        "root"
+      ]
+    }
+  ],
   "nodes": {
-    "user1": { "rules": [] },
-    "user-kris": { "rules": [] },
-    "user-mon": { "rules": [] },
+    "user1": {
+      "rules": []
+    },
+    "user-kris": {
+      "rules": []
+    },
+    "user-mon": {
+      "rules": []
+    },
     "tagged-server": {
       "rules": [
         {
-          "principals": [{ "nodeIP": "100.103.8.15" }, { "nodeIP": "fd7a:115c:a1e0::5b37:80f" }],
-          "sshUsers": { "root": "root" },
+          "principals": [
+            {
+              "nodeIP": "100.103.8.15"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::5b37:80f"
+            }
+          ],
+          "sshUsers": {
+            "root": "root"
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -25,6 +52,8 @@
         }
       ]
     },
-    "tagged-prod": { "rules": [] }
+    "tagged-prod": {
+      "rules": []
+    }
   }
 }

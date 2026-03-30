@@ -5,7 +5,6 @@
 // Expected: SSH rules on 3 of 5 nodes
 {
   "test_id": "SSH-A7",
-  "policy_file": "ssh_policies/ssh_a7.json",
   "ssh_section": [
     {
       "action": "check",

@@ -7,7 +7,6 @@
 // Expected: SSH rules on 1 of 5 nodes
 {
   "test_id": "SSH-F2",
-  "policy_file": "ssh_policies/ssh_f2.json",
   "ssh_section": [
     {
       "action": "accept",

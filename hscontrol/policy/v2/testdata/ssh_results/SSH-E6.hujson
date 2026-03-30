@@ -5,7 +5,6 @@
 // Expected: SSH rules on 4 of 5 nodes
 {
   "test_id": "SSH-E6",
-  "policy_file": "ssh_policies/ssh_e6.json",
   "ssh_section": [
     {
       "action": "check",
