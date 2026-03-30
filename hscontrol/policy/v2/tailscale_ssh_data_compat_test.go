@@ -29,6 +29,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -191,10 +192,14 @@ func loadSSHTestFile(t *testing.T, path string) sshTestFile {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
+	ast, err := hujson.Parse(content)
+	require.NoError(t, err, "failed to parse HuJSON in %s", path)
+	ast.Standardize()
+
 	var tf sshTestFile
 
-	err = json.Unmarshal(content, &tf)
-	require.NoError(t, err, "failed to parse test file %s", path)
+	err = json.Unmarshal(ast.Pack(), &tf)
+	require.NoError(t, err, "failed to unmarshal test file %s", path)
 
 	return tf
 }
@@ -226,13 +231,13 @@ func TestSSHDataCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "ssh_results", "SSH-*.json"),
+		filepath.Join("testdata", "ssh_results", "SSH-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no SSH-*.json test files found in testdata/ssh_results/",
+		"no SSH-*.hujson test files found in testdata/ssh_results/",
 	)
 
 	t.Logf("Loaded %d SSH test files", len(files))

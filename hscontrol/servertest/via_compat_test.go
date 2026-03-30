@@ -14,6 +14,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/servertest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tailscale/hujson"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/netmap"
 )
@@ -81,6 +82,20 @@ var viaCompatTests = []struct {
 // The comparison is IP-independent: it validates peer visibility, route
 // prefixes in AllowedIPs, and PrimaryRoutes — not literal Tailscale IP
 // addresses which differ between Tailscale SaaS and headscale allocation.
+//
+// CROSS-DEPENDENCY WARNING:
+// This test reads golden files from ../policy/v2/testdata/grant_results/
+// (specifically GRANT-V29, V30, V31, V36). These files are shared with
+// TestGrantsCompat in the policy/v2 package. Any changes to the file
+// format, field structure, or naming must be coordinated with BOTH tests.
+//
+// Fields consumed by this test (but NOT by TestGrantsCompat):
+//   - captures[name].netmap (Peers, AllowedIPs, PrimaryRoutes, PacketFilterRules)
+//   - topology.nodes[name].tags (used for servertest node creation)
+//
+// Fields consumed by TestGrantsCompat (but NOT by this test):
+//   - captures[name].packet_filter_rules (golden filter rule comparison)
+//   - input.api_response_code/body (error case handling)
 func TestViaGrantMapCompat(t *testing.T) {
 	t.Parallel()
 
@@ -89,13 +104,17 @@ func TestViaGrantMapCompat(t *testing.T) {
 			t.Parallel()
 
 			path := filepath.Join(
-				"..", "policy", "v2", "testdata", "grant_results", tc.id+".json",
+				"..", "policy", "v2", "testdata", "grant_results", tc.id+".hujson",
 			)
 			data, err := os.ReadFile(path)
 			require.NoError(t, err, "failed to read golden file %s", path)
 
+			ast, err := hujson.Parse(data)
+			require.NoError(t, err, "failed to parse HuJSON in %s", path)
+			ast.Standardize()
+
 			var gf goldenFile
-			require.NoError(t, json.Unmarshal(data, &gf))
+			require.NoError(t, json.Unmarshal(ast.Pack(), &gf))
 
 			if gf.Error {
 				t.Skipf("test %s is an error case", tc.id)
