@@ -11,6 +11,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/integration/dockertestutil"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/stretchr/testify/assert"
@@ -470,7 +471,7 @@ func doSSHWithRetryAsUser(
 
 			// For all other errors, assert no error to trigger retry
 			assert.NoError(ct, err)
-		}, 10*time.Second, 200*time.Millisecond)
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond)
 	} else {
 		// For failure cases, just execute once
 		result, stderr, err = client.Execute(command)
@@ -700,7 +701,7 @@ func findSSHCheckAuthID(t *testing.T, headscale ControlServer) string {
 		}
 
 		assert.NotEmpty(c, authID, "auth-id not found in headscale logs")
-	}, 10*time.Second, 500*time.Millisecond, "waiting for SSH check auth-id in headscale logs")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "waiting for SSH check auth-id in headscale logs")
 
 	return authID
 }
@@ -809,7 +810,7 @@ func findNewSSHCheckAuthID(
 		}
 
 		assert.NotEmpty(c, authID, "new auth-id not found in headscale logs")
-	}, 10*time.Second, 500*time.Millisecond, "waiting for new SSH check auth-id")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "waiting for new SSH check auth-id")
 
 	return authID
 }

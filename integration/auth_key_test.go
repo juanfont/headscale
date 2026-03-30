@@ -12,6 +12,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
@@ -87,7 +88,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				for _, node := range listNodes {
 					assertLastSeenSetWithCollect(c, node)
 				}
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 			nodeCountBeforeLogout = len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -114,7 +115,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after logout")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should match before logout count - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, 30*time.Second, 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
+			}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating node persistence after logout (nodes should remain in database)")
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -152,7 +153,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(ct, err, "Failed to list nodes after relogin")
 				assert.Len(ct, listNodes, nodeCountBeforeLogout, "Node count should remain unchanged after relogin - expected %d nodes, got %d", nodeCountBeforeLogout, len(listNodes))
-			}, 60*time.Second, 2*time.Second, "validating node count stability after same-user auth key relogin")
+			}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating node count stability after same-user auth key relogin")
 
 			for _, node := range listNodes {
 				assertLastSeenSet(t, node)
@@ -210,7 +211,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				for _, node := range listNodes {
 					assertLastSeenSetWithCollect(c, node)
 				}
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for node list after relogin")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for node list after relogin")
 		})
 	}
 }
@@ -266,7 +267,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, listNodes, len(allClients))
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 	nodeCountBeforeLogout = len(listNodes)
 	t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -313,7 +314,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(ct, err, "Failed to list nodes for user1 after relogin")
 		assert.Len(ct, user1Nodes, len(allClients), "User1 should have all %d clients after relogin, got %d nodes", len(allClients), len(user1Nodes))
-	}, 60*time.Second, 2*time.Second, "validating user1 has all client nodes after auth key relogin")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating user1 has all client nodes after auth key relogin")
 
 	// Collect expected node IDs for user1 after relogin
 	expectedUser1Nodes := make([]types.NodeID, 0, len(user1Nodes))
@@ -337,7 +338,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 		user2Nodes, err = headscale.ListNodes("user2")
 		assert.NoError(ct, err, "Failed to list nodes for user2 after user1 relogin")
 		assert.Len(ct, user2Nodes, len(allClients)/2, "User2 should still have %d clients after user1 relogin, got %d nodes", len(allClients)/2, len(user2Nodes))
-	}, 30*time.Second, 2*time.Second, "validating user2 nodes persist after user1 relogin (should not be affected)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating user2 nodes persist after user1 relogin (should not be affected)")
 
 	t.Logf("Validating client login states after user switch at %s", time.Now().Format(TimestampFormat))
 
@@ -346,7 +347,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 			status, err := client.Status()
 			assert.NoError(ct, err, "Failed to get status for client %s", client.Hostname())
 			assert.Equal(ct, "user1@test.no", status.User[status.Self.UserID].LoginName, "Client %s should be logged in as user1 after user switch, got %s", client.Hostname(), status.User[status.Self.UserID].LoginName)
-		}, 30*time.Second, 2*time.Second, "validating %s is logged in as user1 after auth key user switch", client.Hostname())
+		}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second, "validating %s is logged in as user1 after auth key user switch", client.Hostname())
 	}
 }
 
@@ -412,7 +413,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 				listNodes, err = headscale.ListNodes()
 				assert.NoError(c, err)
 				assert.Len(c, listNodes, len(allClients))
-			}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list before logout")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list before logout")
 
 			nodeCountBeforeLogout = len(listNodes)
 			t.Logf("node count before logout: %d", nodeCountBeforeLogout)
@@ -527,7 +528,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 		user1Nodes, err = headscale.ListNodes("user1")
 		assert.NoError(c, err)
 		assert.Len(c, user1Nodes, 1)
-	}, 30*time.Second, 500*time.Millisecond, "waiting for node to be registered")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "waiting for node to be registered")
 
 	nodeID := user1Nodes[0].GetId()
 	nodeName := user1Nodes[0].GetName()
@@ -554,7 +555,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(c, err)
 		assert.Equal(c, "Stopped", status.BackendState)
-	}, 10*time.Second, 200*time.Millisecond, "client should be stopped")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "client should be stopped")
 
 	err = client.Up()
 	require.NoError(t, err)
@@ -659,7 +660,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			assert.Contains(c, initialNode.GetSubnetRoutes(), advertiseRoute,
 				"Subnet routes should contain %s", advertiseRoute)
 		}
-	}, 30*time.Second, 500*time.Millisecond, "initial route should be serving")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial route should be serving")
 
 	require.NotNil(t, initialNode, "Initial node should be found")
 	initialNodeID := initialNode.GetId()
@@ -677,7 +678,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout")
-	}, 30*time.Second, 1*time.Second, "waiting for logout to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for logout to complete")
 
 	t.Logf("Logout completed, node should still exist in database")
 
@@ -686,7 +687,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Node should persist in database after logout")
-	}, 10*time.Second, 500*time.Millisecond, "node should persist after logout")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "node should persist after logout")
 
 	// Step 3: Re-authenticate with the SAME user (using auth key)
 	t.Logf("Step 3: Re-authenticating with same user at %s", time.Now().Format(TimestampFormat))
@@ -707,7 +708,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 		status, err := client.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after relogin")
-	}, 30*time.Second, 1*time.Second, "waiting for relogin to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for relogin to complete")
 
 	t.Logf("Re-authentication completed at %s", time.Now().Format(TimestampFormat))
 
@@ -741,7 +742,7 @@ func TestAuthKeyLogoutAndReloginRoutesPreserved(t *testing.T) {
 			assert.Equal(c, initialNodeID, node.GetId(),
 				"Node ID should be preserved after same-user relogin")
 		}
-	}, 30*time.Second, 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond,
 		"BUG #2896: routes should remain SERVING after logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix")
