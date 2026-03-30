@@ -389,9 +389,7 @@ func TestACLAllowUser80Dst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
 			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
@@ -438,9 +436,7 @@ func TestACLDenyAllPort80(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, client, url, "all traffic should be denied")
 			}, 20*time.Second, 500*time.Millisecond, "Verifying all traffic is denied")
 		}
 	}
@@ -502,9 +498,7 @@ func TestACLAllowUserDst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
 			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
@@ -565,9 +559,7 @@ func TestACLAllowStarDst(t *testing.T) {
 			t.Logf("url from %s to %s", client.Hostname(), url)
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := client.Curl(url)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, client, url, "user2 should not reach user1")
 			}, 20*time.Second, 500*time.Millisecond, "Verifying user2 cannot reach user1")
 		}
 	}
@@ -872,29 +864,23 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			}, 10*time.Second, 200*time.Millisecond, "test2 should reach test3 via FQDN")
 
 			// test3 cannot query test1
-			result, err := test3.Curl(test1ip4URL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test1ip4URL)
 			require.Error(t, err)
 
-			result, err = test3.Curl(test1ip6URL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test1ip6URL)
 			require.Error(t, err)
 
-			result, err = test3.Curl(test1fqdnURL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test1fqdnURL)
 			require.Error(t, err)
 
 			// test3 cannot query test2
-			result, err = test3.Curl(test2ip4URL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test2ip4URL)
 			require.Error(t, err)
 
-			result, err = test3.Curl(test2ip6URL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test2ip6URL)
 			require.Error(t, err)
 
-			result, err = test3.Curl(test2fqdnURL)
-			assert.Empty(t, result)
+			_, err = test3.CurlFailFast(test2fqdnURL)
 			require.Error(t, err)
 
 			// test1 can query test2
@@ -938,16 +924,13 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			}, 10*time.Second, 200*time.Millisecond, "test1 should reach test2 via FQDN")
 
 			// test2 cannot query test1
-			result, err = test2.Curl(test1ip4URL)
-			assert.Empty(t, result)
+			_, err = test2.CurlFailFast(test1ip4URL)
 			require.Error(t, err)
 
-			result, err = test2.Curl(test1ip6URL)
-			assert.Empty(t, result)
+			_, err = test2.CurlFailFast(test1ip6URL)
 			require.Error(t, err)
 
-			result, err = test2.Curl(test1fqdnURL)
-			assert.Empty(t, result)
+			_, err = test2.CurlFailFast(test1fqdnURL)
 			require.Error(t, err)
 		})
 	}
@@ -1121,21 +1104,15 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 			// test2 cannot query test1 (negative test case)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1ipURL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, test2, test1ipURL, "test2 should not reach test1 via IPv4")
 			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via IPv4")
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1ip6URL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, test2, test1ip6URL, "test2 should not reach test1 via IPv6")
 			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via IPv6")
 
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test1fqdnURL)
-				assert.Error(c, err)
-				assert.Empty(c, result)
+				assertCurlFailWithCollect(c, test2, test1fqdnURL, "test2 should not reach test1 via FQDN")
 			}, 10*time.Second, 200*time.Millisecond, "test2 should NOT reach test1 via FQDN")
 		})
 	}
@@ -1273,9 +1250,7 @@ func TestPolicyUpdateWhileRunningWithCLIInDatabase(t *testing.T) {
 				url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 				t.Logf("url from %s to %s", client.Hostname(), url)
 
-				result, err := client.Curl(url)
-				assert.Empty(ct, result)
-				assert.Error(ct, err)
+				assertCurlFailWithCollect(ct, client, url, "user2 should not reach user1")
 			}
 		}
 	}, 30*time.Second, 1*time.Second, "new policy did not get propagated to nodes")
@@ -1883,8 +1858,7 @@ func TestACLAutogroupSelf(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s (user1) to %s (user2 regular) - should FAIL", client.Hostname(), fqdn)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result, "user1 should not be able to access user2's regular devices (autogroup:self isolation)")
+			_, err = client.CurlFailFast(url)
 			require.Error(t, err, "connection from user1 to user2 regular device should fail")
 		}
 	}
@@ -1897,9 +1871,8 @@ func TestACLAutogroupSelf(t *testing.T) {
 			url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
 			t.Logf("url from %s (user2) to %s (user1 regular) - should FAIL", client.Hostname(), fqdn)
 
-			result, err := client.Curl(url)
-			assert.Empty(t, result, "user2 should not be able to access user1's regular devices (autogroup:self isolation)")
-			assert.Error(t, err, "connection from user2 to user1 regular device should fail")
+			_, err = client.CurlFailFast(url)
+			require.Error(t, err, "connection from user2 to user1 regular device should fail")
 		}
 	}
 }
@@ -2085,9 +2058,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user1 %s should NOT reach user2's node %s with autogroup:self", iteration, client.Hostname(), fqdn)
-					assert.Empty(ct, result, "iteration %d: user1 %s->user2 %s should fail", iteration, client.Hostname(), fqdn)
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user1 %s should NOT reach user2 %s", iteration, client.Hostname(), fqdn))
 				}
 			}
 
@@ -2100,9 +2071,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user2->user1 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user2 %s should NOT reach user1 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
 		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2 - all connectivity tests with autogroup:self", iteration)
@@ -2166,9 +2135,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user1 node %s should NOT reach user2 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user1->user2 connection from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user1 %s should NOT reach user2 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
 		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 2b - all connectivity tests after new node addition", iteration)
@@ -2285,9 +2252,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 					}
 
 					url := fmt.Sprintf("http://%s/etc/hostname", fqdn)
-					result, err := client.Curl(url)
-					assert.Error(ct, err, "iteration %d: user2 node %s should NOT reach user1 node %s", iteration, client.Hostname(), peer.Hostname())
-					assert.Empty(ct, result, "iteration %d: user2->user1 from %s to %s should fail", iteration, client.Hostname(), peer.Hostname())
+					assertCurlFailWithCollect(ct, client, url, fmt.Sprintf("iteration %d: user2 %s should NOT reach user1 %s", iteration, client.Hostname(), peer.Hostname()))
 				}
 			}
 		}, 90*time.Second, 500*time.Millisecond, "iteration %d: Phase 3 - all connectivity tests with directional policy", iteration)
