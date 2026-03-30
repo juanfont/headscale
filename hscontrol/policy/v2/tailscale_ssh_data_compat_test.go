@@ -204,12 +204,11 @@ func loadSSHTestFile(t *testing.T, path string) sshTestFile {
 //
 // 37 of 39 tests are expected to pass.
 var sshSkipReasons = map[string]string{
-	// user:*@domain source alias not yet implemented.
-	// These tests use "src": ["user:*@passkey"] which requires UserWildcard
-	// alias type support. Will be added in a follow-up PR that implements
-	// user:*@domain across all contexts (ACLs, grants, tagOwners, autoApprovers).
-	"SSH-B5":  "user:*@domain source alias not yet implemented",
-	"SSH-D10": "user:*@domain source alias not yet implemented",
+	// user:*@passkey wildcard pattern not supported in headscale.
+	// headscale does not support passkey authentication and has no
+	// equivalent for this wildcard pattern.
+	"SSH-B5":  "user:*@passkey wildcard not supported in headscale",
+	"SSH-D10": "user:*@passkey wildcard not supported in headscale",
 }
 
 // TestSSHDataCompat is a data-driven test that loads all SSH-*.json test files

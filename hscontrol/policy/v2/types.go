@@ -69,14 +69,10 @@ var (
 var (
 	ErrGrantMissingIPOrApp             = errors.New("grants must specify either 'ip' or 'app' field")
 	ErrGrantInvalidViaTag              = errors.New("grant 'via' tag is not defined in policy")
-	ErrGrantViaNotSupported            = errors.New("grant 'via' routing is not yet supported in headscale")
-	ErrGrantEmptySources               = errors.New("grant sources cannot be empty")
-	ErrGrantEmptyDestinations          = errors.New("grant destinations cannot be empty")
 	ErrProtocolPortInvalidFormat       = errors.New("expected only one colon in Internet protocol and port type")
 	ErrCapNameInvalidForm              = errors.New("capability name must have the form {domain}/{path}")
 	ErrCapNameTailscaleDomain          = errors.New("capability name must not be in the tailscale.com domain")
 	ErrGrantAutogroupSelfInvalidSource = errors.New("autogroup:self can only be used with users, groups, or supported autogroups")
-	ErrGrantViaOnlyTag                 = errors.New("via can only be a tag")
 	ErrGrantAppWithAutogroupInternet   = errors.New("cannot use app grants with autogroup:internet")
 	ErrGrantDefaultRouteCIDR           = errors.New("to allow all IP addresses, use \"*\" or \"autogroup:internet\"")
 )
@@ -1899,7 +1895,6 @@ type Grant struct {
 	InternetProtocols []ProtocolPort     `json:"ip,omitempty"`
 	App               tailcfg.PeerCapMap `json:"app,omitzero"`
 
-	// TODO(kradalby): implement via
 	Via []Tag `json:"via,omitzero"`
 }
 
