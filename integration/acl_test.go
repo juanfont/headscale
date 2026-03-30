@@ -325,7 +325,7 @@ func TestACLHostsInNetMapTable(t *testing.T) {
 					user := status.User[status.Self.UserID].LoginName
 
 					assert.Len(c, status.Peer, (testCase.want[user]))
-				}, 10*time.Second, 200*time.Millisecond, "Waiting for expected peer visibility")
+				}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected peer visibility")
 			}
 		})
 	}
@@ -2748,14 +2748,12 @@ func TestACLTagPropagation(t *testing.T) {
 			// Step 1: Verify initial access state
 			t.Logf("Step 1: Verifying initial access (expect success=%v)", tt.initialAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
 				if tt.initialAccess {
-					assert.NoError(c, err, "Initial access should succeed")
-					assert.NotEmpty(c, result, "Initial access should return content")
+					assertCurlSuccessWithCollect(c, sourceClient, targetURL, "initial access should succeed")
 				} else {
-					assert.Error(c, err, "Initial access should fail")
+					assertCurlFailWithCollect(c, sourceClient, targetURL, "initial access should fail")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial access state")
+			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying initial access state")
 
 			// Step 1b: Verify initial NetMap visibility
 			t.Logf("Step 1b: Verifying initial NetMap visibility (expect visible=%v)", tt.initialAccess)
@@ -2778,7 +2776,7 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap initially")
 				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying initial NetMap visibility")
+			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying initial NetMap visibility")
 
 			// Step 2: Apply tag change
 			t.Logf("Step 2: Setting tags on node %d to %v", targetNodeID, tt.tagChange)
@@ -2796,22 +2794,11 @@ func TestACLTagPropagation(t *testing.T) {
 				if node != nil {
 					assert.ElementsMatch(c, tt.tagChange, node.GetTags(), "Tags should be updated")
 				}
-			}, 10*time.Second, 500*time.Millisecond, "verifying tag change applied")
+			}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "verifying tag change applied")
 
-			// Step 3: Verify final access state (this is the key test for #2389)
-			t.Logf("Step 3: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := sourceClient.Curl(targetURL)
-				if tt.finalAccess {
-					assert.NoError(c, err, "Final access should succeed after tag change")
-					assert.NotEmpty(c, result, "Final access should return content")
-				} else {
-					assert.Error(c, err, "Final access should fail after tag change")
-				}
-			}, 30*time.Second, 500*time.Millisecond, "verifying access propagated after tag change")
-
-			// Step 3b: Verify final NetMap visibility
-			t.Logf("Step 3b: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
+			// Step 3: Verify final NetMap visibility first (fast signal that
+			// the MapResponse propagated to the client).
+			t.Logf("Step 3: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
 				assert.NoError(c, err)
@@ -2831,7 +2818,19 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
-			}, 60*time.Second, 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+			}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+
+			// Step 4: Verify final access state (this is the key test for #2389).
+			// Checked after NetMap so we know the MapResponse already arrived;
+			// this only needs to wait for the WireGuard config to apply.
+			t.Logf("Step 4: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				if tt.finalAccess {
+					assertCurlSuccessWithCollect(c, sourceClient, targetURL, "final access should succeed after tag change")
+				} else {
+					assertCurlFailWithCollect(c, sourceClient, targetURL, "final access should fail after tag change")
+				}
+			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying access propagated after tag change")
 
 			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
 		})
@@ -2979,10 +2978,8 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	// Step 1: Verify initial state - HTTP on port 80 should work with tag:webserver
 	t.Log("Step 1: Verifying HTTP access with tag:webserver (should succeed)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		result, err := user2Node.Curl(targetURL)
-		assert.NoError(c, err, "HTTP should work with tag:webserver")
-		assert.NotEmpty(c, result)
-	}, 30*time.Second, 500*time.Millisecond, "initial HTTP access with tag:webserver")
+		assertCurlSuccessWithCollect(c, user2Node, targetURL, "HTTP should work with tag:webserver")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial HTTP access with tag:webserver")
 
 	// Step 2: Change tag from webserver to sshonly
 	t.Logf("Step 2: Changing tag from webserver to sshonly on node %d", targetNodeID)
@@ -3006,14 +3003,13 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		}
 
 		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
-	}, 60*time.Second, 500*time.Millisecond, "peer visibility after tag change")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "peer visibility after tag change")
 
 	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
-		_, err := user2Node.Curl(targetURL)
-		assert.Error(c, err, "HTTP should fail with tag:sshonly (only port 22 allowed)")
-	}, 60*time.Second, 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
+		assertCurlFailWithCollect(c, user2Node, targetURL, "HTTP should fail with tag:sshonly (only port 22 allowed)")
+	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
 
 	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
 }
