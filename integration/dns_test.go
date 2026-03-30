@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func TestResolveMagicDNS(t *testing.T) {
 				for _, ip := range ips {
 					assert.Contains(ct, result, ip.String(), "IP %s should be found in DNS resolution result from %s to %s", ip.String(), client.Hostname(), peer.Hostname())
 				}
-			}, 30*time.Second, 2*time.Second)
+			}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 		}
 	}
 }
@@ -210,7 +211,7 @@ func TestResolveMagicDNSExtraRecordsPath(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Contains(ct, result, "9.9.9.9")
 		}
-	}, 10*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 
 	// Write a new file, the backoff mechanism should make the filewatcher pick it up
 	// again.

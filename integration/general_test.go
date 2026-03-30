@@ -214,7 +214,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(ct, err)
 		assert.Len(ct, nodes, 0, "All ephemeral nodes should be cleaned up after logout")
-	}, 30*time.Second, 2*time.Second)
+	}, integrationutil.ScaledTimeout(30*time.Second), 2*time.Second)
 }
 
 // TestEphemeral2006DeletedTooQuickly verifies that ephemeral nodes are not
@@ -303,7 +303,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 
 		success = pingAllHelper(t, allClients, allAddrs)
 		assert.Greater(ct, success, 0, "Ephemeral nodes should be able to reconnect and ping")
-	}, 60*time.Second, 2*time.Second)
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
 	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	// Take down all clients, this should start an expiry timer for each.
@@ -322,7 +322,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Len(ct, nodes, 0, "Ephemeral nodes should be expired and removed for user %s", userName)
 		}
-	}, 4*time.Minute, 10*time.Second)
+	}, integrationutil.ScaledTimeout(4*time.Minute), 10*time.Second)
 
 	for _, userName := range spec.Users {
 		nodes, err := headscale.ListNodes(userName)
@@ -558,7 +558,7 @@ func TestTaildrop(t *testing.T) {
 				// Should NOT see tagged client
 				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
 					"user1 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
-			}, 10*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 		}
 	})
 
@@ -587,7 +587,7 @@ func TestTaildrop(t *testing.T) {
 				// Should NOT see tagged client
 				assert.False(ct, isInFileTargets(fts, taggedClient.Hostname()),
 					"user2 client %s should NOT see tagged client %s in FileTargets", client.Hostname(), taggedClient.Hostname())
-			}, 10*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 		}
 	})
 
@@ -597,7 +597,7 @@ func TestTaildrop(t *testing.T) {
 			fts, err := getFileTargets(taggedClient)
 			assert.NoError(ct, err)
 			assert.Empty(ct, fts, "tagged client %s should have no FileTargets", taggedClient.Hostname())
-		}, 10*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 	})
 
 	// Test 4: Same-user file transfer works (user1 -> user1) for all version combinations
@@ -627,7 +627,7 @@ func TestTaildrop(t *testing.T) {
 						t.Logf("Sending file from %s to %s", sender.Hostname(), receiver.Hostname())
 						_, _, err := sender.Execute(sendCommand)
 						assert.NoError(ct, err)
-					}, 10*time.Second, 1*time.Second)
+					}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 				})
 			}
 		}
@@ -838,7 +838,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 			assert.NoError(ct, err)
 			assert.Equal(ct, normalised, node.GetGivenName(), "Given name should match FQDN rules")
 		}
-	}, 20*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second)
 
 	// Rename givenName in nodes
 	for _, node := range nodes {
@@ -894,7 +894,7 @@ func TestUpdateHostnameFromClient(t *testing.T) {
 				}
 			}
 		}
-	}, 60*time.Second, 2*time.Second)
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
 
 	for _, client := range allClients {
 		status := client.MustStatus()
@@ -982,7 +982,7 @@ func TestExpireNode(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(ct, status.Peers(), spec.NodesPerUser-1, "Client %s should see correct number of peers", client.Hostname())
-		}, 30*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second)
 	}
 
 	headscale, err := scenario.Headscale()
@@ -1021,7 +1021,7 @@ func TestExpireNode(t *testing.T) {
 				}
 			}
 		}
-	}, 3*time.Minute, 10*time.Second)
+	}, integrationutil.ScaledTimeout(3*time.Minute), 10*time.Second)
 
 	now := time.Now()
 
@@ -1071,7 +1071,7 @@ func TestExpireNode(t *testing.T) {
 					)
 				}
 			}
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for expired node status to propagate")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expired node status to propagate")
 	}
 }
 
@@ -1168,7 +1168,7 @@ func TestSetNodeExpiryInFuture(t *testing.T) {
 					"node %q should not be marked as expired",
 					peerStatus.HostName,
 				)
-			}, 3*time.Minute, 5*time.Second, "Waiting for future expiry to propagate",
+			}, integrationutil.ScaledTimeout(3*time.Minute), 5*time.Second, "Waiting for future expiry to propagate",
 		)
 	}
 }
@@ -1265,7 +1265,7 @@ func TestDisableNodeExpiry(t *testing.T) {
 					"node %q should not be marked as expired after disabling expiry",
 					peerStatus.HostName,
 				)
-			}, 3*time.Minute, 5*time.Second, "waiting for disabled expiry to propagate",
+			}, integrationutil.ScaledTimeout(3*time.Minute), 5*time.Second, "waiting for disabled expiry to propagate",
 		)
 	}
 }
@@ -1310,7 +1310,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 
 			// Assert that we have the original count - self
 			assert.Len(c, status.Peers(), len(MustTestVersions)-1)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for expected peer count")
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected peer count")
 	}
 
 	headscale, err := scenario.Headscale()
@@ -1351,7 +1351,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 					time.Since(start),
 				)
 			}
-		}, 15*time.Second, 1*time.Second)
+		}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 
 		// Verify that all nodes report all nodes to be online
 		for _, client := range allClients {
@@ -1384,7 +1384,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 						time.Since(start),
 					)
 				}
-			}, 15*time.Second, 1*time.Second)
+			}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second)
 		}
 
 		// Check maximum once per second
@@ -1588,7 +1588,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		)
 		assert.NoError(ct, err)
 		assert.Len(ct, nodeListAfter, 1, "Node should be deleted from list")
-	}, 10*time.Second, 1*time.Second)
+	}, integrationutil.ScaledTimeout(10*time.Second), 1*time.Second)
 
 	err = executeAndUnmarshal(
 		headscale,
