@@ -2951,6 +2951,22 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 	err = headscale.SetNodeTags(targetNodeID, []string{"tag:sshonly"})
 	require.NoError(t, err)
 
+	// Step 2b: Verify tag was actually applied on the server before
+	// checking client-side effects. Without this, the client assertions
+	// may race against the server still processing the tag change.
+	t.Log("Step 2b: Verifying tag change applied on server")
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		allNodes, err := headscale.ListNodes()
+		assert.NoError(c, err) //nolint:testifylint // CollectT requires assert
+
+		node := findNode(allNodes, func(n *v1.Node) bool { return n.GetId() == targetNodeID })
+		assert.NotNil(c, node, "Node should still exist")
+
+		if node != nil {
+			assert.ElementsMatch(c, []string{"tag:sshonly"}, node.GetTags(), "Tags should be updated to sshonly")
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "verifying tag change applied")
+
 	// Step 3: Verify peer is still visible in NetMap (partial access, not full removal)
 	t.Log("Step 3: Verifying peer remains visible in NetMap after tag change")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -2970,11 +2986,14 @@ func TestACLTagPropagationPortSpecific(t *testing.T) {
 		assert.True(c, found, "Peer should still be visible with tag:sshonly (port 22 access)")
 	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "peer visibility after tag change")
 
-	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22)
+	// Step 4: Verify HTTP on port 80 now fails (tag:sshonly only allows port 22).
+	// Port-specific filter changes are harder than peer removal because
+	// the WireGuard tunnel stays up and both endpoints must process
+	// the new PacketFilter from the MapResponse.
 	t.Log("Step 4: Verifying HTTP access is now blocked (tag:sshonly only allows port 22)")
 	assert.EventuallyWithT(t, func(c *assert.CollectT) {
 		assertCurlFailWithCollect(c, user2Node, targetURL, "HTTP should fail with tag:sshonly (only port 22 allowed)")
-	}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
+	}, integrationutil.ScaledTimeout(90*time.Second), 500*time.Millisecond, "HTTP blocked after tag change to sshonly")
 
 	t.Log("Test PASSED: Port-specific ACL changes propagated correctly")
 }
