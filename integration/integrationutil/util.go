@@ -37,6 +37,18 @@ func PeerSyncRetryInterval() time.Duration {
 	return 100 * time.Millisecond
 }
 
+// ScaledTimeout returns the given timeout, scaled for CI environments
+// where resource contention causes slower state propagation.
+// Uses a 2x multiplier, consistent with PeerSyncTimeout (60s/120s)
+// and dockertestMaxWait (300s/600s).
+func ScaledTimeout(d time.Duration) time.Duration {
+	if util.IsCI() {
+		return d * 2
+	}
+
+	return d
+}
+
 func WriteFileToContainer(
 	pool *dockertest.Pool,
 	container *dockertest.Resource,

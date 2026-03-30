@@ -550,6 +550,23 @@ func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
 	assert.NotNil(c, node.GetLastSeen())
 }
 
+// assertCurlSuccessWithCollect asserts that a curl request succeeds with
+// non-empty content. For use inside EventuallyWithT blocks.
+func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	result, err := client.Curl(url)
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.NotEmpty(c, result, msg)
+}
+
+// assertCurlFailWithCollect asserts that a curl request fails. Uses
+// CurlFailFast internally for aggressive timeouts, avoiding wasted
+// time on retries when we expect the connection to be blocked.
+// For use inside EventuallyWithT blocks.
+func assertCurlFailWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	_, err := client.CurlFailFast(url)
+	assert.Error(c, err, msg)
+}
+
 // assertTailscaleNodesLogout verifies that all provided Tailscale clients
 // are in the logged-out state (NeedsLogin).
 func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
