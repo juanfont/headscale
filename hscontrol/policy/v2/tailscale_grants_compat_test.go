@@ -324,52 +324,36 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 	return tf
 }
 
-// Skip categories document WHY tests are expected to fail and WHAT needs to be
-// implemented to fix them. Tests are grouped by root cause to identify high-impact
-// changes.
+// Skip categories document WHY tests are expected to differ from Tailscale SaaS.
+// Tests are grouped by root cause.
 //
-// Impact summary (highest first):
+//	USER_PASSKEY_WILDCARD - 2 tests: user:*@passkey wildcard pattern not supported
 //
-//	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
-//
-// Total: 2 tests skipped, ~235 tests expected to pass.
+// Total: 2 tests skipped, ~246 tests expected to pass.
 var grantSkipReasons = map[string]string{
-	// ========================================================================
 	// USER_PASSKEY_WILDCARD (2 tests)
 	//
-	// TODO: Handle user:*@passkey wildcard pattern in grant src/dst.
-	//
 	// Tailscale SaaS policies can use user:*@passkey as a wildcard matching
-	// all passkey-authenticated users. headscale's convertPolicyUserEmails
-	// only converts specific user@passkey addresses (not the wildcard form),
-	// so the filter compiler logs "user not found: token user:*@passkey"
-	// and produces no rules.
-	//
-	// Fix: Either convert user:*@passkey to a headscale-compatible wildcard,
-	// or resolve it to all known users during filter compilation.
-	// ========================================================================
-	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey, dst=tag:server — source can't be resolved, no rules produced",
-	"GRANT-K21": "USER_PASSKEY_WILDCARD: src=*, dst=user:*@passkey — destination can't be resolved, no rules produced",
+	// all passkey-authenticated users. headscale does not support passkey
+	// authentication and has no equivalent for this wildcard pattern.
+	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
+	"GRANT-K21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
 }
 
-// TestGrantsCompat is a data-driven test that loads all 237 GRANT-*.json
+// TestGrantsCompat is a data-driven test that loads all GRANT-*.json
 // test files captured from Tailscale SaaS and compares headscale's grants
 // engine output against the real Tailscale behavior.
 //
 // Each JSON file contains:
 //   - A full policy (groups, tagOwners, hosts, autoApprovers, grants, optionally acls)
-//   - For success cases: expected packet_filter_rules per node (8 nodes)
+//   - For success cases: expected packet_filter_rules per node
 //   - For error cases: expected error message
 //
 // The test converts Tailscale user email formats (@passkey, @dalby.cc) to
 // headscale format (@example.com) and runs the policy through unmarshalPolicy,
 // validate, compileFilterRulesForNode, and ReduceFilterRules.
 //
-// Skip category impact summary (highest first):
-//
-//	USER_PASSKEY_WILDCARD              -   2 tests: user:*@passkey wildcard pattern unresolvable
-//
-// Total: 2 tests skipped, ~235 tests expected to pass.
+// 2 tests are skipped for user:*@passkey wildcard (not supported in headscale).
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
