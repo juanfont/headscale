@@ -1,0 +1,433 @@
+// ROUTES-d6_exit_node_auto_approval
+//
+// ACL:  accept: src=['*'] dst=['*:*']
+//
+// Routers: 6 nodes with routes
+//
+// Expected: Rules on 12 of 12 nodes
+{
+  "test_id": "ROUTES-d6_exit_node_auto_approval",
+  "timestamp": "2026-03-17T16:17:53Z",
+  "propagation_wait_seconds": 10,
+  "input": {
+    "policy_file": "routes_policies/routes_d6_exit_node_auto_approval.json",
+    "full_policy": {
+      "groups": {
+        "group:admins": ["kratail2tid@passkey"],
+        "group:developers": ["kristoffer@dalby.cc", "kratail2tid@passkey"],
+        "group:monitors": ["monitorpasskeykradalby@passkey"],
+        "group:empty": []
+      },
+      "tagOwners": {
+        "tag:server": ["kratail2tid@passkey"],
+        "tag:prod": ["kratail2tid@passkey"],
+        "tag:client": ["kratail2tid@passkey"],
+        "tag:router": ["kratail2tid@passkey"],
+        "tag:exit": ["kratail2tid@passkey"],
+        "tag:ha": ["kratail2tid@passkey"]
+      },
+      "hosts": {
+        "webserver": "100.108.74.26",
+        "prodbox": "100.103.8.15",
+        "internal": "10.0.0.0/8",
+        "subnet24": "192.168.1.0/24"
+      },
+      "autoApprovers": {
+        "routes": {
+          "10.0.0.0/8": ["tag:router"],
+          "172.16.0.0/12": ["tag:router"],
+          "192.168.0.0/16": ["tag:ha"],
+          "0.0.0.0/0": ["tag:exit"],
+          "::/0": ["tag:exit"]
+        }
+      },
+      "acls": [
+        {
+          "action": "accept",
+          "src": ["*"],
+          "dst": ["*:*"]
+        }
+      ]
+    },
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_response_code": 200
+  },
+  "topology": {
+    "nodes": {
+      "big-router": {
+        "hostname": "big-router",
+        "tags": ["tag:router"],
+        "ipv4": "100.97.174.21",
+        "ipv6": "fd7a:115c:a1e0::5137:ae15",
+        "routable_ips": ["10.0.0.0/8"],
+        "approved_routes": ["10.0.0.0/8"]
+      },
+      "exit-node": {
+        "hostname": "exit-node",
+        "tags": ["tag:exit"],
+        "ipv4": "100.85.66.106",
+        "ipv6": "fd7a:115c:a1e0::7c37:426a",
+        "routable_ips": ["0.0.0.0/0", "::/0"],
+        "approved_routes": ["0.0.0.0/0", "::/0"]
+      },
+      "ha-router1": {
+        "hostname": "ha-router1",
+        "tags": ["tag:ha"],
+        "ipv4": "100.121.186.70",
+        "ipv6": "fd7a:115c:a1e0::6737:ba46",
+        "routable_ips": ["192.168.1.0/24"],
+        "approved_routes": ["192.168.1.0/24"]
+      },
+      "ha-router2": {
+        "hostname": "ha-router2",
+        "tags": ["tag:ha"],
+        "ipv4": "100.117.104.82",
+        "ipv6": "fd7a:115c:a1e0::7437:6852",
+        "routable_ips": ["192.168.1.0/24"],
+        "approved_routes": ["192.168.1.0/24"]
+      },
+      "multi-router": {
+        "hostname": "multi-router",
+        "tags": ["tag:exit", "tag:router"],
+        "ipv4": "100.119.241.111",
+        "ipv6": "fd7a:115c:a1e0::3337:f16f",
+        "routable_ips": ["172.16.0.0/24"],
+        "approved_routes": ["172.16.0.0/24"]
+      },
+      "subnet-router": {
+        "hostname": "subnet-router",
+        "tags": ["tag:router"],
+        "ipv4": "100.92.142.61",
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": ["10.33.0.0/16"],
+        "approved_routes": ["10.33.0.0/16"]
+      },
+      "tagged-client": {
+        "hostname": "tagged-client",
+        "tags": ["tag:client"],
+        "ipv4": "100.83.200.69",
+        "ipv6": "fd7a:115c:a1e0::c537:c845"
+      },
+      "tagged-prod": {
+        "hostname": "tagged-prod",
+        "tags": ["tag:prod"],
+        "ipv4": "100.103.8.15",
+        "ipv6": "fd7a:115c:a1e0::5b37:80f"
+      },
+      "tagged-server": {
+        "hostname": "tagged-server",
+        "tags": ["tag:server"],
+        "ipv4": "100.108.74.26",
+        "ipv6": "fd7a:115c:a1e0::b901:4a87"
+      },
+      "user-kris": {
+        "hostname": "user-kris",
+        "tags": [],
+        "ipv4": "100.110.121.96",
+        "ipv6": "fd7a:115c:a1e0::1737:7960"
+      },
+      "user-mon": {
+        "hostname": "user-mon",
+        "tags": [],
+        "ipv4": "100.103.90.82",
+        "ipv6": "fd7a:115c:a1e0::9e37:5a52"
+      },
+      "user1": {
+        "hostname": "user1",
+        "tags": [],
+        "ipv4": "100.90.199.68",
+        "ipv6": "fd7a:115c:a1e0::2d01:c747"
+      }
+    }
+  },
+  "captures": {
+    "big-router": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "exit-node": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ha-router1": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ha-router2": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "multi-router": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "subnet-router": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-client": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-prod": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-server": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user-kris": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user-mon": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user1": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "10.0.0.0/8",
+            "10.33.0.0/16",
+            "100.115.94.0-100.127.255.255",
+            "100.64.0.0-100.115.91.255",
+            "172.16.0.0/24",
+            "192.168.1.0/24",
+            "fd7a:115c:a1e0::/48"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

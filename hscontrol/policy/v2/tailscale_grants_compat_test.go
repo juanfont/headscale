@@ -31,6 +31,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -316,10 +317,14 @@ func loadGrantTestFile(t *testing.T, path string) grantTestFile {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
+	ast, err := hujson.Parse(content)
+	require.NoError(t, err, "failed to parse HuJSON in %s", path)
+	ast.Standardize()
+
 	var tf grantTestFile
 
-	err = json.Unmarshal(content, &tf)
-	require.NoError(t, err, "failed to parse test file %s", path)
+	err = json.Unmarshal(ast.Pack(), &tf)
+	require.NoError(t, err, "failed to unmarshal test file %s", path)
 
 	return tf
 }
@@ -357,9 +362,9 @@ var grantSkipReasons = map[string]string{
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
-	files, err := filepath.Glob(filepath.Join("testdata", "grant_results", "GRANT-*.json"))
+	files, err := filepath.Glob(filepath.Join("testdata", "grant_results", "GRANT-*.hujson"))
 	require.NoError(t, err, "failed to glob test files")
-	require.NotEmpty(t, files, "no GRANT-*.json test files found in testdata/grant_results/")
+	require.NotEmpty(t, files, "no GRANT-*.hujson test files found in testdata/grant_results/")
 
 	t.Logf("Loaded %d grant test files", len(files))
 

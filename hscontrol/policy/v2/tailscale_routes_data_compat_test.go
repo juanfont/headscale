@@ -25,6 +25,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/require"
+	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -71,10 +72,14 @@ func loadRoutesTestFile(t *testing.T, path string) routesTestFile {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
+	ast, err := hujson.Parse(content)
+	require.NoError(t, err, "failed to parse HuJSON in %s", path)
+	ast.Standardize()
+
 	var tf routesTestFile
 
-	err = json.Unmarshal(content, &tf)
-	require.NoError(t, err, "failed to parse test file %s", path)
+	err = json.Unmarshal(ast.Pack(), &tf)
+	require.NoError(t, err, "failed to unmarshal test file %s", path)
 
 	return tf
 }
@@ -188,13 +193,13 @@ func TestRoutesCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "routes_results", "ROUTES-*.json"),
+		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ROUTES-*.json test files found in testdata/routes_results/",
+		"no ROUTES-*.hujson test files found in testdata/routes_results/",
 	)
 
 	t.Logf("Loaded %d routes test files", len(files))

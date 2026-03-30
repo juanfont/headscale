@@ -27,6 +27,7 @@ import (
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -220,10 +221,14 @@ func loadACLTestFile(t *testing.T, path string) aclTestFile {
 	content, err := os.ReadFile(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
+	ast, err := hujson.Parse(content)
+	require.NoError(t, err, "failed to parse HuJSON in %s", path)
+	ast.Standardize()
+
 	var tf aclTestFile
 
-	err = json.Unmarshal(content, &tf)
-	require.NoError(t, err, "failed to parse test file %s", path)
+	err = json.Unmarshal(ast.Pack(), &tf)
+	require.NoError(t, err, "failed to unmarshal test file %s", path)
 
 	return tf
 }
@@ -255,13 +260,13 @@ func TestACLCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "acl_results", "ACL-*.json"),
+		filepath.Join("testdata", "acl_results", "ACL-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ACL-*.json test files found in testdata/acl_results/",
+		"no ACL-*.hujson test files found in testdata/acl_results/",
 	)
 
 	t.Logf("Loaded %d ACL test files", len(files))
