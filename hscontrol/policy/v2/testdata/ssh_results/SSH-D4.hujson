@@ -5,21 +5,37 @@
 // Expected: SSH rules on 4 of 5 nodes
 {
   "test_id": "SSH-D4",
-  "policy_file": "ssh_policies/ssh_d4.json",
   "ssh_section": [
     {
       "action": "accept",
-      "src": ["autogroup:member"],
-      "dst": ["tag:server"],
-      "users": ["localpart:*@passkey", "autogroup:nonroot"]
+      "src": [
+        "autogroup:member"
+      ],
+      "dst": [
+        "tag:server"
+      ],
+      "users": [
+        "localpart:*@passkey",
+        "autogroup:nonroot"
+      ]
     }
   ],
   "nodes": {
     "user1": {
       "rules": [
         {
-          "principals": [{ "nodeIP": "100.90.199.68" }, { "nodeIP": "fd7a:115c:a1e0::2d01:c747" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -28,8 +44,17 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.90.199.68" }, { "nodeIP": "fd7a:115c:a1e0::2d01:c747" }],
-          "sshUsers": { "kratail2tid": "kratail2tid" },
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -42,8 +67,18 @@
     "user-kris": {
       "rules": [
         {
-          "principals": [{ "nodeIP": "100.110.121.96" }, { "nodeIP": "fd7a:115c:a1e0::1737:7960" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -56,8 +91,18 @@
     "user-mon": {
       "rules": [
         {
-          "principals": [{ "nodeIP": "100.103.90.82" }, { "nodeIP": "fd7a:115c:a1e0::9e37:5a52" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -66,8 +111,17 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.103.90.82" }, { "nodeIP": "fd7a:115c:a1e0::9e37:5a52" }],
-          "sshUsers": { "monitorpasskeykradalby": "monitorpasskeykradalby" },
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -80,8 +134,18 @@
     "tagged-server": {
       "rules": [
         {
-          "principals": [{ "nodeIP": "100.90.199.68" }, { "nodeIP": "fd7a:115c:a1e0::2d01:c747" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -90,8 +154,17 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.90.199.68" }, { "nodeIP": "fd7a:115c:a1e0::2d01:c747" }],
-          "sshUsers": { "kratail2tid": "kratail2tid" },
+          "principals": [
+            {
+              "nodeIP": "100.90.199.68"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::2d01:c747"
+            }
+          ],
+          "sshUsers": {
+            "kratail2tid": "kratail2tid"
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -100,8 +173,18 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.110.121.96" }, { "nodeIP": "fd7a:115c:a1e0::1737:7960" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.110.121.96"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::1737:7960"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -110,8 +193,18 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.103.90.82" }, { "nodeIP": "fd7a:115c:a1e0::9e37:5a52" }],
-          "sshUsers": { "*": "=", "root": "" },
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "*": "=",
+            "root": ""
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -120,8 +213,17 @@
           }
         },
         {
-          "principals": [{ "nodeIP": "100.103.90.82" }, { "nodeIP": "fd7a:115c:a1e0::9e37:5a52" }],
-          "sshUsers": { "monitorpasskeykradalby": "monitorpasskeykradalby" },
+          "principals": [
+            {
+              "nodeIP": "100.103.90.82"
+            },
+            {
+              "nodeIP": "fd7a:115c:a1e0::9e37:5a52"
+            }
+          ],
+          "sshUsers": {
+            "monitorpasskeykradalby": "monitorpasskeykradalby"
+          },
           "action": {
             "accept": true,
             "allowAgentForwarding": true,
@@ -131,6 +233,8 @@
         }
       ]
     },
-    "tagged-prod": { "rules": [] }
+    "tagged-prod": {
+      "rules": []
+    }
   }
 }
