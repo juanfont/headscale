@@ -55,7 +55,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireNoErrGetHeadscale(t, err)
 
 			expectedNodes := collectExpectedNodeIDs(t, allClients)
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected", integrationutil.ScaledTimeout(120*time.Second))
 
 			// Validate that all nodes have NetInfo and DERP servers before logout
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP before logout", 3*time.Minute)
@@ -104,7 +104,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 			requireNoErrLogout(t, err)
 
 			// After taking down all nodes, verify all systems show nodes offline
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should have logged out", integrationutil.ScaledTimeout(120*time.Second))
 
 			t.Logf("all clients logged out")
 
@@ -159,7 +159,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				assertLastSeenSet(t, node)
 			}
 
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(120*time.Second))
 
 			// Wait for Tailscale sync before validating NetInfo to ensure proper state propagation
 			err = scenario.WaitForTailscaleSync()
@@ -175,8 +175,7 @@ func TestAuthKeyLogoutAndReloginSameUser(t *testing.T) {
 				return x.String()
 			})
 
-			success := pingAllHelper(t, allClients, allAddrs)
-			t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+			assertPingAll(t, allClients, allAddrs)
 
 			for _, client := range allClients {
 				ips, err := client.IPs()
@@ -253,7 +252,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	expectedNodes := collectExpectedNodeIDs(t, allClients)
 
 	// Validate initial connection state
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
 	var (
@@ -283,7 +282,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	requireNoErrLogout(t, err)
 
 	// Validate that all nodes are offline after logout
-	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
 
 	t.Logf("all clients logged out")
 
@@ -323,7 +322,7 @@ func TestAuthKeyLogoutAndReloginNewUser(t *testing.T) {
 	}
 
 	// Validate connection state after relogin as user1
-	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", 120*time.Second)
+	requireAllClientsOnline(t, headscale, expectedUser1Nodes, true, "all user1 nodes should be connected after relogin", integrationutil.ScaledTimeout(120*time.Second))
 	requireAllClientsNetInfoAndDERP(t, headscale, expectedUser1Nodes, "all user1 nodes should have NetInfo and DERP after relogin", 3*time.Minute)
 
 	// Validate that user2 still has their original nodes after user1's re-authentication
@@ -399,7 +398,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			expectedNodes := collectExpectedNodeIDs(t, allClients)
 
 			// Validate initial connection state
-			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after initial login", integrationutil.ScaledTimeout(120*time.Second))
 			requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after initial login", 3*time.Minute)
 
 			var (
@@ -429,7 +428,7 @@ func TestAuthKeyLogoutAndReloginSameUserExpiredKey(t *testing.T) {
 			requireNoErrLogout(t, err)
 
 			// Validate that all nodes are offline after logout
-			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", 120*time.Second)
+			requireAllClientsOnline(t, headscale, expectedNodes, false, "all nodes should be offline after logout", integrationutil.ScaledTimeout(120*time.Second))
 
 			t.Logf("all clients logged out")
 
@@ -535,7 +534,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	t.Logf("Node %d (%s) created successfully with auth_key_id=%d", nodeID, nodeName, authKeyID)
 
 	// Verify node is online
-	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", 120*time.Second)
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should be online initially", integrationutil.ScaledTimeout(120*time.Second))
 
 	// DELETE the pre-auth key using the API
 	t.Logf("Deleting pre-auth key ID %d using API", authKeyID)
@@ -563,7 +562,7 @@ func TestAuthKeyDeleteKey(t *testing.T) {
 	// Verify node comes back online
 	// This will FAIL without the fix because auth key validation will reject deleted key
 	// With the fix, MachineKey identity allows reconnection even with deleted key
-	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", 120*time.Second)
+	requireAllClientsOnline(t, headscale, []types.NodeID{types.NodeID(nodeID)}, true, "node should reconnect after restart despite deleted key", integrationutil.ScaledTimeout(120*time.Second))
 
 	t.Logf("✓ Node successfully reconnected after its auth key was deleted")
 }

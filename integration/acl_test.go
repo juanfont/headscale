@@ -2005,7 +2005,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Wait for peer lists to sync with autogroup:self - ensures cross-user peers are removed
 		t.Logf("Iteration %d: Phase 2 - Waiting for peer lists to sync with autogroup:self", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2 - failed to sync after autogroup:self policy", iteration)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
@@ -2096,7 +2096,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// Wait for peer lists to sync after new node addition (now 3 user1 nodes, still autogroup:self)
 		t.Logf("Iteration %d: Phase 2b - Waiting for peer lists to sync after new node addition", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: Phase 2b - failed to sync after new node addition", iteration)
 
 		// Test ALL connectivity (positive and negative) in one block after state is settled
@@ -2200,7 +2200,7 @@ func TestACLPolicyPropagationOverTime(t *testing.T) {
 		// so nodes only see same-user peers, not all nodes
 		t.Logf("Iteration %d: Phase 2b - Waiting for sync after node deletion (with autogroup:self)", iteration)
 
-		err = scenario.WaitForTailscaleSyncPerUser(60*time.Second, 500*time.Millisecond)
+		err = scenario.WaitForTailscaleSyncPerUser(integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond)
 		require.NoError(t, err, "iteration %d: failed to sync after node deletion", iteration)
 
 		// Refresh client lists after deletion to ensure we don't reference the deleted node
@@ -2763,6 +2763,10 @@ func TestACLTagPropagation(t *testing.T) {
 
 			// Step 3: Verify final NetMap visibility first (fast signal that
 			// the MapResponse propagated to the client).
+			// The full propagation chain (docker exec → gRPC → state update →
+			// batcher delay → MapResponse → noise transport → client processing)
+			// can take over 120s on congested CI runners, so use a generous
+			// base timeout.
 			t.Logf("Step 3: Verifying final NetMap visibility (expect visible=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				status, err := sourceClient.Status()
@@ -2783,11 +2787,13 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assert.False(c, found, "Target should NOT be visible in NetMap after tag change")
 				}
-			}, integrationutil.ScaledTimeout(60*time.Second), 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
+			}, integrationutil.ScaledTimeout(120*time.Second), 500*time.Millisecond, "verifying NetMap visibility propagated after tag change")
 
 			// Step 4: Verify final access state (this is the key test for #2389).
-			// Checked after NetMap so we know the MapResponse already arrived;
-			// this only needs to wait for the WireGuard config to apply.
+			// Even though Step 3 confirmed the MapResponse arrived, the full
+			// WireGuard handshake and tunnel establishment can take significant
+			// time on congested CI runners, so use the same generous base
+			// timeout as Step 3.
 			t.Logf("Step 4: Verifying final access after tag change (expect success=%v)", tt.finalAccess)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
 				if tt.finalAccess {
@@ -2795,7 +2801,7 @@ func TestACLTagPropagation(t *testing.T) {
 				} else {
 					assertCurlFailWithCollect(c, sourceClient, targetURL, "final access should fail after tag change")
 				}
-			}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "verifying access propagated after tag change")
+			}, integrationutil.ScaledTimeout(120*time.Second), 500*time.Millisecond, "verifying access propagated after tag change")
 
 			t.Logf("Test %s PASSED: Tag change propagated correctly", tt.name)
 		})

@@ -78,8 +78,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
@@ -189,8 +188,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	// Wait for OIDC token expiry and verify all nodes transition to NeedsLogin.
 	// We add extra time to account for:
@@ -452,8 +450,7 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 // TestOIDCReloginSameNodeNewUser tests the scenario where:

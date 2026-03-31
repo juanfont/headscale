@@ -50,8 +50,7 @@ func TestAuthWebFlowAuthenticationPingAll(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
@@ -88,8 +87,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	requireNoErrGetHeadscale(t, err)
@@ -169,8 +167,7 @@ func TestAuthWebFlowLogoutAndReloginSameUser(t *testing.T) {
 		return x.String()
 	})
 
-	success = pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		ips, err := client.IPs()
@@ -370,6 +367,5 @@ func TestAuthWebFlowLogoutAndReloginNewUser(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d after web flow user switch", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }

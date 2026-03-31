@@ -1356,7 +1356,7 @@ func TestTagsUserLoginOwnedTagAtRegistration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for client to be running
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify node has the advertised tag
@@ -1563,7 +1563,7 @@ func TestTagsUserLoginAddTagViaCLIReauth(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial tag
@@ -1654,7 +1654,7 @@ func TestTagsUserLoginRemoveTagViaCLIReauth(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial tags
@@ -1745,7 +1745,7 @@ func TestTagsUserLoginCLINoOpAfterAdminAssignment(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Get node ID
@@ -1862,7 +1862,7 @@ func TestTagsUserLoginCLICannotRemoveAdminTags(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Get node ID
@@ -2548,7 +2548,7 @@ func TestTagsIssue2978ReproTagReplacement(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for client to be running
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Wait for initial registration with tag:valid-owned
@@ -2851,7 +2851,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 		err = scenario.runHeadscaleRegister(tagTestUser, body)
 		require.NoError(t, err)
 
-		err = client.WaitForRunning(120 * time.Second)
+		err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 		require.NoError(t, err)
 
 		// Verify initial tags
@@ -2902,7 +2902,7 @@ func TestTagsUserLoginReauthWithEmptyTagsRemovesAllTags(t *testing.T) {
 			err = scenario.runHeadscaleRegister(tagTestUser, body)
 			require.NoError(t, err)
 
-			err = client.WaitForRunning(120 * time.Second)
+			err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 			require.NoError(t, err)
 			t.Logf("Completed reauth with empty tags")
 		} else {
@@ -3145,7 +3145,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	err = client.Login(headscale.GetEndpoint(), authKey.GetKey())
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Verify initial state: node is tagged
@@ -3182,7 +3182,7 @@ func TestTagsAuthKeyConvertToUserViaCLIRegister(t *testing.T) {
 	err = scenario.runHeadscaleRegister(tagTestUser, body)
 	require.NoError(t, err)
 
-	err = client.WaitForRunning(120 * time.Second)
+	err = client.WaitForRunning(integrationutil.PeerSyncTimeout())
 	require.NoError(t, err)
 
 	// Step 4: Verify node is now user-owned and the mapper didn't panic.
