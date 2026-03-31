@@ -51,6 +51,22 @@ type PolicyManager struct {
 	// Lazy map of per-node filter rules (reduced, for packet filters)
 	filterRulesMap    map[types.NodeID][]tailcfg.FilterRule
 	usesAutogroupSelf bool
+
+	// Hash of the users list to short-circuit SetUsers when users haven't changed.
+	// During bulk registration, SetUsers is called for every new node with the same
+	// user list, triggering expensive O(rules * nodes) filter recompilation each time.
+	usersHash deephash.Sum
+
+	// filterDirty indicates that nodes have changed since the last filter compilation.
+	// When true, the next call to Filter(), FilterForNode(), or MatchersForNode() will
+	// trigger a full recompilation. This allows SetNodes to defer the expensive
+	// O(rules * nodes) compilation during bulk registration.
+	filterDirty bool
+
+	// srcMatcherCache maps node IDs to the indices of matchers where that node's
+	// IPs appear in the source set. This avoids iterating all matchers in CanAccess
+	// when only a small subset are relevant. Invalidated when filters are recompiled.
+	srcMatcherCache map[types.NodeID][]int
 }
 
 // filterAndPolicy combines the compiled filter rules with policy content for hashing.
@@ -91,6 +107,19 @@ func NewPolicyManager(b []byte, users []types.User, nodes views.Slice[types.Node
 // updateLocked updates the filter rules based on the current policy and nodes.
 // It must be called with the lock held.
 func (pm *PolicyManager) updateLocked() (bool, error) {
+	// Enable resolve cache and node IP indexes for the duration of this update.
+	// Same Group/Username/Tag resolves identically within one update cycle
+	// but may be referenced hundreds of times across 14K+ ACL rules.
+	if pm.pol != nil {
+		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
+		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
+		defer func() {
+			pm.pol.resolveCache = nil
+			pm.pol.nodeIPsByUser = nil
+			pm.pol.nodeIPsByTag = nil
+		}()
+	}
+
 	// Check if policy uses autogroup:self
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
 
@@ -128,6 +157,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 	pm.filterHash = filterHash
 	if filterChanged {
 		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+		pm.srcMatcherCache = nil // Invalidate cached source matcher indices
 	}
 
 	// Order matters, tags might be used in autoapprovers, so we need to ensure
@@ -347,6 +377,101 @@ func (pm *PolicyManager) SetPolicy(polB []byte) (bool, error) {
 	return pm.updateLocked()
 }
 
+// ensureFilterCompiled compiles filter rules if the filterDirty flag is set.
+// Must be called with pm.mu held.
+//
+// Only recompiles the filter rules and matchers. Does NOT re-resolve
+// tagOwners/autoApprovers since SetNodes already resolved them eagerly
+// when it marked filterDirty. This avoids redundant O(tags × nodes)
+// work on every ComputeNodePeers call.
+func (pm *PolicyManager) ensureFilterCompiled() error {
+	if !pm.filterDirty {
+		return nil
+	}
+	pm.filterDirty = false
+
+	// Enable resolve cache and node IP indexes for filter compilation.
+	if pm.pol != nil {
+		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
+		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
+		defer func() {
+			pm.pol.resolveCache = nil
+			pm.pol.nodeIPsByUser = nil
+			pm.pol.nodeIPsByTag = nil
+		}()
+	}
+
+	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
+
+	filter, err := pm.pol.compileFilterRules(pm.users, pm.nodes)
+	if err != nil {
+		return fmt.Errorf("compiling filter rules: %w", err)
+	}
+
+	filterHash := deephash.Hash(&filterAndPolicy{
+		Filter: filter,
+		Policy: pm.pol,
+	})
+
+	pm.filter = filter
+
+	if filterHash != pm.filterHash {
+		pm.filterHash = filterHash
+		pm.matchers = matcher.MatchesFromFilterRules(pm.filter)
+		pm.srcMatcherCache = nil
+	}
+
+	return nil
+}
+
+// buildNodeIPIndexes builds pre-computed IP sets indexed by UserID and tag.
+// This allows Username.Resolve and Tag.Resolve to do O(1) lookups instead
+// of scanning all N nodes. Built once per filter compilation cycle.
+func buildNodeIPIndexes(nodes views.Slice[types.NodeView]) (
+	map[uint]*netipx.IPSet,
+	map[string]*netipx.IPSet,
+) {
+	userBuilders := make(map[uint]*netipx.IPSetBuilder)
+	tagBuilders := make(map[string]*netipx.IPSetBuilder)
+
+	for _, node := range nodes.All() {
+		if node.IsTagged() {
+			// Tagged nodes: index by each tag
+			for _, tag := range node.Tags().All() {
+				b, ok := tagBuilders[tag]
+				if !ok {
+					b = &netipx.IPSetBuilder{}
+					tagBuilders[tag] = b
+				}
+				node.AppendToIPSet(b)
+			}
+		} else if node.User().Valid() {
+			// User-owned nodes: index by user ID (uint from gorm.Model)
+			uid := node.User().ID()
+			b, ok := userBuilders[uid]
+			if !ok {
+				b = &netipx.IPSetBuilder{}
+				userBuilders[uid] = b
+			}
+			node.AppendToIPSet(b)
+		}
+	}
+
+	userSets := make(map[uint]*netipx.IPSet, len(userBuilders))
+	for uid, b := range userBuilders {
+		ipset, _ := b.IPSet()
+		userSets[uid] = ipset
+	}
+
+	tagSets := make(map[string]*netipx.IPSet, len(tagBuilders))
+	for tag, b := range tagBuilders {
+		ipset, _ := b.IPSet()
+		tagSets[tag] = ipset
+	}
+
+	return userSets, tagSets
+}
+
 // Filter returns the current filter rules for the entire tailnet and the associated matchers.
 func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 	if pm == nil {
@@ -355,6 +480,10 @@ func (pm *PolicyManager) Filter() ([]tailcfg.FilterRule, []matcher.Match) {
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules on demand")
+	}
 
 	return pm.filter, pm.matchers
 }
@@ -370,6 +499,11 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules for BuildPeerMap")
+		return nil
+	}
 
 	// If we have a global filter, use it for all nodes (normal case)
 	if !pm.usesAutogroupSelf {
@@ -446,6 +580,124 @@ func (pm *PolicyManager) BuildPeerMap(nodes views.Slice[types.NodeView]) map[typ
 	}
 
 	return ret
+}
+
+// getSrcMatcherIndices returns the indices of matchers where the given node's
+// IPs appear in the source set. Results are cached per node ID and invalidated
+// when filters are recompiled. This reduces CanAccess from O(M) to O(relevant)
+// where relevant << M for large rule sets.
+func (pm *PolicyManager) getSrcMatcherIndices(node types.NodeView) []int {
+	if cached, ok := pm.srcMatcherCache[node.ID()]; ok {
+		return cached
+	}
+
+	ips := node.IPs()
+	indices := make([]int, 0, 32)
+	for i := range pm.matchers {
+		if pm.matchers[i].SrcsContainsIPs(ips...) {
+			indices = append(indices, i)
+		}
+	}
+
+	if pm.srcMatcherCache == nil {
+		pm.srcMatcherCache = make(map[types.NodeID][]int)
+	}
+	pm.srcMatcherCache[node.ID()] = indices
+
+	return indices
+}
+
+// canAccessIndexed checks if a source node can access a destination node,
+// but only checks the matchers at the given indices (pre-filtered by source IP).
+// This is equivalent to CanAccess but avoids iterating all matchers.
+func canAccessIndexed(matchers []matcher.Match, srcIndices []int, dst types.NodeView) bool {
+	dstIPs := dst.IPs()
+	subnetRoutes := dst.SubnetRoutes()
+	hasSubnets := len(subnetRoutes) > 0
+	isExit := dst.IsExitNode()
+
+	for _, mi := range srcIndices {
+		m := &matchers[mi]
+		if m.DestsContainsIP(dstIPs...) {
+			return true
+		}
+		if hasSubnets && m.DestsOverlapsPrefixes(subnetRoutes...) {
+			return true
+		}
+		if isExit && m.DestsIsTheInternet() {
+			return true
+		}
+	}
+
+	return false
+}
+
+// ComputeNodePeers computes the list of peers visible to a single node by
+// checking it against all provided nodes. This is O(N) per new node instead of
+// O(N²) for a full BuildPeerMap. Used by the NodeStore's incremental snapshot
+// path when only new nodes are added (no identity changes).
+//
+// Uses a cached source matcher index to avoid iterating all matchers for each
+// node pair. With 14K+ rules but only ~100 relevant per node, this reduces
+// IPSet lookups by ~100x.
+func (pm *PolicyManager) ComputeNodePeers(
+	node types.NodeView,
+	allNodes []types.NodeView,
+) []types.NodeView {
+	if pm == nil {
+		return nil
+	}
+
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		log.Error().Err(err).Msg("Failed to compile filter rules for ComputeNodePeers")
+		return nil
+	}
+
+	var peers []types.NodeView
+
+	if !pm.usesAutogroupSelf {
+		// Pre-compute which matchers have the new node as a source.
+		// Other nodes' source indices are cached across calls.
+		nodeSrcIdx := pm.getSrcMatcherIndices(node)
+
+		for _, other := range allNodes {
+			if other.ID() == node.ID() {
+				continue
+			}
+			otherSrcIdx := pm.getSrcMatcherIndices(other)
+			if canAccessIndexed(pm.matchers, nodeSrcIdx, other) ||
+				canAccessIndexed(pm.matchers, otherSrcIdx, node) {
+				peers = append(peers, other)
+			}
+		}
+	} else {
+		// autogroup:self: compile per-node matchers and check
+		nodeMatchers, err := pm.compileFilterRulesForNodeLocked(node)
+		if err != nil {
+			return nil
+		}
+		nodeMatcherList := matcher.MatchesFromFilterRules(nodeMatchers)
+
+		for _, other := range allNodes {
+			if other.ID() == node.ID() {
+				continue
+			}
+			otherMatchers, err := pm.compileFilterRulesForNodeLocked(other)
+			if err != nil {
+				continue
+			}
+			otherMatcherList := matcher.MatchesFromFilterRules(otherMatchers)
+
+			if node.CanAccess(nodeMatcherList, other) || other.CanAccess(otherMatcherList, node) {
+				peers = append(peers, other)
+			}
+		}
+	}
+
+	return peers
 }
 
 // compileFilterRulesForNodeLocked returns the unreduced compiled filter rules for a node
@@ -530,6 +782,10 @@ func (pm *PolicyManager) FilterForNode(node types.NodeView) ([]tailcfg.FilterRul
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	if err := pm.ensureFilterCompiled(); err != nil {
+		return nil, err
+	}
+
 	return pm.filterForNodeLocked(node)
 }
 
@@ -546,6 +802,10 @@ func (pm *PolicyManager) MatchersForNode(node types.NodeView) ([]matcher.Match, 
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
+
+	if err := pm.ensureFilterCompiled(); err != nil {
+		return nil, err
+	}
 
 	// For global policies, return the shared global matchers
 	if !pm.usesAutogroupSelf {
@@ -571,6 +831,15 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
+	// Short-circuit: if users haven't changed, skip the expensive updateLocked.
+	// During bulk registration the same user list is passed on every node add,
+	// but updateLocked recompiles all filter rules O(rules * nodes) each time.
+	newHash := deephash.Hash(&users)
+	if newHash == pm.usersHash {
+		return false, nil
+	}
+	pm.usersHash = newHash
+
 	pm.users = users
 
 	// Clear SSH policy map when users change to force SSH policy recomputation
@@ -592,60 +861,88 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	return changed, nil
 }
 
-// SetNodes updates the nodes in the policy manager and updates the filter rules.
-func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, error) {
+// SetNodes updates the nodes in the policy manager.
+// Returns (changed, identityChanged, error):
+//   - changed: true if the node list differs from the previous one
+//   - identityChanged: true if an existing node's identity (tags, user, IPs) changed,
+//     as opposed to just new nodes being added. This helps callers decide whether
+//     a full peer map rebuild is needed (identity change) vs incremental update (addition).
+func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool, []types.NodeID, error) {
 	if pm == nil {
-		return false, nil
+		return false, false, nil, nil
 	}
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	policyChanged := pm.nodesHavePolicyAffectingChanges(nodes)
+	identityChanged := pm.nodesHaveIdentityChanges(nodes)
+	countChanged := pm.nodes.Len() != nodes.Len()
+
+	// Track which nodes are new (added since last SetNodes).
+	oldNodeSet := make(map[types.NodeID]struct{}, pm.nodes.Len())
+	for _, n := range pm.nodes.All() {
+		oldNodeSet[n.ID()] = struct{}{}
+	}
+	var newNodeIDs []types.NodeID
+	for _, n := range nodes.All() {
+		if _, exists := oldNodeSet[n.ID()]; !exists {
+			newNodeIDs = append(newNodeIDs, n.ID())
+		}
+	}
 
 	// Invalidate cache entries for nodes that changed.
-	// For autogroup:self: invalidate all nodes belonging to affected users (peer changes).
-	// For global policies: invalidate only nodes whose properties changed (IPs, routes).
 	pm.invalidateNodeCache(nodes)
 
 	pm.nodes = nodes
 
-	// When policy-affecting node properties change, we must recompile filters because:
-	// 1. User/group aliases (like "user1@") resolve to node IPs
-	// 2. Tag aliases (like "tag:server") match nodes based on their tags
-	// 3. Filter compilation needs nodes to generate rules
-	//
-	// For autogroup:self: return true when nodes change even if the global filter
-	// hash didn't change. The global filter is empty for autogroup:self (each node
-	// has its own filter), so the hash never changes. But peer relationships DO
-	// change when nodes are added/removed, so we must signal this to trigger updates.
-	// For global policies: the filter must be recompiled to include the new nodes.
-	if policyChanged {
-		// Recompile filter with the new node list
-		needsUpdate, err := pm.updateLocked()
-		if err != nil {
-			return false, err
-		}
-
-		if !needsUpdate {
-			// This ensures fresh filter rules are generated for all nodes
-			clear(pm.sshPolicyMap)
-			clear(pm.compiledFilterRulesMap)
-			clear(pm.filterRulesMap)
-		}
-		// Always return true when nodes changed, even if filter hash didn't change
-		// (can happen with autogroup:self or when nodes are added but don't affect rules)
-		return true, nil
+	if !identityChanged && !countChanged {
+		return false, false, nil, nil
 	}
 
-	return false, nil
+	if identityChanged {
+		// Existing node properties changed — must recompile filters eagerly
+		// because matchers need to reflect the new identity immediately.
+		_, err := pm.updateLocked()
+		if err != nil {
+			return false, false, nil, err
+		}
+	} else {
+		// Only new nodes were added. Defer the expensive filter compilation
+		// (O(rules * nodes)) until filters are actually accessed. Eagerly resolve
+		// tag owners and auto-approvers since they're needed during registration
+		// for route approval.
+		pm.filterDirty = true
+
+		// Clear per-node caches since the node list changed
+		clear(pm.sshPolicyMap)
+		clear(pm.compiledFilterRulesMap)
+		clear(pm.filterRulesMap)
+
+		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
+		tagMap, err := resolveTagOwners(pm.pol, pm.users, pm.nodes)
+		if err != nil {
+			return false, false, nil, fmt.Errorf("resolving tag owners: %w", err)
+		}
+		pm.tagOwnerMap = tagMap
+		pm.tagOwnerMapHash = deephash.Hash(&tagMap)
+
+		// Eagerly resolve auto-approvers (needed for route approval during registration)
+		autoMap, exitSet, err := resolveAutoApprovers(pm.pol, pm.users, pm.nodes)
+		if err != nil {
+			return false, false, nil, fmt.Errorf("resolving auto approvers: %w", err)
+		}
+		pm.autoApproveMap = autoMap
+		pm.autoApproveMapHash = deephash.Hash(&autoMap)
+		pm.exitSet = exitSet
+		pm.exitSetHash = deephash.Hash(&exitSet)
+	}
+
+	return true, identityChanged, newNodeIDs, nil
 }
 
-func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[types.NodeView]) bool {
-	if pm.nodes.Len() != newNodes.Len() {
-		return true
-	}
-
+// nodesHaveIdentityChanges checks if any existing node changed its policy-affecting
+// properties (tags, user, IPs, routes). Returns false for pure additions/removals.
+func (pm *PolicyManager) nodesHaveIdentityChanges(newNodes views.Slice[types.NodeView]) bool {
 	oldNodes := make(map[types.NodeID]types.NodeView, pm.nodes.Len())
 	for _, node := range pm.nodes.All() {
 		oldNodes[node.ID()] = node
@@ -654,7 +951,7 @@ func (pm *PolicyManager) nodesHavePolicyAffectingChanges(newNodes views.Slice[ty
 	for _, newNode := range newNodes.All() {
 		oldNode, exists := oldNodes[newNode.ID()]
 		if !exists {
-			return true
+			continue // new node, not an identity change
 		}
 
 		if newNode.HasPolicyChange(oldNode) {

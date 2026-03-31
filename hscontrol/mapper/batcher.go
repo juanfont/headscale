@@ -45,6 +45,7 @@ func NewBatcher(batchTime time.Duration, workers int, mapper *mapper) *Batcher {
 		// The size of this channel is arbitrary chosen, the sizing should be revisited.
 		workCh: make(chan work, workers*200),
 		done:   make(chan struct{}),
+		wake:   make(chan struct{}, 1),
 		nodes:  xsync.NewMap[types.NodeID, *multiChannelNodeConn](),
 	}
 }
@@ -205,6 +206,11 @@ type Batcher struct {
 	workCh   chan work
 	done     chan struct{}
 	doneOnce sync.Once // Ensures done is only closed once
+
+	// wake signals the doWork loop to process pending changes immediately
+	// instead of waiting for the next tick. Non-blocking send ensures
+	// callers never block.
+	wake chan struct{}
 
 	// wg tracks the doWork and all worker goroutines so that Close()
 	// can block until they have fully exited.
@@ -400,6 +406,9 @@ func (b *Batcher) doWork() {
 		case <-b.tick.C:
 			// Process batched changes
 			b.processBatchedChanges()
+		case <-b.wake:
+			// Immediate processing requested by addToBatch
+			b.processBatchedChanges()
 		case <-cleanupTicker.C:
 			// Clean up nodes that have been offline for too long
 			b.cleanupOfflineNodes()
@@ -579,6 +588,14 @@ func (b *Batcher) addToBatch(changes ...change.Change) {
 
 			return true
 		})
+	}
+
+	// Signal the doWork loop to process pending changes promptly instead
+	// of waiting for the next tick. This ensures node additions and policy
+	// changes are delivered without the full tick delay.
+	select {
+	case b.wake <- struct{}{}:
+	default:
 	}
 }
 

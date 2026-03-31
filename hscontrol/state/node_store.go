@@ -19,6 +19,7 @@ const (
 	del             = 2
 	update          = 3
 	rebuildPeerMaps = 4
+	refreshPeers    = 5
 )
 
 const prometheusNamespace = "headscale"
@@ -85,8 +86,9 @@ var (
 type NodeStore struct {
 	data atomic.Pointer[Snapshot]
 
-	peersFunc  PeersFunc
-	writeQueue chan work
+	peersFunc            PeersFunc
+	incrementalPeersFunc IncrementalPeersFunc
+	writeQueue           chan work
 
 	batchSize    int
 	batchTimeout time.Duration
@@ -125,7 +127,7 @@ type Snapshot struct {
 	// calculated from nodesByID
 	nodesByNodeKey    map[key.NodePublic]types.NodeView
 	nodesByMachineKey map[key.MachinePublic]map[types.UserID]types.NodeView
-	peersByNode       map[types.NodeID][]types.NodeView
+	peersByNode       map[types.NodeID][]types.NodeID
 	nodesByUser       map[types.UserID][]types.NodeView
 	allNodes          []types.NodeView
 }
@@ -144,8 +146,10 @@ type work struct {
 	updateFn   UpdateNodeFunc
 	result     chan struct{}
 	nodeResult chan types.NodeView // Channel to return the resulting node after batch application
-	// For rebuildPeerMaps operation
+	// For rebuildPeerMaps and refreshPeers operations
 	rebuildResult chan struct{}
+	// For refreshPeers: which node IDs to refresh
+	refreshNodeIDs []types.NodeID
 }
 
 // PutNode adds or updates a node in the store.
@@ -247,7 +251,7 @@ func (s *NodeStore) DeleteNode(id types.NodeID) {
 
 // Start initializes the NodeStore and starts processing the write queue.
 func (s *NodeStore) Start() {
-	s.writeQueue = make(chan work)
+	s.writeQueue = make(chan work, s.batchSize)
 	go s.processWrite()
 }
 
@@ -257,39 +261,50 @@ func (s *NodeStore) Stop() {
 }
 
 // processWrite processes the write queue in batches.
+// Uses a short micro-batch window: after receiving the first item, waits
+// up to 1ms for more items to arrive before applying the batch. This
+// eliminates the original 500ms batchTimeout wait during burst registration
+// (where concurrent operations arrive within microseconds) while still
+// batching concurrent operations correctly.
 func (s *NodeStore) processWrite() {
-	c := time.NewTicker(s.batchTimeout)
-	defer c.Stop()
-
 	batch := make([]work, 0, s.batchSize)
 
 	for {
-		select {
-		case w, ok := <-s.writeQueue:
-			if !ok {
-				// Channel closed, apply any remaining batch and exit
-				if len(batch) != 0 {
-					s.applyBatch(batch)
-				}
-
-				return
-			}
-
-			batch = append(batch, w)
-			if len(batch) >= s.batchSize {
-				s.applyBatch(batch)
-				batch = batch[:0]
-
-				c.Reset(s.batchTimeout)
-			}
-		case <-c.C:
+		// Block until at least one item arrives (or channel closes).
+		w, ok := <-s.writeQueue
+		if !ok {
 			if len(batch) != 0 {
 				s.applyBatch(batch)
-				batch = batch[:0]
 			}
 
-			c.Reset(s.batchTimeout)
+			return
 		}
+
+		batch = append(batch, w)
+
+		// Short micro-batch window: collect concurrent items arriving
+		// within 1ms. This is long enough for goroutine scheduling but
+		// 500x shorter than the original batchTimeout.
+		timer := time.NewTimer(time.Millisecond)
+
+	drain:
+		for len(batch) < s.batchSize {
+			select {
+			case w2, ok2 := <-s.writeQueue:
+				if !ok2 {
+					break drain
+				}
+
+				batch = append(batch, w2)
+			case <-timer.C:
+				break drain
+			}
+		}
+
+		timer.Stop()
+
+		s.applyBatch(batch)
+		batch = batch[:0]
 	}
 }
 
@@ -318,6 +333,10 @@ func (s *NodeStore) applyBatch(batch []work) {
 	// Track rebuildPeerMaps operations
 	var rebuildOps []*work
 
+	// Track whether any operation changes peer-visibility-relevant fields
+	// (user, tags, IPs) vs only non-identity fields (endpoints, DERP, hostinfo).
+	identityChanged := false
+
 	for i := range batch {
 		w := &batch[i]
 		switch w.op {
@@ -329,8 +348,12 @@ func (s *NodeStore) applyBatch(batch []work) {
 		case update:
 			// Update the specific node identified by nodeID
 			if n, exists := nodes[w.nodeID]; exists {
+				before := n.View()
 				w.updateFn(&n)
 				nodes[w.nodeID] = n
+				if before.HasPolicyChange(n.View()) {
+					identityChanged = true
+				}
 			}
 
 			if w.nodeResult != nil {
@@ -338,6 +361,7 @@ func (s *NodeStore) applyBatch(batch []work) {
 			}
 		case del:
 			delete(nodes, w.nodeID)
+			identityChanged = true
 			// For delete operations, send an invalid NodeView if requested
 			if w.nodeResult != nil {
 				nodeResultRequests[w.nodeID] = append(nodeResultRequests[w.nodeID], w)
@@ -345,11 +369,67 @@ func (s *NodeStore) applyBatch(batch []work) {
 		case rebuildPeerMaps:
 			// rebuildPeerMaps doesn't modify nodes, it just forces the snapshot rebuild
 			// below to recalculate peer relationships using the current peersFunc
+			identityChanged = true
+			rebuildOps = append(rebuildOps, w)
+		case refreshPeers:
+			// refreshPeers recomputes peers for specific nodes only.
+			// Handled after snapshot build below.
 			rebuildOps = append(rebuildOps, w)
 		}
 	}
 
-	newSnap := snapshotFromNodes(nodes, s.peersFunc)
+	// Classify the batch to decide rebuild strategy:
+	// - Pure puts of new nodes (not replacing existing): use incremental snapshot
+	// - Any deletes, identity-changing updates, or rebuildPeerMaps: full rebuild
+	// - Updates that only change non-identity fields (endpoints, DERP, hostinfo):
+	//   shallow snapshot reusing existing peersByNode
+	oldSnap := s.data.Load()
+	canIncremental := !identityChanged
+	var newNodeIDs []types.NodeID
+
+	if canIncremental {
+		for i := range batch {
+			w := &batch[i]
+			switch w.op {
+			case put:
+				if _, existed := oldSnap.nodesByID[w.nodeID]; existed {
+					canIncremental = false
+				} else {
+					newNodeIDs = append(newNodeIDs, w.nodeID)
+				}
+			case del:
+				canIncremental = false
+			// update ops that reach here have no identity change — safe for shallow
+			}
+			if !canIncremental {
+				break
+			}
+		}
+	}
+
+	var newSnap Snapshot
+	if canIncremental && len(newNodeIDs) > 0 && s.incrementalPeersFunc != nil {
+		newSnap = incrementalSnapshot(oldSnap, nodes, newNodeIDs, s.incrementalPeersFunc)
+	} else if canIncremental && len(newNodeIDs) == 0 {
+		// Pure non-identity updates: reuse peer maps, just refresh node indexes
+		newSnap = shallowSnapshot(oldSnap, nodes)
+	} else {
+		newSnap = snapshotFromNodes(nodes, s.peersFunc)
+	}
+	// Apply refreshPeers operations: recompute peers for specific nodes only.
+	// This corrects stale peer data from PutNode that ran before policy update.
+	if s.incrementalPeersFunc != nil {
+		var refreshIDs []types.NodeID
+		for i := range batch {
+			if batch[i].op == refreshPeers {
+				refreshIDs = append(refreshIDs, batch[i].refreshNodeIDs...)
+			}
+		}
+		if len(refreshIDs) > 0 {
+			newSnap = refreshNodePeers(&newSnap, nodes, refreshIDs, s.incrementalPeersFunc)
+		}
+	}
+
 	s.data.Store(&newSnap)
 
 	// Update node count gauge
@@ -374,14 +454,14 @@ func (s *NodeStore) applyBatch(batch []work) {
 		}
 	}
 
-	// Signal completion for rebuildPeerMaps operations
+	// Signal completion for rebuildPeerMaps and refreshPeers operations
 	for _, w := range rebuildOps {
 		close(w.rebuildResult)
 	}
 
 	// Signal completion for all other work items
 	for _, w := range batch {
-		if w.op != rebuildPeerMaps {
+		if w.op != rebuildPeerMaps && w.op != refreshPeers {
 			close(w.result)
 		}
 	}
@@ -410,12 +490,22 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 		// peersByNode is most likely the most expensive operation,
 		// it will use the list of all nodes, combined with the
 		// current policy to precalculate which nodes are peers and
-		// can see each other.
-		peersByNode: func() map[types.NodeID][]types.NodeView {
+		// can see each other. We store only NodeIDs (not NodeViews)
+		// to avoid GC pointer scanning of the dense peer graph.
+		peersByNode: func() map[types.NodeID][]types.NodeID {
 			peersTimer := prometheus.NewTimer(nodeStorePeersCalculationDuration)
 			defer peersTimer.ObserveDuration()
 
-			return peersFunc(allNodes)
+			viewPeers := peersFunc(allNodes)
+			idPeers := make(map[types.NodeID][]types.NodeID, len(viewPeers))
+			for id, peers := range viewPeers {
+				ids := make([]types.NodeID, len(peers))
+				for i, p := range peers {
+					ids[i] = p.ID()
+				}
+				idPeers[id] = ids
+			}
+			return idPeers
 		}(),
 		nodesByUser: make(map[types.UserID][]types.NodeView),
 	}
@@ -438,6 +528,268 @@ func snapshotFromNodes(nodes map[types.NodeID]types.Node, peersFunc PeersFunc) S
 			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
 		}
 
+		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
+	}
+
+	return newSnap
+}
+
+// shallowSnapshot creates a new Snapshot sharing the old peersByNode reference.
+// This is used when updates only change non-identity fields (endpoints, DERP,
+// hostinfo) that don't affect peer visibility, avoiding the expensive O(N²)
+// BuildPeerMap call. It rebuilds index maps with fresh NodeViews so readers
+// see updated data. peersByNode is shared (not copied) because peer
+// relationships haven't changed — ListPeers materializes fresh NodeViews
+// from nodesByID at read time.
+func shallowSnapshot(oldSnap *Snapshot, nodes map[types.NodeID]types.Node) Snapshot {
+	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
+	defer timer.ObserveDuration()
+
+	allNodes := make([]types.NodeView, 0, len(nodes))
+	for _, n := range nodes {
+		allNodes = append(allNodes, n.View())
+	}
+
+	// peersByNode stores NodeIDs (not views), so peer relationships are
+	// unchanged by non-identity updates. Share the reference directly — O(1).
+	// ListPeers materializes fresh NodeViews from nodesByID at read time.
+
+	newSnap := Snapshot{
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView, len(nodes)),
+		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView),
+		peersByNode:       oldSnap.peersByNode,
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
+	}
+
+	for _, n := range nodes {
+		nodeView := n.View()
+		userID := n.TypedUserID()
+
+		if !n.IsTagged() {
+			newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		}
+
+		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+
+		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
+			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
+		}
+		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
+	}
+
+	return newSnap
+}
+
+// refreshNodePeers corrects the peer relationships for specific nodes in a snapshot.
+// It recomputes peers for the specified node IDs using the current (correct) policy
+// and updates both the forward and reverse peer entries. This is O(K×N) where K is
+// the number of nodes to refresh.
+func refreshNodePeers(
+	snap *Snapshot,
+	nodes map[types.NodeID]types.Node,
+	refreshIDs []types.NodeID,
+	incrementalPeersFunc IncrementalPeersFunc,
+) Snapshot {
+	allNodes := snap.allNodes
+
+	// Copy the peer map (only the map structure + slice headers, not contents)
+	peersByNode := make(map[types.NodeID][]types.NodeID, len(snap.peersByNode))
+	for id, peers := range snap.peersByNode {
+		peersByNode[id] = peers // Share slice reference
+	}
+
+	// Track which entries we've cloned (COW)
+	cloned := make(map[types.NodeID]bool, len(refreshIDs)*2)
+
+	refreshSet := make(map[types.NodeID]struct{}, len(refreshIDs))
+	for _, id := range refreshIDs {
+		refreshSet[id] = struct{}{}
+	}
+
+	for _, nodeID := range refreshIDs {
+		n, exists := nodes[nodeID]
+		if !exists {
+			continue
+		}
+		nodeView := n.View()
+
+		// Get old peers for this node (to remove reverse entries)
+		oldPeerIDs := peersByNode[nodeID]
+
+		// Compute correct peers (returns views, we extract IDs)
+		newPeerViews := incrementalPeersFunc(nodeView, allNodes)
+		newPeerIDs := make([]types.NodeID, len(newPeerViews))
+		for i, p := range newPeerViews {
+			newPeerIDs[i] = p.ID()
+		}
+		peersByNode[nodeID] = newPeerIDs
+		cloned[nodeID] = true
+
+		// Build sets for diff
+		oldPeerSet := make(map[types.NodeID]struct{}, len(oldPeerIDs))
+		for _, pid := range oldPeerIDs {
+			oldPeerSet[pid] = struct{}{}
+		}
+		newPeerSet := make(map[types.NodeID]struct{}, len(newPeerIDs))
+		for _, pid := range newPeerIDs {
+			newPeerSet[pid] = struct{}{}
+		}
+
+		// Remove reverse entries for peers that were removed
+		for _, pid := range oldPeerIDs {
+			if _, stillPeer := newPeerSet[pid]; !stillPeer {
+				if _, isRefresh := refreshSet[pid]; !isRefresh {
+					// COW: clone before first modification
+					if !cloned[pid] {
+						old := peersByNode[pid]
+						c := make([]types.NodeID, len(old))
+						copy(c, old)
+						peersByNode[pid] = c
+						cloned[pid] = true
+					}
+					// Remove nodeID from this peer's list
+					peerList := peersByNode[pid]
+					filtered := peerList[:0]
+					for _, ppid := range peerList {
+						if ppid != nodeID {
+							filtered = append(filtered, ppid)
+						}
+					}
+					peersByNode[pid] = filtered
+				}
+			}
+		}
+
+		// Add reverse entries for peers that were added
+		for _, pid := range newPeerIDs {
+			if _, wasPeer := oldPeerSet[pid]; !wasPeer {
+				if _, isRefresh := refreshSet[pid]; !isRefresh {
+					// COW: clone before first modification
+					if !cloned[pid] {
+						old := peersByNode[pid]
+						c := make([]types.NodeID, len(old), len(old)+1)
+						copy(c, old)
+						peersByNode[pid] = c
+						cloned[pid] = true
+					}
+					peersByNode[pid] = append(peersByNode[pid], nodeID)
+				}
+			}
+		}
+	}
+
+	// Build new snapshot reusing everything except peersByNode
+	newSnap := Snapshot{
+		nodesByID:         snap.nodesByID,
+		allNodes:          snap.allNodes,
+		nodesByNodeKey:    snap.nodesByNodeKey,
+		nodesByMachineKey: snap.nodesByMachineKey,
+		peersByNode:       peersByNode,
+		nodesByUser:       snap.nodesByUser,
+	}
+
+	return newSnap
+}
+
+// IncrementalPeersFunc computes peers for a single node against all other nodes.
+// Returns the list of peers visible to the given node.
+type IncrementalPeersFunc func(node types.NodeView, allNodes []types.NodeView) []types.NodeView
+
+// incrementalSnapshot builds a new snapshot by reusing the old snapshot's peer
+// data and only computing peers for newly added nodes. This is O(K × N) where
+// K is the number of new nodes, compared to O(N²) for a full rebuild.
+func incrementalSnapshot(
+	oldSnap *Snapshot,
+	nodes map[types.NodeID]types.Node,
+	newNodeIDs []types.NodeID,
+	incrementalPeersFunc IncrementalPeersFunc,
+) Snapshot {
+	timer := prometheus.NewTimer(nodeStoreSnapshotBuildDuration)
+	defer timer.ObserveDuration()
+
+	// Build allNodes list and views
+	allNodes := make([]types.NodeView, 0, len(nodes))
+	for _, n := range nodes {
+		allNodes = append(allNodes, n.View())
+	}
+
+	// Share old peer map entries — only clone entries we modify (COW).
+	peersByNode := make(map[types.NodeID][]types.NodeID, len(nodes))
+	for id, peers := range oldSnap.peersByNode {
+		peersByNode[id] = peers // Share reference, not copy
+	}
+
+	// Track which entries we've cloned
+	cloned := make(map[types.NodeID]bool, len(newNodeIDs)*2)
+
+	// Build a set of new node IDs for fast lookup
+	newIDSet := make(map[types.NodeID]struct{}, len(newNodeIDs))
+	for _, id := range newNodeIDs {
+		newIDSet[id] = struct{}{}
+	}
+
+	// For each new node, compute its peer relationships by checking against all nodes.
+	// This is O(K × N) instead of O(N²).
+	if incrementalPeersFunc != nil {
+		for _, newID := range newNodeIDs {
+			n := nodes[newID]
+			newNode := n.View()
+			peerViews := incrementalPeersFunc(newNode, allNodes)
+
+			// Convert views to IDs
+			peerIDs := make([]types.NodeID, len(peerViews))
+			for i, p := range peerViews {
+				peerIDs[i] = p.ID()
+			}
+			peersByNode[newID] = peerIDs
+			cloned[newID] = true
+
+			// Update existing nodes' peer lists to include the new node.
+			// Skip peers that are also new nodes — their peer lists will be
+			// computed directly by incrementalPeersFunc and already include us.
+			for _, peerID := range peerIDs {
+				if peerID != newID {
+					if _, isNew := newIDSet[peerID]; !isNew {
+						// COW: clone before first modification
+						if !cloned[peerID] {
+							old := peersByNode[peerID]
+							c := make([]types.NodeID, len(old), len(old)+1)
+							copy(c, old)
+							peersByNode[peerID] = c
+							cloned[peerID] = true
+						}
+						peersByNode[peerID] = append(peersByNode[peerID], newID)
+					}
+				}
+			}
+		}
+	}
+
+	newSnap := Snapshot{
+		nodesByID:         nodes,
+		allNodes:          allNodes,
+		nodesByNodeKey:    make(map[key.NodePublic]types.NodeView, len(nodes)),
+		nodesByMachineKey: make(map[key.MachinePublic]map[types.UserID]types.NodeView, len(nodes)),
+		peersByNode:       peersByNode,
+		nodesByUser:       make(map[types.UserID][]types.NodeView),
+	}
+
+	// Build secondary indexes
+	for _, n := range nodes {
+		nodeView := n.View()
+		userID := n.TypedUserID()
+
+		if !n.IsTagged() {
+			newSnap.nodesByUser[userID] = append(newSnap.nodesByUser[userID], nodeView)
+		}
+
+		newSnap.nodesByNodeKey[n.NodeKey] = nodeView
+
+		if newSnap.nodesByMachineKey[n.MachineKey] == nil {
+			newSnap.nodesByMachineKey[n.MachineKey] = make(map[types.UserID]types.NodeView)
+		}
 		newSnap.nodesByMachineKey[n.MachineKey][userID] = nodeView
 	}
 
@@ -587,13 +939,29 @@ func (s *NodeStore) ListNodes() views.Slice[types.NodeView] {
 }
 
 // ListPeers returns a slice of all peers for a given node ID.
-func (s *NodeStore) ListPeers(id types.NodeID) views.Slice[types.NodeView] {
+// It materializes fresh NodeViews from nodesByID since peersByNode
+// stores only NodeIDs (to avoid GC pointer scanning overhead).
+func (s *NodeStore) ListPeers(id types.NodeID, peerIDs ...types.NodeID) views.Slice[types.NodeView] {
 	timer := prometheus.NewTimer(nodeStoreOperationDuration.WithLabelValues("list_peers"))
 	defer timer.ObserveDuration()
 
 	nodeStoreOperations.WithLabelValues("list_peers").Inc()
 
-	return views.SliceOf(s.data.Load().peersByNode[id])
+	snap := s.data.Load()
+	peerNodeIDs := snap.peersByNode[id]
+	if len(peerNodeIDs) == 0 {
+		return views.SliceOf([]types.NodeView(nil))
+	}
+
+	// Materialize NodeViews from nodesByID
+	peers := make([]types.NodeView, 0, len(peerNodeIDs))
+	for _, pid := range peerNodeIDs {
+		if n, ok := snap.nodesByID[pid]; ok {
+			peers = append(peers, n.View())
+		}
+	}
+
+	return views.SliceOf(peers)
 }
 
 // RebuildPeerMaps rebuilds the peer relationship map using the current peersFunc.
@@ -606,6 +974,29 @@ func (s *NodeStore) RebuildPeerMaps() {
 	w := work{
 		op:            rebuildPeerMaps,
 		rebuildResult: result,
+	}
+
+	s.writeQueue <- w
+
+	<-result
+}
+
+// RefreshPeersForNodes recomputes peer relationships for specific nodes only.
+// This is O(K×N) where K is the number of nodes to refresh, compared to O(N²)
+// for a full RebuildPeerMaps. Used after new nodes are added and the policy
+// manager is updated — the initial PutNode computed peers with stale policy,
+// so this corrects the peer maps using the now-current policy.
+func (s *NodeStore) RefreshPeersForNodes(nodeIDs []types.NodeID) {
+	if len(nodeIDs) == 0 {
+		return
+	}
+
+	result := make(chan struct{})
+
+	w := work{
+		op:             refreshPeers,
+		refreshNodeIDs: nodeIDs,
+		rebuildResult:  result,
 	}
 
 	s.writeQueue <- w

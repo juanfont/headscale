@@ -1,6 +1,7 @@
 package v2
 
 import (
+	"fmt"
 	"net/netip"
 	"slices"
 	"testing"
@@ -699,7 +700,7 @@ func TestTagPropagationToPeerMap(t *testing.T) {
 	updatedNodes := types.Nodes{user1NodeUpdated, user2Node}
 
 	// SetNodes should detect the tag change
-	changed, err := pm.SetNodes(updatedNodes.ViewSlice())
+	changed, _, _, err := pm.SetNodes(updatedNodes.ViewSlice())
 	require.NoError(t, err)
 	require.True(t, changed, "SetNodes should return true when tags change")
 
@@ -1337,5 +1338,472 @@ func TestIssue2990SameUserTaggedDevice(t *testing.T) {
 
 	for i, rule := range filter2 {
 		t.Logf("  rule %d: SrcIPs=%v DstPorts=%v", i, rule.SrcIPs, rule.DstPorts)
+	}
+}
+
+// TestSetUsersDeephashShortCircuit verifies that SetUsers with unchanged users
+// does NOT trigger filter recompilation. This tests the deephash short-circuit
+// optimization.
+func TestSetUsersDeephashShortCircuit(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user1@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Get initial filter
+	_, filterBefore := pm.Filter()
+
+	// Set same users again — should be a no-op
+	sameUsers := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+	pm.SetUsers(sameUsers)
+
+	// Filter should still work identically
+	_, filterAfter := pm.Filter()
+	require.Equal(t, len(filterBefore), len(filterAfter),
+		"filter should be unchanged after SetUsers with same users")
+}
+
+// TestLazyFilterCompilationCorrectness verifies that lazy filter compilation
+// (via the filterDirty flag) produces the same results as eager compilation.
+// This tests the deferred filter compilation optimization in SetNodes.
+func TestLazyFilterCompilationCorrectness(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	node2 := &types.Node{
+		ID:       2,
+		Hostname: "node2",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user2@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1, node2}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// FilterForNode returns inbound filter (rules where node is destination).
+	// node2 is user2, and the rule is user1->user2:*, so node2's filter should have rules.
+	filter2Before, err := pm.FilterForNode(node2.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter2Before, "node2 should have inbound filter rules (user1->user2)")
+
+	// Add a new node belonging to user2 — this should mark filters as dirty (lazy compilation)
+	node3 := &types.Node{
+		ID:       3,
+		Hostname: "node3",
+		User:     new(users[1]),
+		UserID:   new(users[1].ID),
+		IPv4:     ap("100.64.0.3"),
+		IPv6:     ap("fd7a:115c:a1e0::3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	updatedNodes := types.Nodes{node1, node2, node3}
+	changed, _, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+
+	// Now get node3's filter — should be lazily compiled
+	// node3 also belongs to user2, so it should get the same inbound rule (user1->user2:*)
+	filter3After, err := pm.FilterForNode(node3.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter3After, "node3 should have inbound filter rules after lazy compilation")
+
+	// Verify node3's filter includes user1's source IP
+	foundUser1IP := false
+	for _, rule := range filter3After {
+		for _, srcIP := range rule.SrcIPs {
+			if srcIP == "100.64.0.1/32" {
+				foundUser1IP = true
+			}
+		}
+	}
+	require.True(t, foundUser1IP, "lazily compiled filter for node3 should include user1 source IP")
+}
+
+// TestSetNodesIdentityChangeDetection verifies that SetNodes correctly
+// distinguishes between identity changes (tags/users) and non-identity
+// changes (hostname, endpoints).
+func TestSetNodesIdentityChangeDetection(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["user1@example.com:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	// Change only hostname (non-identity change) — SetNodes should NOT report
+	// this as changed since hostname doesn't affect policy evaluation.
+	node1Updated := *node1
+	node1Updated.Hostname = "node1-updated"
+	updatedNodes := types.Nodes{&node1Updated}
+
+	changed, identityChanged, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.False(t, changed, "hostname-only change should NOT be detected (not policy-relevant)")
+	require.False(t, identityChanged, "hostname change is NOT an identity change")
+
+	// Change tags (identity change)
+	node1Tagged := node1Updated
+	node1Tagged.Tags = []string{"tag:server"}
+	taggedNodes := types.Nodes{&node1Tagged}
+
+	changed, identityChanged, _, err = pm.SetNodes(taggedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.True(t, identityChanged, "tag change IS an identity change")
+}
+
+// TestSetNodesCountChangeIsNotIdentityChange verifies that adding a new node
+// is correctly distinguished from an identity change.
+func TestSetNodesCountChangeIsNotIdentityChange(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID:       1,
+		Hostname: "node1",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.1"),
+		IPv6:     ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["*"],
+				"dst": ["*:*"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	node2 := &types.Node{
+		ID:       2,
+		Hostname: "node2",
+		User:     new(users[0]),
+		UserID:   new(users[0].ID),
+		IPv4:     ap("100.64.0.2"),
+		IPv6:     ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	updatedNodes := types.Nodes{node1, node2}
+	changed, identityChanged, _, err := pm.SetNodes(updatedNodes.ViewSlice())
+	require.NoError(t, err)
+	require.True(t, changed, "adding a node should be detected as a change")
+	require.False(t, identityChanged, "adding a NEW node should NOT be an identity change")
+
+	filter, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter, "filter should be compiled after lazy compilation")
+}
+
+// TestComputeNodePeersMatchesBuildPeerMap verifies that per-node
+// ComputeNodePeers produces the same peer relationships as BuildPeerMap.
+func TestComputeNodePeersMatchesBuildPeerMap(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	adminNode := &types.Node{
+		ID: 1, Hostname: "admin-dev",
+		User: new(users[0]), UserID: new(users[0].ID),
+		IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	user1Node := &types.Node{
+		ID: 2, Hostname: "user1-dev",
+		User: new(users[1]), UserID: new(users[1].ID),
+		IPv4: ap("100.64.0.2"), IPv6: ap("fd7a:115c:a1e0::2"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	user2Node := &types.Node{
+		ID: 3, Hostname: "user2-dev",
+		User: new(users[2]), UserID: new(users[2].ID),
+		IPv4: ap("100.64.0.3"), IPv6: ap("fd7a:115c:a1e0::3"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+	taggedNode := &types.Node{
+		ID: 4, Hostname: "tagged-server",
+		User: new(users[2]), UserID: new(users[2].ID),
+		IPv4: ap("100.64.0.4"), IPv6: ap("fd7a:115c:a1e0::4"),
+		Tags: []string{"tag:web"}, Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	nodes := types.Nodes{adminNode, user1Node, user2Node, taggedNode}
+
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:web": ["user2@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["tag:web:80"]
+			},
+			{
+				"action": "accept",
+				"src": ["autogroup:member"],
+				"dst": ["autogroup:self:*"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	fullPeerMap := pm.BuildPeerMap(nodes.ViewSlice())
+
+	viewSlice := nodes.ViewSlice()
+	allNodeViews := make([]types.NodeView, viewSlice.Len())
+	for i := range viewSlice.Len() {
+		allNodeViews[i] = viewSlice.At(i)
+	}
+	for _, nodeView := range allNodeViews {
+		computedPeers := pm.ComputeNodePeers(nodeView, allNodeViews)
+		fullPeers := fullPeerMap[nodeView.ID()]
+
+		computedIDs := make([]types.NodeID, len(computedPeers))
+		for i, p := range computedPeers {
+			computedIDs[i] = p.ID()
+		}
+		fullIDs := make([]types.NodeID, len(fullPeers))
+		for i, p := range fullPeers {
+			fullIDs[i] = p.ID()
+		}
+		slices.Sort(computedIDs)
+		slices.Sort(fullIDs)
+
+		require.Equal(t, fullIDs, computedIDs,
+			"ComputeNodePeers for node %d (%s) should match BuildPeerMap",
+			nodeView.ID(), nodeView.Hostname())
+	}
+}
+
+// TestHostResolveCGNATSkip verifies that prefixOverlapsCGNAT correctly
+// identifies CGNAT/ULA prefixes and that Host.Resolve works correctly
+// with policies containing hosts in both CGNAT and non-CGNAT ranges.
+func TestHostResolveCGNATSkip(t *testing.T) {
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.64.0.0/24")),
+		"100.64.0.0/24 overlaps CGNAT")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.64.0.1/32")),
+		"100.64.0.1/32 overlaps CGNAT")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("100.127.255.255/32")),
+		"100.127.255.255/32 is in CGNAT range")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
+		"ULA address overlaps CGNAT/ULA")
+	require.True(t, prefixOverlapsCGNAT(netip.MustParsePrefix("fd7a:115c:a1e0::/48")),
+		"ULA prefix overlaps")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("192.168.1.0/24")),
+		"192.168.1.0/24 does NOT overlap CGNAT")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("10.0.0.0/8")),
+		"10.0.0.0/8 does NOT overlap CGNAT")
+	require.False(t, prefixOverlapsCGNAT(netip.MustParsePrefix("172.16.0.0/12")),
+		"172.16.0.0/12 does NOT overlap CGNAT")
+
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "user1", Email: "user1@example.com"},
+	}
+
+	node1 := &types.Node{
+		ID: 1, Hostname: "node1",
+		User: new(users[0]), UserID: new(users[0].ID),
+		IPv4: ap("100.64.0.1"), IPv6: ap("fd7a:115c:a1e0::1"),
+		Hostinfo: &tailcfg.Hostinfo{},
+	}
+
+	policy := `{
+		"hosts": {
+			"internal-server": "100.64.0.1/32",
+			"external-server": "192.168.1.100/32"
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["internal-server:*", "external-server:443"]
+			}
+		]
+	}`
+
+	nodes := types.Nodes{node1}
+	pm, err := NewPolicyManager([]byte(policy), users, nodes.ViewSlice())
+	require.NoError(t, err)
+
+	filter, err := pm.FilterForNode(node1.View())
+	require.NoError(t, err)
+	require.NotEmpty(t, filter, "filter should contain rules for both hosts")
+}
+
+// TestSrcMatcherCacheCorrectness verifies that the source matcher index
+// cache produces the same CanAccess results as checking all matchers.
+func TestSrcMatcherCacheCorrectness(t *testing.T) {
+	users := types.Users{
+		{Model: gorm.Model{ID: 1}, Name: "admin", Email: "admin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "user1", Email: "user1@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "user2", Email: "user2@example.com"},
+	}
+
+	var nodeList types.Nodes
+	for i := 1; i <= 20; i++ {
+		userIdx := (i - 1) % 3
+		n := &types.Node{
+			ID:       types.NodeID(i),
+			Hostname: fmt.Sprintf("node-%d", i),
+			User:     new(users[userIdx]),
+			UserID:   new(users[userIdx].ID),
+			IPv4:     ap(fmt.Sprintf("100.64.0.%d", i)),
+			IPv6:     ap(fmt.Sprintf("fd7a:115c:a1e0::%d", i)),
+			Hostinfo: &tailcfg.Hostinfo{},
+		}
+		if i%5 == 0 {
+			n.Tags = []string{"tag:web"}
+		}
+		nodeList = append(nodeList, n)
+	}
+
+	policy := `{
+		"groups": {
+			"group:admin": ["admin@example.com"]
+		},
+		"tagOwners": {
+			"tag:web": ["user2@example.com"]
+		},
+		"acls": [
+			{
+				"action": "accept",
+				"src": ["group:admin"],
+				"dst": ["*:*"]
+			},
+			{
+				"action": "accept",
+				"src": ["user1@example.com"],
+				"dst": ["tag:web:80,443"]
+			},
+			{
+				"action": "accept",
+				"src": ["user2@example.com"],
+				"dst": ["user1@example.com:22"]
+			}
+		]
+	}`
+
+	pm, err := NewPolicyManager([]byte(policy), users, nodeList.ViewSlice())
+	require.NoError(t, err)
+
+	fullPeerMap := pm.BuildPeerMap(nodeList.ViewSlice())
+	vs := nodeList.ViewSlice()
+	allViews := make([]types.NodeView, vs.Len())
+	for i := range vs.Len() {
+		allViews[i] = vs.At(i)
+	}
+
+	for _, nodeView := range allViews {
+		computedPeers := pm.ComputeNodePeers(nodeView, allViews)
+		fullPeers := fullPeerMap[nodeView.ID()]
+
+		computedIDs := make([]types.NodeID, len(computedPeers))
+		for i, p := range computedPeers {
+			computedIDs[i] = p.ID()
+		}
+		fullIDs := make([]types.NodeID, len(fullPeers))
+		for i, p := range fullPeers {
+			fullIDs[i] = p.ID()
+		}
+		slices.Sort(computedIDs)
+		slices.Sort(fullIDs)
+
+		require.Equal(t, fullIDs, computedIDs,
+			"srcMatcherCache: node %d (%s) peer mismatch", nodeView.ID(), nodeView.Hostname())
 	}
 }

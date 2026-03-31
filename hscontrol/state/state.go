@@ -210,6 +210,9 @@ func NewState(cfg *types.Config) (*State, error) {
 		batchSize,
 		batchTimeout,
 	)
+	// Wire up incremental peers function for O(N) per-node peer computation
+	// instead of O(N²) full rebuild when only new nodes are added.
+	nodeStore.incrementalPeersFunc = polMan.ComputeNodePeers
 	nodeStore.Start()
 
 	return &State{
@@ -2152,15 +2155,26 @@ func (s *State) UpdatePolicyManagerUsersForTest() error {
 func (s *State) updatePolicyManagerNodes() (change.Change, error) {
 	nodes := s.ListNodes()
 
-	changed, err := s.polMan.SetNodes(nodes)
+	changed, identityChanged, newNodeIDs, err := s.polMan.SetNodes(nodes)
 	if err != nil {
 		return change.Change{}, fmt.Errorf("updating policy manager nodes: %w", err)
 	}
 
-	if changed {
-		// Rebuild peer maps because policy-affecting node changes (tags, user, IPs)
-		// affect ACL visibility. Without this, cached peer relationships use stale data.
+	if identityChanged {
+		// Existing node identity changed (tags, user, IPs) — must rebuild peer maps
+		// because ACL visibility depends on node identity.
 		s.nodeStore.RebuildPeerMaps()
+		return change.PolicyChange(), nil
+	}
+
+	if changed {
+		// Nodes were added/removed. The peer map built during PutNode used stale
+		// policy data (ComputeNodePeers ran before SetNodes updated the policy
+		// with the new node's IPs). Refresh peers for newly added nodes only
+		// (O(K×N) instead of O(N²) full rebuild).
+		if len(newNodeIDs) > 0 {
+			s.nodeStore.RefreshPeersForNodes(newNodeIDs)
+		}
 		return change.PolicyChange(), nil
 	}
 

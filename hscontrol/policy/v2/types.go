@@ -274,7 +274,13 @@ func (u *Username) resolveUser(users types.Users) (types.User, error) {
 	return potentialUsers[0], nil
 }
 
-func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+func (u *Username) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["u:"+string(*u)]; ok {
+			return cached, nil
+		}
+	}
+
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
@@ -283,6 +289,23 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 	user, err := u.resolveUser(users)
 	if err != nil {
 		errs = append(errs, err)
+	}
+
+	// Fast path: use pre-built index if available
+	if p != nil && p.nodeIPsByUser != nil {
+		if ipset, ok := p.nodeIPsByUser[user.ID]; ok {
+			result := ipset
+			if p.resolveCache != nil {
+				p.resolveCache["u:"+string(*u)] = result
+			}
+			return result, errors.Join(errs...)
+		}
+		// User exists but has no nodes — return empty set
+		result, _ := ips.IPSet()
+		if p.resolveCache != nil {
+			p.resolveCache["u:"+string(*u)] = result
+		}
+		return result, errors.Join(errs...)
 	}
 
 	for _, node := range nodes.All() {
@@ -301,7 +324,12 @@ func (u *Username) Resolve(_ *Policy, users types.Users, nodes views.Slice[types
 		}
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	result, err := buildIPSetMultiErr(&ips, errs)
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["u:"+string(*u)] = result
+	}
+
+	return result, err
 }
 
 // Group is a special string which is always prefixed with `group:`.
@@ -354,13 +382,19 @@ func (g *Group) MarshalJSON() ([]byte, error) {
 }
 
 func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["g:"+string(*g)]; ok {
+			return cached, nil
+		}
+	}
+
 	var (
 		ips  netipx.IPSetBuilder
 		errs []error
 	)
 
 	for _, user := range p.Groups[*g] {
-		uips, err := user.Resolve(nil, users, nodes)
+		uips, err := user.Resolve(p, users, nodes)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -368,7 +402,12 @@ func (g *Group) Resolve(p *Policy, users types.Users, nodes views.Slice[types.No
 		ips.AddSet(uips)
 	}
 
-	return buildIPSetMultiErr(&ips, errs)
+	result, err := buildIPSetMultiErr(&ips, errs)
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["g:"+string(*g)] = result
+	}
+
+	return result, err
 }
 
 // Tag is a special string which is always prefixed with `tag:`.
@@ -394,6 +433,28 @@ func (t *Tag) UnmarshalJSON(b []byte) error {
 }
 
 func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
+	if p != nil && p.resolveCache != nil {
+		if cached, ok := p.resolveCache["t:"+string(*t)]; ok {
+			return cached, nil
+		}
+	}
+
+	// Fast path: use pre-built index if available
+	if p != nil && p.nodeIPsByTag != nil {
+		var result *netipx.IPSet
+		if ipset, ok := p.nodeIPsByTag[string(*t)]; ok {
+			result = ipset
+		} else {
+			// Tag exists but no nodes have it — return empty set
+			var empty netipx.IPSetBuilder
+			result, _ = empty.IPSet()
+		}
+		if p.resolveCache != nil {
+			p.resolveCache["t:"+string(*t)] = result
+		}
+		return result, nil
+	}
+
 	var ips netipx.IPSetBuilder
 
 	for _, node := range nodes.All() {
@@ -403,7 +464,12 @@ func (t *Tag) Resolve(p *Policy, users types.Users, nodes views.Slice[types.Node
 		}
 	}
 
-	return ips.IPSet()
+	result, err := ips.IPSet()
+	if p != nil && p.resolveCache != nil && err == nil {
+		p.resolveCache["t:"+string(*t)] = result
+	}
+
+	return result, err
 }
 
 func (t *Tag) CanBeAutoApprover() bool {
@@ -445,6 +511,15 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// prefixOverlapsCGNAT returns true if the prefix could overlap with Tailscale's
+// CGNAT range (100.64.0.0/10) or ULA range (fd7a:115c:a1e0::/48). Only prefixes
+// that overlap these ranges can possibly match a headscale node's IP.
+func prefixOverlapsCGNAT(pref netip.Prefix) bool {
+	cgnat := netip.MustParsePrefix("100.64.0.0/10")
+	ula := netip.MustParsePrefix("fd7a:115c:a1e0::/48")
+	return pref.Overlaps(cgnat) || pref.Overlaps(ula)
+}
+
 func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeView]) (*netipx.IPSet, error) {
 	var (
 		ips  netipx.IPSetBuilder
@@ -463,20 +538,21 @@ func (h *Host) Resolve(p *Policy, _ types.Users, nodes views.Slice[types.NodeVie
 
 	ips.AddPrefix(netip.Prefix(pref))
 
-	// If the IP is a single host, look for a node to ensure we add all the IPs of
-	// the node to the IPSet.
-	appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
+	// Skip O(N) node iteration for prefixes that can never match a headscale
+	// node. Nodes only have Tailscale CGNAT (100.64.0.0/10) or ULA IPs, so
+	// hosts like "10.0.0.0/24" can never resolve to any node.
+	if prefixOverlapsCGNAT(netip.Prefix(pref)) {
+		appendIfNodeHasIP(nodes, &ips, netip.Prefix(pref))
 
-	// TODO(kradalby): I am a bit unsure what is the correct way to do this,
-	// should a host with a non single IP be able to resolve the full host (inc all IPs).
-	ipsTemp, err := ips.IPSet()
-	if err != nil {
-		errs = append(errs, err)
-	}
+		ipsTemp, err := ips.IPSet()
+		if err != nil {
+			errs = append(errs, err)
+		}
 
-	for _, node := range nodes.All() {
-		if node.InIPSet(ipsTemp) {
-			node.AppendToIPSet(&ips)
+		for _, node := range nodes.All() {
+			if node.InIPSet(ipsTemp) {
+				node.AppendToIPSet(&ips)
+			}
 		}
 	}
 
@@ -1644,6 +1720,18 @@ type Policy struct {
 	// It is not safe to use before it is validated, and
 	// callers using it should panic if not
 	validated bool `json:"-"`
+
+	// resolveCache is a transient cache for Alias.Resolve results during
+	// filter compilation. Set by compileFilterRules, cleared after. Keyed
+	// by type prefix + alias string (e.g. "g:group:eng", "u:user@example.com").
+	resolveCache map[string]*netipx.IPSet `json:"-"`
+
+	// nodeIPsByUser and nodeIPsByTag are pre-built indexes for O(1) lookups
+	// during filter compilation. Built once per ensureFilterCompiled cycle,
+	// cleared after. Eliminates O(N) node scanning in Username.Resolve and
+	// Tag.Resolve.
+	nodeIPsByUser map[uint]*netipx.IPSet   `json:"-"`
+	nodeIPsByTag  map[string]*netipx.IPSet `json:"-"`
 
 	Groups        Groups             `json:"groups,omitempty"`
 	Hosts         Hosts              `json:"hosts,omitempty"`
