@@ -39,12 +39,22 @@ import (
 
 const (
 	tsicHashLength       = 6
-	defaultPingTimeout   = 200 * time.Millisecond
 	defaultPingCount     = 5
 	dockerContextPath    = "../."
 	caCertRoot           = "/usr/local/share/ca-certificates"
 	dockerExecuteTimeout = 60 * time.Second
 )
+
+// defaultPingTimeoutVal returns the per-attempt timeout for tailscale ping.
+// On CI, the docker exec overhead is higher so the timeout is doubled,
+// which also doubles the docker exec timeout (timeout * count).
+func defaultPingTimeoutVal() time.Duration {
+	if util.IsCI() {
+		return 400 * time.Millisecond
+	}
+
+	return 200 * time.Millisecond
+}
 
 var (
 	errTailscalePingFailed             = errors.New("ping failed")
@@ -1348,7 +1358,7 @@ func WithPingUntilDirect(direct bool) PingOption {
 // TODO(kradalby): Make multiping, go routine magic.
 func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) error {
 	args := pingArgs{
-		timeout: defaultPingTimeout,
+		timeout: defaultPingTimeoutVal(),
 		count:   defaultPingCount,
 		direct:  true,
 	}
