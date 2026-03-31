@@ -2430,7 +2430,7 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 
 					// Wait for the node to be fully running before getting its ID
 					// This is especially important for webauth flow where login is asynchronous
-					err = routerUsernet1.WaitForRunning(30 * time.Second)
+					err = routerUsernet1.WaitForRunning(integrationutil.ScaledTimeout(30 * time.Second))
 					require.NoError(t, err)
 
 					// Wait for bidirectional peer synchronization.
@@ -2439,12 +2439,12 @@ func TestAutoApproveMultiNetwork(t *testing.T) {
 					// tunnels may not be established despite peers appearing in netmaps.
 
 					// Router waits for all existing clients
-					err = routerUsernet1.WaitForPeers(len(allClients), 60*time.Second, 1*time.Second)
+					err = routerUsernet1.WaitForPeers(len(allClients), integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 					require.NoError(t, err, "router failed to see all peers")
 
 					// All clients wait for the router (they should see 6 peers including the router)
 					for _, existingClient := range allClients {
-						err = existingClient.WaitForPeers(len(allClients), 60*time.Second, 1*time.Second)
+						err = existingClient.WaitForPeers(len(allClients), integrationutil.PeerSyncTimeout(), integrationutil.PeerSyncRetryInterval())
 						require.NoErrorf(t, err, "client %s failed to see all peers including router", existingClient.Hostname())
 					}
 

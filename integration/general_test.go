@@ -68,7 +68,7 @@ func TestPingAllByIP(t *testing.T) {
 		require.NoError(t, err, "failed to parse node ID")
 		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 	}
-	requireAllClientsOnline(t, hs, expectedNodes, true, "all clients should be online across all systems", 30*time.Second)
+	requireAllClientsOnline(t, hs, expectedNodes, true, "all clients should be online across all systems", integrationutil.ScaledTimeout(30*time.Second))
 
 	// assertClientsState(t, allClients)
 
@@ -82,10 +82,9 @@ func TestPingAllByIP(t *testing.T) {
 
 	// Test our DebugBatcher functionality
 	t.Logf("Testing DebugBatcher functionality...")
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to the batcher", 30*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to the batcher", integrationutil.ScaledTimeout(30*time.Second))
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestPingAllByIPPublicDERP(t *testing.T) {
@@ -127,8 +126,7 @@ func TestPingAllByIPPublicDERP(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 func TestEphemeral(t *testing.T) {
@@ -195,8 +193,7 @@ func testEphemeralWithOptions(t *testing.T, opts ...hsic.Option) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		err := client.Logout()
@@ -275,8 +272,7 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 	})
 
 	// All ephemeral nodes should be online and reachable.
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	// Take down all clients, this should start an expiry timer for each.
 	for _, client := range allClients {
@@ -301,10 +297,8 @@ func TestEphemeral2006DeletedTooQuickly(t *testing.T) {
 		err = scenario.WaitForTailscaleSync()
 		assert.NoError(ct, err)
 
-		success = pingAllHelper(t, allClients, allAddrs)
-		assert.Greater(ct, success, 0, "Ephemeral nodes should be able to reconnect and ping")
+		assertPingAllWithCollect(ct, allClients, allAddrs)
 	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
 
 	// Take down all clients, this should start an expiry timer for each.
 	for _, client := range allClients {
@@ -367,9 +361,7 @@ func TestPingAllByHostname(t *testing.T) {
 	allHostnames, err := scenario.ListTailscaleClientsFQDNs()
 	requireNoErrListFQDN(t, err)
 
-	success := pingAllHelper(t, allClients, allHostnames)
-
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allClients))
+	assertPingAll(t, allClients, allHostnames)
 }
 
 // If subtests are parallel, then they will start before setup is run.
@@ -972,8 +964,7 @@ func TestExpireNode(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1300,8 +1291,7 @@ func TestNodeOnlineStatus(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("before expire: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for _, client := range allClients {
 		assert.EventuallyWithT(t, func(c *assert.CollectT) {
@@ -1441,10 +1431,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		require.NoError(t, err)
 		expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 	}
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", 30*time.Second)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected to batcher", integrationutil.ScaledTimeout(30*time.Second))
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	for run := range 3 {
 		t.Logf("Starting DownUpPing run %d at %s", run+1, time.Now().Format(TimestampFormat))
@@ -1467,7 +1456,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		t.Logf("All nodes taken down at %s", time.Now().Format(TimestampFormat))
 
 		// After taking down all nodes, verify all systems show nodes offline
-		requireAllClientsOnline(t, headscale, expectedNodes, false, fmt.Sprintf("Run %d: all nodes should be offline after Down()", run+1), 120*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, false, fmt.Sprintf("Run %d: all nodes should be offline after Down()", run+1), integrationutil.ScaledTimeout(120*time.Second))
 
 		for _, client := range allClients {
 			c := client
@@ -1483,7 +1472,7 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 		t.Logf("All nodes brought up at %s", time.Now().Format(TimestampFormat))
 
 		// After bringing up all nodes, verify batcher shows all reconnected
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), 120*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all nodes should be reconnected after Up()", run+1), integrationutil.ScaledTimeout(120*time.Second))
 
 		// Wait for sync and successful pings after nodes come back up
 		err = scenario.WaitForTailscaleSync()
@@ -1491,10 +1480,9 @@ func TestPingAllByIPManyUpDown(t *testing.T) {
 
 		t.Logf("All nodes synced up %s", time.Now().Format(TimestampFormat))
 
-		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), 60*time.Second)
+		requireAllClientsOnline(t, headscale, expectedNodes, true, fmt.Sprintf("Run %d: all systems should show nodes online after reconnection", run+1), integrationutil.ScaledTimeout(60*time.Second))
 
-		success := pingAllHelper(t, allClients, allAddrs)
-		assert.Equalf(t, len(allClients)*len(allIps), success, "%d successful pings out of %d", success, len(allClients)*len(allIps))
+		assertPingAll(t, allClients, allAddrs)
 
 		// Clean up context for this run
 		cancel()
@@ -1532,8 +1520,7 @@ func Test2118DeletingOnlineNodePanics(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
