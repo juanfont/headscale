@@ -16,7 +16,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     env:
       # Github does not allow us to access secrets in pull requests,
       # so this env var is used to check if we have the secret or not.

@@ -12,7 +12,7 @@ jobs:
   # sqlite: Runs all integration tests with SQLite backend.
   # postgres: Runs a subset of tests with PostgreSQL to verify database compatibility.
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     outputs:
       files-changed: ${{ steps.changed-files.outputs.files }}
     steps:
@@ -119,7 +119,7 @@ jobs:
           path: tailscale-head-image.tar.gz
           retention-days: 10
   build-postgres:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: build
     if: needs.build.outputs.files-changed == 'true'
     steps:
