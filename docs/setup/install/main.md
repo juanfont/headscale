@@ -53,6 +53,6 @@ via [nightly.link](https://nightly.link/juanfont/headscale/workflows/container-m
 | macOS | amd64 | [headscale-darwin-amd64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-darwin-amd64.zip) |
 | macOS | arm64 | [headscale-darwin-arm64](https://nightly.link/juanfont/headscale/workflows/container-main/main/headscale-darwin-arm64.zip) |
 
-After downloading, make the binary executable and follow the
+After downloading and extracting the archive, make the binary executable and follow the
 [standalone binary installation](./official.md#using-standalone-binaries-advanced)
 instructions for setting up the service.
