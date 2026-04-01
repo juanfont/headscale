@@ -162,6 +162,8 @@ jobs:
           - TestOIDCExpiryAfterRestart
           - TestOIDCACLPolicyOnJoin
           - TestOIDCReloginSameUserRoutesPreserved
+          - TestOIDCNodeOfflineOnlineSessionManagement
+          - TestOIDCTokenRefreshWithExpiry
           - TestAuthWebFlowAuthenticationPingAll
           - TestAuthWebFlowLogoutAndReloginSameUser
           - TestAuthWebFlowLogoutAndReloginNewUser

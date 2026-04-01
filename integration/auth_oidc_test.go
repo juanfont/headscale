@@ -26,6 +26,7 @@ import (
 
 func TestOIDCAuthenticationPingAll(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	// Logins to MockOIDC is served by a queue with a strict order,
 	// if we use more than one node per user, the order of the logins
@@ -134,6 +135,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 // - The test must account for login time spread between first and last node.
 func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	shortAccessTTL := 5 * time.Minute
 
@@ -401,6 +403,7 @@ func TestOIDC024UserCreation(t *testing.T) {
 
 func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	// Single user with one node for testing PKCE flow
 	spec := ScenarioSpec{
@@ -457,6 +460,7 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 // This validates that OIDC relogin properly handles node reuse and cleanup.
 func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 	IntegrationSkip(t)
+	t.Parallel()
 
 	// Create no nodes and no users
 	scenario, err := NewScenario(ScenarioSpec{
@@ -1914,4 +1918,199 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		"BUG #2896: routes should remain SERVING after OIDC logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")
+}
+
+func TestOIDCNodeOfflineOnlineSessionManagement(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	shortTokenExpiry := 5 * time.Minute
+
+	spec := ScenarioSpec{
+		NodesPerUser: 2,
+		Users:        []string{"user1"},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
+		OIDCAccessTTL: shortTokenExpiry,
+	}
+
+	scenario, err := NewScenario(spec)
+
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":                scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":             scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_CLIENT_SECRET":         scenario.mockOIDC.ClientSecret(),
+		"HEADSCALE_OIDC_SCOPE":                 "openid,profile,email,offline_access",
+		"HEADSCALE_OIDC_USE_EXPIRY_FROM_TOKEN": "1",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidcnodeoffline"),
+		hsic.WithConfigEnv(oidcMap),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify initial connectivity
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("Initial connectivity: %d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Take the first node offline
+	firstClient := allClients[0]
+	t.Logf("Taking node %s offline", firstClient.Hostname())
+	err = firstClient.Down()
+	assertNoErr(t, err)
+
+	// Wait for a bit to ensure the node is marked as offline
+	time.Sleep(30 * time.Second)
+
+	// Verify the offline node cannot be reached
+	t.Log("Verifying offline node is not reachable")
+
+	status, err := firstClient.Status()
+	assertNoErr(t, err)
+	assert.NotEqual(t, "Running", status.BackendState, "Node should not be in Running state when offline")
+
+	// Bring the node back online
+	t.Logf("Bringing node %s back online", firstClient.Hostname())
+	err = firstClient.Up()
+	assertNoErr(t, err)
+
+	// Wait for the node to reconnect and re-authenticate
+	err = firstClient.WaitForRunning()
+	assertNoErr(t, err)
+
+	// Re-sync and verify connectivity is restored
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	success = pingAllHelper(t, allClients, allAddrs)
+	t.Logf("After reconnection: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assert.Equal(t, len(allClients)*len(allIps), success, "All pings should succeed after reconnection")
+
+	// Test multiple offline/online cycles
+	t.Log("Testing multiple offline/online cycles")
+
+	for i := range 3 {
+		t.Logf("Cycle %d: Taking node offline", i+1)
+
+		err = firstClient.Down()
+		assertNoErr(t, err)
+
+		time.Sleep(10 * time.Second)
+
+		t.Logf("Cycle %d: Bringing node online", i+1)
+
+		err = firstClient.Up()
+		assertNoErr(t, err)
+
+		err = firstClient.WaitForRunning()
+		assertNoErr(t, err)
+	}
+
+	// Final connectivity check
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	success = pingAllHelper(t, allClients, allAddrs)
+	t.Logf("Final connectivity check: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assert.Equal(t, len(allClients)*len(allIps), success, "All pings should succeed after multiple cycles")
+}
+
+func TestOIDCTokenRefreshWithExpiry(t *testing.T) {
+	IntegrationSkip(t)
+	t.Parallel()
+
+	// Use a short token expiry to test refresh behavior
+	shortTokenExpiry := 2 * time.Minute
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{"user1"},
+		OIDCUsers: []mockoidc.MockUser{
+			oidcMockUser("user1", true),
+		},
+		OIDCAccessTTL: shortTokenExpiry,
+	}
+
+	scenario, err := NewScenario(spec)
+
+	assertNoErr(t, err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	oidcMap := map[string]string{
+		"HEADSCALE_OIDC_ISSUER":                scenario.mockOIDC.Issuer(),
+		"HEADSCALE_OIDC_CLIENT_ID":             scenario.mockOIDC.ClientID(),
+		"HEADSCALE_OIDC_CLIENT_SECRET":         scenario.mockOIDC.ClientSecret(),
+		"HEADSCALE_OIDC_SCOPE":                 "openid,profile,email,offline_access",
+		"HEADSCALE_OIDC_USE_EXPIRY_FROM_TOKEN": "1",
+	}
+
+	err = scenario.CreateHeadscaleEnvWithLoginURL(
+		nil,
+		hsic.WithTestName("oidctokenrefresh"),
+		hsic.WithConfigEnv(oidcMap),
+	)
+	assertNoErrHeadscaleEnv(t, err)
+
+	allClients, err := scenario.ListTailscaleClients()
+	assertNoErrListClients(t, err)
+
+	allIps, err := scenario.ListTailscaleClientsIPs()
+	assertNoErrListClientIPs(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	assertNoErrSync(t, err)
+
+	// Verify initial connectivity
+	allAddrs := lo.Map(allIps, func(x netip.Addr, index int) string {
+		return x.String()
+	})
+
+	success := pingAllHelper(t, allClients, allAddrs)
+	t.Logf("Initial connectivity: %d successful pings out of %d", success, len(allClients)*len(allIps))
+
+	// Wait for a time period close to token expiry but before the refresh window
+	// The refresh job runs every minute and refreshes tokens expiring within 55 minutes
+	// So we wait for 1 minute to ensure at least one refresh cycle happens
+	t.Log("Waiting for token refresh cycle...")
+	time.Sleep(90 * time.Second)
+
+	// Verify connectivity is maintained (tokens should be refreshed automatically)
+	success = pingAllHelper(t, allClients, allAddrs)
+	t.Logf("After refresh cycle: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assert.Equal(t, len(allClients)*len(allIps), success, "All pings should succeed after token refresh")
+
+	// Verify nodes are still authenticated and not in NeedsLogin state
+	for _, client := range allClients {
+		status, err := client.Status()
+		assertNoErr(t, err)
+		assert.Equal(t, "Running", status.BackendState, "Node should still be in Running state after token refresh")
+	}
+
+	// Wait longer to ensure multiple refresh cycles work
+	t.Log("Testing multiple refresh cycles...")
+	time.Sleep(2 * time.Minute)
+
+	// Final connectivity check
+	success = pingAllHelper(t, allClients, allAddrs)
+	t.Logf("After multiple refresh cycles: %d successful pings out of %d", success, len(allClients)*len(allIps))
+	assert.Equal(t, len(allClients)*len(allIps), success, "All pings should succeed after multiple refresh cycles")
 }
