@@ -27,7 +27,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${prev.stdenv.hostPlatform.system};
           buildGo = pkgs.buildGo126Module;
-          vendorHash = "sha256-jom1279Lx2Knff93rfoEgGeBBk+EjJO7GAkaQYlchgY=";
+          vendorHash = "sha256-OtiX3GcsQa0kAZzcrly0NitkIKTRGGldG/O866M2Sso=";
         in
         {
           headscale = buildGo {
