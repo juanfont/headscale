@@ -66,9 +66,9 @@ func (r Change) Merge(other Change) Change {
 	merged.SendAllPeers = r.SendAllPeers || other.SendAllPeers
 	merged.RequiresRuntimePeerComputation = r.RequiresRuntimePeerComputation || other.RequiresRuntimePeerComputation
 
-	merged.PeersChanged = uniqueNodeIDs(append(r.PeersChanged, other.PeersChanged...))
-	merged.PeersRemoved = uniqueNodeIDs(append(r.PeersRemoved, other.PeersRemoved...))
-	merged.PeerPatches = append(r.PeerPatches, other.PeerPatches...)
+	merged.PeersChanged = uniqueNodeIDs(slices.Concat(r.PeersChanged, other.PeersChanged))
+	merged.PeersRemoved = uniqueNodeIDs(slices.Concat(r.PeersRemoved, other.PeersRemoved))
+	merged.PeerPatches = slices.Concat(r.PeerPatches, other.PeerPatches)
 
 	// Preserve OriginNode for self-update detection.
 	// If either change has OriginNode set, keep it so the mapper
