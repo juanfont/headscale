@@ -2560,7 +2560,7 @@ func routesChanged(oldNode types.NodeView, newHI *tailcfg.Hostinfo) bool {
 		oldRoutes = oldNode.AsStruct().Hostinfo.RoutableIPs
 	}
 
-	newRoutes := newHI.RoutableIPs
+	newRoutes := slices.Clone(newHI.RoutableIPs)
 	if newRoutes == nil {
 		newRoutes = []netip.Prefix{}
 	}
