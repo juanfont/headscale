@@ -1,0 +1,76 @@
+# 2026/03/31 13:40:41.995970 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw poolSize: 3
+# 2026/03/31 13:40:41.995981 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw pool0: netip.Prefix{ip:netip.Addr{addr:netip.uint128{hi:0x0, lo:0xffff00000000}, z:unique.Handle[net/netip.addrDetail]{value:(*netip.addrDetail)(0x1f1095bba558)}}, bitsPlusOne:0x2}
+# 2026/03/31 13:40:41.996005 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw pool1: netip.Prefix{ip:netip.Addr{addr:netip.uint128{hi:0x0, lo:0xffff00000000}, z:unique.Handle[net/netip.addrDetail]{value:(*netip.addrDetail)(0x1f1095bba558)}}, bitsPlusOne:0x2}
+# 2026/03/31 13:40:41.996016 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw pool2: netip.Prefix{ip:netip.Addr{addr:netip.uint128{hi:0x0, lo:0xffff00000000}, z:unique.Handle[net/netip.addrDetail]{value:(*netip.addrDetail)(0x1f1095bba558)}}, bitsPlusOne:0x2}
+# 2026/03/31 13:40:41.996028 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw partition0: 0
+# 2026/03/31 13:40:41.996030 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw partition1: 0
+# 2026/03/31 13:40:41.996031 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw partition2: 1
+# 2026/03/31 13:40:41.996032 [TestRapid_SubnetRoutes_IntersectionCorrectness] [rapid] draw addExitRoutes: false
+# 2026/03/31 13:40:41.996033 [TestRapid_SubnetRoutes_IntersectionCorrectness] SubnetRoutes() returned 3 routes, want 2
+# announced=[0.0.0.0/1 0.0.0.0/1 0.0.0.0/1]
+# approved=[0.0.0.0/1 0.0.0.0/1]
+# subnets=[0.0.0.0/1 0.0.0.0/1 0.0.0.0/1]
+# expected=[0.0.0.0/1 0.0.0.0/1]
+#
+v0.4.8#9293372681927497608
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0

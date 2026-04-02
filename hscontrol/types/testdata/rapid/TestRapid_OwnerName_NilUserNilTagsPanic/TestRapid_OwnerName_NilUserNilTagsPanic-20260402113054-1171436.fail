@@ -1,0 +1,32 @@
+# 2026/04/02 11:30:54.164831 [TestRapid_OwnerName_NilUserNilTagsPanic] [rapid] draw hostname: "vj7a5er"
+# 2026/04/02 11:30:54.164836 [TestRapid_OwnerName_NilUserNilTagsPanic] BUG: Owner().Name() panics on orphaned node (User=nil, Tags=nil, hostname="vj7a5er"): runtime error: invalid memory address or nil pointer dereference — callers must check Owner().Valid() first
+# 
+v0.4.8#11925712367815265553
+0x0
+0x106415a4aa3b07
+0x15
+0x1a21f865835673
+0x0
+0x1663267c076053
+0x13
+0x62c54ffb4190e
+0x0
+0x11f67d3a84384c
+0x7
+0x14bb5bfcc17103
+0x0
+0x1276398ba57f6d
+0xa
+0x9e3f5bbe3e82f
+0x0
+0x7b00cd12777b4
+0x5
+0x7a950df79e1e4
+0x0
+0x1d94ea621cbf4f
+0xe
+0xadca70dde77ef
+0x0
+0x138b5765e0eec7
+0x1b
+0x4525ec5c6812f
