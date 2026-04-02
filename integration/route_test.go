@@ -3493,3 +3493,223 @@ func TestGrantViaSubnetSteering(t *testing.T) {
 		assertTracerouteViaIPWithCollect(c, tr, ip)
 	}, assertTimeout, 200*time.Millisecond, "Client B traceroute should go through Router B")
 }
+
+// TestSubnetToSubnetACL verifies that when ACL rules reference only subnet
+// CIDRs as source and destination, the subnet routers for those subnets
+// see each other as peers and exchange routes, enabling end-to-end
+// connectivity between the two physical subnets.
+//
+// This is a regression test for https://github.com/juanfont/headscale/issues/3157
+func TestSubnetToSubnetACL(t *testing.T) {
+	IntegrationSkip(t)
+
+	routerAUser := "routera"
+	routerBUser := "routerb"
+
+	spec := ScenarioSpec{
+		NodesPerUser: 1,
+		Users:        []string{routerAUser, routerBUser},
+		Networks: map[string]NetworkSpec{
+			"usernet1": {Users: []string{routerAUser}},
+			"usernet2": {Users: []string{routerBUser}},
+		},
+		ExtraService: map[string][]extraServiceFunc{
+			"usernet1": {Webservice},
+			"usernet2": {Webservice},
+		},
+		Versions: []string{"head"},
+	}
+
+	scenario, err := NewScenario(spec)
+	require.NoErrorf(t, err, "failed to create scenario: %s", err)
+	defer scenario.ShutdownAssertNoPanics(t)
+
+	prefA, err := scenario.SubnetOfNetwork("usernet1")
+	require.NoError(t, err)
+	prefB, err := scenario.SubnetOfNetwork("usernet2")
+	require.NoError(t, err)
+
+	// ACL: only subnet-A ↔ subnet-B traffic is allowed.
+	// No rules reference node IPs directly.
+	aclPolicy := &policyv2.Policy{
+		ACLs: []policyv2.ACL{
+			{
+				Action: "accept",
+				Sources: []policyv2.Alias{
+					prefixp(prefA.String()),
+				},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(prefixp(prefB.String()), tailcfg.PortRangeAny),
+				},
+			},
+			{
+				Action: "accept",
+				Sources: []policyv2.Alias{
+					prefixp(prefB.String()),
+				},
+				Destinations: []policyv2.AliasWithPorts{
+					aliasWithPorts(prefixp(prefA.String()), tailcfg.PortRangeAny),
+				},
+			},
+		},
+	}
+
+	err = scenario.CreateHeadscaleEnv(
+		[]tsic.Option{tsic.WithAcceptRoutes()},
+		hsic.WithTestName("subnet2subnet"),
+		hsic.WithACLPolicy(aclPolicy),
+	)
+	requireNoErrHeadscaleEnv(t, err)
+
+	err = scenario.WaitForTailscaleSync()
+	requireNoErrSync(t, err)
+
+	headscale, err := scenario.Headscale()
+	requireNoErrGetHeadscale(t, err)
+
+	routerAClients, err := scenario.ListTailscaleClients(routerAUser)
+	require.NoError(t, err)
+	require.Len(t, routerAClients, 1)
+	routerA := routerAClients[0]
+
+	routerBClients, err := scenario.ListTailscaleClients(routerBUser)
+	require.NoError(t, err)
+	require.Len(t, routerBClients, 1)
+	routerB := routerBClients[0]
+
+	// Advertise subnet routes.
+	_, _, err = routerA.Execute([]string{
+		"tailscale", "set",
+		"--advertise-routes=" + prefA.String(),
+	})
+	require.NoErrorf(t, err, "failed to advertise route on router A")
+
+	_, _, err = routerB.Execute([]string{
+		"tailscale", "set",
+		"--advertise-routes=" + prefB.String(),
+	})
+	require.NoErrorf(t, err, "failed to advertise route on router B")
+
+	// Wait for advertisements to propagate.
+	var nodes []*v1.Node
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		// Both should have 1 available route.
+		for _, n := range nodes {
+			requireNodeRouteCountWithCollect(c, n, 1, 0, 0)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 100*time.Millisecond,
+		"route advertisements should propagate")
+
+	// Approve routes on both routers.
+	for _, n := range nodes {
+		_, err = headscale.ApproveRoutes(
+			n.GetId(),
+			util.MustStringsToPrefixes(n.GetAvailableRoutes()),
+		)
+		require.NoError(t, err)
+	}
+
+	// Wait for approvals to propagate.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		nodes, err = headscale.ListNodes()
+		assert.NoError(c, err)
+		assert.Len(c, nodes, 2)
+
+		for _, n := range nodes {
+			requireNodeRouteCountWithCollect(c, n, 1, 1, 1)
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond,
+		"route approvals should propagate")
+
+	// Verify both routers see each other's subnet routes.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		statusA, err := routerA.Status()
+		assert.NoError(c, err)
+
+		for _, peerKey := range statusA.Peers() {
+			peerStatus := statusA.Peer[peerKey]
+			requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{*prefB})
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond,
+		"Router A should see Router B's subnet route")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		statusB, err := routerB.Status()
+		assert.NoError(c, err)
+
+		for _, peerKey := range statusB.Peers() {
+			peerStatus := statusB.Peer[peerKey]
+			requirePeerSubnetRoutesWithCollect(c, peerStatus, []netip.Prefix{*prefA})
+		}
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond,
+		"Router B should see Router A's subnet route")
+
+	// Verify end-to-end connectivity: Router A → webservice on network B.
+	usernet2, err := scenario.Network("usernet2")
+	require.NoError(t, err)
+
+	servicesB, err := scenario.Services("usernet2")
+	require.NoError(t, err)
+	require.Len(t, servicesB, 1)
+
+	webB := servicesB[0]
+	webBIP := netip.MustParseAddr(webB.GetIPInNetwork(usernet2))
+	urlB := fmt.Sprintf("http://%s/etc/hostname", webBIP)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := routerA.Curl(urlB)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond,
+		"Router A should reach webservice on network B")
+
+	// Verify end-to-end connectivity: Router B → webservice on network A.
+	usernet1, err := scenario.Network("usernet1")
+	require.NoError(t, err)
+
+	servicesA, err := scenario.Services("usernet1")
+	require.NoError(t, err)
+	require.Len(t, servicesA, 1)
+
+	webA := servicesA[0]
+	webAIP := netip.MustParseAddr(webA.GetIPInNetwork(usernet1))
+	urlA := fmt.Sprintf("http://%s/etc/hostname", webAIP)
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		result, err := routerB.Curl(urlA)
+		assert.NoError(c, err)
+		assert.Len(c, result, 13)
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond,
+		"Router B should reach webservice on network A")
+
+	// Verify traceroute paths.
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := routerA.Traceroute(webBIP)
+		assert.NoError(c, err)
+
+		ip, err := routerB.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for routerB") {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond,
+		"Traceroute from Router A should go through Router B")
+
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		tr, err := routerB.Traceroute(webAIP)
+		assert.NoError(c, err)
+
+		ip, err := routerA.IPv4()
+		if !assert.NoError(c, err, "failed to get IPv4 for routerA") {
+			return
+		}
+
+		assertTracerouteViaIPWithCollect(c, tr, ip)
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond,
+		"Traceroute from Router B should go through Router A")
+}
