@@ -63,6 +63,38 @@ func TestDestroyUserErrors(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/juanfont/headscale/issues/3154
+			// Deleting a user must only remove that user's preauthkeys,
+			// not every key in the database.
+			name: "success_only_deletes_own_preauthkeys",
+			test: func(t *testing.T, db *HSDatabase) {
+				t.Helper()
+
+				userA := db.CreateUserForTest("usera")
+				userB := db.CreateUserForTest("userb")
+
+				pakA, err := db.CreatePreAuthKey(userA.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				pakB, err := db.CreatePreAuthKey(userB.TypedID(), false, false, nil, nil)
+				require.NoError(t, err)
+
+				// Delete userB — only userB's key should be removed.
+				err = db.DestroyUser(types.UserID(userB.ID))
+				require.NoError(t, err)
+
+				// userA's key must still exist.
+				var foundPakA types.PreAuthKey
+				result := db.DB.First(&foundPakA, "id = ?", pakA.ID)
+				require.NoError(t, result.Error)
+
+				// userB's key must be gone.
+				var foundPakB types.PreAuthKey
+				result = db.DB.First(&foundPakB, "id = ?", pakB.ID)
+				assert.ErrorIs(t, result.Error, gorm.ErrRecordNotFound)
+			},
+		},
+		{
 			name: "error_user_has_nodes",
 			test: func(t *testing.T, db *HSDatabase) {
 				t.Helper()

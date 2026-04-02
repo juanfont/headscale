@@ -85,6 +85,7 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 - Fix non-wildcard source IPs being dropped when combined with wildcard `*` in the same ACL rule [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Fix exit node approval not triggering filter rule recalculation for peers [#2180](https://github.com/juanfont/headscale/pull/2180)
 - Policy validation error messages now include field context (e.g., `src=`, `dst=`) and are more descriptive [#2180](https://github.com/juanfont/headscale/pull/2180)
+- Fix `DestroyUser` deleting all pre-auth keys in the database instead of only the target user's keys [#3154](https://github.com/juanfont/headscale/issues/3154)
 
 ## 0.28.0 (2026-02-04)
 

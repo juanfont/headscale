@@ -170,6 +170,18 @@ func ListPreAuthKeys(tx *gorm.DB) ([]types.PreAuthKey, error) {
 	return keys, nil
 }
 
+// ListPreAuthKeysByUser returns all PreAuthKeys belonging to a specific user.
+func ListPreAuthKeysByUser(tx *gorm.DB, uid types.UserID) ([]types.PreAuthKey, error) {
+	var keys []types.PreAuthKey
+
+	err := tx.Preload("User").Where("user_id = ?", uint(uid)).Find(&keys).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
+}
+
 var (
 	ErrPreAuthKeyFailedToParse    = errors.New("failed to parse auth-key")
 	ErrPreAuthKeyNotTaggedOrOwned = errors.New("auth-key must be either tagged or owned by user")
