@@ -121,6 +121,10 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	dialer := tsdial.NewDialer(netmon.NewStatic())
 	dialer.SetBus(bus)
 
+	// Route all connections through the server's in-memory network
+	// so that no real TCP sockets are used.
+	dialer.SetSystemDialerForTest(server.MemNet().Dial)
+
 	machineKey := key.NewMachine()
 
 	direct, err := controlclient.NewDirect(controlclient.Options{
