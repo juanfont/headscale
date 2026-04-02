@@ -60,6 +60,10 @@ internet is a security-sensitive choice. `autogroup:danger-all` can only be used
 
 ### Changes
 
+- **Node Expiry**: Add `node.expiry` configuration option to set a default node key expiry for nodes registered via auth key [#3122](https://github.com/juanfont/headscale/pull/3122)
+  - Tagged nodes (registered with tagged pre-auth keys) are exempt from default expiry
+  - `oidc.expiry` has been removed; use `node.expiry` instead (applies to all registration methods including OIDC)
+  - `ephemeral_node_inactivity_timeout` is deprecated in favour of `node.ephemeral.inactivity_timeout`
 - **SSH Policy**: Add support for `localpart:*@<domain>` in SSH rule `users` field, mapping each matching user's email local-part as their OS username [#3091](https://github.com/juanfont/headscale/pull/3091)
 - **ACL Policy**: Add ICMP and IPv6-ICMP protocols to default filter rules when no protocol is specified [#3036](https://github.com/juanfont/headscale/pull/3036)
 - **ACL Policy**: Fix autogroup:self handling for tagged nodes - tagged nodes no longer incorrectly receive autogroup:self filter rules [#3036](https://github.com/juanfont/headscale/pull/3036)
