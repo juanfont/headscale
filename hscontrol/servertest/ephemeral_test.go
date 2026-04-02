@@ -12,6 +12,24 @@ import (
 
 // TestEphemeralNodes tests the lifecycle of ephemeral nodes,
 // which should be automatically cleaned up when they disconnect.
+//
+// TODO(kradalby): These tests wait for real-time grace periods and
+// GC intervals (up to 60s). testing/synctest would allow instant
+// fake-clock advancement, but three blockers prevent adoption
+// as of Go 1.26:
+//
+//  1. zcache janitor goroutine: No Close() method; stopped only via
+//     runtime.SetFinalizer which runs outside synctest bubbles.
+//     - https://github.com/patrickmn/go-cache/issues/185
+//     - https://github.com/golang/go/issues/75113 (Go1.27: finalizers inside bubble)
+//
+//  2. database/sql internal goroutines: Uses sync.RWMutex which is not
+//     durably blocking in synctest, causing hangs.
+//     - https://github.com/golang/go/issues/77687 (mutex as durably blocking)
+//
+//  3. net/http server goroutines: I/O-blocked goroutines are not durably
+//     blocking, preventing bubble termination.
+//     - https://github.com/golang/go/issues/76608 (httptest synctest support)
 func TestEphemeralNodes(t *testing.T) {
 	t.Parallel()
 
