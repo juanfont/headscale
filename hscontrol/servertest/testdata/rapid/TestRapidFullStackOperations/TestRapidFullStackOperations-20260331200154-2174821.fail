@@ -1,0 +1,184 @@
+# 2026/03/31 20:01:58.638930 [TestRapidFullStackOperations] [rapid] draw action: "AddClientDefaultUser"
+# 2026/03/31 20:02:00.643825 [TestRapidFullStackOperations] [rapid] draw action: "SetAllowAllPolicy"
+# 2026/03/31 20:02:01.139742 [TestRapidFullStackOperations] [rapid] draw action: "AddClientDefaultUser"
+# 2026/03/31 20:02:03.147701 [TestRapidFullStackOperations] [rapid] draw action: "WaitAndCheck"
+# 2026/03/31 20:02:03.147727 [TestRapidFullStackOperations] [rapid] draw action: "AdvertiseRoute"
+# 2026/03/31 20:02:03.147733 [TestRapidFullStackOperations] [rapid] draw advertiseIdx: 4
+# 2026/03/31 20:02:04.644587 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:04.644601 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 2
+# 2026/03/31 20:02:07.646230 [TestRapidFullStackOperations] [rapid] draw action: "SetAllowAllPolicy"
+# 2026/03/31 20:02:07.646469 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:07.646478 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 3
+# 2026/03/31 20:02:10.647227 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:12.658167 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:14.659640 [TestRapidFullStackOperations] [rapid] draw action: "AdvertiseRoute"
+# 2026/03/31 20:02:14.659657 [TestRapidFullStackOperations] [rapid] draw advertiseIdx: 0
+# 2026/03/31 20:02:16.160137 [TestRapidFullStackOperations] [rapid] draw action: "AdvertiseRoute"
+# 2026/03/31 20:02:16.160153 [TestRapidFullStackOperations] [rapid] draw advertiseIdx: 5
+# 2026/03/31 20:02:17.161059 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:17.161065 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 5
+# 2026/03/31 20:02:20.162302 [TestRapidFullStackOperations] [rapid] draw action: "SetAllowAllPolicy"
+# 2026/03/31 20:02:20.162988 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:20.163021 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 0
+# 2026/03/31 20:02:23.163985 [TestRapidFullStackOperations] [rapid] draw action: "SetRestrictivePolicy"
+# 2026/03/31 20:02:23.767615 [TestRapidFullStackOperations] [rapid] draw action: "WaitAndCheck"
+# 2026/03/31 20:02:23.767660 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:25.672074 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:25.672094 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 4
+# 2026/03/31 20:02:28.671046 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:28.671061 [TestRapidFullStackOperations] max clients reached
+# 2026/03/31 20:02:28.671073 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:28.671078 [TestRapidFullStackOperations] [rapid] draw deleteIdx: 1
+# 2026/03/31 20:02:31.172982 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:31.173000 [TestRapidFullStackOperations] max clients reached
+# 2026/03/31 20:02:31.173013 [TestRapidFullStackOperations] [rapid] draw action: "DisconnectClient"
+# 2026/03/31 20:02:31.173018 [TestRapidFullStackOperations] [rapid] draw disconnectIdx: 6
+# 2026/03/31 20:02:31.173181 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.173184 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.173205 [TestRapidFullStackOperations] [rapid] draw action: "AddClientDefaultUser"
+# 2026/03/31 20:02:31.173207 [TestRapidFullStackOperations] max clients reached
+# 2026/03/31 20:02:31.173210 [TestRapidFullStackOperations] [rapid] draw action: "SetRestrictivePolicy"
+# 2026/03/31 20:02:31.673486 [TestRapidFullStackOperations] [rapid] draw action: "AdvertiseRoute"
+# 2026/03/31 20:02:31.673503 [TestRapidFullStackOperations] need at least 2 connected clients
+# 2026/03/31 20:02:31.673515 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.673516 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.673520 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.673531 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.673533 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.673534 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.673536 [TestRapidFullStackOperations] [rapid] draw action: "DisconnectClient"
+# 2026/03/31 20:02:31.673537 [TestRapidFullStackOperations] too few connected clients
+# 2026/03/31 20:02:31.673539 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.673540 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.673542 [TestRapidFullStackOperations] [rapid] draw action: "AdvertiseRoute"
+# 2026/03/31 20:02:31.673543 [TestRapidFullStackOperations] need at least 2 connected clients
+# 2026/03/31 20:02:31.673546 [TestRapidFullStackOperations] [rapid] draw action: "DisconnectClient"
+# 2026/03/31 20:02:31.673547 [TestRapidFullStackOperations] too few connected clients
+# 2026/03/31 20:02:31.673549 [TestRapidFullStackOperations] [rapid] draw action: "AddClientSecondUser"
+# 2026/03/31 20:02:31.673550 [TestRapidFullStackOperations] max clients reached
+# 2026/03/31 20:02:31.673553 [TestRapidFullStackOperations] [rapid] draw action: "DeleteNode"
+# 2026/03/31 20:02:31.673554 [TestRapidFullStackOperations] too few clients to delete
+# 2026/03/31 20:02:31.673556 [TestRapidFullStackOperations] [rapid] draw action: "ReconnectClient"
+# 2026/03/31 20:02:31.673560 [TestRapidFullStackOperations] [rapid] draw reconnectIdx: 6
+# 2026/03/31 20:03:02.176090 [TestRapidFullStackOperations] ReconnectClient(node-6, idx=6): convergence failed (connected=2)
+#
+v0.4.8#12493884566994739516
+0x1e66158dfeeaac
+0x9389f53c23439
+0x0
+0x175d344d71016f
+0xec3bdf6d36a05
+0x6
+0x9a3464d0d9e66
+0x1db16747f0a0a8
+0x0
+0x8d2b13e03378e
+0x1f78c56d5dffa9
+0xffffffffffffffff
+0x2d90ed12e7c8f
+0xedb5504d16495
+0x2
+0x9fd705c6243e9
+0x4
+0x6c8ceefae99e5
+0x4c88c2b16d4a1
+0x3
+0x10e4042ccac5ea
+0x2
+0x10495e46572383
+0x18d23cf1bbd5ba
+0x6
+0xfbd987bfd7000
+0x16206c09411e91
+0x3
+0x145194ce6f4a61
+0x2
+0xbc0e783490bad
+0x1e96d77497f1a9
+0x1
+0x459706c2c806c
+0x1897f0b5ab0ac9
+0x1
+0x1caf620b788b87
+0xc128245c30f4b
+0x2
+0x1579b304fce0d2
+0x0
+0x176bb33204c068
+0x92f0cdf6736e0
+0x2
+0xe393a8b459d3c
+0x3
+0x1bedbffdcb1a05
+0x4425f88222373
+0x3
+0x18163642838aac
+0x3
+0x5f3f22e572dac
+0xe2800ecfb48c0
+0x6
+0x9e942f34ba7ae
+0x1ce698a5777646
+0x3
+0x11b7aa86968b6e
+0x0
+0x1df01dbb16416f
+0x164efb65bc06e1
+0x7
+0x5e43e765a1db9
+0x1e91722c26a42c
+0x8
+0x42ca12ad4d15f
+0x115410cb0f2e29
+0x1
+0xe6fa7cce056de
+0x961b3b6c9f799
+0x3
+0x2dd0704620a8f
+0x1
+0x11f6b589fe269c
+0x5cb2ea0a160c
+0x1
+0x99aa330690de5
+0x3
+0xf71452168b1a8
+0x0
+0xf6f4d76243a47
+0x37b2460ebd6bb
+0x1
+0x18628482b05a49
+0x4
+0x1bb16182f4257f
+0x0
+0x167005ef1746aa
+0x11ed3ec7140506
+0x3
+0x12fe5e262f74e4
+0x0
+0x103f42fe985df0
+0x7
+0x1c31a4aa5e2e00
+0xbd0a7f4c5883a
+0x2
+0x563a3123b63b6
+0x3
+0x108f3cb12a8fef
+0x3
+0x17181c542483d3
+0x3
+0x10c5e033154f45
+0x4
+0xbbf43e21b6b73
+0x3
+0x1a1a4e151a7c9c
+0x2
+0xbe9ace5deb0a3
+0x4
+0x3da0af3a2bee3
+0x1
+0xd26ea6bcf13e0
+0x3
+0xd75acd386478a
+0x5
+0x1e74850229888
+0x0
