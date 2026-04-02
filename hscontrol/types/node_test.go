@@ -113,6 +113,183 @@ func Test_NodeCanAccess(t *testing.T) {
 			},
 			want: true,
 		},
+		// Subnet-to-subnet tests for issue #3157.
+		// When ACL src and dst are both subnet CIDRs, subnet
+		// routers advertising those subnets must see each other.
+		{
+			name: "subnet-to-subnet-src-router-sees-dst-router-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			// With a unidirectional ACL (src=A→dst=B), the dst
+			// router cannot access the src router. Bidirectional
+			// peer visibility comes from ReduceNodes checking
+			// both A.CanAccess(B) || B.CanAccess(A).
+			name: "subnet-to-subnet-unidirectional-dst-cannot-access-src-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			// With a bidirectional ACL, both routers can access
+			// each other.
+			name: "subnet-to-subnet-bidirectional-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.1"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.88.8.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.88.8.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+				{
+					SrcIPs: []string{"10.99.9.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.88.8.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "subnet-to-subnet-regular-node-excluded-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.3"),
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "subnet-to-subnet-unrelated-router-excluded-3157",
+			node1: Node{
+				IPv4: iap("100.64.0.3"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("172.16.0.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("172.16.0.0/24"),
+				},
+			},
+			node2: Node{
+				IPv4: iap("100.64.0.2"),
+				Hostinfo: &tailcfg.Hostinfo{
+					RoutableIPs: []netip.Prefix{
+						netip.MustParsePrefix("10.99.9.0/24"),
+					},
+				},
+				ApprovedRoutes: []netip.Prefix{
+					netip.MustParsePrefix("10.99.9.0/24"),
+				},
+			},
+			rules: []tailcfg.FilterRule{
+				{
+					SrcIPs: []string{"10.88.8.0/24"},
+					DstPorts: []tailcfg.NetPortRange{
+						{IP: "10.99.9.0/24", Ports: tailcfg.PortRangeAny},
+					},
+				},
+			},
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
