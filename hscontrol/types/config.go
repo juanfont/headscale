@@ -25,7 +25,7 @@ import (
 
 const (
 	defaultOIDCExpiryTime               = 180 * 24 * time.Hour // 180 Days
-	maxDuration           time.Duration = 1<<63 - 1
+	MaxDuration           time.Duration = 1<<63 - 1
 	PKCEMethodPlain       string        = "plain"
 	PKCEMethodS256        string        = "S256"
 
@@ -1086,7 +1086,7 @@ func LoadServerConfig() (*Config, error) {
 			Expiry: func() time.Duration {
 				// if set to 0, we assume no expiry
 				if value := viper.GetString("oidc.expiry"); value == "0" {
-					return maxDuration
+					return MaxDuration
 				} else {
 					expiry, err := model.ParseDuration(value)
 					if err != nil {
