@@ -1,0 +1,155 @@
+# 2026/04/02 10:53:42.543656 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw reason: "node added"
+# 2026/04/02 10:53:42.543661 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw targetNode: 0x3
+# 2026/04/02 10:53:42.543663 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw originNode: 0x0
+# 2026/04/02 10:53:42.543663 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeSelf: false
+# 2026/04/02 10:53:42.543664 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDERPMap: true
+# 2026/04/02 10:53:42.543665 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDNS: true
+# 2026/04/02 10:53:42.543665 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDomain: true
+# 2026/04/02 10:53:42.543666 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includePolicy: true
+# 2026/04/02 10:53:42.543666 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw sendAllPeers: false
+# 2026/04/02 10:53:42.543668 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw requiresRuntimePeerComputation: false
+# 2026/04/02 10:53:42.543672 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw nodeIDs: []types.NodeID{0xd, 0x5, 0x14, 0xd, 0xe, 0x1, 0x5, 0x6}
+# 2026/04/02 10:53:42.543679 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw nodeIDs: []types.NodeID{0x4, 0x10, 0x1, 0x2}
+# 2026/04/02 10:53:42.543682 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw numPatches: 2
+# 2026/04/02 10:53:42.543683 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw patchNodeID: 0xa
+# 2026/04/02 10:53:42.543685 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw patchNodeID: 0x1
+# 2026/04/02 10:53:42.543686 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw reason: "tag change"
+# 2026/04/02 10:53:42.543688 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw targetNode: 0x4
+# 2026/04/02 10:53:42.543696 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw originNode: 0x6
+# 2026/04/02 10:53:42.543698 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeSelf: true
+# 2026/04/02 10:53:42.543699 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDERPMap: true
+# 2026/04/02 10:53:42.543700 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDNS: true
+# 2026/04/02 10:53:42.543701 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includeDomain: false
+# 2026/04/02 10:53:42.543702 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw includePolicy: false
+# 2026/04/02 10:53:42.543703 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw sendAllPeers: true
+# 2026/04/02 10:53:42.543704 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw requiresRuntimePeerComputation: true
+# 2026/04/02 10:53:42.543708 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw nodeIDs: []types.NodeID{0x5, 0x14, 0x1}
+# 2026/04/02 10:53:42.543715 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw nodeIDs: []types.NodeID{0x2, 0x8, 0xa, 0x6, 0x2, 0x1, 0xc, 0x6}
+# 2026/04/02 10:53:42.543741 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw numPatches: 0
+# 2026/04/02 10:53:42.543743 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] [rapid] draw nodeID: 0x3
+# 2026/04/02 10:53:42.543747 [TestRapid_Merge_ThenFilter_EquivalentTo_FilterThenMerge] BUG: Boolean fields differ between Merge-then-Filter and Filter-then-Merge.
+#   MergeThenFilter bools = [true true true true true true true]
+#   FilterThenMerge bools = [false true true true true false false]
+#   A = {Reason:node added TargetNode:3 OriginNode:0 IncludeSelf:false IncludeDERPMap:true IncludeDNS:true IncludeDomain:true IncludePolicy:true PeersChanged:[13 5 20 13 14 1 5 6] PeersRemoved:[4 16 1 2] PeerPatches:[0x3ae0e3351280 0x3ae0e3351300] SendAllPeers:false RequiresRuntimePeerComputation:false}
+#   B = {Reason:tag change TargetNode:4 OriginNode:6 IncludeSelf:true IncludeDERPMap:true IncludeDNS:true IncludeDomain:false IncludePolicy:false PeersChanged:[5 20 1] PeersRemoved:[2 8 10 6 2 1 12 6] PeerPatches:[] SendAllPeers:true RequiresRuntimePeerComputation:true}
+#   nodeID = 3
+# 
+v0.4.8#16176058948999431858
+0x19e9b5bd8bc133
+0x6
+0x5
+0x179e12bc2ab9da
+0x3
+0x84622d7b375d
+0x0
+0x0
+0x1
+0x1
+0x1
+0x1
+0x0
+0x0
+0x185c7a84a1043d
+0x1db5cd02fc9144
+0xc
+0x92978df513d8f
+0xeba91178e50b8
+0x4
+0x13668262a4cb29
+0x1a4bfb6a96480f
+0x13
+0x15ccee16d9594f
+0x128021cdd5d676
+0x1b
+0xc
+0x16cf28f92e6129
+0x1b0d602758e278
+0xd
+0x1d508f5bbc438d
+0x29417d093f2a3
+0x0
+0x129321f90b2d3a
+0x15c19c08eff80a
+0x4
+0x11148025c1c195
+0x8431dd30317b3
+0x5
+0x18bad8112b50e4
+0x16c1f48513699e
+0x82d329d46c04e
+0x3
+0x1d32fe60392b62
+0x103236f57ee777
+0xf
+0x8d333fc66bcbe
+0xf81d3d86eaa5
+0x0
+0x188a6000cb3042
+0x19de3dc1c36eb
+0x1
+0x1aa3315b3eb5f
+0x464feff4e9982
+0x92b466446348c
+0x7
+0x5
+0x2
+0x12c746eb3bc618
+0x9
+0x1dc327fa5965c
+0x0
+0x137c3a7cf1d2a2
+0x3
+0x15974c5835be28
+0xf
+0x4
+0x9c2900c5583fc
+0x6
+0x1
+0x1
+0x1
+0x0
+0x0
+0x1
+0x1
+0x11b66a48dc96d6
+0x88ac8723d6129
+0x4
+0xa82e177094dac
+0x1f982838af0a9c
+0xffffffffffffffff
+0x1ddb255e4d9f02
+0x1c5cadd26e214e
+0x0
+0x55683513d4252
+0x1bf7a229c6dfa9
+0x4347382f38258
+0x1
+0x1453e3dfdf731b
+0x1d54d6c14988ad
+0x7
+0x1de0891404e590
+0x1a0dc44f74d87b
+0x18
+0x9
+0x6ca00fc3e9308
+0xca86ddc0c0897
+0x1d
+0x5
+0x17e868a5e45530
+0x8258302e3790d
+0x1
+0xe1030f1802b15
+0x1bd7d7adb9a920
+0x0
+0xf4815420364bd
+0xd2d9061fa3cf9
+0xb
+0x1f5474e1e7d0a7
+0x119719d9942e25
+0x5
+0xacfb0293bde4c
+0x266ed8052c637
+0xe34b46b01109
+0x0
+0x7c9cb20afd9cf
+0x2

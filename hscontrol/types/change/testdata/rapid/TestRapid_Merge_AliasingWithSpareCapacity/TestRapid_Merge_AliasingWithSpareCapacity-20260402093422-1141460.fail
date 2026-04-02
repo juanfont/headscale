@@ -1,0 +1,22 @@
+# 2026/04/02 09:34:22.159129 [TestRapid_Merge_AliasingWithSpareCapacity] [rapid] draw numPeers: 1
+# 2026/04/02 09:34:22.159135 [TestRapid_Merge_AliasingWithSpareCapacity] [rapid] draw extraCap: 1
+# 2026/04/02 09:34:22.159141 [TestRapid_Merge_AliasingWithSpareCapacity] [rapid] draw peerID: 0x2
+# 2026/04/02 09:34:22.159149 [TestRapid_Merge_AliasingWithSpareCapacity] [rapid] draw nodeIDs: []types.NodeID{0x1}
+# 2026/04/02 09:34:22.159153 [TestRapid_Merge_AliasingWithSpareCapacity] BUG: Merge corrupted receiver's PeersChanged through slice aliasing:
+#   before: [2]
+#   after:  [1]
+#   cap was: 2, len was: 1
+# 
+v0.4.8#7057170363636384559
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x6666666666666
+0x0
+0x0
+0x0

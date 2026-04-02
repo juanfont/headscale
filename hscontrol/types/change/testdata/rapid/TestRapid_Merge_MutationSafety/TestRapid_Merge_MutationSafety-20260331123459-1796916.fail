@@ -1,0 +1,71 @@
+# 2026/03/31 12:34:59.506734 [TestRapid_Merge_MutationSafety] [rapid] draw reason: ""
+# 2026/03/31 12:34:59.506740 [TestRapid_Merge_MutationSafety] [rapid] draw targetNode: 0x0
+# 2026/03/31 12:34:59.506741 [TestRapid_Merge_MutationSafety] [rapid] draw originNode: 0x0
+# 2026/03/31 12:34:59.506742 [TestRapid_Merge_MutationSafety] [rapid] draw includeSelf: false
+# 2026/03/31 12:34:59.506743 [TestRapid_Merge_MutationSafety] [rapid] draw includeDERPMap: false
+# 2026/03/31 12:34:59.506744 [TestRapid_Merge_MutationSafety] [rapid] draw includeDNS: false
+# 2026/03/31 12:34:59.506745 [TestRapid_Merge_MutationSafety] [rapid] draw includeDomain: false
+# 2026/03/31 12:34:59.506745 [TestRapid_Merge_MutationSafety] [rapid] draw includePolicy: false
+# 2026/03/31 12:34:59.506746 [TestRapid_Merge_MutationSafety] [rapid] draw sendAllPeers: false
+# 2026/03/31 12:34:59.506747 [TestRapid_Merge_MutationSafety] [rapid] draw requiresRuntimePeerComputation: false
+# 2026/03/31 12:34:59.506749 [TestRapid_Merge_MutationSafety] [rapid] draw nodeIDs: []types.NodeID{}
+# 2026/03/31 12:34:59.506752 [TestRapid_Merge_MutationSafety] [rapid] draw nodeIDs: []types.NodeID{0x1, 0x1}
+# 2026/03/31 12:34:59.506761 [TestRapid_Merge_MutationSafety] [rapid] draw numPatches: 0
+# 2026/03/31 12:34:59.506762 [TestRapid_Merge_MutationSafety] [rapid] draw reason: ""
+# 2026/03/31 12:34:59.506763 [TestRapid_Merge_MutationSafety] [rapid] draw targetNode: 0x0
+# 2026/03/31 12:34:59.506763 [TestRapid_Merge_MutationSafety] [rapid] draw originNode: 0x0
+# 2026/03/31 12:34:59.506764 [TestRapid_Merge_MutationSafety] [rapid] draw includeSelf: false
+# 2026/03/31 12:34:59.506767 [TestRapid_Merge_MutationSafety] [rapid] draw includeDERPMap: false
+# 2026/03/31 12:34:59.506768 [TestRapid_Merge_MutationSafety] [rapid] draw includeDNS: false
+# 2026/03/31 12:34:59.506768 [TestRapid_Merge_MutationSafety] [rapid] draw includeDomain: false
+# 2026/03/31 12:34:59.506769 [TestRapid_Merge_MutationSafety] [rapid] draw includePolicy: false
+# 2026/03/31 12:34:59.506769 [TestRapid_Merge_MutationSafety] [rapid] draw sendAllPeers: false
+# 2026/03/31 12:34:59.506770 [TestRapid_Merge_MutationSafety] [rapid] draw requiresRuntimePeerComputation: false
+# 2026/03/31 12:34:59.506772 [TestRapid_Merge_MutationSafety] [rapid] draw nodeIDs: []types.NodeID{}
+# 2026/03/31 12:34:59.506773 [TestRapid_Merge_MutationSafety] [rapid] draw nodeIDs: []types.NodeID{}
+# 2026/03/31 12:34:59.506774 [TestRapid_Merge_MutationSafety] [rapid] draw numPatches: 0
+# 2026/03/31 12:34:59.506776 [TestRapid_Merge_MutationSafety] Merge mutated receiver's PeersRemoved: before=[1 1], after=[1 0]
+#
+v0.4.8#5620682472151128331
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x6666666666666
+0x0
+0x0
+0x6666666666666
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
