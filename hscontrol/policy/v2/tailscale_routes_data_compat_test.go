@@ -32,6 +32,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -388,21 +389,9 @@ func derivePeerPairsFromCaptures(
 
 		for _, rule := range rules {
 			for _, srcIP := range rule.SrcIPs {
-				prefix, err := netip.ParsePrefix(srcIP)
-				if err != nil {
-					// Single IP like "100.x.y.z" — try as host address.
-					addr, err2 := netip.ParseAddr(srcIP)
-					require.NoError(t, err2,
-						"%s/%s: cannot parse SrcIP %q",
-						tf.TestID, dstNodeName, srcIP,
-					)
-
-					srcBuilder.Add(addr)
-
-					continue
-				}
-
-				srcBuilder.AddPrefix(prefix)
+				addSrcIPToBuilder(t, &srcBuilder,
+					srcIP, tf.TestID, dstNodeName,
+				)
 			}
 		}
 
@@ -433,6 +422,135 @@ func orderedPair(a, b string) [2]string {
 	}
 
 	return [2]string{a, b}
+}
+
+// addSrcIPToBuilder parses a SrcIP string (CIDR, bare IP, wildcard "*",
+// or IP range like "100.64.0.0-100.115.91.255") and adds it to the
+// IPSetBuilder.
+func addSrcIPToBuilder(
+	t *testing.T,
+	builder *netipx.IPSetBuilder,
+	srcIP, testID, nodeName string,
+) {
+	t.Helper()
+
+	// Handle wildcard.
+	if srcIP == "*" {
+		builder.AddPrefix(netip.MustParsePrefix("0.0.0.0/0"))
+		builder.AddPrefix(netip.MustParsePrefix("::/0"))
+
+		return
+	}
+
+	// Try CIDR notation first.
+	prefix, prefixErr := netip.ParsePrefix(srcIP)
+	if prefixErr == nil {
+		builder.AddPrefix(prefix)
+
+		return
+	}
+
+	// Try IP range notation: "A.B.C.D-E.F.G.H"
+	if strings.Contains(srcIP, "-") {
+		parts := strings.SplitN(srcIP, "-", 2)
+		ip1, err1 := netip.ParseAddr(parts[0])
+		ip2, err2 := netip.ParseAddr(parts[1])
+
+		require.NoError(t, err1,
+			"%s/%s: cannot parse range start in %q",
+			testID, nodeName, srcIP,
+		)
+		require.NoError(t, err2,
+			"%s/%s: cannot parse range end in %q",
+			testID, nodeName, srcIP,
+		)
+
+		r := netipx.IPRangeFrom(ip1, ip2)
+		for _, pfx := range r.Prefixes() {
+			builder.AddPrefix(pfx)
+		}
+
+		return
+	}
+
+	// Try single IP address.
+	addr, err := netip.ParseAddr(srcIP)
+	require.NoError(t, err,
+		"%s/%s: cannot parse SrcIP %q",
+		testID, nodeName, srcIP,
+	)
+
+	builder.Add(addr)
+}
+
+// deriveAllPeerPairsFromCaptures extends derivePeerPairsFromCaptures
+// to find ALL expected peer relationships from golden file captures,
+// not just subnet-route-based ones. It checks:
+//   - Node's SubnetRoutes overlap the capture's SrcIPs (subnet-to-subnet)
+//   - Node's direct IPs (IPv4/IPv6) appear in the capture's SrcIPs
+//     (tag/user/group resolved sources)
+func deriveAllPeerPairsFromCaptures(
+	t *testing.T,
+	tf routesTestFile,
+	nodes types.Nodes,
+) map[[2]string]bool {
+	t.Helper()
+
+	pairs := make(map[[2]string]bool)
+
+	for dstNodeName, capture := range tf.Captures {
+		captureIsNull := len(capture.PacketFilterRules) == 0 ||
+			string(capture.PacketFilterRules) == "null"
+		if captureIsNull {
+			continue
+		}
+
+		var rules []tailcfg.FilterRule
+
+		err := json.Unmarshal(capture.PacketFilterRules, &rules)
+		require.NoError(t, err,
+			"%s/%s: failed to unmarshal capture rules",
+			tf.TestID, dstNodeName,
+		)
+
+		// Build an IPSet of all SrcIPs.
+		var srcBuilder netipx.IPSetBuilder
+
+		for _, rule := range rules {
+			for _, srcIP := range rule.SrcIPs {
+				addSrcIPToBuilder(t, &srcBuilder,
+					srcIP, tf.TestID, dstNodeName,
+				)
+			}
+		}
+
+		srcSet, err := srcBuilder.IPSet()
+		require.NoError(t, err)
+
+		for _, node := range nodes {
+			if node.GivenName == dstNodeName {
+				continue
+			}
+
+			// Check subnet routes overlap.
+			if slices.ContainsFunc(
+				node.SubnetRoutes(), srcSet.OverlapsPrefix,
+			) {
+				pairs[orderedPair(dstNodeName, node.GivenName)] = true
+
+				continue
+			}
+
+			// Check direct node IPs in SrcIPs.
+			if slices.ContainsFunc(
+				node.IPs(), srcSet.Contains,
+			) {
+				pairs[orderedPair(dstNodeName, node.GivenName)] = true
+			}
+		}
+	}
+
+	return pairs
 }
 
 // TestRoutesCompatPeerVisibility is a data-driven test that validates peer
@@ -1063,6 +1181,331 @@ func TestRoutesCompatGlobalEquivalence(t *testing.T) {
 						diff,
 					)
 				}
+			}
+		})
+	}
+}
+
+// TestRoutesCompatExitNodePeerVisibility validates that CanAccess
+// correctly handles exit node peer visibility for the b-series golden
+// files. These files exercise exit route behaviors (b1-b10) which
+// TestRoutesCompat validates for filter rule compilation, but peer
+// visibility (CanAccess) was never tested.
+//
+// For b-series files, the test validates:
+//   - Nodes that receive non-null filter rules ARE visible as peers
+//   - Nodes that receive null filter rules may or may not be visible
+//     depending on the ACL structure
+//
+// This exercises the DestsIsTheInternet() + IsExitNode() code path
+// in CanAccess (types/node.go:339) which had zero test coverage.
+func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
+	t.Parallel()
+
+	// b2: tag:exit -> tag:exit:* — only exit nodes peer with each other
+	// b8: autogroup:member -> autogroup:internet:* — no filter rules at all
+	exitNodeTests := []struct {
+		testID string
+		// exitNodeNames are nodes with tag:exit
+		exitNodeNames []string
+		// expectedNullAll: if true, all captures should be null
+		expectedNullAll bool
+	}{
+		{
+			testID:        "ROUTES-b2_tag_exit_excludes_exit_routes",
+			exitNodeNames: []string{"exit-node", "multi-router"},
+		},
+		{
+			testID:          "ROUTES-b8_autogroup_internet_no_filters",
+			exitNodeNames:   []string{"exit-node", "multi-router"},
+			expectedNullAll: true,
+		},
+	}
+
+	for _, tc := range exitNodeTests {
+		file := filepath.Join(
+			"testdata", "routes_results", tc.testID+".hujson",
+		)
+		tf := loadRoutesTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+
+			if tc.expectedNullAll {
+				// All captures null: verify no CanAccess pairs
+				// involving exit nodes via this ACL alone.
+				for _, exitName := range tc.exitNodeNames {
+					exitNode := findNodeByGivenName(
+						nodes, exitName,
+					)
+					require.NotNil(t, exitNode)
+
+					matchers, err := pm.MatchersForNode(
+						exitNode.View(),
+					)
+					require.NoError(t, err)
+
+					for _, other := range nodes {
+						if other.ID == exitNode.ID {
+							continue
+						}
+
+						canAccess := exitNode.View().CanAccess(
+							matchers, other.View(),
+						)
+						assert.Falsef(t, canAccess,
+							"exit node %s should NOT "+
+								"CanAccess %s when "+
+								"autogroup:internet produces "+
+								"no filter rules",
+							exitName, other.GivenName,
+						)
+					}
+				}
+
+				return
+			}
+
+			// For b2: tag:exit -> tag:exit:*, only exit nodes
+			// should see each other. Verify exit<->exit pairs
+			// have CanAccess=true.
+			for i, name1 := range tc.exitNodeNames {
+				for j := i + 1; j < len(tc.exitNodeNames); j++ {
+					name2 := tc.exitNodeNames[j]
+					node1 := findNodeByGivenName(nodes, name1)
+					node2 := findNodeByGivenName(nodes, name2)
+
+					require.NotNil(t, node1)
+					require.NotNil(t, node2)
+
+					matchers1, err := pm.MatchersForNode(
+						node1.View(),
+					)
+					require.NoError(t, err)
+
+					matchers2, err := pm.MatchersForNode(
+						node2.View(),
+					)
+					require.NoError(t, err)
+
+					canAccess := node1.View().CanAccess(
+						matchers1, node2.View(),
+					) || node2.View().CanAccess(
+						matchers2, node1.View(),
+					)
+
+					assert.Truef(t, canAccess,
+						"exit nodes %s and %s should be "+
+							"peers (ACL: tag:exit -> "+
+							"tag:exit:*)",
+						name1, name2,
+					)
+				}
+			}
+
+			// Verify non-exit nodes don't peer with exit nodes
+			// through this restricted ACL.
+			for _, exitName := range tc.exitNodeNames {
+				exitNode := findNodeByGivenName(
+					nodes, exitName,
+				)
+				require.NotNil(t, exitNode)
+
+				for _, other := range nodes {
+					if other.ID == exitNode.ID {
+						continue
+					}
+
+					// Skip other exit nodes
+					isExit := slices.Contains(tc.exitNodeNames, other.GivenName)
+
+					if isExit {
+						continue
+					}
+
+					matchers, err := pm.MatchersForNode(
+						other.View(),
+					)
+					require.NoError(t, err)
+
+					canAccess := other.View().CanAccess(
+						matchers, exitNode.View(),
+					)
+					assert.Falsef(t, canAccess,
+						"non-exit node %s should NOT "+
+							"CanAccess exit node %s "+
+							"(ACL: tag:exit -> tag:exit:*)",
+						other.GivenName, exitName,
+					)
+				}
+			}
+		})
+	}
+}
+
+// TestRoutesCompatNoPeersBeyondCaptures verifies that headscale does not
+// create peer relationships beyond what the golden file captures imply.
+// For every pair of nodes NOT in the expected peer set (derived from
+// the capture SrcIPs), CanAccess must return false.
+//
+// This extends TestRoutesCompatNoFalsePositivePeers (which only covers
+// f10-f15 with hardcoded non-router names) to all 98 ROUTES golden
+// files with a generic, data-driven approach.
+func TestRoutesCompatNoPeersBeyondCaptures(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(t, files)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			if reason, ok := routesSkipReasons[tf.TestID]; ok {
+				t.Skipf("TODO: %s", reason)
+
+				return
+			}
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+
+			// Derive the complete set of expected peer pairs
+			// from the golden file captures.
+			expectedPairs := deriveAllPeerPairsFromCaptures(
+				t, tf, nodes,
+			)
+
+			// Also add pairs implied by DstPorts: if a node's IP
+			// appears in DstPorts of rules delivered to another
+			// node, they must be peers.
+			for dstNodeName, capture := range tf.Captures {
+				captureIsNull := len(
+					capture.PacketFilterRules,
+				) == 0 ||
+					string(
+						capture.PacketFilterRules,
+					) == "null"
+				if captureIsNull {
+					continue
+				}
+
+				var rules []tailcfg.FilterRule
+
+				err := json.Unmarshal(
+					capture.PacketFilterRules, &rules,
+				)
+				if err != nil {
+					continue
+				}
+
+				var dstBuilder netipx.IPSetBuilder
+
+				for _, rule := range rules {
+					for _, dp := range rule.DstPorts {
+						addSrcIPToBuilder(t, &dstBuilder,
+							dp.IP, tf.TestID, dstNodeName,
+						)
+					}
+				}
+
+				dstSet, dstErr := dstBuilder.IPSet()
+				if dstErr != nil {
+					continue
+				}
+
+				for _, node := range nodes {
+					if node.GivenName == dstNodeName {
+						continue
+					}
+
+					if slices.ContainsFunc(
+						node.IPs(), dstSet.Contains,
+					) {
+						expectedPairs[orderedPair(
+							dstNodeName, node.GivenName,
+						)] = true
+					}
+
+					if slices.ContainsFunc(
+						node.SubnetRoutes(),
+						dstSet.OverlapsPrefix,
+					) {
+						expectedPairs[orderedPair(
+							dstNodeName, node.GivenName,
+						)] = true
+					}
+				}
+			}
+
+			falsePositives := 0
+
+			for i, nodeA := range nodes {
+				matchersA, err := pm.MatchersForNode(
+					nodeA.View(),
+				)
+				require.NoError(t, err)
+
+				for j := i + 1; j < len(nodes); j++ {
+					nodeB := nodes[j]
+					pair := orderedPair(
+						nodeA.GivenName, nodeB.GivenName,
+					)
+
+					if expectedPairs[pair] {
+						continue
+					}
+
+					matchersB, err := pm.MatchersForNode(
+						nodeB.View(),
+					)
+					require.NoError(t, err)
+
+					canAccess := nodeA.View().CanAccess(
+						matchersA, nodeB.View(),
+					) || nodeB.View().CanAccess(
+						matchersB, nodeA.View(),
+					)
+
+					if canAccess {
+						t.Errorf(
+							"%s: unexpected peer "+
+								"relationship: %s <-> %s",
+							tf.TestID,
+							nodeA.GivenName,
+							nodeB.GivenName,
+						)
+
+						falsePositives++
+					}
+				}
+			}
+
+			if falsePositives == 0 && len(expectedPairs) == 0 {
+				// All-null captures: verify no peers at all.
+				t.Logf(
+					"%s: all-null captures, verified no "+
+						"false-positive peers among %d nodes",
+					tf.TestID, len(nodes),
+				)
 			}
 		})
 	}
