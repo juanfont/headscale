@@ -618,3 +618,116 @@ func testGrantSuccess(
 		})
 	}
 }
+
+// TestGrantsCompatGlobalEquivalence verifies that the global filter
+// compilation path (PolicyManager.FilterForNode) produces the same
+// output as the per-node path (compileFilterRulesForNode +
+// ReduceFilterRules) for all GRANT golden files that don't require
+// per-node compilation.
+//
+// Files using via grants or autogroup:self are skipped because they
+// correctly require per-node compilation (needsPerNodeFilter=true).
+func TestGrantsCompatGlobalEquivalence(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "grant_results", "GRANT-*.hujson"),
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+
+	users := setupGrantsCompatUsers()
+	allNodes := setupGrantsCompatNodes(users)
+
+	for _, file := range files {
+		tf := loadGrantTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			if reason, ok := grantSkipReasons[tf.TestID]; ok {
+				t.Skipf("TODO: %s", reason)
+
+				return
+			}
+
+			if tf.Error {
+				t.Skip("error case")
+
+				return
+			}
+
+			policyJSON := convertPolicyUserEmails(
+				tf.Input.FullPolicy,
+			)
+			policyStr := string(policyJSON)
+
+			// Skip files that require per-node compilation.
+			if strings.Contains(policyStr, "autogroup:self") {
+				t.Skip("uses autogroup:self")
+
+				return
+			}
+
+			if strings.Contains(policyStr, "\"via\"") {
+				t.Skip("uses via grants")
+
+				return
+			}
+
+			// Select nodes based on topology size.
+			nodes := allNodes
+			if _, hasNewNodes := tf.Captures["exit-a"]; !hasNewNodes {
+				nodes = allNodes[:8]
+			}
+
+			// Per-node path.
+			pol, err := unmarshalPolicy(policyJSON)
+			require.NoError(t, err)
+
+			err = pol.validate()
+			require.NoError(t, err)
+
+			// Global path.
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err)
+
+			for _, node := range nodes {
+				nv := node.View()
+
+				perNodeRules, err := pol.compileFilterRulesForNode(
+					users, nv, nodes.ViewSlice(),
+				)
+				require.NoError(t, err)
+
+				perNodeReduced := policyutil.ReduceFilterRules(
+					nv, perNodeRules,
+				)
+
+				globalReduced, err := pm.FilterForNode(nv)
+				require.NoError(t, err)
+
+				opts := append(
+					cmpOptions(),
+					cmpopts.EquateEmpty(),
+				)
+				if diff := cmp.Diff(
+					perNodeReduced,
+					globalReduced,
+					opts...,
+				); diff != "" {
+					t.Errorf(
+						"%s/%s: global vs per-node "+
+							"filter mismatch "+
+							"(-perNode +global):\n%s",
+						tf.TestID,
+						node.GivenName,
+						diff,
+					)
+				}
+			}
+		})
+	}
+}
