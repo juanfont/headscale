@@ -2,6 +2,7 @@ package policyutil
 
 import (
 	"net/netip"
+	"slices"
 
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
@@ -47,12 +48,21 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 				continue DEST_LOOP
 			}
 
-			// If the node exposes routes, ensure they are not removed
-			// when the filters are reduced. Exit routes (0.0.0.0/0, ::/0)
-			// are skipped here because exit nodes handle traffic via
-			// AllowedIPs/routing, not packet filter rules. This matches
-			// Tailscale SaaS behavior where exit nodes do not receive
-			// filter rules for destinations that only overlap via exit routes.
+			// If the node advertises routes, ensure filter rules
+			// targeting those routes are preserved. Exit routes
+			// (0.0.0.0/0, ::/0) are skipped because exit nodes
+			// handle traffic via AllowedIPs/routing, not packet
+			// filter rules. This matches Tailscale SaaS behavior.
+			//
+			// NOTE: This uses RoutableIPs (advertised routes)
+			// rather than SubnetRoutes (approved routes). The two
+			// sets are identical in all 98 golden file captures
+			// from Tailscale SaaS, so we cannot determine from
+			// captured data which set Tailscale actually checks.
+			// RoutableIPs is a superset of SubnetRoutes (which
+			// further filters by approval), so this is the more
+			// permissive choice. See MISSING_SAAS_DATA.md for
+			// the capture needed to resolve this ambiguity.
 			if node.Hostinfo().Valid() {
 				routableIPs := node.Hostinfo().RoutableIPs()
 				if routableIPs.Len() > 0 {
@@ -65,17 +75,6 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 							continue DEST_LOOP
 						}
 					}
-				}
-			}
-
-			// Also check approved subnet routes - nodes should have access
-			// to subnets they're approved to route traffic for.
-			subnetRoutes := node.SubnetRoutes()
-
-			for _, subnetRoute := range subnetRoutes {
-				if expanded.OverlapsPrefix(subnetRoute) {
-					dests = append(dests, dest)
-					continue DEST_LOOP
 				}
 			}
 		}
@@ -113,8 +112,9 @@ func reduceCapGrantRule(
 
 		for _, dst := range cg.Dsts {
 			if dst.IsSingleIP() {
-				// Already a specific IP — keep it if it matches.
-				if dst.Addr() == nodeIPs[0] || (len(nodeIPs) > 1 && dst.Addr() == nodeIPs[1]) {
+				// Already a specific IP — keep it if it matches
+				// any of the node's IPs.
+				if slices.Contains(nodeIPs, dst.Addr()) {
 					matchingDsts = append(matchingDsts, dst)
 				}
 			} else {
