@@ -974,6 +974,100 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 	}
 }
 
+// TestRoutesCompatGlobalEquivalence verifies that the global filter
+// compilation path (compileFilterRules + ReduceFilterRules, used in
+// production for ACL-only policies) produces the same output as the
+// per-node path (compileFilterRulesForNode + ReduceFilterRules, used
+// by TestRoutesCompat).
+//
+// All 98 ROUTES golden files use ACL-only policies (no autogroup:self,
+// no via grants), so production code takes the global path. The
+// TestRoutesCompat test always uses the per-node path. If these two
+// paths ever diverge, this test will detect it.
+func TestRoutesCompatGlobalEquivalence(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(
+		t,
+		files,
+		"no ROUTES-*.hujson test files found",
+	)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			if reason, ok := routesSkipReasons[tf.TestID]; ok {
+				t.Skipf("TODO: %s", reason)
+
+				return
+			}
+
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			// Per-node path: compile per-node, then reduce.
+			pol, err := unmarshalPolicy(policyJSON)
+			require.NoError(t, err)
+
+			err = pol.validate()
+			require.NoError(t, err)
+
+			// Global path: create PolicyManager (compiles global
+			// filter internally).
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err,
+				"%s: failed to create PolicyManager", tf.TestID,
+			)
+
+			for _, node := range nodes {
+				nv := node.View()
+
+				// Per-node path (what TestRoutesCompat uses).
+				perNodeRules, err := pol.compileFilterRulesForNode(
+					users, nv, nodes.ViewSlice(),
+				)
+				require.NoError(t, err)
+
+				perNodeReduced := policyutil.ReduceFilterRules(
+					nv, perNodeRules,
+				)
+
+				// Global path (what production FilterForNode
+				// uses for ACL-only policies).
+				globalReduced, err := pm.FilterForNode(nv)
+				require.NoError(t, err)
+
+				opts := append(
+					cmpOptions(),
+					cmpopts.EquateEmpty(),
+				)
+				if diff := cmp.Diff(
+					perNodeReduced,
+					globalReduced,
+					opts...,
+				); diff != "" {
+					t.Errorf(
+						"%s/%s: global vs per-node filter "+
+							"mismatch (-perNode +global):\n%s",
+						tf.TestID,
+						node.GivenName,
+						diff,
+					)
+				}
+			}
+		})
+	}
+}
+
 // TestRoutesCompatNoFalsePositivePeers verifies that nodes which do NOT
 // have subnet routes overlapping an ACL's source or destination CIDRs
 // are NOT incorrectly peered with subnet routers.
