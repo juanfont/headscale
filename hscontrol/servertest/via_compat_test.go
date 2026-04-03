@@ -74,6 +74,11 @@ var viaCompatTests = []struct {
 	{"GRANT-V30", "crossed mixed: subnet via router-a/b, exit via exit-b/a"},
 	{"GRANT-V31", "peer connectivity + via exit A/B steering"},
 	{"GRANT-V36", "full complex: peer connectivity + crossed subnet + crossed exit"},
+	// TODO: V33 and V35 are not yet compatible due to:
+	// - V33: PrimaryRoutes election differs (node ID ordering between SaaS and headscale)
+	// - V35: Extra peer visibility (autoApprovers create different routing topology)
+	// The inferNodeRoutes Tier 3 fix enables route inference for these files,
+	// but the above issues need resolution first.
 }
 
 // TestViaGrantMapCompat loads golden captures from Tailscale SaaS and
@@ -128,6 +133,7 @@ func TestViaGrantMapCompat(t *testing.T) {
 
 // taggedNodes are the nodes we create in the servertest.
 var taggedNodes = []string{
+	"big-router",
 	"exit-a", "exit-b", "exit-node",
 	"group-a-client", "group-b-client",
 	"router-a", "router-b",
@@ -387,15 +393,68 @@ func compareNetmap(
 		}
 	}
 
-	// Compare PacketFilter rule count.
+	// Compare PacketFilter rules (IP-independent).
+	// Golden file SrcIPs contain literal Tailscale SaaS CGNAT addresses
+	// that differ from headscale-allocated IPs, so we compare structural
+	// properties rather than literal SrcIP values.
 	var wantFilterRules []tailcfg.FilterRule
 	if len(want.PacketFilterRules) > 0 &&
 		string(want.PacketFilterRules) != "null" {
 		_ = json.Unmarshal(want.PacketFilterRules, &wantFilterRules)
 	}
 
-	assert.Lenf(t, got.PacketFilter, len(wantFilterRules),
-		"PacketFilter rule count mismatch")
+	if !assert.Lenf(t, got.PacketFilter, len(wantFilterRules),
+		"PacketFilter rule count mismatch") {
+		return
+	}
+
+	// Compare destination prefixes per rule — subnet CIDRs like
+	// 10.44.0.0/16 are stable between Tailscale SaaS and headscale.
+	// Source IPs differ entirely (different CGNAT allocation), so
+	// we only validate that sources exist (non-empty), not their
+	// exact count or values.
+	for i := range wantFilterRules {
+		wantRule := wantFilterRules[i]
+		gotMatch := got.PacketFilter[i]
+
+		// Verify both rules have sources (don't compare exact
+		// count — IP allocation differs between SaaS and headscale).
+		if len(wantRule.SrcIPs) > 0 {
+			assert.NotEmptyf(t, gotMatch.Srcs,
+				"PacketFilter[%d]: golden has %d SrcIPs but headscale has none",
+				i, len(wantRule.SrcIPs))
+		}
+
+		// Destination prefixes: extract non-Tailscale-IP CIDRs
+		// from both golden and headscale rules and compare.
+		var wantDstPrefixes []string
+
+		for _, dp := range wantRule.DstPorts {
+			pfx, err := netip.ParsePrefix(dp.IP)
+			if err != nil {
+				continue
+			}
+
+			if !isTailscaleIP(pfx) {
+				wantDstPrefixes = append(wantDstPrefixes, pfx.String())
+			}
+		}
+
+		var gotDstPrefixes []string
+
+		for _, dst := range gotMatch.Dsts {
+			pfx := dst.Net
+			if !isTailscaleIP(pfx) {
+				gotDstPrefixes = append(gotDstPrefixes, pfx.String())
+			}
+		}
+
+		slices.Sort(wantDstPrefixes)
+		slices.Sort(gotDstPrefixes)
+
+		assert.Equalf(t, wantDstPrefixes, gotDstPrefixes,
+			"PacketFilter[%d]: non-Tailscale destination prefixes mismatch", i)
+	}
 }
 
 type peerSummary struct {
@@ -484,9 +543,10 @@ func inferNodeRoutes(gf goldenFile) map[string][]netip.Prefix {
 		}
 	}
 
-	// Infer from the golden netmap: scan all captures for peers with
-	// route prefixes in AllowedIPs. If node X appears as a peer with
-	// route prefix 10.44.0.0/16, then X should advertise that route.
+	// Tier 2: Infer from the golden netmap — scan all captures for
+	// peers with route prefixes in AllowedIPs. If node X appears as
+	// a peer with route prefix 10.44.0.0/16, then X should advertise
+	// that route.
 	for _, capture := range gf.Captures {
 		if capture.Netmap == nil {
 			continue
@@ -504,6 +564,45 @@ func inferNodeRoutes(gf goldenFile) map[string][]netip.Prefix {
 
 				if !slices.Contains(result[peerName], prefix) {
 					result[peerName] = append(result[peerName], prefix)
+				}
+			}
+		}
+	}
+
+	// Tier 3: Infer from packet_filter_rules DstPorts — if a node
+	// receives filter rules with non-Tailscale-IP destination
+	// prefixes, it must be advertising those routes. This catches
+	// secondary HA routers whose routes don't appear in AllowedIPs
+	// (only the primary gets the route in AllowedIPs) but DO receive
+	// filter rules for those routes.
+	for nodeName, capture := range gf.Captures {
+		if len(capture.PacketFilterRules) == 0 ||
+			string(capture.PacketFilterRules) == "null" {
+			continue
+		}
+
+		var rules []tailcfg.FilterRule
+
+		err := json.Unmarshal(capture.PacketFilterRules, &rules)
+		if err != nil {
+			continue
+		}
+
+		for _, rule := range rules {
+			for _, dp := range rule.DstPorts {
+				prefix, err := netip.ParsePrefix(dp.IP)
+				if err != nil {
+					continue
+				}
+
+				if isTailscaleIP(prefix) {
+					continue
+				}
+
+				if !slices.Contains(result[nodeName], prefix) {
+					result[nodeName] = append(
+						result[nodeName], prefix,
+					)
 				}
 			}
 		}
