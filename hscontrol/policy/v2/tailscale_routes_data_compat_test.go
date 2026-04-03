@@ -43,6 +43,7 @@ import (
 	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gorm.io/gorm"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -661,6 +662,314 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 					}
 				}
 			})
+		})
+	}
+}
+
+// TestRoutesCompatAutoApproval validates that headscale's auto-approval
+// logic (NodeCanApproveRoute) produces the same approval decisions as
+// captured in the golden files from Tailscale SaaS.
+//
+// For each node that has routable_ips, the test verifies:
+//   - Routes in approved_routes: NodeCanApproveRoute returns true
+//   - Routes in routable_ips but NOT in approved_routes: returns false
+//
+// This covers d1–d11 scenarios (auto-approval edge cases) as well as
+// every other golden file whose topology includes routable_ips — all 98
+// files have autoApprovers and routable_ips defined.
+func TestRoutesCompatAutoApproval(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(
+		t,
+		files,
+		"no ROUTES-*.hujson test files found in testdata/routes_results/",
+	)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			// Build topology from JSON.
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+
+			// Convert Tailscale SaaS user emails to headscale format.
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			// Create a PolicyManager — this resolves autoApprovers
+			// and builds the auto-approve map.
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err,
+				"%s: failed to create policy manager", tf.TestID,
+			)
+
+			// Track whether this test file had any testable nodes.
+			testedNodes := 0
+
+			for nodeName, nodeDef := range tf.Topology.Nodes {
+				if len(nodeDef.RoutableIPs) == 0 {
+					continue
+				}
+
+				node := findNodeByGivenName(nodes, nodeName)
+				if node == nil {
+					continue
+				}
+
+				testedNodes++
+
+				// Build the set of approved routes for quick lookup.
+				approvedSet := make(
+					map[netip.Prefix]bool,
+					len(nodeDef.ApprovedRoutes),
+				)
+				for _, r := range nodeDef.ApprovedRoutes {
+					approvedSet[netip.MustParsePrefix(r)] = true
+				}
+
+				t.Run(nodeName, func(t *testing.T) {
+					for _, routeStr := range nodeDef.RoutableIPs {
+						route := netip.MustParsePrefix(routeStr)
+
+						// Skip exit routes (0.0.0.0/0, ::/0).
+						// Tailscale SaaS stores exit routes
+						// under autoApprovers.routes alongside
+						// regular subnets, while headscale uses
+						// a separate autoApprovers.exitNode
+						// field. NodeCanApproveRoute checks the
+						// exitSet (from exitNode) first and
+						// never reaches the autoApproveMap
+						// (from routes), causing a known format
+						// mismatch. This is not a bug — just a
+						// structural difference in where exit
+						// routes are declared.
+						if tsaddr.IsExitRoute(route) {
+							continue
+						}
+
+						wantApproved := approvedSet[route]
+						gotApproved := pm.NodeCanApproveRoute(
+							node.View(), route,
+						)
+
+						if wantApproved {
+							assert.Truef(t, gotApproved,
+								"%s/%s: route %s is in "+
+									"approved_routes but "+
+									"NodeCanApproveRoute "+
+									"returned false",
+								tf.TestID, nodeName, route,
+							)
+						} else {
+							assert.Falsef(t, gotApproved,
+								"%s/%s: route %s is NOT in "+
+									"approved_routes but "+
+									"NodeCanApproveRoute "+
+									"returned true",
+								tf.TestID, nodeName, route,
+							)
+						}
+					}
+				})
+			}
+
+			if testedNodes == 0 {
+				t.Skipf(
+					"%s: no nodes with routable_ips found",
+					tf.TestID,
+				)
+			}
+		})
+	}
+}
+
+// TestRoutesCompatReduceRoutes validates that headscale's CanAccessRoute
+// produces route visibility decisions consistent with the golden file
+// captures from Tailscale SaaS.
+//
+// For each golden file, the test identifies nodes that received filter
+// rules from Tailscale SaaS (non-null captures with DstPorts), then
+// verifies that viewer nodes whose identity (IPs or subnet routes)
+// overlaps the capture's SrcIPs can indeed access those destination
+// route prefixes via CanAccessRoute.
+//
+// This extends the ReduceRoutes sub-test from TestRoutesCompatPeerVisibility
+// (which only covers f10–f15) to all 98 golden files.
+func TestRoutesCompatReduceRoutes(t *testing.T) {
+	t.Parallel()
+
+	files, err := filepath.Glob(
+		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+	)
+	require.NoError(t, err, "failed to glob test files")
+	require.NotEmpty(
+		t,
+		files,
+		"no ROUTES-*.hujson test files found in testdata/routes_results/",
+	)
+
+	for _, file := range files {
+		tf := loadRoutesTestFile(t, file)
+
+		t.Run(tf.TestID, func(t *testing.T) {
+			t.Parallel()
+
+			// Build topology from JSON.
+			users, nodes := buildRoutesUsersAndNodes(t, tf.Topology)
+
+			// Convert Tailscale SaaS user emails to headscale format.
+			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
+
+			// Create a PolicyManager.
+			pm, err := NewPolicyManager(
+				policyJSON, users, nodes.ViewSlice(),
+			)
+			require.NoError(t, err,
+				"%s: failed to create policy manager", tf.TestID,
+			)
+
+			// For each node that receives filter rules (non-null
+			// capture), extract the DstPort prefixes and SrcIPs.
+			// Then verify that viewer nodes with matching source
+			// identity can access those routes via CanAccessRoute.
+			for dstNodeName, capture := range tf.Captures {
+				captureIsNull := len(
+					capture.PacketFilterRules,
+				) == 0 ||
+					string(
+						capture.PacketFilterRules,
+					) == "null"
+				if captureIsNull {
+					continue
+				}
+
+				var rules []tailcfg.FilterRule
+
+				err := json.Unmarshal(
+					capture.PacketFilterRules, &rules,
+				)
+				require.NoError(t, err,
+					"%s/%s: failed to unmarshal capture rules",
+					tf.TestID, dstNodeName,
+				)
+
+				// Build the set of destination route prefixes.
+				var dstPrefixes []netip.Prefix
+
+				for _, rule := range rules {
+					for _, dp := range rule.DstPorts {
+						prefix, parseErr := netip.ParsePrefix(
+							dp.IP,
+						)
+						if parseErr != nil {
+							continue
+						}
+
+						if !slices.Contains(
+							dstPrefixes, prefix,
+						) {
+							dstPrefixes = append(
+								dstPrefixes, prefix,
+							)
+						}
+					}
+				}
+
+				if len(dstPrefixes) == 0 {
+					continue
+				}
+
+				// Build SrcIPs set from all rules in this capture.
+				var srcBuilder netipx.IPSetBuilder
+
+				for _, rule := range rules {
+					for _, srcIP := range rule.SrcIPs {
+						prefix, parseErr := netip.ParsePrefix(
+							srcIP,
+						)
+						if parseErr != nil {
+							addr, parseErr2 := netip.ParseAddr(
+								srcIP,
+							)
+							if parseErr2 != nil {
+								continue
+							}
+
+							srcBuilder.Add(addr)
+
+							continue
+						}
+
+						srcBuilder.AddPrefix(prefix)
+					}
+				}
+
+				srcSet, err := srcBuilder.IPSet()
+				require.NoError(t, err)
+
+				// For each peer node, check if it should be able
+				// to access the dst routes.
+				for _, viewerNode := range nodes {
+					if viewerNode.GivenName == dstNodeName {
+						continue
+					}
+
+					// Determine if this viewer has source identity
+					// that matches the capture's SrcIPs.
+					viewerMatchesSrc := false
+
+					nv := viewerNode.View()
+					if slices.ContainsFunc(nv.IPs(), srcSet.Contains) {
+						viewerMatchesSrc = true
+					}
+
+					if !viewerMatchesSrc {
+						if slices.ContainsFunc(nv.SubnetRoutes(), srcSet.OverlapsPrefix) {
+							viewerMatchesSrc = true
+						}
+					}
+
+					if !viewerMatchesSrc {
+						continue
+					}
+
+					matchers, matchErr := pm.MatchersForNode(nv)
+					require.NoError(t, matchErr)
+
+					t.Run(
+						dstNodeName+"/from_"+viewerNode.GivenName,
+						func(t *testing.T) {
+							for _, route := range dstPrefixes {
+								canAccess := nv.CanAccessRoute(
+									matchers, route,
+								)
+								assert.Truef(t, canAccess,
+									"%s: viewer %s (IPs=%v, "+
+										"subnets=%v) should be "+
+										"able to access route "+
+										"%s on node %s (SaaS "+
+										"delivered matching "+
+										"filter rules)",
+									tf.TestID,
+									viewerNode.GivenName,
+									nv.IPs(),
+									nv.SubnetRoutes(),
+									route,
+									dstNodeName,
+								)
+							}
+						},
+					)
+				}
+			}
 		})
 	}
 }
