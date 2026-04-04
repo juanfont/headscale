@@ -3832,7 +3832,7 @@ func TestCompileViaGrant(t *testing.T) {
 			nodeView := tt.node.View()
 			nodesSlice := tt.nodes.ViewSlice()
 
-			got, err := tt.pol.compileViaGrant(tt.grant, users, nodeView, nodesSlice)
+			cg, err := tt.pol.compileOneGrant(tt.grant, users, nodesSlice)
 
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
@@ -3841,6 +3841,11 @@ func TestCompileViaGrant(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+
+			var got []tailcfg.FilterRule
+			if cg != nil {
+				got = compileViaForNode(cg, nodeView)
+			}
 
 			if tt.name == "wildcard sources include subnet routes in SrcIPs" {
 				// Wildcard resolves to CGNAT ranges; just check the route is appended.
@@ -3997,9 +4002,10 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 
 			nodeView := tt.node.View()
 			nodesSlice := allNodes.ViewSlice()
+			userIdx := buildUserNodeIndex(nodesSlice)
 
-			got, err := tt.pol.compileGrantWithAutogroupSelf(
-				tt.grant, users, nodeView, nodesSlice,
+			cg, err := tt.pol.compileOneGrant(
+				tt.grant, users, nodesSlice,
 			)
 
 			if tt.wantErr != nil {
@@ -4009,6 +4015,13 @@ func TestCompileGrantWithAutogroupSelf_GrantPaths(t *testing.T) {
 			}
 
 			require.NoError(t, err)
+
+			var got []tailcfg.FilterRule
+			if cg != nil {
+				got = append(got, cg.rules...)
+				got = append(got, compileAutogroupSelf(cg, nodeView, userIdx)...)
+				got = mergeFilterRules(got)
+			}
 
 			switch tt.name {
 			case "autogroup:self destination for untagged node produces same-user devices":
