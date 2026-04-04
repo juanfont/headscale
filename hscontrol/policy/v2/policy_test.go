@@ -355,9 +355,8 @@ func TestInvalidateGlobalPolicyCache(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pm := &PolicyManager{
-				nodes:             tt.oldNodes.ViewSlice(),
-				filterRulesMap:    tt.initialCache,
-				usesAutogroupSelf: false,
+				nodes:          tt.oldNodes.ViewSlice(),
+				filterRulesMap: tt.initialCache,
 			}
 
 			pm.invalidateGlobalPolicyCache(tt.newNodes.ViewSlice())
@@ -399,7 +398,7 @@ func TestAutogroupSelfReducedVsUnreducedRules(t *testing.T) {
 
 	pm, err := NewPolicyManager([]byte(policyStr), users, nodes.ViewSlice())
 	require.NoError(t, err)
-	require.True(t, pm.usesAutogroupSelf, "policy should use autogroup:self")
+	require.True(t, pm.needsPerNodeFilter, "policy should need per-node filter")
 
 	// Test FilterForNode returns reduced rules
 	// For node1: should have rules where node1 is in destinations (its own IP)
@@ -572,7 +571,7 @@ func TestAutogroupSelfPolicyUpdateTriggersMapResponse(t *testing.T) {
 
 	pm, err := NewPolicyManager([]byte(initialPolicy), users, nodes.ViewSlice())
 	require.NoError(t, err)
-	require.True(t, pm.usesAutogroupSelf, "policy should use autogroup:self")
+	require.True(t, pm.needsPerNodeFilter, "policy should need per-node filter")
 
 	// Get initial filter rules for test-1 (should be cached)
 	rules1, err := pm.FilterForNode(test1Node.View())
