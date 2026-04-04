@@ -363,6 +363,22 @@ func (node *Node) CanAccess(matchers []matcher.Match, node2 *Node) bool {
 	return false
 }
 
+// CanAccessRoute determines whether a specific route prefix should be
+// visible to this node based on the given matchers.
+//
+// Unlike CanAccess, this function intentionally does NOT check
+// DestsIsTheInternet(). Exit routes (0.0.0.0/0, ::/0) are handled by
+// RoutesForPeer (state.go) which adds them unconditionally from
+// ExitRoutes(), not through ACL-based route filtering. The
+// DestsIsTheInternet check in CanAccess exists solely for peer
+// visibility determination (should two nodes see each other), which
+// is a separate concern from route prefix authorization.
+//
+// Additionally, autogroup:internet is explicitly skipped during filter
+// rule compilation (filter.go), so no matchers ever contain "the
+// internet" from internet-targeted ACLs. Wildcard "*" dests produce
+// matchers where DestsOverlapsPrefixes(0.0.0.0/0) already returns
+// true, so the check would be redundant for that case.
 func (node *Node) CanAccessRoute(matchers []matcher.Match, route netip.Prefix) bool {
 	src := node.IPs()
 	subnetRoutes := node.SubnetRoutes()
