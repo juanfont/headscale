@@ -25,7 +25,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
@@ -301,6 +300,13 @@ func TestACLCompat(t *testing.T) {
 	}
 }
 
+// aclErrorMessageMap maps Tailscale SaaS error substrings to headscale
+// equivalents. Populated as mismatches are discovered.
+var aclErrorMessageMap = map[string]string{
+	// Add known wording differences here as they are discovered.
+	// Example: "tag not found" -> "undefined tag",
+}
+
 // testACLError verifies that an invalid policy produces the expected error.
 func testACLError(t *testing.T, tf aclTestFile) {
 	t.Helper()
@@ -309,16 +315,12 @@ func testACLError(t *testing.T, tf aclTestFile) {
 
 	pol, err := unmarshalPolicy(policyJSON)
 	if err != nil {
-		// Parse-time error — valid for some error tests
+		// Parse-time error.
 		if tf.Input.APIResponseBody != nil {
 			wantMsg := tf.Input.APIResponseBody.Message
 			if wantMsg != "" {
-				assert.Contains(
-					t,
-					err.Error(),
-					wantMsg,
-					"%s: error message should contain expected substring",
-					tf.TestID,
+				assertACLErrorContains(
+					t, err, wantMsg, tf.TestID,
 				)
 			}
 		}
@@ -331,46 +333,19 @@ func testACLError(t *testing.T, tf aclTestFile) {
 		if tf.Input.APIResponseBody != nil {
 			wantMsg := tf.Input.APIResponseBody.Message
 			if wantMsg != "" {
-				// Allow partial match — headscale error messages differ
-				// from Tailscale's
-				errStr := err.Error()
-				if !strings.Contains(errStr, wantMsg) {
-					// Try matching key parts
-					matched := false
-
-					for _, part := range []string{
-						"autogroup:self",
-						"not valid on the src",
-						"port range",
-						"tag not found",
-						"undefined",
-					} {
-						if strings.Contains(wantMsg, part) &&
-							strings.Contains(errStr, part) {
-							matched = true
-
-							break
-						}
-					}
-
-					if !matched {
-						t.Logf(
-							"%s: error message difference\n  want (tailscale): %q\n  got (headscale):  %q",
-							tf.TestID,
-							wantMsg,
-							errStr,
-						)
-					}
-				}
+				assertACLErrorContains(
+					t, err, wantMsg, tf.TestID,
+				)
 			}
 		}
 
 		return
 	}
 
-	// For headscale_differs tests, headscale may accept what Tailscale rejects
+	// For headscale_differs tests, headscale may accept what
+	// Tailscale rejects. Log as skip so it appears in output.
 	if tf.HeadscaleDiffers {
-		t.Logf(
+		t.Skipf(
 			"%s: headscale accepts this policy (Tailscale rejects it)",
 			tf.TestID,
 		)
@@ -381,6 +356,62 @@ func testACLError(t *testing.T, tf aclTestFile) {
 	t.Errorf(
 		"%s: expected error but policy parsed and validated successfully",
 		tf.TestID,
+	)
+}
+
+// assertACLErrorContains checks that an error message matches the
+// expected Tailscale SaaS message, using progressive fallbacks:
+//  1. Direct substring match
+//  2. Mapped equivalent from aclErrorMessageMap
+//  3. Key-part extraction (tags, autogroups, port, undefined)
+//  4. t.Errorf on no match (strict)
+func assertACLErrorContains(
+	t *testing.T,
+	err error,
+	wantMsg string,
+	testID string,
+) {
+	t.Helper()
+
+	errStr := err.Error()
+
+	// 1. Direct substring match.
+	if strings.Contains(errStr, wantMsg) {
+		return
+	}
+
+	// 2. Mapped equivalent.
+	for tsKey, hsKey := range aclErrorMessageMap {
+		if strings.Contains(wantMsg, tsKey) &&
+			strings.Contains(errStr, hsKey) {
+			return
+		}
+	}
+
+	// 3. Key-part extraction.
+	for _, part := range []string{
+		"autogroup:self",
+		"not valid on the src",
+		"port range",
+		"tag not found",
+		"tag:",
+		"undefined",
+		"capability",
+	} {
+		if strings.Contains(wantMsg, part) &&
+			strings.Contains(errStr, part) {
+			return
+		}
+	}
+
+	// 4. No match — strict failure.
+	t.Errorf(
+		"%s: error message mismatch\n"+
+			"  want (tailscale): %q\n"+
+			"  got  (headscale): %q",
+		testID,
+		wantMsg,
+		errStr,
 	)
 }
 
