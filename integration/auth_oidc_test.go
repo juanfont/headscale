@@ -15,6 +15,7 @@ import (
 	policyv2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/integration/hsic"
+	"github.com/juanfont/headscale/integration/integrationutil"
 	"github.com/juanfont/headscale/integration/tsic"
 	"github.com/oauth2-proxy/mockoidc"
 	"github.com/samber/lo"
@@ -77,8 +78,7 @@ func TestOIDCAuthenticationPingAll(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	headscale, err := scenario.Headscale()
 	require.NoError(t, err)
@@ -188,8 +188,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d (before expiry)", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 
 	// Wait for OIDC token expiry and verify all nodes transition to NeedsLogin.
 	// We add extra time to account for:
@@ -198,7 +197,7 @@ func TestOIDCExpireNodesBasedOnTokenExpiry(t *testing.T) {
 	// - Safety margin for test reliability
 	loginTimeSpread := 1 * time.Minute // Account for sequential login delays
 	safetyBuffer := 30 * time.Second   // Additional safety margin
-	totalWaitTime := shortAccessTTL + loginTimeSpread + safetyBuffer
+	totalWaitTime := integrationutil.ScaledTimeout(shortAccessTTL + loginTimeSpread + safetyBuffer)
 
 	t.Logf("Waiting %v for OIDC tokens to expire (TTL: %v, spread: %v, buffer: %v)",
 		totalWaitTime, shortAccessTTL, loginTimeSpread, safetyBuffer)
@@ -451,8 +450,7 @@ func TestOIDCAuthenticationWithPKCE(t *testing.T) {
 		return x.String()
 	})
 
-	success := pingAllHelper(t, allClients, allAddrs)
-	t.Logf("%d successful pings out of %d", success, len(allClients)*len(allIps))
+	assertPingAll(t, allClients, allAddrs)
 }
 
 // TestOIDCReloginSameNodeNewUser tests the scenario where:
@@ -528,7 +526,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
 
@@ -540,7 +538,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		listNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes during initial validation")
 		assert.Len(ct, listNodes, 1, "Expected exactly 1 node after first login, got %d", len(listNodes))
-	}, 30*time.Second, 1*time.Second, "validating initial node creation for user1 after OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating initial node creation for user1 after OIDC login")
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
@@ -555,7 +553,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 
 		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
 		assert.NoError(ct, err, "Failed to parse node ID from status")
-	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for node ID to be populated in status after initial login")
 
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
@@ -581,7 +579,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err, "Failed to get client status during logout validation")
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout, got %s", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for user1 logout to complete before user2 login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user1 logout to complete before user2 login")
 
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
 	require.NoError(t, err)
@@ -619,7 +617,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after user2 login - expected both user1 and user2: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating both user1 and user2 exist after second OIDC login")
 
 	var listNodesAfterNewUserLogin []*v1.Node
 	// First, wait for the new node to be created
@@ -629,7 +627,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.NoError(ct, err, "Failed to list nodes after user2 login")
 		// We might temporarily have more than 2 nodes during cleanup, so check for at least 2
 		assert.GreaterOrEqual(ct, len(listNodesAfterNewUserLogin), 2, "Should have at least 2 nodes after user2 login, got %d (may include temporary nodes during cleanup)", len(listNodesAfterNewUserLogin))
-	}, 30*time.Second, 1*time.Second, "waiting for user2 node creation (allowing temporary extra nodes during cleanup)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user2 node creation (allowing temporary extra nodes during cleanup)")
 
 	// Then wait for cleanup to stabilize at exactly 2 nodes
 	t.Logf("Waiting for node cleanup stabilization at %s", time.Now().Format(TimestampFormat))
@@ -646,7 +644,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			assert.Equal(ct, listNodesAfterNewUserLogin[0].GetMachineKey(), listNodesAfterNewUserLogin[1].GetMachineKey(), "Both nodes should share the same machine key")
 			assert.NotEqual(ct, listNodesAfterNewUserLogin[0].GetNodeKey(), listNodesAfterNewUserLogin[1].GetNodeKey(), "Node keys should be different between user1 and user2 nodes")
 		}
-	}, 90*time.Second, 2*time.Second, "waiting for node count stabilization at exactly 2 nodes after user2 login")
+	}, integrationutil.ScaledTimeout(90*time.Second), 2*time.Second, "waiting for node count stabilization at exactly 2 nodes after user2 login")
 
 	// Security validation: Only user2's node should be active after user switch
 	var activeUser2NodeID types.NodeID
@@ -676,7 +674,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		} else {
 			assert.Fail(c, "User2 node not found in nodestore")
 		}
-	}, 60*time.Second, 2*time.Second, "validating only user2 node is online after user switch")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating only user2 node is online after user switch")
 
 	// Before logging out user2, validate we have exactly 2 nodes and both are stable
 	t.Logf("Pre-logout validation: checking node stability at %s", time.Now().Format(TimestampFormat))
@@ -691,7 +689,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			assert.NotEmpty(ct, node.GetMachineKey(), "Node %d should have a valid machine key before logout", i)
 			t.Logf("Pre-logout node %d: User=%s, MachineKey=%s", i, node.GetUser().GetName(), node.GetMachineKey()[:16]+"...")
 		}
-	}, 60*time.Second, 2*time.Second, "validating stable node count and integrity before user2 logout")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating stable node count and integrity before user2 logout")
 
 	// Log out user2, and log into user1, no new node should be created,
 	// the node should now "become" node1 again
@@ -717,7 +715,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err, "Failed to get client status during user2 logout validation")
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after user2 logout, got %s", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for user2 logout to complete before user1 relogin")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user2 logout to complete before user1 relogin")
 
 	// Before logging back in, ensure we still have exactly 2 nodes
 	// Note: We skip validateLogoutComplete here since it expects all nodes to be offline,
@@ -736,7 +734,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 			assert.NotEmpty(ct, node.GetMachineKey(), "Node %d should still have a valid machine key after user2 logout", i)
 			t.Logf("Post-logout node %d: User=%s, MachineKey=%s", i, node.GetUser().GetName(), node.GetMachineKey()[:16]+"...")
 		}
-	}, 60*time.Second, 2*time.Second, "validating node persistence and integrity after user2 logout")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating node persistence and integrity after user2 logout")
 
 	// We do not actually "change" the user here, it is done by logging in again
 	// as the OIDC mock server is kind of like a stack, and the next user is
@@ -752,7 +750,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err, "Failed to get client status during user1 relogin validation")
 		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after user1 relogin, got %s", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for user1 relogin to complete (final login)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user1 relogin to complete (final login)")
 
 	t.Logf("Logged back in")
 	t.Log("timestamp: " + time.Now().Format(TimestampFormat) + "\n")
@@ -787,7 +785,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("Final user validation failed - both users should persist after relogin cycle: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating user persistence after complete relogin cycle (user1->user2->user1)")
 
 	var listNodesAfterLoggingBackIn []*v1.Node
 	// Wait for login to complete and nodes to stabilize
@@ -828,7 +826,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		assert.NotEqual(ct, listNodesAfterLoggingBackIn[0].GetNodeKey(), listNodesAfterLoggingBackIn[1].GetNodeKey(), "Final nodes should have different node keys for different users")
 
 		t.Logf("Final validation complete - node counts and key relationships verified at %s", time.Now().Format(TimestampFormat))
-	}, 60*time.Second, 2*time.Second, "validating final node state after complete user1->user2->user1 relogin cycle with detailed key validation")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating final node state after complete user1->user2->user1 relogin cycle with detailed key validation")
 
 	// Security validation: Only user1's node should be active after relogin
 	var activeUser1NodeID types.NodeID
@@ -858,7 +856,7 @@ func TestOIDCReloginSameNodeNewUser(t *testing.T) {
 		} else {
 			assert.Fail(c, "User1 node not found in nodestore after relogin")
 		}
-	}, 60*time.Second, 2*time.Second, "validating only user1 node is online after final relogin")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating only user1 node is online after final relogin")
 }
 
 // TestOIDCFollowUpUrl validates the follow-up login flow
@@ -935,7 +933,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		assert.NoError(c, err)
 
 		assert.NotEqual(c, u.String(), st.AuthURL, "AuthURL should change")
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for registration cache to expire and status to reflect NeedsLogin")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for registration cache to expire and status to reflect NeedsLogin")
 
 	_, err = doLoginURL(ts.Hostname(), newUrl)
 	require.NoError(t, err)
@@ -973,7 +971,7 @@ func TestOIDCFollowUpUrl(t *testing.T) {
 		listNodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, listNodes, 1)
-	}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list after OIDC login")
+	}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list after OIDC login")
 }
 
 // TestOIDCMultipleOpenedLoginUrls tests the scenario:
@@ -1083,7 +1081,7 @@ func TestOIDCMultipleOpenedLoginUrls(t *testing.T) {
 			listNodes, err := headscale.ListNodes()
 			assert.NoError(c, err)
 			assert.Len(c, listNodes, 1)
-		}, 10*time.Second, 200*time.Millisecond, "Waiting for expected node list after OIDC login",
+		}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "Waiting for expected node list after OIDC login",
 	)
 }
 
@@ -1178,7 +1176,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("User validation failed after first login - unexpected users: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating user1 creation after initial OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating user1 creation after initial OIDC login")
 
 	t.Logf("Validating initial node creation at %s", time.Now().Format(TimestampFormat))
 
@@ -1190,7 +1188,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		initialNodes, err = headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes during initial validation")
 		assert.Len(ct, initialNodes, 1, "Expected exactly 1 node after first login, got %d", len(initialNodes))
-	}, 30*time.Second, 1*time.Second, "validating initial node creation for user1 after OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating initial node creation for user1 after OIDC login")
 
 	// Collect expected node IDs for validation after user1 initial login
 	expectedNodes := make([]types.NodeID, 0, 1)
@@ -1205,7 +1203,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 
 		nodeID, err = strconv.ParseUint(string(status.Self.ID), 10, 64)
 		assert.NoError(ct, err, "Failed to parse node ID from status")
-	}, 30*time.Second, 1*time.Second, "waiting for node ID to be populated in status after initial login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for node ID to be populated in status after initial login")
 
 	expectedNodes = append(expectedNodes, types.NodeID(nodeID))
 
@@ -1234,7 +1232,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err, "Failed to get client status during logout validation")
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout, got %s", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for user1 logout to complete before same-user relogin")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user1 logout to complete before same-user relogin")
 
 	// Validate node persistence during logout (node should remain in DB)
 	t.Logf("Validating node persistence during logout at %s", time.Now().Format(TimestampFormat))
@@ -1242,7 +1240,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		listNodes, err := headscale.ListNodes()
 		assert.NoError(ct, err, "Failed to list nodes during logout validation")
 		assert.Len(ct, listNodes, 1, "Should still have exactly 1 node during logout (node should persist in DB), got %d", len(listNodes))
-	}, 30*time.Second, 1*time.Second, "validating node persistence in database during same-user logout")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating node persistence in database during same-user logout")
 
 	// Login again as the same user (user1)
 	u, err = ts.LoginWithURL(headscale.GetEndpoint())
@@ -1256,7 +1254,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err, "Failed to get client status during relogin validation")
 		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after user1 relogin, got %s", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for user1 relogin to complete (same user)")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for user1 relogin to complete (same user)")
 
 	t.Logf("Final validation: checking user persistence after same-user relogin at %s", time.Now().Format(TimestampFormat))
 	assert.EventuallyWithT(t, func(ct *assert.CollectT) {
@@ -1281,7 +1279,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		if diff := cmp.Diff(wantUsers, listUsers, cmpopts.IgnoreUnexported(v1.User{}), cmpopts.IgnoreFields(v1.User{}, "CreatedAt")); diff != "" {
 			ct.Errorf("Final user validation failed - user1 should persist after same-user relogin: %s", diff)
 		}
-	}, 30*time.Second, 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating user1 persistence after same-user OIDC relogin cycle")
 
 	var finalNodes []*v1.Node
 
@@ -1304,7 +1302,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		assert.NotEqual(ct, initialNodeKey, finalNode.GetNodeKey(), "Node key should be regenerated after logout/relogin even for same user")
 
 		t.Logf("Final validation complete - same user relogin key relationships verified at %s", time.Now().Format(TimestampFormat))
-	}, 60*time.Second, 2*time.Second, "validating final node state after same-user OIDC relogin cycle with key preservation validation")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating final node state after same-user OIDC relogin cycle with key preservation validation")
 
 	// Security validation: user1's node should be active after relogin
 	activeUser1NodeID := types.NodeID(finalNodes[0].GetId())
@@ -1324,7 +1322,7 @@ func TestOIDCReloginSameNodeSameUser(t *testing.T) {
 		} else {
 			assert.Fail(c, "User1 node not found in nodestore after same-user relogin")
 		}
-	}, 60*time.Second, 2*time.Second, "validating user1 node is online after same-user OIDC relogin")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "validating user1 node is online after same-user OIDC relogin")
 }
 
 // TestOIDCExpiryAfterRestart validates that node expiry is preserved
@@ -1400,7 +1398,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 			initialExpiry = expiryTime
 			t.Logf("Initial expiry set to: %v (expires in %v)", expiryTime, time.Until(expiryTime))
 		}
-	}, 30*time.Second, 1*time.Second, "validating initial expiry after OIDC login")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating initial expiry after OIDC login")
 
 	// Now restart the tailscaled container
 	t.Logf("Restarting tailscaled container at %s", time.Now().Format(TimestampFormat))
@@ -1422,7 +1420,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 		}
 
 		assert.Equal(ct, "Running", status.BackendState)
-	}, 60*time.Second, 2*time.Second, "waiting for tailscale to reconnect after restart")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "waiting for tailscale to reconnect after restart")
 
 	// THE CRITICAL TEST: Verify expiry is still set correctly after restart
 	t.Logf("Validating expiry preservation after restart at %s", time.Now().Format(TimestampFormat))
@@ -1450,7 +1448,7 @@ func TestOIDCExpiryAfterRestart(t *testing.T) {
 			t.Logf("SUCCESS: Expiry preserved after restart: %v (expires in %v)",
 				expiryTime, time.Until(expiryTime))
 		}
-	}, 30*time.Second, 1*time.Second, "validating expiry preservation after restart")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "validating expiry preservation after restart")
 }
 
 // TestOIDCACLPolicyOnJoin validates that ACL policies are correctly applied
@@ -1572,7 +1570,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		gatewayNodeID = gatewayNode.GetId()
 		assert.Len(ct, gatewayNode.GetAvailableRoutes(), 1)
 		assert.Contains(ct, gatewayNode.GetAvailableRoutes(), advertiseRoute)
-	}, 10*time.Second, 500*time.Millisecond, "route advertisement should propagate to headscale")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route advertisement should propagate to headscale")
 
 	// Approve the advertised route
 	_, err = headscale.ApproveRoutes(
@@ -1590,7 +1588,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 		gatewayNode := nodes[0]
 		assert.Len(ct, gatewayNode.GetApprovedRoutes(), 1)
 		assert.Contains(ct, gatewayNode.GetApprovedRoutes(), advertiseRoute)
-	}, 10*time.Second, 500*time.Millisecond, "route approval should propagate to headscale")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "route approval should propagate to headscale")
 
 	// NOW create the OIDC user by having them join
 	// This is where issue #2888 manifests - the new OIDC node should immediately
@@ -1660,7 +1658,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 				t.Logf("Gateway peer AllowedIPs: %v", allowedIPs)
 			}
 		}
-	}, 15*time.Second, 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(15*time.Second), 500*time.Millisecond,
 		"OIDC user should immediately see gateway's advertised route without client restart (issue #2888)")
 
 	// Verify that the Gateway node sees the OIDC node's advertised route (AutoApproveRoutes check)
@@ -1692,7 +1690,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 					"Gateway user should immediately see OIDC's advertised route %s in PrimaryRoutes", oidcAdvertiseRoute)
 			}
 		}
-	}, 15*time.Second, 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(15*time.Second), 500*time.Millisecond,
 		"Gateway user should immediately see OIDC's advertised route (AutoApproveRoutes check)")
 
 	// Additional validation: Verify nodes in headscale match expectations
@@ -1740,7 +1738,7 @@ func TestOIDCACLPolicyOnJoin(t *testing.T) {
 			assert.Equal(ct, "oidcuser", oidcUserFound.GetName())
 			assert.Equal(ct, "oidcuser@headscale.net", oidcUserFound.GetEmail())
 		}
-	}, 10*time.Second, 500*time.Millisecond, "headscale should have correct users and nodes")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "headscale should have correct users and nodes")
 
 	t.Logf("Test completed successfully - issue #2888 fix validated")
 }
@@ -1831,7 +1829,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState)
-	}, 30*time.Second, 1*time.Second, "waiting for initial login to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for initial login to complete")
 
 	// Step 1: Verify initial route is advertised, approved, and SERVING
 	t.Logf("Step 1: Verifying initial route is advertised, approved, and SERVING at %s", time.Now().Format(TimestampFormat))
@@ -1855,7 +1853,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 			assert.Contains(c, initialNode.GetSubnetRoutes(), advertiseRoute,
 				"Subnet routes should contain %s", advertiseRoute)
 		}
-	}, 30*time.Second, 500*time.Millisecond, "initial route should be serving")
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond, "initial route should be serving")
 
 	require.NotNil(t, initialNode, "Initial node should be found")
 	initialNodeID := initialNode.GetId()
@@ -1873,7 +1871,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "NeedsLogin", status.BackendState, "Expected NeedsLogin state after logout")
-	}, 30*time.Second, 1*time.Second, "waiting for logout to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for logout to complete")
 
 	t.Logf("Logout completed, node should still exist in database")
 
@@ -1882,7 +1880,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		nodes, err := headscale.ListNodes()
 		assert.NoError(c, err)
 		assert.Len(c, nodes, 1, "Node should persist in database after logout")
-	}, 10*time.Second, 500*time.Millisecond, "node should persist after logout")
+	}, integrationutil.ScaledTimeout(10*time.Second), 500*time.Millisecond, "node should persist after logout")
 
 	// Step 3: Re-authenticate via OIDC as the same user
 	t.Logf("Step 3: Re-authenticating with same user via OIDC at %s", time.Now().Format(TimestampFormat))
@@ -1898,7 +1896,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 		status, err := ts.Status()
 		assert.NoError(ct, err)
 		assert.Equal(ct, "Running", status.BackendState, "Expected Running state after relogin")
-	}, 30*time.Second, 1*time.Second, "waiting for relogin to complete")
+	}, integrationutil.ScaledTimeout(30*time.Second), 1*time.Second, "waiting for relogin to complete")
 
 	t.Logf("Re-authentication completed at %s", time.Now().Format(TimestampFormat))
 
@@ -1932,7 +1930,7 @@ func TestOIDCReloginSameUserRoutesPreserved(t *testing.T) {
 			assert.Equal(c, initialNodeID, node.GetId(),
 				"Node ID should be preserved after same-user relogin")
 		}
-	}, 30*time.Second, 500*time.Millisecond,
+	}, integrationutil.ScaledTimeout(30*time.Second), 500*time.Millisecond,
 		"BUG #2896: routes should remain SERVING after OIDC logout/relogin with same user")
 
 	t.Logf("Test completed - verifying issue #2896 fix for OIDC")

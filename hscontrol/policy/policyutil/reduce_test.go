@@ -9,7 +9,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/policy"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
-	v2 "github.com/juanfont/headscale/hscontrol/policy/v2"
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
 	"github.com/rs/zerolog/log"
@@ -206,21 +205,19 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
 					SrcIPs: []string{
-						"100.64.0.1/32",
-						"100.64.0.2/32",
-						"fd7a:115c:a1e0::1/128",
-						"fd7a:115c:a1e0::2/128",
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
 					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.1/32",
+							IP:    "100.64.0.1",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "fd7a:115c:a1e0::1/128",
+							IP:    "fd7a:115c:a1e0::1",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
@@ -228,7 +225,6 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -356,18 +352,16 @@ func TestReduceFilterRules(t *testing.T) {
 				// autogroup:internet does NOT generate packet filters - it's handled
 				// by exit node routing via AllowedIPs, not by packet filtering.
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -459,50 +453,22 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
+				// Exit routes (0.0.0.0/0, ::/0) are skipped when checking RoutableIPs
+				// overlap, matching Tailscale SaaS behavior. Only destinations that
+				// contain the node's own Tailscale IP (via InIPSet) are kept.
+				// Here, 64.0.0.0/2 contains 100.64.0.100 (CGNAT range), so it matches.
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{IP: "0.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "8.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "11.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "12.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "16.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "32.0.0.0/3", Ports: tailcfg.PortRangeAny},
 						{IP: "64.0.0.0/2", Ports: tailcfg.PortRangeAny},
-						{IP: "128.0.0.0/3", Ports: tailcfg.PortRangeAny},
-						{IP: "160.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "168.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "172.0.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "172.32.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "172.64.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "172.128.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "173.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "174.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "176.0.0.0/4", Ports: tailcfg.PortRangeAny},
-						{IP: "192.0.0.0/9", Ports: tailcfg.PortRangeAny},
-						{IP: "192.128.0.0/11", Ports: tailcfg.PortRangeAny},
-						{IP: "192.160.0.0/13", Ports: tailcfg.PortRangeAny},
-						{IP: "192.169.0.0/16", Ports: tailcfg.PortRangeAny},
-						{IP: "192.170.0.0/15", Ports: tailcfg.PortRangeAny},
-						{IP: "192.172.0.0/14", Ports: tailcfg.PortRangeAny},
-						{IP: "192.176.0.0/12", Ports: tailcfg.PortRangeAny},
-						{IP: "192.192.0.0/10", Ports: tailcfg.PortRangeAny},
-						{IP: "193.0.0.0/8", Ports: tailcfg.PortRangeAny},
-						{IP: "194.0.0.0/7", Ports: tailcfg.PortRangeAny},
-						{IP: "196.0.0.0/6", Ports: tailcfg.PortRangeAny},
-						{IP: "200.0.0.0/5", Ports: tailcfg.PortRangeAny},
-						{IP: "208.0.0.0/4", Ports: tailcfg.PortRangeAny},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -566,16 +532,15 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
@@ -587,7 +552,6 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -651,16 +615,15 @@ func TestReduceFilterRules(t *testing.T) {
 				},
 			},
 			want: []tailcfg.FilterRule{
-				// Merged: Both ACL rules combined (same SrcIPs and IPProto)
+				// Merged: Both ACL rules combined (same SrcIPs)
 				{
-					SrcIPs: []string{"100.64.0.1/32", "100.64.0.2/32", "fd7a:115c:a1e0::1/128", "fd7a:115c:a1e0::2/128"},
+					SrcIPs: []string{
+						"100.64.0.1-100.64.0.2",
+						"fd7a:115c:a1e0::1-fd7a:115c:a1e0::2",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
-							Ports: tailcfg.PortRangeAny,
-						},
-						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
@@ -672,7 +635,6 @@ func TestReduceFilterRules(t *testing.T) {
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},
@@ -725,22 +687,24 @@ func TestReduceFilterRules(t *testing.T) {
 			},
 			want: []tailcfg.FilterRule{
 				{
-					SrcIPs: []string{"100.64.0.1/32", "fd7a:115c:a1e0::1/128"},
+					SrcIPs: []string{
+						"100.64.0.1",
+						"fd7a:115c:a1e0::1",
+					},
 					DstPorts: []tailcfg.NetPortRange{
 						{
-							IP:    "100.64.0.100/32",
+							IP:    "100.64.0.100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "fd7a:115c:a1e0::100/128",
+							IP:    "fd7a:115c:a1e0::100",
 							Ports: tailcfg.PortRangeAny,
 						},
 						{
-							IP:    "172.16.0.21/32",
+							IP:    "172.16.0.21",
 							Ports: tailcfg.PortRangeAny,
 						},
 					},
-					IPProto: []int{v2.ProtocolTCP, v2.ProtocolUDP, v2.ProtocolICMP, v2.ProtocolIPv6ICMP},
 				},
 			},
 		},

@@ -29,6 +29,7 @@ config*.yaml
 !config-example.yaml
 derp.yaml
 *.hujson
+!hscontrol/policy/v2/testdata/*/*.hujson
 *.key
 /db.sqlite
 *.sqlite3

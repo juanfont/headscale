@@ -1,0 +1,282 @@
+// GRANT-P01_2
+//
+// Grant:  src=['100.90.199.68'] dst=['*'] ip=['*']
+//
+// Expected: Rules on 8 nodes
+{
+  "test_id": "GRANT-P01_2",
+  "input": {
+    "full_policy": {
+      "groups": {
+        "group:admins": [
+          "kratail2tid@passkey"
+        ],
+        "group:developers": [
+          "kristoffer@dalby.cc",
+          "kratail2tid@passkey"
+        ],
+        "group:monitors": [
+          "monitorpasskeykradalby@passkey"
+        ],
+        "group:empty": []
+      },
+      "tagOwners": {
+        "tag:server": [
+          "kratail2tid@passkey"
+        ],
+        "tag:prod": [
+          "kratail2tid@passkey"
+        ],
+        "tag:client": [
+          "kratail2tid@passkey"
+        ],
+        "tag:router": [
+          "kratail2tid@passkey"
+        ],
+        "tag:exit": [
+          "kratail2tid@passkey"
+        ]
+      },
+      "hosts": {
+        "webserver": "100.108.74.26",
+        "prodbox": "100.103.8.15",
+        "internal": "10.0.0.0/8"
+      },
+      "autoApprovers": {
+        "routes": {
+          "10.33.0.0/16": [
+            "tag:router"
+          ],
+          "0.0.0.0/0": [
+            "tag:exit"
+          ],
+          "::/0": [
+            "tag:exit"
+          ]
+        }
+      },
+      "grants": [
+        {
+          "src": [
+            "100.90.199.68"
+          ],
+          "dst": [
+            "*"
+          ],
+          "ip": [
+            "*"
+          ]
+        }
+      ]
+    },
+    "api_response_code": 200
+  },
+  "topology": {
+    "nodes": {
+      "exit-node": {
+        "hostname": "exit-node",
+        "tags": [
+          "tag:exit"
+        ],
+        "ipv4": "100.85.66.106",
+        "ipv6": "fd7a:115c:a1e0::7c37:426a"
+      },
+      "subnet-router": {
+        "hostname": "subnet-router",
+        "tags": [
+          "tag:router"
+        ],
+        "ipv4": "100.92.142.61",
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+      },
+      "tagged-client": {
+        "hostname": "tagged-client",
+        "tags": [
+          "tag:client"
+        ],
+        "ipv4": "100.83.200.69",
+        "ipv6": "fd7a:115c:a1e0::c537:c845"
+      },
+      "tagged-prod": {
+        "hostname": "tagged-prod",
+        "tags": [
+          "tag:prod"
+        ],
+        "ipv4": "100.103.8.15",
+        "ipv6": "fd7a:115c:a1e0::5b37:80f"
+      },
+      "tagged-server": {
+        "hostname": "tagged-server",
+        "tags": [
+          "tag:server"
+        ],
+        "ipv4": "100.108.74.26",
+        "ipv6": "fd7a:115c:a1e0::b901:4a87"
+      },
+      "user-kris": {
+        "hostname": "user-kris",
+        "tags": [],
+        "ipv4": "100.110.121.96",
+        "ipv6": "fd7a:115c:a1e0::1737:7960"
+      },
+      "user-mon": {
+        "hostname": "user-mon",
+        "tags": [],
+        "ipv4": "100.103.90.82",
+        "ipv6": "fd7a:115c:a1e0::9e37:5a52"
+      },
+      "user1": {
+        "hostname": "user1",
+        "tags": [],
+        "ipv4": "100.90.199.68",
+        "ipv6": "fd7a:115c:a1e0::2d01:c747"
+      }
+    }
+  },
+  "captures": {
+    "exit-node": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "subnet-router": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-client": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-prod": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "tagged-server": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user-kris": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user-mon": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "user1": {
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.90.199.68"
+          ],
+          "DstPorts": [
+            {
+              "IP": "*",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

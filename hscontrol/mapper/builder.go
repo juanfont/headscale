@@ -3,6 +3,7 @@ package mapper
 import (
 	"encoding/json"
 	"net/netip"
+	"slices"
 	"sort"
 	"time"
 
@@ -80,7 +81,10 @@ func (b *MapResponseBuilder) WithSelfNode() *MapResponseBuilder {
 	tailnode, err := nv.TailNode(
 		b.capVer,
 		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+			// Self node: include own primaries + exit routes (no via steering for self).
+			primaries := policy.ReduceRoutes(nv, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
+
+			return slices.Concat(primaries, nv.ExitRoutes())
 		},
 		b.mapper.cfg)
 	if err != nil {
@@ -300,14 +304,18 @@ func (b *MapResponseBuilder) buildTailPeers(peers views.Slice[types.NodeView]) (
 		changedViews = peers
 	}
 
-	tailPeers, err := types.TailNodes(
-		changedViews, b.capVer,
-		func(id types.NodeID) []netip.Prefix {
-			return policy.ReduceRoutes(node, b.mapper.state.GetNodePrimaryRoutes(id), matchers)
-		},
-		b.mapper.cfg)
-	if err != nil {
-		return nil, err
+	// Build tail nodes with per-peer via-aware route function.
+	tailPeers := make([]*tailcfg.Node, 0, changedViews.Len())
+
+	for _, peer := range changedViews.All() {
+		tn, err := peer.TailNode(b.capVer, func(_ types.NodeID) []netip.Prefix {
+			return b.mapper.state.RoutesForPeer(node, peer, matchers)
+		}, b.mapper.cfg)
+		if err != nil {
+			return nil, err
+		}
+
+		tailPeers = append(tailPeers, tn)
 	}
 
 	// Peers is always returned sorted by Node.ID.

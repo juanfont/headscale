@@ -105,9 +105,13 @@ func NewClient(tb testing.TB, server *TestServer, name string, opts ...ClientOpt
 	uid := types.UserID(user.ID)
 
 	var authKey string
-	if cc.ephemeral {
+
+	switch {
+	case cc.ephemeral:
 		authKey = server.CreateEphemeralPreAuthKey(tb, uid)
-	} else {
+	case len(cc.tags) > 0:
+		authKey = server.CreateTaggedPreAuthKey(tb, uid, cc.tags)
+	default:
 		authKey = server.CreatePreAuthKey(tb, uid)
 	}
 

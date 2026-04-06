@@ -693,7 +693,11 @@ func (s *State) ListPeers(nodeID types.NodeID, peerIDs ...types.NodeID) views.Sl
 		return s.nodeStore.ListPeers(nodeID)
 	}
 
-	// For specific peerIDs, filter from all nodes
+	// For specific peerIDs, filter from all nodes.
+	// This path is used for incremental updates (NodeAdded, NodeChanged)
+	// where the caller already knows which peer IDs are involved.
+	// The peer visibility filtering happens in the mapper's buildTailPeers
+	// via MatchersForNode/ReduceNodes.
 	allNodes := s.nodeStore.ListNodes()
 
 	nodeIDSet := make(map[types.NodeID]struct{}, len(peerIDs))
@@ -1064,6 +1068,48 @@ func (s *State) SetNodeRoutes(nodeID types.NodeID, routes ...netip.Prefix) chang
 // GetNodePrimaryRoutes returns the primary routes for a node.
 func (s *State) GetNodePrimaryRoutes(nodeID types.NodeID) []netip.Prefix {
 	return s.primaryRoutes.PrimaryRoutes(nodeID)
+}
+
+// RoutesForPeer computes the routes a peer should advertise to a specific viewer,
+// applying via grant steering on top of global primary election and exit routes.
+// When no via grants apply, this falls back to existing behavior (global primaries + exit routes).
+func (s *State) RoutesForPeer(
+	viewer, peer types.NodeView,
+	matchers []matcher.Match,
+) []netip.Prefix {
+	viaResult := s.polMan.ViaRoutesForPeer(viewer, peer)
+
+	globalPrimaries := s.primaryRoutes.PrimaryRoutes(peer.ID())
+	exitRoutes := peer.ExitRoutes()
+
+	// Fast path: no via grants affect this pair — existing behavior.
+	if len(viaResult.Include) == 0 && len(viaResult.Exclude) == 0 {
+		allRoutes := slices.Concat(globalPrimaries, exitRoutes)
+
+		return policy.ReduceRoutes(viewer, allRoutes, matchers)
+	}
+
+	// Remove excluded routes (steered to a different peer for this viewer).
+	var routes []netip.Prefix
+
+	for _, p := range slices.Concat(globalPrimaries, exitRoutes) {
+		if !slices.Contains(viaResult.Exclude, p) {
+			routes = append(routes, p)
+		}
+	}
+
+	// Reduce only the non-via routes through matchers.
+	reduced := policy.ReduceRoutes(viewer, routes, matchers)
+
+	// Append via-included routes directly — the via grant IS the authorization,
+	// so these must not be filtered by the viewer's matchers.
+	for _, p := range viaResult.Include {
+		if !slices.Contains(reduced, p) {
+			reduced = append(reduced, p)
+		}
+	}
+
+	return reduced
 }
 
 // PrimaryRoutesString returns a string representation of all primary routes.

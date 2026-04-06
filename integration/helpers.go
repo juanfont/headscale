@@ -153,8 +153,8 @@ func validateLogoutComplete(t *testing.T, headscale ControlServer, expectedNodes
 func validateReloginComplete(t *testing.T, headscale ControlServer, expectedNodes []types.NodeID) {
 	t.Helper()
 
-	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after relogin", 120*time.Second)
-	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after relogin", 3*time.Minute)
+	requireAllClientsOnline(t, headscale, expectedNodes, true, "all clients should be connected after relogin", integrationutil.ScaledTimeout(120*time.Second))
+	requireAllClientsNetInfoAndDERP(t, headscale, expectedNodes, "all clients should have NetInfo and DERP after relogin", integrationutil.ScaledTimeout(3*time.Minute))
 }
 
 // requireAllClientsOnline validates that all nodes are online/offline across all headscale systems
@@ -400,7 +400,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allBatcherOffline, "All nodes should be disconnected from batcher")
-	}, 15*time.Second, 1*time.Second, "batcher disconnection validation")
+	}, integrationutil.ScaledTimeout(15*time.Second), 1*time.Second, "batcher disconnection validation")
 
 	// Stage 2: Verify nodestore offline status (up to 15 seconds due to disconnect detection delay)
 	t.Logf("Stage 2: Verifying nodestore offline status for %d nodes (allowing for 10s disconnect detection delay)", len(expectedNodes))
@@ -426,7 +426,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allNodeStoreOffline, "All nodes should be offline in nodestore")
-	}, 20*time.Second, 1*time.Second, "nodestore offline validation")
+	}, integrationutil.ScaledTimeout(20*time.Second), 1*time.Second, "nodestore offline validation")
 
 	// Stage 3: Verify map response propagation (longest delay due to peer update timing)
 	t.Logf("Stage 3: Verifying map response propagation for %d nodes (allowing for peer map update delays)", len(expectedNodes))
@@ -468,7 +468,7 @@ func requireAllClientsOfflineStaged(t *testing.T, headscale ControlServer, expec
 		}
 
 		assert.True(c, allMapResponsesOffline, "All nodes should be absent from peer map responses")
-	}, 60*time.Second, 2*time.Second, "map response propagation validation")
+	}, integrationutil.ScaledTimeout(60*time.Second), 2*time.Second, "map response propagation validation")
 
 	t.Logf("All stages completed: nodes are fully offline across all systems")
 }
@@ -550,6 +550,23 @@ func assertLastSeenSetWithCollect(c *assert.CollectT, node *v1.Node) {
 	assert.NotNil(c, node.GetLastSeen())
 }
 
+// assertCurlSuccessWithCollect asserts that a curl request succeeds with
+// non-empty content. For use inside EventuallyWithT blocks.
+func assertCurlSuccessWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	result, err := client.Curl(url)
+	assert.NoError(c, err, msg) //nolint:testifylint // CollectT requires assert, not require
+	assert.NotEmpty(c, result, msg)
+}
+
+// assertCurlFailWithCollect asserts that a curl request fails. Uses
+// CurlFailFast internally for aggressive timeouts, avoiding wasted
+// time on retries when we expect the connection to be blocked.
+// For use inside EventuallyWithT blocks.
+func assertCurlFailWithCollect(c *assert.CollectT, client TailscaleClient, url, msg string) {
+	_, err := client.CurlFailFast(url)
+	assert.Error(c, err, msg)
+}
+
 // assertTailscaleNodesLogout verifies that all provided Tailscale clients
 // are in the logged-out state (NeedsLogin).
 func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
@@ -565,28 +582,43 @@ func assertTailscaleNodesLogout(t assert.TestingT, clients []TailscaleClient) {
 	}
 }
 
-// pingAllHelper performs ping tests between all clients and addresses, returning success count.
-// This is used to validate network connectivity in integration tests.
-// Returns the total number of successful ping operations.
+// assertPingAll verifies that every client can ping every address.
+// The entire ping matrix is retried via EventuallyWithT to handle
+// transient failures on slow CI runners. The timeout scales with
+// the number of pings since they run serially and each can take
+// up to ~2s on CI (docker exec overhead + ping timeout).
 //
 //nolint:unparam // opts is variadic for extensibility even though callers currently don't pass options
-func pingAllHelper(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) int {
+func assertPingAll(t *testing.T, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) {
 	t.Helper()
 
-	success := 0
+	// Each ping can take up to ~2s on CI. Budget for 2 full sweeps
+	// (one that might have transient failures + one clean pass).
+	pingCount := len(clients) * len(addrs)
+	perPingBudget := 2 * time.Second
+	timeout := max(
+		// Floor at 30s for small matrices.
+		integrationutil.ScaledTimeout(time.Duration(pingCount)*perPingBudget*2), integrationutil.ScaledTimeout(30*time.Second))
 
+	assert.EventuallyWithT(t, func(c *assert.CollectT) {
+		assertPingAllWithCollect(c, clients, addrs, opts...)
+	}, timeout, 2*time.Second,
+		"all %d clients should be able to ping all %d addresses",
+		len(clients), len(addrs))
+}
+
+// assertPingAllWithCollect pings every address from every client and
+// collects failures on the provided CollectT. Pings run serially to
+// avoid overloading the Docker daemon on resource-constrained CI
+// runners. For use inside EventuallyWithT blocks when the caller
+// needs custom timeout or retry control.
+func assertPingAllWithCollect(c *assert.CollectT, clients []TailscaleClient, addrs []string, opts ...tsic.PingOption) {
 	for _, client := range clients {
 		for _, addr := range addrs {
 			err := client.Ping(addr, opts...)
-			if err != nil {
-				t.Errorf("failed to ping %s from %s: %s", addr, client.Hostname(), err)
-			} else {
-				success++
-			}
+			assert.NoError(c, err, "ping from %s to %s", client.Hostname(), addr) //nolint:testifylint // CollectT requires assert
 		}
 	}
-
-	return success
 }
 
 // pingDerpAllHelper performs DERP-based ping tests between all clients and addresses.

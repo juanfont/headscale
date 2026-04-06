@@ -1,8 +1,11 @@
 package policyutil
 
 import (
+	"net/netip"
+
 	"github.com/juanfont/headscale/hscontrol/types"
 	"github.com/juanfont/headscale/hscontrol/util"
+	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
@@ -16,6 +19,17 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	ret := []tailcfg.FilterRule{}
 
 	for _, rule := range rules {
+		// Handle CapGrant rules separately — they use CapGrant[].Dsts
+		// instead of DstPorts for destination matching.
+		if len(rule.CapGrant) > 0 {
+			reduced := reduceCapGrantRule(node, rule)
+			if reduced != nil {
+				ret = append(ret, *reduced)
+			}
+
+			continue
+		}
+
 		// record if the rule is actually relevant for the given node.
 		var dests []tailcfg.NetPortRange
 
@@ -33,12 +47,19 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 				continue DEST_LOOP
 			}
 
-			// If the node exposes routes, ensure they are note removed
-			// when the filters are reduced.
+			// If the node exposes routes, ensure they are not removed
+			// when the filters are reduced. Exit routes (0.0.0.0/0, ::/0)
+			// are skipped here because exit nodes handle traffic via
+			// AllowedIPs/routing, not packet filter rules. This matches
+			// Tailscale SaaS behavior where exit nodes do not receive
+			// filter rules for destinations that only overlap via exit routes.
 			if node.Hostinfo().Valid() {
 				routableIPs := node.Hostinfo().RoutableIPs()
 				if routableIPs.Len() > 0 {
 					for _, routableIP := range routableIPs.All() {
+						if tsaddr.IsExitRoute(routableIP) {
+							continue
+						}
 						if expanded.OverlapsPrefix(routableIP) {
 							dests = append(dests, dest)
 							continue DEST_LOOP
@@ -69,4 +90,78 @@ func ReduceFilterRules(node types.NodeView, rules []tailcfg.FilterRule) []tailcf
 	}
 
 	return ret
+}
+
+// reduceCapGrantRule filters a CapGrant rule to only include CapGrant
+// entries whose Dsts match the given node's IPs. When a broad prefix
+// (e.g. 100.64.0.0/10 from dst:*) contains a node's IP, it is
+// narrowed to the node's specific /32 or /128 prefix. Returns nil if
+// no CapGrant entries are relevant to this node.
+func reduceCapGrantRule(
+	node types.NodeView,
+	rule tailcfg.FilterRule,
+) *tailcfg.FilterRule {
+	var capGrants []tailcfg.CapGrant
+
+	nodeIPs := node.IPs()
+
+	for _, cg := range rule.CapGrant {
+		// Collect the node's IPs that fall within any of this
+		// CapGrant's Dsts. Broad prefixes are narrowed to specific
+		// /32 and /128 entries for the node.
+		var matchingDsts []netip.Prefix
+
+		for _, dst := range cg.Dsts {
+			if dst.IsSingleIP() {
+				// Already a specific IP — keep it if it matches.
+				if dst.Addr() == nodeIPs[0] || (len(nodeIPs) > 1 && dst.Addr() == nodeIPs[1]) {
+					matchingDsts = append(matchingDsts, dst)
+				}
+			} else {
+				// Broad prefix — narrow to node's specific IPs.
+				for _, ip := range nodeIPs {
+					if dst.Contains(ip) {
+						matchingDsts = append(matchingDsts, netip.PrefixFrom(ip, ip.BitLen()))
+					}
+				}
+			}
+		}
+
+		// Also check routable IPs (subnet routes) — nodes that
+		// advertise routes should receive CapGrant rules for
+		// destinations that overlap their routes.
+		if node.Hostinfo().Valid() {
+			routableIPs := node.Hostinfo().RoutableIPs()
+			if routableIPs.Len() > 0 {
+				for _, dst := range cg.Dsts {
+					for _, routableIP := range routableIPs.All() {
+						if tsaddr.IsExitRoute(routableIP) {
+							continue
+						}
+
+						if dst.Overlaps(routableIP) {
+							// For route overlaps, keep the original prefix.
+							matchingDsts = append(matchingDsts, dst)
+						}
+					}
+				}
+			}
+		}
+
+		if len(matchingDsts) > 0 {
+			capGrants = append(capGrants, tailcfg.CapGrant{
+				Dsts:   matchingDsts,
+				CapMap: cg.CapMap,
+			})
+		}
+	}
+
+	if len(capGrants) == 0 {
+		return nil
+	}
+
+	return &tailcfg.FilterRule{
+		SrcIPs:   rule.SrcIPs,
+		CapGrant: capGrants,
+	}
 }

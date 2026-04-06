@@ -36,8 +36,16 @@ var (
 )
 
 // RouteFunc is a function that takes a node ID and returns a list of
-// netip.Prefixes representing the primary routes for that node.
+// netip.Prefixes representing the routes for that node.
 type RouteFunc func(id NodeID) []netip.Prefix
+
+// ViaRouteResult describes via grant effects for a viewer-peer pair.
+type ViaRouteResult struct {
+	// Include contains prefixes this peer should serve to this viewer (via-designated).
+	Include []netip.Prefix
+	// Exclude contains prefixes steered to OTHER peers (suppress from global primary).
+	Exclude []netip.Prefix
+}
 
 type (
 	NodeID  uint64
@@ -297,11 +305,17 @@ func (node *Node) InIPSet(set *netipx.IPSet) bool {
 	return slices.ContainsFunc(node.IPs(), set.Contains)
 }
 
-// AppendToIPSet adds the individual ips in NodeAddresses to a
-// given netipx.IPSetBuilder.
+// AppendToIPSet adds all IP addresses of the node to the given
+// netipx.IPSetBuilder. For identity-based aliases (tags, users,
+// groups, autogroups), both IPv4 and IPv6 must be included to
+// match Tailscale's behavior in the FilterRule wire format.
 func (node *Node) AppendToIPSet(build *netipx.IPSetBuilder) {
-	for _, ip := range node.IPs() {
-		build.Add(ip)
+	if node.IPv4 != nil {
+		build.Add(*node.IPv4)
+	}
+
+	if node.IPv6 != nil {
+		build.Add(*node.IPv6)
 	}
 }
 
@@ -1030,6 +1044,10 @@ func (nv NodeView) HasNetworkChanges(other NodeView) bool {
 		return true
 	}
 
+	if !slices.Equal(nv.ExitRoutes(), other.ExitRoutes()) {
+		return true
+	}
+
 	return false
 }
 
@@ -1100,9 +1118,19 @@ func (nv NodeView) TailNode(
 		keyExpiry = nv.Expiry().Get()
 	}
 
-	primaryRoutes := primaryRouteFunc(nv.ID())
-	allowedIPs := slices.Concat(nv.Prefixes(), primaryRoutes, nv.ExitRoutes())
+	// routeFunc returns ALL routes (subnet + exit) for this node.
+	allRoutes := primaryRouteFunc(nv.ID())
+	allowedIPs := slices.Concat(nv.Prefixes(), allRoutes)
 	slices.SortFunc(allowedIPs, netip.Prefix.Compare)
+
+	// PrimaryRoutes only includes non-exit subnet routes for HA tracking.
+	var primaryRoutes []netip.Prefix
+
+	for _, r := range allRoutes {
+		if !tsaddr.IsExitRoute(r) {
+			primaryRoutes = append(primaryRoutes, r)
+		}
+	}
 
 	capMap := tailcfg.NodeCapMap{
 		tailcfg.CapabilityAdmin: []tailcfg.RawMessage{},
@@ -1115,6 +1143,12 @@ func (nv NodeView) TailNode(
 	if cfg.Taildrop.Enabled {
 		capMap[tailcfg.CapabilityFileSharing] = []tailcfg.RawMessage{}
 	}
+
+	// Enable Taildrive sharing and access on all nodes. The actual
+	// access control is enforced by cap/drive grants in FilterRules;
+	// without a matching grant these attributes alone do nothing.
+	capMap[tailcfg.NodeAttrsTaildriveShare] = []tailcfg.RawMessage{}
+	capMap[tailcfg.NodeAttrsTaildriveAccess] = []tailcfg.RawMessage{}
 
 	tNode := tailcfg.Node{
 		//nolint:gosec // G115: NodeID values are within int64 range

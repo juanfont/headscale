@@ -1,0 +1,26 @@
+// SSH-E3
+//
+// SSH:  (no SSH rules)
+//
+// Expected: No SSH rules
+{
+  "test_id": "SSH-E3",
+  "ssh_section": [],
+  "nodes": {
+    "user1": {
+      "rules": []
+    },
+    "user-kris": {
+      "rules": []
+    },
+    "user-mon": {
+      "rules": []
+    },
+    "tagged-server": {
+      "rules": []
+    },
+    "tagged-prod": {
+      "rules": []
+    }
+  }
+}
