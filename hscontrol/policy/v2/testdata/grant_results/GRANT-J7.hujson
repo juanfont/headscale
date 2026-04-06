@@ -1,12 +1,14 @@
 // GRANT-J7
 //
-// Grant:  src=['*'] dst=['tag:server'] ip=['icmp']
-//
-// Expected: Error (HTTP 400) — port range "icmp": invalid first integer
+// Grants: 1
+//   src=['*'] dst=['tag:server']
 {
   "test_id": "GRANT-J7",
+  "description": "",
+  "timestamp": "2026-04-05T21:25:28Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies/grant_j7.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -70,6 +72,21 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "tag:server"
+        ],
+        "ip": [
+          "icmp"
+        ]
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "port range \"icmp\": invalid first integer"

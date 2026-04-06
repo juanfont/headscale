@@ -1,12 +1,14 @@
 // GRANT-P09_13B
 //
-// Grant:  src=['*'] dst=['autogroup:self'] ip=['22']
-//
-// Expected: Error (HTTP 400) — autogroup:self can only be used with users, groups, or supported autogroups
+// Grants: 1
+//   src=['*'] dst=['autogroup:self']
 {
   "test_id": "GRANT-P09_13B",
+  "description": "",
+  "timestamp": "2026-04-05T21:51:39Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies/grant_p09_13b.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -70,6 +72,21 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "autogroup:self"
+        ],
+        "ip": [
+          "22"
+        ]
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "autogroup:self can only be used with users, groups, or supported autogroups"

@@ -2,10 +2,13 @@
 //
 // ACL:  accept: src=['tag:client', 'tag:server', 'tag:prod'] dst=['tag:router:*']
 //
-// Expected: Rules on subnet-router
+// Nodes with filter rules: 2 of 8
 {
   "test_id": "ACL-T08",
+  "timestamp": "2026-04-05T20:56:33Z",
+  "propagation_wait_seconds": 20,
   "input": {
+    "policy_file": "acl_policies/acl_t08.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -69,11 +72,299 @@
           ]
         }
       ]
+    },
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_response_code": 200
+  },
+  "topology": {
+    "nodes": {
+      "exit-node": {
+        "hostname": "exit-node",
+        "tags": [
+          "tag:exit"
+        ],
+        "ipv4": "100.85.66.106",
+        "ipv6": "fd7a:115c:a1e0::7c37:426a",
+        "routable_ips": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "approved_routes": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
+      },
+      "subnet-router": {
+        "hostname": "subnet-router",
+        "tags": [
+          "tag:router"
+        ],
+        "ipv4": "100.92.142.61",
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": [
+          "10.33.0.0/16",
+          "fd00:1::/64"
+        ],
+        "approved_routes": [
+          "10.33.0.0/16",
+          "fd00:1::/64"
+        ]
+      },
+      "tagged-client": {
+        "hostname": "tagged-client",
+        "tags": [
+          "tag:client"
+        ],
+        "ipv4": "100.83.200.69",
+        "ipv6": "fd7a:115c:a1e0::c537:c845",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "tagged-prod": {
+        "hostname": "tagged-prod",
+        "tags": [
+          "tag:prod"
+        ],
+        "ipv4": "100.103.8.15",
+        "ipv6": "fd7a:115c:a1e0::5b37:80f",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "tagged-server": {
+        "hostname": "tagged-server",
+        "tags": [
+          "tag:server"
+        ],
+        "ipv4": "100.108.74.26",
+        "ipv6": "fd7a:115c:a1e0::b901:4a87",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "user-kris": {
+        "hostname": "user-kris",
+        "tags": [],
+        "ipv4": "100.110.121.96",
+        "ipv6": "fd7a:115c:a1e0::1737:7960",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "user-mon": {
+        "hostname": "user-mon",
+        "tags": [],
+        "ipv4": "100.103.90.82",
+        "ipv6": "fd7a:115c:a1e0::9e37:5a52",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "user1": {
+        "hostname": "user1",
+        "tags": [],
+        "ipv4": "100.90.199.68",
+        "ipv6": "fd7a:115c:a1e0::2d01:c747",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "big-router": {
+        "hostname": "big-router",
+        "tags": [
+          "tag:router"
+        ],
+        "ipv4": "100.97.174.21",
+        "ipv6": "fd7a:115c:a1e0::5137:ae15",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "multi-exit-router": {
+        "hostname": "multi-exit-router",
+        "tags": [
+          "tag:exit",
+          "tag:router"
+        ],
+        "ipv4": "100.105.127.107",
+        "ipv6": "fd7a:115c:a1e0::ad37:7f6b",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "multi-router": {
+        "hostname": "multi-router",
+        "tags": [
+          "tag:exit",
+          "tag:router"
+        ],
+        "ipv4": "100.119.241.111",
+        "ipv6": "fd7a:115c:a1e0::3337:f16f",
+        "routable_ips": [],
+        "approved_routes": []
+      }
     }
   },
   "captures": {
     "exit-node": {
-      "packet_filter_rules": null
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.103.8.15",
+            "100.108.74.26",
+            "100.83.200.69",
+            "fd7a:115c:a1e0::5b37:80f",
+            "fd7a:115c:a1e0::b901:4a87",
+            "fd7a:115c:a1e0::c537:c845"
+          ],
+          "DstPorts": [
+            {
+              "IP": "100.92.142.61",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "100.97.174.21",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "100.105.127.107",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "100.119.241.111",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::3337:f16f",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::3e37:8e3d",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::5137:ae15",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            },
+            {
+              "IP": "fd7a:115c:a1e0::ad37:7f6b",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ],
+      "netmap": {
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.103.8.15",
+              "100.108.74.26",
+              "100.83.200.69",
+              "fd7a:115c:a1e0::5b37:80f",
+              "fd7a:115c:a1e0::b901:4a87",
+              "fd7a:115c:a1e0::c537:c845"
+            ],
+            "DstPorts": [
+              {
+                "IP": "100.92.142.61",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "100.97.174.21",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "100.105.127.107",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "100.119.241.111",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "fd7a:115c:a1e0::3337:f16f",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "fd7a:115c:a1e0::3e37:8e3d",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "fd7a:115c:a1e0::5137:ae15",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "fd7a:115c:a1e0::ad37:7f6b",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              }
+            ]
+          }
+        ],
+        "SelfNode": {
+          "Name": "exit-node.tail78f774.ts.net.",
+          "Addresses": [
+            "100.85.66.106/32",
+            "fd7a:115c:a1e0::7c37:426a/128"
+          ],
+          "AllowedIPs": [
+            "100.85.66.106/32",
+            "fd7a:115c:a1e0::7c37:426a/128",
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "Tags": [
+            "tag:exit"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ]
+          }
+        },
+        "Peers": []
+      }
     },
     "subnet-router": {
       "packet_filter_rules": [
@@ -103,25 +394,433 @@
             }
           ]
         }
-      ]
+      ],
+      "netmap": {
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.103.8.15",
+              "100.108.74.26",
+              "100.83.200.69",
+              "fd7a:115c:a1e0::5b37:80f",
+              "fd7a:115c:a1e0::b901:4a87",
+              "fd7a:115c:a1e0::c537:c845"
+            ],
+            "DstPorts": [
+              {
+                "IP": "100.92.142.61",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              },
+              {
+                "IP": "fd7a:115c:a1e0::3e37:8e3d",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              }
+            ]
+          }
+        ],
+        "SelfNode": {
+          "Name": "subnet-router.tail78f774.ts.net.",
+          "Addresses": [
+            "100.92.142.61/32",
+            "fd7a:115c:a1e0::3e37:8e3d/128"
+          ],
+          "AllowedIPs": [
+            "100.92.142.61/32",
+            "fd7a:115c:a1e0::3e37:8e3d/128",
+            "10.33.0.0/16",
+            "fd00:1::/64"
+          ],
+          "Tags": [
+            "tag:router"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "10.33.0.0/16",
+              "fd00:1::/64"
+            ]
+          }
+        },
+        "Peers": [
+          {
+            "Name": "tagged-prod.tail78f774.ts.net.",
+            "Addresses": [
+              "100.103.8.15/32",
+              "fd7a:115c:a1e0::5b37:80f/128"
+            ],
+            "AllowedIPs": [
+              "100.103.8.15/32",
+              "fd7a:115c:a1e0::5b37:80f/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:prod"
+            ]
+          },
+          {
+            "Name": "tagged-server.tail78f774.ts.net.",
+            "Addresses": [
+              "100.108.74.26/32",
+              "fd7a:115c:a1e0::b901:4a87/128"
+            ],
+            "AllowedIPs": [
+              "100.108.74.26/32",
+              "fd7a:115c:a1e0::b901:4a87/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:server"
+            ]
+          },
+          {
+            "Name": "tagged-client.tail78f774.ts.net.",
+            "Addresses": [
+              "100.83.200.69/32",
+              "fd7a:115c:a1e0::c537:c845/128"
+            ],
+            "AllowedIPs": [
+              "100.83.200.69/32",
+              "fd7a:115c:a1e0::c537:c845/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:client"
+            ]
+          }
+        ]
+      }
     },
     "tagged-client": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-client.tail78f774.ts.net.",
+          "Addresses": [
+            "100.83.200.69/32",
+            "fd7a:115c:a1e0::c537:c845/128"
+          ],
+          "AllowedIPs": [
+            "100.83.200.69/32",
+            "fd7a:115c:a1e0::c537:c845/128"
+          ],
+          "Tags": [
+            "tag:client"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": [
+          {
+            "Name": "big-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "AllowedIPs": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-exit-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "AllowedIPs": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "AllowedIPs": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "subnet-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "AllowedIPs": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          }
+        ]
+      }
     },
     "tagged-prod": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-prod.tail78f774.ts.net.",
+          "Addresses": [
+            "100.103.8.15/32",
+            "fd7a:115c:a1e0::5b37:80f/128"
+          ],
+          "AllowedIPs": [
+            "100.103.8.15/32",
+            "fd7a:115c:a1e0::5b37:80f/128"
+          ],
+          "Tags": [
+            "tag:prod"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": [
+          {
+            "Name": "big-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "AllowedIPs": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-exit-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "AllowedIPs": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "AllowedIPs": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "subnet-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "AllowedIPs": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          }
+        ]
+      }
     },
     "tagged-server": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-server.tail78f774.ts.net.",
+          "Addresses": [
+            "100.108.74.26/32",
+            "fd7a:115c:a1e0::b901:4a87/128"
+          ],
+          "AllowedIPs": [
+            "100.108.74.26/32",
+            "fd7a:115c:a1e0::b901:4a87/128"
+          ],
+          "Tags": [
+            "tag:server"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": [
+          {
+            "Name": "big-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "AllowedIPs": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-exit-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "AllowedIPs": [
+              "100.105.127.107/32",
+              "fd7a:115c:a1e0::ad37:7f6b/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "multi-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "AllowedIPs": [
+              "100.119.241.111/32",
+              "fd7a:115c:a1e0::3337:f16f/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:exit",
+              "tag:router"
+            ]
+          },
+          {
+            "Name": "subnet-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "AllowedIPs": [
+              "100.92.142.61/32",
+              "fd7a:115c:a1e0::3e37:8e3d/128"
+            ],
+            "PrimaryRoutes": null,
+            "Tags": [
+              "tag:router"
+            ]
+          }
+        ]
+      }
     },
     "user-kris": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user-kris.tail78f774.ts.net.",
+          "Addresses": [
+            "100.110.121.96/32",
+            "fd7a:115c:a1e0::1737:7960/128"
+          ],
+          "AllowedIPs": [
+            "100.110.121.96/32",
+            "fd7a:115c:a1e0::1737:7960/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
+      }
     },
     "user-mon": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user-mon.tail78f774.ts.net.",
+          "Addresses": [
+            "100.103.90.82/32",
+            "fd7a:115c:a1e0::9e37:5a52/128"
+          ],
+          "AllowedIPs": [
+            "100.103.90.82/32",
+            "fd7a:115c:a1e0::9e37:5a52/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
+      }
     },
     "user1": {
-      "packet_filter_rules": null
+      "packet_filter_rules": null,
+      "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user1.tail78f774.ts.net.",
+          "Addresses": [
+            "100.90.199.68/32",
+            "fd7a:115c:a1e0::2d01:c747/128"
+          ],
+          "AllowedIPs": [
+            "100.90.199.68/32",
+            "fd7a:115c:a1e0::2d01:c747/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
+      }
     }
   }
 }

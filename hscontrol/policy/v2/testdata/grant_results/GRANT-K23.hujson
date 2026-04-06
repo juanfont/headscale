@@ -1,12 +1,14 @@
 // GRANT-K23
 //
-// Grant:  src=['*'] dst=['tag:server'] ip=['tcp:0']
-//
-// Expected: Error (HTTP 400) — port range "0": first port must be >0, or use '*' for wildcard
+// Grants: 1
+//   src=['*'] dst=['tag:server']
 {
   "test_id": "GRANT-K23",
+  "description": "",
+  "timestamp": "2026-04-05T21:30:20Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies/grant_k23.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -70,6 +72,21 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "tag:server"
+        ],
+        "ip": [
+          "tcp:0"
+        ]
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "port range \"0\": first port must be >0, or use '*' for wildcard"

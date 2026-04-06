@@ -1,12 +1,12 @@
 // ACL-ERR02
 //
 // ACL:  accept: src=['autogroup:self'] dst=['tag:server:22']
-//
-// Expected: Error — "autogroup:self" not valid on the src side of a rule
 {
   "test_id": "ACL-ERR02",
+  "timestamp": "2026-04-05T20:18:13Z",
   "error": true,
   "input": {
+    "policy_file": "acl_policies/acl_err02.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -69,6 +69,8 @@
         }
       ]
     },
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_response_code": 400,
     "api_response_body": {
       "message": "\"autogroup:self\" not valid on the src side of a rule"
     }

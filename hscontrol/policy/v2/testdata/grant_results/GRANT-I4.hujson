@@ -1,12 +1,14 @@
 // GRANT-I4
 //
-// Grant:  src=['*'] dst=['10.33.0.0/16'] via=['autogroup:tagged'] ip=['*']
-//
-// Expected: Error (HTTP 400) — via can only be a tag
+// Grants: 1
+//   src=['*'] dst=['10.33.0.0/16'] via=['autogroup:tagged']
 {
   "test_id": "GRANT-I4",
+  "description": "",
+  "timestamp": "2026-04-05T21:23:12Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies/grant_i4.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -73,6 +75,24 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "10.33.0.0/16"
+        ],
+        "via": [
+          "autogroup:tagged"
+        ],
+        "ip": [
+          "*"
+        ]
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "via can only be a tag"
