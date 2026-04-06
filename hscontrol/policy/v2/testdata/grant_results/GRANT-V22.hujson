@@ -1,12 +1,14 @@
 // GRANT-V22
 //
-// Grant:  src=['autogroup:member'] dst=['autogroup:internet'] ip=['tcp:443'] app={example.com/cap/internet-mixed}
-//
-// Expected: Error (HTTP 400) — cannot use app grants with autogroup:internet
+// Grants: 1
+//   src=['autogroup:member'] dst=['autogroup:internet'] app=['example.com/cap/internet-mixed']
 {
   "test_id": "GRANT-V22",
+  "description": "",
+  "timestamp": "2026-02-23T15:41:52Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies_v2/grant_v22.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -77,6 +79,28 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "autogroup:member"
+        ],
+        "dst": [
+          "autogroup:internet"
+        ],
+        "ip": [
+          "tcp:443"
+        ],
+        "app": {
+          "example.com/cap/internet-mixed": [
+            {
+              "proxy": "yes"
+            }
+          ]
+        }
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "cannot use app grants with autogroup:internet"

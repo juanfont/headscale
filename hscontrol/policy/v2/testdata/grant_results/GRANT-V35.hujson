@@ -1,11 +1,15 @@
 // GRANT-V35
 //
-// Grant:  src=['tag:client'] dst=['10.99.0.0/16'] via=['tag:router'] ip=['*']
+// Grants: 1
+//   src=['tag:client'] dst=['10.99.0.0/16'] via=['tag:router']
 //
-// Expected: No filter rules on any node
+// Nodes with filter rules: 1 of 15
 {
   "test_id": "GRANT-V35",
+  "timestamp": "2026-04-05T22:27:42Z",
+  "propagation_wait_seconds": 30,
   "input": {
+    "policy_file": "grant_policies_via/grant_v35.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -100,197 +104,1379 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "tag:client"
+        ],
+        "dst": [
+          "10.99.0.0/16"
+        ],
+        "via": [
+          "tag:router"
+        ],
+        "ip": [
+          "*"
+        ]
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 200
   },
   "topology": {
     "nodes": {
       "exit-a": {
+        "mts_name": "exit-a",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock",
         "hostname": "exit-a",
+        "user_id": 3118755726458377,
         "tags": [
           "tag:exit-a"
         ],
         "ipv4": "100.124.195.93",
-        "ipv6": "fd7a:115c:a1e0::7837:c35d"
+        "ipv6": "fd7a:115c:a1e0::7837:c35d",
+        "routable_ips": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "approved_routes": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
       },
       "exit-b": {
+        "mts_name": "exit-b",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock",
         "hostname": "exit-b",
+        "user_id": 2230775583277936,
         "tags": [
           "tag:exit-b"
         ],
         "ipv4": "100.116.18.24",
-        "ipv6": "fd7a:115c:a1e0::ff37:1218"
+        "ipv6": "fd7a:115c:a1e0::ff37:1218",
+        "routable_ips": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "approved_routes": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
       },
       "exit-node": {
+        "mts_name": "exit-node",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock",
         "hostname": "exit-node",
+        "user_id": 4041918547170221,
         "tags": [
           "tag:exit"
         ],
         "ipv4": "100.85.66.106",
-        "ipv6": "fd7a:115c:a1e0::7c37:426a"
+        "ipv6": "fd7a:115c:a1e0::7c37:426a",
+        "routable_ips": [
+          "0.0.0.0/0",
+          "::/0"
+        ],
+        "approved_routes": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
       },
       "group-a-client": {
+        "mts_name": "group-a-client",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock",
         "hostname": "group-a-client",
+        "user_id": 6999435610919250,
         "tags": [
           "tag:group-a"
         ],
         "ipv4": "100.107.162.14",
-        "ipv6": "fd7a:115c:a1e0::a237:a20e"
+        "ipv6": "fd7a:115c:a1e0::a237:a20e",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "group-b-client": {
+        "mts_name": "group-b-client",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock",
         "hostname": "group-b-client",
+        "user_id": 1008089393782498,
         "tags": [
           "tag:group-b"
         ],
         "ipv4": "100.77.135.18",
-        "ipv6": "fd7a:115c:a1e0::4b37:8712"
+        "ipv6": "fd7a:115c:a1e0::4b37:8712",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "multi-exit-router": {
+        "mts_name": "multi-exit-router",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock",
         "hostname": "multi-exit-router",
+        "user_id": 6294409699640722,
         "tags": [
           "tag:exit",
           "tag:router"
         ],
         "ipv4": "100.105.127.107",
-        "ipv6": "fd7a:115c:a1e0::ad37:7f6b"
+        "ipv6": "fd7a:115c:a1e0::ad37:7f6b",
+        "routable_ips": [
+          "0.0.0.0/0",
+          "::/0",
+          "10.33.0.0/16"
+        ],
+        "approved_routes": [
+          "0.0.0.0/0",
+          "10.33.0.0/16",
+          "::/0"
+        ]
       },
       "router-a": {
+        "mts_name": "router-a",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock",
         "hostname": "router-a",
+        "user_id": 50590507314324,
         "tags": [
           "tag:router-a"
         ],
         "ipv4": "100.109.43.124",
-        "ipv6": "fd7a:115c:a1e0::a537:2b7c"
+        "ipv6": "fd7a:115c:a1e0::a537:2b7c",
+        "routable_ips": [
+          "10.44.0.0/16"
+        ],
+        "approved_routes": [
+          "10.44.0.0/16"
+        ]
       },
       "router-b": {
+        "mts_name": "router-b",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock",
         "hostname": "router-b",
+        "user_id": 1399889648409786,
         "tags": [
           "tag:router-b"
         ],
         "ipv4": "100.65.172.123",
-        "ipv6": "fd7a:115c:a1e0::5a37:ac7c"
+        "ipv6": "fd7a:115c:a1e0::5a37:ac7c",
+        "routable_ips": [
+          "10.55.0.0/16"
+        ],
+        "approved_routes": [
+          "10.55.0.0/16"
+        ]
       },
       "subnet-router": {
+        "mts_name": "subnet-router",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock",
         "hostname": "subnet-router",
+        "user_id": 7489538288452506,
         "tags": [
           "tag:router"
         ],
         "ipv4": "100.92.142.61",
-        "ipv6": "fd7a:115c:a1e0::3e37:8e3d"
+        "ipv6": "fd7a:115c:a1e0::3e37:8e3d",
+        "routable_ips": [
+          "10.33.0.0/16",
+          "fd00:1::/64"
+        ],
+        "approved_routes": [
+          "10.33.0.0/16",
+          "fd00:1::/64"
+        ]
       },
       "tagged-client": {
+        "mts_name": "tagged-client",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock",
         "hostname": "tagged-client",
+        "user_id": 4031348162889210,
         "tags": [
           "tag:client"
         ],
         "ipv4": "100.83.200.69",
-        "ipv6": "fd7a:115c:a1e0::c537:c845"
+        "ipv6": "fd7a:115c:a1e0::c537:c845",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "tagged-prod": {
+        "mts_name": "tagged-prod",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock",
         "hostname": "tagged-prod",
+        "user_id": 301794218943819,
         "tags": [
           "tag:prod"
         ],
         "ipv4": "100.103.8.15",
-        "ipv6": "fd7a:115c:a1e0::5b37:80f"
+        "ipv6": "fd7a:115c:a1e0::5b37:80f",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "tagged-server": {
+        "mts_name": "tagged-server",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock",
         "hostname": "tagged-server",
+        "user_id": 1440249486084758,
         "tags": [
           "tag:server"
         ],
         "ipv4": "100.108.74.26",
-        "ipv6": "fd7a:115c:a1e0::b901:4a87"
+        "ipv6": "fd7a:115c:a1e0::b901:4a87",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "user-kris": {
+        "mts_name": "user-kris",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock",
         "hostname": "user-kris",
+        "user_id": 4538565228176803,
         "tags": [],
         "ipv4": "100.110.121.96",
-        "ipv6": "fd7a:115c:a1e0::1737:7960"
+        "ipv6": "fd7a:115c:a1e0::1737:7960",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "user-mon": {
+        "mts_name": "user-mon",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock",
         "hostname": "user-mon",
+        "user_id": 3982058329734709,
         "tags": [],
         "ipv4": "100.103.90.82",
-        "ipv6": "fd7a:115c:a1e0::9e37:5a52"
+        "ipv6": "fd7a:115c:a1e0::9e37:5a52",
+        "routable_ips": [],
+        "approved_routes": []
       },
       "user1": {
+        "mts_name": "user1",
+        "socket": "/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock",
         "hostname": "user1",
+        "user_id": 4156223528223174,
         "tags": [],
         "ipv4": "100.90.199.68",
-        "ipv6": "fd7a:115c:a1e0::2d01:c747"
+        "ipv6": "fd7a:115c:a1e0::2d01:c747",
+        "routable_ips": [],
+        "approved_routes": []
+      },
+      "big-router": {
+        "hostname": "big-router",
+        "tags": [
+          "tag:router"
+        ],
+        "ipv4": "100.97.174.21",
+        "ipv6": "fd7a:115c:a1e0::5137:ae15",
+        "routable_ips": [
+          "10.0.0.0/8"
+        ],
+        "approved_routes": [
+          "10.0.0.0/8"
+        ]
       }
     }
   },
   "captures": {
     "exit-a": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-a/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "exit-a.tail78f774.ts.net.",
+          "Addresses": [
+            "100.124.195.93/32",
+            "fd7a:115c:a1e0::7837:c35d/128"
+          ],
+          "AllowedIPs": [
+            "100.124.195.93/32",
+            "fd7a:115c:a1e0::7837:c35d/128",
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "Tags": [
+            "tag:exit-a"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "exit-b": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-b/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "exit-b.tail78f774.ts.net.",
+          "Addresses": [
+            "100.116.18.24/32",
+            "fd7a:115c:a1e0::ff37:1218/128"
+          ],
+          "AllowedIPs": [
+            "100.116.18.24/32",
+            "fd7a:115c:a1e0::ff37:1218/128",
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "Tags": [
+            "tag:exit-b"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "exit-node": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/exit-node/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "exit-node.tail78f774.ts.net.",
+          "Addresses": [
+            "100.85.66.106/32",
+            "fd7a:115c:a1e0::7c37:426a/128"
+          ],
+          "AllowedIPs": [
+            "100.85.66.106/32",
+            "fd7a:115c:a1e0::7c37:426a/128",
+            "0.0.0.0/0",
+            "::/0"
+          ],
+          "Tags": [
+            "tag:exit"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "0.0.0.0/0",
+              "::/0"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "group-a-client": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-a-client/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "group-a-client.tail78f774.ts.net.",
+          "Addresses": [
+            "100.107.162.14/32",
+            "fd7a:115c:a1e0::a237:a20e/128"
+          ],
+          "AllowedIPs": [
+            "100.107.162.14/32",
+            "fd7a:115c:a1e0::a237:a20e/128"
+          ],
+          "Tags": [
+            "tag:group-a"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "group-b-client": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/group-b-client/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "group-b-client.tail78f774.ts.net.",
+          "Addresses": [
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128"
+          ],
+          "AllowedIPs": [
+            "100.77.135.18/32",
+            "fd7a:115c:a1e0::4b37:8712/128"
+          ],
+          "Tags": [
+            "tag:group-b"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "multi-exit-router": {
-      "packet_filter_rules": null,
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
+      "packet_filter_rules": [
+        {
+          "SrcIPs": [
+            "100.83.200.69",
+            "fd7a:115c:a1e0::c537:c845"
+          ],
+          "DstPorts": [
+            {
+              "IP": "10.99.0.0/16",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ]
+        }
+      ],
+      "packet_filter_matches": [
+        {
+          "IPProto": [
+            6,
+            17,
+            1,
+            58
+          ],
+          "Srcs": [
+            "100.83.200.69/32",
+            "fd7a:115c:a1e0::c537:c845/128"
+          ],
+          "SrcCaps": null,
+          "Dsts": [
+            {
+              "Net": "10.99.0.0/16",
+              "Ports": {
+                "First": 0,
+                "Last": 65535
+              }
+            }
+          ],
+          "Caps": []
+        }
+      ],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/multi-exit-router/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": [
+          {
+            "SrcIPs": [
+              "100.83.200.69",
+              "fd7a:115c:a1e0::c537:c845"
+            ],
+            "DstPorts": [
+              {
+                "IP": "10.99.0.0/16",
+                "Ports": {
+                  "First": 0,
+                  "Last": 65535
+                }
+              }
+            ]
+          }
+        ],
+        "SelfNode": {
+          "Name": "multi-exit-router.tail78f774.ts.net.",
+          "Addresses": [
+            "100.105.127.107/32",
+            "fd7a:115c:a1e0::ad37:7f6b/128"
+          ],
+          "AllowedIPs": [
+            "100.105.127.107/32",
+            "fd7a:115c:a1e0::ad37:7f6b/128",
+            "0.0.0.0/0",
+            "10.33.0.0/16",
+            "::/0"
+          ],
+          "Tags": [
+            "tag:exit",
+            "tag:router"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "0.0.0.0/0",
+              "::/0",
+              "10.33.0.0/16"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "router-a": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-a/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "router-a.tail78f774.ts.net.",
+          "Addresses": [
+            "100.109.43.124/32",
+            "fd7a:115c:a1e0::a537:2b7c/128"
+          ],
+          "AllowedIPs": [
+            "100.109.43.124/32",
+            "fd7a:115c:a1e0::a537:2b7c/128",
+            "10.44.0.0/16"
+          ],
+          "Tags": [
+            "tag:router-a"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "10.44.0.0/16"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "router-b": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/router-b/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "router-b.tail78f774.ts.net.",
+          "Addresses": [
+            "100.65.172.123/32",
+            "fd7a:115c:a1e0::5a37:ac7c/128"
+          ],
+          "AllowedIPs": [
+            "100.65.172.123/32",
+            "fd7a:115c:a1e0::5a37:ac7c/128",
+            "10.55.0.0/16"
+          ],
+          "Tags": [
+            "tag:router-b"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "10.55.0.0/16"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "subnet-router": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/subnet-router/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "subnet-router.tail78f774.ts.net.",
+          "Addresses": [
+            "100.92.142.61/32",
+            "fd7a:115c:a1e0::3e37:8e3d/128"
+          ],
+          "AllowedIPs": [
+            "100.92.142.61/32",
+            "fd7a:115c:a1e0::3e37:8e3d/128",
+            "10.33.0.0/16",
+            "fd00:1::/64"
+          ],
+          "Tags": [
+            "tag:router"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": [
+              "10.33.0.0/16",
+              "fd00:1::/64"
+            ]
+          }
+        },
+        "Peers": []
       }
     },
     "tagged-client": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-client/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-client.tail78f774.ts.net.",
+          "Addresses": [
+            "100.83.200.69/32",
+            "fd7a:115c:a1e0::c537:c845/128"
+          ],
+          "AllowedIPs": [
+            "100.83.200.69/32",
+            "fd7a:115c:a1e0::c537:c845/128"
+          ],
+          "Tags": [
+            "tag:client"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
         "Peers": [
           {
             "Name": "big-router.tail78f774.ts.net.",
+            "Addresses": [
+              "100.97.174.21/32",
+              "fd7a:115c:a1e0::5137:ae15/128"
+            ],
             "AllowedIPs": [
               "100.97.174.21/32",
               "fd7a:115c:a1e0::5137:ae15/128",
@@ -298,45 +1484,511 @@
             ],
             "PrimaryRoutes": [
               "10.0.0.0/8"
+            ],
+            "Tags": [
+              "tag:router"
             ]
           }
-        ],
-        "PacketFilterRules": null
+        ]
       }
     },
     "tagged-prod": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-prod/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-prod.tail78f774.ts.net.",
+          "Addresses": [
+            "100.103.8.15/32",
+            "fd7a:115c:a1e0::5b37:80f/128"
+          ],
+          "AllowedIPs": [
+            "100.103.8.15/32",
+            "fd7a:115c:a1e0::5b37:80f/128"
+          ],
+          "Tags": [
+            "tag:prod"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "tagged-server": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/tagged-server/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "tagged-server.tail78f774.ts.net.",
+          "Addresses": [
+            "100.108.74.26/32",
+            "fd7a:115c:a1e0::b901:4a87/128"
+          ],
+          "AllowedIPs": [
+            "100.108.74.26/32",
+            "fd7a:115c:a1e0::b901:4a87/128"
+          ],
+          "Tags": [
+            "tag:server"
+          ],
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "user-kris": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-kris/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user-kris.tail78f774.ts.net.",
+          "Addresses": [
+            "100.110.121.96/32",
+            "fd7a:115c:a1e0::1737:7960/128"
+          ],
+          "AllowedIPs": [
+            "100.110.121.96/32",
+            "fd7a:115c:a1e0::1737:7960/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "user-mon": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.90.199.68": {
+          "peer_name": "user1",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user-mon/tailscaled.sock whois --json 100.90.199.68",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user-mon.tail78f774.ts.net.",
+          "Addresses": [
+            "100.103.90.82/32",
+            "fd7a:115c:a1e0::9e37:5a52/128"
+          ],
+          "AllowedIPs": [
+            "100.103.90.82/32",
+            "fd7a:115c:a1e0::9e37:5a52/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     },
     "user1": {
+      "commands": {
+        "packet_filter_rules": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock debug localapi POST debug-packet-filter-rules",
+        "packet_filter_matches": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock debug localapi POST debug-packet-filter-matches"
+      },
       "packet_filter_rules": null,
+      "packet_filter_matches": [],
+      "whois": {
+        "100.124.195.93": {
+          "peer_name": "exit-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.124.195.93",
+          "response": null
+        },
+        "100.116.18.24": {
+          "peer_name": "exit-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.116.18.24",
+          "response": null
+        },
+        "100.85.66.106": {
+          "peer_name": "exit-node",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.85.66.106",
+          "response": null
+        },
+        "100.107.162.14": {
+          "peer_name": "group-a-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.107.162.14",
+          "response": null
+        },
+        "100.77.135.18": {
+          "peer_name": "group-b-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.77.135.18",
+          "response": null
+        },
+        "100.105.127.107": {
+          "peer_name": "multi-exit-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.105.127.107",
+          "response": null
+        },
+        "100.109.43.124": {
+          "peer_name": "router-a",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.109.43.124",
+          "response": null
+        },
+        "100.65.172.123": {
+          "peer_name": "router-b",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.65.172.123",
+          "response": null
+        },
+        "100.92.142.61": {
+          "peer_name": "subnet-router",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.92.142.61",
+          "response": null
+        },
+        "100.83.200.69": {
+          "peer_name": "tagged-client",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.83.200.69",
+          "response": null
+        },
+        "100.103.8.15": {
+          "peer_name": "tagged-prod",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.103.8.15",
+          "response": null
+        },
+        "100.108.74.26": {
+          "peer_name": "tagged-server",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.108.74.26",
+          "response": null
+        },
+        "100.110.121.96": {
+          "peer_name": "user-kris",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.110.121.96",
+          "response": null
+        },
+        "100.103.90.82": {
+          "peer_name": "user-mon",
+          "command": "/home/kradalby/go/bin/tailscale --socket=/home/kradalby/.config/multi-tailscale-dev/user1/tailscaled.sock whois --json 100.103.90.82",
+          "response": null
+        }
+      },
       "netmap": {
-        "Peers": [],
-        "PacketFilterRules": null
+        "PacketFilterRules": null,
+        "SelfNode": {
+          "Name": "user1.tail78f774.ts.net.",
+          "Addresses": [
+            "100.90.199.68/32",
+            "fd7a:115c:a1e0::2d01:c747/128"
+          ],
+          "AllowedIPs": [
+            "100.90.199.68/32",
+            "fd7a:115c:a1e0::2d01:c747/128"
+          ],
+          "Tags": null,
+          "Hostinfo": {
+            "RoutableIPs": []
+          }
+        },
+        "Peers": []
       }
     }
   }

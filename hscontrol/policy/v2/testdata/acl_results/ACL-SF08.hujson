@@ -1,12 +1,12 @@
 // ACL-SF08
 //
 // ACL:  accept: src=['autogroup:member', 'tag:client'] dst=['autogroup:self:*']
-//
-// Expected: Error — autogroup:self can only be used with users, groups, or supported autogroups
 {
   "test_id": "ACL-SF08",
+  "timestamp": "2026-04-05T20:52:22Z",
   "error": true,
   "input": {
+    "policy_file": "acl_policies/acl_sf08.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -70,6 +70,8 @@
         }
       ]
     },
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_response_code": 400,
     "api_response_body": {
       "message": "autogroup:self can only be used with users, groups, or supported autogroups"
     }

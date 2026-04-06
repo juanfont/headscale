@@ -1,12 +1,14 @@
 // GRANT-A5
 //
-// Grant:  src=['*'] dst=['*'] app={tailscale.com/cap/relay-target}
-//
-// Expected: Error (HTTP 400) — capability name must not be in the tailscale.com domain
+// Grants: 1
+//   src=['*'] dst=['*'] app=['tailscale.com/cap/relay-target']
 {
   "test_id": "GRANT-A5",
+  "description": "",
+  "timestamp": "2026-04-05T21:07:10Z",
   "error": true,
   "input": {
+    "policy_file": "grant_policies/grant_a5.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -72,6 +74,23 @@
         }
       ]
     },
+    "grants_section": [
+      {
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "*"
+        ],
+        "app": {
+          "tailscale.com/cap/relay-target": [
+            {}
+          ]
+        }
+      }
+    ],
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_method": "POST",
     "api_response_code": 400,
     "api_response_body": {
       "message": "capability name must not be in the tailscale.com domain"

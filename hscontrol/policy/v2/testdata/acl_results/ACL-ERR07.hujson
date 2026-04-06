@@ -1,12 +1,12 @@
 // ACL-ERR07
 //
 // ACL:  accept: src=['*'] dst=['tag:server:ssh']
-//
-// Expected: Error — dst="tag:server:ssh": port range "ssh": invalid first integer
 {
   "test_id": "ACL-ERR07",
+  "timestamp": "2026-04-05T20:18:18Z",
   "error": true,
   "input": {
+    "policy_file": "acl_policies/acl_err07.json",
     "full_policy": {
       "groups": {
         "group:admins": [
@@ -69,6 +69,8 @@
         }
       ]
     },
+    "api_endpoint": "https://api.tailscale.com/api/v2/tailnet/kratail2tid%40passkey/acl",
+    "api_response_code": 400,
     "api_response_body": {
       "message": "dst=\"tag:server:ssh\": port range \"ssh\": invalid first integer"
     }
