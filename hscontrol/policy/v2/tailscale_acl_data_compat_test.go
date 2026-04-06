@@ -213,6 +213,86 @@ type aclTestFile struct {
 	} `json:"captures"`
 }
 
+// buildACLUsersAndNodes constructs users and nodes from an ACL
+// golden file's topology. This ensures the test creates the same
+// nodes that were present during the Tailscale SaaS capture.
+func buildACLUsersAndNodes(
+	t *testing.T,
+	tf aclTestFile,
+) (types.Users, types.Nodes) {
+	t.Helper()
+
+	users := setupACLCompatUsers()
+	nodes := make(types.Nodes, 0, len(tf.Topology.Nodes))
+	autoID := 1
+
+	for name, nodeDef := range tf.Topology.Nodes {
+		node := &types.Node{
+			ID:        types.NodeID(autoID), //nolint:gosec
+			GivenName: name,
+			IPv4:      ptrAddr(nodeDef.IPv4),
+			IPv6:      ptrAddr(nodeDef.IPv6),
+			Tags:      nodeDef.Tags,
+		}
+		autoID++
+
+		hostinfo := &tailcfg.Hostinfo{}
+
+		if len(nodeDef.RoutableIPs) > 0 {
+			routableIPs := make(
+				[]netip.Prefix, 0, len(nodeDef.RoutableIPs),
+			)
+
+			for _, r := range nodeDef.RoutableIPs {
+				routableIPs = append(
+					routableIPs, netip.MustParsePrefix(r),
+				)
+			}
+
+			hostinfo.RoutableIPs = routableIPs
+		}
+
+		node.Hostinfo = hostinfo
+
+		if len(nodeDef.ApprovedRoutes) > 0 {
+			approved := make(
+				[]netip.Prefix, 0, len(nodeDef.ApprovedRoutes),
+			)
+
+			for _, r := range nodeDef.ApprovedRoutes {
+				approved = append(
+					approved, netip.MustParsePrefix(r),
+				)
+			}
+
+			node.ApprovedRoutes = approved
+		} else {
+			node.ApprovedRoutes = []netip.Prefix{}
+		}
+
+		// Assign user — untagged nodes get user1
+		if len(nodeDef.Tags) == 0 {
+			if nodeDef.User != "" {
+				for i := range users {
+					if users[i].Name == nodeDef.User {
+						node.User = &users[i]
+						node.UserID = &users[i].ID
+
+						break
+					}
+				}
+			} else {
+				node.User = &users[0]
+				node.UserID = &users[0].ID
+			}
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	return users, nodes
+}
+
 // loadACLTestFile loads and parses a single ACL test JSON file.
 func loadACLTestFile(t *testing.T, path string) aclTestFile {
 	t.Helper()
@@ -270,8 +350,22 @@ func TestACLCompat(t *testing.T) {
 
 	t.Logf("Loaded %d ACL test files", len(files))
 
-	users := setupACLCompatUsers()
-	nodes := setupACLCompatNodes(users)
+	// Build nodes from the first non-error file's topology.
+	// All files share the same 19-node tailnet topology.
+	var users types.Users
+
+	var nodes types.Nodes
+
+	for _, file := range files {
+		tf := loadACLTestFile(t, file)
+		if !tf.Error && len(tf.Topology.Nodes) > 0 {
+			users, nodes = buildACLUsersAndNodes(t, tf)
+
+			break
+		}
+	}
+
+	require.NotEmpty(t, nodes, "no non-error ACL file found")
 
 	for _, file := range files {
 		tf := loadACLTestFile(t, file)
