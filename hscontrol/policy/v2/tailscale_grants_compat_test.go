@@ -34,7 +34,6 @@ import (
 	"tailscale.com/tailcfg"
 )
 
-
 // setupGrantsCompatUsers returns the 3 test users for grants compatibility tests.
 // Users get norse-god names; nodes get original-151 pokémon names — matching
 // the anonymized identifiers tscap writes into the capture files
@@ -270,6 +269,69 @@ func findGrantsNode(nodes types.Nodes, name string) *types.Node {
 	return nil
 }
 
+// buildGrantsNodesFromCapture constructs types.Nodes from a capture's
+// topology section. Each scenario in tscap uses clean-slate mode, so
+// node IPs differ between scenarios; this builds the node set with
+// the IPs that were actually present during that capture.
+func buildGrantsNodesFromCapture(
+	users types.Users,
+	tf *testcapture.Capture,
+) types.Nodes {
+	nodes := make(types.Nodes, 0, len(tf.Topology.Nodes))
+	autoID := 1
+
+	for _, nodeDef := range tf.Topology.Nodes {
+		node := &types.Node{
+			ID:        types.NodeID(autoID), //nolint:gosec
+			GivenName: nodeDef.Hostname,
+			IPv4:      ptrAddr(nodeDef.IPv4),
+			IPv6:      ptrAddr(nodeDef.IPv6),
+			Tags:      nodeDef.Tags,
+		}
+		autoID++
+
+		hostinfo := &tailcfg.Hostinfo{}
+
+		if len(nodeDef.RoutableIPs) > 0 {
+			routableIPs := make([]netip.Prefix, 0, len(nodeDef.RoutableIPs))
+			for _, r := range nodeDef.RoutableIPs {
+				routableIPs = append(routableIPs, netip.MustParsePrefix(r))
+			}
+
+			hostinfo.RoutableIPs = routableIPs
+		}
+
+		node.Hostinfo = hostinfo
+
+		if len(nodeDef.ApprovedRoutes) > 0 {
+			approved := make([]netip.Prefix, 0, len(nodeDef.ApprovedRoutes))
+			for _, r := range nodeDef.ApprovedRoutes {
+				approved = append(approved, netip.MustParsePrefix(r))
+			}
+
+			node.ApprovedRoutes = approved
+		} else {
+			node.ApprovedRoutes = []netip.Prefix{}
+		}
+
+		// Assign user — untagged nodes look up by User field.
+		if len(nodeDef.Tags) == 0 && nodeDef.User != "" {
+			for i := range users {
+				if users[i].Name == nodeDef.User {
+					node.User = &users[i]
+					node.UserID = &users[i].ID
+
+					break
+				}
+			}
+		}
+
+		nodes = append(nodes, node)
+	}
+
+	return nodes
+}
+
 // convertPolicyUserEmails used to map SaaS-side emails to @example.com.
 // tscap now anonymizes the policy JSON at write time (kratail2tid -> odin,
 // kristoffer -> thor, monitorpasskeykradalby -> freya), so the captured
@@ -328,7 +390,6 @@ func TestGrantsCompat(t *testing.T) {
 	t.Logf("Loaded %d grant test files", len(files))
 
 	users := setupGrantsCompatUsers()
-	allNodes := setupGrantsCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadGrantTestFile(t, file)
@@ -342,18 +403,13 @@ func TestGrantsCompat(t *testing.T) {
 				return
 			}
 
-			// Determine which node set to use based on the test's topology.
-			// Tests captured with the expanded 15-node topology (V26+) have
-			// nodes like pidgey (exit-a), rattata (group-a-client), etc.
-			// Tests from the original 8-node topology should only use the
-			// first 8 nodes to avoid resolving extra IPs from nodes that
-			// weren't present during capture.
-			nodes := allNodes
-			if _, hasNewNodes := tf.Captures["pidgey"]; !hasNewNodes {
-				nodes = allNodes[:8]
-			}
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs.
+			nodes := buildGrantsNodesFromCapture(users, tf)
 
-			// Convert Tailscale user emails to headscale @example.com format
+			// Use the captured full policy verbatim (anonymization
+			// in tscap already rewrote SaaS emails).
 			policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
 
 			if tf.Input.APIResponseCode == 400 || tf.Error {
