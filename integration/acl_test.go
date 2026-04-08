@@ -679,8 +679,17 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 
 	tests := map[string]struct {
 		policy policyv2.Policy
+		// Addresses covered by the policy. Address-based aliases (Prefix,
+		// Host) resolve to exactly the literal prefix, so we can only curl
+		// the address family defined in the policy's Hosts map.
+		test1Addr string
+		test2Addr string
+		test3Addr string
 	}{
 		"ipv4": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
+			test3Addr: "100.64.0.3",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
@@ -708,6 +717,9 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			},
 		},
 		"ipv6": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
+			test3Addr: "[fd7a:115c:a1e0::3]",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
@@ -745,192 +757,79 @@ func TestACLNamedHostsCanReach(t *testing.T) {
 			)
 			defer scenario.ShutdownAssertNoPanics(t)
 
-			// Since user/users dont matter here, we basically expect that some clients
-			// will be assigned these ips and that we can pick them up for our own use.
-			test1ip4 := netip.MustParseAddr("100.64.0.1")
+			// Since user/users don't matter here, we basically expect that
+			// some clients will be assigned these ips and that we can pick
+			// them up for our own use. Look up clients by their IPv6
+			// address (always assigned) regardless of test variant.
 			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
 			test1, err := scenario.FindTailscaleClientByIP(test1ip6)
 			require.NoError(t, err)
 
-			test1fqdn, err := test1.FQDN()
-			require.NoError(t, err)
-
-			test1ip4URL := fmt.Sprintf("http://%s/etc/hostname", test1ip4.String())
-			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
-			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
-
-			test2ip4 := netip.MustParseAddr("100.64.0.2")
 			test2ip6 := netip.MustParseAddr("fd7a:115c:a1e0::2")
 			test2, err := scenario.FindTailscaleClientByIP(test2ip6)
 			require.NoError(t, err)
 
-			test2fqdn, err := test2.FQDN()
-			require.NoError(t, err)
-
-			test2ip4URL := fmt.Sprintf("http://%s/etc/hostname", test2ip4.String())
-			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
-			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
-
-			test3ip4 := netip.MustParseAddr("100.64.0.3")
 			test3ip6 := netip.MustParseAddr("fd7a:115c:a1e0::3")
 			test3, err := scenario.FindTailscaleClientByIP(test3ip6)
 			require.NoError(t, err)
 
-			test3fqdn, err := test3.FQDN()
-			require.NoError(t, err)
+			// Build URLs from the addresses the policy actually covers.
+			test1URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test1Addr)
+			test2URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test2Addr)
+			test3URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test3Addr)
 
-			test3ip4URL := fmt.Sprintf("http://%s/etc/hostname", test3ip4.String())
-			test3ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test3ip6.String())
-			test3fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test3fqdn)
-
-			// test1 can query test3
+			// test1 can query test3 (everyone -> test3)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3ip4URL)
+				result, err := test1.Curl(test3URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
 					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip4URL,
+					test3URL,
 					result,
 				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test3 via IPv4")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test3")
 
+			// test2 can query test3 (everyone -> test3)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3ip6URL)
+				result, err := test2.Curl(test3URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip6URL,
+					"failed to connect from test2 to test3 with URL %s, expected hostname of 13 chars, got %s",
+					test3URL,
 					result,
 				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test3 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test3fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3fqdnURL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test3 via FQDN")
-
-			// test2 can query test3
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3ip4URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip4URL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should reach test3 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3ip6URL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should reach test3 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test2.Curl(test3fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test3 with URL %s, expected hostname of 13 chars, got %s",
-					test3fqdnURL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should reach test3 via FQDN")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should reach test3")
 
 			// test3 cannot query test1
-			_, err = test3.CurlFailFast(test1ip4URL)
-			require.Error(t, err)
-
-			_, err = test3.CurlFailFast(test1ip6URL)
-			require.Error(t, err)
-
-			_, err = test3.CurlFailFast(test1fqdnURL)
+			_, err = test3.CurlFailFast(test1URL)
 			require.Error(t, err)
 
 			// test3 cannot query test2
-			_, err = test3.CurlFailFast(test2ip4URL)
-			require.Error(t, err)
-
-			_, err = test3.CurlFailFast(test2ip6URL)
-			require.Error(t, err)
-
-			_, err = test3.CurlFailFast(test2fqdnURL)
+			_, err = test3.CurlFailFast(test2URL)
 			require.Error(t, err)
 
 			// test1 can query test2
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip4URL)
+				result, err := test1.Curl(test2URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
 					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2ip4URL,
+					test2URL,
 					result,
 				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2ip6URL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
-					test2fqdnURL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via FQDN")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2")
 
 			// test2 cannot query test1
-			_, err = test2.CurlFailFast(test1ip4URL)
-			require.Error(t, err)
-
-			_, err = test2.CurlFailFast(test1ip6URL)
-			require.Error(t, err)
-
-			_, err = test2.CurlFailFast(test1fqdnURL)
+			_, err = test2.CurlFailFast(test1URL)
 			require.Error(t, err)
 		})
 	}
@@ -949,8 +848,16 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 
 	tests := map[string]struct {
 		policy policyv2.Policy
+		// test1Addr and test2Addr are the addresses covered by the policy.
+		// Address-based aliases (Prefix, Host) resolve to exactly the literal
+		// prefix. Identity-based aliases (users, groups, tags) resolve to all
+		// of the node's IPs — use any address in that case.
+		test1Addr string
+		test2Addr string
 	}{
 		"ipv4": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				ACLs: []policyv2.ACL{
 					{
@@ -964,6 +871,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"ipv6": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
 			policy: policyv2.Policy{
 				ACLs: []policyv2.ACL{
 					{
@@ -977,6 +886,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv4cidr": {
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("100.64.0.1/32")),
@@ -994,6 +905,8 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"hostv6cidr": {
+			test1Addr: "[fd7a:115c:a1e0::1]",
+			test2Addr: "[fd7a:115c:a1e0::2]",
 			policy: policyv2.Policy{
 				Hosts: policyv2.Hosts{
 					"test1": policyv2.Prefix(netip.MustParsePrefix("fd7a:115c:a1e0::1/128")),
@@ -1011,6 +924,10 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			},
 		},
 		"group": {
+			// Identity-based aliases resolve to all of a node's IPs, so
+			// either address family works. Use IPv4 for consistency.
+			test1Addr: "100.64.0.1",
+			test2Addr: "100.64.0.2",
 			policy: policyv2.Policy{
 				Groups: policyv2.Groups{
 					policyv2.Group("group:one"): []policyv2.Username{policyv2.Username("user1@")},
@@ -1037,83 +954,39 @@ func TestACLDevice1CanAccessDevice2(t *testing.T) {
 			defer scenario.ShutdownAssertNoPanics(t)
 
 			test1ip := netip.MustParseAddr("100.64.0.1")
-			test1ip6 := netip.MustParseAddr("fd7a:115c:a1e0::1")
 			test1, err := scenario.FindTailscaleClientByIP(test1ip)
 			assert.NotNil(t, test1)
 			require.NoError(t, err)
 
-			test1fqdn, err := test1.FQDN()
-			require.NoError(t, err)
-
-			test1ipURL := fmt.Sprintf("http://%s/etc/hostname", test1ip.String())
-			test1ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test1ip6.String())
-			test1fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test1fqdn)
-
 			test2ip := netip.MustParseAddr("100.64.0.2")
-			test2ip6 := netip.MustParseAddr("fd7a:115c:a1e0::2")
 			test2, err := scenario.FindTailscaleClientByIP(test2ip)
 			assert.NotNil(t, test2)
 			require.NoError(t, err)
 
-			test2fqdn, err := test2.FQDN()
-			require.NoError(t, err)
-
-			test2ipURL := fmt.Sprintf("http://%s/etc/hostname", test2ip.String())
-			test2ip6URL := fmt.Sprintf("http://[%s]/etc/hostname", test2ip6.String())
-			test2fqdnURL := fmt.Sprintf("http://%s/etc/hostname", test2fqdn)
+			// Build URLs from the addresses the policy actually covers.
+			// Address-based aliases (Prefix, Host) only resolve to the
+			// literal prefix, so we must curl the matching address family.
+			test1URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test1Addr)
+			test2URL := fmt.Sprintf("http://%s/etc/hostname", testCase.test2Addr)
 
 			// test1 can query test2
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ipURL)
+				result, err := test1.Curl(test2URL)
 				assert.NoError(c, err)
 				assert.Lenf(
 					c,
 					result,
 					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2ipURL,
+					"failed to connect from test1 to test2 with URL %s, expected hostname of 13 chars, got %s",
+					test2URL,
 					result,
 				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via IPv4")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2")
 
+			// test2 cannot query test1 (asymmetric policy)
 			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2ip6URL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2ip6URL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				result, err := test1.Curl(test2fqdnURL)
-				assert.NoError(c, err)
-				assert.Lenf(
-					c,
-					result,
-					13,
-					"failed to connect from test1 to test with URL %s, expected hostname of 13 chars, got %s",
-					test2fqdnURL,
-					result,
-				)
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test1 should reach test2 via FQDN")
-
-			// test2 cannot query test1 (negative test case)
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assertCurlFailWithCollect(c, test2, test1ipURL, "test2 should not reach test1 via IPv4")
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should NOT reach test1 via IPv4")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assertCurlFailWithCollect(c, test2, test1ip6URL, "test2 should not reach test1 via IPv6")
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should NOT reach test1 via IPv6")
-
-			assert.EventuallyWithT(t, func(c *assert.CollectT) {
-				assertCurlFailWithCollect(c, test2, test1fqdnURL, "test2 should not reach test1 via FQDN")
-			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should NOT reach test1 via FQDN")
+				assertCurlFailWithCollect(c, test2, test1URL, "test2 should not reach test1")
+			}, integrationutil.ScaledTimeout(10*time.Second), 200*time.Millisecond, "test2 should NOT reach test1")
 		})
 	}
 }
