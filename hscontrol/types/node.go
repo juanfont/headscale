@@ -789,12 +789,18 @@ func (nv NodeView) MarshalZerologObject(e *zerolog.Event) {
 
 // Owner returns the owner for display purposes.
 // For tagged nodes, returns TaggedDevices. For user-owned nodes, returns the user.
+// Returns an invalid UserView if the node is in an orphaned state (no tags, no user).
+// Callers should check .Valid() on the result before accessing fields.
 func (nv NodeView) Owner() UserView {
 	if nv.IsTagged() {
 		return TaggedDevices.View()
 	}
 
-	return nv.User()
+	if user := nv.User(); user.Valid() {
+		return user
+	}
+
+	return UserView{}
 }
 
 func (nv NodeView) IPs() []netip.Addr {
@@ -996,6 +1002,7 @@ func (nv NodeView) TypedUserID() UserID {
 
 // TailscaleUserID returns the user ID to use in Tailscale protocol.
 // Tagged nodes always return TaggedDevices.ID, user-owned nodes return their actual UserID.
+// Returns 0 for nodes in an orphaned state (no tags, no UserID).
 func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	if !nv.Valid() {
 		return 0
@@ -1004,6 +1011,10 @@ func (nv NodeView) TailscaleUserID() tailcfg.UserID {
 	if nv.IsTagged() {
 		//nolint:gosec // G115: TaggedDevices.ID is a constant that fits in int64
 		return tailcfg.UserID(int64(TaggedDevices.ID))
+	}
+
+	if !nv.UserID().Valid() {
+		return 0
 	}
 
 	//nolint:gosec // G115: UserID values are within int64 range
