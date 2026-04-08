@@ -1403,7 +1403,14 @@ func (t *TailscaleInContainer) Ping(hostnameOrIP string, opts ...PingOption) err
 	}
 
 	if !args.direct {
-		if strings.Contains(result, "via DERP") || strings.Contains(result, "via relay") {
+		// Non-direct mode accepts any indirect path: DERP, a plain
+		// tailscale relay, or a peer relay. Tailscale reports peer
+		// relay hops as "via peer-relay(ip:port:vni:N)", which does
+		// not contain the "via relay" substring and was previously
+		// rejected here.
+		if strings.Contains(result, "via DERP") ||
+			strings.Contains(result, "via relay") ||
+			strings.Contains(result, "via peer-relay") {
 			return nil
 		} else {
 			return errTailscalePingNotDERP
