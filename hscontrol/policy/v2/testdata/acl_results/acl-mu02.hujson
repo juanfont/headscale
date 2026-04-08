@@ -2,8 +2,8 @@
 //
 // acl mu02
 //
-// Nodes with filter rules: 3 of 8
-// Captured at:    2026-04-08T08:51:21Z
+// Nodes with filter rules: 2 of 8
+// Captured at:    2026-04-08T12:44:56Z
 // tscap version:  tscap/dev
 // schema version: 1
 {
@@ -11,7 +11,7 @@
 	"test_id":        "acl-mu02",
 	"description":    "acl mu02",
 	"category":       "acl",
-	"captured_at":    "2026-04-08T08:51:21.181819729Z",
+	"captured_at":    "2026-04-08T12:44:56.453002011Z",
 	"tool_version":   "tscap/dev",
 	"tailnet":        "odin@example.com",
 	"input": {
@@ -62,60 +62,60 @@
 	], "nodes": {"beedrill": {
 		"hostname":        "beedrill",
 		"tags":            ["tag:server"],
-		"ipv4":            "100.64.22.9",
-		"ipv6":            "fd7a:115c:a1e0::8537:1609",
+		"ipv4":            "100.93.107.15",
+		"ipv6":            "fd7a:115c:a1e0::a837:6b0f",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "bulbasaur": {
 		"hostname":        "bulbasaur",
 		"tags":            [],
-		"ipv4":            "100.106.147.50",
-		"ipv6":            "fd7a:115c:a1e0::3237:9332",
+		"ipv4":            "100.105.94.123",
+		"ipv6":            "fd7a:115c:a1e0::2237:5e7b",
 		"user":            "odin",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "charmander": {
 		"hostname":        "charmander",
 		"tags":            ["tag:exit"],
-		"ipv4":            "100.85.222.4",
-		"ipv6":            "fd7a:115c:a1e0::1437:de04",
+		"ipv4":            "100.66.165.127",
+		"ipv6":            "fd7a:115c:a1e0::8f37:a57f",
 		"routable_ips":    ["0.0.0.0/0", "::/0"],
 		"approved_routes": []
 	}, "ivysaur": {
 		"hostname":        "ivysaur",
 		"tags":            [],
-		"ipv4":            "100.127.62.2",
-		"ipv6":            "fd7a:115c:a1e0::1737:3e02",
+		"ipv4":            "100.71.51.98",
+		"ipv6":            "fd7a:115c:a1e0::b237:3362",
 		"user":            "thor",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "kakuna": {
 		"hostname":        "kakuna",
 		"tags":            ["tag:prod"],
-		"ipv4":            "100.126.200.125",
-		"ipv6":            "fd7a:115c:a1e0::ed37:c87d",
+		"ipv4":            "100.119.159.90",
+		"ipv6":            "fd7a:115c:a1e0::f637:9f5a",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "squirtle": {
 		"hostname":        "squirtle",
 		"tags":            ["tag:router"],
-		"ipv4":            "100.93.107.122",
-		"ipv6":            "fd7a:115c:a1e0::e537:6b7a",
+		"ipv4":            "100.90.229.68",
+		"ipv6":            "fd7a:115c:a1e0::a937:e545",
 		"routable_ips":    ["10.33.0.0/16"],
 		"approved_routes": []
 	}, "venusaur": {
 		"hostname":        "venusaur",
 		"tags":            [],
-		"ipv4":            "100.115.5.20",
-		"ipv6":            "fd7a:115c:a1e0::f837:514",
+		"ipv4":            "100.65.79.19",
+		"ipv6":            "fd7a:115c:a1e0::c737:4f13",
 		"user":            "freya",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "weedle": {
 		"hostname":        "weedle",
 		"tags":            ["tag:client"],
-		"ipv4":            "100.68.239.5",
-		"ipv6":            "fd7a:115c:a1e0::6a37:ef05",
+		"ipv4":            "100.109.53.89",
+		"ipv6":            "fd7a:115c:a1e0::ad37:3559",
 		"routable_ips":    [],
 		"approved_routes": []
 	}}},
@@ -123,21 +123,21 @@
 		"beedrill": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         2725177489619037,
-				"StableID":   "n8ntpunEHN11CNTRL",
+				"ID":         5744125168547222,
+				"StableID":   "n5U6KpRXrm11CNTRL",
 				"Name":       "beedrill.tail78f774.ts.net.",
-				"User":       2725177489619037,
-				"Key":        "nodekey:d06704c9e2181341e7d76885124e0ce0f144bd0ed07d1387e2ddffc385c01608",
-				"DiscoKey":   "discokey:91274ecd2c26d36da91d2481cbd7dd1437dccb235d97891dc74c4955a639d57e",
-				"Addresses":  ["100.64.22.9/32", "fd7a:115c:a1e0::8537:1609/128"],
-				"AllowedIPs": ["100.64.22.9/32", "fd7a:115c:a1e0::8537:1609/128"],
-				"Endpoints":  ["77.164.248.136:33531", "10.65.0.27:33531", "172.17.0.1:33531"],
+				"User":       5744125168547222,
+				"Key":        "nodekey:d066aa759575fa56a3b45ce4df7e5fa07e62b0e30093d286844b586ea8dd6b0e",
+				"DiscoKey":   "discokey:53523fe76111b4330d0226c594b4a4cb3e2098875d2085fc3aa38ab02201b57d",
+				"Addresses":  ["100.93.107.15/32", "fd7a:115c:a1e0::a837:6b0f/128"],
+				"AllowedIPs": ["100.93.107.15/32", "fd7a:115c:a1e0::a837:6b0f/128"],
+				"Endpoints":  ["77.164.248.136:42208", "10.65.0.27:42208", "172.17.0.1:42208"],
 				"Hostinfo": {"Hostname": "beedrill", "RequestTags": ["tag:server"], "Services": [
-					{"Proto": "peerapi4", "Port": 55713},
-					{"Proto": "peerapi6", "Port": 55713},
+					{"Proto": "peerapi4", "Port": 51980},
+					{"Proto": "peerapi6", "Port": 51980},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T08:51:24.989280389Z",
+				"Created":           "2026-04-08T12:45:00.289394276Z",
 				"Tags":              ["tag:server"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -165,8 +165,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:d06704c9e2181341e7d76885124e0ce0f144bd0ed07d1387e2ddffc385c01608",
-			"MachineKey":        "mkey:0f62292be88b1cf7bd3c73857bbe7af29bc25a871cf9a9e26d89b70549abb530",
+			"NodeKey":           "nodekey:d066aa759575fa56a3b45ce4df7e5fa07e62b0e30093d286844b586ea8dd6b0e",
+			"MachineKey":        "mkey:2d8c180fc2ed4eb322bb9d273eb98abbf5d5b94bf8637388b102eea67c11af5f",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -992,1009 +992,944 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"2725177489619037": {
-				"ID":          2725177489619037,
+			"UserProfiles": {"5744125168547222": {
+				"ID":          5744125168547222,
 				"LoginName":   "beedrill.tail78f774.ts.net",
 				"DisplayName": "beedrill"
 			}}
 		}, "ssh_rules": []},
-		"bulbasaur": {"packet_filter_rules": [{"SrcIPs": [
-			"100.106.147.50",
-			"100.115.5.20",
-			"100.127.62.2",
-			"fd7a:115c:a1e0::1737:3e02",
-			"fd7a:115c:a1e0::3237:9332",
-			"fd7a:115c:a1e0::f837:514"
-		], "DstPorts": [
-			{"IP": "100.106.147.50", "Ports": {"First": 0, "Last": 65535}},
-			{"IP": "fd7a:115c:a1e0::3237:9332", "Ports": {"First": 0, "Last": 65535}}
-		]}], "packet_filter_matches": [{
-			"IPProto": [6, 17, 1, 58],
-			"Srcs": [
-				"100.106.147.50/32",
-				"100.115.5.20/32",
-				"100.127.62.2/32",
-				"fd7a:115c:a1e0::1737:3e02/128",
-				"fd7a:115c:a1e0::3237:9332/128",
-				"fd7a:115c:a1e0::f837:514/128"
-			],
-			"SrcCaps": null,
-			"Dsts": [{"Net": "100.106.147.50/32", "Ports": {"First": 0, "Last": 65535}}, {
-				"Net":   "fd7a:115c:a1e0::3237:9332/128",
-				"Ports": {"First": 0, "Last": 65535}
-			}],
-			"Caps": []
-		}], "netmap": {
-			"Cached": false,
-			"SelfNode": {
-				"ID":         8426985398687616,
-				"StableID":   "ndRvpmcbo821CNTRL",
-				"Name":       "bulbasaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:bcce939c5918c38e8949c9bb7703d0d021b13d908f1fb008e7d500dc32aa9331",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:02601a76a0544b57ccc02b6680c63d2a15b39f00cf9db73a9d887d32ce07b171",
-				"Addresses":  ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"AllowedIPs": ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"Endpoints":  ["77.164.248.136:49227", "10.65.0.27:49227", "172.17.0.1:49227"],
-				"Hostinfo": {"Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40893},
-					{"Proto": "peerapi6", "Port": 40893},
-					{"Proto": "peerapi-dns-proxy", "Port": 1}
-				]},
-				"Created":           "2026-04-08T08:51:26.613158846Z",
-				"MachineAuthorized": true,
-				"CapMap": {
-					"https://tailscale.com/cap/file-sharing": null,
-					"https://tailscale.com/cap/is-admin":     null,
-					"https://tailscale.com/cap/is-owner":     null,
-					"https://tailscale.com/cap/ssh":          null,
-					"https://tailscale.com/cap/tailnet-lock": null,
-					"probe-udp-lifetime":                     null,
-					"ssh-behavior-v1":                        null,
-					"ssh-env-vars":                           null,
-					"store-appc-routes":                      null,
-					"tailnet-display-name":                   ["odin@example.com"]
-				},
-				"ComputedName":         "bulbasaur",
-				"ComputedNameWithHost": "bulbasaur"
-			},
-			"AllCaps": [
-				"https://tailscale.com/cap/file-sharing",
-				"https://tailscale.com/cap/is-admin",
-				"https://tailscale.com/cap/is-owner",
-				"https://tailscale.com/cap/ssh",
-				"https://tailscale.com/cap/tailnet-lock",
-				"probe-udp-lifetime",
-				"ssh-behavior-v1",
-				"ssh-env-vars",
-				"store-appc-routes",
-				"tailnet-display-name"
-			],
-			"NodeKey":    "nodekey:bcce939c5918c38e8949c9bb7703d0d021b13d908f1fb008e7d500dc32aa9331",
-			"MachineKey": "mkey:525c4ceb6ba47298cabebe9e59cc8c7f779cca68a0bf67849a62e690cccfb84d",
-			"Peers": [{
-				"ID":         874267910027719,
-				"StableID":   "nLfKR4Yxp711CNTRL",
-				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:afd3d7ee9207af743acdc88731ee803cbfeca4950a46457fb4e4e1b7f8b30513",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:e9fff52ff6af5f51088df65c6201a8e22d6736c3d3562b11a32e1b5c30099b03",
-				"Addresses":  ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"AllowedIPs": ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"Endpoints":  ["77.164.248.136:42592", "10.65.0.27:42592", "172.17.0.1:42592"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 44835},
-					{"Proto": "peerapi6", "Port": 44835}
-				]},
-				"Created":              "2026-04-08T08:51:26.078375093Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "venusaur",
-				"ComputedNameWithHost": "venusaur"
-			}, {
-				"ID":         4980222000101349,
-				"StableID":   "nYESBFzYtf11CNTRL",
-				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:24c28c433e2c4f1edaf059ca281e80fb3a85bbb68d8d99d2af66b53c17bf3e01",
-				"KeyExpiry":  "2026-10-05T08:51:25Z",
-				"DiscoKey":   "discokey:5fd056508c25b0745e46b9cfa4eeca4b3f2be3d80727cb4aa350667ef9d9233f",
-				"Addresses":  ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"AllowedIPs": ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"Endpoints":  ["77.164.248.136:36640", "10.65.0.27:36640", "172.17.0.1:36640"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 35886},
-					{"Proto": "peerapi6", "Port": 35886}
-				]},
-				"Created":              "2026-04-08T08:51:25.527672569Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "ivysaur",
-				"ComputedNameWithHost": "ivysaur"
-			}],
-			"DNS": {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
-			"PacketFilter": [{
+		"bulbasaur": {
+			"packet_filter_rules": [{"SrcIPs": ["100.105.94.123", "fd7a:115c:a1e0::2237:5e7b"], "DstPorts": [
+				{"IP": "100.105.94.123", "Ports": {"First": 0, "Last": 65535}},
+				{"IP": "fd7a:115c:a1e0::2237:5e7b", "Ports": {"First": 0, "Last": 65535}}
+			]}],
+			"packet_filter_matches": [{
 				"IPProto": [6, 17, 1, 58],
-				"Srcs": [
-					"100.106.147.50/32",
-					"100.115.5.20/32",
-					"100.127.62.2/32",
-					"fd7a:115c:a1e0::1737:3e02/128",
-					"fd7a:115c:a1e0::3237:9332/128",
-					"fd7a:115c:a1e0::f837:514/128"
-				],
+				"Srcs":    ["100.105.94.123/32", "fd7a:115c:a1e0::2237:5e7b/128"],
 				"SrcCaps": null,
-				"Dsts": [{"Net": "100.106.147.50/32", "Ports": {"First": 0, "Last": 65535}}, {
-					"Net":   "fd7a:115c:a1e0::3237:9332/128",
+				"Dsts": [{"Net": "100.105.94.123/32", "Ports": {"First": 0, "Last": 65535}}, {
+					"Net":   "fd7a:115c:a1e0::2237:5e7b/128",
 					"Ports": {"First": 0, "Last": 65535}
 				}],
 				"Caps": []
 			}],
-			"PacketFilterRules": [{"SrcIPs": [
-				"100.106.147.50",
-				"100.115.5.20",
-				"100.127.62.2",
-				"fd7a:115c:a1e0::1737:3e02",
-				"fd7a:115c:a1e0::3237:9332",
-				"fd7a:115c:a1e0::f837:514"
-			], "DstPorts": [
-				{"IP": "100.106.147.50", "Ports": {"First": 0, "Last": 65535}},
-				{"IP": "fd7a:115c:a1e0::3237:9332", "Ports": {"First": 0, "Last": 65535}}
-			]}],
-			"SSHPolicy":       {"rules": []},
-			"CollectServices": false,
-			"DERPMap": {"Regions": {"1": {
-				"RegionID":   1,
-				"RegionCode": "nyc",
-				"RegionName": "New York City",
-				"Latitude":   40.7128,
-				"Longitude":  -74.006,
-				"Nodes": [{
-					"Name":      "1h",
-					"RegionID":  1,
-					"HostName":  "derp1h.tailscale.com",
-					"IPv4":      "199.38.181.93",
-					"IPv6":      "2607:f740:f::afd",
-					"CanPort80": true
-				}, {
-					"Name":      "1g",
-					"RegionID":  1,
-					"HostName":  "derp1g.tailscale.com",
-					"IPv4":      "209.177.145.120",
-					"IPv6":      "2607:f740:f::3eb",
-					"CanPort80": true
-				}, {
-					"Name":      "1i",
-					"RegionID":  1,
-					"HostName":  "derp1i.tailscale.com",
-					"IPv4":      "199.38.181.103",
-					"IPv6":      "2607:f740:f::e19",
-					"CanPort80": true
-				}, {
-					"Name":      "1f",
-					"RegionID":  1,
-					"HostName":  "derp1f.tailscale.com",
-					"IPv4":      "199.38.181.104",
-					"IPv6":      "2607:f740:f::bc",
-					"CanPort80": true
-				}]
-			}, "10": {
-				"RegionID":   10,
-				"RegionCode": "sea",
-				"RegionName": "Seattle",
-				"Latitude":   47.609722,
-				"Longitude":  -122.333056,
-				"Nodes": [{
-					"Name":      "10c",
-					"RegionID":  10,
-					"HostName":  "derp10c.tailscale.com",
-					"IPv4":      "192.73.240.121",
-					"IPv6":      "2607:f740:14::40c",
-					"CanPort80": true
-				}, {
-					"Name":      "10d",
-					"RegionID":  10,
-					"HostName":  "derp10d.tailscale.com",
-					"IPv4":      "192.73.240.132",
-					"IPv6":      "2607:f740:14::500",
-					"CanPort80": true
-				}, {
-					"Name":      "10b",
-					"RegionID":  10,
-					"HostName":  "derp10b.tailscale.com",
-					"IPv4":      "192.73.240.161",
-					"IPv6":      "2607:f740:14::61c",
-					"CanPort80": true
-				}]
-			}, "11": {
-				"RegionID":   11,
-				"RegionCode": "sao",
-				"RegionName": "São Paulo",
-				"Latitude":   -23.55,
-				"Longitude":  -46.633333,
-				"Nodes": [{
-					"Name":      "11f",
-					"RegionID":  11,
-					"HostName":  "derp11f.tailscale.com",
-					"IPv4":      "172.237.61.197",
-					"IPv6":      "2600:3c0d::2000:3bff:fe44:6166",
-					"CanPort80": true
-				}, {
-					"Name":      "11g",
-					"RegionID":  11,
-					"HostName":  "derp11g.tailscale.com",
-					"IPv4":      "172.237.61.190",
-					"IPv6":      "2600:3c0d::2000:62ff:febe:2e67",
-					"CanPort80": true
-				}, {
-					"Name":      "11e",
-					"RegionID":  11,
-					"HostName":  "derp11e.tailscale.com",
-					"IPv4":      "172.237.61.194",
-					"IPv6":      "2600:3c0d::2000:d2ff:fe43:1790",
-					"CanPort80": true
-				}]
-			}, "12": {
-				"RegionID":   12,
-				"RegionCode": "ord",
-				"RegionName": "Chicago",
-				"Latitude":   41.881944,
-				"Longitude":  -87.627778,
-				"Nodes": [{
-					"Name":      "12e",
-					"RegionID":  12,
-					"HostName":  "derp12e.tailscale.com",
-					"IPv4":      "209.177.158.15",
-					"IPv6":      "2607:f740:e::b17",
-					"CanPort80": true
-				}, {
-					"Name":      "12f",
-					"RegionID":  12,
-					"HostName":  "derp12f.tailscale.com",
-					"IPv4":      "199.38.182.118",
-					"IPv6":      "2607:f740:e::4c8",
-					"CanPort80": true
-				}, {
-					"Name":      "12d",
-					"RegionID":  12,
-					"HostName":  "derp12d.tailscale.com",
-					"IPv4":      "209.177.158.246",
-					"IPv6":      "2607:f740:e::811",
-					"CanPort80": true
-				}]
-			}, "13": {
-				"RegionID":   13,
-				"RegionCode": "den",
-				"RegionName": "Denver",
-				"Latitude":   39.7392,
-				"Longitude":  -104.9849,
-				"Nodes": [{
-					"Name":      "13c",
-					"RegionID":  13,
-					"HostName":  "derp13c.tailscale.com",
-					"IPv4":      "192.73.242.28",
-					"IPv6":      "2607:f740:16::5c",
-					"CanPort80": true
-				}, {
-					"Name":      "13d",
-					"RegionID":  13,
-					"HostName":  "derp13d.tailscale.com",
-					"IPv4":      "192.73.242.204",
-					"IPv6":      "2607:f740:16::c23",
-					"CanPort80": true
-				}, {
-					"Name":      "13b",
-					"RegionID":  13,
-					"HostName":  "derp13b.tailscale.com",
-					"IPv4":      "192.73.242.187",
-					"IPv6":      "2607:f740:16::640",
-					"CanPort80": true
-				}]
-			}, "14": {
-				"RegionID":   14,
-				"RegionCode": "ams",
-				"RegionName": "Amsterdam",
-				"Latitude":   52.372778,
-				"Longitude":  4.893611,
-				"Nodes": [{
-					"Name":      "14c",
-					"RegionID":  14,
-					"HostName":  "derp14c.tailscale.com",
-					"IPv4":      "176.58.93.147",
-					"IPv6":      "2a00:dd80:3c::b09",
-					"CanPort80": true
-				}, {
-					"Name":      "14d",
-					"RegionID":  14,
-					"HostName":  "derp14d.tailscale.com",
-					"IPv4":      "176.58.93.154",
-					"IPv6":      "2a00:dd80:3c::3d5",
-					"CanPort80": true
-				}, {
-					"Name":      "14b",
-					"RegionID":  14,
-					"HostName":  "derp14b.tailscale.com",
-					"IPv4":      "176.58.93.248",
-					"IPv6":      "2a00:dd80:3c::807",
-					"CanPort80": true
-				}]
-			}, "15": {
-				"RegionID":   15,
-				"RegionCode": "jnb",
-				"RegionName": "Johannesburg",
-				"Latitude":   -26.204444,
-				"Longitude":  28.045556,
-				"Nodes": [{
-					"Name":      "15c",
-					"RegionID":  15,
-					"HostName":  "derp15c.tailscale.com",
-					"IPv4":      "102.67.165.185",
-					"IPv6":      "2c0f:edb0:0:10::b59",
-					"CanPort80": true
-				}, {
-					"Name":      "15d",
-					"RegionID":  15,
-					"HostName":  "derp15d.tailscale.com",
-					"IPv4":      "102.67.165.36",
-					"IPv6":      "2c0f:edb0:0:10::599",
-					"CanPort80": true
-				}, {
-					"Name":      "15b",
-					"RegionID":  15,
-					"HostName":  "derp15b.tailscale.com",
-					"IPv4":      "102.67.165.90",
-					"IPv6":      "2c0f:edb0:0:10::963",
-					"CanPort80": true
-				}]
-			}, "16": {
-				"RegionID":   16,
-				"RegionCode": "mia",
-				"RegionName": "Miami",
-				"Latitude":   25.78,
-				"Longitude":  -80.21,
-				"Nodes": [{
-					"Name":      "16c",
-					"RegionID":  16,
-					"HostName":  "derp16c.tailscale.com",
-					"IPv4":      "192.73.243.229",
-					"IPv6":      "2607:f740:17::4e4",
-					"CanPort80": true
-				}, {
-					"Name":      "16d",
-					"RegionID":  16,
-					"HostName":  "derp16d.tailscale.com",
-					"IPv4":      "192.73.243.141",
-					"IPv6":      "2607:f740:17::475",
-					"CanPort80": true
-				}, {
-					"Name":      "16b",
-					"RegionID":  16,
-					"HostName":  "derp16b.tailscale.com",
-					"IPv4":      "192.73.243.135",
-					"IPv6":      "2607:f740:17::476",
-					"CanPort80": true
-				}]
-			}, "17": {
-				"RegionID":   17,
-				"RegionCode": "lax",
-				"RegionName": "Los Angeles",
-				"Latitude":   34.05,
-				"Longitude":  -118.25,
-				"Nodes": [{
-					"Name":      "17c",
-					"RegionID":  17,
-					"HostName":  "derp17c.tailscale.com",
-					"IPv4":      "208.111.40.12",
-					"IPv6":      "2607:f740:c::10",
-					"CanPort80": true
-				}, {
-					"Name":      "17d",
-					"RegionID":  17,
-					"HostName":  "derp17d.tailscale.com",
-					"IPv4":      "208.111.40.216",
-					"IPv6":      "2607:f740:c::e1b",
-					"CanPort80": true
-				}, {
-					"Name":      "17b",
-					"RegionID":  17,
-					"HostName":  "derp17b.tailscale.com",
-					"IPv4":      "192.73.244.245",
-					"IPv6":      "2607:f740:c::646",
-					"CanPort80": true
-				}]
-			}, "18": {
-				"RegionID":   18,
-				"RegionCode": "par",
-				"RegionName": "Paris",
-				"Latitude":   48.856667,
-				"Longitude":  2.352222,
-				"Nodes": [{
-					"Name":      "18c",
-					"RegionID":  18,
-					"HostName":  "derp18c.tailscale.com",
-					"IPv4":      "176.58.90.207",
-					"IPv6":      "2a00:dd80:3e::c19",
-					"CanPort80": true
-				}, {
-					"Name":      "18d",
-					"RegionID":  18,
-					"HostName":  "derp18d.tailscale.com",
-					"IPv4":      "176.58.90.104",
-					"IPv6":      "2a00:dd80:3e::f2e",
-					"CanPort80": true
-				}, {
-					"Name":      "18b",
-					"RegionID":  18,
-					"HostName":  "derp18b.tailscale.com",
-					"IPv4":      "176.58.90.147",
-					"IPv6":      "2a00:dd80:3e::363",
-					"CanPort80": true
-				}]
-			}, "19": {
-				"RegionID":   19,
-				"RegionCode": "mad",
-				"RegionName": "Madrid",
-				"Latitude":   40.416944,
-				"Longitude":  -3.703333,
-				"Nodes": [{
-					"Name":      "19c",
-					"RegionID":  19,
-					"HostName":  "derp19c.tailscale.com",
-					"IPv4":      "45.159.97.61",
-					"IPv6":      "2a00:dd80:14:10::20",
-					"CanPort80": true
-				}, {
-					"Name":      "19d",
-					"RegionID":  19,
-					"HostName":  "derp19d.tailscale.com",
-					"IPv4":      "45.159.97.233",
-					"IPv6":      "2a00:dd80:14:10::34a",
-					"CanPort80": true
-				}, {
-					"Name":      "19b",
-					"RegionID":  19,
-					"HostName":  "derp19b.tailscale.com",
-					"IPv4":      "45.159.97.144",
-					"IPv6":      "2a00:dd80:14:10::335",
-					"CanPort80": true
-				}]
-			}, "2": {
-				"RegionID":   2,
-				"RegionCode": "sfo",
-				"RegionName": "San Francisco",
-				"Latitude":   37.7775,
-				"Longitude":  -122.416389,
-				"Nodes": [{
-					"Name":      "2e",
-					"RegionID":  2,
-					"HostName":  "derp2e.tailscale.com",
-					"IPv4":      "192.73.252.134",
-					"IPv6":      "2607:f740:0:3f::44c",
-					"CanPort80": true
-				}, {
-					"Name":      "2f",
-					"RegionID":  2,
-					"HostName":  "derp2f.tailscale.com",
-					"IPv4":      "208.111.34.178",
-					"IPv6":      "2607:f740:0:3f::f4",
-					"CanPort80": true
-				}, {
-					"Name":      "2d",
-					"RegionID":  2,
-					"HostName":  "derp2d.tailscale.com",
-					"IPv4":      "192.73.252.65",
-					"IPv6":      "2607:f740:0:3f::287",
-					"CanPort80": true
-				}]
-			}, "20": {
-				"RegionID":   20,
-				"RegionCode": "hkg",
-				"RegionName": "Hong Kong",
-				"Latitude":   22.3193,
-				"Longitude":  114.1694,
-				"Nodes": [{
-					"Name":      "20c",
-					"RegionID":  20,
-					"HostName":  "derp20c.tailscale.com",
-					"IPv4":      "205.147.105.30",
-					"IPv6":      "2403:2500:8000:1::5fb",
-					"CanPort80": true
-				}, {
-					"Name":      "20d",
-					"RegionID":  20,
-					"HostName":  "derp20d.tailscale.com",
-					"IPv4":      "205.147.105.78",
-					"IPv6":      "2403:2500:8000:1::e9a",
-					"CanPort80": true
-				}, {
-					"Name":      "20b",
-					"RegionID":  20,
-					"HostName":  "derp20b.tailscale.com",
-					"IPv4":      "103.6.84.152",
-					"IPv6":      "2403:2500:8000:1::ef6",
-					"CanPort80": true
-				}]
-			}, "21": {
-				"RegionID":   21,
-				"RegionCode": "tor",
-				"RegionName": "Toronto",
-				"Latitude":   43.741667,
-				"Longitude":  -79.373333,
-				"Nodes": [{
-					"Name":      "21c",
-					"RegionID":  21,
-					"HostName":  "derp21c.tailscale.com",
-					"IPv4":      "162.248.221.215",
-					"IPv6":      "2607:f740:50::f10",
-					"CanPort80": true
-				}, {
-					"Name":      "21d",
-					"RegionID":  21,
-					"HostName":  "derp21d.tailscale.com",
-					"IPv4":      "162.248.221.248",
-					"IPv6":      "2607:f740:50::ca4",
-					"CanPort80": true
-				}, {
-					"Name":      "21b",
-					"RegionID":  21,
-					"HostName":  "derp21b.tailscale.com",
-					"IPv4":      "162.248.221.199",
-					"IPv6":      "2607:f740:50::1d1",
-					"CanPort80": true
-				}]
-			}, "22": {
-				"RegionID":   22,
-				"RegionCode": "waw",
-				"RegionName": "Warsaw",
-				"Latitude":   52.23,
-				"Longitude":  21.011111,
-				"Nodes": [{
-					"Name":      "22c",
-					"RegionID":  22,
-					"HostName":  "derp22c.tailscale.com",
-					"IPv4":      "45.159.98.253",
-					"IPv6":      "2a00:dd80:40:100::3f",
-					"CanPort80": true
-				}, {
-					"Name":      "22d",
-					"RegionID":  22,
-					"HostName":  "derp22d.tailscale.com",
-					"IPv4":      "45.159.98.145",
-					"IPv6":      "2a00:dd80:40:100::211",
-					"CanPort80": true
-				}, {
-					"Name":      "22b",
-					"RegionID":  22,
-					"HostName":  "derp22b.tailscale.com",
-					"IPv4":      "45.159.98.196",
-					"IPv6":      "2a00:dd80:40:100::316",
-					"CanPort80": true
-				}]
-			}, "23": {
-				"RegionID":   23,
-				"RegionCode": "dbi",
-				"RegionName": "Dubai",
-				"Latitude":   25.263056,
-				"Longitude":  55.297222,
-				"Nodes": [{
-					"Name":      "23c",
-					"RegionID":  23,
-					"HostName":  "derp23c.tailscale.com",
-					"IPv4":      "185.34.3.207",
-					"IPv6":      "2a00:dd80:3f:100::a50",
-					"CanPort80": true
-				}, {
-					"Name":      "23d",
-					"RegionID":  23,
-					"HostName":  "derp23d.tailscale.com",
-					"IPv4":      "185.34.3.75",
-					"IPv6":      "2a00:dd80:3f:100::97e",
-					"CanPort80": true
-				}, {
-					"Name":      "23b",
-					"RegionID":  23,
-					"HostName":  "derp23b.tailscale.com",
-					"IPv4":      "185.34.3.232",
-					"IPv6":      "2a00:dd80:3f:100::76f",
-					"CanPort80": true
-				}]
-			}, "24": {
-				"RegionID":   24,
-				"RegionCode": "hnl",
-				"RegionName": "Honolulu",
-				"Latitude":   21.306944,
-				"Longitude":  -157.858333,
-				"Nodes": [{
-					"Name":      "24c",
-					"RegionID":  24,
-					"HostName":  "derp24c.tailscale.com",
-					"IPv4":      "208.83.233.233",
-					"IPv6":      "2001:19f0:c000:c591:5400:04ff:fe26:2c5f",
-					"CanPort80": true
-				}, {
-					"Name":      "24d",
-					"RegionID":  24,
-					"HostName":  "derp24d.tailscale.com",
-					"IPv4":      "208.72.155.133",
-					"IPv6":      "2001:19f0:c000:c564:5400:04ff:fe26:2ba8",
-					"CanPort80": true
-				}, {
-					"Name":      "24b",
-					"RegionID":  24,
-					"HostName":  "derp24b.tailscale.com",
-					"IPv4":      "208.83.234.151",
-					"IPv6":      "2001:19f0:c000:c586:5400:04ff:fe26:2ba6",
-					"CanPort80": true
-				}]
-			}, "25": {
-				"RegionID":   25,
-				"RegionCode": "nai",
-				"RegionName": "Nairobi",
-				"Latitude":   -1.286389,
-				"Longitude":  36.817222,
-				"Nodes": [{
-					"Name":      "25c",
-					"RegionID":  25,
-					"HostName":  "derp25c.tailscale.com",
-					"IPv4":      "102.67.167.37",
-					"IPv6":      "2c0f:edb0:2000:1::2c7",
-					"CanPort80": true
-				}, {
-					"Name":      "25d",
-					"RegionID":  25,
-					"HostName":  "derp25d.tailscale.com",
-					"IPv4":      "102.67.167.188",
-					"IPv6":      "2c0f:edb0:2000:1::188",
-					"CanPort80": true
-				}, {
-					"Name":      "25b",
-					"RegionID":  25,
-					"HostName":  "derp25b.tailscale.com",
-					"IPv4":      "102.67.167.245",
-					"IPv6":      "2c0f:edb0:2000:1::2e9",
-					"CanPort80": true
-				}]
-			}, "26": {
-				"RegionID":   26,
-				"RegionCode": "nue",
-				"RegionName": "Nuremberg",
-				"Latitude":   49.453889,
-				"Longitude":  11.0775,
-				"Nodes": [{
-					"Name":      "26c",
-					"RegionID":  26,
-					"HostName":  "derp26c.tailscale.com",
-					"IPv4":      "49.12.193.137",
-					"IPv6":      "2a01:4f8:1c1c:5c70::1",
-					"CanPort80": true
-				}, {
-					"Name":      "26d",
-					"RegionID":  26,
-					"HostName":  "derp26d.tailscale.com",
-					"IPv4":      "49.13.204.141",
-					"IPv6":      "2a01:4f8:1c0c:7d06::1",
-					"CanPort80": true
-				}, {
-					"Name":      "26b",
-					"RegionID":  26,
-					"HostName":  "derp26b.tailscale.com",
-					"IPv4":      "167.235.72.200",
-					"IPv6":      "2a01:4f8:1c1c:47b6::1",
-					"CanPort80": true
-				}]
-			}, "27": {
-				"RegionID":   27,
-				"RegionCode": "iad",
-				"RegionName": "Ashburn",
-				"Latitude":   39.03,
-				"Longitude":  -77.471111,
-				"Nodes": [{
-					"Name":      "27d",
-					"RegionID":  27,
-					"HostName":  "derp27d.tailscale.com",
-					"IPv4":      "178.156.152.106",
-					"IPv6":      "2a01:4ff:f0:3c8e::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27c",
-					"RegionID":  27,
-					"HostName":  "derp27c.tailscale.com",
-					"IPv4":      "178.156.152.91",
-					"IPv6":      "2a01:4ff:f0:3913::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27e",
-					"RegionID":  27,
-					"HostName":  "derp27e.tailscale.com",
-					"IPv4":      "178.156.134.232",
-					"IPv6":      "2a01:4ff:f0:28d4::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27b",
-					"RegionID":  27,
-					"HostName":  "derp27b.tailscale.com",
-					"IPv4":      "5.161.218.233",
-					"IPv6":      "2a01:4ff:f0:3db9::1",
-					"CanPort80": true
-				}]
-			}, "28": {
-				"RegionID":   28,
-				"RegionCode": "hel",
-				"RegionName": "Helsinki",
-				"Latitude":   60.170833,
-				"Longitude":  24.9375,
-				"Nodes": [{
-					"Name":      "28c",
-					"RegionID":  28,
-					"HostName":  "derp28c.tailscale.com",
-					"IPv4":      "95.217.2.165",
-					"IPv6":      "2a01:4f9:c012:cd74::1",
-					"CanPort80": true
-				}, {
-					"Name":      "28d",
-					"RegionID":  28,
-					"HostName":  "derp28d.tailscale.com",
-					"IPv4":      "157.180.28.32",
-					"IPv6":      "2a01:4f9:c012:2e5b::1",
-					"CanPort80": true
-				}, {
-					"Name":      "28b",
-					"RegionID":  28,
-					"HostName":  "derp28b.tailscale.com",
-					"IPv4":      "65.109.143.62",
-					"IPv6":      "2a01:4f9:c012:d55c::1",
-					"CanPort80": true
-				}]
-			}, "3": {
-				"RegionID":   3,
-				"RegionCode": "sin",
-				"RegionName": "Singapore",
-				"Latitude":   1.3521,
-				"Longitude":  103.8198,
-				"Nodes": [{
-					"Name":      "3g",
-					"RegionID":  3,
-					"HostName":  "derp3g.tailscale.com",
-					"IPv4":      "172.237.72.79",
-					"IPv6":      "2600:3c15::2000:adff:fe08:6fab",
-					"CanPort80": true
-				}, {
-					"Name":      "3f",
-					"RegionID":  3,
-					"HostName":  "derp3f.tailscale.com",
-					"IPv4":      "172.237.72.8",
-					"IPv6":      "2600:3c15::2000:53ff:fe48:a668",
-					"CanPort80": true
-				}, {
-					"Name":      "3h",
-					"RegionID":  3,
-					"HostName":  "derp3h.tailscale.com",
-					"IPv4":      "172.237.66.30",
-					"IPv6":      "2600:3c15::2000:3dff:fe44:50aa",
-					"CanPort80": true
-				}, {
-					"Name":      "3e",
-					"RegionID":  3,
-					"HostName":  "derp3e.tailscale.com",
-					"IPv4":      "172.237.72.43",
-					"IPv6":      "2600:3c15::2000:6cff:fee4:d799",
-					"CanPort80": true
-				}]
-			}, "4": {
-				"RegionID":   4,
-				"RegionCode": "fra",
-				"RegionName": "Frankfurt",
-				"Latitude":   50.1109,
-				"Longitude":  8.6821,
-				"Nodes": [{
-					"Name":      "4h",
-					"RegionID":  4,
-					"HostName":  "derp4h.tailscale.com",
-					"IPv4":      "185.40.234.77",
-					"IPv6":      "2a00:dd80:20::bcf",
-					"CanPort80": true
-				}, {
-					"Name":      "4i",
-					"RegionID":  4,
-					"HostName":  "derp4i.tailscale.com",
-					"IPv4":      "185.40.234.53",
-					"IPv6":      "2a00:dd80:20::8a6",
-					"CanPort80": true
-				}, {
-					"Name":      "4g",
-					"RegionID":  4,
-					"HostName":  "derp4g.tailscale.com",
-					"IPv4":      "185.40.234.113",
-					"IPv6":      "2a00:dd80:20::8f",
-					"CanPort80": true
-				}, {
-					"Name":      "4j",
-					"RegionID":  4,
-					"HostName":  "derp4j.tailscale.com",
-					"IPv4":      "185.40.234.176",
-					"IPv6":      "2a00:dd80:20::e67",
-					"CanPort80": true
-				}, {
-					"Name":      "4f",
-					"RegionID":  4,
-					"HostName":  "derp4f.tailscale.com",
-					"IPv4":      "185.40.234.219",
-					"IPv6":      "2a00:dd80:20::a25",
-					"CanPort80": true
-				}]
-			}, "5": {
-				"RegionID":   5,
-				"RegionCode": "syd",
-				"RegionName": "Sydney",
-				"Latitude":   -33.867778,
-				"Longitude":  151.21,
-				"Nodes": [{
-					"Name":      "5f",
-					"RegionID":  5,
-					"HostName":  "derp5f.tailscale.com",
-					"IPv4":      "172.105.166.103",
-					"IPv6":      "2400:8907::2000:ccff:fe1f:80da",
-					"CanPort80": true
-				}, {
-					"Name":      "5g",
-					"RegionID":  5,
-					"HostName":  "derp5g.tailscale.com",
-					"IPv4":      "172.105.169.57",
-					"IPv6":      "2400:8907::2000:2fff:fea7:57f4",
-					"CanPort80": true
-				}, {
-					"Name":      "5e",
-					"RegionID":  5,
-					"HostName":  "derp5e.tailscale.com",
-					"IPv4":      "172.105.179.230",
-					"IPv6":      "2400:8907::2000:ceff:fe8d:4f4e",
-					"CanPort80": true
-				}]
-			}, "6": {
-				"RegionID":   6,
-				"RegionCode": "blr",
-				"RegionName": "Bengaluru",
-				"Latitude":   12.9716,
-				"Longitude":  77.5946,
-				"Nodes": [{
-					"Name":      "6a",
-					"RegionID":  6,
-					"HostName":  "derp6.tailscale.com",
-					"IPv4":      "68.183.90.120",
-					"IPv6":      "2400:6180:100:d0::982:d001",
-					"CanPort80": true
-				}]
-			}, "7": {
-				"RegionID":   7,
-				"RegionCode": "tok",
-				"RegionName": "Tokyo",
-				"Latitude":   35.6764,
-				"Longitude":  139.65,
-				"Nodes": [{
-					"Name":      "7g",
-					"RegionID":  7,
-					"HostName":  "derp7g.tailscale.com",
-					"IPv4":      "172.238.6.179",
-					"IPv6":      "2600:3c18::2000:3fff:fe80:3ebd",
-					"CanPort80": true
-				}, {
-					"Name":      "7f",
-					"RegionID":  7,
-					"HostName":  "derp7f.tailscale.com",
-					"IPv4":      "172.238.6.34",
-					"IPv6":      "2600:3c18::2000:acff:fe8e:3ed5",
-					"CanPort80": true
-				}, {
-					"Name":      "7h",
-					"RegionID":  7,
-					"HostName":  "derp7h.tailscale.com",
-					"IPv4":      "172.237.28.183",
-					"IPv6":      "2600:3c18::2000:b1ff:fea9:4560",
-					"CanPort80": true
-				}, {
-					"Name":      "7e",
-					"RegionID":  7,
-					"HostName":  "derp7e.tailscale.com",
-					"IPv4":      "172.238.6.180",
-					"IPv6":      "2600:3c18::2000:60ff:fe0f:6e83",
-					"STUNOnly":  true,
-					"CanPort80": true
-				}]
-			}, "8": {
-				"RegionID":   8,
-				"RegionCode": "lhr",
-				"RegionName": "London",
-				"Latitude":   51.5072,
-				"Longitude":  0.1276,
-				"Nodes": [{
-					"Name":      "8f",
-					"RegionID":  8,
-					"HostName":  "derp8f.tailscale.com",
-					"IPv4":      "176.58.88.183",
-					"IPv6":      "2a00:dd80:3a::dfa",
-					"CanPort80": true
-				}, {
-					"Name":      "8g",
-					"RegionID":  8,
-					"HostName":  "derp8g.tailscale.com",
-					"IPv4":      "176.58.92.254",
-					"IPv6":      "2a00:dd80:3a::ed",
-					"CanPort80": true
-				}, {
-					"Name":      "8e",
-					"RegionID":  8,
-					"HostName":  "derp8e.tailscale.com",
-					"IPv4":      "176.58.92.144",
-					"IPv6":      "2a00:dd80:3a::b33",
-					"CanPort80": true
-				}]
-			}, "9": {
-				"RegionID":   9,
-				"RegionCode": "dfw",
-				"RegionName": "Dallas",
-				"Latitude":   32.779167,
-				"Longitude":  -96.808889,
-				"Nodes": [{
-					"Name":      "9e",
-					"RegionID":  9,
-					"HostName":  "derp9e.tailscale.com",
-					"IPv4":      "192.73.248.83",
-					"IPv6":      "2607:f740:100::359",
-					"CanPort80": true
-				}, {
-					"Name":      "9f",
-					"RegionID":  9,
-					"HostName":  "derp9f.tailscale.com",
-					"IPv4":      "209.177.156.197",
-					"IPv6":      "2607:f740:100::cad",
-					"CanPort80": true
-				}, {
-					"Name":      "9d",
-					"RegionID":  9,
-					"HostName":  "derp9d.tailscale.com",
-					"IPv4":      "209.177.156.94",
-					"IPv6":      "2607:f740:100::c05",
-					"CanPort80": true
-				}]
-			}}},
-			"DisplayMessages":  null,
-			"TKAEnabled":       false,
-			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-			"Domain":           "odin@example.com",
-			"DomainAuditLogID": "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
-			}}
-		}, "ssh_rules": []},
+			"netmap": {
+				"Cached": false,
+				"SelfNode": {
+					"ID":         1161042876416216,
+					"StableID":   "noAhBQdq4A11CNTRL",
+					"Name":       "bulbasaur.tail78f774.ts.net.",
+					"User":       4156223528223174,
+					"Key":        "nodekey:763ed88fe86f749dcdf52dfbd7c4d38d9b87c881aa9438d2a26fe79422295e7a",
+					"KeyExpiry":  "2026-10-05T12:45:01Z",
+					"DiscoKey":   "discokey:9236352f71904b3ea843cbe567f6f22ee1d542c41d716dc18cc8e7626a22c32b",
+					"Addresses":  ["100.105.94.123/32", "fd7a:115c:a1e0::2237:5e7b/128"],
+					"AllowedIPs": ["100.105.94.123/32", "fd7a:115c:a1e0::2237:5e7b/128"],
+					"Endpoints":  ["77.164.248.136:55994", "10.65.0.27:55994", "172.17.0.1:55994"],
+					"Hostinfo": {"Hostname": "bulbasaur", "Services": [
+						{"Proto": "peerapi4", "Port": 61907},
+						{"Proto": "peerapi6", "Port": 61907},
+						{"Proto": "peerapi-dns-proxy", "Port": 1}
+					]},
+					"Created":           "2026-04-08T12:45:01.903300628Z",
+					"MachineAuthorized": true,
+					"CapMap": {
+						"https://tailscale.com/cap/file-sharing": null,
+						"https://tailscale.com/cap/is-admin":     null,
+						"https://tailscale.com/cap/is-owner":     null,
+						"https://tailscale.com/cap/ssh":          null,
+						"https://tailscale.com/cap/tailnet-lock": null,
+						"probe-udp-lifetime":                     null,
+						"ssh-behavior-v1":                        null,
+						"ssh-env-vars":                           null,
+						"store-appc-routes":                      null,
+						"tailnet-display-name":                   ["odin@example.com"]
+					},
+					"ComputedName":         "bulbasaur",
+					"ComputedNameWithHost": "bulbasaur"
+				},
+				"AllCaps": [
+					"https://tailscale.com/cap/file-sharing",
+					"https://tailscale.com/cap/is-admin",
+					"https://tailscale.com/cap/is-owner",
+					"https://tailscale.com/cap/ssh",
+					"https://tailscale.com/cap/tailnet-lock",
+					"probe-udp-lifetime",
+					"ssh-behavior-v1",
+					"ssh-env-vars",
+					"store-appc-routes",
+					"tailnet-display-name"
+				],
+				"NodeKey":    "nodekey:763ed88fe86f749dcdf52dfbd7c4d38d9b87c881aa9438d2a26fe79422295e7a",
+				"MachineKey": "mkey:511cf24b3ed11d729f16ec585d59c1cc0e343f29ea9f12bac2a790c7049d5c28",
+				"Peers":      [],
+				"DNS":        {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
+				"PacketFilter": [{
+					"IPProto": [6, 17, 1, 58],
+					"Srcs":    ["100.105.94.123/32", "fd7a:115c:a1e0::2237:5e7b/128"],
+					"SrcCaps": null,
+					"Dsts": [{"Net": "100.105.94.123/32", "Ports": {"First": 0, "Last": 65535}}, {
+						"Net":   "fd7a:115c:a1e0::2237:5e7b/128",
+						"Ports": {"First": 0, "Last": 65535}
+					}],
+					"Caps": []
+				}],
+				"PacketFilterRules": [{"SrcIPs": ["100.105.94.123", "fd7a:115c:a1e0::2237:5e7b"], "DstPorts": [
+					{"IP": "100.105.94.123", "Ports": {"First": 0, "Last": 65535}},
+					{"IP": "fd7a:115c:a1e0::2237:5e7b", "Ports": {"First": 0, "Last": 65535}}
+				]}],
+				"SSHPolicy":       {"rules": []},
+				"CollectServices": false,
+				"DERPMap": {"Regions": {"1": {
+					"RegionID":   1,
+					"RegionCode": "nyc",
+					"RegionName": "New York City",
+					"Latitude":   40.7128,
+					"Longitude":  -74.006,
+					"Nodes": [{
+						"Name":      "1h",
+						"RegionID":  1,
+						"HostName":  "derp1h.tailscale.com",
+						"IPv4":      "199.38.181.93",
+						"IPv6":      "2607:f740:f::afd",
+						"CanPort80": true
+					}, {
+						"Name":      "1g",
+						"RegionID":  1,
+						"HostName":  "derp1g.tailscale.com",
+						"IPv4":      "209.177.145.120",
+						"IPv6":      "2607:f740:f::3eb",
+						"CanPort80": true
+					}, {
+						"Name":      "1i",
+						"RegionID":  1,
+						"HostName":  "derp1i.tailscale.com",
+						"IPv4":      "199.38.181.103",
+						"IPv6":      "2607:f740:f::e19",
+						"CanPort80": true
+					}, {
+						"Name":      "1f",
+						"RegionID":  1,
+						"HostName":  "derp1f.tailscale.com",
+						"IPv4":      "199.38.181.104",
+						"IPv6":      "2607:f740:f::bc",
+						"CanPort80": true
+					}]
+				}, "10": {
+					"RegionID":   10,
+					"RegionCode": "sea",
+					"RegionName": "Seattle",
+					"Latitude":   47.609722,
+					"Longitude":  -122.333056,
+					"Nodes": [{
+						"Name":      "10c",
+						"RegionID":  10,
+						"HostName":  "derp10c.tailscale.com",
+						"IPv4":      "192.73.240.121",
+						"IPv6":      "2607:f740:14::40c",
+						"CanPort80": true
+					}, {
+						"Name":      "10d",
+						"RegionID":  10,
+						"HostName":  "derp10d.tailscale.com",
+						"IPv4":      "192.73.240.132",
+						"IPv6":      "2607:f740:14::500",
+						"CanPort80": true
+					}, {
+						"Name":      "10b",
+						"RegionID":  10,
+						"HostName":  "derp10b.tailscale.com",
+						"IPv4":      "192.73.240.161",
+						"IPv6":      "2607:f740:14::61c",
+						"CanPort80": true
+					}]
+				}, "11": {
+					"RegionID":   11,
+					"RegionCode": "sao",
+					"RegionName": "São Paulo",
+					"Latitude":   -23.55,
+					"Longitude":  -46.633333,
+					"Nodes": [{
+						"Name":      "11f",
+						"RegionID":  11,
+						"HostName":  "derp11f.tailscale.com",
+						"IPv4":      "172.237.61.197",
+						"IPv6":      "2600:3c0d::2000:3bff:fe44:6166",
+						"CanPort80": true
+					}, {
+						"Name":      "11g",
+						"RegionID":  11,
+						"HostName":  "derp11g.tailscale.com",
+						"IPv4":      "172.237.61.190",
+						"IPv6":      "2600:3c0d::2000:62ff:febe:2e67",
+						"CanPort80": true
+					}, {
+						"Name":      "11e",
+						"RegionID":  11,
+						"HostName":  "derp11e.tailscale.com",
+						"IPv4":      "172.237.61.194",
+						"IPv6":      "2600:3c0d::2000:d2ff:fe43:1790",
+						"CanPort80": true
+					}]
+				}, "12": {
+					"RegionID":   12,
+					"RegionCode": "ord",
+					"RegionName": "Chicago",
+					"Latitude":   41.881944,
+					"Longitude":  -87.627778,
+					"Nodes": [{
+						"Name":      "12e",
+						"RegionID":  12,
+						"HostName":  "derp12e.tailscale.com",
+						"IPv4":      "209.177.158.15",
+						"IPv6":      "2607:f740:e::b17",
+						"CanPort80": true
+					}, {
+						"Name":      "12f",
+						"RegionID":  12,
+						"HostName":  "derp12f.tailscale.com",
+						"IPv4":      "199.38.182.118",
+						"IPv6":      "2607:f740:e::4c8",
+						"CanPort80": true
+					}, {
+						"Name":      "12d",
+						"RegionID":  12,
+						"HostName":  "derp12d.tailscale.com",
+						"IPv4":      "209.177.158.246",
+						"IPv6":      "2607:f740:e::811",
+						"CanPort80": true
+					}]
+				}, "13": {
+					"RegionID":   13,
+					"RegionCode": "den",
+					"RegionName": "Denver",
+					"Latitude":   39.7392,
+					"Longitude":  -104.9849,
+					"Nodes": [{
+						"Name":      "13c",
+						"RegionID":  13,
+						"HostName":  "derp13c.tailscale.com",
+						"IPv4":      "192.73.242.28",
+						"IPv6":      "2607:f740:16::5c",
+						"CanPort80": true
+					}, {
+						"Name":      "13d",
+						"RegionID":  13,
+						"HostName":  "derp13d.tailscale.com",
+						"IPv4":      "192.73.242.204",
+						"IPv6":      "2607:f740:16::c23",
+						"CanPort80": true
+					}, {
+						"Name":      "13b",
+						"RegionID":  13,
+						"HostName":  "derp13b.tailscale.com",
+						"IPv4":      "192.73.242.187",
+						"IPv6":      "2607:f740:16::640",
+						"CanPort80": true
+					}]
+				}, "14": {
+					"RegionID":   14,
+					"RegionCode": "ams",
+					"RegionName": "Amsterdam",
+					"Latitude":   52.372778,
+					"Longitude":  4.893611,
+					"Nodes": [{
+						"Name":      "14c",
+						"RegionID":  14,
+						"HostName":  "derp14c.tailscale.com",
+						"IPv4":      "176.58.93.147",
+						"IPv6":      "2a00:dd80:3c::b09",
+						"CanPort80": true
+					}, {
+						"Name":      "14d",
+						"RegionID":  14,
+						"HostName":  "derp14d.tailscale.com",
+						"IPv4":      "176.58.93.154",
+						"IPv6":      "2a00:dd80:3c::3d5",
+						"CanPort80": true
+					}, {
+						"Name":      "14b",
+						"RegionID":  14,
+						"HostName":  "derp14b.tailscale.com",
+						"IPv4":      "176.58.93.248",
+						"IPv6":      "2a00:dd80:3c::807",
+						"CanPort80": true
+					}]
+				}, "15": {
+					"RegionID":   15,
+					"RegionCode": "jnb",
+					"RegionName": "Johannesburg",
+					"Latitude":   -26.204444,
+					"Longitude":  28.045556,
+					"Nodes": [{
+						"Name":      "15c",
+						"RegionID":  15,
+						"HostName":  "derp15c.tailscale.com",
+						"IPv4":      "102.67.165.185",
+						"IPv6":      "2c0f:edb0:0:10::b59",
+						"CanPort80": true
+					}, {
+						"Name":      "15d",
+						"RegionID":  15,
+						"HostName":  "derp15d.tailscale.com",
+						"IPv4":      "102.67.165.36",
+						"IPv6":      "2c0f:edb0:0:10::599",
+						"CanPort80": true
+					}, {
+						"Name":      "15b",
+						"RegionID":  15,
+						"HostName":  "derp15b.tailscale.com",
+						"IPv4":      "102.67.165.90",
+						"IPv6":      "2c0f:edb0:0:10::963",
+						"CanPort80": true
+					}]
+				}, "16": {
+					"RegionID":   16,
+					"RegionCode": "mia",
+					"RegionName": "Miami",
+					"Latitude":   25.78,
+					"Longitude":  -80.21,
+					"Nodes": [{
+						"Name":      "16c",
+						"RegionID":  16,
+						"HostName":  "derp16c.tailscale.com",
+						"IPv4":      "192.73.243.229",
+						"IPv6":      "2607:f740:17::4e4",
+						"CanPort80": true
+					}, {
+						"Name":      "16d",
+						"RegionID":  16,
+						"HostName":  "derp16d.tailscale.com",
+						"IPv4":      "192.73.243.141",
+						"IPv6":      "2607:f740:17::475",
+						"CanPort80": true
+					}, {
+						"Name":      "16b",
+						"RegionID":  16,
+						"HostName":  "derp16b.tailscale.com",
+						"IPv4":      "192.73.243.135",
+						"IPv6":      "2607:f740:17::476",
+						"CanPort80": true
+					}]
+				}, "17": {
+					"RegionID":   17,
+					"RegionCode": "lax",
+					"RegionName": "Los Angeles",
+					"Latitude":   34.05,
+					"Longitude":  -118.25,
+					"Nodes": [{
+						"Name":      "17c",
+						"RegionID":  17,
+						"HostName":  "derp17c.tailscale.com",
+						"IPv4":      "208.111.40.12",
+						"IPv6":      "2607:f740:c::10",
+						"CanPort80": true
+					}, {
+						"Name":      "17d",
+						"RegionID":  17,
+						"HostName":  "derp17d.tailscale.com",
+						"IPv4":      "208.111.40.216",
+						"IPv6":      "2607:f740:c::e1b",
+						"CanPort80": true
+					}, {
+						"Name":      "17b",
+						"RegionID":  17,
+						"HostName":  "derp17b.tailscale.com",
+						"IPv4":      "192.73.244.245",
+						"IPv6":      "2607:f740:c::646",
+						"CanPort80": true
+					}]
+				}, "18": {
+					"RegionID":   18,
+					"RegionCode": "par",
+					"RegionName": "Paris",
+					"Latitude":   48.856667,
+					"Longitude":  2.352222,
+					"Nodes": [{
+						"Name":      "18c",
+						"RegionID":  18,
+						"HostName":  "derp18c.tailscale.com",
+						"IPv4":      "176.58.90.207",
+						"IPv6":      "2a00:dd80:3e::c19",
+						"CanPort80": true
+					}, {
+						"Name":      "18d",
+						"RegionID":  18,
+						"HostName":  "derp18d.tailscale.com",
+						"IPv4":      "176.58.90.104",
+						"IPv6":      "2a00:dd80:3e::f2e",
+						"CanPort80": true
+					}, {
+						"Name":      "18b",
+						"RegionID":  18,
+						"HostName":  "derp18b.tailscale.com",
+						"IPv4":      "176.58.90.147",
+						"IPv6":      "2a00:dd80:3e::363",
+						"CanPort80": true
+					}]
+				}, "19": {
+					"RegionID":   19,
+					"RegionCode": "mad",
+					"RegionName": "Madrid",
+					"Latitude":   40.416944,
+					"Longitude":  -3.703333,
+					"Nodes": [{
+						"Name":      "19c",
+						"RegionID":  19,
+						"HostName":  "derp19c.tailscale.com",
+						"IPv4":      "45.159.97.61",
+						"IPv6":      "2a00:dd80:14:10::20",
+						"CanPort80": true
+					}, {
+						"Name":      "19d",
+						"RegionID":  19,
+						"HostName":  "derp19d.tailscale.com",
+						"IPv4":      "45.159.97.233",
+						"IPv6":      "2a00:dd80:14:10::34a",
+						"CanPort80": true
+					}, {
+						"Name":      "19b",
+						"RegionID":  19,
+						"HostName":  "derp19b.tailscale.com",
+						"IPv4":      "45.159.97.144",
+						"IPv6":      "2a00:dd80:14:10::335",
+						"CanPort80": true
+					}]
+				}, "2": {
+					"RegionID":   2,
+					"RegionCode": "sfo",
+					"RegionName": "San Francisco",
+					"Latitude":   37.7775,
+					"Longitude":  -122.416389,
+					"Nodes": [{
+						"Name":      "2e",
+						"RegionID":  2,
+						"HostName":  "derp2e.tailscale.com",
+						"IPv4":      "192.73.252.134",
+						"IPv6":      "2607:f740:0:3f::44c",
+						"CanPort80": true
+					}, {
+						"Name":      "2f",
+						"RegionID":  2,
+						"HostName":  "derp2f.tailscale.com",
+						"IPv4":      "208.111.34.178",
+						"IPv6":      "2607:f740:0:3f::f4",
+						"CanPort80": true
+					}, {
+						"Name":      "2d",
+						"RegionID":  2,
+						"HostName":  "derp2d.tailscale.com",
+						"IPv4":      "192.73.252.65",
+						"IPv6":      "2607:f740:0:3f::287",
+						"CanPort80": true
+					}]
+				}, "20": {
+					"RegionID":   20,
+					"RegionCode": "hkg",
+					"RegionName": "Hong Kong",
+					"Latitude":   22.3193,
+					"Longitude":  114.1694,
+					"Nodes": [{
+						"Name":      "20c",
+						"RegionID":  20,
+						"HostName":  "derp20c.tailscale.com",
+						"IPv4":      "205.147.105.30",
+						"IPv6":      "2403:2500:8000:1::5fb",
+						"CanPort80": true
+					}, {
+						"Name":      "20d",
+						"RegionID":  20,
+						"HostName":  "derp20d.tailscale.com",
+						"IPv4":      "205.147.105.78",
+						"IPv6":      "2403:2500:8000:1::e9a",
+						"CanPort80": true
+					}, {
+						"Name":      "20b",
+						"RegionID":  20,
+						"HostName":  "derp20b.tailscale.com",
+						"IPv4":      "103.6.84.152",
+						"IPv6":      "2403:2500:8000:1::ef6",
+						"CanPort80": true
+					}]
+				}, "21": {
+					"RegionID":   21,
+					"RegionCode": "tor",
+					"RegionName": "Toronto",
+					"Latitude":   43.741667,
+					"Longitude":  -79.373333,
+					"Nodes": [{
+						"Name":      "21c",
+						"RegionID":  21,
+						"HostName":  "derp21c.tailscale.com",
+						"IPv4":      "162.248.221.215",
+						"IPv6":      "2607:f740:50::f10",
+						"CanPort80": true
+					}, {
+						"Name":      "21d",
+						"RegionID":  21,
+						"HostName":  "derp21d.tailscale.com",
+						"IPv4":      "162.248.221.248",
+						"IPv6":      "2607:f740:50::ca4",
+						"CanPort80": true
+					}, {
+						"Name":      "21b",
+						"RegionID":  21,
+						"HostName":  "derp21b.tailscale.com",
+						"IPv4":      "162.248.221.199",
+						"IPv6":      "2607:f740:50::1d1",
+						"CanPort80": true
+					}]
+				}, "22": {
+					"RegionID":   22,
+					"RegionCode": "waw",
+					"RegionName": "Warsaw",
+					"Latitude":   52.23,
+					"Longitude":  21.011111,
+					"Nodes": [{
+						"Name":      "22c",
+						"RegionID":  22,
+						"HostName":  "derp22c.tailscale.com",
+						"IPv4":      "45.159.98.253",
+						"IPv6":      "2a00:dd80:40:100::3f",
+						"CanPort80": true
+					}, {
+						"Name":      "22d",
+						"RegionID":  22,
+						"HostName":  "derp22d.tailscale.com",
+						"IPv4":      "45.159.98.145",
+						"IPv6":      "2a00:dd80:40:100::211",
+						"CanPort80": true
+					}, {
+						"Name":      "22b",
+						"RegionID":  22,
+						"HostName":  "derp22b.tailscale.com",
+						"IPv4":      "45.159.98.196",
+						"IPv6":      "2a00:dd80:40:100::316",
+						"CanPort80": true
+					}]
+				}, "23": {
+					"RegionID":   23,
+					"RegionCode": "dbi",
+					"RegionName": "Dubai",
+					"Latitude":   25.263056,
+					"Longitude":  55.297222,
+					"Nodes": [{
+						"Name":      "23c",
+						"RegionID":  23,
+						"HostName":  "derp23c.tailscale.com",
+						"IPv4":      "185.34.3.207",
+						"IPv6":      "2a00:dd80:3f:100::a50",
+						"CanPort80": true
+					}, {
+						"Name":      "23d",
+						"RegionID":  23,
+						"HostName":  "derp23d.tailscale.com",
+						"IPv4":      "185.34.3.75",
+						"IPv6":      "2a00:dd80:3f:100::97e",
+						"CanPort80": true
+					}, {
+						"Name":      "23b",
+						"RegionID":  23,
+						"HostName":  "derp23b.tailscale.com",
+						"IPv4":      "185.34.3.232",
+						"IPv6":      "2a00:dd80:3f:100::76f",
+						"CanPort80": true
+					}]
+				}, "24": {
+					"RegionID":   24,
+					"RegionCode": "hnl",
+					"RegionName": "Honolulu",
+					"Latitude":   21.306944,
+					"Longitude":  -157.858333,
+					"Nodes": [{
+						"Name":      "24c",
+						"RegionID":  24,
+						"HostName":  "derp24c.tailscale.com",
+						"IPv4":      "208.83.233.233",
+						"IPv6":      "2001:19f0:c000:c591:5400:04ff:fe26:2c5f",
+						"CanPort80": true
+					}, {
+						"Name":      "24d",
+						"RegionID":  24,
+						"HostName":  "derp24d.tailscale.com",
+						"IPv4":      "208.72.155.133",
+						"IPv6":      "2001:19f0:c000:c564:5400:04ff:fe26:2ba8",
+						"CanPort80": true
+					}, {
+						"Name":      "24b",
+						"RegionID":  24,
+						"HostName":  "derp24b.tailscale.com",
+						"IPv4":      "208.83.234.151",
+						"IPv6":      "2001:19f0:c000:c586:5400:04ff:fe26:2ba6",
+						"CanPort80": true
+					}]
+				}, "25": {
+					"RegionID":   25,
+					"RegionCode": "nai",
+					"RegionName": "Nairobi",
+					"Latitude":   -1.286389,
+					"Longitude":  36.817222,
+					"Nodes": [{
+						"Name":      "25c",
+						"RegionID":  25,
+						"HostName":  "derp25c.tailscale.com",
+						"IPv4":      "102.67.167.37",
+						"IPv6":      "2c0f:edb0:2000:1::2c7",
+						"CanPort80": true
+					}, {
+						"Name":      "25d",
+						"RegionID":  25,
+						"HostName":  "derp25d.tailscale.com",
+						"IPv4":      "102.67.167.188",
+						"IPv6":      "2c0f:edb0:2000:1::188",
+						"CanPort80": true
+					}, {
+						"Name":      "25b",
+						"RegionID":  25,
+						"HostName":  "derp25b.tailscale.com",
+						"IPv4":      "102.67.167.245",
+						"IPv6":      "2c0f:edb0:2000:1::2e9",
+						"CanPort80": true
+					}]
+				}, "26": {
+					"RegionID":   26,
+					"RegionCode": "nue",
+					"RegionName": "Nuremberg",
+					"Latitude":   49.453889,
+					"Longitude":  11.0775,
+					"Nodes": [{
+						"Name":      "26c",
+						"RegionID":  26,
+						"HostName":  "derp26c.tailscale.com",
+						"IPv4":      "49.12.193.137",
+						"IPv6":      "2a01:4f8:1c1c:5c70::1",
+						"CanPort80": true
+					}, {
+						"Name":      "26d",
+						"RegionID":  26,
+						"HostName":  "derp26d.tailscale.com",
+						"IPv4":      "49.13.204.141",
+						"IPv6":      "2a01:4f8:1c0c:7d06::1",
+						"CanPort80": true
+					}, {
+						"Name":      "26b",
+						"RegionID":  26,
+						"HostName":  "derp26b.tailscale.com",
+						"IPv4":      "167.235.72.200",
+						"IPv6":      "2a01:4f8:1c1c:47b6::1",
+						"CanPort80": true
+					}]
+				}, "27": {
+					"RegionID":   27,
+					"RegionCode": "iad",
+					"RegionName": "Ashburn",
+					"Latitude":   39.03,
+					"Longitude":  -77.471111,
+					"Nodes": [{
+						"Name":      "27d",
+						"RegionID":  27,
+						"HostName":  "derp27d.tailscale.com",
+						"IPv4":      "178.156.152.106",
+						"IPv6":      "2a01:4ff:f0:3c8e::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27c",
+						"RegionID":  27,
+						"HostName":  "derp27c.tailscale.com",
+						"IPv4":      "178.156.152.91",
+						"IPv6":      "2a01:4ff:f0:3913::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27e",
+						"RegionID":  27,
+						"HostName":  "derp27e.tailscale.com",
+						"IPv4":      "178.156.134.232",
+						"IPv6":      "2a01:4ff:f0:28d4::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27b",
+						"RegionID":  27,
+						"HostName":  "derp27b.tailscale.com",
+						"IPv4":      "5.161.218.233",
+						"IPv6":      "2a01:4ff:f0:3db9::1",
+						"CanPort80": true
+					}]
+				}, "28": {
+					"RegionID":   28,
+					"RegionCode": "hel",
+					"RegionName": "Helsinki",
+					"Latitude":   60.170833,
+					"Longitude":  24.9375,
+					"Nodes": [{
+						"Name":      "28c",
+						"RegionID":  28,
+						"HostName":  "derp28c.tailscale.com",
+						"IPv4":      "95.217.2.165",
+						"IPv6":      "2a01:4f9:c012:cd74::1",
+						"CanPort80": true
+					}, {
+						"Name":      "28d",
+						"RegionID":  28,
+						"HostName":  "derp28d.tailscale.com",
+						"IPv4":      "157.180.28.32",
+						"IPv6":      "2a01:4f9:c012:2e5b::1",
+						"CanPort80": true
+					}, {
+						"Name":      "28b",
+						"RegionID":  28,
+						"HostName":  "derp28b.tailscale.com",
+						"IPv4":      "65.109.143.62",
+						"IPv6":      "2a01:4f9:c012:d55c::1",
+						"CanPort80": true
+					}]
+				}, "3": {
+					"RegionID":   3,
+					"RegionCode": "sin",
+					"RegionName": "Singapore",
+					"Latitude":   1.3521,
+					"Longitude":  103.8198,
+					"Nodes": [{
+						"Name":      "3g",
+						"RegionID":  3,
+						"HostName":  "derp3g.tailscale.com",
+						"IPv4":      "172.237.72.79",
+						"IPv6":      "2600:3c15::2000:adff:fe08:6fab",
+						"CanPort80": true
+					}, {
+						"Name":      "3f",
+						"RegionID":  3,
+						"HostName":  "derp3f.tailscale.com",
+						"IPv4":      "172.237.72.8",
+						"IPv6":      "2600:3c15::2000:53ff:fe48:a668",
+						"CanPort80": true
+					}, {
+						"Name":      "3h",
+						"RegionID":  3,
+						"HostName":  "derp3h.tailscale.com",
+						"IPv4":      "172.237.66.30",
+						"IPv6":      "2600:3c15::2000:3dff:fe44:50aa",
+						"CanPort80": true
+					}, {
+						"Name":      "3e",
+						"RegionID":  3,
+						"HostName":  "derp3e.tailscale.com",
+						"IPv4":      "172.237.72.43",
+						"IPv6":      "2600:3c15::2000:6cff:fee4:d799",
+						"CanPort80": true
+					}]
+				}, "4": {
+					"RegionID":   4,
+					"RegionCode": "fra",
+					"RegionName": "Frankfurt",
+					"Latitude":   50.1109,
+					"Longitude":  8.6821,
+					"Nodes": [{
+						"Name":      "4h",
+						"RegionID":  4,
+						"HostName":  "derp4h.tailscale.com",
+						"IPv4":      "185.40.234.77",
+						"IPv6":      "2a00:dd80:20::bcf",
+						"CanPort80": true
+					}, {
+						"Name":      "4i",
+						"RegionID":  4,
+						"HostName":  "derp4i.tailscale.com",
+						"IPv4":      "185.40.234.53",
+						"IPv6":      "2a00:dd80:20::8a6",
+						"CanPort80": true
+					}, {
+						"Name":      "4g",
+						"RegionID":  4,
+						"HostName":  "derp4g.tailscale.com",
+						"IPv4":      "185.40.234.113",
+						"IPv6":      "2a00:dd80:20::8f",
+						"CanPort80": true
+					}, {
+						"Name":      "4j",
+						"RegionID":  4,
+						"HostName":  "derp4j.tailscale.com",
+						"IPv4":      "185.40.234.176",
+						"IPv6":      "2a00:dd80:20::e67",
+						"CanPort80": true
+					}, {
+						"Name":      "4f",
+						"RegionID":  4,
+						"HostName":  "derp4f.tailscale.com",
+						"IPv4":      "185.40.234.219",
+						"IPv6":      "2a00:dd80:20::a25",
+						"CanPort80": true
+					}]
+				}, "5": {
+					"RegionID":   5,
+					"RegionCode": "syd",
+					"RegionName": "Sydney",
+					"Latitude":   -33.867778,
+					"Longitude":  151.21,
+					"Nodes": [{
+						"Name":      "5f",
+						"RegionID":  5,
+						"HostName":  "derp5f.tailscale.com",
+						"IPv4":      "172.105.166.103",
+						"IPv6":      "2400:8907::2000:ccff:fe1f:80da",
+						"CanPort80": true
+					}, {
+						"Name":      "5g",
+						"RegionID":  5,
+						"HostName":  "derp5g.tailscale.com",
+						"IPv4":      "172.105.169.57",
+						"IPv6":      "2400:8907::2000:2fff:fea7:57f4",
+						"CanPort80": true
+					}, {
+						"Name":      "5e",
+						"RegionID":  5,
+						"HostName":  "derp5e.tailscale.com",
+						"IPv4":      "172.105.179.230",
+						"IPv6":      "2400:8907::2000:ceff:fe8d:4f4e",
+						"CanPort80": true
+					}]
+				}, "6": {
+					"RegionID":   6,
+					"RegionCode": "blr",
+					"RegionName": "Bengaluru",
+					"Latitude":   12.9716,
+					"Longitude":  77.5946,
+					"Nodes": [{
+						"Name":      "6a",
+						"RegionID":  6,
+						"HostName":  "derp6.tailscale.com",
+						"IPv4":      "68.183.90.120",
+						"IPv6":      "2400:6180:100:d0::982:d001",
+						"CanPort80": true
+					}]
+				}, "7": {
+					"RegionID":   7,
+					"RegionCode": "tok",
+					"RegionName": "Tokyo",
+					"Latitude":   35.6764,
+					"Longitude":  139.65,
+					"Nodes": [{
+						"Name":      "7g",
+						"RegionID":  7,
+						"HostName":  "derp7g.tailscale.com",
+						"IPv4":      "172.238.6.179",
+						"IPv6":      "2600:3c18::2000:3fff:fe80:3ebd",
+						"CanPort80": true
+					}, {
+						"Name":      "7f",
+						"RegionID":  7,
+						"HostName":  "derp7f.tailscale.com",
+						"IPv4":      "172.238.6.34",
+						"IPv6":      "2600:3c18::2000:acff:fe8e:3ed5",
+						"CanPort80": true
+					}, {
+						"Name":      "7h",
+						"RegionID":  7,
+						"HostName":  "derp7h.tailscale.com",
+						"IPv4":      "172.237.28.183",
+						"IPv6":      "2600:3c18::2000:b1ff:fea9:4560",
+						"CanPort80": true
+					}, {
+						"Name":      "7e",
+						"RegionID":  7,
+						"HostName":  "derp7e.tailscale.com",
+						"IPv4":      "172.238.6.180",
+						"IPv6":      "2600:3c18::2000:60ff:fe0f:6e83",
+						"STUNOnly":  true,
+						"CanPort80": true
+					}]
+				}, "8": {
+					"RegionID":   8,
+					"RegionCode": "lhr",
+					"RegionName": "London",
+					"Latitude":   51.5072,
+					"Longitude":  0.1276,
+					"Nodes": [{
+						"Name":      "8f",
+						"RegionID":  8,
+						"HostName":  "derp8f.tailscale.com",
+						"IPv4":      "176.58.88.183",
+						"IPv6":      "2a00:dd80:3a::dfa",
+						"CanPort80": true
+					}, {
+						"Name":      "8g",
+						"RegionID":  8,
+						"HostName":  "derp8g.tailscale.com",
+						"IPv4":      "176.58.92.254",
+						"IPv6":      "2a00:dd80:3a::ed",
+						"CanPort80": true
+					}, {
+						"Name":      "8e",
+						"RegionID":  8,
+						"HostName":  "derp8e.tailscale.com",
+						"IPv4":      "176.58.92.144",
+						"IPv6":      "2a00:dd80:3a::b33",
+						"CanPort80": true
+					}]
+				}, "9": {
+					"RegionID":   9,
+					"RegionCode": "dfw",
+					"RegionName": "Dallas",
+					"Latitude":   32.779167,
+					"Longitude":  -96.808889,
+					"Nodes": [{
+						"Name":      "9e",
+						"RegionID":  9,
+						"HostName":  "derp9e.tailscale.com",
+						"IPv4":      "192.73.248.83",
+						"IPv6":      "2607:f740:100::359",
+						"CanPort80": true
+					}, {
+						"Name":      "9f",
+						"RegionID":  9,
+						"HostName":  "derp9f.tailscale.com",
+						"IPv4":      "209.177.156.197",
+						"IPv6":      "2607:f740:100::cad",
+						"CanPort80": true
+					}, {
+						"Name":      "9d",
+						"RegionID":  9,
+						"HostName":  "derp9d.tailscale.com",
+						"IPv4":      "209.177.156.94",
+						"IPv6":      "2607:f740:100::c05",
+						"CanPort80": true
+					}]
+				}}},
+				"DisplayMessages":  null,
+				"TKAEnabled":       false,
+				"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+				"Domain":           "odin@example.com",
+				"DomainAuditLogID": "",
+				"UserProfiles": {"4156223528223174": {
+					"ID":          4156223528223174,
+					"LoginName":   "odin@example.com",
+					"DisplayName": "odin"
+				}}
+			},
+			"ssh_rules": []
+		},
 		"charmander": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         172175192951512,
-				"StableID":   "nqqTDXkyL211CNTRL",
+				"ID":         6420036217983500,
+				"StableID":   "nBYiCyTe8s11CNTRL",
 				"Name":       "charmander.tail78f774.ts.net.",
-				"User":       172175192951512,
-				"Key":        "nodekey:6ffd29eff4cc33c404e8a17a8ebddb3fd111e5aaed8ee2486452a2c91415de03",
-				"DiscoKey":   "discokey:8589dc9569703a1309ab3ae1cbd8242e5034c6710a3ef5ee23bd04b3a85fa379",
-				"Addresses":  ["100.85.222.4/32", "fd7a:115c:a1e0::1437:de04/128"],
-				"AllowedIPs": ["100.85.222.4/32", "fd7a:115c:a1e0::1437:de04/128"],
-				"Endpoints":  ["77.164.248.136:48981", "10.65.0.27:48981", "172.17.0.1:48981"],
+				"User":       6420036217983500,
+				"Key":        "nodekey:95e5a73263a4a24f014591a2aee2b8d1b7202045571d2f4fe5630e448f02a57e",
+				"DiscoKey":   "discokey:f7b853a1e9bb64943a640ce79762c2adb3a979ca1e141ef2682750178566f850",
+				"Addresses":  ["100.66.165.127/32", "fd7a:115c:a1e0::8f37:a57f/128"],
+				"AllowedIPs": ["100.66.165.127/32", "fd7a:115c:a1e0::8f37:a57f/128"],
+				"Endpoints":  ["77.164.248.136:40374", "10.65.0.27:40374", "172.17.0.1:40374"],
 				"Hostinfo": {
 					"Hostname":    "charmander",
 					"RoutableIPs": ["0.0.0.0/0", "::/0"],
 					"RequestTags": ["tag:exit"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 39361},
-						{"Proto": "peerapi6", "Port": 39361},
+						{"Proto": "peerapi4", "Port": 42173},
+						{"Proto": "peerapi6", "Port": 42173},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T08:51:22.817433787Z",
+				"Created":           "2026-04-08T12:44:58.139935098Z",
 				"Tags":              ["tag:exit"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -2022,8 +1957,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:6ffd29eff4cc33c404e8a17a8ebddb3fd111e5aaed8ee2486452a2c91415de03",
-			"MachineKey":        "mkey:a13da4feabf9ec2bdec1d1b86ef998e894b8a83b2bbf5ac1c2ccaedd7939c642",
+			"NodeKey":           "nodekey:95e5a73263a4a24f014591a2aee2b8d1b7202045571d2f4fe5630e448f02a57e",
+			"MachineKey":        "mkey:b787e35adfc28573d1a82b28370df7bfefac3b0c45978d1b70e33798e5ad756e",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -2849,1004 +2784,937 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"172175192951512": {
-				"ID":          172175192951512,
+			"UserProfiles": {"6420036217983500": {
+				"ID":          6420036217983500,
 				"LoginName":   "charmander.tail78f774.ts.net",
 				"DisplayName": "charmander"
 			}}
 		}, "ssh_rules": []},
-		"ivysaur": {"packet_filter_rules": [{"SrcIPs": [
-			"100.106.147.50",
-			"100.115.5.20",
-			"100.127.62.2",
-			"fd7a:115c:a1e0::1737:3e02",
-			"fd7a:115c:a1e0::3237:9332",
-			"fd7a:115c:a1e0::f837:514"
-		], "DstPorts": [
-			{"IP": "100.127.62.2", "Ports": {"First": 0, "Last": 65535}},
-			{"IP": "fd7a:115c:a1e0::1737:3e02", "Ports": {"First": 0, "Last": 65535}}
-		]}], "packet_filter_matches": [{
-			"IPProto": [6, 17, 1, 58],
-			"Srcs": [
-				"100.106.147.50/32",
-				"100.115.5.20/32",
-				"100.127.62.2/32",
-				"fd7a:115c:a1e0::1737:3e02/128",
-				"fd7a:115c:a1e0::3237:9332/128",
-				"fd7a:115c:a1e0::f837:514/128"
-			],
-			"SrcCaps": null,
-			"Dsts": [{"Net": "100.127.62.2/32", "Ports": {"First": 0, "Last": 65535}}, {
-				"Net":   "fd7a:115c:a1e0::1737:3e02/128",
-				"Ports": {"First": 0, "Last": 65535}
-			}],
-			"Caps": []
-		}], "netmap": {
-			"Cached": false,
-			"SelfNode": {
-				"ID":         4980222000101349,
-				"StableID":   "nYESBFzYtf11CNTRL",
-				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:24c28c433e2c4f1edaf059ca281e80fb3a85bbb68d8d99d2af66b53c17bf3e01",
-				"KeyExpiry":  "2026-10-05T08:51:25Z",
-				"DiscoKey":   "discokey:5fd056508c25b0745e46b9cfa4eeca4b3f2be3d80727cb4aa350667ef9d9233f",
-				"Addresses":  ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"AllowedIPs": ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"Endpoints":  ["77.164.248.136:36640", "10.65.0.27:36640", "172.17.0.1:36640"],
-				"Hostinfo": {"Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 35886},
-					{"Proto": "peerapi6", "Port": 35886},
-					{"Proto": "peerapi-dns-proxy", "Port": 1}
-				]},
-				"Created":           "2026-04-08T08:51:25.527672569Z",
-				"MachineAuthorized": true,
-				"CapMap": {
-					"https://tailscale.com/cap/file-sharing": null,
-					"https://tailscale.com/cap/is-admin":     null,
-					"https://tailscale.com/cap/is-owner":     null,
-					"https://tailscale.com/cap/ssh":          null,
-					"https://tailscale.com/cap/tailnet-lock": null,
-					"probe-udp-lifetime":                     null,
-					"ssh-behavior-v1":                        null,
-					"ssh-env-vars":                           null,
-					"store-appc-routes":                      null,
-					"tailnet-display-name":                   ["odin@example.com"]
-				},
-				"ComputedName":         "ivysaur",
-				"ComputedNameWithHost": "ivysaur"
-			},
-			"AllCaps": [
-				"https://tailscale.com/cap/file-sharing",
-				"https://tailscale.com/cap/is-admin",
-				"https://tailscale.com/cap/is-owner",
-				"https://tailscale.com/cap/ssh",
-				"https://tailscale.com/cap/tailnet-lock",
-				"probe-udp-lifetime",
-				"ssh-behavior-v1",
-				"ssh-env-vars",
-				"store-appc-routes",
-				"tailnet-display-name"
-			],
-			"NodeKey":    "nodekey:24c28c433e2c4f1edaf059ca281e80fb3a85bbb68d8d99d2af66b53c17bf3e01",
-			"MachineKey": "mkey:93ad33923410b09beaf60330a22d37109be672b8361bf5eecaf94df0a7e09255",
-			"Peers": [{
-				"ID":         874267910027719,
-				"StableID":   "nLfKR4Yxp711CNTRL",
-				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:afd3d7ee9207af743acdc88731ee803cbfeca4950a46457fb4e4e1b7f8b30513",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:e9fff52ff6af5f51088df65c6201a8e22d6736c3d3562b11a32e1b5c30099b03",
-				"Addresses":  ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"AllowedIPs": ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"Endpoints":  ["77.164.248.136:42592", "10.65.0.27:42592", "172.17.0.1:42592"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 44835},
-					{"Proto": "peerapi6", "Port": 44835}
-				]},
-				"Created":              "2026-04-08T08:51:26.078375093Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "venusaur",
-				"ComputedNameWithHost": "venusaur"
-			}, {
-				"ID":         8426985398687616,
-				"StableID":   "ndRvpmcbo821CNTRL",
-				"Name":       "bulbasaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:bcce939c5918c38e8949c9bb7703d0d021b13d908f1fb008e7d500dc32aa9331",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:02601a76a0544b57ccc02b6680c63d2a15b39f00cf9db73a9d887d32ce07b171",
-				"Addresses":  ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"AllowedIPs": ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"Endpoints":  ["77.164.248.136:49227", "10.65.0.27:49227", "172.17.0.1:49227"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40893},
-					{"Proto": "peerapi6", "Port": 40893}
-				]},
-				"Created":              "2026-04-08T08:51:26.613158846Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "bulbasaur",
-				"ComputedNameWithHost": "bulbasaur"
-			}],
-			"DNS": {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
-			"PacketFilter": [{
+		"ivysaur": {
+			"packet_filter_rules": [{"SrcIPs": ["100.71.51.98", "fd7a:115c:a1e0::b237:3362"], "DstPorts": [
+				{"IP": "100.71.51.98", "Ports": {"First": 0, "Last": 65535}},
+				{"IP": "fd7a:115c:a1e0::b237:3362", "Ports": {"First": 0, "Last": 65535}}
+			]}],
+			"packet_filter_matches": [{
 				"IPProto": [6, 17, 1, 58],
-				"Srcs": [
-					"100.106.147.50/32",
-					"100.115.5.20/32",
-					"100.127.62.2/32",
-					"fd7a:115c:a1e0::1737:3e02/128",
-					"fd7a:115c:a1e0::3237:9332/128",
-					"fd7a:115c:a1e0::f837:514/128"
-				],
+				"Srcs":    ["100.71.51.98/32", "fd7a:115c:a1e0::b237:3362/128"],
 				"SrcCaps": null,
-				"Dsts": [{"Net": "100.127.62.2/32", "Ports": {"First": 0, "Last": 65535}}, {
-					"Net":   "fd7a:115c:a1e0::1737:3e02/128",
+				"Dsts": [{"Net": "100.71.51.98/32", "Ports": {"First": 0, "Last": 65535}}, {
+					"Net":   "fd7a:115c:a1e0::b237:3362/128",
 					"Ports": {"First": 0, "Last": 65535}
 				}],
 				"Caps": []
 			}],
-			"PacketFilterRules": [{"SrcIPs": [
-				"100.106.147.50",
-				"100.115.5.20",
-				"100.127.62.2",
-				"fd7a:115c:a1e0::1737:3e02",
-				"fd7a:115c:a1e0::3237:9332",
-				"fd7a:115c:a1e0::f837:514"
-			], "DstPorts": [
-				{"IP": "100.127.62.2", "Ports": {"First": 0, "Last": 65535}},
-				{"IP": "fd7a:115c:a1e0::1737:3e02", "Ports": {"First": 0, "Last": 65535}}
-			]}],
-			"SSHPolicy":       {"rules": []},
-			"CollectServices": false,
-			"DERPMap": {"Regions": {"1": {
-				"RegionID":   1,
-				"RegionCode": "nyc",
-				"RegionName": "New York City",
-				"Latitude":   40.7128,
-				"Longitude":  -74.006,
-				"Nodes": [{
-					"Name":      "1h",
-					"RegionID":  1,
-					"HostName":  "derp1h.tailscale.com",
-					"IPv4":      "199.38.181.93",
-					"IPv6":      "2607:f740:f::afd",
-					"CanPort80": true
-				}, {
-					"Name":      "1g",
-					"RegionID":  1,
-					"HostName":  "derp1g.tailscale.com",
-					"IPv4":      "209.177.145.120",
-					"IPv6":      "2607:f740:f::3eb",
-					"CanPort80": true
-				}, {
-					"Name":      "1i",
-					"RegionID":  1,
-					"HostName":  "derp1i.tailscale.com",
-					"IPv4":      "199.38.181.103",
-					"IPv6":      "2607:f740:f::e19",
-					"CanPort80": true
-				}, {
-					"Name":      "1f",
-					"RegionID":  1,
-					"HostName":  "derp1f.tailscale.com",
-					"IPv4":      "199.38.181.104",
-					"IPv6":      "2607:f740:f::bc",
-					"CanPort80": true
-				}]
-			}, "10": {
-				"RegionID":   10,
-				"RegionCode": "sea",
-				"RegionName": "Seattle",
-				"Latitude":   47.609722,
-				"Longitude":  -122.333056,
-				"Nodes": [{
-					"Name":      "10c",
-					"RegionID":  10,
-					"HostName":  "derp10c.tailscale.com",
-					"IPv4":      "192.73.240.121",
-					"IPv6":      "2607:f740:14::40c",
-					"CanPort80": true
-				}, {
-					"Name":      "10d",
-					"RegionID":  10,
-					"HostName":  "derp10d.tailscale.com",
-					"IPv4":      "192.73.240.132",
-					"IPv6":      "2607:f740:14::500",
-					"CanPort80": true
-				}, {
-					"Name":      "10b",
-					"RegionID":  10,
-					"HostName":  "derp10b.tailscale.com",
-					"IPv4":      "192.73.240.161",
-					"IPv6":      "2607:f740:14::61c",
-					"CanPort80": true
-				}]
-			}, "11": {
-				"RegionID":   11,
-				"RegionCode": "sao",
-				"RegionName": "São Paulo",
-				"Latitude":   -23.55,
-				"Longitude":  -46.633333,
-				"Nodes": [{
-					"Name":      "11f",
-					"RegionID":  11,
-					"HostName":  "derp11f.tailscale.com",
-					"IPv4":      "172.237.61.197",
-					"IPv6":      "2600:3c0d::2000:3bff:fe44:6166",
-					"CanPort80": true
-				}, {
-					"Name":      "11g",
-					"RegionID":  11,
-					"HostName":  "derp11g.tailscale.com",
-					"IPv4":      "172.237.61.190",
-					"IPv6":      "2600:3c0d::2000:62ff:febe:2e67",
-					"CanPort80": true
-				}, {
-					"Name":      "11e",
-					"RegionID":  11,
-					"HostName":  "derp11e.tailscale.com",
-					"IPv4":      "172.237.61.194",
-					"IPv6":      "2600:3c0d::2000:d2ff:fe43:1790",
-					"CanPort80": true
-				}]
-			}, "12": {
-				"RegionID":   12,
-				"RegionCode": "ord",
-				"RegionName": "Chicago",
-				"Latitude":   41.881944,
-				"Longitude":  -87.627778,
-				"Nodes": [{
-					"Name":      "12e",
-					"RegionID":  12,
-					"HostName":  "derp12e.tailscale.com",
-					"IPv4":      "209.177.158.15",
-					"IPv6":      "2607:f740:e::b17",
-					"CanPort80": true
-				}, {
-					"Name":      "12f",
-					"RegionID":  12,
-					"HostName":  "derp12f.tailscale.com",
-					"IPv4":      "199.38.182.118",
-					"IPv6":      "2607:f740:e::4c8",
-					"CanPort80": true
-				}, {
-					"Name":      "12d",
-					"RegionID":  12,
-					"HostName":  "derp12d.tailscale.com",
-					"IPv4":      "209.177.158.246",
-					"IPv6":      "2607:f740:e::811",
-					"CanPort80": true
-				}]
-			}, "13": {
-				"RegionID":   13,
-				"RegionCode": "den",
-				"RegionName": "Denver",
-				"Latitude":   39.7392,
-				"Longitude":  -104.9849,
-				"Nodes": [{
-					"Name":      "13c",
-					"RegionID":  13,
-					"HostName":  "derp13c.tailscale.com",
-					"IPv4":      "192.73.242.28",
-					"IPv6":      "2607:f740:16::5c",
-					"CanPort80": true
-				}, {
-					"Name":      "13d",
-					"RegionID":  13,
-					"HostName":  "derp13d.tailscale.com",
-					"IPv4":      "192.73.242.204",
-					"IPv6":      "2607:f740:16::c23",
-					"CanPort80": true
-				}, {
-					"Name":      "13b",
-					"RegionID":  13,
-					"HostName":  "derp13b.tailscale.com",
-					"IPv4":      "192.73.242.187",
-					"IPv6":      "2607:f740:16::640",
-					"CanPort80": true
-				}]
-			}, "14": {
-				"RegionID":   14,
-				"RegionCode": "ams",
-				"RegionName": "Amsterdam",
-				"Latitude":   52.372778,
-				"Longitude":  4.893611,
-				"Nodes": [{
-					"Name":      "14c",
-					"RegionID":  14,
-					"HostName":  "derp14c.tailscale.com",
-					"IPv4":      "176.58.93.147",
-					"IPv6":      "2a00:dd80:3c::b09",
-					"CanPort80": true
-				}, {
-					"Name":      "14d",
-					"RegionID":  14,
-					"HostName":  "derp14d.tailscale.com",
-					"IPv4":      "176.58.93.154",
-					"IPv6":      "2a00:dd80:3c::3d5",
-					"CanPort80": true
-				}, {
-					"Name":      "14b",
-					"RegionID":  14,
-					"HostName":  "derp14b.tailscale.com",
-					"IPv4":      "176.58.93.248",
-					"IPv6":      "2a00:dd80:3c::807",
-					"CanPort80": true
-				}]
-			}, "15": {
-				"RegionID":   15,
-				"RegionCode": "jnb",
-				"RegionName": "Johannesburg",
-				"Latitude":   -26.204444,
-				"Longitude":  28.045556,
-				"Nodes": [{
-					"Name":      "15c",
-					"RegionID":  15,
-					"HostName":  "derp15c.tailscale.com",
-					"IPv4":      "102.67.165.185",
-					"IPv6":      "2c0f:edb0:0:10::b59",
-					"CanPort80": true
-				}, {
-					"Name":      "15d",
-					"RegionID":  15,
-					"HostName":  "derp15d.tailscale.com",
-					"IPv4":      "102.67.165.36",
-					"IPv6":      "2c0f:edb0:0:10::599",
-					"CanPort80": true
-				}, {
-					"Name":      "15b",
-					"RegionID":  15,
-					"HostName":  "derp15b.tailscale.com",
-					"IPv4":      "102.67.165.90",
-					"IPv6":      "2c0f:edb0:0:10::963",
-					"CanPort80": true
-				}]
-			}, "16": {
-				"RegionID":   16,
-				"RegionCode": "mia",
-				"RegionName": "Miami",
-				"Latitude":   25.78,
-				"Longitude":  -80.21,
-				"Nodes": [{
-					"Name":      "16c",
-					"RegionID":  16,
-					"HostName":  "derp16c.tailscale.com",
-					"IPv4":      "192.73.243.229",
-					"IPv6":      "2607:f740:17::4e4",
-					"CanPort80": true
-				}, {
-					"Name":      "16d",
-					"RegionID":  16,
-					"HostName":  "derp16d.tailscale.com",
-					"IPv4":      "192.73.243.141",
-					"IPv6":      "2607:f740:17::475",
-					"CanPort80": true
-				}, {
-					"Name":      "16b",
-					"RegionID":  16,
-					"HostName":  "derp16b.tailscale.com",
-					"IPv4":      "192.73.243.135",
-					"IPv6":      "2607:f740:17::476",
-					"CanPort80": true
-				}]
-			}, "17": {
-				"RegionID":   17,
-				"RegionCode": "lax",
-				"RegionName": "Los Angeles",
-				"Latitude":   34.05,
-				"Longitude":  -118.25,
-				"Nodes": [{
-					"Name":      "17c",
-					"RegionID":  17,
-					"HostName":  "derp17c.tailscale.com",
-					"IPv4":      "208.111.40.12",
-					"IPv6":      "2607:f740:c::10",
-					"CanPort80": true
-				}, {
-					"Name":      "17d",
-					"RegionID":  17,
-					"HostName":  "derp17d.tailscale.com",
-					"IPv4":      "208.111.40.216",
-					"IPv6":      "2607:f740:c::e1b",
-					"CanPort80": true
-				}, {
-					"Name":      "17b",
-					"RegionID":  17,
-					"HostName":  "derp17b.tailscale.com",
-					"IPv4":      "192.73.244.245",
-					"IPv6":      "2607:f740:c::646",
-					"CanPort80": true
-				}]
-			}, "18": {
-				"RegionID":   18,
-				"RegionCode": "par",
-				"RegionName": "Paris",
-				"Latitude":   48.856667,
-				"Longitude":  2.352222,
-				"Nodes": [{
-					"Name":      "18c",
-					"RegionID":  18,
-					"HostName":  "derp18c.tailscale.com",
-					"IPv4":      "176.58.90.207",
-					"IPv6":      "2a00:dd80:3e::c19",
-					"CanPort80": true
-				}, {
-					"Name":      "18d",
-					"RegionID":  18,
-					"HostName":  "derp18d.tailscale.com",
-					"IPv4":      "176.58.90.104",
-					"IPv6":      "2a00:dd80:3e::f2e",
-					"CanPort80": true
-				}, {
-					"Name":      "18b",
-					"RegionID":  18,
-					"HostName":  "derp18b.tailscale.com",
-					"IPv4":      "176.58.90.147",
-					"IPv6":      "2a00:dd80:3e::363",
-					"CanPort80": true
-				}]
-			}, "19": {
-				"RegionID":   19,
-				"RegionCode": "mad",
-				"RegionName": "Madrid",
-				"Latitude":   40.416944,
-				"Longitude":  -3.703333,
-				"Nodes": [{
-					"Name":      "19c",
-					"RegionID":  19,
-					"HostName":  "derp19c.tailscale.com",
-					"IPv4":      "45.159.97.61",
-					"IPv6":      "2a00:dd80:14:10::20",
-					"CanPort80": true
-				}, {
-					"Name":      "19d",
-					"RegionID":  19,
-					"HostName":  "derp19d.tailscale.com",
-					"IPv4":      "45.159.97.233",
-					"IPv6":      "2a00:dd80:14:10::34a",
-					"CanPort80": true
-				}, {
-					"Name":      "19b",
-					"RegionID":  19,
-					"HostName":  "derp19b.tailscale.com",
-					"IPv4":      "45.159.97.144",
-					"IPv6":      "2a00:dd80:14:10::335",
-					"CanPort80": true
-				}]
-			}, "2": {
-				"RegionID":   2,
-				"RegionCode": "sfo",
-				"RegionName": "San Francisco",
-				"Latitude":   37.7775,
-				"Longitude":  -122.416389,
-				"Nodes": [{
-					"Name":      "2e",
-					"RegionID":  2,
-					"HostName":  "derp2e.tailscale.com",
-					"IPv4":      "192.73.252.134",
-					"IPv6":      "2607:f740:0:3f::44c",
-					"CanPort80": true
-				}, {
-					"Name":      "2f",
-					"RegionID":  2,
-					"HostName":  "derp2f.tailscale.com",
-					"IPv4":      "208.111.34.178",
-					"IPv6":      "2607:f740:0:3f::f4",
-					"CanPort80": true
-				}, {
-					"Name":      "2d",
-					"RegionID":  2,
-					"HostName":  "derp2d.tailscale.com",
-					"IPv4":      "192.73.252.65",
-					"IPv6":      "2607:f740:0:3f::287",
-					"CanPort80": true
-				}]
-			}, "20": {
-				"RegionID":   20,
-				"RegionCode": "hkg",
-				"RegionName": "Hong Kong",
-				"Latitude":   22.3193,
-				"Longitude":  114.1694,
-				"Nodes": [{
-					"Name":      "20c",
-					"RegionID":  20,
-					"HostName":  "derp20c.tailscale.com",
-					"IPv4":      "205.147.105.30",
-					"IPv6":      "2403:2500:8000:1::5fb",
-					"CanPort80": true
-				}, {
-					"Name":      "20d",
-					"RegionID":  20,
-					"HostName":  "derp20d.tailscale.com",
-					"IPv4":      "205.147.105.78",
-					"IPv6":      "2403:2500:8000:1::e9a",
-					"CanPort80": true
-				}, {
-					"Name":      "20b",
-					"RegionID":  20,
-					"HostName":  "derp20b.tailscale.com",
-					"IPv4":      "103.6.84.152",
-					"IPv6":      "2403:2500:8000:1::ef6",
-					"CanPort80": true
-				}]
-			}, "21": {
-				"RegionID":   21,
-				"RegionCode": "tor",
-				"RegionName": "Toronto",
-				"Latitude":   43.741667,
-				"Longitude":  -79.373333,
-				"Nodes": [{
-					"Name":      "21c",
-					"RegionID":  21,
-					"HostName":  "derp21c.tailscale.com",
-					"IPv4":      "162.248.221.215",
-					"IPv6":      "2607:f740:50::f10",
-					"CanPort80": true
-				}, {
-					"Name":      "21d",
-					"RegionID":  21,
-					"HostName":  "derp21d.tailscale.com",
-					"IPv4":      "162.248.221.248",
-					"IPv6":      "2607:f740:50::ca4",
-					"CanPort80": true
-				}, {
-					"Name":      "21b",
-					"RegionID":  21,
-					"HostName":  "derp21b.tailscale.com",
-					"IPv4":      "162.248.221.199",
-					"IPv6":      "2607:f740:50::1d1",
-					"CanPort80": true
-				}]
-			}, "22": {
-				"RegionID":   22,
-				"RegionCode": "waw",
-				"RegionName": "Warsaw",
-				"Latitude":   52.23,
-				"Longitude":  21.011111,
-				"Nodes": [{
-					"Name":      "22c",
-					"RegionID":  22,
-					"HostName":  "derp22c.tailscale.com",
-					"IPv4":      "45.159.98.253",
-					"IPv6":      "2a00:dd80:40:100::3f",
-					"CanPort80": true
-				}, {
-					"Name":      "22d",
-					"RegionID":  22,
-					"HostName":  "derp22d.tailscale.com",
-					"IPv4":      "45.159.98.145",
-					"IPv6":      "2a00:dd80:40:100::211",
-					"CanPort80": true
-				}, {
-					"Name":      "22b",
-					"RegionID":  22,
-					"HostName":  "derp22b.tailscale.com",
-					"IPv4":      "45.159.98.196",
-					"IPv6":      "2a00:dd80:40:100::316",
-					"CanPort80": true
-				}]
-			}, "23": {
-				"RegionID":   23,
-				"RegionCode": "dbi",
-				"RegionName": "Dubai",
-				"Latitude":   25.263056,
-				"Longitude":  55.297222,
-				"Nodes": [{
-					"Name":      "23c",
-					"RegionID":  23,
-					"HostName":  "derp23c.tailscale.com",
-					"IPv4":      "185.34.3.207",
-					"IPv6":      "2a00:dd80:3f:100::a50",
-					"CanPort80": true
-				}, {
-					"Name":      "23d",
-					"RegionID":  23,
-					"HostName":  "derp23d.tailscale.com",
-					"IPv4":      "185.34.3.75",
-					"IPv6":      "2a00:dd80:3f:100::97e",
-					"CanPort80": true
-				}, {
-					"Name":      "23b",
-					"RegionID":  23,
-					"HostName":  "derp23b.tailscale.com",
-					"IPv4":      "185.34.3.232",
-					"IPv6":      "2a00:dd80:3f:100::76f",
-					"CanPort80": true
-				}]
-			}, "24": {
-				"RegionID":   24,
-				"RegionCode": "hnl",
-				"RegionName": "Honolulu",
-				"Latitude":   21.306944,
-				"Longitude":  -157.858333,
-				"Nodes": [{
-					"Name":      "24c",
-					"RegionID":  24,
-					"HostName":  "derp24c.tailscale.com",
-					"IPv4":      "208.83.233.233",
-					"IPv6":      "2001:19f0:c000:c591:5400:04ff:fe26:2c5f",
-					"CanPort80": true
-				}, {
-					"Name":      "24d",
-					"RegionID":  24,
-					"HostName":  "derp24d.tailscale.com",
-					"IPv4":      "208.72.155.133",
-					"IPv6":      "2001:19f0:c000:c564:5400:04ff:fe26:2ba8",
-					"CanPort80": true
-				}, {
-					"Name":      "24b",
-					"RegionID":  24,
-					"HostName":  "derp24b.tailscale.com",
-					"IPv4":      "208.83.234.151",
-					"IPv6":      "2001:19f0:c000:c586:5400:04ff:fe26:2ba6",
-					"CanPort80": true
-				}]
-			}, "25": {
-				"RegionID":   25,
-				"RegionCode": "nai",
-				"RegionName": "Nairobi",
-				"Latitude":   -1.286389,
-				"Longitude":  36.817222,
-				"Nodes": [{
-					"Name":      "25c",
-					"RegionID":  25,
-					"HostName":  "derp25c.tailscale.com",
-					"IPv4":      "102.67.167.37",
-					"IPv6":      "2c0f:edb0:2000:1::2c7",
-					"CanPort80": true
-				}, {
-					"Name":      "25d",
-					"RegionID":  25,
-					"HostName":  "derp25d.tailscale.com",
-					"IPv4":      "102.67.167.188",
-					"IPv6":      "2c0f:edb0:2000:1::188",
-					"CanPort80": true
-				}, {
-					"Name":      "25b",
-					"RegionID":  25,
-					"HostName":  "derp25b.tailscale.com",
-					"IPv4":      "102.67.167.245",
-					"IPv6":      "2c0f:edb0:2000:1::2e9",
-					"CanPort80": true
-				}]
-			}, "26": {
-				"RegionID":   26,
-				"RegionCode": "nue",
-				"RegionName": "Nuremberg",
-				"Latitude":   49.453889,
-				"Longitude":  11.0775,
-				"Nodes": [{
-					"Name":      "26c",
-					"RegionID":  26,
-					"HostName":  "derp26c.tailscale.com",
-					"IPv4":      "49.12.193.137",
-					"IPv6":      "2a01:4f8:1c1c:5c70::1",
-					"CanPort80": true
-				}, {
-					"Name":      "26d",
-					"RegionID":  26,
-					"HostName":  "derp26d.tailscale.com",
-					"IPv4":      "49.13.204.141",
-					"IPv6":      "2a01:4f8:1c0c:7d06::1",
-					"CanPort80": true
-				}, {
-					"Name":      "26b",
-					"RegionID":  26,
-					"HostName":  "derp26b.tailscale.com",
-					"IPv4":      "167.235.72.200",
-					"IPv6":      "2a01:4f8:1c1c:47b6::1",
-					"CanPort80": true
-				}]
-			}, "27": {
-				"RegionID":   27,
-				"RegionCode": "iad",
-				"RegionName": "Ashburn",
-				"Latitude":   39.03,
-				"Longitude":  -77.471111,
-				"Nodes": [{
-					"Name":      "27d",
-					"RegionID":  27,
-					"HostName":  "derp27d.tailscale.com",
-					"IPv4":      "178.156.152.106",
-					"IPv6":      "2a01:4ff:f0:3c8e::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27c",
-					"RegionID":  27,
-					"HostName":  "derp27c.tailscale.com",
-					"IPv4":      "178.156.152.91",
-					"IPv6":      "2a01:4ff:f0:3913::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27e",
-					"RegionID":  27,
-					"HostName":  "derp27e.tailscale.com",
-					"IPv4":      "178.156.134.232",
-					"IPv6":      "2a01:4ff:f0:28d4::1",
-					"CanPort80": true
-				}, {
-					"Name":      "27b",
-					"RegionID":  27,
-					"HostName":  "derp27b.tailscale.com",
-					"IPv4":      "5.161.218.233",
-					"IPv6":      "2a01:4ff:f0:3db9::1",
-					"CanPort80": true
-				}]
-			}, "28": {
-				"RegionID":   28,
-				"RegionCode": "hel",
-				"RegionName": "Helsinki",
-				"Latitude":   60.170833,
-				"Longitude":  24.9375,
-				"Nodes": [{
-					"Name":      "28c",
-					"RegionID":  28,
-					"HostName":  "derp28c.tailscale.com",
-					"IPv4":      "95.217.2.165",
-					"IPv6":      "2a01:4f9:c012:cd74::1",
-					"CanPort80": true
-				}, {
-					"Name":      "28d",
-					"RegionID":  28,
-					"HostName":  "derp28d.tailscale.com",
-					"IPv4":      "157.180.28.32",
-					"IPv6":      "2a01:4f9:c012:2e5b::1",
-					"CanPort80": true
-				}, {
-					"Name":      "28b",
-					"RegionID":  28,
-					"HostName":  "derp28b.tailscale.com",
-					"IPv4":      "65.109.143.62",
-					"IPv6":      "2a01:4f9:c012:d55c::1",
-					"CanPort80": true
-				}]
-			}, "3": {
-				"RegionID":   3,
-				"RegionCode": "sin",
-				"RegionName": "Singapore",
-				"Latitude":   1.3521,
-				"Longitude":  103.8198,
-				"Nodes": [{
-					"Name":      "3g",
-					"RegionID":  3,
-					"HostName":  "derp3g.tailscale.com",
-					"IPv4":      "172.237.72.79",
-					"IPv6":      "2600:3c15::2000:adff:fe08:6fab",
-					"CanPort80": true
-				}, {
-					"Name":      "3f",
-					"RegionID":  3,
-					"HostName":  "derp3f.tailscale.com",
-					"IPv4":      "172.237.72.8",
-					"IPv6":      "2600:3c15::2000:53ff:fe48:a668",
-					"CanPort80": true
-				}, {
-					"Name":      "3h",
-					"RegionID":  3,
-					"HostName":  "derp3h.tailscale.com",
-					"IPv4":      "172.237.66.30",
-					"IPv6":      "2600:3c15::2000:3dff:fe44:50aa",
-					"CanPort80": true
-				}, {
-					"Name":      "3e",
-					"RegionID":  3,
-					"HostName":  "derp3e.tailscale.com",
-					"IPv4":      "172.237.72.43",
-					"IPv6":      "2600:3c15::2000:6cff:fee4:d799",
-					"CanPort80": true
-				}]
-			}, "4": {
-				"RegionID":   4,
-				"RegionCode": "fra",
-				"RegionName": "Frankfurt",
-				"Latitude":   50.1109,
-				"Longitude":  8.6821,
-				"Nodes": [{
-					"Name":      "4h",
-					"RegionID":  4,
-					"HostName":  "derp4h.tailscale.com",
-					"IPv4":      "185.40.234.77",
-					"IPv6":      "2a00:dd80:20::bcf",
-					"CanPort80": true
-				}, {
-					"Name":      "4i",
-					"RegionID":  4,
-					"HostName":  "derp4i.tailscale.com",
-					"IPv4":      "185.40.234.53",
-					"IPv6":      "2a00:dd80:20::8a6",
-					"CanPort80": true
-				}, {
-					"Name":      "4g",
-					"RegionID":  4,
-					"HostName":  "derp4g.tailscale.com",
-					"IPv4":      "185.40.234.113",
-					"IPv6":      "2a00:dd80:20::8f",
-					"CanPort80": true
-				}, {
-					"Name":      "4j",
-					"RegionID":  4,
-					"HostName":  "derp4j.tailscale.com",
-					"IPv4":      "185.40.234.176",
-					"IPv6":      "2a00:dd80:20::e67",
-					"CanPort80": true
-				}, {
-					"Name":      "4f",
-					"RegionID":  4,
-					"HostName":  "derp4f.tailscale.com",
-					"IPv4":      "185.40.234.219",
-					"IPv6":      "2a00:dd80:20::a25",
-					"CanPort80": true
-				}]
-			}, "5": {
-				"RegionID":   5,
-				"RegionCode": "syd",
-				"RegionName": "Sydney",
-				"Latitude":   -33.867778,
-				"Longitude":  151.21,
-				"Nodes": [{
-					"Name":      "5f",
-					"RegionID":  5,
-					"HostName":  "derp5f.tailscale.com",
-					"IPv4":      "172.105.166.103",
-					"IPv6":      "2400:8907::2000:ccff:fe1f:80da",
-					"CanPort80": true
-				}, {
-					"Name":      "5g",
-					"RegionID":  5,
-					"HostName":  "derp5g.tailscale.com",
-					"IPv4":      "172.105.169.57",
-					"IPv6":      "2400:8907::2000:2fff:fea7:57f4",
-					"CanPort80": true
-				}, {
-					"Name":      "5e",
-					"RegionID":  5,
-					"HostName":  "derp5e.tailscale.com",
-					"IPv4":      "172.105.179.230",
-					"IPv6":      "2400:8907::2000:ceff:fe8d:4f4e",
-					"CanPort80": true
-				}]
-			}, "6": {
-				"RegionID":   6,
-				"RegionCode": "blr",
-				"RegionName": "Bengaluru",
-				"Latitude":   12.9716,
-				"Longitude":  77.5946,
-				"Nodes": [{
-					"Name":      "6a",
-					"RegionID":  6,
-					"HostName":  "derp6.tailscale.com",
-					"IPv4":      "68.183.90.120",
-					"IPv6":      "2400:6180:100:d0::982:d001",
-					"CanPort80": true
-				}]
-			}, "7": {
-				"RegionID":   7,
-				"RegionCode": "tok",
-				"RegionName": "Tokyo",
-				"Latitude":   35.6764,
-				"Longitude":  139.65,
-				"Nodes": [{
-					"Name":      "7g",
-					"RegionID":  7,
-					"HostName":  "derp7g.tailscale.com",
-					"IPv4":      "172.238.6.179",
-					"IPv6":      "2600:3c18::2000:3fff:fe80:3ebd",
-					"CanPort80": true
-				}, {
-					"Name":      "7f",
-					"RegionID":  7,
-					"HostName":  "derp7f.tailscale.com",
-					"IPv4":      "172.238.6.34",
-					"IPv6":      "2600:3c18::2000:acff:fe8e:3ed5",
-					"CanPort80": true
-				}, {
-					"Name":      "7h",
-					"RegionID":  7,
-					"HostName":  "derp7h.tailscale.com",
-					"IPv4":      "172.237.28.183",
-					"IPv6":      "2600:3c18::2000:b1ff:fea9:4560",
-					"CanPort80": true
-				}, {
-					"Name":      "7e",
-					"RegionID":  7,
-					"HostName":  "derp7e.tailscale.com",
-					"IPv4":      "172.238.6.180",
-					"IPv6":      "2600:3c18::2000:60ff:fe0f:6e83",
-					"STUNOnly":  true,
-					"CanPort80": true
-				}]
-			}, "8": {
-				"RegionID":   8,
-				"RegionCode": "lhr",
-				"RegionName": "London",
-				"Latitude":   51.5072,
-				"Longitude":  0.1276,
-				"Nodes": [{
-					"Name":      "8f",
-					"RegionID":  8,
-					"HostName":  "derp8f.tailscale.com",
-					"IPv4":      "176.58.88.183",
-					"IPv6":      "2a00:dd80:3a::dfa",
-					"CanPort80": true
-				}, {
-					"Name":      "8g",
-					"RegionID":  8,
-					"HostName":  "derp8g.tailscale.com",
-					"IPv4":      "176.58.92.254",
-					"IPv6":      "2a00:dd80:3a::ed",
-					"CanPort80": true
-				}, {
-					"Name":      "8e",
-					"RegionID":  8,
-					"HostName":  "derp8e.tailscale.com",
-					"IPv4":      "176.58.92.144",
-					"IPv6":      "2a00:dd80:3a::b33",
-					"CanPort80": true
-				}]
-			}, "9": {
-				"RegionID":   9,
-				"RegionCode": "dfw",
-				"RegionName": "Dallas",
-				"Latitude":   32.779167,
-				"Longitude":  -96.808889,
-				"Nodes": [{
-					"Name":      "9e",
-					"RegionID":  9,
-					"HostName":  "derp9e.tailscale.com",
-					"IPv4":      "192.73.248.83",
-					"IPv6":      "2607:f740:100::359",
-					"CanPort80": true
-				}, {
-					"Name":      "9f",
-					"RegionID":  9,
-					"HostName":  "derp9f.tailscale.com",
-					"IPv4":      "209.177.156.197",
-					"IPv6":      "2607:f740:100::cad",
-					"CanPort80": true
-				}, {
-					"Name":      "9d",
-					"RegionID":  9,
-					"HostName":  "derp9d.tailscale.com",
-					"IPv4":      "209.177.156.94",
-					"IPv6":      "2607:f740:100::c05",
-					"CanPort80": true
-				}]
-			}}},
-			"DisplayMessages":  null,
-			"TKAEnabled":       false,
-			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-			"Domain":           "odin@example.com",
-			"DomainAuditLogID": "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
-			}}
-		}, "ssh_rules": []},
+			"netmap": {
+				"Cached": false,
+				"SelfNode": {
+					"ID":         7497771271017914,
+					"StableID":   "n7HtJmjkY121CNTRL",
+					"Name":       "ivysaur.tail78f774.ts.net.",
+					"User":       4538565228176803,
+					"Key":        "nodekey:c87b3957d0e01a1eb95d5cd5ca51f8781b759b10fca602a231498a13b2073361",
+					"KeyExpiry":  "2026-10-05T12:45:00Z",
+					"DiscoKey":   "discokey:ae5671ed1ddac2a00057d3e90cc7dfcef5d564adc61c442697d6ddf24deb0135",
+					"Addresses":  ["100.71.51.98/32", "fd7a:115c:a1e0::b237:3362/128"],
+					"AllowedIPs": ["100.71.51.98/32", "fd7a:115c:a1e0::b237:3362/128"],
+					"Endpoints":  ["77.164.248.136:39042", "10.65.0.27:39042", "172.17.0.1:39042"],
+					"Hostinfo": {"Hostname": "ivysaur", "Services": [
+						{"Proto": "peerapi4", "Port": 42771},
+						{"Proto": "peerapi6", "Port": 42771},
+						{"Proto": "peerapi-dns-proxy", "Port": 1}
+					]},
+					"Created":           "2026-04-08T12:45:00.831543912Z",
+					"MachineAuthorized": true,
+					"CapMap": {
+						"https://tailscale.com/cap/file-sharing": null,
+						"https://tailscale.com/cap/is-admin":     null,
+						"https://tailscale.com/cap/ssh":          null,
+						"https://tailscale.com/cap/tailnet-lock": null,
+						"probe-udp-lifetime":                     null,
+						"ssh-behavior-v1":                        null,
+						"ssh-env-vars":                           null,
+						"store-appc-routes":                      null,
+						"tailnet-display-name":                   ["odin@example.com"]
+					},
+					"ComputedName":         "ivysaur",
+					"ComputedNameWithHost": "ivysaur"
+				},
+				"AllCaps": [
+					"https://tailscale.com/cap/file-sharing",
+					"https://tailscale.com/cap/is-admin",
+					"https://tailscale.com/cap/ssh",
+					"https://tailscale.com/cap/tailnet-lock",
+					"probe-udp-lifetime",
+					"ssh-behavior-v1",
+					"ssh-env-vars",
+					"store-appc-routes",
+					"tailnet-display-name"
+				],
+				"NodeKey":    "nodekey:c87b3957d0e01a1eb95d5cd5ca51f8781b759b10fca602a231498a13b2073361",
+				"MachineKey": "mkey:5d82331c2c7e2f7ca950d9190b54a6adfd87786e6bc00ad580aa97173b65d04a",
+				"Peers":      [],
+				"DNS":        {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
+				"PacketFilter": [{
+					"IPProto": [6, 17, 1, 58],
+					"Srcs":    ["100.71.51.98/32", "fd7a:115c:a1e0::b237:3362/128"],
+					"SrcCaps": null,
+					"Dsts": [{"Net": "100.71.51.98/32", "Ports": {"First": 0, "Last": 65535}}, {
+						"Net":   "fd7a:115c:a1e0::b237:3362/128",
+						"Ports": {"First": 0, "Last": 65535}
+					}],
+					"Caps": []
+				}],
+				"PacketFilterRules": [{"SrcIPs": ["100.71.51.98", "fd7a:115c:a1e0::b237:3362"], "DstPorts": [
+					{"IP": "100.71.51.98", "Ports": {"First": 0, "Last": 65535}},
+					{"IP": "fd7a:115c:a1e0::b237:3362", "Ports": {"First": 0, "Last": 65535}}
+				]}],
+				"SSHPolicy":       {"rules": []},
+				"CollectServices": false,
+				"DERPMap": {"Regions": {"1": {
+					"RegionID":   1,
+					"RegionCode": "nyc",
+					"RegionName": "New York City",
+					"Latitude":   40.7128,
+					"Longitude":  -74.006,
+					"Nodes": [{
+						"Name":      "1h",
+						"RegionID":  1,
+						"HostName":  "derp1h.tailscale.com",
+						"IPv4":      "199.38.181.93",
+						"IPv6":      "2607:f740:f::afd",
+						"CanPort80": true
+					}, {
+						"Name":      "1g",
+						"RegionID":  1,
+						"HostName":  "derp1g.tailscale.com",
+						"IPv4":      "209.177.145.120",
+						"IPv6":      "2607:f740:f::3eb",
+						"CanPort80": true
+					}, {
+						"Name":      "1i",
+						"RegionID":  1,
+						"HostName":  "derp1i.tailscale.com",
+						"IPv4":      "199.38.181.103",
+						"IPv6":      "2607:f740:f::e19",
+						"CanPort80": true
+					}, {
+						"Name":      "1f",
+						"RegionID":  1,
+						"HostName":  "derp1f.tailscale.com",
+						"IPv4":      "199.38.181.104",
+						"IPv6":      "2607:f740:f::bc",
+						"CanPort80": true
+					}]
+				}, "10": {
+					"RegionID":   10,
+					"RegionCode": "sea",
+					"RegionName": "Seattle",
+					"Latitude":   47.609722,
+					"Longitude":  -122.333056,
+					"Nodes": [{
+						"Name":      "10c",
+						"RegionID":  10,
+						"HostName":  "derp10c.tailscale.com",
+						"IPv4":      "192.73.240.121",
+						"IPv6":      "2607:f740:14::40c",
+						"CanPort80": true
+					}, {
+						"Name":      "10d",
+						"RegionID":  10,
+						"HostName":  "derp10d.tailscale.com",
+						"IPv4":      "192.73.240.132",
+						"IPv6":      "2607:f740:14::500",
+						"CanPort80": true
+					}, {
+						"Name":      "10b",
+						"RegionID":  10,
+						"HostName":  "derp10b.tailscale.com",
+						"IPv4":      "192.73.240.161",
+						"IPv6":      "2607:f740:14::61c",
+						"CanPort80": true
+					}]
+				}, "11": {
+					"RegionID":   11,
+					"RegionCode": "sao",
+					"RegionName": "São Paulo",
+					"Latitude":   -23.55,
+					"Longitude":  -46.633333,
+					"Nodes": [{
+						"Name":      "11f",
+						"RegionID":  11,
+						"HostName":  "derp11f.tailscale.com",
+						"IPv4":      "172.237.61.197",
+						"IPv6":      "2600:3c0d::2000:3bff:fe44:6166",
+						"CanPort80": true
+					}, {
+						"Name":      "11g",
+						"RegionID":  11,
+						"HostName":  "derp11g.tailscale.com",
+						"IPv4":      "172.237.61.190",
+						"IPv6":      "2600:3c0d::2000:62ff:febe:2e67",
+						"CanPort80": true
+					}, {
+						"Name":      "11e",
+						"RegionID":  11,
+						"HostName":  "derp11e.tailscale.com",
+						"IPv4":      "172.237.61.194",
+						"IPv6":      "2600:3c0d::2000:d2ff:fe43:1790",
+						"CanPort80": true
+					}]
+				}, "12": {
+					"RegionID":   12,
+					"RegionCode": "ord",
+					"RegionName": "Chicago",
+					"Latitude":   41.881944,
+					"Longitude":  -87.627778,
+					"Nodes": [{
+						"Name":      "12e",
+						"RegionID":  12,
+						"HostName":  "derp12e.tailscale.com",
+						"IPv4":      "209.177.158.15",
+						"IPv6":      "2607:f740:e::b17",
+						"CanPort80": true
+					}, {
+						"Name":      "12f",
+						"RegionID":  12,
+						"HostName":  "derp12f.tailscale.com",
+						"IPv4":      "199.38.182.118",
+						"IPv6":      "2607:f740:e::4c8",
+						"CanPort80": true
+					}, {
+						"Name":      "12d",
+						"RegionID":  12,
+						"HostName":  "derp12d.tailscale.com",
+						"IPv4":      "209.177.158.246",
+						"IPv6":      "2607:f740:e::811",
+						"CanPort80": true
+					}]
+				}, "13": {
+					"RegionID":   13,
+					"RegionCode": "den",
+					"RegionName": "Denver",
+					"Latitude":   39.7392,
+					"Longitude":  -104.9849,
+					"Nodes": [{
+						"Name":      "13c",
+						"RegionID":  13,
+						"HostName":  "derp13c.tailscale.com",
+						"IPv4":      "192.73.242.28",
+						"IPv6":      "2607:f740:16::5c",
+						"CanPort80": true
+					}, {
+						"Name":      "13d",
+						"RegionID":  13,
+						"HostName":  "derp13d.tailscale.com",
+						"IPv4":      "192.73.242.204",
+						"IPv6":      "2607:f740:16::c23",
+						"CanPort80": true
+					}, {
+						"Name":      "13b",
+						"RegionID":  13,
+						"HostName":  "derp13b.tailscale.com",
+						"IPv4":      "192.73.242.187",
+						"IPv6":      "2607:f740:16::640",
+						"CanPort80": true
+					}]
+				}, "14": {
+					"RegionID":   14,
+					"RegionCode": "ams",
+					"RegionName": "Amsterdam",
+					"Latitude":   52.372778,
+					"Longitude":  4.893611,
+					"Nodes": [{
+						"Name":      "14c",
+						"RegionID":  14,
+						"HostName":  "derp14c.tailscale.com",
+						"IPv4":      "176.58.93.147",
+						"IPv6":      "2a00:dd80:3c::b09",
+						"CanPort80": true
+					}, {
+						"Name":      "14d",
+						"RegionID":  14,
+						"HostName":  "derp14d.tailscale.com",
+						"IPv4":      "176.58.93.154",
+						"IPv6":      "2a00:dd80:3c::3d5",
+						"CanPort80": true
+					}, {
+						"Name":      "14b",
+						"RegionID":  14,
+						"HostName":  "derp14b.tailscale.com",
+						"IPv4":      "176.58.93.248",
+						"IPv6":      "2a00:dd80:3c::807",
+						"CanPort80": true
+					}]
+				}, "15": {
+					"RegionID":   15,
+					"RegionCode": "jnb",
+					"RegionName": "Johannesburg",
+					"Latitude":   -26.204444,
+					"Longitude":  28.045556,
+					"Nodes": [{
+						"Name":      "15c",
+						"RegionID":  15,
+						"HostName":  "derp15c.tailscale.com",
+						"IPv4":      "102.67.165.185",
+						"IPv6":      "2c0f:edb0:0:10::b59",
+						"CanPort80": true
+					}, {
+						"Name":      "15d",
+						"RegionID":  15,
+						"HostName":  "derp15d.tailscale.com",
+						"IPv4":      "102.67.165.36",
+						"IPv6":      "2c0f:edb0:0:10::599",
+						"CanPort80": true
+					}, {
+						"Name":      "15b",
+						"RegionID":  15,
+						"HostName":  "derp15b.tailscale.com",
+						"IPv4":      "102.67.165.90",
+						"IPv6":      "2c0f:edb0:0:10::963",
+						"CanPort80": true
+					}]
+				}, "16": {
+					"RegionID":   16,
+					"RegionCode": "mia",
+					"RegionName": "Miami",
+					"Latitude":   25.78,
+					"Longitude":  -80.21,
+					"Nodes": [{
+						"Name":      "16c",
+						"RegionID":  16,
+						"HostName":  "derp16c.tailscale.com",
+						"IPv4":      "192.73.243.229",
+						"IPv6":      "2607:f740:17::4e4",
+						"CanPort80": true
+					}, {
+						"Name":      "16d",
+						"RegionID":  16,
+						"HostName":  "derp16d.tailscale.com",
+						"IPv4":      "192.73.243.141",
+						"IPv6":      "2607:f740:17::475",
+						"CanPort80": true
+					}, {
+						"Name":      "16b",
+						"RegionID":  16,
+						"HostName":  "derp16b.tailscale.com",
+						"IPv4":      "192.73.243.135",
+						"IPv6":      "2607:f740:17::476",
+						"CanPort80": true
+					}]
+				}, "17": {
+					"RegionID":   17,
+					"RegionCode": "lax",
+					"RegionName": "Los Angeles",
+					"Latitude":   34.05,
+					"Longitude":  -118.25,
+					"Nodes": [{
+						"Name":      "17c",
+						"RegionID":  17,
+						"HostName":  "derp17c.tailscale.com",
+						"IPv4":      "208.111.40.12",
+						"IPv6":      "2607:f740:c::10",
+						"CanPort80": true
+					}, {
+						"Name":      "17d",
+						"RegionID":  17,
+						"HostName":  "derp17d.tailscale.com",
+						"IPv4":      "208.111.40.216",
+						"IPv6":      "2607:f740:c::e1b",
+						"CanPort80": true
+					}, {
+						"Name":      "17b",
+						"RegionID":  17,
+						"HostName":  "derp17b.tailscale.com",
+						"IPv4":      "192.73.244.245",
+						"IPv6":      "2607:f740:c::646",
+						"CanPort80": true
+					}]
+				}, "18": {
+					"RegionID":   18,
+					"RegionCode": "par",
+					"RegionName": "Paris",
+					"Latitude":   48.856667,
+					"Longitude":  2.352222,
+					"Nodes": [{
+						"Name":      "18c",
+						"RegionID":  18,
+						"HostName":  "derp18c.tailscale.com",
+						"IPv4":      "176.58.90.207",
+						"IPv6":      "2a00:dd80:3e::c19",
+						"CanPort80": true
+					}, {
+						"Name":      "18d",
+						"RegionID":  18,
+						"HostName":  "derp18d.tailscale.com",
+						"IPv4":      "176.58.90.104",
+						"IPv6":      "2a00:dd80:3e::f2e",
+						"CanPort80": true
+					}, {
+						"Name":      "18b",
+						"RegionID":  18,
+						"HostName":  "derp18b.tailscale.com",
+						"IPv4":      "176.58.90.147",
+						"IPv6":      "2a00:dd80:3e::363",
+						"CanPort80": true
+					}]
+				}, "19": {
+					"RegionID":   19,
+					"RegionCode": "mad",
+					"RegionName": "Madrid",
+					"Latitude":   40.416944,
+					"Longitude":  -3.703333,
+					"Nodes": [{
+						"Name":      "19c",
+						"RegionID":  19,
+						"HostName":  "derp19c.tailscale.com",
+						"IPv4":      "45.159.97.61",
+						"IPv6":      "2a00:dd80:14:10::20",
+						"CanPort80": true
+					}, {
+						"Name":      "19d",
+						"RegionID":  19,
+						"HostName":  "derp19d.tailscale.com",
+						"IPv4":      "45.159.97.233",
+						"IPv6":      "2a00:dd80:14:10::34a",
+						"CanPort80": true
+					}, {
+						"Name":      "19b",
+						"RegionID":  19,
+						"HostName":  "derp19b.tailscale.com",
+						"IPv4":      "45.159.97.144",
+						"IPv6":      "2a00:dd80:14:10::335",
+						"CanPort80": true
+					}]
+				}, "2": {
+					"RegionID":   2,
+					"RegionCode": "sfo",
+					"RegionName": "San Francisco",
+					"Latitude":   37.7775,
+					"Longitude":  -122.416389,
+					"Nodes": [{
+						"Name":      "2e",
+						"RegionID":  2,
+						"HostName":  "derp2e.tailscale.com",
+						"IPv4":      "192.73.252.134",
+						"IPv6":      "2607:f740:0:3f::44c",
+						"CanPort80": true
+					}, {
+						"Name":      "2f",
+						"RegionID":  2,
+						"HostName":  "derp2f.tailscale.com",
+						"IPv4":      "208.111.34.178",
+						"IPv6":      "2607:f740:0:3f::f4",
+						"CanPort80": true
+					}, {
+						"Name":      "2d",
+						"RegionID":  2,
+						"HostName":  "derp2d.tailscale.com",
+						"IPv4":      "192.73.252.65",
+						"IPv6":      "2607:f740:0:3f::287",
+						"CanPort80": true
+					}]
+				}, "20": {
+					"RegionID":   20,
+					"RegionCode": "hkg",
+					"RegionName": "Hong Kong",
+					"Latitude":   22.3193,
+					"Longitude":  114.1694,
+					"Nodes": [{
+						"Name":      "20c",
+						"RegionID":  20,
+						"HostName":  "derp20c.tailscale.com",
+						"IPv4":      "205.147.105.30",
+						"IPv6":      "2403:2500:8000:1::5fb",
+						"CanPort80": true
+					}, {
+						"Name":      "20d",
+						"RegionID":  20,
+						"HostName":  "derp20d.tailscale.com",
+						"IPv4":      "205.147.105.78",
+						"IPv6":      "2403:2500:8000:1::e9a",
+						"CanPort80": true
+					}, {
+						"Name":      "20b",
+						"RegionID":  20,
+						"HostName":  "derp20b.tailscale.com",
+						"IPv4":      "103.6.84.152",
+						"IPv6":      "2403:2500:8000:1::ef6",
+						"CanPort80": true
+					}]
+				}, "21": {
+					"RegionID":   21,
+					"RegionCode": "tor",
+					"RegionName": "Toronto",
+					"Latitude":   43.741667,
+					"Longitude":  -79.373333,
+					"Nodes": [{
+						"Name":      "21c",
+						"RegionID":  21,
+						"HostName":  "derp21c.tailscale.com",
+						"IPv4":      "162.248.221.215",
+						"IPv6":      "2607:f740:50::f10",
+						"CanPort80": true
+					}, {
+						"Name":      "21d",
+						"RegionID":  21,
+						"HostName":  "derp21d.tailscale.com",
+						"IPv4":      "162.248.221.248",
+						"IPv6":      "2607:f740:50::ca4",
+						"CanPort80": true
+					}, {
+						"Name":      "21b",
+						"RegionID":  21,
+						"HostName":  "derp21b.tailscale.com",
+						"IPv4":      "162.248.221.199",
+						"IPv6":      "2607:f740:50::1d1",
+						"CanPort80": true
+					}]
+				}, "22": {
+					"RegionID":   22,
+					"RegionCode": "waw",
+					"RegionName": "Warsaw",
+					"Latitude":   52.23,
+					"Longitude":  21.011111,
+					"Nodes": [{
+						"Name":      "22c",
+						"RegionID":  22,
+						"HostName":  "derp22c.tailscale.com",
+						"IPv4":      "45.159.98.253",
+						"IPv6":      "2a00:dd80:40:100::3f",
+						"CanPort80": true
+					}, {
+						"Name":      "22d",
+						"RegionID":  22,
+						"HostName":  "derp22d.tailscale.com",
+						"IPv4":      "45.159.98.145",
+						"IPv6":      "2a00:dd80:40:100::211",
+						"CanPort80": true
+					}, {
+						"Name":      "22b",
+						"RegionID":  22,
+						"HostName":  "derp22b.tailscale.com",
+						"IPv4":      "45.159.98.196",
+						"IPv6":      "2a00:dd80:40:100::316",
+						"CanPort80": true
+					}]
+				}, "23": {
+					"RegionID":   23,
+					"RegionCode": "dbi",
+					"RegionName": "Dubai",
+					"Latitude":   25.263056,
+					"Longitude":  55.297222,
+					"Nodes": [{
+						"Name":      "23c",
+						"RegionID":  23,
+						"HostName":  "derp23c.tailscale.com",
+						"IPv4":      "185.34.3.207",
+						"IPv6":      "2a00:dd80:3f:100::a50",
+						"CanPort80": true
+					}, {
+						"Name":      "23d",
+						"RegionID":  23,
+						"HostName":  "derp23d.tailscale.com",
+						"IPv4":      "185.34.3.75",
+						"IPv6":      "2a00:dd80:3f:100::97e",
+						"CanPort80": true
+					}, {
+						"Name":      "23b",
+						"RegionID":  23,
+						"HostName":  "derp23b.tailscale.com",
+						"IPv4":      "185.34.3.232",
+						"IPv6":      "2a00:dd80:3f:100::76f",
+						"CanPort80": true
+					}]
+				}, "24": {
+					"RegionID":   24,
+					"RegionCode": "hnl",
+					"RegionName": "Honolulu",
+					"Latitude":   21.306944,
+					"Longitude":  -157.858333,
+					"Nodes": [{
+						"Name":      "24c",
+						"RegionID":  24,
+						"HostName":  "derp24c.tailscale.com",
+						"IPv4":      "208.83.233.233",
+						"IPv6":      "2001:19f0:c000:c591:5400:04ff:fe26:2c5f",
+						"CanPort80": true
+					}, {
+						"Name":      "24d",
+						"RegionID":  24,
+						"HostName":  "derp24d.tailscale.com",
+						"IPv4":      "208.72.155.133",
+						"IPv6":      "2001:19f0:c000:c564:5400:04ff:fe26:2ba8",
+						"CanPort80": true
+					}, {
+						"Name":      "24b",
+						"RegionID":  24,
+						"HostName":  "derp24b.tailscale.com",
+						"IPv4":      "208.83.234.151",
+						"IPv6":      "2001:19f0:c000:c586:5400:04ff:fe26:2ba6",
+						"CanPort80": true
+					}]
+				}, "25": {
+					"RegionID":   25,
+					"RegionCode": "nai",
+					"RegionName": "Nairobi",
+					"Latitude":   -1.286389,
+					"Longitude":  36.817222,
+					"Nodes": [{
+						"Name":      "25c",
+						"RegionID":  25,
+						"HostName":  "derp25c.tailscale.com",
+						"IPv4":      "102.67.167.37",
+						"IPv6":      "2c0f:edb0:2000:1::2c7",
+						"CanPort80": true
+					}, {
+						"Name":      "25d",
+						"RegionID":  25,
+						"HostName":  "derp25d.tailscale.com",
+						"IPv4":      "102.67.167.188",
+						"IPv6":      "2c0f:edb0:2000:1::188",
+						"CanPort80": true
+					}, {
+						"Name":      "25b",
+						"RegionID":  25,
+						"HostName":  "derp25b.tailscale.com",
+						"IPv4":      "102.67.167.245",
+						"IPv6":      "2c0f:edb0:2000:1::2e9",
+						"CanPort80": true
+					}]
+				}, "26": {
+					"RegionID":   26,
+					"RegionCode": "nue",
+					"RegionName": "Nuremberg",
+					"Latitude":   49.453889,
+					"Longitude":  11.0775,
+					"Nodes": [{
+						"Name":      "26c",
+						"RegionID":  26,
+						"HostName":  "derp26c.tailscale.com",
+						"IPv4":      "49.12.193.137",
+						"IPv6":      "2a01:4f8:1c1c:5c70::1",
+						"CanPort80": true
+					}, {
+						"Name":      "26d",
+						"RegionID":  26,
+						"HostName":  "derp26d.tailscale.com",
+						"IPv4":      "49.13.204.141",
+						"IPv6":      "2a01:4f8:1c0c:7d06::1",
+						"CanPort80": true
+					}, {
+						"Name":      "26b",
+						"RegionID":  26,
+						"HostName":  "derp26b.tailscale.com",
+						"IPv4":      "167.235.72.200",
+						"IPv6":      "2a01:4f8:1c1c:47b6::1",
+						"CanPort80": true
+					}]
+				}, "27": {
+					"RegionID":   27,
+					"RegionCode": "iad",
+					"RegionName": "Ashburn",
+					"Latitude":   39.03,
+					"Longitude":  -77.471111,
+					"Nodes": [{
+						"Name":      "27d",
+						"RegionID":  27,
+						"HostName":  "derp27d.tailscale.com",
+						"IPv4":      "178.156.152.106",
+						"IPv6":      "2a01:4ff:f0:3c8e::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27c",
+						"RegionID":  27,
+						"HostName":  "derp27c.tailscale.com",
+						"IPv4":      "178.156.152.91",
+						"IPv6":      "2a01:4ff:f0:3913::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27e",
+						"RegionID":  27,
+						"HostName":  "derp27e.tailscale.com",
+						"IPv4":      "178.156.134.232",
+						"IPv6":      "2a01:4ff:f0:28d4::1",
+						"CanPort80": true
+					}, {
+						"Name":      "27b",
+						"RegionID":  27,
+						"HostName":  "derp27b.tailscale.com",
+						"IPv4":      "5.161.218.233",
+						"IPv6":      "2a01:4ff:f0:3db9::1",
+						"CanPort80": true
+					}]
+				}, "28": {
+					"RegionID":   28,
+					"RegionCode": "hel",
+					"RegionName": "Helsinki",
+					"Latitude":   60.170833,
+					"Longitude":  24.9375,
+					"Nodes": [{
+						"Name":      "28c",
+						"RegionID":  28,
+						"HostName":  "derp28c.tailscale.com",
+						"IPv4":      "95.217.2.165",
+						"IPv6":      "2a01:4f9:c012:cd74::1",
+						"CanPort80": true
+					}, {
+						"Name":      "28d",
+						"RegionID":  28,
+						"HostName":  "derp28d.tailscale.com",
+						"IPv4":      "157.180.28.32",
+						"IPv6":      "2a01:4f9:c012:2e5b::1",
+						"CanPort80": true
+					}, {
+						"Name":      "28b",
+						"RegionID":  28,
+						"HostName":  "derp28b.tailscale.com",
+						"IPv4":      "65.109.143.62",
+						"IPv6":      "2a01:4f9:c012:d55c::1",
+						"CanPort80": true
+					}]
+				}, "3": {
+					"RegionID":   3,
+					"RegionCode": "sin",
+					"RegionName": "Singapore",
+					"Latitude":   1.3521,
+					"Longitude":  103.8198,
+					"Nodes": [{
+						"Name":      "3g",
+						"RegionID":  3,
+						"HostName":  "derp3g.tailscale.com",
+						"IPv4":      "172.237.72.79",
+						"IPv6":      "2600:3c15::2000:adff:fe08:6fab",
+						"CanPort80": true
+					}, {
+						"Name":      "3f",
+						"RegionID":  3,
+						"HostName":  "derp3f.tailscale.com",
+						"IPv4":      "172.237.72.8",
+						"IPv6":      "2600:3c15::2000:53ff:fe48:a668",
+						"CanPort80": true
+					}, {
+						"Name":      "3h",
+						"RegionID":  3,
+						"HostName":  "derp3h.tailscale.com",
+						"IPv4":      "172.237.66.30",
+						"IPv6":      "2600:3c15::2000:3dff:fe44:50aa",
+						"CanPort80": true
+					}, {
+						"Name":      "3e",
+						"RegionID":  3,
+						"HostName":  "derp3e.tailscale.com",
+						"IPv4":      "172.237.72.43",
+						"IPv6":      "2600:3c15::2000:6cff:fee4:d799",
+						"CanPort80": true
+					}]
+				}, "4": {
+					"RegionID":   4,
+					"RegionCode": "fra",
+					"RegionName": "Frankfurt",
+					"Latitude":   50.1109,
+					"Longitude":  8.6821,
+					"Nodes": [{
+						"Name":      "4h",
+						"RegionID":  4,
+						"HostName":  "derp4h.tailscale.com",
+						"IPv4":      "185.40.234.77",
+						"IPv6":      "2a00:dd80:20::bcf",
+						"CanPort80": true
+					}, {
+						"Name":      "4i",
+						"RegionID":  4,
+						"HostName":  "derp4i.tailscale.com",
+						"IPv4":      "185.40.234.53",
+						"IPv6":      "2a00:dd80:20::8a6",
+						"CanPort80": true
+					}, {
+						"Name":      "4g",
+						"RegionID":  4,
+						"HostName":  "derp4g.tailscale.com",
+						"IPv4":      "185.40.234.113",
+						"IPv6":      "2a00:dd80:20::8f",
+						"CanPort80": true
+					}, {
+						"Name":      "4j",
+						"RegionID":  4,
+						"HostName":  "derp4j.tailscale.com",
+						"IPv4":      "185.40.234.176",
+						"IPv6":      "2a00:dd80:20::e67",
+						"CanPort80": true
+					}, {
+						"Name":      "4f",
+						"RegionID":  4,
+						"HostName":  "derp4f.tailscale.com",
+						"IPv4":      "185.40.234.219",
+						"IPv6":      "2a00:dd80:20::a25",
+						"CanPort80": true
+					}]
+				}, "5": {
+					"RegionID":   5,
+					"RegionCode": "syd",
+					"RegionName": "Sydney",
+					"Latitude":   -33.867778,
+					"Longitude":  151.21,
+					"Nodes": [{
+						"Name":      "5f",
+						"RegionID":  5,
+						"HostName":  "derp5f.tailscale.com",
+						"IPv4":      "172.105.166.103",
+						"IPv6":      "2400:8907::2000:ccff:fe1f:80da",
+						"CanPort80": true
+					}, {
+						"Name":      "5g",
+						"RegionID":  5,
+						"HostName":  "derp5g.tailscale.com",
+						"IPv4":      "172.105.169.57",
+						"IPv6":      "2400:8907::2000:2fff:fea7:57f4",
+						"CanPort80": true
+					}, {
+						"Name":      "5e",
+						"RegionID":  5,
+						"HostName":  "derp5e.tailscale.com",
+						"IPv4":      "172.105.179.230",
+						"IPv6":      "2400:8907::2000:ceff:fe8d:4f4e",
+						"CanPort80": true
+					}]
+				}, "6": {
+					"RegionID":   6,
+					"RegionCode": "blr",
+					"RegionName": "Bengaluru",
+					"Latitude":   12.9716,
+					"Longitude":  77.5946,
+					"Nodes": [{
+						"Name":      "6a",
+						"RegionID":  6,
+						"HostName":  "derp6.tailscale.com",
+						"IPv4":      "68.183.90.120",
+						"IPv6":      "2400:6180:100:d0::982:d001",
+						"CanPort80": true
+					}]
+				}, "7": {
+					"RegionID":   7,
+					"RegionCode": "tok",
+					"RegionName": "Tokyo",
+					"Latitude":   35.6764,
+					"Longitude":  139.65,
+					"Nodes": [{
+						"Name":      "7g",
+						"RegionID":  7,
+						"HostName":  "derp7g.tailscale.com",
+						"IPv4":      "172.238.6.179",
+						"IPv6":      "2600:3c18::2000:3fff:fe80:3ebd",
+						"CanPort80": true
+					}, {
+						"Name":      "7f",
+						"RegionID":  7,
+						"HostName":  "derp7f.tailscale.com",
+						"IPv4":      "172.238.6.34",
+						"IPv6":      "2600:3c18::2000:acff:fe8e:3ed5",
+						"CanPort80": true
+					}, {
+						"Name":      "7h",
+						"RegionID":  7,
+						"HostName":  "derp7h.tailscale.com",
+						"IPv4":      "172.237.28.183",
+						"IPv6":      "2600:3c18::2000:b1ff:fea9:4560",
+						"CanPort80": true
+					}, {
+						"Name":      "7e",
+						"RegionID":  7,
+						"HostName":  "derp7e.tailscale.com",
+						"IPv4":      "172.238.6.180",
+						"IPv6":      "2600:3c18::2000:60ff:fe0f:6e83",
+						"STUNOnly":  true,
+						"CanPort80": true
+					}]
+				}, "8": {
+					"RegionID":   8,
+					"RegionCode": "lhr",
+					"RegionName": "London",
+					"Latitude":   51.5072,
+					"Longitude":  0.1276,
+					"Nodes": [{
+						"Name":      "8f",
+						"RegionID":  8,
+						"HostName":  "derp8f.tailscale.com",
+						"IPv4":      "176.58.88.183",
+						"IPv6":      "2a00:dd80:3a::dfa",
+						"CanPort80": true
+					}, {
+						"Name":      "8g",
+						"RegionID":  8,
+						"HostName":  "derp8g.tailscale.com",
+						"IPv4":      "176.58.92.254",
+						"IPv6":      "2a00:dd80:3a::ed",
+						"CanPort80": true
+					}, {
+						"Name":      "8e",
+						"RegionID":  8,
+						"HostName":  "derp8e.tailscale.com",
+						"IPv4":      "176.58.92.144",
+						"IPv6":      "2a00:dd80:3a::b33",
+						"CanPort80": true
+					}]
+				}, "9": {
+					"RegionID":   9,
+					"RegionCode": "dfw",
+					"RegionName": "Dallas",
+					"Latitude":   32.779167,
+					"Longitude":  -96.808889,
+					"Nodes": [{
+						"Name":      "9e",
+						"RegionID":  9,
+						"HostName":  "derp9e.tailscale.com",
+						"IPv4":      "192.73.248.83",
+						"IPv6":      "2607:f740:100::359",
+						"CanPort80": true
+					}, {
+						"Name":      "9f",
+						"RegionID":  9,
+						"HostName":  "derp9f.tailscale.com",
+						"IPv4":      "209.177.156.197",
+						"IPv6":      "2607:f740:100::cad",
+						"CanPort80": true
+					}, {
+						"Name":      "9d",
+						"RegionID":  9,
+						"HostName":  "derp9d.tailscale.com",
+						"IPv4":      "209.177.156.94",
+						"IPv6":      "2607:f740:100::c05",
+						"CanPort80": true
+					}]
+				}}},
+				"DisplayMessages":  null,
+				"TKAEnabled":       false,
+				"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+				"Domain":           "odin@example.com",
+				"DomainAuditLogID": "",
+				"UserProfiles": {"4538565228176803": {
+					"ID":          4538565228176803,
+					"LoginName":   "thor@example.com",
+					"DisplayName": "thor"
+				}}
+			},
+			"ssh_rules": []
+		},
 		"kakuna": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         7379559007104299,
-				"StableID":   "ntB2M6WDdz11CNTRL",
+				"ID":         8888206031821463,
+				"StableID":   "ngZRoq6VQC21CNTRL",
 				"Name":       "kakuna.tail78f774.ts.net.",
-				"User":       7379559007104299,
-				"Key":        "nodekey:5e79f3495745b6463156dbee43c992ca1bbfe0454cea5a7cb11be0c7edfec87c",
-				"DiscoKey":   "discokey:d14fa858083e5e5dc48579682a1a77d4d65247278562136b70d3cbf427ae5c59",
-				"Addresses":  ["100.126.200.125/32", "fd7a:115c:a1e0::ed37:c87d/128"],
-				"AllowedIPs": ["100.126.200.125/32", "fd7a:115c:a1e0::ed37:c87d/128"],
-				"Endpoints":  ["77.164.248.136:47292", "10.65.0.27:47292", "172.17.0.1:47292"],
+				"User":       8888206031821463,
+				"Key":        "nodekey:0f235f172dab3c55ffc3813f337e0fc38668cc61193323e06facae38f6f79f59",
+				"DiscoKey":   "discokey:cc17897bb5c603ea1af4644c306e6de34671d6ee2a53cdc878c6a624ad1ace16",
+				"Addresses":  ["100.119.159.90/32", "fd7a:115c:a1e0::f637:9f5a/128"],
+				"AllowedIPs": ["100.119.159.90/32", "fd7a:115c:a1e0::f637:9f5a/128"],
+				"Endpoints":  ["77.164.248.136:40879", "10.65.0.27:40879", "172.17.0.1:40879"],
 				"Hostinfo": {"Hostname": "kakuna", "RequestTags": ["tag:prod"], "Services": [
-					{"Proto": "peerapi4", "Port": 52367},
-					{"Proto": "peerapi6", "Port": 52367},
+					{"Proto": "peerapi4", "Port": 35320},
+					{"Proto": "peerapi6", "Port": 35320},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T08:51:24.440578641Z",
+				"Created":           "2026-04-08T12:44:59.720399816Z",
 				"Tags":              ["tag:prod"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -3874,8 +3742,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:5e79f3495745b6463156dbee43c992ca1bbfe0454cea5a7cb11be0c7edfec87c",
-			"MachineKey":        "mkey:325300119226248308f0ea87b332ed3c0d6c24cde436fecee8c36dfb4f356a0f",
+			"NodeKey":           "nodekey:0f235f172dab3c55ffc3813f337e0fc38668cc61193323e06facae38f6f79f59",
+			"MachineKey":        "mkey:358cbe2ee2febff2b01fa54ceba8eaa0b475a299bda1cde23d4a5172da5b5d11",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -4701,8 +4569,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"7379559007104299": {
-				"ID":          7379559007104299,
+			"UserProfiles": {"8888206031821463": {
+				"ID":          8888206031821463,
 				"LoginName":   "kakuna.tail78f774.ts.net",
 				"DisplayName": "kakuna"
 			}}
@@ -4710,26 +4578,26 @@
 		"squirtle": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         6777788471681325,
-				"StableID":   "n6ZBoa1gvu11CNTRL",
+				"ID":         3105989624047432,
+				"StableID":   "n7pg7g5iFR11CNTRL",
 				"Name":       "squirtle.tail78f774.ts.net.",
-				"User":       6777788471681325,
-				"Key":        "nodekey:a77e9d00801eb49a997d905f0609ac279bda1642de820fe1f98d2ad6e5dd6b79",
-				"DiscoKey":   "discokey:457aa3c80179f6fbae94326e50c137b6490c6e6a1f50a047d0b586679735481d",
-				"Addresses":  ["100.93.107.122/32", "fd7a:115c:a1e0::e537:6b7a/128"],
-				"AllowedIPs": ["100.93.107.122/32", "fd7a:115c:a1e0::e537:6b7a/128"],
-				"Endpoints":  ["77.164.248.136:53201", "10.65.0.27:53201", "172.17.0.1:53201"],
+				"User":       3105989624047432,
+				"Key":        "nodekey:99e6a80b0c2cc51283e4cd9212929cfc582f1e3030e2ba405a4c8157a9dae543",
+				"DiscoKey":   "discokey:c72ae100ab5f05929597efc252ccb7d7e15862f1fc252c022b858c8e1aaf6c1d",
+				"Addresses":  ["100.90.229.68/32", "fd7a:115c:a1e0::a937:e545/128"],
+				"AllowedIPs": ["100.90.229.68/32", "fd7a:115c:a1e0::a937:e545/128"],
+				"Endpoints":  ["77.164.248.136:43435", "10.65.0.27:43435", "172.17.0.1:43435"],
 				"Hostinfo": {
 					"Hostname":    "squirtle",
 					"RoutableIPs": ["10.33.0.0/16"],
 					"RequestTags": ["tag:router"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 52927},
-						{"Proto": "peerapi6", "Port": 52927},
+						{"Proto": "peerapi4", "Port": 61524},
+						{"Proto": "peerapi6", "Port": 61524},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T08:51:23.364919261Z",
+				"Created":           "2026-04-08T12:44:58.653609984Z",
 				"Tags":              ["tag:router"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -4757,8 +4625,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:a77e9d00801eb49a997d905f0609ac279bda1642de820fe1f98d2ad6e5dd6b79",
-			"MachineKey":        "mkey:2b4a1c2e1b8f4a4c4b3fbec77762112dee75f3271b460e03e1fe04d40302931c",
+			"NodeKey":           "nodekey:99e6a80b0c2cc51283e4cd9212929cfc582f1e3030e2ba405a4c8157a9dae543",
+			"MachineKey":        "mkey:28495fd607b5ac5085c989f33938916bb6fa731679f1047b123dc38f22924622",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -5584,62 +5452,35 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"6777788471681325": {
-				"ID":          6777788471681325,
+			"UserProfiles": {"3105989624047432": {
+				"ID":          3105989624047432,
 				"LoginName":   "squirtle.tail78f774.ts.net",
 				"DisplayName": "squirtle"
 			}}
 		}, "ssh_rules": []},
-		"venusaur": {"packet_filter_rules": [{"SrcIPs": [
-			"100.106.147.50",
-			"100.115.5.20",
-			"100.127.62.2",
-			"fd7a:115c:a1e0::1737:3e02",
-			"fd7a:115c:a1e0::3237:9332",
-			"fd7a:115c:a1e0::f837:514"
-		], "DstPorts": [
-			{"IP": "100.115.5.20", "Ports": {"First": 0, "Last": 65535}},
-			{"IP": "fd7a:115c:a1e0::f837:514", "Ports": {"First": 0, "Last": 65535}}
-		]}], "packet_filter_matches": [{
-			"IPProto": [6, 17, 1, 58],
-			"Srcs": [
-				"100.106.147.50/32",
-				"100.115.5.20/32",
-				"100.127.62.2/32",
-				"fd7a:115c:a1e0::1737:3e02/128",
-				"fd7a:115c:a1e0::3237:9332/128",
-				"fd7a:115c:a1e0::f837:514/128"
-			],
-			"SrcCaps": null,
-			"Dsts": [{"Net": "100.115.5.20/32", "Ports": {"First": 0, "Last": 65535}}, {
-				"Net":   "fd7a:115c:a1e0::f837:514/128",
-				"Ports": {"First": 0, "Last": 65535}
-			}],
-			"Caps": []
-		}], "netmap": {
+		"venusaur": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         874267910027719,
-				"StableID":   "nLfKR4Yxp711CNTRL",
+				"ID":         5047804233228560,
+				"StableID":   "nwJRhwFARg11CNTRL",
 				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:afd3d7ee9207af743acdc88731ee803cbfeca4950a46457fb4e4e1b7f8b30513",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:e9fff52ff6af5f51088df65c6201a8e22d6736c3d3562b11a32e1b5c30099b03",
-				"Addresses":  ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"AllowedIPs": ["100.115.5.20/32", "fd7a:115c:a1e0::f837:514/128"],
-				"Endpoints":  ["77.164.248.136:42592", "10.65.0.27:42592", "172.17.0.1:42592"],
+				"User":       3982058329734709,
+				"Key":        "nodekey:c3c2c72347988882190e0112aeed795cbaeb7aeb521c5feff02dfad7c7814f12",
+				"KeyExpiry":  "2026-10-05T12:45:01Z",
+				"DiscoKey":   "discokey:9e2fde7ec1fa5ff978bde8d9e6358ac91bb2556d3cf70f6f7432b5fab464037d",
+				"Addresses":  ["100.65.79.19/32", "fd7a:115c:a1e0::c737:4f13/128"],
+				"AllowedIPs": ["100.65.79.19/32", "fd7a:115c:a1e0::c737:4f13/128"],
+				"Endpoints":  ["77.164.248.136:60066", "10.65.0.27:60066", "172.17.0.1:60066"],
 				"Hostinfo": {"Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 44835},
-					{"Proto": "peerapi6", "Port": 44835},
+					{"Proto": "peerapi4", "Port": 44273},
+					{"Proto": "peerapi6", "Port": 44273},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T08:51:26.078375093Z",
+				"Created":           "2026-04-08T12:45:01.36276421Z",
 				"MachineAuthorized": true,
 				"CapMap": {
 					"https://tailscale.com/cap/file-sharing": null,
 					"https://tailscale.com/cap/is-admin":     null,
-					"https://tailscale.com/cap/is-owner":     null,
 					"https://tailscale.com/cap/ssh":          null,
 					"https://tailscale.com/cap/tailnet-lock": null,
 					"probe-udp-lifetime":                     null,
@@ -5654,7 +5495,6 @@
 			"AllCaps": [
 				"https://tailscale.com/cap/file-sharing",
 				"https://tailscale.com/cap/is-admin",
-				"https://tailscale.com/cap/is-owner",
 				"https://tailscale.com/cap/ssh",
 				"https://tailscale.com/cap/tailnet-lock",
 				"probe-udp-lifetime",
@@ -5663,82 +5503,14 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":    "nodekey:afd3d7ee9207af743acdc88731ee803cbfeca4950a46457fb4e4e1b7f8b30513",
-			"MachineKey": "mkey:4d1d5fcd203241a21313cb46c1fe489963fc7324e25159660a9c996116d20c50",
-			"Peers": [{
-				"ID":         4980222000101349,
-				"StableID":   "nYESBFzYtf11CNTRL",
-				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:24c28c433e2c4f1edaf059ca281e80fb3a85bbb68d8d99d2af66b53c17bf3e01",
-				"KeyExpiry":  "2026-10-05T08:51:25Z",
-				"DiscoKey":   "discokey:5fd056508c25b0745e46b9cfa4eeca4b3f2be3d80727cb4aa350667ef9d9233f",
-				"Addresses":  ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"AllowedIPs": ["100.127.62.2/32", "fd7a:115c:a1e0::1737:3e02/128"],
-				"Endpoints":  ["77.164.248.136:36640", "10.65.0.27:36640", "172.17.0.1:36640"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 35886},
-					{"Proto": "peerapi6", "Port": 35886}
-				]},
-				"Created":              "2026-04-08T08:51:25.527672569Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "ivysaur",
-				"ComputedNameWithHost": "ivysaur"
-			}, {
-				"ID":         8426985398687616,
-				"StableID":   "ndRvpmcbo821CNTRL",
-				"Name":       "bulbasaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:bcce939c5918c38e8949c9bb7703d0d021b13d908f1fb008e7d500dc32aa9331",
-				"KeyExpiry":  "2026-10-05T08:51:26Z",
-				"DiscoKey":   "discokey:02601a76a0544b57ccc02b6680c63d2a15b39f00cf9db73a9d887d32ce07b171",
-				"Addresses":  ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"AllowedIPs": ["100.106.147.50/32", "fd7a:115c:a1e0::3237:9332/128"],
-				"Endpoints":  ["77.164.248.136:49227", "10.65.0.27:49227", "172.17.0.1:49227"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40893},
-					{"Proto": "peerapi6", "Port": 40893}
-				]},
-				"Created":              "2026-04-08T08:51:26.613158846Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "bulbasaur",
-				"ComputedNameWithHost": "bulbasaur"
-			}],
-			"DNS": {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
-			"PacketFilter": [{
-				"IPProto": [6, 17, 1, 58],
-				"Srcs": [
-					"100.106.147.50/32",
-					"100.115.5.20/32",
-					"100.127.62.2/32",
-					"fd7a:115c:a1e0::1737:3e02/128",
-					"fd7a:115c:a1e0::3237:9332/128",
-					"fd7a:115c:a1e0::f837:514/128"
-				],
-				"SrcCaps": null,
-				"Dsts": [{"Net": "100.115.5.20/32", "Ports": {"First": 0, "Last": 65535}}, {
-					"Net":   "fd7a:115c:a1e0::f837:514/128",
-					"Ports": {"First": 0, "Last": 65535}
-				}],
-				"Caps": []
-			}],
-			"PacketFilterRules": [{"SrcIPs": [
-				"100.106.147.50",
-				"100.115.5.20",
-				"100.127.62.2",
-				"fd7a:115c:a1e0::1737:3e02",
-				"fd7a:115c:a1e0::3237:9332",
-				"fd7a:115c:a1e0::f837:514"
-			], "DstPorts": [
-				{"IP": "100.115.5.20", "Ports": {"First": 0, "Last": 65535}},
-				{"IP": "fd7a:115c:a1e0::f837:514", "Ports": {"First": 0, "Last": 65535}}
-			]}],
-			"SSHPolicy":       {"rules": []},
-			"CollectServices": false,
+			"NodeKey":           "nodekey:c3c2c72347988882190e0112aeed795cbaeb7aeb521c5feff02dfad7c7814f12",
+			"MachineKey":        "mkey:dafe6e48d24da94ba8e4d26c857a5af4af94894e21dbeb35299e14b9f3045f6c",
+			"Peers":             [],
+			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
+			"PacketFilter":      [],
+			"PacketFilterRules": null,
+			"SSHPolicy":         {"rules": []},
+			"CollectServices":   false,
 			"DERPMap": {"Regions": {"1": {
 				"RegionID":   1,
 				"RegionCode": "nyc",
@@ -6558,30 +6330,30 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
+			"UserProfiles": {"3982058329734709": {
+				"ID":          3982058329734709,
+				"LoginName":   "freya@example.com",
+				"DisplayName": "freya"
 			}}
 		}, "ssh_rules": []},
 		"weedle": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         4694114448166527,
-				"StableID":   "n6SbYkRyed11CNTRL",
+				"ID":         3804421032450321,
+				"StableID":   "ng8a1zg2iW11CNTRL",
 				"Name":       "weedle.tail78f774.ts.net.",
-				"User":       4694114448166527,
-				"Key":        "nodekey:c266ed4e0e5c1ecf4adef8518b70ecf6c0f6b241d69257fb594d0b1c6ac4ef04",
-				"DiscoKey":   "discokey:b42d881a23c17eb725ef9f3bc10df6ca9b7048fdc48681aa88a33a3ad0f92d7e",
-				"Addresses":  ["100.68.239.5/32", "fd7a:115c:a1e0::6a37:ef05/128"],
-				"AllowedIPs": ["100.68.239.5/32", "fd7a:115c:a1e0::6a37:ef05/128"],
-				"Endpoints":  ["77.164.248.136:36480", "10.65.0.27:36480", "172.17.0.1:36480"],
+				"User":       3804421032450321,
+				"Key":        "nodekey:91c3aae3cd000a69c5e36545e58a2c1a40b30edd3790e47fdee73b1aad2d3558",
+				"DiscoKey":   "discokey:a1bf4649626a677760eab0a1f9719b055e0bd654cbc5375c91c14ce9d0221f08",
+				"Addresses":  ["100.109.53.89/32", "fd7a:115c:a1e0::ad37:3559/128"],
+				"AllowedIPs": ["100.109.53.89/32", "fd7a:115c:a1e0::ad37:3559/128"],
+				"Endpoints":  ["77.164.248.136:59100", "10.65.0.27:59100", "172.17.0.1:59100"],
 				"Hostinfo": {"Hostname": "weedle", "RequestTags": ["tag:client"], "Services": [
-					{"Proto": "peerapi4", "Port": 59298},
-					{"Proto": "peerapi6", "Port": 59298},
+					{"Proto": "peerapi4", "Port": 43655},
+					{"Proto": "peerapi6", "Port": 43655},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T08:51:23.888966Z",
+				"Created":           "2026-04-08T12:44:59.19523897Z",
 				"Tags":              ["tag:client"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -6609,8 +6381,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:c266ed4e0e5c1ecf4adef8518b70ecf6c0f6b241d69257fb594d0b1c6ac4ef04",
-			"MachineKey":        "mkey:0b720024b9ad258c78374545388954d4f83346c0b1df547534a955580679577e",
+			"NodeKey":           "nodekey:91c3aae3cd000a69c5e36545e58a2c1a40b30edd3790e47fdee73b1aad2d3558",
+			"MachineKey":        "mkey:d3b9c9d05466c2e052270bdba6bdd9f00925e3c2f8725a7dd19288a28b28063a",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -7436,8 +7208,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"4694114448166527": {
-				"ID":          4694114448166527,
+			"UserProfiles": {"3804421032450321": {
+				"ID":          3804421032450321,
 				"LoginName":   "weedle.tail78f774.ts.net",
 				"DisplayName": "weedle"
 			}}
