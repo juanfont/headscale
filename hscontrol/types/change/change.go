@@ -1,6 +1,7 @@
 package change
 
 import (
+	"fmt"
 	"slices"
 	"time"
 
@@ -78,6 +79,16 @@ func (r Change) Merge(other Change) Change {
 	}
 
 	// Preserve TargetNode for targeted responses.
+	// Merging two changes targeted at different nodes is not supported
+	// because the merged result can only have one TargetNode, which
+	// would cause the other target's content to be misrouted.
+	if merged.TargetNode != 0 && other.TargetNode != 0 && merged.TargetNode != other.TargetNode {
+		panic(fmt.Sprintf(
+			"cannot merge changes with different TargetNode: %d != %d",
+			merged.TargetNode, other.TargetNode,
+		))
+	}
+
 	if merged.TargetNode == 0 {
 		merged.TargetNode = other.TargetNode
 	}
