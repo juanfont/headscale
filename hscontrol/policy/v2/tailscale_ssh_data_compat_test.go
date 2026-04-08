@@ -1,26 +1,23 @@
-// This file is "generated" by Claude.
-// It contains a data-driven test that reads SSH-*.json test files captured
-// from Tailscale SaaS. Each file contains:
-//   - The SSH section of the policy
-//   - The expected SSHPolicy rules for each of 5 test nodes
+// This file implements a data-driven test runner for SSH compatibility tests.
+// It loads HuJSON golden files from testdata/ssh_results/ssh-*.hujson, captured
+// from Tailscale SaaS by tscap, and compares headscale's SSH policy compilation
+// against the captured SSH rules.
 //
-// The test loads each JSON file, constructs a full policy from the SSH section,
-// applies it through headscale's SSH policy compilation, and compares the output
-// against Tailscale's actual behavior.
+// Each file is a testcapture.Capture containing:
+//   - The full policy that was POSTed to Tailscale SaaS (we use tf.Input.FullPolicy
+//     directly instead of reconstructing it from a sub-section)
+//   - The expected SSH rules for each of the 8 test nodes (in tf.Captures[name].SSHRules)
 //
-// Tests that are known to fail due to unimplemented features or known
-// differences are skipped with a TODO comment explaining the root cause.
-// As headscale's SSH implementation improves, tests should be removed
-// from the skip list.
+// Tests known to fail due to unimplemented features or known differences are
+// skipped with a TODO comment explaining the root cause.
 //
-// Test data source: testdata/ssh_results/SSH-*.json
-// Captured from: Tailscale SaaS API + tailscale debug localapi
+// Test data source: testdata/ssh_results/ssh-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -28,24 +25,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
-	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
-// sshTestFile represents the JSON structure of a captured SSH test file.
-type sshTestFile struct {
-	TestID     string                    `json:"test_id"`
-	PolicyFile string                    `json:"policy_file"`
-	SSHSection json.RawMessage           `json:"ssh_section"`
-	Nodes      map[string]sshNodeCapture `json:"nodes"`
-}
-
-// sshNodeCapture represents the expected SSH rules for a single node.
-type sshNodeCapture struct {
-	Rules json.RawMessage `json:"rules"`
-}
 
 // setupSSHDataCompatUsers returns the 3 test users for SSH data-driven
 // compatibility tests. The user configuration matches the Tailscale test
@@ -131,11 +116,6 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 // convertSSHPolicyEmails converts Tailscale SaaS email domains to
 // headscale-compatible format in the raw policy JSON.
 //
-// Tailscale uses provider-specific email formats:
-//   - kratail2tid@passkey (passkey auth)
-//   - kristoffer@dalby.cc (email auth — kept as-is)
-//   - monitorpasskeykradalby@passkey (passkey auth)
-//
 // The @passkey domain is converted to @example.com. The @dalby.cc domain
 // is kept as-is to preserve localpart matching semantics (kristoffer should
 // NOT match localpart:*@example.com, just as it doesn't match
@@ -146,98 +126,47 @@ func convertSSHPolicyEmails(s string) string {
 	return s
 }
 
-// constructSSHFullPolicy builds a complete headscale policy from the
-// ssh_section captured from Tailscale SaaS.
-//
-// The base policy includes:
-//   - groups matching the Tailscale test environment
-//   - tagOwners for tag:server and tag:prod
-//   - A permissive ACL allowing all traffic (matches the grants wildcard
-//     in the original Tailscale policy)
-//   - The SSH section from the test file
-func constructSSHFullPolicy(sshSection json.RawMessage) string {
-	// Base policy template with groups, tagOwners, and ACLs
-	// User references match the converted email addresses.
-	const basePolicyPrefix = `{
-	"groups": {
-		"group:admins": ["kratail2tid@example.com"],
-		"group:developers": ["kristoffer@dalby.cc", "kratail2tid@example.com"],
-		"group:empty": []
-	},
-	"tagOwners": {
-		"tag:server": ["kratail2tid@example.com"],
-		"tag:prod": ["kratail2tid@example.com"]
-	},
-	"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]`
-
-	// Handle null or empty SSH section
-	if len(sshSection) == 0 || string(sshSection) == "null" {
-		// No SSH section at all (like SSH-E4)
-		return basePolicyPrefix + "\n}"
-	}
-
-	sshStr := string(sshSection)
-
-	// Convert Tailscale email domains
-	sshStr = convertSSHPolicyEmails(sshStr)
-
-	return basePolicyPrefix + `,
-	"ssh": ` + sshStr + "\n}"
-}
-
-// loadSSHTestFile loads and parses a single SSH test JSON file.
-func loadSSHTestFile(t *testing.T, path string) sshTestFile {
+// loadSSHTestFile loads and parses a single SSH capture HuJSON file.
+func loadSSHTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	c, err := testcapture.Read(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
-	ast, err := hujson.Parse(content)
-	require.NoError(t, err, "failed to parse HuJSON in %s", path)
-	ast.Standardize()
-
-	var tf sshTestFile
-
-	err = json.Unmarshal(ast.Pack(), &tf)
-	require.NoError(t, err, "failed to unmarshal test file %s", path)
-
-	return tf
+	return c
 }
 
 // sshSkipReasons documents why each skipped test fails and what needs to be
 // fixed. Tests are grouped by root cause to identify high-impact changes.
-//
-// 37 of 39 tests are expected to pass.
 var sshSkipReasons = map[string]string{
 	// user:*@passkey wildcard pattern not supported in headscale.
 	// headscale does not support passkey authentication and has no
 	// equivalent for this wildcard pattern.
-	"SSH-B5":  "user:*@passkey wildcard not supported in headscale",
-	"SSH-D10": "user:*@passkey wildcard not supported in headscale",
+	"ssh-b5":  "user:*@passkey wildcard not supported in headscale",
+	"ssh-d10": "user:*@passkey wildcard not supported in headscale",
 }
 
-// TestSSHDataCompat is a data-driven test that loads all SSH-*.json test files
-// captured from Tailscale SaaS and compares headscale's SSH policy compilation
-// against the real Tailscale behavior.
+// TestSSHDataCompat is a data-driven test that loads all ssh-*.hujson test
+// files captured from Tailscale SaaS and compares headscale's SSH policy
+// compilation against the real Tailscale behavior.
 //
-// Each JSON file contains:
-//   - The SSH section of the policy
-//   - Expected SSH rules per node (5 nodes)
+// Each capture file contains:
+//   - The full policy that was POSTed to the SaaS API (Input.FullPolicy)
+//   - Expected SSH rules per node (Captures[name].SSHRules)
 //
-// The test constructs a full headscale policy from the SSH section, converts
-// Tailscale user email formats to headscale format, and runs the policy
-// through unmarshalPolicy and compileSSHPolicy.
+// The test converts Tailscale user email formats to headscale format and runs
+// the captured policy through unmarshalPolicy and compileSSHPolicy.
 func TestSSHDataCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "ssh_results", "SSH-*.hujson"),
+		filepath.Join("testdata", "ssh_results", "ssh-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no SSH-*.hujson test files found in testdata/ssh_results/",
+		"no ssh-*.hujson test files found in testdata/ssh_results/",
 	)
 
 	t.Logf("Loaded %d SSH test files", len(files))
@@ -261,8 +190,14 @@ func TestSSHDataCompat(t *testing.T) {
 				return
 			}
 
-			// Construct full policy from SSH section
-			policyJSON := constructSSHFullPolicy(tf.SSHSection)
+			// Skip captures the SaaS rejected — no expected SSH rules to compare against.
+			if tf.Error {
+				t.Skipf("%s: SaaS rejected the policy (api_response_code=%d); no expected SSH rules captured", tf.TestID, tf.Input.APIResponseCode)
+				return
+			}
+
+			// Use the captured full policy verbatim (with email-domain conversion).
+			policyJSON := convertSSHPolicyEmails(string(tf.Input.FullPolicy))
 
 			pol, err := unmarshalPolicy([]byte(policyJSON))
 			require.NoError(
@@ -273,15 +208,13 @@ func TestSSHDataCompat(t *testing.T) {
 				policyJSON,
 			)
 
-			for nodeName, capture := range tf.Nodes {
+			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
 					node := findNodeByGivenName(nodes, nodeName)
-					require.NotNilf(
-						t,
-						node,
-						"node %s not found in test setup",
-						nodeName,
-					)
+					if node == nil {
+						t.Skipf("node %s not in this test's node set", nodeName)
+						return
+					}
 
 					// Compile headscale SSH policy for this node
 					gotSSH, err := pol.compileSSHPolicy(
@@ -300,9 +233,9 @@ func TestSSHDataCompat(t *testing.T) {
 
 					// Parse expected rules from JSON capture
 					var wantRules []*tailcfg.SSHRule
-					if len(capture.Rules) > 0 &&
-						string(capture.Rules) != "null" {
-						err = json.Unmarshal(capture.Rules, &wantRules)
+					if len(capture.SSHRules) > 0 &&
+						string(capture.SSHRules) != "null" {
+						err = json.Unmarshal(capture.SSHRules, &wantRules)
 						require.NoError(
 							t,
 							err,
