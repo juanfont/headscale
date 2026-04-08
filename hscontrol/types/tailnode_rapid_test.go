@@ -744,9 +744,17 @@ func TestRapid_TailNode_PrimaryRoutesPreserved(t *testing.T) {
 			t.Fatalf("TailNode error: %v", err)
 		}
 
-		if !slices.Equal(out.PrimaryRoutes, inp.PrimaryRoutes) {
+		// TailNode filters exit routes from PrimaryRoutes (for HA tracking).
+		var expectedPrimary []netip.Prefix
+		for _, r := range inp.PrimaryRoutes {
+			if !tsaddr.IsExitRoute(r) {
+				expectedPrimary = append(expectedPrimary, r)
+			}
+		}
+
+		if !slices.Equal(out.PrimaryRoutes, expectedPrimary) {
 			t.Fatalf("PrimaryRoutes mismatch:\n  got:  %v\n  want: %v",
-				out.PrimaryRoutes, inp.PrimaryRoutes)
+				out.PrimaryRoutes, expectedPrimary)
 		}
 	})
 }

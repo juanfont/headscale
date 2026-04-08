@@ -58,6 +58,7 @@ func genTags(maxLen int) *rapid.Generator[[]string] {
 }
 
 // genNode generates a random Node with random keys, IPs, user, and optional tags.
+// With 30% probability each, sets IPv4 or IPv6 to nil to exercise nil-IP code paths.
 func genNode() *rapid.Generator[types.Node] {
 	return rapid.Custom[types.Node](func(t *rapid.T) types.Node {
 		id := genNodeID().Draw(t, "id")
@@ -70,16 +71,28 @@ func genNode() *rapid.Generator[types.Node] {
 
 		// Generate deterministic IPs from the node ID to avoid collisions in
 		// simple cases but still have meaningful values.
-		ipv4 := netip.AddrFrom4([4]byte{
-			100,
-			64,
-			byte(id >> 8),   //nolint:gosec
-			byte(id & 0xFF), //nolint:gosec
-		})
-		ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0}
-		ipv6Bytes[14] = byte(id >> 8)   //nolint:gosec
-		ipv6Bytes[15] = byte(id & 0xFF) //nolint:gosec
-		ipv6 := netip.AddrFrom16(ipv6Bytes)
+		var ipv4Ptr *netip.Addr
+		var ipv6Ptr *netip.Addr
+
+		// 30% chance to set IPv4 to nil.
+		if rapid.IntRange(0, 9).Draw(t, "nilIPv4") >= 3 {
+			ipv4 := netip.AddrFrom4([4]byte{
+				100,
+				64,
+				byte(id >> 8),   //nolint:gosec
+				byte(id & 0xFF), //nolint:gosec
+			})
+			ipv4Ptr = &ipv4
+		}
+
+		// 30% chance to set IPv6 to nil.
+		if rapid.IntRange(0, 9).Draw(t, "nilIPv6") >= 3 {
+			ipv6Bytes := [16]byte{0xfd, 0x7a, 0x11, 0x5c, 0xa1, 0xe0}
+			ipv6Bytes[14] = byte(id >> 8)   //nolint:gosec
+			ipv6Bytes[15] = byte(id & 0xFF) //nolint:gosec
+			ipv6 := netip.AddrFrom16(ipv6Bytes)
+			ipv6Ptr = &ipv6
+		}
 
 		hostname := fmt.Sprintf("node-%d", id)
 
@@ -96,8 +109,8 @@ func genNode() *rapid.Generator[types.Node] {
 				DisplayName: fmt.Sprintf("User %d", uid),
 			},
 			RegisterMethod: "test",
-			IPv4:           &ipv4,
-			IPv6:           &ipv6,
+			IPv4:           ipv4Ptr,
+			IPv6:           ipv6Ptr,
 			Tags:           tags,
 		}
 	})
@@ -105,12 +118,23 @@ func genNode() *rapid.Generator[types.Node] {
 
 // genNodeMap generates a map of NodeID -> Node with unique IDs.
 // The map size is bounded to keep tests fast.
+// With 30% probability per node, a previously generated node's MachineKey
+// is reused to exercise shared-MachineKey code paths (e.g., nodesByMachineKey
+// multi-user maps).
 func genNodeMap(maxSize int) *rapid.Generator[map[types.NodeID]types.Node] {
 	return rapid.Custom[map[types.NodeID]types.Node](func(t *rapid.T) map[types.NodeID]types.Node {
 		n := rapid.IntRange(0, maxSize).Draw(t, "mapSize")
 		nodes := make(map[types.NodeID]types.Node, n)
+		var machineKeys []key.MachinePublic
 		for len(nodes) < n {
 			node := genNode().Draw(t, "node")
+			// 30% chance to reuse a MachineKey from a previously generated node.
+			if len(machineKeys) > 0 && rapid.IntRange(0, 9).Draw(t, "reuseMK") < 3 {
+				idx := rapid.IntRange(0, len(machineKeys)-1).Draw(t, "mkIdx")
+				node.MachineKey = machineKeys[idx]
+			} else {
+				machineKeys = append(machineKeys, node.MachineKey)
+			}
 			// Overwrite if ID exists; that's fine for unique-ID maps.
 			nodes[node.ID] = node
 		}

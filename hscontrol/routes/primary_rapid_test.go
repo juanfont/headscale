@@ -31,13 +31,51 @@ var exitRoutes = []netip.Prefix{
 // allGeneratable includes both normal and exit prefixes for the generator.
 var allGeneratable = append(append([]netip.Prefix{}, prefixPool...), exitRoutes...)
 
-// genNodeID draws a small NodeID from [1, 8].
+// genNodeID draws a NodeID from [1, 5000].
 func genNodeID(t *rapid.T) types.NodeID {
-	return types.NodeID(rapid.Uint64Range(1, 8).Draw(t, "nodeID"))
+	return types.NodeID(rapid.Uint64Range(1, 5000).Draw(t, "nodeID"))
+}
+
+// genRandomPrefix generates an arbitrary random prefix (IPv4 or IPv6)
+// with random prefix length, not limited to the fixed pool.
+func genRandomPrefix(t *rapid.T, label string) netip.Prefix {
+	isV6 := rapid.Bool().Draw(t, label+"_isV6")
+	if isV6 {
+		bits := rapid.IntRange(0, 128).Draw(t, label+"_bits")
+		var b [16]byte
+		for i := range b {
+			b[i] = byte(rapid.IntRange(0, 255).Draw(t, label+"_byte"))
+		}
+		return netip.PrefixFrom(netip.AddrFrom16(b), bits).Masked()
+	}
+	bits := rapid.IntRange(0, 32).Draw(t, label+"_bits")
+	var b [4]byte
+	for i := range b {
+		b[i] = byte(rapid.IntRange(0, 255).Draw(t, label+"_byte"))
+	}
+	return netip.PrefixFrom(netip.AddrFrom4(b), bits).Masked()
 }
 
 // genPrefixes draws a distinct subset of allGeneratable (including possible exit routes).
+// With 30% probability, it generates arbitrary random prefixes instead of
+// sampling from the fixed pool, to exercise wider prefix diversity.
 func genPrefixes(t *rapid.T) []netip.Prefix {
+	if rapid.IntRange(0, 9).Draw(t, "prefixMode") < 3 {
+		// Arbitrary random prefixes mode.
+		n := rapid.IntRange(0, 8).Draw(t, "numRandomPrefixes")
+		seen := make(map[string]bool, n)
+		result := make([]netip.Prefix, 0, n)
+		for len(result) < n {
+			p := genRandomPrefix(t, fmt.Sprintf("rndPfx%d", len(result)))
+			key := p.String()
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, p)
+			}
+		}
+		return result
+	}
+	// Fixed pool mode (original behavior).
 	return rapid.SliceOfNDistinct(
 		rapid.SampledFrom(allGeneratable),
 		0, len(allGeneratable),
@@ -281,13 +319,24 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 
 	// Invariant 5: isPrimary index is consistent.
 	// A node isPrimary iff it is primary for some prefix.
-	// We verify this through the public API: for every node in [1,8],
+	// We verify this through the public API: for every known node,
 	// PrimaryRoutes(id) returns non-nil iff the node is a primary for something.
 	expectedPrimaryNodes := make(map[types.NodeID]bool)
 	for _, nodeID := range primaries {
 		expectedPrimaryNodes[nodeID] = true
 	}
-	for id := types.NodeID(1); id <= 8; id++ {
+	// Collect all known node IDs from model routes + primaries + debug available routes.
+	knownCheckIDs := make(map[types.NodeID]bool)
+	for nid := range model.routes {
+		knownCheckIDs[nid] = true
+	}
+	for _, nid := range primaries {
+		knownCheckIDs[nid] = true
+	}
+	for nid := range debug.AvailableRoutes {
+		knownCheckIDs[nid] = true
+	}
+	for id := range knownCheckIDs {
 		routes := pr.PrimaryRoutes(id)
 		hasPrimaries := len(routes) > 0
 		shouldHave := expectedPrimaryNodes[id]
@@ -353,10 +402,10 @@ func checkAllInvariants(t *rapid.T, pr *PrimaryRoutes, model *referenceModel) {
 		}
 	}
 
-	// Cross-check: every primary prefix appears exactly once across all nodes'
+	// Cross-check: every primary prefix appears exactly once across all known nodes'
 	// PrimaryRoutes results.
 	seenPrefixes := make(map[netip.Prefix]types.NodeID)
-	for id := types.NodeID(1); id <= 8; id++ {
+	for id := range knownCheckIDs {
 		for _, p := range pr.PrimaryRoutes(id) {
 			if prev, ok := seenPrefixes[p]; ok {
 				t.Fatalf("invariant cross-check: prefix %s claimed by both node %d and node %d",
@@ -498,11 +547,11 @@ func checkInvariantsStandalone(t *rapid.T, pr *PrimaryRoutes, knownNodeIDs []typ
 //   - After all are removed, no primaries remain.
 func TestRapid_PrimaryRoutes_FailoverChain(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		// Generate 3-8 distinct non-sequential node IDs from a wide range.
-		numNodes := rapid.IntRange(3, 8).Draw(t, "numNodes")
+		// Generate 3-50 distinct non-sequential node IDs from a wide range [1, 5000].
+		numNodes := rapid.IntRange(3, 50).Draw(t, "numNodes")
 		nodeIDs := rapid.SliceOfNDistinct(
 			rapid.Custom(func(t *rapid.T) types.NodeID {
-				return types.NodeID(rapid.Uint64Range(1, 500).Draw(t, "nid"))
+				return types.NodeID(rapid.Uint64Range(1, 5000).Draw(t, "nid"))
 			}),
 			numNodes, numNodes,
 			func(id types.NodeID) string { return fmt.Sprintf("%d", id) },

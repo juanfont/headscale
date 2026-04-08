@@ -143,22 +143,26 @@ func genWildcardPolicy() string {
 }
 
 // genFilterRule generates a random FilterRule with valid SrcIPs and DstPorts.
+// SrcIPs and DstPorts use CIDR prefix lengths in [24,32] to exercise
+// prefix-matching code paths beyond just /32 host routes.
 func genFilterRule(t *rapid.T) tailcfg.FilterRule {
 	srcCount := rapid.IntRange(1, 3).Draw(t, "srcCount")
 	srcIPs := make([]string, srcCount)
 	for i := range srcCount {
 		octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("srcOctet%d", i))
-		srcIPs[i] = fmt.Sprintf("100.64.0.%d/32", octet)
+		bits := rapid.IntRange(24, 32).Draw(t, fmt.Sprintf("srcBits%d", i))
+		srcIPs[i] = fmt.Sprintf("100.64.0.%d/%d", octet, bits)
 	}
 
 	dstCount := rapid.IntRange(1, 3).Draw(t, "dstCount")
 	dstPorts := make([]tailcfg.NetPortRange, dstCount)
 	for i := range dstCount {
 		octet := rapid.IntRange(1, 254).Draw(t, fmt.Sprintf("dstOctet%d", i))
+		bits := rapid.IntRange(24, 32).Draw(t, fmt.Sprintf("dstBits%d", i))
 		portFirst := rapid.Uint16Range(1, 65534).Draw(t, fmt.Sprintf("portFirst%d", i))
 		portLast := rapid.Uint16Range(portFirst, 65535).Draw(t, fmt.Sprintf("portLast%d", i))
 		dstPorts[i] = tailcfg.NetPortRange{
-			IP:    fmt.Sprintf("100.64.0.%d/32", octet),
+			IP:    fmt.Sprintf("100.64.0.%d/%d", octet, bits),
 			Ports: tailcfg.PortRange{First: portFirst, Last: portLast},
 		}
 	}
@@ -176,6 +180,31 @@ func genFilterRules(t *rapid.T) []tailcfg.FilterRule {
 	for i := range count {
 		rules[i] = genFilterRule(t)
 	}
+	return rules
+}
+
+// genFilterRulesWithSharedSrc generates 2-5 FilterRules where at least 2
+// rules share identical SrcIPs strings. This exercises the merge-DstPorts
+// code path in mergeFilterRules which groups rules by SrcIPs key.
+func genFilterRulesWithSharedSrc(t *rapid.T) []tailcfg.FilterRule {
+	count := rapid.IntRange(2, 5).Draw(t, "sharedRuleCount")
+	rules := make([]tailcfg.FilterRule, count)
+
+	// Generate the first rule normally.
+	rules[0] = genFilterRule(t)
+	sharedSrcIPs := rules[0].SrcIPs
+
+	// Force at least one other rule to share the same SrcIPs.
+	shareIdx := rapid.IntRange(1, count-1).Draw(t, "shareIdx")
+
+	for i := 1; i < count; i++ {
+		rules[i] = genFilterRule(t)
+		if i == shareIdx {
+			// Overwrite SrcIPs with the shared set, keep different DstPorts.
+			rules[i].SrcIPs = sharedSrcIPs
+		}
+	}
+
 	return rules
 }
 
@@ -415,7 +444,14 @@ func matchRules(rules []tailcfg.FilterRule, srcIP, dstIP netip.Addr, dstPort uin
 
 func TestRapid_MergeFilterRules_SemanticEquivalence(t *testing.T) {
 	rapid.Check(t, func(t *rapid.T) {
-		rules := genFilterRules(t)
+		// Sometimes use genFilterRulesWithSharedSrc to exercise the
+		// merge-DstPorts code path where rules share identical SrcIPs.
+		var rules []tailcfg.FilterRule
+		if rapid.Bool().Draw(t, "useSharedSrc") {
+			rules = genFilterRulesWithSharedSrc(t)
+		} else {
+			rules = genFilterRules(t)
+		}
 		merged := mergeFilterRules(rules)
 
 		// Extract actual IPs and ports from the rules so we probe addresses

@@ -68,16 +68,19 @@ func genIPv6Addr() *rapid.Generator[netip.Addr] {
 	})
 }
 
-// genSubnetPrefix generates a non-exit-route prefix (not 0.0.0.0/0 or ::/0).
+// genSubnetPrefix generates a random prefix including /0 (exit routes).
+// When bits==0, .Masked() produces 0.0.0.0/0 or ::/0 (exit routes).
+// SubnetRoutes() is expected to filter these out, so tests that assert
+// "no exit routes in SubnetRoutes" should still pass.
 func genSubnetPrefix() *rapid.Generator[netip.Prefix] {
 	return rapid.Custom[netip.Prefix](func(t *rapid.T) netip.Prefix {
 		isV6 := rapid.Bool().Draw(t, "isV6")
 		if isV6 {
-			bits := rapid.IntRange(1, 128).Draw(t, "bits")
+			bits := rapid.IntRange(0, 128).Draw(t, "bits")
 			addr := genIPv6Addr().Draw(t, "addr")
 			return netip.PrefixFrom(addr, bits).Masked()
 		}
-		bits := rapid.IntRange(1, 32).Draw(t, "bits")
+		bits := rapid.IntRange(0, 32).Draw(t, "bits")
 		addr := genIPv4Addr().Draw(t, "addr")
 		return netip.PrefixFrom(addr, bits).Masked()
 	})
@@ -401,6 +404,17 @@ func TestRapid_SubnetRoutes_IntersectionCorrectness(t *testing.T) {
 			approved = append(approved, tsaddr.AllIPv4())
 			// Exit routes must NOT appear in SubnetRoutes.
 		}
+
+		// Filter exit routes from expectedIntersection since
+		// SubnetRoutes excludes them. genSubnetPrefix with bits=0
+		// can produce exit routes via .Masked().
+		var filteredExpected []netip.Prefix
+		for _, pfx := range expectedIntersection {
+			if !tsaddr.IsExitRoute(pfx) {
+				filteredExpected = append(filteredExpected, pfx)
+			}
+		}
+		expectedIntersection = filteredExpected
 
 		node := &Node{
 			Hostinfo:       &tailcfg.Hostinfo{RoutableIPs: announced},

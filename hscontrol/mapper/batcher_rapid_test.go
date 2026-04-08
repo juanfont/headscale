@@ -122,6 +122,84 @@ func genChangeForBatcher(t *rapid.T) change.Change {
 	}
 }
 
+// genAdversarialChange generates changes with conflicting or unusual flag
+// combinations to stress edge cases in addToBatch:
+//   - SendAllPeers + TargetNode set (broadcast override with target)
+//   - PeersChanged ∩ PeersRemoved overlap (same node in both)
+//   - OriginNode == TargetNode (self-referencing change)
+//   - All flags true simultaneously
+//   - Empty change with TargetNode set (should be filtered as no-op)
+func genAdversarialChange(t *rapid.T) change.Change {
+	mode := rapid.IntRange(0, 4).Draw(t, "adversarialMode")
+	switch mode {
+	case 0: // SendAllPeers + TargetNode set
+		return change.Change{
+			Reason:       "adversarial-sendall-target",
+			TargetNode:   types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advTarget")),
+			SendAllPeers: true,
+			IncludeSelf:  rapid.Bool().Draw(t, "advSelf"),
+			PeersChanged: genNodeIDSlice(3).Draw(t, "advChanged"),
+		}
+	case 1: // PeersChanged ∩ PeersRemoved overlap
+		// Use high NodeIDs (100+) for ALL IDs in PeersRemoved (including
+		// overlap) to avoid triggering the batcher's node cleanup logic
+		// which deletes nodes whose IDs appear in change.PeersRemoved.
+		nOverlap := rapid.IntRange(0, 3).Draw(t, "advOverlapN")
+		overlap := make([]types.NodeID, nOverlap)
+		for i := range overlap {
+			overlap[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advOverlap%d", i)))
+		}
+		extraChanged := genNodeIDSlice(2).Draw(t, "advExtraChanged")
+		nExtra := rapid.IntRange(0, 2).Draw(t, "advExtraRemovedN")
+		extraRemoved := make([]types.NodeID, nExtra)
+		for i := range extraRemoved {
+			extraRemoved[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advExtraRemoved%d", i)))
+		}
+		return change.Change{
+			Reason:       "adversarial-overlap",
+			TargetNode:   0,
+			PeersChanged: append(slices.Clone(overlap), extraChanged...),
+			PeersRemoved: append(slices.Clone(overlap), extraRemoved...),
+			IncludeSelf:  true,
+		}
+	case 2: // OriginNode == TargetNode (self-referencing)
+		selfID := types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advSelfID"))
+		return change.Change{
+			Reason:       "adversarial-self-ref",
+			TargetNode:   selfID,
+			OriginNode:   selfID,
+			IncludeSelf:  true,
+			PeersChanged: []types.NodeID{selfID},
+		}
+	case 3: // All flags true simultaneously
+		// Use high NodeIDs (100+) for PeersRemoved to avoid batcher node cleanup.
+		nRemoved := rapid.IntRange(0, 5).Draw(t, "advAllRemovedN")
+		removed := make([]types.NodeID, nRemoved)
+		for i := range removed {
+			removed[i] = types.NodeID(rapid.Uint64Range(100, 200).Draw(t, fmt.Sprintf("advAllRemoved%d", i)))
+		}
+		return change.Change{
+			Reason:                         "adversarial-all-flags",
+			TargetNode:                     types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advAllTarget")),
+			OriginNode:                     types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advAllOrigin")),
+			IncludeSelf:                    true,
+			IncludeDERPMap:                 true,
+			IncludeDNS:                     true,
+			IncludeDomain:                  true,
+			IncludePolicy:                  true,
+			SendAllPeers:                   true,
+			RequiresRuntimePeerComputation: true,
+			PeersChanged:                   genNodeIDSlice(5).Draw(t, "advAllChanged"),
+			PeersRemoved:                   removed,
+		}
+	default: // Empty change with TargetNode set
+		return change.Change{
+			Reason:     "adversarial-empty-target",
+			TargetNode: types.NodeID(rapid.Uint64Range(1, 10).Draw(t, "advEmptyTarget")),
+		}
+	}
+}
+
 // genFullChange returns a change.FullUpdate() deterministically.
 func genFullChange() change.Change {
 	return change.FullUpdate()
@@ -605,10 +683,15 @@ func TestRapid_AddToBatch_FullOverride(t *testing.T) {
 		})
 
 		// Generate a batch of changes, ensuring at least one is Full.
+		// Mix in adversarial changes to stress edge cases.
 		nChanges := rapid.IntRange(1, 8).Draw(t, "nChanges")
 		changes := make([]change.Change, nChanges)
 		for i := range changes {
-			changes[i] = genChangeForBatcher(t)
+			if rapid.IntRange(0, 2).Draw(t, fmt.Sprintf("changeType%d", i)) == 0 {
+				changes[i] = genAdversarialChange(t)
+			} else {
+				changes[i] = genChangeForBatcher(t)
+			}
 		}
 
 		// Insert a FullUpdate at a random position.
@@ -1512,7 +1595,7 @@ func TestRapid_AddToBatch_FullUpdateOverridesTargeted(t *testing.T) {
 			}
 		}
 
-		// Build a batch containing: targeted change for node 1 + FullUpdate
+		// Build a batch containing: targeted change for node 1 + adversarial + FullUpdate
 		// The Full should override everything.
 		targetedForOne := change.Change{
 			Reason:      "targeted-for-1-in-batch",
@@ -1524,12 +1607,18 @@ func TestRapid_AddToBatch_FullUpdateOverridesTargeted(t *testing.T) {
 		}
 		fullUpdate := change.FullUpdate()
 
+		// Optionally include an adversarial change in the batch.
+		batch := []change.Change{targetedForOne, fullUpdate}
+		if rapid.Bool().Draw(t, "includeAdversarial") {
+			batch = append(batch, genAdversarialChange(t))
+		}
+
 		// Randomize order: sometimes targeted first, sometimes Full first
 		if rapid.Bool().Draw(t, "fullFirst") {
-			b.addToBatch(fullUpdate, targetedForOne)
-		} else {
-			b.addToBatch(targetedForOne, fullUpdate)
+			slices.Reverse(batch)
 		}
+
+		b.addToBatch(batch...)
 
 		// Verify: ALL nodes should have pending = [FullUpdate()] ONLY.
 		// The pre-existing targeted changes and the new targeted-for-1 should be gone.
