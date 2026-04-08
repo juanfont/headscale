@@ -156,7 +156,6 @@ func TestSSHDataCompat(t *testing.T) {
 	t.Logf("Loaded %d SSH test files", len(files))
 
 	users := setupSSHDataCompatUsers()
-	nodes := setupSSHDataCompatNodes(users)
 
 	for _, file := range files {
 		tf := loadSSHTestFile(t, file)
@@ -179,6 +178,11 @@ func TestSSHDataCompat(t *testing.T) {
 				t.Skipf("%s: SaaS rejected the policy (api_response_code=%d); no expected SSH rules captured", tf.TestID, tf.Input.APIResponseCode)
 				return
 			}
+
+			// Build nodes per-scenario from this file's topology.
+			// tscap uses clean-slate mode, so each scenario has
+			// different node IPs.
+			nodes := buildGrantsNodesFromCapture(users, tf)
 
 			// Use the captured full policy verbatim. Anonymization in
 			// tscap already rewrites SaaS emails to @example.com.
