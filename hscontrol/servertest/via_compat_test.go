@@ -38,8 +38,8 @@ type goldenNode struct {
 	Tags             []string `json:"tags"`
 	IPv4             string   `json:"ipv4"`
 	IPv6             string   `json:"ipv6"`
-	AdvertisedRoutes []string `json:"advertised_routes"`
-	IsExitNode       bool     `json:"is_exit_node"`
+	AdvertisedRoutes []string `json:"routable_ips"`
+	ApprovedRoutes   []string `json:"approved_routes"`
 }
 
 type goldenCapture struct {
@@ -70,10 +70,10 @@ var viaCompatTests = []struct {
 	id   string
 	desc string
 }{
-	{"GRANT-V29", "crossed subnet steering: group-a via router-a, group-b via router-b"},
-	{"GRANT-V30", "crossed mixed: subnet via router-a/b, exit via exit-b/a"},
-	{"GRANT-V31", "peer connectivity + via exit A/B steering"},
-	{"GRANT-V36", "full complex: peer connectivity + crossed subnet + crossed exit"},
+	{"via-grant-v29", "crossed subnet steering: group-a via router-a, group-b via router-b"},
+	{"via-grant-v30", "crossed mixed: subnet via router-a/b, exit via exit-b/a"},
+	{"via-grant-v31", "peer connectivity + via exit A/B steering"},
+	{"via-grant-v36", "full complex: peer connectivity + crossed subnet + crossed exit"},
 	// TODO: V33 and V35 are not yet compatible due to:
 	// - V33: PrimaryRoutes election differs (node ID ordering between SaaS and headscale)
 	// - V35: Extra peer visibility (autoApprovers create different routing topology)
@@ -90,9 +90,10 @@ var viaCompatTests = []struct {
 //
 // CROSS-DEPENDENCY WARNING:
 // This test reads golden files from ../policy/v2/testdata/grant_results/
-// (specifically GRANT-V29, V30, V31, V36). These files are shared with
-// TestGrantsCompat in the policy/v2 package. Any changes to the file
-// format, field structure, or naming must be coordinated with BOTH tests.
+// (specifically via-grant-v29, v30, v31, v36). These files are shared
+// with TestGrantsCompat in the policy/v2 package. Any changes to the
+// file format, field structure, or naming must be coordinated with
+// BOTH tests.
 //
 // Fields consumed by this test (but NOT by TestGrantsCompat):
 //   - captures[name].netmap (Peers, AllowedIPs, PrimaryRoutes, PacketFilterRules)
@@ -131,15 +132,24 @@ func TestViaGrantMapCompat(t *testing.T) {
 	}
 }
 
-// taggedNodes are the nodes we create in the servertest.
+// taggedNodes are the nodes we create in the servertest. Names match
+// the anonymized pokémon identifiers tscap writes into golden files —
+// see github.com/kradalby/tscap/anonymize for the full substitution
+// table (big-router→caterpie, exit-a→pidgey, etc).
 var taggedNodes = []string{
-	"big-router",
-	"exit-a", "exit-b", "exit-node",
-	"group-a-client", "group-b-client",
-	"router-a", "router-b",
-	"subnet-router", "tagged-client",
-	"tagged-server", "tagged-prod",
-	"multi-exit-router",
+	"caterpie",   // big-router
+	"pidgey",     // exit-a
+	"pidgeotto",  // exit-b
+	"charmander", // exit-node
+	"rattata",    // group-a-client
+	"raticate",   // group-b-client
+	"spearow",    // router-a
+	"fearow",     // router-b
+	"squirtle",   // subnet-router
+	"weedle",     // tagged-client
+	"beedrill",   // tagged-server
+	"kakuna",     // tagged-prod
+	"blastoise",  // multi-exit-router
 }
 
 func runViaMapCompat(t *testing.T, gf goldenFile) {
@@ -624,6 +634,11 @@ func extractHostname(fqdn string) string {
 // convertViaPolicy converts Tailscale SaaS policy emails to headscale format.
 func convertViaPolicy(raw json.RawMessage) []byte {
 	s := string(raw)
+	// Anonymized SaaS emails as written by tscap/anonymize.
+	s = strings.ReplaceAll(s, "odin@example.com", "tag-user@")
+	s = strings.ReplaceAll(s, "thor@example.com", "tag-user@")
+	s = strings.ReplaceAll(s, "freya@example.com", "tag-user@")
+	// Pre-anonymization emails (legacy captures / local reruns).
 	s = strings.ReplaceAll(s, "kratail2tid@passkey", "tag-user@")
 	s = strings.ReplaceAll(s, "kristoffer@dalby.cc", "tag-user@")
 	s = strings.ReplaceAll(s, "monitorpasskeykradalby@passkey", "tag-user@")
