@@ -3,7 +3,7 @@
 // grant p09 3c
 //
 // Nodes with filter rules: 1 of 15
-// Captured at:    2026-04-08T10:10:07Z
+// Captured at:    2026-04-08T14:07:47Z
 // tscap version:  tscap/dev
 // schema version: 1
 {
@@ -11,7 +11,7 @@
 	"test_id":        "grant-p09-3c",
 	"description":    "grant p09 3c",
 	"category":       "grant",
-	"captured_at":    "2026-04-08T10:10:07.013465325Z",
+	"captured_at":    "2026-04-08T14:07:47.411095249Z",
 	"tool_version":   "tscap/dev",
 	"tailnet":        "odin@example.com",
 	"input": {
@@ -61,146 +61,146 @@
 	], "nodes": {"beedrill": {
 		"hostname":        "beedrill",
 		"tags":            ["tag:server"],
-		"ipv4":            "100.98.110.23",
-		"ipv6":            "fd7a:115c:a1e0::fc37:6e18",
+		"ipv4":            "100.119.145.40",
+		"ipv6":            "fd7a:115c:a1e0::4037:9128",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "blastoise": {
 		"hostname":        "blastoise",
 		"tags":            ["tag:exit", "tag:router"],
-		"ipv4":            "100.86.122.22",
-		"ipv6":            "fd7a:115c:a1e0::4137:7a16",
+		"ipv4":            "100.81.49.98",
+		"ipv6":            "fd7a:115c:a1e0::e937:3162",
 		"routable_ips":    ["10.33.0.0/16", "0.0.0.0/0", "::/0"],
 		"approved_routes": []
 	}, "bulbasaur": {
 		"hostname":        "bulbasaur",
 		"tags":            [],
-		"ipv4":            "100.91.162.27",
-		"ipv6":            "fd7a:115c:a1e0::a037:a21b",
+		"ipv4":            "100.104.206.30",
+		"ipv6":            "fd7a:115c:a1e0::3437:ce1f",
 		"user":            "odin",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "charmander": {
 		"hostname":        "charmander",
 		"tags":            ["tag:exit"],
-		"ipv4":            "100.105.46.15",
-		"ipv6":            "fd7a:115c:a1e0::d637:2e10",
+		"ipv4":            "100.113.10.40",
+		"ipv6":            "fd7a:115c:a1e0::1937:a28",
 		"routable_ips":    ["0.0.0.0/0", "::/0"],
 		"approved_routes": []
 	}, "fearow": {
 		"hostname":        "fearow",
 		"tags":            ["tag:router-b"],
-		"ipv4":            "100.123.155.89",
-		"ipv6":            "fd7a:115c:a1e0::e337:9b59",
+		"ipv4":            "100.111.9.5",
+		"ipv6":            "fd7a:115c:a1e0::1737:905",
 		"routable_ips":    ["10.55.0.0/16"],
 		"approved_routes": []
 	}, "ivysaur": {
 		"hostname":        "ivysaur",
 		"tags":            [],
-		"ipv4":            "100.105.39.121",
-		"ipv6":            "fd7a:115c:a1e0::4537:2779",
+		"ipv4":            "100.93.80.98",
+		"ipv6":            "fd7a:115c:a1e0::db37:5062",
 		"user":            "thor",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "kakuna": {
 		"hostname":        "kakuna",
 		"tags":            ["tag:prod"],
-		"ipv4":            "100.93.232.75",
-		"ipv6":            "fd7a:115c:a1e0::7a37:e84b",
+		"ipv4":            "100.124.105.9",
+		"ipv6":            "fd7a:115c:a1e0::d237:6909",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "pidgeotto": {
 		"hostname":        "pidgeotto",
 		"tags":            ["tag:exit-b"],
-		"ipv4":            "100.65.153.125",
-		"ipv6":            "fd7a:115c:a1e0::637:997e",
+		"ipv4":            "100.81.202.70",
+		"ipv6":            "fd7a:115c:a1e0::d537:ca46",
 		"routable_ips":    ["0.0.0.0/0", "::/0"],
 		"approved_routes": []
 	}, "pidgey": {
 		"hostname":        "pidgey",
 		"tags":            ["tag:exit-a"],
-		"ipv4":            "100.67.73.63",
-		"ipv6":            "fd7a:115c:a1e0::537:493f",
+		"ipv4":            "100.124.92.53",
+		"ipv6":            "fd7a:115c:a1e0::ad37:5c35",
 		"routable_ips":    ["0.0.0.0/0", "::/0"],
 		"approved_routes": []
 	}, "raticate": {
 		"hostname":        "raticate",
 		"tags":            ["tag:group-b"],
-		"ipv4":            "100.86.66.85",
-		"ipv6":            "fd7a:115c:a1e0::ca37:4255",
+		"ipv4":            "100.90.3.22",
+		"ipv6":            "fd7a:115c:a1e0::7637:316",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "rattata": {
 		"hostname":        "rattata",
 		"tags":            ["tag:group-a"],
-		"ipv4":            "100.109.196.72",
-		"ipv6":            "fd7a:115c:a1e0::cd37:c448",
+		"ipv4":            "100.83.199.115",
+		"ipv6":            "fd7a:115c:a1e0::837:c773",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "spearow": {
 		"hostname":        "spearow",
 		"tags":            ["tag:router-a"],
-		"ipv4":            "100.66.185.66",
-		"ipv6":            "fd7a:115c:a1e0::d037:b942",
+		"ipv4":            "100.95.33.117",
+		"ipv6":            "fd7a:115c:a1e0::f437:2175",
 		"routable_ips":    ["10.44.0.0/16"],
 		"approved_routes": []
 	}, "squirtle": {
 		"hostname":        "squirtle",
 		"tags":            ["tag:router"],
-		"ipv4":            "100.109.92.124",
-		"ipv6":            "fd7a:115c:a1e0::1337:5c7c",
+		"ipv4":            "100.103.192.63",
+		"ipv6":            "fd7a:115c:a1e0::3d37:c03f",
 		"routable_ips":    ["10.33.0.0/16"],
 		"approved_routes": []
 	}, "venusaur": {
 		"hostname":        "venusaur",
 		"tags":            [],
-		"ipv4":            "100.75.135.25",
-		"ipv6":            "fd7a:115c:a1e0::ea37:8719",
+		"ipv4":            "100.78.133.111",
+		"ipv6":            "fd7a:115c:a1e0::7537:856f",
 		"user":            "freya",
 		"routable_ips":    [],
 		"approved_routes": []
 	}, "weedle": {
 		"hostname":        "weedle",
 		"tags":            ["tag:client"],
-		"ipv4":            "100.79.246.7",
-		"ipv6":            "fd7a:115c:a1e0::137:f607",
+		"ipv4":            "100.121.41.98",
+		"ipv6":            "fd7a:115c:a1e0::4f37:2962",
 		"routable_ips":    [],
 		"approved_routes": []
 	}}},
 	"captures": {
 		"beedrill": {
-			"packet_filter_rules": [{"SrcIPs": ["100.79.246.7", "fd7a:115c:a1e0::137:f607"], "DstPorts": [
-				{"IP": "100.98.110.23", "Ports": {"First": 22, "Last": 22}},
-				{"IP": "fd7a:115c:a1e0::fc37:6e18", "Ports": {"First": 22, "Last": 22}}
+			"packet_filter_rules": [{"SrcIPs": ["100.121.41.98", "fd7a:115c:a1e0::4f37:2962"], "DstPorts": [
+				{"IP": "100.119.145.40", "Ports": {"First": 22, "Last": 22}},
+				{"IP": "fd7a:115c:a1e0::4037:9128", "Ports": {"First": 22, "Last": 22}}
 			]}],
 			"packet_filter_matches": [{
 				"IPProto": [6, 17, 1, 58],
-				"Srcs":    ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
+				"Srcs":    ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
 				"SrcCaps": null,
 				"Dsts": [
-					{"Net": "100.98.110.23/32", "Ports": {"First": 22, "Last": 22}},
-					{"Net": "fd7a:115c:a1e0::fc37:6e18/128", "Ports": {"First": 22, "Last": 22}}
+					{"Net": "100.119.145.40/32", "Ports": {"First": 22, "Last": 22}},
+					{"Net": "fd7a:115c:a1e0::4037:9128/128", "Ports": {"First": 22, "Last": 22}}
 				],
 				"Caps": []
 			}],
 			"netmap": {
 				"Cached": false,
 				"SelfNode": {
-					"ID":         8871101710459782,
-					"StableID":   "nuLaVMojGC21CNTRL",
+					"ID":         1797770486165611,
+					"StableID":   "nLspgAPD3F11CNTRL",
 					"Name":       "beedrill.tail78f774.ts.net.",
-					"User":       8871101710459782,
-					"Key":        "nodekey:b4807762615345235a2bb50817f8969b34f47cdd017c3a0553a6b0a6fce26e16",
-					"DiscoKey":   "discokey:dfdc2d4837be3f7f96b2f5b25bbbc7887db4cd09340218b3607691d33bdacb05",
-					"Addresses":  ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-					"AllowedIPs": ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-					"Endpoints":  ["77.164.248.136:47258", "10.65.0.27:47258", "172.17.0.1:47258"],
+					"User":       1797770486165611,
+					"Key":        "nodekey:52ebb92107dc0a70a2c73bb768275bcfdfbdfbd120d96d9a006284c140779127",
+					"DiscoKey":   "discokey:3137c78d542cfc28436d28e77b21a1ffc377a16b1e25e5920be8708639190e64",
+					"Addresses":  ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+					"AllowedIPs": ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+					"Endpoints":  ["77.164.248.136:42286", "10.65.0.27:42286", "172.17.0.1:42286"],
 					"Hostinfo": {"Hostname": "beedrill", "RequestTags": ["tag:server"], "Services": [
-						{"Proto": "peerapi4", "Port": 34226},
-						{"Proto": "peerapi6", "Port": 34226},
+						{"Proto": "peerapi4", "Port": 46182},
+						{"Proto": "peerapi6", "Port": 46182},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]},
-					"Created":           "2026-04-08T10:10:15.613714947Z",
+					"Created":           "2026-04-08T14:07:55.877619031Z",
 					"Tags":              ["tag:server"],
 					"MachineAuthorized": true,
 					"CapMap": {
@@ -228,24 +228,24 @@
 					"store-appc-routes",
 					"tailnet-display-name"
 				],
-				"NodeKey":    "nodekey:b4807762615345235a2bb50817f8969b34f47cdd017c3a0553a6b0a6fce26e16",
-				"MachineKey": "mkey:330751b01647d4545c209e397c47fdc429e2b8146a905a702a38e5518b8f0830",
+				"NodeKey":    "nodekey:52ebb92107dc0a70a2c73bb768275bcfdfbdfbd120d96d9a006284c140779127",
+				"MachineKey": "mkey:dc4cc95afcd1d9436ef16f78a7c2095aec0b307b1eb3a01d0772b67aa1b1ea51",
 				"Peers": [{
-					"ID":         6460192870359185,
-					"StableID":   "n25d47KqSs11CNTRL",
+					"ID":         158657001517126,
+					"StableID":   "nj7svierE211CNTRL",
 					"Name":       "weedle.tail78f774.ts.net.",
 					"User":       1260082990019555,
-					"Key":        "nodekey:65a3c3608dd3fc8e4ec969bb306c1592df9db8b76b2efc0cceb12e0c014ff606",
-					"DiscoKey":   "discokey:eec12823a1033742ef97847c46dfcfa5975227f7525455eca17c6047e7e1c021",
-					"Addresses":  ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-					"AllowedIPs": ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-					"Endpoints":  ["77.164.248.136:57665", "10.65.0.27:57665", "172.17.0.1:57665"],
+					"Key":        "nodekey:49c86e4a5e9840bd7aa5dcbf5638ff8694d6c548085e3a152c59103b4f392961",
+					"DiscoKey":   "discokey:152cf9785be8107abe0399de8614c6513a0e902bc24e87e99763f1ed56542d5e",
+					"Addresses":  ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+					"AllowedIPs": ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+					"Endpoints":  ["77.164.248.136:49229", "10.65.0.27:49229", "172.17.0.1:49229"],
 					"HomeDERP":   14,
 					"Hostinfo": {"OS": "linux", "Hostname": "weedle", "Services": [
-						{"Proto": "peerapi4", "Port": 49271},
-						{"Proto": "peerapi6", "Port": 49271}
+						{"Proto": "peerapi4", "Port": 38226},
+						{"Proto": "peerapi6", "Port": 38226}
 					]},
-					"Created":              "2026-04-08T10:10:14.526965162Z",
+					"Created":              "2026-04-08T14:07:54.824519557Z",
 					"Cap":                  131,
 					"Tags":                 ["tag:client"],
 					"Online":               true,
@@ -255,17 +255,17 @@
 				"DNS": {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 				"PacketFilter": [{
 					"IPProto": [6, 17, 1, 58],
-					"Srcs":    ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
+					"Srcs":    ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
 					"SrcCaps": null,
 					"Dsts": [
-						{"Net": "100.98.110.23/32", "Ports": {"First": 22, "Last": 22}},
-						{"Net": "fd7a:115c:a1e0::fc37:6e18/128", "Ports": {"First": 22, "Last": 22}}
+						{"Net": "100.119.145.40/32", "Ports": {"First": 22, "Last": 22}},
+						{"Net": "fd7a:115c:a1e0::4037:9128/128", "Ports": {"First": 22, "Last": 22}}
 					],
 					"Caps": []
 				}],
-				"PacketFilterRules": [{"SrcIPs": ["100.79.246.7", "fd7a:115c:a1e0::137:f607"], "DstPorts": [
-					{"IP": "100.98.110.23", "Ports": {"First": 22, "Last": 22}},
-					{"IP": "fd7a:115c:a1e0::fc37:6e18", "Ports": {"First": 22, "Last": 22}}
+				"PacketFilterRules": [{"SrcIPs": ["100.121.41.98", "fd7a:115c:a1e0::4f37:2962"], "DstPorts": [
+					{"IP": "100.119.145.40", "Ports": {"First": 22, "Last": 22}},
+					{"IP": "fd7a:115c:a1e0::4037:9128", "Ports": {"First": 22, "Last": 22}}
 				]}],
 				"SSHPolicy":       {"rules": []},
 				"CollectServices": false,
@@ -1092,28 +1092,28 @@
 					"ID":          1260082990019555,
 					"LoginName":   "tagged-devices",
 					"DisplayName": "Tagged Devices"
-				}, "8871101710459782": {
-					"ID":          8871101710459782,
+				}, "1797770486165611": {
+					"ID":          1797770486165611,
 					"LoginName":   "beedrill.tail78f774.ts.net",
 					"DisplayName": "beedrill"
 				}}
 			},
-			"whois": {"100.79.246.7": {"Node": {
-				"ID":         6460192870359185,
-				"StableID":   "n25d47KqSs11CNTRL",
+			"whois": {"100.121.41.98": {"Node": {
+				"ID":         158657001517126,
+				"StableID":   "nj7svierE211CNTRL",
 				"Name":       "weedle.tail78f774.ts.net.",
 				"User":       1260082990019555,
-				"Key":        "nodekey:65a3c3608dd3fc8e4ec969bb306c1592df9db8b76b2efc0cceb12e0c014ff606",
-				"DiscoKey":   "discokey:eec12823a1033742ef97847c46dfcfa5975227f7525455eca17c6047e7e1c021",
-				"Addresses":  ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"AllowedIPs": ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"Endpoints":  ["77.164.248.136:57665", "10.65.0.27:57665", "172.17.0.1:57665"],
+				"Key":        "nodekey:49c86e4a5e9840bd7aa5dcbf5638ff8694d6c548085e3a152c59103b4f392961",
+				"DiscoKey":   "discokey:152cf9785be8107abe0399de8614c6513a0e902bc24e87e99763f1ed56542d5e",
+				"Addresses":  ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"AllowedIPs": ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"Endpoints":  ["77.164.248.136:49229", "10.65.0.27:49229", "172.17.0.1:49229"],
 				"HomeDERP":   14,
 				"Hostinfo": {"OS": "linux", "Hostname": "weedle", "Services": [
-					{"Proto": "peerapi4", "Port": 49271},
-					{"Proto": "peerapi6", "Port": 49271}
+					{"Proto": "peerapi4", "Port": 38226},
+					{"Proto": "peerapi6", "Port": 38226}
 				]},
-				"Created":              "2026-04-08T10:10:14.526965162Z",
+				"Created":              "2026-04-08T14:07:54.824519557Z",
 				"Cap":                  131,
 				"Tags":                 ["tag:client"],
 				"Online":               true,
@@ -1123,22 +1123,22 @@
 				"ID":          1260082990019555,
 				"LoginName":   "tagged-devices",
 				"DisplayName": "Tagged Devices"
-			}, "CapMap": null}, "fd7a:115c:a1e0::137:f607": {"Node": {
-				"ID":         6460192870359185,
-				"StableID":   "n25d47KqSs11CNTRL",
+			}, "CapMap": null}, "fd7a:115c:a1e0::4f37:2962": {"Node": {
+				"ID":         158657001517126,
+				"StableID":   "nj7svierE211CNTRL",
 				"Name":       "weedle.tail78f774.ts.net.",
 				"User":       1260082990019555,
-				"Key":        "nodekey:65a3c3608dd3fc8e4ec969bb306c1592df9db8b76b2efc0cceb12e0c014ff606",
-				"DiscoKey":   "discokey:eec12823a1033742ef97847c46dfcfa5975227f7525455eca17c6047e7e1c021",
-				"Addresses":  ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"AllowedIPs": ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"Endpoints":  ["77.164.248.136:57665", "10.65.0.27:57665", "172.17.0.1:57665"],
+				"Key":        "nodekey:49c86e4a5e9840bd7aa5dcbf5638ff8694d6c548085e3a152c59103b4f392961",
+				"DiscoKey":   "discokey:152cf9785be8107abe0399de8614c6513a0e902bc24e87e99763f1ed56542d5e",
+				"Addresses":  ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"AllowedIPs": ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"Endpoints":  ["77.164.248.136:49229", "10.65.0.27:49229", "172.17.0.1:49229"],
 				"HomeDERP":   14,
 				"Hostinfo": {"OS": "linux", "Hostname": "weedle", "Services": [
-					{"Proto": "peerapi4", "Port": 49271},
-					{"Proto": "peerapi6", "Port": 49271}
+					{"Proto": "peerapi4", "Port": 38226},
+					{"Proto": "peerapi6", "Port": 38226}
 				]},
-				"Created":              "2026-04-08T10:10:14.526965162Z",
+				"Created":              "2026-04-08T14:07:54.824519557Z",
 				"Cap":                  131,
 				"Tags":                 ["tag:client"],
 				"Online":               true,
@@ -1154,26 +1154,26 @@
 		"blastoise": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         1544326596736172,
-				"StableID":   "nH1E4nqR4D11CNTRL",
+				"ID":         3110419111075214,
+				"StableID":   "nMAXiGSiHR11CNTRL",
 				"Name":       "blastoise.tail78f774.ts.net.",
-				"User":       1544326596736172,
-				"Key":        "nodekey:0a213a0ed719d2e293897547a6ec8b61381e985227712361637ba2d041567a15",
-				"DiscoKey":   "discokey:ae9abf7bf9a3a46304a023317a3f80aeacc968dc4f0e8f6b46116b416885ef34",
-				"Addresses":  ["100.86.122.22/32", "fd7a:115c:a1e0::4137:7a16/128"],
-				"AllowedIPs": ["100.86.122.22/32", "fd7a:115c:a1e0::4137:7a16/128"],
-				"Endpoints":  ["77.164.248.136:39388", "10.65.0.27:39388", "172.17.0.1:39388"],
+				"User":       3110419111075214,
+				"Key":        "nodekey:f60e93a5dc403eca14c77e2ee81391792439d9e595da66f831899c92e9113161",
+				"DiscoKey":   "discokey:01bacd7ce2e81b00e52927654213f6c6c1c2e93675a8bfab5ddf6b1dfdc6891b",
+				"Addresses":  ["100.81.49.98/32", "fd7a:115c:a1e0::e937:3162/128"],
+				"AllowedIPs": ["100.81.49.98/32", "fd7a:115c:a1e0::e937:3162/128"],
+				"Endpoints":  ["77.164.248.136:42319", "10.65.0.27:42319", "172.17.0.1:42319"],
 				"Hostinfo": {
 					"Hostname":    "blastoise",
 					"RoutableIPs": ["10.33.0.0/16", "0.0.0.0/0", "::/0"],
 					"RequestTags": ["tag:exit", "tag:router"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 44861},
-						{"Proto": "peerapi6", "Port": 44861},
+						{"Proto": "peerapi4", "Port": 39507},
+						{"Proto": "peerapi6", "Port": 39507},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:12.351877193Z",
+				"Created":           "2026-04-08T14:07:52.660354956Z",
 				"Tags":              ["tag:exit", "tag:router"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -1201,8 +1201,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:0a213a0ed719d2e293897547a6ec8b61381e985227712361637ba2d041567a15",
-			"MachineKey":        "mkey:0aae948e31b2ab47d8c087118dd0c5fb09119c2dbb04ec333f28645ffc211013",
+			"NodeKey":           "nodekey:f60e93a5dc403eca14c77e2ee81391792439d9e595da66f831899c92e9113161",
+			"MachineKey":        "mkey:3d9123993e467678e03d8c2ec361d2f1b5afd22283ea73a6241af79f6f62751f",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -2028,8 +2028,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1544326596736172": {
-				"ID":          1544326596736172,
+			"UserProfiles": {"3110419111075214": {
+				"ID":          3110419111075214,
 				"LoginName":   "blastoise.tail78f774.ts.net",
 				"DisplayName": "blastoise"
 			}}
@@ -2037,22 +2037,22 @@
 		"bulbasaur": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         770085324547400,
-				"StableID":   "nj8d6Uqm1711CNTRL",
+				"ID":         1254629274255902,
+				"StableID":   "nfm1h3zDoA11CNTRL",
 				"Name":       "bulbasaur.tail78f774.ts.net.",
 				"User":       4156223528223174,
-				"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-				"KeyExpiry":  "2026-10-05T10:10:17Z",
-				"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-				"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
+				"Key":        "nodekey:80db4adb6e395f2d3006f03ffac2a3d0bc3dccf14331dc2aa70ef07434e8ce1d",
+				"KeyExpiry":  "2026-10-05T14:07:57Z",
+				"DiscoKey":   "discokey:0e23cca8d750e184cb2f7a3daf61eae9b002ca1050bc9434e58d4270cc0ef80c",
+				"Addresses":  ["100.104.206.30/32", "fd7a:115c:a1e0::3437:ce1f/128"],
+				"AllowedIPs": ["100.104.206.30/32", "fd7a:115c:a1e0::3437:ce1f/128"],
+				"Endpoints":  ["77.164.248.136:45086", "10.65.0.27:45086", "172.17.0.1:45086"],
 				"Hostinfo": {"Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 36804},
-					{"Proto": "peerapi6", "Port": 36804},
+					{"Proto": "peerapi4", "Port": 33833},
+					{"Proto": "peerapi6", "Port": 33833},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:17.246240867Z",
+				"Created":           "2026-04-08T14:07:57.502948441Z",
 				"MachineAuthorized": true,
 				"CapMap": {
 					"https://tailscale.com/cap/file-sharing": null,
@@ -2081,51 +2081,9 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":    "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-			"MachineKey": "mkey:61224c8acc17a4e6576b465c66d41f1e3c77b6f9774fbdd6d6823048923dbf65",
-			"Peers": [{
-				"ID":         2045545656320853,
-				"StableID":   "n6jQ1v1SyG11CNTRL",
-				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-				"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 53824},
-					{"Proto": "peerapi6", "Port": 53824}
-				]},
-				"Created":              "2026-04-08T10:10:16.164928444Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "ivysaur",
-				"ComputedNameWithHost": "ivysaur"
-			}, {
-				"ID":         5588730970074968,
-				"StableID":   "nwEh7BV9ek11CNTRL",
-				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-				"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40319},
-					{"Proto": "peerapi6", "Port": 40319}
-				]},
-				"Created":              "2026-04-08T10:10:16.685085265Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "venusaur",
-				"ComputedNameWithHost": "venusaur"
-			}],
+			"NodeKey":           "nodekey:80db4adb6e395f2d3006f03ffac2a3d0bc3dccf14331dc2aa70ef07434e8ce1d",
+			"MachineKey":        "mkey:32fdaaa7b4b3dce880d0582770a242c51e30d707a72498b6e5373ab722cb8759",
+			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
 			"PacketFilterRules": null,
@@ -2955,130 +2913,30 @@
 				"LoginName":   "odin@example.com",
 				"DisplayName": "odin"
 			}}
-		}, "whois": {"100.105.39.121": {"Node": {
-			"ID":         2045545656320853,
-			"StableID":   "n6jQ1v1SyG11CNTRL",
-			"Name":       "ivysaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-			"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-				{"Proto": "peerapi4", "Port": 53824},
-				{"Proto": "peerapi6", "Port": 53824}
-			]},
-			"Created":              "2026-04-08T10:10:16.164928444Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "ivysaur",
-			"ComputedNameWithHost": "ivysaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "100.75.135.25": {"Node": {
-			"ID":         5588730970074968,
-			"StableID":   "nwEh7BV9ek11CNTRL",
-			"Name":       "venusaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-			"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-				{"Proto": "peerapi4", "Port": 40319},
-				{"Proto": "peerapi6", "Port": 40319}
-			]},
-			"Created":              "2026-04-08T10:10:16.685085265Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "venusaur",
-			"ComputedNameWithHost": "venusaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::4537:2779": {"Node": {
-			"ID":         2045545656320853,
-			"StableID":   "n6jQ1v1SyG11CNTRL",
-			"Name":       "ivysaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-			"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-				{"Proto": "peerapi4", "Port": 53824},
-				{"Proto": "peerapi6", "Port": 53824}
-			]},
-			"Created":              "2026-04-08T10:10:16.164928444Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "ivysaur",
-			"ComputedNameWithHost": "ivysaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::ea37:8719": {"Node": {
-			"ID":         5588730970074968,
-			"StableID":   "nwEh7BV9ek11CNTRL",
-			"Name":       "venusaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-			"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-				{"Proto": "peerapi4", "Port": 40319},
-				{"Proto": "peerapi6", "Port": 40319}
-			]},
-			"Created":              "2026-04-08T10:10:16.685085265Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "venusaur",
-			"ComputedNameWithHost": "venusaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}}, "ssh_rules": []},
+		}, "ssh_rules": []},
 		"charmander": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         1430013492058839,
-				"StableID":   "nECeSi2fAC11CNTRL",
+				"ID":         2884061298636194,
+				"StableID":   "nKoUxBQCXP11CNTRL",
 				"Name":       "charmander.tail78f774.ts.net.",
-				"User":       1430013492058839,
-				"Key":        "nodekey:02eb2533bab726762e1d951af9e15d727b57144b11be78250ec73700d6692e0e",
-				"DiscoKey":   "discokey:f6c07de8c69971965c4846f698ff914cf7c933bde4770bac7fab46413f0d7d32",
-				"Addresses":  ["100.105.46.15/32", "fd7a:115c:a1e0::d637:2e10/128"],
-				"AllowedIPs": ["100.105.46.15/32", "fd7a:115c:a1e0::d637:2e10/128"],
-				"Endpoints":  ["77.164.248.136:39131", "10.65.0.27:39131", "172.17.0.1:39131"],
+				"User":       2884061298636194,
+				"Key":        "nodekey:cf05e4766730d1168a480fc72e045c588b4125be7039e2b727e7b52c19710a27",
+				"DiscoKey":   "discokey:ffd40746e3ae7c977bf406bd142c652fb1cb9993aab512a1355e772c78ebbf09",
+				"Addresses":  ["100.113.10.40/32", "fd7a:115c:a1e0::1937:a28/128"],
+				"AllowedIPs": ["100.113.10.40/32", "fd7a:115c:a1e0::1937:a28/128"],
+				"Endpoints":  ["77.164.248.136:40206", "10.65.0.27:40206", "172.17.0.1:40206"],
 				"Hostinfo": {
 					"Hostname":    "charmander",
 					"RoutableIPs": ["0.0.0.0/0", "::/0"],
 					"RequestTags": ["tag:exit"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 48384},
-						{"Proto": "peerapi6", "Port": 48384},
+						{"Proto": "peerapi4", "Port": 39685},
+						{"Proto": "peerapi6", "Port": 39685},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:10.730136599Z",
+				"Created":           "2026-04-08T14:07:51.068409043Z",
 				"Tags":              ["tag:exit"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -3106,8 +2964,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:02eb2533bab726762e1d951af9e15d727b57144b11be78250ec73700d6692e0e",
-			"MachineKey":        "mkey:6a5394e627072d6b3048bc43b6f8ce92efbd0ce2185d7867a523e83ec9c99818",
+			"NodeKey":           "nodekey:cf05e4766730d1168a480fc72e045c588b4125be7039e2b727e7b52c19710a27",
+			"MachineKey":        "mkey:9e599e721cb3a9d589814bf62dfcc391bbc5a6b3826b6c4cdbfbd03595488e2d",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -3933,8 +3791,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1430013492058839": {
-				"ID":          1430013492058839,
+			"UserProfiles": {"2884061298636194": {
+				"ID":          2884061298636194,
 				"LoginName":   "charmander.tail78f774.ts.net",
 				"DisplayName": "charmander"
 			}}
@@ -3942,26 +3800,26 @@
 		"fearow": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         6554878209393840,
-				"StableID":   "n7QpE4YiBt11CNTRL",
+				"ID":         4342741462357607,
+				"StableID":   "n6SX1MTqua11CNTRL",
 				"Name":       "fearow.tail78f774.ts.net.",
-				"User":       6554878209393840,
-				"Key":        "nodekey:db96e4b6d850a1eaef447d5a6b9b32062b15d0a62f74968001a3a0d4e37b9b58",
-				"DiscoKey":   "discokey:8016451e266fef2e1cb5c483d6cd9572eb970d58fd515e7d58f44000b83d6d52",
-				"Addresses":  ["100.123.155.89/32", "fd7a:115c:a1e0::e337:9b59/128"],
-				"AllowedIPs": ["100.123.155.89/32", "fd7a:115c:a1e0::e337:9b59/128"],
-				"Endpoints":  ["77.164.248.136:40725", "10.65.0.27:40725", "172.17.0.1:40725"],
+				"User":       4342741462357607,
+				"Key":        "nodekey:60fa4456ac1c92d300c56868758afaf2bc358775b3528581cf2a750217ef0904",
+				"DiscoKey":   "discokey:b43594338daa8497f0d3c06bfb6eff8a4fd7eda497a21336a3489538b00a387f",
+				"Addresses":  ["100.111.9.5/32", "fd7a:115c:a1e0::1737:905/128"],
+				"AllowedIPs": ["100.111.9.5/32", "fd7a:115c:a1e0::1737:905/128"],
+				"Endpoints":  ["77.164.248.136:55944", "10.65.0.27:55944", "172.17.0.1:55944"],
 				"Hostinfo": {
 					"Hostname":    "fearow",
 					"RoutableIPs": ["10.55.0.0/16"],
 					"RequestTags": ["tag:fearow"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 58402},
-						{"Proto": "peerapi6", "Port": 58402},
+						{"Proto": "peerapi4", "Port": 39625},
+						{"Proto": "peerapi6", "Port": 39625},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:13.450791138Z",
+				"Created":           "2026-04-08T14:07:53.735686976Z",
 				"Tags":              ["tag:fearow"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -3989,8 +3847,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:db96e4b6d850a1eaef447d5a6b9b32062b15d0a62f74968001a3a0d4e37b9b58",
-			"MachineKey":        "mkey:72fd97ac55157bf865763b956c40fd0a736103eef33c16ac65cae10e8d8d870b",
+			"NodeKey":           "nodekey:60fa4456ac1c92d300c56868758afaf2bc358775b3528581cf2a750217ef0904",
+			"MachineKey":        "mkey:f602960a4ddf3e1ad7e774ce6792086ba24492a8d9797bf432ad317a3c2db464",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -4816,8 +4674,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"6554878209393840": {
-				"ID":          6554878209393840,
+			"UserProfiles": {"4342741462357607": {
+				"ID":          4342741462357607,
 				"LoginName":   "fearow.tail78f774.ts.net",
 				"DisplayName": "fearow"
 			}}
@@ -4825,27 +4683,26 @@
 		"ivysaur": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         2045545656320853,
-				"StableID":   "n6jQ1v1SyG11CNTRL",
+				"ID":         4177098683441375,
+				"StableID":   "nkPVrMJpcZ11CNTRL",
 				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-				"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
+				"User":       4538565228176803,
+				"Key":        "nodekey:d72242d7a4679739b0ab429224d0622b0bb0ca8af53d901cba368fdddbdd5061",
+				"KeyExpiry":  "2026-10-05T14:07:56Z",
+				"DiscoKey":   "discokey:d2d6fa2f97f02b032304cc737f016ffb4a529f62ab59a268df9c9d7454e86d72",
+				"Addresses":  ["100.93.80.98/32", "fd7a:115c:a1e0::db37:5062/128"],
+				"AllowedIPs": ["100.93.80.98/32", "fd7a:115c:a1e0::db37:5062/128"],
+				"Endpoints":  ["77.164.248.136:33505", "10.65.0.27:33505", "172.17.0.1:33505"],
 				"Hostinfo": {"Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 53824},
-					{"Proto": "peerapi6", "Port": 53824},
+					{"Proto": "peerapi4", "Port": 47569},
+					{"Proto": "peerapi6", "Port": 47569},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:16.164928444Z",
+				"Created":           "2026-04-08T14:07:56.417643469Z",
 				"MachineAuthorized": true,
 				"CapMap": {
 					"https://tailscale.com/cap/file-sharing": null,
 					"https://tailscale.com/cap/is-admin":     null,
-					"https://tailscale.com/cap/is-owner":     null,
 					"https://tailscale.com/cap/ssh":          null,
 					"https://tailscale.com/cap/tailnet-lock": null,
 					"probe-udp-lifetime":                     null,
@@ -4860,7 +4717,6 @@
 			"AllCaps": [
 				"https://tailscale.com/cap/file-sharing",
 				"https://tailscale.com/cap/is-admin",
-				"https://tailscale.com/cap/is-owner",
 				"https://tailscale.com/cap/ssh",
 				"https://tailscale.com/cap/tailnet-lock",
 				"probe-udp-lifetime",
@@ -4869,51 +4725,9 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":    "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-			"MachineKey": "mkey:28198823b77c5e11ae5e2cd073ee2d9a59dbf4a43da23aba27d59776c4d04210",
-			"Peers": [{
-				"ID":         770085324547400,
-				"StableID":   "nj8d6Uqm1711CNTRL",
-				"Name":       "bulbasaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-				"KeyExpiry":  "2026-10-05T10:10:17Z",
-				"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-				"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 36804},
-					{"Proto": "peerapi6", "Port": 36804}
-				]},
-				"Created":              "2026-04-08T10:10:17.246240867Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "bulbasaur",
-				"ComputedNameWithHost": "bulbasaur"
-			}, {
-				"ID":         5588730970074968,
-				"StableID":   "nwEh7BV9ek11CNTRL",
-				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-				"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40319},
-					{"Proto": "peerapi6", "Port": 40319}
-				]},
-				"Created":              "2026-04-08T10:10:16.685085265Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "venusaur",
-				"ComputedNameWithHost": "venusaur"
-			}],
+			"NodeKey":           "nodekey:d72242d7a4679739b0ab429224d0622b0bb0ca8af53d901cba368fdddbdd5061",
+			"MachineKey":        "mkey:c99c8c48a936e51127dc8ced40e0bdfe05ecb43413a4088c31caab6c88bb7c6a",
+			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
 			"PacketFilterRules": null,
@@ -5738,130 +5552,30 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
+			"UserProfiles": {"4538565228176803": {
+				"ID":          4538565228176803,
+				"LoginName":   "thor@example.com",
+				"DisplayName": "thor"
 			}}
-		}, "whois": {"100.75.135.25": {"Node": {
-			"ID":         5588730970074968,
-			"StableID":   "nwEh7BV9ek11CNTRL",
-			"Name":       "venusaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-			"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-				{"Proto": "peerapi4", "Port": 40319},
-				{"Proto": "peerapi6", "Port": 40319}
-			]},
-			"Created":              "2026-04-08T10:10:16.685085265Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "venusaur",
-			"ComputedNameWithHost": "venusaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "100.91.162.27": {"Node": {
-			"ID":         770085324547400,
-			"StableID":   "nj8d6Uqm1711CNTRL",
-			"Name":       "bulbasaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-			"KeyExpiry":  "2026-10-05T10:10:17Z",
-			"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-			"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-				{"Proto": "peerapi4", "Port": 36804},
-				{"Proto": "peerapi6", "Port": 36804}
-			]},
-			"Created":              "2026-04-08T10:10:17.246240867Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "bulbasaur",
-			"ComputedNameWithHost": "bulbasaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::a037:a21b": {"Node": {
-			"ID":         770085324547400,
-			"StableID":   "nj8d6Uqm1711CNTRL",
-			"Name":       "bulbasaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-			"KeyExpiry":  "2026-10-05T10:10:17Z",
-			"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-			"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-				{"Proto": "peerapi4", "Port": 36804},
-				{"Proto": "peerapi6", "Port": 36804}
-			]},
-			"Created":              "2026-04-08T10:10:17.246240867Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "bulbasaur",
-			"ComputedNameWithHost": "bulbasaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::ea37:8719": {"Node": {
-			"ID":         5588730970074968,
-			"StableID":   "nwEh7BV9ek11CNTRL",
-			"Name":       "venusaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-			"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-			"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "venusaur", "Services": [
-				{"Proto": "peerapi4", "Port": 40319},
-				{"Proto": "peerapi6", "Port": 40319}
-			]},
-			"Created":              "2026-04-08T10:10:16.685085265Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "venusaur",
-			"ComputedNameWithHost": "venusaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}}, "ssh_rules": []},
+		}, "ssh_rules": []},
 		"kakuna": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         7863951089437283,
-				"StableID":   "ne4RwHfbQ421CNTRL",
+				"ID":         8492011656575566,
+				"StableID":   "n5ihZHk3K921CNTRL",
 				"Name":       "kakuna.tail78f774.ts.net.",
-				"User":       7863951089437283,
-				"Key":        "nodekey:dca6b372f0d77561aa02f8352219e33e74c7a5a9a9943f878129eb6a7adde84a",
-				"DiscoKey":   "discokey:3d9dbf1d505fb83666d061191ab84f2a488b4c0be9a0583e06d7b6058c247969",
-				"Addresses":  ["100.93.232.75/32", "fd7a:115c:a1e0::7a37:e84b/128"],
-				"AllowedIPs": ["100.93.232.75/32", "fd7a:115c:a1e0::7a37:e84b/128"],
-				"Endpoints":  ["77.164.248.136:41034", "10.65.0.27:41034", "172.17.0.1:41034"],
+				"User":       8492011656575566,
+				"Key":        "nodekey:b25c226c94197bd1049ff8f42cd8064e95eb05ccccc36346869026aed2fc6908",
+				"DiscoKey":   "discokey:61fe07db89c39f256ac9c12794aabdcd648b41d8c3d64fc470951efb58b51d33",
+				"Addresses":  ["100.124.105.9/32", "fd7a:115c:a1e0::d237:6909/128"],
+				"AllowedIPs": ["100.124.105.9/32", "fd7a:115c:a1e0::d237:6909/128"],
+				"Endpoints":  ["77.164.248.136:43445", "10.65.0.27:43445", "172.17.0.1:43445"],
 				"Hostinfo": {"Hostname": "kakuna", "RequestTags": ["tag:prod"], "Services": [
-					{"Proto": "peerapi4", "Port": 34061},
-					{"Proto": "peerapi6", "Port": 34061},
+					{"Proto": "peerapi4", "Port": 41068},
+					{"Proto": "peerapi6", "Port": 41068},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:15.070902834Z",
+				"Created":           "2026-04-08T14:07:55.35471881Z",
 				"Tags":              ["tag:prod"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -5889,8 +5603,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:dca6b372f0d77561aa02f8352219e33e74c7a5a9a9943f878129eb6a7adde84a",
-			"MachineKey":        "mkey:e5458cf6d7d777661291e7f6b8bbdbc2aad51854ce610d3ff01cf5b22572170b",
+			"NodeKey":           "nodekey:b25c226c94197bd1049ff8f42cd8064e95eb05ccccc36346869026aed2fc6908",
+			"MachineKey":        "mkey:f6bc08b3653f85a26323008a5c5bf84bff9ab86aefe7e8fb28e09c4fa8a6ab06",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -6716,8 +6430,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"7863951089437283": {
-				"ID":          7863951089437283,
+			"UserProfiles": {"8492011656575566": {
+				"ID":          8492011656575566,
 				"LoginName":   "kakuna.tail78f774.ts.net",
 				"DisplayName": "kakuna"
 			}}
@@ -6725,26 +6439,26 @@
 		"pidgeotto": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         4075367484049320,
-				"StableID":   "n1uF8czjpY11CNTRL",
+				"ID":         6127818135518111,
+				"StableID":   "nngguhPJrp11CNTRL",
 				"Name":       "pidgeotto.tail78f774.ts.net.",
-				"User":       4075367484049320,
-				"Key":        "nodekey:1e45d9d05b1b842ea9cb92a81432c6ea2a611bff657a54e0c04d87020681997c",
-				"DiscoKey":   "discokey:d0f3f893f21115e8fa63142c3e8664395cb07c360025ad839f99aa0ffa49074c",
-				"Addresses":  ["100.65.153.125/32", "fd7a:115c:a1e0::637:997e/128"],
-				"AllowedIPs": ["100.65.153.125/32", "fd7a:115c:a1e0::637:997e/128"],
-				"Endpoints":  ["77.164.248.136:53326", "10.65.0.27:53326", "172.17.0.1:53326"],
+				"User":       6127818135518111,
+				"Key":        "nodekey:3a8726c3a951c1f4555dafd35de16e2be6290cc657c93e5ba7ded724d591ca45",
+				"DiscoKey":   "discokey:41504e0031b9ca7d623ebff912786fb3cd7dacf92db84f544de64dc3f89bcc13",
+				"Addresses":  ["100.81.202.70/32", "fd7a:115c:a1e0::d537:ca46/128"],
+				"AllowedIPs": ["100.81.202.70/32", "fd7a:115c:a1e0::d537:ca46/128"],
+				"Endpoints":  ["77.164.248.136:38423", "10.65.0.27:38423", "172.17.0.1:38423"],
 				"Hostinfo": {
 					"Hostname":    "pidgeotto",
 					"RoutableIPs": ["0.0.0.0/0", "::/0"],
 					"RequestTags": ["tag:pidgeotto"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 33335},
-						{"Proto": "peerapi6", "Port": 33335},
+						{"Proto": "peerapi4", "Port": 50932},
+						{"Proto": "peerapi6", "Port": 50932},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:10.198474939Z",
+				"Created":           "2026-04-08T14:07:50.574505748Z",
 				"Tags":              ["tag:pidgeotto"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -6772,8 +6486,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:1e45d9d05b1b842ea9cb92a81432c6ea2a611bff657a54e0c04d87020681997c",
-			"MachineKey":        "mkey:5c8393e268ae36d5b5b45470dd1be9d3c791f9f96adc11a02165aaf29834b310",
+			"NodeKey":           "nodekey:3a8726c3a951c1f4555dafd35de16e2be6290cc657c93e5ba7ded724d591ca45",
+			"MachineKey":        "mkey:5a8178f487005181e7de1d12944bee0b62cd8a17f4dcccec9aeff9f7c92e9948",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -7599,8 +7313,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"4075367484049320": {
-				"ID":          4075367484049320,
+			"UserProfiles": {"6127818135518111": {
+				"ID":          6127818135518111,
 				"LoginName":   "pidgeotto.tail78f774.ts.net",
 				"DisplayName": "pidgeotto"
 			}}
@@ -7608,26 +7322,26 @@
 		"pidgey": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         8542048327523136,
-				"StableID":   "n3zJqE8ih921CNTRL",
+				"ID":         8287027480492883,
+				"StableID":   "n2norFADi721CNTRL",
 				"Name":       "pidgey.tail78f774.ts.net.",
-				"User":       8542048327523136,
-				"Key":        "nodekey:972b9d69b6ea50cd45d80ae3b544070cd6d387d34103da96b876ca9d05c3493e",
-				"DiscoKey":   "discokey:79c4be1cdfec8f94d4801cec797bb7ffe2ed531c50bc57bf70f0470611b1fd73",
-				"Addresses":  ["100.67.73.63/32", "fd7a:115c:a1e0::537:493f/128"],
-				"AllowedIPs": ["100.67.73.63/32", "fd7a:115c:a1e0::537:493f/128"],
-				"Endpoints":  ["77.164.248.136:42884", "10.65.0.27:42884", "172.17.0.1:42884"],
+				"User":       8287027480492883,
+				"Key":        "nodekey:40ed2e954ad313870178c831c85cd92c87c9c932840f3a914da54f02adbc5c34",
+				"DiscoKey":   "discokey:2b8386aee1cf785c2bc573af8280b6101442891d087bf5f93039421598c01b7f",
+				"Addresses":  ["100.124.92.53/32", "fd7a:115c:a1e0::ad37:5c35/128"],
+				"AllowedIPs": ["100.124.92.53/32", "fd7a:115c:a1e0::ad37:5c35/128"],
+				"Endpoints":  ["77.164.248.136:39770", "10.65.0.27:39770", "172.17.0.1:39770"],
 				"Hostinfo": {
 					"Hostname":    "pidgey",
 					"RoutableIPs": ["0.0.0.0/0", "::/0"],
 					"RequestTags": ["tag:pidgey"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 46074},
-						{"Proto": "peerapi6", "Port": 46074},
+						{"Proto": "peerapi4", "Port": 40541},
+						{"Proto": "peerapi6", "Port": 40541},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:09.636890387Z",
+				"Created":           "2026-04-08T14:07:49.991705942Z",
 				"Tags":              ["tag:pidgey"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -7655,8 +7369,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:972b9d69b6ea50cd45d80ae3b544070cd6d387d34103da96b876ca9d05c3493e",
-			"MachineKey":        "mkey:33c719ef327ea3d469af12bff5fce9de1c7157f2c42a29a4d52d08f8187c7110",
+			"NodeKey":           "nodekey:40ed2e954ad313870178c831c85cd92c87c9c932840f3a914da54f02adbc5c34",
+			"MachineKey":        "mkey:59cadcd8e53a5b750beb11aed51d6da275de7386015255ff96166e43ea18fc46",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -8482,8 +8196,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"8542048327523136": {
-				"ID":          8542048327523136,
+			"UserProfiles": {"8287027480492883": {
+				"ID":          8287027480492883,
 				"LoginName":   "pidgey.tail78f774.ts.net",
 				"DisplayName": "pidgey"
 			}}
@@ -8491,21 +8205,21 @@
 		"raticate": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         5221804230029738,
-				"StableID":   "nqSbafwxmh11CNTRL",
+				"ID":         5431482855662501,
+				"StableID":   "n6TWiyqvQj11CNTRL",
 				"Name":       "raticate.tail78f774.ts.net.",
-				"User":       5221804230029738,
-				"Key":        "nodekey:ea7e0f8ac276c7c4311350c60739109b7dfe6bf23d5ca9891371c0c1ca164254",
-				"DiscoKey":   "discokey:b08bc5c8f933fd2b4fc171faedb181768d5dd24bf8927ed904816d718a08c451",
-				"Addresses":  ["100.86.66.85/32", "fd7a:115c:a1e0::ca37:4255/128"],
-				"AllowedIPs": ["100.86.66.85/32", "fd7a:115c:a1e0::ca37:4255/128"],
-				"Endpoints":  ["77.164.248.136:49947", "10.65.0.27:49947", "172.17.0.1:49947"],
+				"User":       5431482855662501,
+				"Key":        "nodekey:28028edc7c861bb785cf90840d14d68d9b0ae7b9c170b44437cc53db76da0315",
+				"DiscoKey":   "discokey:ea435341d135530e8469f7f2bdfbf33fbc6c81dcbdcf8990023bdbb69625177f",
+				"Addresses":  ["100.90.3.22/32", "fd7a:115c:a1e0::7637:316/128"],
+				"AllowedIPs": ["100.90.3.22/32", "fd7a:115c:a1e0::7637:316/128"],
+				"Endpoints":  ["77.164.248.136:57010", "10.65.0.27:57010", "172.17.0.1:57010"],
 				"Hostinfo": {"Hostname": "raticate", "RequestTags": ["tag:group-b"], "Services": [
-					{"Proto": "peerapi4", "Port": 33772},
-					{"Proto": "peerapi6", "Port": 33772},
+					{"Proto": "peerapi4", "Port": 38118},
+					{"Proto": "peerapi6", "Port": 38118},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:11.812582078Z",
+				"Created":           "2026-04-08T14:07:52.136572869Z",
 				"Tags":              ["tag:group-b"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -8533,8 +8247,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:ea7e0f8ac276c7c4311350c60739109b7dfe6bf23d5ca9891371c0c1ca164254",
-			"MachineKey":        "mkey:49765d79dc1d968d78da45737c326ca7477c50158ca35121b7b8f820ef67c633",
+			"NodeKey":           "nodekey:28028edc7c861bb785cf90840d14d68d9b0ae7b9c170b44437cc53db76da0315",
+			"MachineKey":        "mkey:a47e258618c8b215bb53fdaee01bb5acda8eaf6c028b4e55c5916f63b54a1c5d",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -9360,8 +9074,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"5221804230029738": {
-				"ID":          5221804230029738,
+			"UserProfiles": {"5431482855662501": {
+				"ID":          5431482855662501,
 				"LoginName":   "raticate.tail78f774.ts.net",
 				"DisplayName": "raticate"
 			}}
@@ -9369,21 +9083,21 @@
 		"rattata": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         1116783003505115,
-				"StableID":   "nrW1nkzni911CNTRL",
+				"ID":         7543420364468186,
+				"StableID":   "ndWxNyrRu121CNTRL",
 				"Name":       "rattata.tail78f774.ts.net.",
-				"User":       1116783003505115,
-				"Key":        "nodekey:d4d7d33847b4bdbbeca7251d720d0f4e0e22d1e546ae43bfa01b1958cd6dc447",
-				"DiscoKey":   "discokey:f3e487c87a89b49c9905be4f7777f0e3499b6357ae0e6f3c8a72921ac5192418",
-				"Addresses":  ["100.109.196.72/32", "fd7a:115c:a1e0::cd37:c448/128"],
-				"AllowedIPs": ["100.109.196.72/32", "fd7a:115c:a1e0::cd37:c448/128"],
-				"Endpoints":  ["77.164.248.136:45030", "10.65.0.27:45030", "172.17.0.1:45030"],
+				"User":       7543420364468186,
+				"Key":        "nodekey:491b66f4da047cb4e6a8148fa0f3f7c788d85c642f72cc65b56a707808d3c772",
+				"DiscoKey":   "discokey:59f35fa3e88b1b5ad8243fc6b4b400889064c9f6cecbc3abbc84437c0609c833",
+				"Addresses":  ["100.83.199.115/32", "fd7a:115c:a1e0::837:c773/128"],
+				"AllowedIPs": ["100.83.199.115/32", "fd7a:115c:a1e0::837:c773/128"],
+				"Endpoints":  ["77.164.248.136:57052", "10.65.0.27:57052", "172.17.0.1:57052"],
 				"Hostinfo": {"Hostname": "rattata", "RequestTags": ["tag:group-a"], "Services": [
-					{"Proto": "peerapi4", "Port": 55945},
-					{"Proto": "peerapi6", "Port": 55945},
+					{"Proto": "peerapi4", "Port": 48753},
+					{"Proto": "peerapi6", "Port": 48753},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:11.269158792Z",
+				"Created":           "2026-04-08T14:07:51.611508458Z",
 				"Tags":              ["tag:group-a"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -9411,8 +9125,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:d4d7d33847b4bdbbeca7251d720d0f4e0e22d1e546ae43bfa01b1958cd6dc447",
-			"MachineKey":        "mkey:08211c90020fbe5e1a7d027db1d743e911b63561eb8710ac538c270e50d05939",
+			"NodeKey":           "nodekey:491b66f4da047cb4e6a8148fa0f3f7c788d85c642f72cc65b56a707808d3c772",
+			"MachineKey":        "mkey:e2b25f78532689d5c26bb9a4c3804cfe60e295ee5507a83267617471a2e1b964",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -10238,8 +9952,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"1116783003505115": {
-				"ID":          1116783003505115,
+			"UserProfiles": {"7543420364468186": {
+				"ID":          7543420364468186,
 				"LoginName":   "rattata.tail78f774.ts.net",
 				"DisplayName": "rattata"
 			}}
@@ -10247,26 +9961,26 @@
 		"spearow": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         5908071670297174,
-				"StableID":   "n7PGGR2n8o11CNTRL",
+				"ID":         6029127303235930,
+				"StableID":   "n5Ac19xb5p11CNTRL",
 				"Name":       "spearow.tail78f774.ts.net.",
-				"User":       5908071670297174,
-				"Key":        "nodekey:61cf654716568b16508d027b7a221fcde0491ee8d64ecba88a8ac5cdd002b941",
-				"DiscoKey":   "discokey:d4272a728994be41da9312be73284541f75de71718edbf87576a15527381c14f",
-				"Addresses":  ["100.66.185.66/32", "fd7a:115c:a1e0::d037:b942/128"],
-				"AllowedIPs": ["100.66.185.66/32", "fd7a:115c:a1e0::d037:b942/128"],
-				"Endpoints":  ["77.164.248.136:35199", "10.65.0.27:35199", "172.17.0.1:35199"],
+				"User":       6029127303235930,
+				"Key":        "nodekey:433337a0cc6fcbff0c1bccf0793455351f1540003abc361fe1e359a2f45f2174",
+				"DiscoKey":   "discokey:941955ace3a22601835b337212bd69f2a0a67d8b4f6219db560cb1013aebb472",
+				"Addresses":  ["100.95.33.117/32", "fd7a:115c:a1e0::f437:2175/128"],
+				"AllowedIPs": ["100.95.33.117/32", "fd7a:115c:a1e0::f437:2175/128"],
+				"Endpoints":  ["77.164.248.136:43528", "10.65.0.27:43528", "172.17.0.1:43528"],
 				"Hostinfo": {
 					"Hostname":    "spearow",
 					"RoutableIPs": ["10.44.0.0/16"],
 					"RequestTags": ["tag:spearow"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 46577},
-						{"Proto": "peerapi6", "Port": 46577},
+						{"Proto": "peerapi4", "Port": 41167},
+						{"Proto": "peerapi6", "Port": 41167},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:12.919285715Z",
+				"Created":           "2026-04-08T14:07:53.197724646Z",
 				"Tags":              ["tag:spearow"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -10294,8 +10008,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:61cf654716568b16508d027b7a221fcde0491ee8d64ecba88a8ac5cdd002b941",
-			"MachineKey":        "mkey:ecc949619867db0401bb6a07d59ab8ecbd797f4c7f913112359771ee86aa1234",
+			"NodeKey":           "nodekey:433337a0cc6fcbff0c1bccf0793455351f1540003abc361fe1e359a2f45f2174",
+			"MachineKey":        "mkey:83a7fe62c940a6fdc10a72ee8d038b22730bcf7d05f0d82545c1daa295860d02",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -11121,8 +10835,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"5908071670297174": {
-				"ID":          5908071670297174,
+			"UserProfiles": {"6029127303235930": {
+				"ID":          6029127303235930,
 				"LoginName":   "spearow.tail78f774.ts.net",
 				"DisplayName": "spearow"
 			}}
@@ -11130,26 +10844,26 @@
 		"squirtle": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         5430208777154540,
-				"StableID":   "nBG8mqNMQj11CNTRL",
+				"ID":         607172550978610,
+				"StableID":   "nuvaApPzj511CNTRL",
 				"Name":       "squirtle.tail78f774.ts.net.",
-				"User":       5430208777154540,
-				"Key":        "nodekey:3372f0a955d14dc1ac291c7d6685efe23e544b18b680ba591b960fe513ed5c7b",
-				"DiscoKey":   "discokey:ce256ad1c16f09254c417579a098cfa6a5352872a4259ef6af3deac6febad00a",
-				"Addresses":  ["100.109.92.124/32", "fd7a:115c:a1e0::1337:5c7c/128"],
-				"AllowedIPs": ["100.109.92.124/32", "fd7a:115c:a1e0::1337:5c7c/128"],
-				"Endpoints":  ["77.164.248.136:56511", "10.65.0.27:56511", "172.17.0.1:56511"],
+				"User":       607172550978610,
+				"Key":        "nodekey:e3885a466dbcc4c46e8896f42057973ab273ecba2b22b435a663c8573d67c03e",
+				"DiscoKey":   "discokey:f2e551b5c4ec1c4dd2314ca389d5f56db094bc2f481106f767425abae1b50271",
+				"Addresses":  ["100.103.192.63/32", "fd7a:115c:a1e0::3d37:c03f/128"],
+				"AllowedIPs": ["100.103.192.63/32", "fd7a:115c:a1e0::3d37:c03f/128"],
+				"Endpoints":  ["77.164.248.136:39858", "10.65.0.27:39858", "172.17.0.1:39858"],
 				"Hostinfo": {
 					"Hostname":    "squirtle",
 					"RoutableIPs": ["10.33.0.0/16"],
 					"RequestTags": ["tag:router"],
 					"Services": [
-						{"Proto": "peerapi4", "Port": 44590},
-						{"Proto": "peerapi6", "Port": 44590},
+						{"Proto": "peerapi4", "Port": 65220},
+						{"Proto": "peerapi6", "Port": 65220},
 						{"Proto": "peerapi-dns-proxy", "Port": 1}
 					]
 				},
-				"Created":           "2026-04-08T10:10:13.998930839Z",
+				"Created":           "2026-04-08T14:07:54.28533979Z",
 				"Tags":              ["tag:router"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -11177,8 +10891,8 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":           "nodekey:3372f0a955d14dc1ac291c7d6685efe23e544b18b680ba591b960fe513ed5c7b",
-			"MachineKey":        "mkey:00cbee7ee64691fe8ec7264defea08d626f85fdac2b1cfb04f2e4c2b05ad641e",
+			"NodeKey":           "nodekey:e3885a466dbcc4c46e8896f42057973ab273ecba2b22b435a663c8573d67c03e",
+			"MachineKey":        "mkey:2749d6ea0253caf1ace12ed20eceaae0c440a2ff8250cc181d6944079dc53336",
 			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
@@ -12004,8 +11718,8 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"5430208777154540": {
-				"ID":          5430208777154540,
+			"UserProfiles": {"607172550978610": {
+				"ID":          607172550978610,
 				"LoginName":   "squirtle.tail78f774.ts.net",
 				"DisplayName": "squirtle"
 			}}
@@ -12013,27 +11727,26 @@
 		"venusaur": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         5588730970074968,
-				"StableID":   "nwEh7BV9ek11CNTRL",
+				"ID":         1168954474589021,
+				"StableID":   "nA1L2DTR8A11CNTRL",
 				"Name":       "venusaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:6a5b6a86931f0af5845a200e012125a658939d215e859a15b0076e5f64eb5b70",
-				"Addresses":  ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"AllowedIPs": ["100.75.135.25/32", "fd7a:115c:a1e0::ea37:8719/128"],
-				"Endpoints":  ["77.164.248.136:45159", "10.65.0.27:45159", "172.17.0.1:45159"],
+				"User":       3982058329734709,
+				"Key":        "nodekey:9996362f038cf297c507eaa9afe92f508099dee9f33cc4af77746050758e856e",
+				"KeyExpiry":  "2026-10-05T14:07:56Z",
+				"DiscoKey":   "discokey:7dd7b0e50c9f4294373404bbbb977767538651c894b36529c3053686c5497241",
+				"Addresses":  ["100.78.133.111/32", "fd7a:115c:a1e0::7537:856f/128"],
+				"AllowedIPs": ["100.78.133.111/32", "fd7a:115c:a1e0::7537:856f/128"],
+				"Endpoints":  ["77.164.248.136:35396", "10.65.0.27:35396", "172.17.0.1:35396"],
 				"Hostinfo": {"Hostname": "venusaur", "Services": [
-					{"Proto": "peerapi4", "Port": 40319},
-					{"Proto": "peerapi6", "Port": 40319},
+					{"Proto": "peerapi4", "Port": 59679},
+					{"Proto": "peerapi6", "Port": 59679},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:16.685085265Z",
+				"Created":           "2026-04-08T14:07:56.945618833Z",
 				"MachineAuthorized": true,
 				"CapMap": {
 					"https://tailscale.com/cap/file-sharing": null,
 					"https://tailscale.com/cap/is-admin":     null,
-					"https://tailscale.com/cap/is-owner":     null,
 					"https://tailscale.com/cap/ssh":          null,
 					"https://tailscale.com/cap/tailnet-lock": null,
 					"probe-udp-lifetime":                     null,
@@ -12048,7 +11761,6 @@
 			"AllCaps": [
 				"https://tailscale.com/cap/file-sharing",
 				"https://tailscale.com/cap/is-admin",
-				"https://tailscale.com/cap/is-owner",
 				"https://tailscale.com/cap/ssh",
 				"https://tailscale.com/cap/tailnet-lock",
 				"probe-udp-lifetime",
@@ -12057,51 +11769,9 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":    "nodekey:3e1699198b2a4e517c95f20dd0b8c5e45f51e37456e25fe1c379c350ea8b8718",
-			"MachineKey": "mkey:4bb7f5699d2cf27256dd90736bdbe103ac6aa303909ab76065e1f3c9e824521a",
-			"Peers": [{
-				"ID":         770085324547400,
-				"StableID":   "nj8d6Uqm1711CNTRL",
-				"Name":       "bulbasaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-				"KeyExpiry":  "2026-10-05T10:10:17Z",
-				"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-				"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-				"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-					{"Proto": "peerapi4", "Port": 36804},
-					{"Proto": "peerapi6", "Port": 36804}
-				]},
-				"Created":              "2026-04-08T10:10:17.246240867Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "bulbasaur",
-				"ComputedNameWithHost": "bulbasaur"
-			}, {
-				"ID":         2045545656320853,
-				"StableID":   "n6jQ1v1SyG11CNTRL",
-				"Name":       "ivysaur.tail78f774.ts.net.",
-				"User":       4156223528223174,
-				"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-				"KeyExpiry":  "2026-10-05T10:10:16Z",
-				"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-				"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-				"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-				"HomeDERP":   14,
-				"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-					{"Proto": "peerapi4", "Port": 53824},
-					{"Proto": "peerapi6", "Port": 53824}
-				]},
-				"Created":              "2026-04-08T10:10:16.164928444Z",
-				"Cap":                  131,
-				"Online":               true,
-				"ComputedName":         "ivysaur",
-				"ComputedNameWithHost": "ivysaur"
-			}],
+			"NodeKey":           "nodekey:9996362f038cf297c507eaa9afe92f508099dee9f33cc4af77746050758e856e",
+			"MachineKey":        "mkey:35101a4d3de1d525928f5bc5ec1475a7abfc58d280e5dde5f700f2a7b506557a",
+			"Peers":             [],
 			"DNS":               {"ExitNodeFilteredSet": [".ts.net", ".tailscale.net"]},
 			"PacketFilter":      [],
 			"PacketFilterRules": null,
@@ -12926,130 +12596,30 @@
 			"TKAHead":          "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 			"Domain":           "odin@example.com",
 			"DomainAuditLogID": "",
-			"UserProfiles": {"4156223528223174": {
-				"ID":          4156223528223174,
-				"LoginName":   "odin@example.com",
-				"DisplayName": "odin"
+			"UserProfiles": {"3982058329734709": {
+				"ID":          3982058329734709,
+				"LoginName":   "freya@example.com",
+				"DisplayName": "freya"
 			}}
-		}, "whois": {"100.105.39.121": {"Node": {
-			"ID":         2045545656320853,
-			"StableID":   "n6jQ1v1SyG11CNTRL",
-			"Name":       "ivysaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-			"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-				{"Proto": "peerapi4", "Port": 53824},
-				{"Proto": "peerapi6", "Port": 53824}
-			]},
-			"Created":              "2026-04-08T10:10:16.164928444Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "ivysaur",
-			"ComputedNameWithHost": "ivysaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "100.91.162.27": {"Node": {
-			"ID":         770085324547400,
-			"StableID":   "nj8d6Uqm1711CNTRL",
-			"Name":       "bulbasaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-			"KeyExpiry":  "2026-10-05T10:10:17Z",
-			"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-			"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-				{"Proto": "peerapi4", "Port": 36804},
-				{"Proto": "peerapi6", "Port": 36804}
-			]},
-			"Created":              "2026-04-08T10:10:17.246240867Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "bulbasaur",
-			"ComputedNameWithHost": "bulbasaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::4537:2779": {"Node": {
-			"ID":         2045545656320853,
-			"StableID":   "n6jQ1v1SyG11CNTRL",
-			"Name":       "ivysaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:747e3fb78b62b476d497a7c8b154cdb93de73ddd51658d41b395481245a92778",
-			"KeyExpiry":  "2026-10-05T10:10:16Z",
-			"DiscoKey":   "discokey:614dd534e23ba81b16866c695283968cdff0a1ccd2eff2c91fd31c1e015cd217",
-			"Addresses":  ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"AllowedIPs": ["100.105.39.121/32", "fd7a:115c:a1e0::4537:2779/128"],
-			"Endpoints":  ["77.164.248.136:39563", "10.65.0.27:39563", "172.17.0.1:39563"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "ivysaur", "Services": [
-				{"Proto": "peerapi4", "Port": 53824},
-				{"Proto": "peerapi6", "Port": 53824}
-			]},
-			"Created":              "2026-04-08T10:10:16.164928444Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "ivysaur",
-			"ComputedNameWithHost": "ivysaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}, "fd7a:115c:a1e0::a037:a21b": {"Node": {
-			"ID":         770085324547400,
-			"StableID":   "nj8d6Uqm1711CNTRL",
-			"Name":       "bulbasaur.tail78f774.ts.net.",
-			"User":       4156223528223174,
-			"Key":        "nodekey:16f7851a90793a1d42b554e7aeff5dfd949552e4d819b0da1138e18ea09ba21a",
-			"KeyExpiry":  "2026-10-05T10:10:17Z",
-			"DiscoKey":   "discokey:4470e39ca40886f8da9623ff561e814828eac265aa15c807e870c9fefad5ac7f",
-			"Addresses":  ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"AllowedIPs": ["100.91.162.27/32", "fd7a:115c:a1e0::a037:a21b/128"],
-			"Endpoints":  ["77.164.248.136:42368", "10.65.0.27:42368", "172.17.0.1:42368"],
-			"HomeDERP":   14,
-			"Hostinfo": {"OS": "linux", "Hostname": "bulbasaur", "Services": [
-				{"Proto": "peerapi4", "Port": 36804},
-				{"Proto": "peerapi6", "Port": 36804}
-			]},
-			"Created":              "2026-04-08T10:10:17.246240867Z",
-			"Cap":                  131,
-			"Online":               true,
-			"ComputedName":         "bulbasaur",
-			"ComputedNameWithHost": "bulbasaur"
-		}, "UserProfile": {
-			"ID":          4156223528223174,
-			"LoginName":   "odin@example.com",
-			"DisplayName": "odin"
-		}, "CapMap": null}}, "ssh_rules": []},
+		}, "ssh_rules": []},
 		"weedle": {"packet_filter_rules": null, "packet_filter_matches": [], "netmap": {
 			"Cached": false,
 			"SelfNode": {
-				"ID":         6460192870359185,
-				"StableID":   "n25d47KqSs11CNTRL",
+				"ID":         158657001517126,
+				"StableID":   "nj7svierE211CNTRL",
 				"Name":       "weedle.tail78f774.ts.net.",
-				"User":       6460192870359185,
-				"Key":        "nodekey:65a3c3608dd3fc8e4ec969bb306c1592df9db8b76b2efc0cceb12e0c014ff606",
-				"DiscoKey":   "discokey:eec12823a1033742ef97847c46dfcfa5975227f7525455eca17c6047e7e1c021",
-				"Addresses":  ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"AllowedIPs": ["100.79.246.7/32", "fd7a:115c:a1e0::137:f607/128"],
-				"Endpoints":  ["77.164.248.136:57665", "10.65.0.27:57665", "172.17.0.1:57665"],
+				"User":       158657001517126,
+				"Key":        "nodekey:49c86e4a5e9840bd7aa5dcbf5638ff8694d6c548085e3a152c59103b4f392961",
+				"DiscoKey":   "discokey:152cf9785be8107abe0399de8614c6513a0e902bc24e87e99763f1ed56542d5e",
+				"Addresses":  ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"AllowedIPs": ["100.121.41.98/32", "fd7a:115c:a1e0::4f37:2962/128"],
+				"Endpoints":  ["77.164.248.136:49229", "10.65.0.27:49229", "172.17.0.1:49229"],
 				"Hostinfo": {"Hostname": "weedle", "RequestTags": ["tag:client"], "Services": [
-					{"Proto": "peerapi4", "Port": 49271},
-					{"Proto": "peerapi6", "Port": 49271},
+					{"Proto": "peerapi4", "Port": 38226},
+					{"Proto": "peerapi6", "Port": 38226},
 					{"Proto": "peerapi-dns-proxy", "Port": 1}
 				]},
-				"Created":           "2026-04-08T10:10:14.526965162Z",
+				"Created":           "2026-04-08T14:07:54.824519557Z",
 				"Tags":              ["tag:client"],
 				"MachineAuthorized": true,
 				"CapMap": {
@@ -13077,24 +12647,24 @@
 				"store-appc-routes",
 				"tailnet-display-name"
 			],
-			"NodeKey":    "nodekey:65a3c3608dd3fc8e4ec969bb306c1592df9db8b76b2efc0cceb12e0c014ff606",
-			"MachineKey": "mkey:c657d5cc8385dbf6058f29d90c6999234912cf40d69654f27a8f823724183544",
+			"NodeKey":    "nodekey:49c86e4a5e9840bd7aa5dcbf5638ff8694d6c548085e3a152c59103b4f392961",
+			"MachineKey": "mkey:b5dce7391e5b7c488d6c273657a1341f5cbfacddd9efab9fcd745dbc17f12c54",
 			"Peers": [{
-				"ID":         8871101710459782,
-				"StableID":   "nuLaVMojGC21CNTRL",
+				"ID":         1797770486165611,
+				"StableID":   "nLspgAPD3F11CNTRL",
 				"Name":       "beedrill.tail78f774.ts.net.",
 				"User":       1260082990019555,
-				"Key":        "nodekey:b4807762615345235a2bb50817f8969b34f47cdd017c3a0553a6b0a6fce26e16",
-				"DiscoKey":   "discokey:dfdc2d4837be3f7f96b2f5b25bbbc7887db4cd09340218b3607691d33bdacb05",
-				"Addresses":  ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-				"AllowedIPs": ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-				"Endpoints":  ["77.164.248.136:47258", "10.65.0.27:47258", "172.17.0.1:47258"],
+				"Key":        "nodekey:52ebb92107dc0a70a2c73bb768275bcfdfbdfbd120d96d9a006284c140779127",
+				"DiscoKey":   "discokey:3137c78d542cfc28436d28e77b21a1ffc377a16b1e25e5920be8708639190e64",
+				"Addresses":  ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+				"AllowedIPs": ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+				"Endpoints":  ["77.164.248.136:42286", "10.65.0.27:42286", "172.17.0.1:42286"],
 				"HomeDERP":   14,
 				"Hostinfo": {"OS": "linux", "Hostname": "beedrill", "Services": [
-					{"Proto": "peerapi4", "Port": 34226},
-					{"Proto": "peerapi6", "Port": 34226}
+					{"Proto": "peerapi4", "Port": 46182},
+					{"Proto": "peerapi6", "Port": 46182}
 				]},
-				"Created":              "2026-04-08T10:10:15.613714947Z",
+				"Created":              "2026-04-08T14:07:55.877619031Z",
 				"Cap":                  131,
 				"Tags":                 ["tag:server"],
 				"Online":               true,
@@ -13929,27 +13499,27 @@
 				"ID":          1260082990019555,
 				"LoginName":   "tagged-devices",
 				"DisplayName": "Tagged Devices"
-			}, "6460192870359185": {
-				"ID":          6460192870359185,
+			}, "158657001517126": {
+				"ID":          158657001517126,
 				"LoginName":   "weedle.tail78f774.ts.net",
 				"DisplayName": "weedle"
 			}}
-		}, "whois": {"100.98.110.23": {"Node": {
-			"ID":         8871101710459782,
-			"StableID":   "nuLaVMojGC21CNTRL",
+		}, "whois": {"100.119.145.40": {"Node": {
+			"ID":         1797770486165611,
+			"StableID":   "nLspgAPD3F11CNTRL",
 			"Name":       "beedrill.tail78f774.ts.net.",
 			"User":       1260082990019555,
-			"Key":        "nodekey:b4807762615345235a2bb50817f8969b34f47cdd017c3a0553a6b0a6fce26e16",
-			"DiscoKey":   "discokey:dfdc2d4837be3f7f96b2f5b25bbbc7887db4cd09340218b3607691d33bdacb05",
-			"Addresses":  ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-			"AllowedIPs": ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-			"Endpoints":  ["77.164.248.136:47258", "10.65.0.27:47258", "172.17.0.1:47258"],
+			"Key":        "nodekey:52ebb92107dc0a70a2c73bb768275bcfdfbdfbd120d96d9a006284c140779127",
+			"DiscoKey":   "discokey:3137c78d542cfc28436d28e77b21a1ffc377a16b1e25e5920be8708639190e64",
+			"Addresses":  ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+			"AllowedIPs": ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+			"Endpoints":  ["77.164.248.136:42286", "10.65.0.27:42286", "172.17.0.1:42286"],
 			"HomeDERP":   14,
 			"Hostinfo": {"OS": "linux", "Hostname": "beedrill", "Services": [
-				{"Proto": "peerapi4", "Port": 34226},
-				{"Proto": "peerapi6", "Port": 34226}
+				{"Proto": "peerapi4", "Port": 46182},
+				{"Proto": "peerapi6", "Port": 46182}
 			]},
-			"Created":              "2026-04-08T10:10:15.613714947Z",
+			"Created":              "2026-04-08T14:07:55.877619031Z",
 			"Cap":                  131,
 			"Tags":                 ["tag:server"],
 			"Online":               true,
@@ -13959,22 +13529,22 @@
 			"ID":          1260082990019555,
 			"LoginName":   "tagged-devices",
 			"DisplayName": "Tagged Devices"
-		}, "CapMap": null}, "fd7a:115c:a1e0::fc37:6e18": {"Node": {
-			"ID":         8871101710459782,
-			"StableID":   "nuLaVMojGC21CNTRL",
+		}, "CapMap": null}, "fd7a:115c:a1e0::4037:9128": {"Node": {
+			"ID":         1797770486165611,
+			"StableID":   "nLspgAPD3F11CNTRL",
 			"Name":       "beedrill.tail78f774.ts.net.",
 			"User":       1260082990019555,
-			"Key":        "nodekey:b4807762615345235a2bb50817f8969b34f47cdd017c3a0553a6b0a6fce26e16",
-			"DiscoKey":   "discokey:dfdc2d4837be3f7f96b2f5b25bbbc7887db4cd09340218b3607691d33bdacb05",
-			"Addresses":  ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-			"AllowedIPs": ["100.98.110.23/32", "fd7a:115c:a1e0::fc37:6e18/128"],
-			"Endpoints":  ["77.164.248.136:47258", "10.65.0.27:47258", "172.17.0.1:47258"],
+			"Key":        "nodekey:52ebb92107dc0a70a2c73bb768275bcfdfbdfbd120d96d9a006284c140779127",
+			"DiscoKey":   "discokey:3137c78d542cfc28436d28e77b21a1ffc377a16b1e25e5920be8708639190e64",
+			"Addresses":  ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+			"AllowedIPs": ["100.119.145.40/32", "fd7a:115c:a1e0::4037:9128/128"],
+			"Endpoints":  ["77.164.248.136:42286", "10.65.0.27:42286", "172.17.0.1:42286"],
 			"HomeDERP":   14,
 			"Hostinfo": {"OS": "linux", "Hostname": "beedrill", "Services": [
-				{"Proto": "peerapi4", "Port": 34226},
-				{"Proto": "peerapi6", "Port": 34226}
+				{"Proto": "peerapi4", "Port": 46182},
+				{"Proto": "peerapi6", "Port": 46182}
 			]},
-			"Created":              "2026-04-08T10:10:15.613714947Z",
+			"Created":              "2026-04-08T14:07:55.877619031Z",
 			"Cap":                  131,
 			"Tags":                 ["tag:server"],
 			"Online":               true,
