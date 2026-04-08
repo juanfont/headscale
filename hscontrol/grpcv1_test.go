@@ -264,6 +264,284 @@ func TestSetTags_CannotRemoveAllTags(t *testing.T) {
 	assert.Nil(t, resp.GetNode())
 }
 
+// TestSetTags_ClearsUserIDInDatabase tests that converting a user-owned node
+// to a tagged node via SetTags correctly persists user_id = NULL in the
+// database, not just in-memory.
+// https://github.com/juanfont/headscale/issues/3161
+func TestSetTags_ClearsUserIDInDatabase(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("tag-owner")
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	_, err = app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:server": ["tag-owner@"]},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	// Register a user-owned node (untagged PreAuthKey).
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "user-owned-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+	require.False(t, node.IsTagged(), "node should start as user-owned")
+	require.True(t, node.UserID().Valid(), "user-owned node must have UserID")
+
+	nodeID := node.ID()
+
+	// Convert to tagged via SetTags API.
+	apiServer := newHeadscaleV1APIServer(app)
+	_, err = apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
+		NodeId: uint64(nodeID),
+		Tags:   []string{"tag:server"},
+	})
+	require.NoError(t, err)
+
+	// Verify in-memory state is correct.
+	nsNode, found := app.state.GetNodeByID(nodeID)
+	require.True(t, found)
+	assert.True(t, nsNode.IsTagged(), "NodeStore: node should be tagged")
+	assert.False(t, nsNode.UserID().Valid(),
+		"NodeStore: UserID should be nil for tagged node")
+
+	// THE CRITICAL CHECK: verify database has user_id = NULL.
+	dbNode, err := app.state.DB().GetNodeByID(nodeID)
+	require.NoError(t, err)
+	assert.Nil(t, dbNode.UserID,
+		"Database: user_id must be NULL after converting to tagged node")
+	assert.True(t, dbNode.IsTagged(),
+		"Database: tags must be set")
+}
+
+// TestSetTags_NodeDisappearsFromUserListing tests issue #3161:
+// after converting a user-owned node to tagged, it must no longer appear
+// when listing nodes filtered by the original user.
+// https://github.com/juanfont/headscale/issues/3161
+func TestSetTags_NodeDisappearsFromUserListing(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("list-user")
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	_, err = app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:web": ["list-user@"]},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	// Register a user-owned node.
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "web-server",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	// Verify node appears under user before tagging.
+	apiServer := newHeadscaleV1APIServer(app)
+	resp, err := apiServer.ListNodes(context.Background(), &v1.ListNodesRequest{
+		User: "list-user",
+	})
+	require.NoError(t, err)
+	assert.Len(t, resp.GetNodes(), 1, "user-owned node should appear under user")
+
+	// Convert to tagged.
+	_, err = apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
+		NodeId: uint64(node.ID()),
+		Tags:   []string{"tag:web"},
+	})
+	require.NoError(t, err)
+
+	// Node must NOT appear when listing by original user.
+	resp, err = apiServer.ListNodes(context.Background(), &v1.ListNodesRequest{
+		User: "list-user",
+	})
+	require.NoError(t, err)
+	assert.Empty(t, resp.GetNodes(),
+		"tagged node must not appear when listing nodes for original user")
+
+	// Node must still appear in unfiltered listing.
+	allResp, err := apiServer.ListNodes(context.Background(), &v1.ListNodesRequest{})
+	require.NoError(t, err)
+	require.Len(t, allResp.GetNodes(), 1)
+	assert.Contains(t, allResp.GetNodes()[0].GetTags(), "tag:web")
+}
+
+// TestSetTags_NodeStoreAndDBConsistency verifies that after SetTags, the
+// in-memory NodeStore and the database agree on the node's ownership state.
+// https://github.com/juanfont/headscale/issues/3161
+func TestSetTags_NodeStoreAndDBConsistency(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("consistency-user")
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	_, err = app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:db": ["consistency-user@"]},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "db-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	nodeID := node.ID()
+
+	// Convert to tagged.
+	apiServer := newHeadscaleV1APIServer(app)
+	_, err = apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
+		NodeId: uint64(nodeID),
+		Tags:   []string{"tag:db"},
+	})
+	require.NoError(t, err)
+
+	// In-memory state.
+	nsNode, found := app.state.GetNodeByID(nodeID)
+	require.True(t, found)
+
+	// Database state.
+	dbNode, err := app.state.DB().GetNodeByID(nodeID)
+	require.NoError(t, err)
+
+	// Both must agree: tagged, no UserID.
+	assert.True(t, nsNode.IsTagged(), "NodeStore: should be tagged")
+	assert.True(t, dbNode.IsTagged(), "Database: should be tagged")
+
+	assert.False(t, nsNode.UserID().Valid(),
+		"NodeStore: UserID should be nil")
+	assert.Nil(t, dbNode.UserID,
+		"Database: user_id should be NULL")
+
+	assert.Equal(t,
+		nsNode.UserID().Valid(),
+		dbNode.UserID != nil,
+		"NodeStore and database must agree on UserID state")
+}
+
+// TestSetTags_UserDeletionDoesNotCascadeToTaggedNode tests that deleting the
+// original user does not cascade-delete a node that was converted to tagged
+// via SetTags. This catches the real-world consequence of stale user_id:
+// ON DELETE CASCADE would destroy the tagged node.
+// https://github.com/juanfont/headscale/issues/3161
+func TestSetTags_UserDeletionDoesNotCascadeToTaggedNode(t *testing.T) {
+	t.Parallel()
+
+	app := createTestApp(t)
+
+	user := app.state.CreateUserForTest("doomed-user")
+	err := app.state.UpdatePolicyManagerUsersForTest()
+	require.NoError(t, err)
+
+	_, err = app.state.SetPolicy([]byte(`{
+		"tagOwners": {"tag:survivor": ["doomed-user@"]},
+		"acls": [{"action": "accept", "src": ["*"], "dst": ["*:*"]}]
+	}`))
+	require.NoError(t, err)
+
+	pak, err := app.state.CreatePreAuthKey(user.TypedID(), false, false, nil, nil)
+	require.NoError(t, err)
+
+	machineKey := key.NewMachine()
+	nodeKey := key.NewNode()
+
+	regReq := tailcfg.RegisterRequest{
+		Auth: &tailcfg.RegisterResponseAuth{
+			AuthKey: pak.Key,
+		},
+		NodeKey: nodeKey.Public(),
+		Hostinfo: &tailcfg.Hostinfo{
+			Hostname: "survivor-node",
+		},
+	}
+	_, err = app.handleRegisterWithAuthKey(regReq, machineKey.Public())
+	require.NoError(t, err)
+
+	node, found := app.state.GetNodeByNodeKey(nodeKey.Public())
+	require.True(t, found)
+
+	nodeID := node.ID()
+
+	// Convert to tagged.
+	apiServer := newHeadscaleV1APIServer(app)
+	_, err = apiServer.SetTags(context.Background(), &v1.SetTagsRequest{
+		NodeId: uint64(nodeID),
+		Tags:   []string{"tag:survivor"},
+	})
+	require.NoError(t, err)
+
+	// Delete the original user.
+	_, err = app.state.DeleteUser(*user.TypedID())
+	require.NoError(t, err)
+
+	// The tagged node must survive in both NodeStore and database.
+	nsNode, found := app.state.GetNodeByID(nodeID)
+	require.True(t, found, "tagged node must survive user deletion in NodeStore")
+	assert.True(t, nsNode.IsTagged())
+
+	dbNode, err := app.state.DB().GetNodeByID(nodeID)
+	require.NoError(t, err, "tagged node must survive user deletion in database")
+	assert.True(t, dbNode.IsTagged())
+	assert.Nil(t, dbNode.UserID)
+}
+
 // TestDeleteUser_ReturnsProperChangeSignal tests issue #2967 fix:
 // When a user is deleted, the state should return a non-empty change signal
 // to ensure policy manager is updated and clients are notified immediately.
