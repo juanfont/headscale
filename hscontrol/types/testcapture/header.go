@@ -1,0 +1,126 @@
+package testcapture
+
+import (
+	"fmt"
+	"strings"
+)
+
+// CommentHeader returns the // comment header that gets prepended to
+// a Capture file when it is written. The header is purely
+// informational; consumers ignore it. Format:
+//
+//	<TestID>
+//
+//	<Description, possibly multi-line>
+//
+//	Nodes with filter rules: <X> of <Y>           ← for non-SSH corpora
+//	Nodes with SSH rules: <X> of <Y>              ← for SSH corpora
+//	Captured at:    <RFC3339 UTC>
+//	tscap version:  <ToolVersion>
+//	schema version: <SchemaVersion>
+//
+// Both `tool_version` and `schema_version` are also stored as
+// first-class JSON fields on the Capture struct; the comment lines
+// exist purely so the values are visible at a glance without
+// parsing the file.
+//
+// The leading "// " on every line is added by the hujson writer.
+func CommentHeader(c *Capture) string {
+	if c == nil {
+		return ""
+	}
+
+	var b strings.Builder
+
+	b.WriteString(c.TestID)
+	b.WriteByte('\n')
+
+	if c.Description != "" {
+		b.WriteByte('\n')
+		b.WriteString(c.Description)
+		b.WriteByte('\n')
+	}
+
+	stats := captureStats(c)
+	if stats != "" {
+		b.WriteByte('\n')
+		b.WriteString(stats)
+		b.WriteByte('\n')
+	}
+
+	if !c.CapturedAt.IsZero() {
+		b.WriteString(fmt.Sprintf("Captured at:    %s\n", c.CapturedAt.UTC().Format("2006-01-02T15:04:05Z")))
+	}
+
+	if c.ToolVersion != "" {
+		b.WriteString(fmt.Sprintf("tscap version:  %s\n", c.ToolVersion))
+	}
+
+	if c.SchemaVersion != 0 {
+		b.WriteString(fmt.Sprintf("schema version: %d\n", c.SchemaVersion))
+	}
+
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// captureStats returns a one-line summary of how many nodes had
+// non-empty captured data, or the empty string if there are no
+// captures at all.
+//
+// The phrasing depends on which fields the corpus uses:
+//   - SSH corpora populate SSHRules
+//   - other corpora populate PacketFilterRules
+//
+// If both fields appear (mixed/unusual), filter rules wins.
+func captureStats(c *Capture) string {
+	if len(c.Captures) == 0 {
+		return ""
+	}
+
+	var (
+		total          = len(c.Captures)
+		filterRules    int
+		sshRules       int
+		filterRulesSet bool
+		sshRulesSet    bool
+	)
+
+	for _, n := range c.Captures {
+		if n.PacketFilterRules != nil {
+			filterRulesSet = true
+
+			if !isJSONNullOrEmpty(n.PacketFilterRules) {
+				filterRules++
+			}
+		}
+
+		if n.SSHRules != nil {
+			sshRulesSet = true
+
+			if !isJSONNullOrEmpty(n.SSHRules) {
+				sshRules++
+			}
+		}
+	}
+
+	switch {
+	case filterRulesSet:
+		return fmt.Sprintf("Nodes with filter rules: %d of %d", filterRules, total)
+	case sshRulesSet:
+		return fmt.Sprintf("Nodes with SSH rules: %d of %d", sshRules, total)
+	default:
+		return ""
+	}
+}
+
+// isJSONNullOrEmpty reports whether raw is the JSON value `null`,
+// an empty array `[]`, or empty after whitespace trimming.
+func isJSONNullOrEmpty(raw []byte) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	switch trimmed {
+	case "", "null", "[]":
+		return true
+	default:
+		return false
+	}
+}

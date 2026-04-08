@@ -1,12 +1,12 @@
 // This file implements data-driven test runners for routes compatibility tests.
-// It loads HuJSON golden files from testdata/routes_results/ROUTES-*.hujson and
-// compares headscale's route-aware ACL engine output against the expected
-// packet filter rules.
+// It loads HuJSON golden files from testdata/routes_results/routes-*.hujson,
+// captured from Tailscale SaaS by tscap, and compares headscale's route-aware
+// ACL engine output against the captured packet filter rules.
 //
-// Each HuJSON file contains:
-//   - A full policy (groups, tagOwners, hosts, acls)
-//   - A topology section with nodes, including routable_ips and approved_routes
-//   - Expected packet_filter_rules per node
+// Each capture file is a testcapture.Capture containing:
+//   - A full policy (groups, tagOwners, hosts, acls) in Input.FullPolicy
+//   - A Topology section with nodes, including RoutableIPs and ApprovedRoutes
+//   - Expected packet_filter_rules per node in Captures[name].PacketFilterRules
 //
 // Two test runners use this data:
 //
@@ -20,15 +20,14 @@
 //     referenced in those rules must be visible as peers. This exercises the
 //     CanAccess fix from issue #3157.
 //
-// Test data source: testdata/routes_results/ROUTES-*.hujson
-// Original source: Tailscale SaaS captures + headscale-generated expansions
+// Test data source: testdata/routes_results/routes-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
 	"encoding/json"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -39,75 +38,49 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tailscale/hujson"
 	"go4.org/netipx"
 	"gorm.io/gorm"
 	"tailscale.com/net/tsaddr"
 	"tailscale.com/tailcfg"
 )
 
-// routesTestFile represents the JSON structure of a captured routes test file.
-type routesTestFile struct {
-	TestID     string `json:"test_id"`
-	Source     string `json:"source"`
-	ParentTest string `json:"parent_test"`
-	Input      struct {
-		FullPolicy json.RawMessage `json:"full_policy"`
-	} `json:"input"`
-	Topology routesTopology `json:"topology"`
-	Captures map[string]struct {
-		PacketFilterRules json.RawMessage `json:"packet_filter_rules"`
-	} `json:"captures"`
-}
-
-// routesTopology describes the node topology for a routes test.
-type routesTopology struct {
-	Users []struct {
-		ID   uint   `json:"id"`
-		Name string `json:"name"`
-	} `json:"users"`
-	Nodes map[string]routesNodeDef `json:"nodes"`
-}
-
-// routesNodeDef describes a single node in the routes test topology.
-type routesNodeDef struct {
-	ID             int      `json:"id"`
-	Hostname       string   `json:"hostname"`
-	IPv4           string   `json:"ipv4"`
-	IPv6           string   `json:"ipv6"`
-	Tags           []string `json:"tags"`
-	User           string   `json:"user,omitempty"`
-	RoutableIPs    []string `json:"routable_ips"`
-	ApprovedRoutes []string `json:"approved_routes"`
-}
-
-// loadRoutesTestFile loads and parses a single routes test JSON file.
-func loadRoutesTestFile(t *testing.T, path string) routesTestFile {
+// loadRoutesTestFile loads and parses a single routes capture HuJSON file.
+func loadRoutesTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	c, err := testcapture.Read(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
-	ast, err := hujson.Parse(content)
-	require.NoError(t, err, "failed to parse HuJSON in %s", path)
-	ast.Standardize()
+	return c
+}
 
-	var tf routesTestFile
+// convertSaaSEmail rewrites a Tailscale SaaS user email to its
+// headscale-equivalent @example.com form, matching the convention used by
+// convertPolicyUserEmails. The kristoffer@dalby.cc and *@passkey domains
+// are normalized to @example.com so that policy resolution finds the user
+// objects we set up in the test.
+func convertSaaSEmail(email string) string {
+	switch email {
+	case "kratail2tid@passkey":
+		return "kratail2tid@example.com"
+	case "kristoffer@dalby.cc":
+		return "kristoffer@example.com"
+	case "monitorpasskeykradalby@passkey":
+		return "monitorpasskeykradalby@example.com"
+	}
 
-	err = json.Unmarshal(ast.Pack(), &tf)
-	require.NoError(t, err, "failed to unmarshal test file %s", path)
-
-	return tf
+	return email
 }
 
 // buildRoutesUsersAndNodes constructs types.Users and types.Nodes from the
-// JSON topology definition. This allows each test file to define its own
-// topology (e.g., the IPv6 tests use different nodes than the standard tests).
+// captured topology. This allows each test file to define its own topology
+// (e.g., the IPv6 tests use different nodes than the standard tests).
 func buildRoutesUsersAndNodes(
 	t *testing.T,
-	topo routesTopology,
+	topo testcapture.Topology,
 ) (types.Users, types.Nodes) {
 	t.Helper()
 
@@ -121,6 +94,7 @@ func buildRoutesUsersAndNodes(
 			users = append(users, types.User{
 				Model: gorm.Model{ID: u.ID},
 				Name:  u.Name,
+				Email: convertSaaSEmail(u.Email),
 			})
 		}
 	} else {
@@ -131,19 +105,16 @@ func buildRoutesUsersAndNodes(
 		}
 	}
 
-	// Build nodes.
-	// Auto-assign unique IDs when the JSON topology does not provide
-	// them (id defaults to 0). Unique IDs are required by ReduceNodes /
-	// BuildPeerMap which skip peers by comparing node.ID.
+	// Build nodes. Topology nodes are keyed by GivenName.
+	// Assign sequential IDs (the capture format does not store them);
+	// unique IDs are required by ReduceNodes / BuildPeerMap which skip
+	// peers by comparing node.ID.
 	nodes := make(types.Nodes, 0, len(topo.Nodes))
 	autoID := 1
 
 	for _, nodeDef := range topo.Nodes {
-		nodeID := nodeDef.ID
-		if nodeID == 0 {
-			nodeID = autoID
-			autoID++
-		}
+		nodeID := autoID
+		autoID++
 
 		node := &types.Node{
 			ID:        types.NodeID(nodeID), //nolint:gosec
@@ -218,28 +189,28 @@ var routesSkipReasons = map[string]string{}
 // ACL scenarios. These are the scenarios where the fix for issue #3157
 // (CanAccess considering subnet routes as source identity) is critical.
 var subnetToSubnetFiles = []string{
-	"ROUTES-f10_subnet_to_subnet_issue3157",
-	"ROUTES-f11_subnet_to_subnet_bidirectional",
-	"ROUTES-f12_subnet_to_subnet_host_aliases",
-	"ROUTES-f13_subnet_to_subnet_disjoint",
-	"ROUTES-f14_subnet_to_subnet_overlapping_one_router",
-	"ROUTES-f15_subnet_to_subnet_cross_routers",
+	"routes-f10-subnet-to-subnet-issue3157",
+	"routes-f11-subnet-to-subnet-bidirectional",
+	"routes-f12-subnet-to-subnet-host-aliases",
+	"routes-f13-subnet-to-subnet-disjoint",
+	"routes-f14-subnet-to-subnet-overlapping-one-router",
+	"routes-f15-subnet-to-subnet-cross-routers",
 }
 
-// TestRoutesCompat is a data-driven test that loads all ROUTES-*.json test
+// TestRoutesCompat is a data-driven test that loads all routes-*.hujson test
 // files and compares headscale's route-aware ACL engine output against the
 // expected behavior.
 func TestRoutesCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ROUTES-*.hujson test files found in testdata/routes_results/",
+		"no routes-*.hujson test files found in testdata/routes_results/",
 	)
 
 	t.Logf("Loaded %d routes test files", len(files))
@@ -362,7 +333,7 @@ func TestRoutesCompat(t *testing.T) {
 // Returns a set of unordered node-name pairs that must be peers.
 func derivePeerPairsFromCaptures(
 	t *testing.T,
-	tf routesTestFile,
+	tf *testcapture.Capture,
 	nodes types.Nodes,
 ) map[[2]string]bool {
 	t.Helper()
@@ -491,7 +462,7 @@ func addSrcIPToBuilder(
 //     (tag/user/group resolved sources)
 func deriveAllPeerPairsFromCaptures(
 	t *testing.T,
-	tf routesTestFile,
+	tf *testcapture.Capture,
 	nodes types.Nodes,
 ) map[[2]string]bool {
 	t.Helper()
@@ -799,13 +770,13 @@ func TestRoutesCompatAutoApproval(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ROUTES-*.hujson test files found in testdata/routes_results/",
+		"no routes-*.hujson test files found in testdata/routes_results/",
 	)
 
 	for _, file := range files {
@@ -925,13 +896,13 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ROUTES-*.hujson test files found in testdata/routes_results/",
+		"no routes-*.hujson test files found in testdata/routes_results/",
 	)
 
 	for _, file := range files {
@@ -1118,11 +1089,11 @@ func TestRoutesCompatExitNodePeerVisibility(t *testing.T) {
 		expectedNullAll bool
 	}{
 		{
-			testID:        "ROUTES-b2_tag_exit_excludes_exit_routes",
+			testID:        "routes-b2-tag-exit-excludes-exit-routes",
 			exitNodeNames: []string{"exit-node", "multi-router"},
 		},
 		{
-			testID:          "ROUTES-b8_autogroup_internet_no_filters",
+			testID:          "routes-b8-autogroup-internet-no-filters",
 			exitNodeNames:   []string{"exit-node", "multi-router"},
 			expectedNullAll: true,
 		},
@@ -1269,7 +1240,7 @@ func TestRoutesCompatNoPeersBeyondCaptures(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "routes_results", "ROUTES-*.hujson"),
+		filepath.Join("testdata", "routes_results", "routes-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(t, files)

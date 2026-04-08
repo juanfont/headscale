@@ -1,22 +1,22 @@
 // This file implements a data-driven test runner for ACL compatibility tests.
-// It loads JSON golden files from testdata/acl_results/ACL-*.json and compares
-// headscale's ACL engine output against the expected packet filter rules.
+// It loads HuJSON golden files from testdata/acl_results/acl-*.hujson and
+// compares headscale's ACL engine output against the expected packet filter
+// rules captured from Tailscale SaaS by the tscap tool.
 //
-// The JSON files were converted from the original inline Go struct test cases
-// in tailscale_acl_compat_test.go. Each file contains:
-//   - A full policy (groups, tagOwners, hosts, acls)
-//   - Expected packet_filter_rules per node (5 nodes)
-//   - Or an error response for invalid policies
+// Each file is a testcapture.Capture containing:
+//   - The full policy that was POSTed to the Tailscale SaaS API
+//   - The 8-node topology used for the capture run
+//   - Expected packet_filter_rules per node (or error metadata for
+//     scenarios that the SaaS rejected)
 //
-// Test data source: testdata/acl_results/ACL-*.json
-// Original source: Tailscale SaaS API captures + headscale-generated expansions
+// Test data source: testdata/acl_results/acl-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
 	"encoding/json"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,8 +25,8 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
-	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
@@ -183,42 +183,13 @@ func cmpOptions() []cmp.Option {
 	}
 }
 
-// aclTestFile represents the JSON structure of a captured ACL test file.
-type aclTestFile struct {
-	TestID           string `json:"test_id"`
-	Source           string `json:"source"` // "tailscale_saas" or "headscale_adapted"
-	Error            bool   `json:"error"`
-	HeadscaleDiffers bool   `json:"headscale_differs"`
-	ParentTest       string `json:"parent_test"`
-	Input            struct {
-		FullPolicy      json.RawMessage `json:"full_policy"`
-		APIResponseCode int             `json:"api_response_code"`
-		APIResponseBody *struct {
-			Message string `json:"message"`
-		} `json:"api_response_body"`
-	} `json:"input"`
-	Topology struct {
-		Nodes map[string]struct {
-			Hostname       string   `json:"hostname"`
-			Tags           []string `json:"tags"`
-			IPv4           string   `json:"ipv4"`
-			IPv6           string   `json:"ipv6"`
-			User           string   `json:"user"`
-			RoutableIPs    []string `json:"routable_ips"`
-			ApprovedRoutes []string `json:"approved_routes"`
-		} `json:"nodes"`
-	} `json:"topology"`
-	Captures map[string]struct {
-		PacketFilterRules json.RawMessage `json:"packet_filter_rules"`
-	} `json:"captures"`
-}
 
 // buildACLUsersAndNodes constructs users and nodes from an ACL
 // golden file's topology. This ensures the test creates the same
 // nodes that were present during the Tailscale SaaS capture.
 func buildACLUsersAndNodes(
 	t *testing.T,
-	tf aclTestFile,
+	tf *testcapture.Capture,
 ) (types.Users, types.Nodes) {
 	t.Helper()
 
@@ -293,23 +264,14 @@ func buildACLUsersAndNodes(
 	return users, nodes
 }
 
-// loadACLTestFile loads and parses a single ACL test JSON file.
-func loadACLTestFile(t *testing.T, path string) aclTestFile {
+// loadACLTestFile loads and parses a single ACL capture HuJSON file.
+func loadACLTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	c, err := testcapture.Read(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
-	ast, err := hujson.Parse(content)
-	require.NoError(t, err, "failed to parse HuJSON in %s", path)
-	ast.Standardize()
-
-	var tf aclTestFile
-
-	err = json.Unmarshal(ast.Pack(), &tf)
-	require.NoError(t, err, "failed to unmarshal test file %s", path)
-
-	return tf
+	return c
 }
 
 // aclSkipReasons documents WHY tests are expected to fail and WHAT needs to be
@@ -339,13 +301,13 @@ func TestACLCompat(t *testing.T) {
 	t.Parallel()
 
 	files, err := filepath.Glob(
-		filepath.Join("testdata", "acl_results", "ACL-*.hujson"),
+		filepath.Join("testdata", "acl_results", "acl-*.hujson"),
 	)
 	require.NoError(t, err, "failed to glob test files")
 	require.NotEmpty(
 		t,
 		files,
-		"no ACL-*.hujson test files found in testdata/acl_results/",
+		"no acl-*.hujson test files found in testdata/acl_results/",
 	)
 
 	t.Logf("Loaded %d ACL test files", len(files))
@@ -402,7 +364,7 @@ var aclErrorMessageMap = map[string]string{
 }
 
 // testACLError verifies that an invalid policy produces the expected error.
-func testACLError(t *testing.T, tf aclTestFile) {
+func testACLError(t *testing.T, tf *testcapture.Capture) {
 	t.Helper()
 
 	policyJSON := convertPolicyUserEmails(tf.Input.FullPolicy)
@@ -432,17 +394,6 @@ func testACLError(t *testing.T, tf aclTestFile) {
 				)
 			}
 		}
-
-		return
-	}
-
-	// For headscale_differs tests, headscale may accept what
-	// Tailscale rejects. Log as skip so it appears in output.
-	if tf.HeadscaleDiffers {
-		t.Skipf(
-			"%s: headscale accepts this policy (Tailscale rejects it)",
-			tf.TestID,
-		)
 
 		return
 	}
@@ -513,7 +464,7 @@ func assertACLErrorContains(
 // packet filter rules for each node.
 func testACLSuccess(
 	t *testing.T,
-	tf aclTestFile,
+	tf *testcapture.Capture,
 	users types.Users,
 	nodes types.Nodes,
 ) {
