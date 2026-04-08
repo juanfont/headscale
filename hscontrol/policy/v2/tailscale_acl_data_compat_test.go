@@ -39,55 +39,56 @@ func ptrAddr(s string) *netip.Addr {
 }
 
 // setupACLCompatUsers returns the 3 test users for ACL compatibility tests.
-// Email addresses use @example.com domain, matching the converted Tailscale
-// policy format (Tailscale uses @passkey and @dalby.cc).
+// Names and emails match the anonymized identifiers tscap writes into the
+// capture files (see github.com/kradalby/tscap/anonymize): users get
+// norse-god names and nodes get original-151 pokémon names.
 func setupACLCompatUsers() types.Users {
 	return types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "kratail2tid", Email: "kratail2tid@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "kristoffer", Email: "kristoffer@example.com"},
-		{Model: gorm.Model{ID: 3}, Name: "monitorpasskeykradalby", Email: "monitorpasskeykradalby@example.com"},
+		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "thor", Email: "thor@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "freya", Email: "freya@example.com"},
 	}
 }
 
 // setupACLCompatNodes returns the 8 test nodes for ACL compatibility tests.
-// Uses the same topology as the grants compat tests.
+// Node GivenNames match tscap's anonymized pokémon naming.
 func setupACLCompatNodes(users types.Users) types.Nodes {
 	return types.Nodes{
 		{
-			ID: 1, GivenName: "user1",
+			ID: 1, GivenName: "bulbasaur",
 			User: &users[0], UserID: &users[0].ID,
 			IPv4: ptrAddr("100.90.199.68"), IPv6: ptrAddr("fd7a:115c:a1e0::2d01:c747"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 2, GivenName: "user-kris",
+			ID: 2, GivenName: "ivysaur",
 			User: &users[1], UserID: &users[1].ID,
 			IPv4: ptrAddr("100.110.121.96"), IPv6: ptrAddr("fd7a:115c:a1e0::1737:7960"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 3, GivenName: "user-mon",
+			ID: 3, GivenName: "venusaur",
 			User: &users[2], UserID: &users[2].ID,
 			IPv4: ptrAddr("100.103.90.82"), IPv6: ptrAddr("fd7a:115c:a1e0::9e37:5a52"),
 			Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 4, GivenName: "tagged-server",
+			ID: 4, GivenName: "beedrill",
 			IPv4: ptrAddr("100.108.74.26"), IPv6: ptrAddr("fd7a:115c:a1e0::b901:4a87"),
 			Tags: []string{"tag:server"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 5, GivenName: "tagged-prod",
+			ID: 5, GivenName: "kakuna",
 			IPv4: ptrAddr("100.103.8.15"), IPv6: ptrAddr("fd7a:115c:a1e0::5b37:80f"),
 			Tags: []string{"tag:prod"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 6, GivenName: "tagged-client",
+			ID: 6, GivenName: "weedle",
 			IPv4: ptrAddr("100.83.200.69"), IPv6: ptrAddr("fd7a:115c:a1e0::c537:c845"),
 			Tags: []string{"tag:client"}, Hostinfo: &tailcfg.Hostinfo{},
 		},
 		{
-			ID: 7, GivenName: "subnet-router",
+			ID: 7, GivenName: "squirtle",
 			IPv4: ptrAddr("100.92.142.61"), IPv6: ptrAddr("fd7a:115c:a1e0::3e37:8e3d"),
 			Tags: []string{"tag:router"},
 			Hostinfo: &tailcfg.Hostinfo{
@@ -96,7 +97,7 @@ func setupACLCompatNodes(users types.Users) types.Nodes {
 			ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 		},
 		{
-			ID: 8, GivenName: "exit-node",
+			ID: 8, GivenName: "charmander",
 			IPv4: ptrAddr("100.85.66.106"), IPv6: ptrAddr("fd7a:115c:a1e0::7c37:426a"),
 			Tags: []string{"tag:exit"}, Hostinfo: &tailcfg.Hostinfo{},
 		},

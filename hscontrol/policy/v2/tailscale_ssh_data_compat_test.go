@@ -19,7 +19,6 @@ package v2
 import (
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -33,43 +32,41 @@ import (
 
 
 // setupSSHDataCompatUsers returns the 3 test users for SSH data-driven
-// compatibility tests. The user configuration matches the Tailscale test
-// environment with email domains preserved for localpart matching:
-//   - kratail2tid@example.com (converted from @passkey)
-//   - kristoffer@dalby.cc (kept as-is — different domain for localpart exclusion)
-//   - monitorpasskeykradalby@example.com (converted from @passkey)
+// compatibility tests. Users get norse-god names; nodes get original-151
+// pokémon names — matching the anonymized identifiers tscap writes into
+// the capture files (see github.com/kradalby/tscap/anonymize).
 func setupSSHDataCompatUsers() types.Users {
 	return types.Users{
 		{
 			Model: gorm.Model{ID: 1},
-			Name:  "kratail2tid",
-			Email: "kratail2tid@example.com",
+			Name:  "odin",
+			Email: "odin@example.com",
 		},
 		{
 			Model: gorm.Model{ID: 2},
-			Name:  "kristoffer",
-			Email: "kristoffer@dalby.cc",
+			Name:  "thor",
+			Email: "thor@example.com",
 		},
 		{
 			Model: gorm.Model{ID: 3},
-			Name:  "monitorpasskeykradalby",
-			Email: "monitorpasskeykradalby@example.com",
+			Name:  "freya",
+			Email: "freya@example.com",
 		},
 	}
 }
 
-// setupSSHDataCompatNodes returns the 5 test nodes for SSH data-driven
-// compatibility tests. Node GivenNames match the keys in the JSON files:
-//   - user1 (owned by kratail2tid)
-//   - user-kris (owned by kristoffer)
-//   - user-mon (owned by monitorpasskeykradalby)
-//   - tagged-server (tag:server)
-//   - tagged-prod (tag:prod)
+// setupSSHDataCompatNodes returns the test nodes for SSH data-driven
+// compatibility tests. Node GivenNames match the anonymized pokémon names:
+//   - bulbasaur (owned by odin)
+//   - ivysaur (owned by thor)
+//   - venusaur (owned by freya)
+//   - beedrill (tag:server)
+//   - kakuna (tag:prod)
 func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 	return types.Nodes{
 		&types.Node{
 			ID:        1,
-			GivenName: "user1",
+			GivenName: "bulbasaur",
 			User:      &users[0],
 			UserID:    &users[0].ID,
 			IPv4:      ptrAddr("100.90.199.68"),
@@ -78,7 +75,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        2,
-			GivenName: "user-kris",
+			GivenName: "ivysaur",
 			User:      &users[1],
 			UserID:    &users[1].ID,
 			IPv4:      ptrAddr("100.110.121.96"),
@@ -87,7 +84,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        3,
-			GivenName: "user-mon",
+			GivenName: "venusaur",
 			User:      &users[2],
 			UserID:    &users[2].ID,
 			IPv4:      ptrAddr("100.103.90.82"),
@@ -96,7 +93,7 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        4,
-			GivenName: "tagged-server",
+			GivenName: "beedrill",
 			IPv4:      ptrAddr("100.108.74.26"),
 			IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
 			Tags:      []string{"tag:server"},
@@ -104,26 +101,13 @@ func setupSSHDataCompatNodes(users types.Users) types.Nodes {
 		},
 		&types.Node{
 			ID:        5,
-			GivenName: "tagged-prod",
+			GivenName: "kakuna",
 			IPv4:      ptrAddr("100.103.8.15"),
 			IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
 			Tags:      []string{"tag:prod"},
 			Hostinfo:  &tailcfg.Hostinfo{},
 		},
 	}
-}
-
-// convertSSHPolicyEmails converts Tailscale SaaS email domains to
-// headscale-compatible format in the raw policy JSON.
-//
-// The @passkey domain is converted to @example.com. The @dalby.cc domain
-// is kept as-is to preserve localpart matching semantics (kristoffer should
-// NOT match localpart:*@example.com, just as it doesn't match
-// localpart:*@passkey in Tailscale SaaS).
-func convertSSHPolicyEmails(s string) string {
-	s = strings.ReplaceAll(s, "@passkey", "@example.com")
-
-	return s
 }
 
 // loadSSHTestFile loads and parses a single SSH capture HuJSON file.
@@ -196,10 +180,11 @@ func TestSSHDataCompat(t *testing.T) {
 				return
 			}
 
-			// Use the captured full policy verbatim (with email-domain conversion).
-			policyJSON := convertSSHPolicyEmails(string(tf.Input.FullPolicy))
+			// Use the captured full policy verbatim. Anonymization in
+			// tscap already rewrites SaaS emails to @example.com.
+			policyJSON := tf.Input.FullPolicy
 
-			pol, err := unmarshalPolicy([]byte(policyJSON))
+			pol, err := unmarshalPolicy(policyJSON)
 			require.NoError(
 				t,
 				err,
