@@ -677,7 +677,7 @@ AND auth_key_id NOT IN (
 							continue
 						}
 
-						mergedTags := append(existingTags, validatedTags...)
+						mergedTags := append(slices.Clone(existingTags), validatedTags...)
 						slices.Sort(mergedTags)
 						mergedTags = slices.Compact(mergedTags)
 
