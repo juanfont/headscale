@@ -447,6 +447,37 @@ All test runs save comprehensive debugging artifacts to `control_logs/TIMESTAMP-
 
 ## Testing Guidelines
 
+### Test Log Output
+
+By default, `go test ./...` runs with zerolog set to `ErrorLevel`. This is configured centrally by an `init()` in `hscontrol/types/testlog.go`, which uses `testing.Testing()` to detect test mode and only applies to test binaries — production binaries are unaffected. Because `hscontrol/types` is transitively imported by every package that emits zerolog output, this single insertion point silences all `go test` runs without any per-package boilerplate.
+
+To re-enable verbose logs while debugging a specific test, set the `HEADSCALE_TEST_LOG_LEVEL` environment variable to any zerolog level (`trace`, `debug`, `info`, `warn`, `error`, `fatal`, `panic`, `disabled`):
+
+```bash
+# Show all zerolog output for one package
+HEADSCALE_TEST_LOG_LEVEL=trace go test -v ./hscontrol/mapper/...
+
+# See debug and above for a single test
+HEADSCALE_TEST_LOG_LEVEL=debug go test -v ./hscontrol/db/... -run TestNodeRegistration
+
+# Make CI fully silent (suppress even errors)
+HEADSCALE_TEST_LOG_LEVEL=disabled go test ./...
+```
+
+**Do not add per-test `zerolog.SetGlobalLevel` calls.** The central mechanism handles the default. If a specific test genuinely needs a different level (e.g., a benchmark that wants to assert on log output, or a test that needs to capture errors), use the save/restore idiom so subsequent tests in the same binary are not affected:
+
+```go
+originalLevel := zerolog.GlobalLevel()
+defer zerolog.SetGlobalLevel(originalLevel)
+zerolog.SetGlobalLevel(zerolog.DebugLevel)
+```
+
+**Pitfalls**:
+
+- `log.Fatal()` still calls `os.Exit(1)` and `log.Panic()` still panics regardless of level — only the rendered message is suppressed.
+- Local buffer loggers created via `zerolog.New(&buf)` are also gated by the global level. Tests that assert on log output (currently only `hscontrol/util/zlog`) re-enable trace level via their own `init_test.go`.
+- Avoid the broken `defer zerolog.SetGlobalLevel(zerolog.DebugLevel)` pattern. It restores to `DebugLevel` instead of the prior level, polluting global state for subsequent tests in the same binary.
+
 ### Integration Test Patterns
 
 #### **CRITICAL: EventuallyWithT Pattern for External Calls**
