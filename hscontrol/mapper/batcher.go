@@ -178,10 +178,20 @@ func handleNodeChange(nc nodeConnection, mapper *mapper, r change.Change) error 
 	// Send the map response
 	err = nc.send(data)
 	if err != nil {
+		// If the node has no active connections, the data was not
+		// delivered. Do not update lastSentPeers — recording phantom
+		// peer state would corrupt future computePeerDiff calculations,
+		// causing the node to miss peer additions or removals after
+		// reconnection.
+		if errors.Is(err, errNoActiveConnections) {
+			return nil
+		}
+
 		return fmt.Errorf("sending map response to node %d: %w", nodeID, err)
 	}
 
-	// Update peer tracking after successful send
+	// Update peer tracking only after confirmed delivery to at
+	// least one active connection.
 	nc.updateSentPeers(data)
 
 	return nil

@@ -1,6 +1,7 @@
 package mapper
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -15,6 +16,12 @@ import (
 	"github.com/rs/zerolog/log"
 	"tailscale.com/tailcfg"
 )
+
+// errNoActiveConnections is returned by send when a node has no active
+// connections (disconnected but kept in the batcher for rapid reconnection).
+// Callers must not update peer tracking state (lastSentPeers) after this
+// error because the data was never delivered to any client.
+var errNoActiveConnections = errors.New("no active connections")
 
 // connectionEntry represents a single connection to a node.
 type connectionEntry struct {
@@ -243,7 +250,7 @@ func (mc *multiChannelNodeConn) send(data *tailcfg.MapResponse) error {
 		mc.log.Trace().
 			Msg("send: no active connections, skipping")
 
-		return nil
+		return errNoActiveConnections
 	}
 
 	// Copy the slice so we can release the read lock before sending.

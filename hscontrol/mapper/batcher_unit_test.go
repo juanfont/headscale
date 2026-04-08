@@ -339,8 +339,9 @@ func TestMultiChannelSend_ZeroConnections(t *testing.T) {
 
 	err := mc.send(testMapResponse())
 
-	require.NoError(t, err,
-		"sending to node with 0 connections should succeed silently (rapid reconnection scenario)")
+	require.ErrorIs(t, err, errNoActiveConnections,
+		"sending to node with 0 connections should return errNoActiveConnections "+
+			"so callers skip updateSentPeers (prevents phantom peer state)")
 }
 
 func TestMultiChannelSend_NilData(t *testing.T) {
