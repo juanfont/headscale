@@ -36,23 +36,26 @@ import (
 
 
 // setupGrantsCompatUsers returns the 3 test users for grants compatibility tests.
-// Email addresses use @example.com domain, matching the converted Tailscale policy format.
+// Users get norse-god names; nodes get original-151 pokémon names — matching
+// the anonymized identifiers tscap writes into the capture files
+// (see github.com/kradalby/tscap/anonymize).
 func setupGrantsCompatUsers() types.Users {
 	return types.Users{
-		{Model: gorm.Model{ID: 1}, Name: "kratail2tid", Email: "kratail2tid@example.com"},
-		{Model: gorm.Model{ID: 2}, Name: "kristoffer", Email: "kristoffer@example.com"},
-		{Model: gorm.Model{ID: 3}, Name: "monitorpasskeykradalby", Email: "monitorpasskeykradalby@example.com"},
+		{Model: gorm.Model{ID: 1}, Name: "odin", Email: "odin@example.com"},
+		{Model: gorm.Model{ID: 2}, Name: "thor", Email: "thor@example.com"},
+		{Model: gorm.Model{ID: 3}, Name: "freya", Email: "freya@example.com"},
 	}
 }
 
-// setupGrantsCompatNodes returns the 8 test nodes for grants compatibility tests.
+// setupGrantsCompatNodes returns the 15 test nodes for grants compatibility tests.
 // The node configuration matches the Tailscale test environment:
-//   - 3 user-owned nodes (user1, user-kris, user-mon)
-//   - 5 tagged nodes (tagged-server, tagged-prod, tagged-client, subnet-router, exit-node)
+//   - 3 user-owned nodes (bulbasaur, ivysaur, venusaur)
+//   - 12 tagged nodes (beedrill, kakuna, weedle, squirtle, charmander,
+//     pidgey, pidgeotto, rattata, raticate, spearow, fearow, blastoise)
 func setupGrantsCompatNodes(users types.Users) types.Nodes {
-	nodeUser1 := &types.Node{
+	nodeBulbasaur := &types.Node{
 		ID:        1,
-		GivenName: "user1",
+		GivenName: "bulbasaur",
 		User:      &users[0],
 		UserID:    &users[0].ID,
 		IPv4:      ptrAddr("100.90.199.68"),
@@ -60,9 +63,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeUserKris := &types.Node{
+	nodeIvysaur := &types.Node{
 		ID:        2,
-		GivenName: "user-kris",
+		GivenName: "ivysaur",
 		User:      &users[1],
 		UserID:    &users[1].ID,
 		IPv4:      ptrAddr("100.110.121.96"),
@@ -70,9 +73,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeUserMon := &types.Node{
+	nodeVenusaur := &types.Node{
 		ID:        3,
-		GivenName: "user-mon",
+		GivenName: "venusaur",
 		User:      &users[2],
 		UserID:    &users[2].ID,
 		IPv4:      ptrAddr("100.103.90.82"),
@@ -80,36 +83,36 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeTaggedServer := &types.Node{
+	nodeBeedrill := &types.Node{
 		ID:        4,
-		GivenName: "tagged-server",
+		GivenName: "beedrill",
 		IPv4:      ptrAddr("100.108.74.26"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::b901:4a87"),
 		Tags:      []string{"tag:server"},
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeTaggedProd := &types.Node{
+	nodeKakuna := &types.Node{
 		ID:        5,
-		GivenName: "tagged-prod",
+		GivenName: "kakuna",
 		IPv4:      ptrAddr("100.103.8.15"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::5b37:80f"),
 		Tags:      []string{"tag:prod"},
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeTaggedClient := &types.Node{
+	nodeWeedle := &types.Node{
 		ID:        6,
-		GivenName: "tagged-client",
+		GivenName: "weedle",
 		IPv4:      ptrAddr("100.83.200.69"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::c537:c845"),
 		Tags:      []string{"tag:client"},
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeSubnetRouter := &types.Node{
+	nodeSquirtle := &types.Node{
 		ID:        7,
-		GivenName: "subnet-router",
+		GivenName: "squirtle",
 		IPv4:      ptrAddr("100.92.142.61"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::3e37:8e3d"),
 		Tags:      []string{"tag:router"},
@@ -119,9 +122,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.33.0.0/16")},
 	}
 
-	nodeExitNode := &types.Node{
+	nodeCharmander := &types.Node{
 		ID:        8,
-		GivenName: "exit-node",
+		GivenName: "charmander",
 		IPv4:      ptrAddr("100.85.66.106"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::7c37:426a"),
 		Tags:      []string{"tag:exit"},
@@ -139,9 +142,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 
 	// --- New nodes for expanded via grant topology ---
 
-	nodeExitA := &types.Node{
+	nodePidgey := &types.Node{
 		ID:        9,
-		GivenName: "exit-a",
+		GivenName: "pidgey",
 		IPv4:      ptrAddr("100.124.195.93"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::7837:c35d"),
 		Tags:      []string{"tag:exit-a"},
@@ -157,9 +160,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		},
 	}
 
-	nodeExitB := &types.Node{
+	nodePidgeotto := &types.Node{
 		ID:        10,
-		GivenName: "exit-b",
+		GivenName: "pidgeotto",
 		IPv4:      ptrAddr("100.116.18.24"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::ff37:1218"),
 		Tags:      []string{"tag:exit-b"},
@@ -175,27 +178,27 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		},
 	}
 
-	nodeGroupA := &types.Node{
+	nodeRattata := &types.Node{
 		ID:        11,
-		GivenName: "group-a-client",
+		GivenName: "rattata",
 		IPv4:      ptrAddr("100.107.162.14"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::a237:a20e"),
 		Tags:      []string{"tag:group-a"},
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeGroupB := &types.Node{
+	nodeRaticate := &types.Node{
 		ID:        12,
-		GivenName: "group-b-client",
+		GivenName: "raticate",
 		IPv4:      ptrAddr("100.77.135.18"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::4b37:8712"),
 		Tags:      []string{"tag:group-b"},
 		Hostinfo:  &tailcfg.Hostinfo{},
 	}
 
-	nodeRouterA := &types.Node{
+	nodeSpearow := &types.Node{
 		ID:        13,
-		GivenName: "router-a",
+		GivenName: "spearow",
 		IPv4:      ptrAddr("100.109.43.124"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::a537:2b7c"),
 		Tags:      []string{"tag:router-a"},
@@ -205,9 +208,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.44.0.0/16")},
 	}
 
-	nodeRouterB := &types.Node{
+	nodeFearow := &types.Node{
 		ID:        14,
-		GivenName: "router-b",
+		GivenName: "fearow",
 		IPv4:      ptrAddr("100.65.172.123"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::5a37:ac7c"),
 		Tags:      []string{"tag:router-b"},
@@ -217,9 +220,9 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 		ApprovedRoutes: []netip.Prefix{netip.MustParsePrefix("10.55.0.0/16")},
 	}
 
-	nodeMultiExitRouter := &types.Node{
+	nodeBlastoise := &types.Node{
 		ID:        15,
-		GivenName: "multi-exit-router",
+		GivenName: "blastoise",
 		IPv4:      ptrAddr("100.105.127.107"),
 		IPv6:      ptrAddr("fd7a:115c:a1e0::9537:7f6b"),
 		Tags:      []string{"tag:exit", "tag:router"},
@@ -238,21 +241,21 @@ func setupGrantsCompatNodes(users types.Users) types.Nodes {
 	}
 
 	return types.Nodes{
-		nodeUser1,
-		nodeUserKris,
-		nodeUserMon,
-		nodeTaggedServer,
-		nodeTaggedProd,
-		nodeTaggedClient,
-		nodeSubnetRouter,
-		nodeExitNode,
-		nodeExitA,
-		nodeExitB,
-		nodeGroupA,
-		nodeGroupB,
-		nodeRouterA,
-		nodeRouterB,
-		nodeMultiExitRouter,
+		nodeBulbasaur,
+		nodeIvysaur,
+		nodeVenusaur,
+		nodeBeedrill,
+		nodeKakuna,
+		nodeWeedle,
+		nodeSquirtle,
+		nodeCharmander,
+		nodePidgey,
+		nodePidgeotto,
+		nodeRattata,
+		nodeRaticate,
+		nodeSpearow,
+		nodeFearow,
+		nodeBlastoise,
 	}
 }
 
@@ -267,22 +270,12 @@ func findGrantsNode(nodes types.Nodes, name string) *types.Node {
 	return nil
 }
 
-// convertPolicyUserEmails converts Tailscale SaaS user email formats to
-// headscale-compatible @example.com format in the raw policy JSON.
-//
-// Tailscale uses provider-specific email formats:
-//   - kratail2tid@passkey (passkey auth)
-//   - kristoffer@dalby.cc (email auth)
-//   - monitorpasskeykradalby@passkey (passkey auth)
-//
-// Headscale resolves users by Email field, so we convert all to @example.com.
+// convertPolicyUserEmails used to map SaaS-side emails to @example.com.
+// tscap now anonymizes the policy JSON at write time (kratail2tid -> odin,
+// kristoffer -> thor, monitorpasskeykradalby -> freya), so the captured
+// FullPolicy is already in its final form and this is a passthrough.
 func convertPolicyUserEmails(policyJSON []byte) []byte {
-	s := string(policyJSON)
-	s = strings.ReplaceAll(s, "kratail2tid@passkey", "kratail2tid@example.com")
-	s = strings.ReplaceAll(s, "kristoffer@dalby.cc", "kristoffer@example.com")
-	s = strings.ReplaceAll(s, "monitorpasskeykradalby@passkey", "monitorpasskeykradalby@example.com")
-
-	return []byte(s)
+	return policyJSON
 }
 
 // loadGrantTestFile loads and parses a single grant capture HuJSON file.
@@ -351,11 +344,12 @@ func TestGrantsCompat(t *testing.T) {
 
 			// Determine which node set to use based on the test's topology.
 			// Tests captured with the expanded 15-node topology (V26+) have
-			// nodes like exit-a, group-a-client, etc. Tests from the original
-			// 8-node topology should only use the first 8 nodes to avoid
-			// resolving extra IPs from nodes that weren't present during capture.
+			// nodes like pidgey (exit-a), rattata (group-a-client), etc.
+			// Tests from the original 8-node topology should only use the
+			// first 8 nodes to avoid resolving extra IPs from nodes that
+			// weren't present during capture.
 			nodes := allNodes
-			if _, hasNewNodes := tf.Captures["exit-a"]; !hasNewNodes {
+			if _, hasNewNodes := tf.Captures["pidgey"]; !hasNewNodes {
 				nodes = allNodes[:8]
 			}
 
@@ -504,7 +498,7 @@ func testGrantSuccess(
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
 			// Check if this node was offline during capture.
-			// tagged-prod was frequently offline (132 of 188 success tests).
+			// kakuna (tag:prod) was frequently offline (132 of 188 success tests).
 			// When offline, packet_filter_rules is null and topology shows
 			// hostname="unknown" with empty tags.
 			captureIsNull := len(capture.PacketFilterRules) == 0 ||
