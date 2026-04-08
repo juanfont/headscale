@@ -546,6 +546,13 @@ func (s *State) Connect(id types.NodeID) ([]change.Change, uint64) {
 		c = append(c, change.NodeAdded(id))
 	}
 
+	// Mirror Disconnect: a node coming online may (re)enable cap/relay
+	// grants targeting it, reintroduce identity-based aliases that
+	// resolve to its tags/IPs, and so on. Always trigger a PolicyChange
+	// so peers can recompute their netmap and pick up any policy
+	// elements that depend on this node being present.
+	c = append(c, change.PolicyChange())
+
 	return c, gen
 }
 
@@ -619,15 +626,18 @@ func (s *State) Disconnect(id types.NodeID, gen uint64) ([]change.Change, error)
 
 	// The node is disconnecting so make sure that none of the routes it
 	// announced are served to any nodes.
-	routeChange := s.primaryRoutes.SetRoutes(id)
+	s.primaryRoutes.SetRoutes(id)
 
-	cs := []change.Change{change.NodeOfflineFor(node), c}
-
-	// If we have a policy change or route change, return that as it's more comprehensive
-	// Otherwise, return the NodeOffline change to ensure nodes are notified
-	if c.IsFull() || routeChange {
-		cs = append(cs, change.PolicyChange())
-	}
+	// A node going offline can affect policy compilation in ways beyond
+	// subnet routes: cap/relay grants targeting this node, identity-based
+	// aliases (tags, groups, users) that reference its tags/IPs, via
+	// routes steered through it, and so on. Always trigger a PolicyChange
+	// so peers receive a recomputed netmap and drop any cached state
+	// derived from this node (including peer relay allocations).
+	//
+	// TODO(kradalby): fires one full netmap recompute per peer on
+	// every connect/disconnect. Coalesce in mapper/batcher.go:addToBatch.
+	cs := []change.Change{change.NodeOfflineFor(node), c, change.PolicyChange()}
 
 	return cs, nil
 }
