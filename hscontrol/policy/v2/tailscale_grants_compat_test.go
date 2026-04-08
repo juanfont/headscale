@@ -1,27 +1,25 @@
-// This file is "generated" by Claude.
-// It contains a data-driven test that reads 237 GRANT-*.json test files
-// captured from Tailscale SaaS. Each file contains:
-//   - A policy with grants (and optionally ACLs)
-//   - The expected packet_filter_rules for each of 8 test nodes
+// This file implements a data-driven test runner for grant compatibility
+// tests. It loads HuJSON golden files from testdata/grant_results/grant-*.hujson
+// and via-grant-*.hujson, captured from Tailscale SaaS by tscap, and compares
+// headscale's grants engine output against the captured packet filter rules.
+//
+// Each file is a testcapture.Capture containing:
+//   - A full policy with grants (and optionally ACLs)
+//   - The expected packet_filter_rules for each of 8-15 test nodes
 //   - Or an error response for invalid policies
 //
-// The test loads each JSON file, applies the policy through headscale's
-// grants engine, and compares the output against Tailscale's actual behavior.
+// Tests known to fail due to unimplemented features or known differences are
+// skipped with a TODO comment explaining the root cause. As headscale's grants
+// implementation improves, tests should be removed from the skip list.
 //
-// Tests that are known to fail due to unimplemented features or known
-// differences are skipped with a TODO comment explaining the root cause.
-// As headscale's grants implementation improves, tests should be removed
-// from the skip list.
-//
-// Test data source: testdata/grant_results/GRANT-*.json
-// Captured from: Tailscale SaaS API + tailscale debug localapi
+// Test data source: testdata/grant_results/{grant,via-grant}-*.hujson
+// Source format:    github.com/juanfont/headscale/hscontrol/types/testcapture
 
 package v2
 
 import (
 	"encoding/json"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,35 +28,12 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/juanfont/headscale/hscontrol/policy/policyutil"
 	"github.com/juanfont/headscale/hscontrol/types"
+	"github.com/juanfont/headscale/hscontrol/types/testcapture"
 	"github.com/stretchr/testify/require"
-	"github.com/tailscale/hujson"
 	"gorm.io/gorm"
 	"tailscale.com/tailcfg"
 )
 
-// grantTestFile represents the JSON structure of a captured grant test file.
-type grantTestFile struct {
-	TestID string `json:"test_id"`
-	Error  bool   `json:"error"`
-	Input  struct {
-		FullPolicy      json.RawMessage `json:"full_policy"`
-		APIResponseCode int             `json:"api_response_code"`
-		APIResponseBody *struct {
-			Message string `json:"message"`
-		} `json:"api_response_body"`
-	} `json:"input"`
-	Topology struct {
-		Nodes map[string]struct {
-			Hostname string   `json:"hostname"`
-			Tags     []string `json:"tags"`
-			IPv4     string   `json:"ipv4"`
-			IPv6     string   `json:"ipv6"`
-		} `json:"nodes"`
-	} `json:"topology"`
-	Captures map[string]struct {
-		PacketFilterRules json.RawMessage `json:"packet_filter_rules"`
-	} `json:"captures"`
-}
 
 // setupGrantsCompatUsers returns the 3 test users for grants compatibility tests.
 // Email addresses use @example.com domain, matching the converted Tailscale policy format.
@@ -310,23 +285,14 @@ func convertPolicyUserEmails(policyJSON []byte) []byte {
 	return []byte(s)
 }
 
-// loadGrantTestFile loads and parses a single grant test JSON file.
-func loadGrantTestFile(t *testing.T, path string) grantTestFile {
+// loadGrantTestFile loads and parses a single grant capture HuJSON file.
+func loadGrantTestFile(t *testing.T, path string) *testcapture.Capture {
 	t.Helper()
 
-	content, err := os.ReadFile(path)
+	c, err := testcapture.Read(path)
 	require.NoError(t, err, "failed to read test file %s", path)
 
-	ast, err := hujson.Parse(content)
-	require.NoError(t, err, "failed to parse HuJSON in %s", path)
-	ast.Standardize()
-
-	var tf grantTestFile
-
-	err = json.Unmarshal(ast.Pack(), &tf)
-	require.NoError(t, err, "failed to unmarshal test file %s", path)
-
-	return tf
+	return c
 }
 
 // Skip categories document WHY tests are expected to differ from Tailscale SaaS.
@@ -341,8 +307,8 @@ var grantSkipReasons = map[string]string{
 	// Tailscale SaaS policies can use user:*@passkey as a wildcard matching
 	// all passkey-authenticated users. headscale does not support passkey
 	// authentication and has no equivalent for this wildcard pattern.
-	"GRANT-K20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
-	"GRANT-K21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
+	"grant-k20": "USER_PASSKEY_WILDCARD: src=user:*@passkey not supported in headscale",
+	"grant-k21": "USER_PASSKEY_WILDCARD: dst=user:*@passkey not supported in headscale",
 }
 
 // TestGrantsCompat is a data-driven test that loads all GRANT-*.json
@@ -362,9 +328,9 @@ var grantSkipReasons = map[string]string{
 func TestGrantsCompat(t *testing.T) {
 	t.Parallel()
 
-	files, err := filepath.Glob(filepath.Join("testdata", "grant_results", "GRANT-*.hujson"))
+	files, err := filepath.Glob(filepath.Join("testdata", "grant_results", "*-*.hujson"))
 	require.NoError(t, err, "failed to glob test files")
-	require.NotEmpty(t, files, "no GRANT-*.hujson test files found in testdata/grant_results/")
+	require.NotEmpty(t, files, "no grant test files found in testdata/grant_results/")
 
 	t.Logf("Loaded %d grant test files", len(files))
 
@@ -407,7 +373,7 @@ func TestGrantsCompat(t *testing.T) {
 }
 
 // testGrantError verifies that an invalid policy produces the expected error.
-func testGrantError(t *testing.T, policyJSON []byte, tf grantTestFile) {
+func testGrantError(t *testing.T, policyJSON []byte, tf *testcapture.Capture) {
 	t.Helper()
 
 	wantMsg := ""
@@ -523,7 +489,7 @@ func extractErrorKeyParts(msg string) []string {
 func testGrantSuccess(
 	t *testing.T,
 	policyJSON []byte,
-	tf grantTestFile,
+	tf *testcapture.Capture,
 	users types.Users,
 	nodes types.Nodes,
 ) {
