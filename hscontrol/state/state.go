@@ -64,6 +64,39 @@ var ErrNodeNotInNodeStore = errors.New("node no longer exists in NodeStore")
 // ErrNodeNameNotUnique is returned when a node name is not unique.
 var ErrNodeNameNotUnique = errors.New("node name is not unique")
 
+// nodeUpdateColumns lists all Node columns that should be written
+// during a struct-based GORM Updates() call.  Listing them explicitly
+// forces GORM to include nil/zero-value fields (e.g. UserID=nil when
+// converting a user-owned node to tagged) that struct-based Updates()
+// would otherwise silently skip.
+//
+// Excluded columns:
+//   - AuthKeyID, AuthKey: prevents GORM from persisting stale
+//     PreAuthKey references after a key has been deleted (#2862).
+//   - User: GORM association, not a real column.
+//   - IsOnline: runtime-only field (gorm:"-").
+//
+// Expiry is included here but may be omitted at call sites that must
+// not touch it (see persistNodeToDB).
+var nodeUpdateColumns = []string{
+	"MachineKey",
+	"NodeKey",
+	"DiscoKey",
+	"Endpoints",
+	"Hostinfo",
+	"IPv4",
+	"IPv6",
+	"Hostname",
+	"GivenName",
+	"UserID",
+	"RegisterMethod",
+	"Tags",
+	"Expiry",
+	"LastSeen",
+	"ApprovedRoutes",
+	"UpdatedAt",
+}
+
 // ErrRegistrationExpired is returned when a registration has expired.
 var ErrRegistrationExpired = errors.New("registration expired")
 
@@ -449,14 +482,11 @@ func (s *State) persistNodeToDB(node types.NodeView) (types.NodeView, change.Cha
 
 	nodePtr := node.AsStruct()
 
-	// Use Omit to prevent overwriting certain fields during MapRequest updates:
-	// - "expiry": should only be updated through explicit SetNodeExpiry calls or re-registration
-	// - "AuthKeyID", "AuthKey": prevents GORM from persisting stale PreAuthKey references that
-	//   may exist in NodeStore after a PreAuthKey has been deleted. The database handles setting
-	//   auth_key_id to NULL via ON DELETE SET NULL. Without this, Updates() would fail with a
-	//   foreign key constraint error when trying to reference a deleted PreAuthKey.
-	// See also: https://github.com/juanfont/headscale/issues/2862
-	err := s.db.DB.Omit("expiry", "AuthKeyID", "AuthKey").Updates(nodePtr).Error
+	// Explicitly select all node columns so GORM includes nil/zero-value
+	// fields (e.g. UserID=nil when converting a user-owned node to tagged).
+	// Omit "Expiry" here: expiry is only updated through explicit
+	// SetNodeExpiry calls or re-registration, not during MapRequest updates.
+	err := s.db.DB.Select(nodeUpdateColumns).Omit("Expiry").Updates(nodePtr).Error
 	if err != nil {
 		return types.NodeView{}, change.Change{}, fmt.Errorf("saving node: %w", err)
 	}
@@ -1458,10 +1488,11 @@ func (s *State) applyAuthNodeUpdate(params authNodeUpdateParams) (types.NodeView
 		return types.NodeView{}, fmt.Errorf("%w: %d", ErrNodeNotInNodeStore, params.ExistingNode.ID())
 	}
 
-	// Persist to database
-	// Omit AuthKeyID/AuthKey to prevent stale PreAuthKey references from causing FK errors.
+	// Persist to database.
+	// Explicitly select all node columns so GORM includes nil/zero-value fields
+	// (see nodeUpdateColumns comment).
 	_, err := hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-		err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
+		err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
 		if err != nil {
 			return nil, fmt.Errorf("saving node: %w", err)
 		}
@@ -2082,9 +2113,9 @@ func (s *State) HandleNodeFromPreAuthKey(
 		}
 
 		_, err = hsdb.Write(s.db.DB, func(tx *gorm.DB) (*types.Node, error) {
-			// Use Updates() to preserve fields not modified by UpdateNode.
-			// Omit AuthKeyID/AuthKey to prevent stale PreAuthKey references from causing FK errors.
-			err := tx.Omit("AuthKeyID", "AuthKey").Updates(updatedNodeView.AsStruct()).Error
+			// Explicitly select all node columns so GORM includes nil/zero-value fields
+			// (see nodeUpdateColumns comment).
+			err := tx.Select(nodeUpdateColumns).Updates(updatedNodeView.AsStruct()).Error
 			if err != nil {
 				return nil, fmt.Errorf("saving node: %w", err)
 			}
