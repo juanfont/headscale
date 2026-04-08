@@ -57,21 +57,11 @@ func loadRoutesTestFile(t *testing.T, path string) *testcapture.Capture {
 	return c
 }
 
-// convertSaaSEmail rewrites a Tailscale SaaS user email to its
-// headscale-equivalent @example.com form, matching the convention used by
-// convertPolicyUserEmails. The kristoffer@dalby.cc and *@passkey domains
-// are normalized to @example.com so that policy resolution finds the user
-// objects we set up in the test.
+// convertSaaSEmail used to map SaaS-side emails to @example.com placeholders.
+// tscap now anonymizes captures at write time (norse-god names + pokémon
+// hostnames), so the captured topology emails are already in their final
+// form and this is a passthrough.
 func convertSaaSEmail(email string) string {
-	switch email {
-	case "kratail2tid@passkey":
-		return "kratail2tid@example.com"
-	case "kristoffer@dalby.cc":
-		return "kristoffer@example.com"
-	case "monitorpasskeykradalby@passkey":
-		return "monitorpasskeykradalby@example.com"
-	}
-
 	return email
 }
 
