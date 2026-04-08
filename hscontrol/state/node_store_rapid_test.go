@@ -116,26 +116,15 @@ func genNode() *rapid.Generator[types.Node] {
 	})
 }
 
-// genNodeMap generates a map of NodeID -> Node with unique IDs.
-// The map size is bounded to keep tests fast.
-// With 30% probability per node, a previously generated node's MachineKey
-// is reused to exercise shared-MachineKey code paths (e.g., nodesByMachineKey
-// multi-user maps).
+// genNodeMap generates a map of NodeID -> Node with unique IDs and
+// unique MachineKeys. MachineKeys are unique per node in production
+// (enforced at registration time), so the generator must not share them.
 func genNodeMap(maxSize int) *rapid.Generator[map[types.NodeID]types.Node] {
 	return rapid.Custom[map[types.NodeID]types.Node](func(t *rapid.T) map[types.NodeID]types.Node {
 		n := rapid.IntRange(0, maxSize).Draw(t, "mapSize")
 		nodes := make(map[types.NodeID]types.Node, n)
-		var machineKeys []key.MachinePublic
 		for len(nodes) < n {
 			node := genNode().Draw(t, "node")
-			// 30% chance to reuse a MachineKey from a previously generated node.
-			if len(machineKeys) > 0 && rapid.IntRange(0, 9).Draw(t, "reuseMK") < 3 {
-				idx := rapid.IntRange(0, len(machineKeys)-1).Draw(t, "mkIdx")
-				node.MachineKey = machineKeys[idx]
-			} else {
-				machineKeys = append(machineKeys, node.MachineKey)
-			}
-			// Overwrite if ID exists; that's fine for unique-ID maps.
 			nodes[node.ID] = node
 		}
 		return nodes
@@ -304,7 +293,7 @@ func TestRapid_Snapshot_NodesByNodeKeyConsistency(t *testing.T) {
 
 // ============================================================================
 // Property 4: nodesByMachineKey consistency — every node can be found via
-// its machine key + user ID
+// its machine key, and MachineKeys are unique across all nodes
 // ============================================================================
 
 func TestRapid_Snapshot_NodesByMachineKeyConsistency(t *testing.T) {
@@ -312,6 +301,7 @@ func TestRapid_Snapshot_NodesByMachineKeyConsistency(t *testing.T) {
 		nodes := genNodeMap(30).Draw(t, "nodes")
 		snap := snapshotFromNodes(nodes, allVisiblePeersFunc)
 
+		// Every node must be findable via its MachineKey.
 		for _, node := range snap.nodesByID {
 			userMap, ok := snap.nodesByMachineKey[node.MachineKey]
 			if !ok {
@@ -328,6 +318,18 @@ func TestRapid_Snapshot_NodesByMachineKeyConsistency(t *testing.T) {
 				t.Fatalf("nodesByMachineKey lookup for node %d returned node %d",
 					node.ID, nv.ID())
 			}
+		}
+
+		// MachineKeys must be unique across all nodes (enforced at registration).
+		// Verify the snapshot index reflects this: each MachineKey maps to
+		// exactly one node (possibly nested under one TypedUserID).
+		mkToNode := make(map[key.MachinePublic]types.NodeID)
+		for _, node := range snap.nodesByID {
+			if prev, exists := mkToNode[node.MachineKey]; exists {
+				t.Fatalf("MachineKey collision: nodes %d and %d share the same MachineKey",
+					prev, node.ID)
+			}
+			mkToNode[node.MachineKey] = node.ID
 		}
 	})
 }
