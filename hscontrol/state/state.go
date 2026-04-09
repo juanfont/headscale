@@ -1214,6 +1214,15 @@ func (s *State) CreateNodeForTest(user *types.User, hostname ...string) *types.N
 	return s.db.CreateNodeForTest(user, hostname...)
 }
 
+// PutNodeInStoreForTest writes a test node into the in-memory NodeStore
+// so handlers backed by NodeStore lookups (e.g. GetNodeByID) can see it.
+// CreateNodeForTest only saves to the database, which is fine for tests
+// that exercise the DB layer directly but insufficient for handler tests
+// that go through State.
+func (s *State) PutNodeInStoreForTest(node types.Node) types.NodeView {
+	return s.nodeStore.PutNode(node)
+}
+
 // CreateRegisteredNodeForTest creates a test node with allocated IPs. This is a convenience wrapper around the database layer.
 func (s *State) CreateRegisteredNodeForTest(user *types.User, hostname ...string) *types.Node {
 	return s.db.CreateRegisteredNodeForTest(user, hostname...)

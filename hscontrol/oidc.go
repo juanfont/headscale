@@ -365,8 +365,12 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// If this is not a registration callback, then its a regular authentication callback
-	// and we need to send a response and confirm that the access was allowed.
+	// If this is not a registration callback, then it is an SSH
+	// check-mode auth callback. Confirm the OIDC identity is the owner
+	// of the SSH source node before recording approval; without this
+	// check any tailnet user could approve a check-mode prompt for any
+	// other user's node, defeating the stolen-key protection that
+	// check-mode is meant to provide.
 
 	authReq, ok := a.h.state.GetAuthCacheEntry(authInfo.AuthID)
 	if !ok {
@@ -376,7 +380,57 @@ func (a *AuthProviderOIDC) OIDCCallbackHandler(
 		return
 	}
 
-	// Send a finish auth verdict with no errors to let the CLI know that the authentication was successful.
+	if !authReq.IsSSHCheck() {
+		log.Warn().Caller().
+			Str("auth_id", authInfo.AuthID.String()).
+			Msg("OIDC callback hit non-registration path with auth request that is not an SSH check binding")
+		httpError(writer, NewHTTPError(http.StatusBadRequest, "auth session is not for SSH check", nil))
+
+		return
+	}
+
+	binding := authReq.SSHCheckBinding()
+
+	srcNode, ok := a.h.state.GetNodeByID(binding.SrcNodeID)
+	if !ok {
+		log.Warn().Caller().
+			Str("auth_id", authInfo.AuthID.String()).
+			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
+			Msg("SSH check src node no longer exists")
+		httpError(writer, NewHTTPError(http.StatusGone, "src node no longer exists", nil))
+
+		return
+	}
+
+	// Strict identity binding: only the user that owns the src node
+	// may approve an SSH check for that node. Tagged source nodes are
+	// rejected because they have no user owner to compare against.
+	if srcNode.IsTagged() || !srcNode.UserID().Valid() {
+		log.Warn().Caller().
+			Str("auth_id", authInfo.AuthID.String()).
+			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
+			Bool("src_is_tagged", srcNode.IsTagged()).
+			Str("oidc_user", user.Username()).
+			Msg("SSH check rejected: src node has no user owner")
+		httpError(writer, NewHTTPError(http.StatusForbidden, "src node has no user owner", nil))
+
+		return
+	}
+
+	if srcNode.UserID().Get() != user.ID {
+		log.Warn().Caller().
+			Str("auth_id", authInfo.AuthID.String()).
+			Uint64("src_node_id", binding.SrcNodeID.Uint64()).
+			Uint("src_owner_id", srcNode.UserID().Get()).
+			Uint("oidc_user_id", user.ID).
+			Str("oidc_user", user.Username()).
+			Msg("SSH check rejected: OIDC user is not the owner of src node")
+		httpError(writer, NewHTTPError(http.StatusForbidden, "OIDC user is not the owner of the SSH source node", nil))
+
+		return
+	}
+
+	// Identity verified — record the verdict for the waiting follow-up.
 	authReq.FinishAuth(types.AuthVerdict{})
 
 	content := renderAuthSuccessTemplate(user)
