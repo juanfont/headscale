@@ -230,6 +230,22 @@ type SSHCheckBinding struct {
 	DstNodeID NodeID
 }
 
+// PendingRegistrationConfirmation captures the server-side state needed
+// to finalise a node registration after the user has confirmed it on
+// the OIDC interstitial. The OIDC callback resolves the user identity
+// and node expiry, stores them on the cached AuthRequest, and renders
+// a confirmation page; only when the user POSTs the confirmation form
+// does the actual node registration run.
+//
+// CSRF is a one-shot per-session token that the OIDC callback set
+// both as a cookie and as a hidden form field. The confirm POST
+// handler refuses to proceed unless the cookie and form values match.
+type PendingRegistrationConfirmation struct {
+	UserID     uint
+	NodeExpiry *time.Time
+	CSRF       string
+}
+
 // AuthRequest represents a pending authentication request from a user or a
 // node. It carries the minimum data needed to either complete a node
 // registration (regData populated) or an SSH check-mode auth (sshBinding
@@ -256,6 +272,13 @@ type AuthRequest struct {
 	// nil for non-SSH-check flows. Use SSHCheckBinding() to read it
 	// safely.
 	sshBinding *SSHCheckBinding
+
+	// pendingConfirmation is populated by the OIDC callback for the
+	// node-registration flow once the user identity has been resolved
+	// but before the user has explicitly confirmed the registration on
+	// the interstitial. The /register/confirm POST handler reads it to
+	// finalise the registration without re-running the OIDC flow.
+	pendingConfirmation *PendingRegistrationConfirmation
 
 	finished chan AuthVerdict
 	closed   *atomic.Bool
@@ -329,6 +352,22 @@ func (rn *AuthRequest) IsRegistration() bool {
 // NewSSHCheckAuthRequest).
 func (rn *AuthRequest) IsSSHCheck() bool {
 	return rn.sshBinding != nil
+}
+
+// SetPendingConfirmation marks this AuthRequest as having an
+// OIDC-resolved user that is waiting to confirm the registration on
+// the interstitial. The OIDC callback should call this and then render
+// the confirmation page; the /register/confirm POST handler reads the
+// stored UserID/NodeExpiry to finish the registration.
+func (rn *AuthRequest) SetPendingConfirmation(p *PendingRegistrationConfirmation) {
+	rn.pendingConfirmation = p
+}
+
+// PendingConfirmation returns the pending OIDC-resolved registration
+// state captured by SetPendingConfirmation, or nil if no OIDC callback
+// has yet resolved an identity for this AuthRequest.
+func (rn *AuthRequest) PendingConfirmation() *PendingRegistrationConfirmation {
+	return rn.pendingConfirmation
 }
 
 func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {

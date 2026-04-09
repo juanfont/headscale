@@ -57,6 +57,27 @@ func TestNewAuthRequestEmptyPayload(t *testing.T) {
 	assert.Panics(t, func() { _ = req.SSHCheckBinding() })
 }
 
+// TestPendingRegistrationConfirmation verifies that the OIDC callback
+// can stash a pending confirmation onto an AuthRequest and that the
+// /register/confirm POST handler can read it back unchanged.
+func TestPendingRegistrationConfirmation(t *testing.T) {
+	req := NewRegisterAuthRequest(&RegistrationData{Hostname: "phish-test"})
+
+	require.Nil(t, req.PendingConfirmation(),
+		"new AuthRequest must have no pending confirmation")
+
+	pending := &PendingRegistrationConfirmation{
+		UserID: 42,
+		CSRF:   "csrf-marker",
+	}
+	req.SetPendingConfirmation(pending)
+
+	got := req.PendingConfirmation()
+	require.NotNil(t, got, "PendingConfirmation must return the stored value")
+	assert.Equal(t, uint(42), got.UserID)
+	assert.Equal(t, "csrf-marker", got.CSRF)
+}
+
 func TestDefaultBatcherWorkersFor(t *testing.T) {
 	tests := []struct {
 		cpuCount int

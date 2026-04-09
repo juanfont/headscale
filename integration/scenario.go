@@ -1189,7 +1189,116 @@ func doLoginURLWithClient(hostname string, loginURL *url.URL, hc *http.Client, f
 		}
 	}
 
+	// The OIDC registration flow now renders a confirmation interstitial
+	// (POST form) instead of completing immediately. Detect the form and
+	// auto-submit it so integration tests behave like a real browser.
+	if followRedirects && strings.Contains(body, `action="/register/confirm/`) {
+		confirmBody, confirmURL, confirmErr := submitConfirmForm(hostname, body, resp, hc)
+		if confirmErr != nil {
+			return body, redirectURL, confirmErr
+		}
+
+		return confirmBody, confirmURL, nil
+	}
+
 	return body, redirectURL, nil
+}
+
+// submitConfirmForm parses the OIDC registration confirmation
+// interstitial HTML, extracts the form action and CSRF token, and
+// POSTs the form using the same HTTP client (which carries the CSRF
+// cookie set by the callback).
+func submitConfirmForm(
+	hostname string,
+	htmlBody string,
+	prevResp *http.Response,
+	hc *http.Client,
+) (string, *url.URL, error) {
+	// Extract form action URL.
+	actionIdx := strings.Index(htmlBody, `action="`)
+	if actionIdx == -1 {
+		return "", nil, fmt.Errorf("%s confirm form: no action attribute", hostname) //nolint:err113
+	}
+
+	actionStart := actionIdx + len(`action="`)
+
+	actionEnd := strings.Index(htmlBody[actionStart:], `"`)
+	if actionEnd == -1 {
+		return "", nil, fmt.Errorf("%s confirm form: unterminated action attribute", hostname) //nolint:err113
+	}
+
+	formAction := htmlBody[actionStart : actionStart+actionEnd]
+
+	// Extract hidden CSRF input value. The rendered <input> has
+	// attributes in name-type-value order so we grab the whole tag.
+	before, _, ok := strings.Cut(htmlBody, `name="headscale_register_confirm"`)
+	if !ok {
+		return "", nil, fmt.Errorf("%s confirm form: no CSRF input", hostname) //nolint:err113
+	}
+
+	tagStart := strings.LastIndex(before, "<input")
+	if tagStart == -1 {
+		return "", nil, fmt.Errorf("%s confirm form: no input tag for CSRF", hostname) //nolint:err113
+	}
+
+	tagEnd := strings.Index(htmlBody[tagStart:], ">")
+	if tagEnd == -1 {
+		return "", nil, fmt.Errorf("%s confirm form: unterminated input tag", hostname) //nolint:err113
+	}
+
+	inputTag := htmlBody[tagStart : tagStart+tagEnd+1]
+
+	valIdx := strings.Index(inputTag, `value="`)
+	if valIdx == -1 {
+		return "", nil, fmt.Errorf("%s confirm form: no value in CSRF input", hostname) //nolint:err113
+	}
+
+	valStart := valIdx + len(`value="`)
+	valEnd := strings.Index(inputTag[valStart:], `"`)
+	csrfToken := inputTag[valStart : valStart+valEnd]
+
+	// Build the absolute POST URL from the response's request URL.
+	base := prevResp.Request.URL
+	confirmURL := &url.URL{
+		Scheme: base.Scheme,
+		Host:   base.Host,
+		Path:   formAction,
+	}
+
+	log.Printf("%s auto-submitting confirm form: %s", hostname, confirmURL)
+
+	formData := url.Values{
+		"headscale_register_confirm": {csrfToken},
+	}
+
+	ctx := context.Background()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, confirmURL.String(), strings.NewReader(formData.Encode()))
+	if err != nil {
+		return "", nil, fmt.Errorf("%s creating confirm request: %w", hostname, err)
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	confirmResp, err := hc.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s sending confirm request: %w", hostname, err)
+	}
+	defer confirmResp.Body.Close()
+
+	confirmBytes, err := io.ReadAll(confirmResp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("%s reading confirm response: %w", hostname, err)
+	}
+
+	if confirmResp.StatusCode != http.StatusOK {
+		return string(confirmBytes), nil, fmt.Errorf( //nolint:err113
+			"%s confirm returned status %d: %s",
+			hostname, confirmResp.StatusCode, string(confirmBytes),
+		)
+	}
+
+	return string(confirmBytes), nil, nil
 }
 
 var errParseAuthPage = errors.New("parsing auth page")
