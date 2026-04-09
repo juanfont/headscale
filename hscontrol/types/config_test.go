@@ -1,6 +1,7 @@
 package types
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -470,5 +471,42 @@ func TestSafeServerURL(t *testing.T) {
 
 			assert.NoError(t, err)
 		})
+	}
+}
+
+// TestConfigJSONOmitsSecrets verifies that marshalling a Config to JSON
+// (as /debug/config does via state.DebugConfig) does not leak the
+// Postgres password, the OIDC client secret, or the headscale admin
+// API key. Operators who widen metrics_listen_addr to 0.0.0.0 should
+// not be able to read these back via debug endpoints reachable over
+// CGNAT/loopback.
+func TestConfigJSONOmitsSecrets(t *testing.T) {
+	const (
+		secretPostgresPass = "p0stgres-secret-marker"
+		secretClientSecret = "oidc-client-secret-marker"    //nolint:gosec // test marker, not a real credential
+		secretAPIKey       = "headscale-cli-api-key-marker" //nolint:gosec // test marker, not a real credential
+	)
+
+	cfg := &Config{
+		Database: DatabaseConfig{
+			Postgres: PostgresConfig{
+				Pass: secretPostgresPass,
+			},
+		},
+		OIDC: OIDCConfig{
+			ClientSecret: secretClientSecret,
+		},
+		CLI: CLIConfig{
+			APIKey: secretAPIKey,
+		},
+	}
+
+	out, err := json.Marshal(cfg)
+	require.NoError(t, err)
+
+	body := string(out)
+	for _, secret := range []string{secretPostgresPass, secretClientSecret, secretAPIKey} {
+		assert.NotContains(t, body, secret,
+			"marshalled Config must not contain secret %q", secret)
 	}
 }
