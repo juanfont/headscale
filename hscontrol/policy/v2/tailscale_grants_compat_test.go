@@ -18,7 +18,6 @@
 package v2
 
 import (
-	"encoding/json"
 	"net/netip"
 	"path/filepath"
 	"strings"
@@ -273,9 +272,11 @@ func findGrantsNode(nodes types.Nodes, name string) *types.Node {
 // convertPolicyUserEmails used to map SaaS-side emails to @example.com.
 // tscap now anonymizes the policy JSON at write time (kratail2tid -> odin,
 // kristoffer -> thor, monitorpasskeykradalby -> freya), so the captured
-// FullPolicy is already in its final form and this is a passthrough.
-func convertPolicyUserEmails(policyJSON []byte) []byte {
-	return policyJSON
+// FullPolicy is already in its final form and this is a passthrough that
+// just adapts the captured string value to the []byte that the policy
+// parser expects.
+func convertPolicyUserEmails(policyJSON string) []byte {
+	return []byte(policyJSON)
 }
 
 // loadGrantTestFile loads and parses a single grant capture HuJSON file.
@@ -501,10 +502,7 @@ func testGrantSuccess(
 			// kakuna (tag:prod) was frequently offline (132 of 188 success tests).
 			// When offline, packet_filter_rules is null and topology shows
 			// hostname="unknown" with empty tags.
-			captureIsNull := len(capture.PacketFilterRules) == 0 ||
-				string(capture.PacketFilterRules) == "null"
-
-			if captureIsNull {
+			if len(capture.PacketFilterRules) == 0 {
 				topoNode, exists := tf.Topology.Nodes[nodeName]
 				if exists && (topoNode.Hostname == "unknown" || topoNode.Hostname == "") {
 					t.Skipf(
@@ -515,7 +513,7 @@ func testGrantSuccess(
 
 					return
 				}
-				// Node was online but has null/empty rules — means Tailscale
+				// Node was online but has empty rules — means Tailscale
 				// produced no rules. headscale should also produce no rules.
 			}
 
@@ -545,21 +543,7 @@ func testGrantSuccess(
 
 			gotRules = policyutil.ReduceFilterRules(node.View(), gotRules)
 
-			// Unmarshal Tailscale expected rules from JSON capture
-			var wantRules []tailcfg.FilterRule
-			if !captureIsNull {
-				err = json.Unmarshal(
-					[]byte(capture.PacketFilterRules),
-					&wantRules,
-				)
-				require.NoError(
-					t,
-					err,
-					"%s/%s: failed to unmarshal expected rules from JSON",
-					tf.TestID,
-					nodeName,
-				)
-			}
+			wantRules := capture.PacketFilterRules
 
 			// Compare headscale output against Tailscale expected output.
 			// The diff labels show (-tailscale +headscale) to make clear

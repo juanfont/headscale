@@ -89,7 +89,7 @@ func captureStats(c *Capture) string {
 		if n.PacketFilterRules != nil {
 			filterRulesSet = true
 
-			if !isJSONNullOrEmpty(n.PacketFilterRules) {
+			if len(n.PacketFilterRules) > 0 {
 				filterRules++
 			}
 		}
@@ -97,7 +97,7 @@ func captureStats(c *Capture) string {
 		if n.SSHRules != nil {
 			sshRulesSet = true
 
-			if !isJSONNullOrEmpty(n.SSHRules) {
+			if len(n.SSHRules) > 0 {
 				sshRules++
 			}
 		}
@@ -110,17 +110,5 @@ func captureStats(c *Capture) string {
 		return fmt.Sprintf("Nodes with SSH rules: %d of %d", sshRules, total)
 	default:
 		return ""
-	}
-}
-
-// isJSONNullOrEmpty reports whether raw is the JSON value `null`,
-// an empty array `[]`, or empty after whitespace trimming.
-func isJSONNullOrEmpty(raw []byte) bool {
-	trimmed := strings.TrimSpace(string(raw))
-	switch trimmed {
-	case "", "null", "[]":
-		return true
-	default:
-		return false
 	}
 }

@@ -140,27 +140,6 @@ func cmpOptions() []cmp.Option {
 
 			return a.Bits() < b.Bits()
 		}),
-		// Compare json.RawMessage semantically rather than by exact
-		// bytes to handle indentation differences between the policy
-		// source and the golden capture data.
-		cmp.Comparer(func(a, b json.RawMessage) bool {
-			var va, vb any
-
-			err := json.Unmarshal(a, &va)
-			if err != nil {
-				return string(a) == string(b)
-			}
-
-			err = json.Unmarshal(b, &vb)
-			if err != nil {
-				return string(a) == string(b)
-			}
-
-			ja, _ := json.Marshal(va)
-			jb, _ := json.Marshal(vb)
-
-			return string(ja) == string(jb)
-		}),
 		// Compare tailcfg.RawMessage semantically (it's a string type
 		// containing JSON) to handle indentation differences.
 		cmp.Comparer(func(a, b tailcfg.RawMessage) bool {
@@ -492,9 +471,6 @@ func testACLSuccess(
 
 	for nodeName, capture := range tf.Captures {
 		t.Run(nodeName, func(t *testing.T) {
-			captureIsNull := len(capture.PacketFilterRules) == 0 ||
-				string(capture.PacketFilterRules) == "null" //nolint:goconst
-
 			node := findNodeByGivenName(nodes, nodeName)
 			if node == nil {
 				t.Skipf(
@@ -524,21 +500,7 @@ func testACLSuccess(
 				compiledRules,
 			)
 
-			// Parse expected rules from JSON
-			var wantRules []tailcfg.FilterRule
-			if !captureIsNull {
-				err = json.Unmarshal(
-					capture.PacketFilterRules,
-					&wantRules,
-				)
-				require.NoError(
-					t,
-					err,
-					"%s/%s: failed to unmarshal expected rules",
-					tf.TestID,
-					nodeName,
-				)
-			}
+			wantRules := capture.PacketFilterRules
 
 			// Compare
 			opts := append(

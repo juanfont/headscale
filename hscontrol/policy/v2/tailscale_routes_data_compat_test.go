@@ -26,7 +26,6 @@
 package v2
 
 import (
-	"encoding/json"
 	"net/netip"
 	"path/filepath"
 	"slices"
@@ -245,9 +244,6 @@ func TestRoutesCompat(t *testing.T) {
 
 			for nodeName, capture := range tf.Captures {
 				t.Run(nodeName, func(t *testing.T) {
-					captureIsNull := len(capture.PacketFilterRules) == 0 ||
-						string(capture.PacketFilterRules) == "null" //nolint:goconst
-
 					node := findNodeByGivenName(nodes, nodeName)
 					if node == nil {
 						t.Skipf(
@@ -276,20 +272,7 @@ func TestRoutesCompat(t *testing.T) {
 						compiledRules,
 					)
 
-					var wantRules []tailcfg.FilterRule
-					if !captureIsNull {
-						err = json.Unmarshal(
-							capture.PacketFilterRules,
-							&wantRules,
-						)
-						require.NoError(
-							t,
-							err,
-							"%s/%s: failed to unmarshal expected rules",
-							tf.TestID,
-							nodeName,
-						)
-					}
+					wantRules := capture.PacketFilterRules
 
 					opts := append(
 						cmpOptions(),
@@ -331,19 +314,11 @@ func derivePeerPairsFromCaptures(
 	pairs := make(map[[2]string]bool)
 
 	for dstNodeName, capture := range tf.Captures {
-		captureIsNull := len(capture.PacketFilterRules) == 0 ||
-			string(capture.PacketFilterRules) == "null"
-		if captureIsNull {
+		if len(capture.PacketFilterRules) == 0 {
 			continue
 		}
 
-		var rules []tailcfg.FilterRule
-
-		err := json.Unmarshal(capture.PacketFilterRules, &rules)
-		require.NoError(t, err,
-			"%s/%s: failed to unmarshal capture rules",
-			tf.TestID, dstNodeName,
-		)
+		rules := capture.PacketFilterRules
 
 		// Build an IPSet of all SrcIPs from the capture's filter rules.
 		var srcBuilder netipx.IPSetBuilder
@@ -460,19 +435,11 @@ func deriveAllPeerPairsFromCaptures(
 	pairs := make(map[[2]string]bool)
 
 	for dstNodeName, capture := range tf.Captures {
-		captureIsNull := len(capture.PacketFilterRules) == 0 ||
-			string(capture.PacketFilterRules) == "null"
-		if captureIsNull {
+		if len(capture.PacketFilterRules) == 0 {
 			continue
 		}
 
-		var rules []tailcfg.FilterRule
-
-		err := json.Unmarshal(capture.PacketFilterRules, &rules)
-		require.NoError(t, err,
-			"%s/%s: failed to unmarshal capture rules",
-			tf.TestID, dstNodeName,
-		)
+		rules := capture.PacketFilterRules
 
 		// Build an IPSet of all SrcIPs.
 		var srcBuilder netipx.IPSetBuilder
@@ -665,22 +632,11 @@ func TestRoutesCompatPeerVisibility(t *testing.T) {
 				// called from a node whose subnet routes overlap the
 				// source CIDRs.
 				for dstNodeName, capture := range tf.Captures {
-					captureIsNull := len(
-						capture.PacketFilterRules,
-					) == 0 ||
-						string(
-							capture.PacketFilterRules,
-						) == "null"
-					if captureIsNull {
+					if len(capture.PacketFilterRules) == 0 {
 						continue
 					}
 
-					var rules []tailcfg.FilterRule
-
-					err := json.Unmarshal(
-						capture.PacketFilterRules, &rules,
-					)
-					require.NoError(t, err)
+					rules := capture.PacketFilterRules
 
 					// Extract destination prefixes from the rules.
 					var dstPrefixes []netip.Prefix
@@ -920,25 +876,11 @@ func TestRoutesCompatReduceRoutes(t *testing.T) {
 			// Then verify that viewer nodes with matching source
 			// identity can access those routes via CanAccessRoute.
 			for dstNodeName, capture := range tf.Captures {
-				captureIsNull := len(
-					capture.PacketFilterRules,
-				) == 0 ||
-					string(
-						capture.PacketFilterRules,
-					) == "null"
-				if captureIsNull {
+				if len(capture.PacketFilterRules) == 0 {
 					continue
 				}
 
-				var rules []tailcfg.FilterRule
-
-				err := json.Unmarshal(
-					capture.PacketFilterRules, &rules,
-				)
-				require.NoError(t, err,
-					"%s/%s: failed to unmarshal capture rules",
-					tf.TestID, dstNodeName,
-				)
+				rules := capture.PacketFilterRules
 
 				// Build the set of destination route prefixes.
 				var dstPrefixes []netip.Prefix
@@ -1265,24 +1207,11 @@ func TestRoutesCompatNoPeersBeyondCaptures(t *testing.T) {
 			// appears in DstPorts of rules delivered to another
 			// node, they must be peers.
 			for dstNodeName, capture := range tf.Captures {
-				captureIsNull := len(
-					capture.PacketFilterRules,
-				) == 0 ||
-					string(
-						capture.PacketFilterRules,
-					) == "null"
-				if captureIsNull {
+				if len(capture.PacketFilterRules) == 0 {
 					continue
 				}
 
-				var rules []tailcfg.FilterRule
-
-				err := json.Unmarshal(
-					capture.PacketFilterRules, &rules,
-				)
-				if err != nil {
-					continue
-				}
+				rules := capture.PacketFilterRules
 
 				var dstBuilder netipx.IPSetBuilder
 
@@ -1423,9 +1352,7 @@ func TestRoutesCompatNoFalsePositivePeers(t *testing.T) {
 			routerNodes := make(map[string]bool)
 
 			for nodeName, capture := range tf.Captures {
-				captureIsNull := len(capture.PacketFilterRules) == 0 ||
-					string(capture.PacketFilterRules) == "null"
-				if !captureIsNull {
+				if len(capture.PacketFilterRules) > 0 {
 					routerNodes[nodeName] = true
 				}
 			}

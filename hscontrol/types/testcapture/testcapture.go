@@ -2,12 +2,15 @@
 // policy v2 compatibility tests for golden data captured from
 // Tailscale SaaS by the tscap tool.
 //
-// Files are HuJSON. The package intentionally does not import
-// tailscale.com/tailcfg so it can live under hscontrol/types/
-// without dragging extra dependencies. Wire-format Tailscale data
-// (filter rules, netmap, whois, SSH rules) is stored as
-// json.RawMessage; consumers json.Unmarshal into the typed shape
-// they need.
+// Files are HuJSON. Wire-format Tailscale data (filter rules, netmap,
+// whois, SSH rules) is stored as proper tailcfg/netmap/filtertype/
+// apitype values rather than json.RawMessage so that schema drift
+// between tscap and headscale becomes a compile error rather than a
+// silent test failure, and so that consumers don't have to repeat
+// json.Unmarshal at every read site. Storing data as json.RawMessage
+// previously hid a serious capture-pipeline bug (the IPN bus initial
+// notification returns a stale Peers slice — see the comment on
+// Node.Netmap below) for months.
 //
 // All four corpora (acl, routes, grant, ssh) use the same Capture
 // shape. SSH scenarios populate Captures[name].SSHRules; the others
@@ -17,6 +20,11 @@ package testcapture
 import (
 	"encoding/json"
 	"time"
+
+	"tailscale.com/client/tailscale/apitype"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/netmap"
+	"tailscale.com/wgengine/filter/filtertype"
 )
 
 // SchemaVersion identifies the on-disk format. Bumped on breaking changes.
@@ -84,10 +92,18 @@ type Capture struct {
 
 // Input describes everything that was sent to the tailnet to produce
 // the captured state.
+//
+// Input has a custom UnmarshalJSON to accept both the new on-disk
+// shape (where full_policy is a JSON-encoded string) and the legacy
+// shape (where full_policy is a JSON object). The legacy shape is
+// re-marshaled to a string at load time so consumers see the typed
+// field uniformly.
 type Input struct {
 	// FullPolicy is the verbatim policy that was POSTed to the SaaS
-	// API. Stored as raw JSON so it round-trips losslessly.
-	FullPolicy json.RawMessage `json:"full_policy"`
+	// API. Stored as a string because it is opaque JSON that round-
+	// trips losslessly without parsing — headscale's policy parser
+	// reads it on demand.
+	FullPolicy string `json:"full_policy"`
 
 	// APIResponseCode is the HTTP status code of the policy POST.
 	APIResponseCode int `json:"api_response_code"`
@@ -107,6 +123,65 @@ type Input struct {
 	// ScenarioPath is the path the scenario was loaded from,
 	// relative to the captures directory. Informational only.
 	ScenarioPath string `json:"scenario_path,omitempty"`
+}
+
+// UnmarshalJSON handles both the current on-disk shape (full_policy
+// as a JSON-encoded string) and the legacy shape (full_policy as a
+// JSON object). Legacy objects are re-marshaled into a string at
+// load time so consumers see the typed field uniformly. New captures
+// always write the string form via the default Marshaler.
+func (i *Input) UnmarshalJSON(data []byte) error {
+	type alias Input
+
+	var raw struct {
+		alias
+
+		FullPolicy json.RawMessage `json:"full_policy"`
+	}
+
+	err := json.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+
+	*i = Input(raw.alias)
+	// raw.FullPolicy might be a JSON-encoded string ("...") or a JSON
+	// object/array/null. Try string first; on failure use the raw bytes
+	// verbatim, normalised to compact form.
+	if len(raw.FullPolicy) == 0 || string(raw.FullPolicy) == "null" {
+		i.FullPolicy = ""
+		return nil
+	}
+
+	if raw.FullPolicy[0] == '"' {
+		var s string
+
+		err := json.Unmarshal(raw.FullPolicy, &s)
+		if err != nil {
+			return err
+		}
+
+		i.FullPolicy = s
+
+		return nil
+	}
+	// Legacy: full_policy is a raw JSON object. Compact and store as
+	// the equivalent string.
+	var v any
+
+	err = json.Unmarshal(raw.FullPolicy, &v)
+	if err != nil {
+		return err
+	}
+
+	compact, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	i.FullPolicy = string(compact)
+
+	return nil
 }
 
 // APIResponseBody is the (subset of) the SaaS API error response we keep.
@@ -190,31 +265,41 @@ type TopologyNode struct {
 //
 // Whichever fields are set in the file is what the consumer reads.
 type Node struct {
-	// PacketFilterRules is the wire-format []tailcfg.FilterRule as
-	// returned by tailscaled localapi /debug-packet-filter-rules.
-	// The single most important field for ACL/routes/grant tests.
-	PacketFilterRules json.RawMessage `json:"packet_filter_rules,omitempty"`
+	// PacketFilterRules is the wire-format filter rules as returned
+	// by tailscaled localapi /debug-packet-filter-rules. The single
+	// most important field for ACL/routes/grant tests.
+	PacketFilterRules []tailcfg.FilterRule `json:"packet_filter_rules,omitempty"`
 
-	// PacketFilterMatches is the compiled []filtertype.Match with
-	// CapMatch, returned by tailscaled localapi
+	// PacketFilterMatches is the compiled filter matches (with
+	// CapMatch) returned by tailscaled localapi
 	// /debug-packet-filter-matches. Captured alongside
 	// PacketFilterRules; useful for grant tests that want the
 	// compiled form.
-	PacketFilterMatches json.RawMessage `json:"packet_filter_matches,omitempty"`
+	PacketFilterMatches []filtertype.Match `json:"packet_filter_matches,omitempty"`
 
-	// Netmap is the full netmap as returned by tailscaled localapi
-	// /watch-ipn-bus?mask=NotifyInitialNetMap. NEVER trimmed.
-	// Consumers extract whatever fields they need.
-	Netmap json.RawMessage `json:"netmap,omitempty"`
+	// Netmap is the full netmap as observed by the local tailscaled.
+	// NEVER trimmed. Consumers extract whatever fields they need.
+	//
+	// IMPORTANT: tscap captures this by waiting for the IPN bus to
+	// settle on a fresh delta-triggered notification, NOT by reading
+	// the WatchIPNBus(NotifyInitialNetMap) initial notification.
+	// The initial notification carries cn.NetMap() which returns
+	// nb.netMap as-is — the netmap.NetworkMap whose Peers slice was
+	// set at full-sync time and never re-synchronized from the
+	// authoritative nb.peers map. tscap previously used the initial
+	// notification and silently captured netmaps with mostly-empty
+	// Peers, which corrupted every via-grant compat test against the
+	// stale data. See tscap/tsdaemon/capture.go:NetMap for the
+	// stability-wait pattern, and tailscale.com/ipn/ipnlocal/c2n.go
+	// :handleC2NDebugNetMap which uses netMapWithPeers() for the
+	// same reason.
+	Netmap *netmap.NetworkMap `json:"netmap,omitempty"`
 
-	// Whois is per-peer whois lookups, keyed by peer IP. Each value
-	// is the verbatim WhoIsResponse JSON returned by
-	// /localapi/v0/whois. Captured only when
-	// scenario.options.capture_whois is true.
-	Whois map[string]json.RawMessage `json:"whois,omitempty"`
+	// Whois is per-peer whois lookups, keyed by peer IP. Captured
+	// only when scenario.options.capture_whois is true.
+	Whois map[string]*apitype.WhoIsResponse `json:"whois,omitempty"`
 
-	// SSHRules is the SSH rules for SSH corpus. Same shape as
-	// tailcfg.SSHPolicy.Rules ([]tailcfg.SSHRule), kept as raw JSON.
-	// Populated only for SSH scenarios.
-	SSHRules json.RawMessage `json:"ssh_rules,omitempty"`
+	// SSHRules is the SSH rules slice extracted from
+	// netmap.SSHPolicy.Rules. Populated only for SSH scenarios.
+	SSHRules []*tailcfg.SSHRule `json:"ssh_rules,omitempty"`
 }

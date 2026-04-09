@@ -17,7 +17,6 @@
 package v2
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"testing"
 
@@ -185,7 +184,7 @@ func TestSSHDataCompat(t *testing.T) {
 			// tscap already rewrites SaaS emails to @example.com.
 			policyJSON := tf.Input.FullPolicy
 
-			pol, err := unmarshalPolicy(policyJSON)
+			pol, err := unmarshalPolicy([]byte(policyJSON))
 			require.NoError(
 				t,
 				err,
@@ -217,24 +216,10 @@ func TestSSHDataCompat(t *testing.T) {
 						nodeName,
 					)
 
-					// Parse expected rules from JSON capture
-					var wantRules []*tailcfg.SSHRule
-					if len(capture.SSHRules) > 0 &&
-						string(capture.SSHRules) != "null" {
-						err = json.Unmarshal(capture.SSHRules, &wantRules)
-						require.NoError(
-							t,
-							err,
-							"%s/%s: failed to unmarshal expected rules",
-							tf.TestID,
-							nodeName,
-						)
-					}
-
-					// Build expected SSHPolicy from the rules
+					// Build expected SSHPolicy from the typed rules.
 					var wantSSH *tailcfg.SSHPolicy
-					if len(wantRules) > 0 {
-						wantSSH = &tailcfg.SSHPolicy{Rules: wantRules}
+					if len(capture.SSHRules) > 0 {
+						wantSSH = &tailcfg.SSHPolicy{Rules: capture.SSHRules}
 					}
 
 					// Normalize: treat empty-rules SSHPolicy as nil

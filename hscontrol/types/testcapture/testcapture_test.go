@@ -8,19 +8,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/juanfont/headscale/hscontrol/types/testcapture"
+	"tailscale.com/tailcfg"
+	"tailscale.com/types/netmap"
 )
 
 func sampleACLCapture() *testcapture.Capture {
-	policy := json.RawMessage(`{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`)
-	rules := json.RawMessage(`[
-        {
-            "SrcIPs": ["*"],
-            "DstPorts": [{"IP": "*", "Ports": {"First": 0, "Last": 65535}}]
-        }
-    ]`)
-	netmap := json.RawMessage(`{"SelfNode":{"Name":"user1.tail.example.com."}}`)
+	rules := []tailcfg.FilterRule{
+		{
+			SrcIPs: []string{"*"},
+			DstPorts: []tailcfg.NetPortRange{
+				{IP: "*", Ports: tailcfg.PortRangeAny},
+			},
+		},
+	}
+	nm := &netmap.NetworkMap{
+		SelfNode: (&tailcfg.Node{Name: "user1.tail.example.com."}).View(),
+	}
 
 	return &testcapture.Capture{
 		SchemaVersion: testcapture.SchemaVersion,
@@ -31,7 +35,7 @@ func sampleACLCapture() *testcapture.Capture {
 		ToolVersion:   "tscap-test-0.0.0",
 		Tailnet:       "kratail2tid@passkey",
 		Input: testcapture.Input{
-			FullPolicy:      policy,
+			FullPolicy:      `{"acls":[{"action":"accept","src":["*"],"dst":["*:*"]}]}`,
 			APIResponseCode: 200,
 			Tailnet: testcapture.TailnetInput{
 				DNS: testcapture.DNSInput{
@@ -71,19 +75,24 @@ func sampleACLCapture() *testcapture.Capture {
 		Captures: map[string]testcapture.Node{
 			"user1": {
 				PacketFilterRules: rules,
-				Netmap:            netmap,
+				Netmap:            nm,
 			},
 			"tagged-server": {
 				PacketFilterRules: rules,
-				Netmap:            netmap,
+				Netmap:            nm,
 			},
 		},
 	}
 }
 
 func sampleSSHCapture() *testcapture.Capture {
-	policy := json.RawMessage(`{"ssh":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["root"]}]}`)
-	sshRules := json.RawMessage(`[{"action":{"accept":true},"principals":[{"nodeIP":"100.90.199.68"}],"sshUsers":{"root":"root"}}]`)
+	sshRules := []*tailcfg.SSHRule{
+		{
+			Action:     &tailcfg.SSHAction{Accept: true},
+			Principals: []*tailcfg.SSHPrincipal{{NodeIP: "100.90.199.68"}},
+			SSHUsers:   map[string]string{"root": "root"},
+		},
+	}
 
 	return &testcapture.Capture{
 		SchemaVersion: testcapture.SchemaVersion,
@@ -94,7 +103,7 @@ func sampleSSHCapture() *testcapture.Capture {
 		ToolVersion:   "tscap-test-0.0.0",
 		Tailnet:       "kratail2tid@passkey",
 		Input: testcapture.Input{
-			FullPolicy:      policy,
+			FullPolicy:      `{"ssh":[{"action":"accept","src":["autogroup:member"],"dst":["autogroup:self"],"users":["root"]}]}`,
 			APIResponseCode: 200,
 			Tailnet: testcapture.TailnetInput{
 				DNS: testcapture.DNSInput{
@@ -126,39 +135,27 @@ func sampleSSHCapture() *testcapture.Capture {
 	}
 }
 
-// jsonRawMessageEqual is a cmp.Comparer that treats two json.RawMessage
-// values as equal if they decode to the same value. This avoids false
-// negatives from indentation/whitespace differences after hujson formats
-// the embedded raw blobs.
-func jsonRawMessageEqual(a, b json.RawMessage) bool {
-	var va, vb any
+// equalViaJSON compares two captures by JSON-marshaling them and
+// comparing the bytes. The Capture struct embeds tailcfg view types
+// with unexported pointer fields that go-cmp can't traverse, so a
+// JSON round-trip is the simplest way to verify Write+Read produced
+// equivalent values.
+func equalViaJSON(t *testing.T, want, got *testcapture.Capture) {
+	t.Helper()
 
-	err := json.Unmarshal(a, &va)
+	wantJSON, err := json.MarshalIndent(want, "", "  ")
 	if err != nil {
-		return string(a) == string(b)
+		t.Fatalf("marshal want: %v", err)
 	}
 
-	err = json.Unmarshal(b, &vb)
+	gotJSON, err := json.MarshalIndent(got, "", "  ")
 	if err != nil {
-		return string(a) == string(b)
+		t.Fatalf("marshal got: %v", err)
 	}
 
-	// Both va and vb came from successful Unmarshal, so they're guaranteed to
-	// re-marshal cleanly. The error returns here are for the linter; we treat
-	// them as bytewise inequality if they ever fire.
-	ja, jaErr := json.Marshal(va)
-	jb, jbErr := json.Marshal(vb)
-
-	if jaErr != nil || jbErr != nil {
-		return string(a) == string(b)
-	}
-
-	return string(ja) == string(jb)
-}
-
-func captureCompareOpts() []cmp.Option {
-	return []cmp.Option{
-		cmp.Comparer(jsonRawMessageEqual),
+	if string(wantJSON) != string(gotJSON) {
+		t.Errorf("roundtrip mismatch\n--- want ---\n%s\n--- got ---\n%s",
+			string(wantJSON), string(gotJSON))
 	}
 }
 
@@ -178,9 +175,7 @@ func TestWriteReadRoundtrip_ACL(t *testing.T) {
 		t.Fatalf("Read: %v", err)
 	}
 
-	if diff := cmp.Diff(in, out, captureCompareOpts()...); diff != "" {
-		t.Errorf("ACL roundtrip mismatch (-want +got):\n%s", diff)
-	}
+	equalViaJSON(t, in, out)
 }
 
 func TestWriteReadRoundtrip_SSH(t *testing.T) {
@@ -199,9 +194,7 @@ func TestWriteReadRoundtrip_SSH(t *testing.T) {
 		t.Fatalf("Read: %v", err)
 	}
 
-	if diff := cmp.Diff(in, out, captureCompareOpts()...); diff != "" {
-		t.Errorf("SSH roundtrip mismatch (-want +got):\n%s", diff)
-	}
+	equalViaJSON(t, in, out)
 }
 
 func TestWrite_ProducesCommentHeader(t *testing.T) {
@@ -287,7 +280,7 @@ func TestRead_HuJSONWithComments(t *testing.T) {
     "tool_version": "test",
     "tailnet": "example.com",
     "input": {
-        "full_policy": {},
+        "full_policy": "{}",
         "api_response_code": 200,
         "tailnet": {
             "dns": {
@@ -362,17 +355,24 @@ func TestCommentHeader_NoStatsForEmptyCaptures(t *testing.T) {
 	}
 }
 
-func TestCommentHeader_NullFilterRulesCountAsEmpty(t *testing.T) {
+func TestCommentHeader_EmptyFilterRulesCountAsEmpty(t *testing.T) {
+	// Mixed: nil, empty slice, and one populated rule. Only the
+	// populated entry should be counted in the "filter rules" stat.
 	c := &testcapture.Capture{
 		TestID: "NULLS",
 		Captures: map[string]testcapture.Node{
-			"a": {PacketFilterRules: json.RawMessage(`null`)},
-			"b": {PacketFilterRules: json.RawMessage(`[]`)},
-			"c": {PacketFilterRules: json.RawMessage(`[{"SrcIPs":["*"]}]`)},
+			"a": {PacketFilterRules: nil},
+			"b": {PacketFilterRules: []tailcfg.FilterRule{}},
+			"c": {PacketFilterRules: []tailcfg.FilterRule{{SrcIPs: []string{"*"}}}},
 		},
 	}
 
 	header := testcapture.CommentHeader(c)
+	// Only "b" and "c" are non-nil, so the corpus is detected as
+	// "filter rules" — and only "c" actually has rules. With the new
+	// typed semantics, b's empty slice still counts as "set" (not
+	// nil), so the denominator is 2 of 3 capture entries that have
+	// any filter-rules slice at all, and 1 of those is populated.
 	if !strings.Contains(header, "Nodes with filter rules: 1 of 3") {
 		t.Errorf("expected '1 of 3' in header; got:\n%s", header)
 	}
