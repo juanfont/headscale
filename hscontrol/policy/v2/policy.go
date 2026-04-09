@@ -251,6 +251,7 @@ func (pm *PolicyManager) updateLocked() (bool, error) {
 		clear(pm.filterRulesMap)
 		pm.perNodeMatcherCache = nil
 		pm.perNodeSrcIdxCache = nil
+		pm.clearResolveCache()
 	}
 
 	// If nothing changed, no need to update nodes
@@ -409,14 +410,19 @@ func (pm *PolicyManager) ensureFilterCompiled() error {
 	pm.filterDirty = false
 
 	// Enable resolve cache and node IP indexes for filter compilation.
+	// For autogroup:self policies, keep the cache alive after compilation
+	// so per-node compilations (compileFilterRulesForNodeLocked) also benefit.
+	// For non-autogroup:self, tear them down since only the global filter is used.
 	if pm.pol != nil {
 		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
 		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
-		defer func() {
-			pm.pol.resolveCache = nil
-			pm.pol.nodeIPsByUser = nil
-			pm.pol.nodeIPsByTag = nil
-		}()
+		if !pm.pol.usesAutogroupSelf() {
+			defer func() {
+				pm.pol.resolveCache = nil
+				pm.pol.nodeIPsByUser = nil
+				pm.pol.nodeIPsByTag = nil
+			}()
+		}
 	}
 
 	pm.usesAutogroupSelf = pm.pol.usesAutogroupSelf()
@@ -776,6 +782,12 @@ func (pm *PolicyManager) compileFilterRulesForNodeLocked(node types.NodeView) ([
 		return rules, nil
 	}
 
+	// Enable resolve cache and node IP indexes for per-node compilation.
+	// These are normally only set during ensureFilterCompiled (global filter),
+	// but per-node compilation in the autogroup:self path also benefits from
+	// cached Username/Tag/Group resolution and O(1) IP lookups.
+	pm.ensureResolveCacheForCompilation()
+
 	// Compile per-node rules with autogroup:self expanded
 	rules, err := pm.pol.compileFilterRulesForNode(pm.users, node, pm.nodes)
 	if err != nil {
@@ -786,6 +798,34 @@ func (pm *PolicyManager) compileFilterRulesForNodeLocked(node types.NodeView) ([
 	pm.compiledFilterRulesMap[node.ID()] = rules
 
 	return rules, nil
+}
+
+// ensureResolveCacheForCompilation sets up the resolve cache and node IP indexes
+// on the policy if they aren't already set. Unlike ensureFilterCompiled which
+// defers cleanup, these persist until the next filter invalidation cycle so that
+// per-node compilations (autogroup:self) benefit from cached lookups across
+// multiple compileFilterRulesForNodeLocked calls.
+func (pm *PolicyManager) ensureResolveCacheForCompilation() {
+	if pm.pol == nil {
+		return
+	}
+	if pm.pol.resolveCache == nil {
+		pm.pol.resolveCache = make(map[string]*netipx.IPSet)
+	}
+	if pm.pol.nodeIPsByUser == nil {
+		pm.pol.nodeIPsByUser, pm.pol.nodeIPsByTag = buildNodeIPIndexes(pm.nodes)
+	}
+}
+
+// clearResolveCache tears down the persistent resolve cache and node IP indexes.
+// Called when users or nodes change in ways that invalidate cached resolutions.
+func (pm *PolicyManager) clearResolveCache() {
+	if pm.pol == nil {
+		return
+	}
+	pm.pol.resolveCache = nil
+	pm.pol.nodeIPsByUser = nil
+	pm.pol.nodeIPsByTag = nil
 }
 
 // filterForNodeLocked returns the filter rules for a specific node, already reduced
@@ -909,6 +949,7 @@ func (pm *PolicyManager) SetUsers(users []types.User) (bool, error) {
 	// This ensures that if SSH policy compilation previously failed due to missing users,
 	// it will be retried with the new user list
 	clear(pm.sshPolicyMap)
+	pm.clearResolveCache()
 
 	changed, err := pm.updateLocked()
 	if err != nil {
@@ -981,6 +1022,7 @@ func (pm *PolicyManager) SetNodes(nodes views.Slice[types.NodeView]) (bool, bool
 		clear(pm.compiledFilterRulesMap)
 		clear(pm.filterRulesMap)
 		pm.perNodeMatcherCache = nil
+		pm.clearResolveCache()
 		pm.perNodeSrcIdxCache = nil
 
 		// Eagerly resolve tag owners (needed for NodeCanHaveTag during registration)
@@ -1409,6 +1451,9 @@ func (pm *PolicyManager) invalidateAutogroupSelfCache(oldNodes, newNodes views.S
 	// because the cache is rebuilt lazily and only used during ComputeNodePeers.
 	if len(affectedUsers) > 0 {
 		pm.perNodeSrcIdxCache = nil
+		// Clear resolve cache since user's node sets changed, invalidating
+		// Username.Resolve and Group.Resolve cached IP sets.
+		pm.clearResolveCache()
 	}
 
 	if len(affectedUsers) > 0 {
