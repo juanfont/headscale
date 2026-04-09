@@ -727,7 +727,6 @@ func (h *Headscale) Serve() error {
 		grpcServer = grpc.NewServer(grpcOptions...)
 
 		v1.RegisterHeadscaleServiceServer(grpcServer, newHeadscaleV1APIServer(h))
-		reflection.Register(grpcServer)
 
 		grpcListener, err = new(net.ListenConfig).Listen(context.Background(), "tcp", h.cfg.GRPCAddr)
 		if err != nil {
