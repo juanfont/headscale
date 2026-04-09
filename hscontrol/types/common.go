@@ -221,25 +221,41 @@ func (r AuthID) Validate() error {
 	return nil
 }
 
+// SSHCheckBinding identifies the (source, destination) node pair an SSH
+// check-mode auth request is bound to. It is captured at HoldAndDelegate
+// time so the follow-up request and OIDC callback can verify that no
+// other (src, dst) pair has been substituted via tampered URL parameters.
+type SSHCheckBinding struct {
+	SrcNodeID NodeID
+	DstNodeID NodeID
+}
+
 // AuthRequest represents a pending authentication request from a user or a
 // node. It carries the minimum data needed to either complete a node
-// registration (regData populated) or signal the verdict of an interactive
-// auth flow (no payload). Verdict delivery is via the finished channel; the
-// closed flag guards FinishAuth against double-close.
+// registration (regData populated) or an SSH check-mode auth (sshBinding
+// populated), and signals the verdict via the finished channel. The closed
+// flag guards FinishAuth against double-close.
 //
 // AuthRequest is always handled by pointer so the channel and atomic flag
 // have a single canonical instance even when stored in caches that
 // internally copy values.
 type AuthRequest struct {
 	// regData is populated for node-registration flows (interactive web
-	// or OIDC). It carries only the minimal subset of registration data
-	// the auth callback needs to promote this request into a real node;
-	// see RegistrationData for the rationale behind keeping the payload
-	// small.
+	// or OIDC). It carries the cached registration payload that the
+	// auth callback uses to promote this request into a real node.
 	//
-	// nil for non-registration flows (e.g. SSH check). Use
-	// RegistrationData() to read it safely.
+	// nil for non-registration flows. Use RegistrationData() to read it
+	// safely.
 	regData *RegistrationData
+
+	// sshBinding is populated for SSH check-mode flows. It captures the
+	// (src, dst) node pair the request was minted for so the follow-up
+	// and OIDC callback can refuse to record a verdict for any other
+	// pair.
+	//
+	// nil for non-SSH-check flows. Use SSHCheckBinding() to read it
+	// safely.
+	sshBinding *SSHCheckBinding
 
 	finished chan AuthVerdict
 	closed   *atomic.Bool
@@ -265,9 +281,24 @@ func NewRegisterAuthRequest(data *RegistrationData) *AuthRequest {
 	}
 }
 
+// NewSSHCheckAuthRequest creates a pending auth request bound to a
+// specific (src, dst) SSH check-mode pair. The follow-up handler and
+// OIDC callback must verify their incoming request matches this binding
+// before recording any verdict.
+func NewSSHCheckAuthRequest(src, dst NodeID) *AuthRequest {
+	return &AuthRequest{
+		sshBinding: &SSHCheckBinding{
+			SrcNodeID: src,
+			DstNodeID: dst,
+		},
+		finished: make(chan AuthVerdict, 1),
+		closed:   &atomic.Bool{},
+	}
+}
+
 // RegistrationData returns the cached registration payload. It panics if
 // called on an AuthRequest that was not created via
-// NewRegisterAuthRequest, mirroring the previous Node() contract.
+// NewRegisterAuthRequest.
 func (rn *AuthRequest) RegistrationData() *RegistrationData {
 	if rn.regData == nil {
 		panic("RegistrationData can only be used in registration requests")
@@ -276,10 +307,28 @@ func (rn *AuthRequest) RegistrationData() *RegistrationData {
 	return rn.regData
 }
 
+// SSHCheckBinding returns the (src, dst) node pair an SSH check-mode
+// auth request is bound to. It panics if called on an AuthRequest that
+// was not created via NewSSHCheckAuthRequest.
+func (rn *AuthRequest) SSHCheckBinding() *SSHCheckBinding {
+	if rn.sshBinding == nil {
+		panic("SSHCheckBinding can only be used in SSH check-mode requests")
+	}
+
+	return rn.sshBinding
+}
+
 // IsRegistration reports whether this auth request carries registration
 // data (i.e. it was created via NewRegisterAuthRequest).
 func (rn *AuthRequest) IsRegistration() bool {
 	return rn.regData != nil
+}
+
+// IsSSHCheck reports whether this auth request is bound to an SSH
+// check-mode (src, dst) pair (i.e. it was created via
+// NewSSHCheckAuthRequest).
+func (rn *AuthRequest) IsSSHCheck() bool {
+	return rn.sshBinding != nil
 }
 
 func (rn *AuthRequest) FinishAuth(verdict AuthVerdict) {
